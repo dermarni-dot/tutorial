@@ -1050,8 +1050,14 @@ end
 -- estimated bytes of one section at one level: the cached generation if there is one, else the budget. Hair
 -- that would be drawn from the uploaded assets (rec given): their tinted images (MBs; the meshes are not
 -- Editable), HairAssets.Cost
+-- the player's avatar hair is on (look.hair.avatar, from the server's AvatarHair attribute): no asset hair; the
+-- generator draws nothing (AnatomyHair resolves it as a fresh shave), so the Hair section is empty
+local function avatarHair(look)
+	return type(look) == "table" and type(look.hair) == "table" and look.hair.avatar == true
+end
+
 local function sectionCost(section, sig, lod, rec)
-	if section == "Hair" and rec and HairAssets and not assetOff then
+	if section == "Hair" and rec and HairAssets and not assetOff and not avatarHair(rec.look) then
 		local ok, n = pcall(HairAssets.Cost, rec.look, lod, texturesFor(section, rec), rec.priority)
 		if ok and type(n) == "number" then
 			return n
@@ -1303,7 +1309,7 @@ local function runJob(job)
 	-- anything of it failing to load marks its id and this same job generates instead (the fallback)
 	local made, result
 	local assetWait
-	if section == "Hair" and HairAssets and not assetOff then
+	if section == "Hair" and HairAssets and not assetOff and not avatarHair(look) then
 		local status
 		made, result, status = assetHair(rec, look, lod, job)
 		if status == "stop" then

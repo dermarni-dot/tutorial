@@ -23,6 +23,7 @@ local Body = require(script.Parent:WaitForChild("BuilderBody"))
 local LookData = require(script.Parent:WaitForChild("LookData"))
 local BodyTiers = require(script.Parent:WaitForChild("BodyTiers"))
 local BuilderTiers = require(script.Parent:WaitForChild("BuilderTiers"))
+local AvatarLook = require(script.Parent:WaitForChild("AvatarLook"))
 
 local Builder = {}
 
@@ -94,15 +95,42 @@ function Builder.Description(app, build, opts)
 	desc.HeadScale = sc.head
 	desc.BodyTypeScale = sc.bodyType
 	desc.ProportionScale = sc.proportion
+	-- a player's own avatar hair and face (opts.avatar = an AvatarLook record; players only, never NPCs): the
+	-- engine loads and attaches the hair accessories and puts on the face / Dynamic Head. Nothing else of the
+	-- avatar is copied: the body stays the muscle-tier body
+	local av = opts and opts.avatar
+	if type(av) == "table" then
+		if av.useHair then
+			desc.HairAccessory = av.hair or ""
+		end
+		desc.Face = av.face or 0
+		desc.Head = av.head or 0
+	end
 	return desc
 end
 
 -- quantised to 0.01 so only real changes re-apply the description (which yields); "p3" = the standard R15
 -- body at BodyTypeScale 0 (characters scaled under an older key re-apply once)
+-- body at BodyTypeScale 0 (characters scaled under an older key re-apply once). A player's avatar hair / face
+-- (opts.avatar) adds its AvatarLook.Key: a new avatar, the setting turned on / off re-apply once; the game
+-- look's key is exactly the old one
 function Builder.ScaleKey(app, build, opts)
 	local sc = Builder.Scales(app, build, opts)
-	return string.format("%.2f|%.2f|%.2f|%d|%.2f|%.2f|%.2f|p3", sc.height, sc.width, sc.depth, app.gender or 1, sc.bodyType, sc.proportion, sc.head)
+	local av = AvatarLook.Key(opts and opts.avatar)
+	return string.format("%.2f|%.2f|%.2f|%d|%.2f|%.2f|%.2f|%sp3", sc.height, sc.width, sc.depth, app.gender or 1, sc.bodyType, sc.proportion, sc.head,
+		av ~= "" and (av .. "|") or "")
 end
+
+-- the avatar hair / face this rig carries (what the last ApplyDescription put on: the AvatarLook attribute
+-- Builder.Apply writes), as AvatarHair / AvatarFace attributes the hair and face steps, FaceFX and the clients
+-- read. Every Cosmetics caller (fights included) follows the rig, not its own opts
+local function avatarState(model)
+	local st = AvatarLook.State(model:GetAttribute("AvatarLook"))
+	setAttr(model, "AvatarHair", st.hair or nil)
+	setAttr(model, "AvatarFace", st.face or nil)
+	return st
+end
+Builder.AvatarState = avatarState
 
 -- the muscle tier of every body part from the build (BodyTiers) and the swap (BuilderTiers, change-only)
 function Builder.Tiers(app, build, sp)
@@ -177,8 +205,9 @@ local HEAD_SIG_SKIP = {
 local function headSig(model, app, build, opts, name)
 	local head = model:FindFirstChild("Head")
 	local f = type(app.face) == "table" and app.face or {}
+	local avHair, avFace = model:GetAttribute("AvatarHair") == true, model:GetAttribute("AvatarFace") == true
 	if name == "Face" then
-		return Kit.sig("HD3", name, f.key or "smile", head and head.Size or false)
+		return Kit.sig("HD3", name, f.key or "smile", head and head.Size or false, avFace)
 	end
 	local o = {}
 	for k, v in pairs(opts) do
@@ -188,7 +217,7 @@ local function headSig(model, app, build, opts, name)
 		end
 	end
 	return Kit.sig("HD3", name, app.gender, app.skin, app.height, app.face, app.hair, app.beard, o,
-		head and head.Size or false, Config.BaldMode)
+		head and head.Size or false, Config.BaldMode, name == "Hair" and avHair or false)
 end
 
 -- The head is scaled (HeadScale), and BuilderHead swaps the engine's default head (a MeshPart) for the classic
@@ -277,7 +306,11 @@ local function headStep(model, app, build, opts, name)
 	end
 	local ok
 	if name == "Face" then
-		ok = step("Face", Head.Face, model, app, opts, build)
+		if model:GetAttribute("AvatarFace") == true then
+			ok = step("Face", Head.AvatarFace, model, app, opts)
+		else
+			ok = step("Face", Head.Face, model, app, opts, build)
+		end
 	elseif name == "Hair" then
 		ok = step("Hair", Hair.Build, model, app, opts)
 	else
@@ -306,6 +339,8 @@ local function faceStep(model, app, build, opts)
 		headStep(model, app, build, opts, "Face")
 	end
 	pcall(seatHead, model)
+	-- avatar hair accessories put on before a head swap hang on the old head: weld them to the new one
+	step("Accessories", Hair.FixAccessories, model)
 end
 
 ------------------------------------------------------------------------
@@ -345,6 +380,7 @@ end
 function Builder.Cosmetics(model, app, build, gear, opts)
 	opts = opts or {}
 	app = app or Looks.Defaults(1)
+	avatarState(model)
 	-- preview path: rebuild only the requested head folders, in order
 	if type(opts.only) == "table" then
 		for _, name in ipairs({ "Face", "Hair", "Beard" }) do
@@ -383,6 +419,10 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	faceStep(model, app, build, opts)
 	headStep(model, app, build, opts, "Hair")
 	headStep(model, app, build, opts, "Beard")
+	-- avatar hair accessories (re)attached by ApplyDescription stay hidden under a headgear / hood
+	if model:GetAttribute("AvatarHair") == true then
+		step("HairHidden", Hair.ApplyHairHidden, model)
+	end
 	local _, env = step("Muscles", Body.Muscles, model, app, build, opts, sp, gear)
 	step("Attire", Body.Attire, model, app, opts, gear, sp, type(env) == "table" and env or nil)
 	step("Hands", Body.Hands, model, app, gear, opts, sp)
@@ -423,10 +463,28 @@ function Builder.Apply(character, app, build, gear, opts)
 		local ok, err = pcall(function()
 			hum:ApplyDescription(Builder.Description(app, build, opts))
 		end)
+		local av = opts and opts.avatar
+		if not ok and type(av) == "table" then
+			-- the avatar's items would not load (offsale, deleted, moderated, a web hiccup): the game look,
+			-- and the avatar again only after AvatarLook's back-off
+			warn("[Boxer] ApplyDescription with the avatar look failed (game look instead):", err)
+			if opts.avatarUser then
+				AvatarLook.ApplyFailed(opts.avatarUser)
+			end
+			av = nil
+			local plain = table.clone(opts)
+			plain.avatar = nil
+			key = Builder.ScaleKey(app, build, plain)
+			ok, err = pcall(function()
+				hum:ApplyDescription(Builder.Description(app, build, plain))
+			end)
+		end
 		if not ok then
 			warn("[Boxer] ApplyDescription failed:", err)
 		end
 		character:SetAttribute("ScaleKey", key)
+		local avKey = AvatarLook.Key(av)
+		character:SetAttribute("AvatarLook", avKey ~= "" and avKey or nil)
 	end
 	if character.Parent then
 		Builder.Cosmetics(character, app, build, gear, opts)

@@ -14,6 +14,7 @@ local Config = require(Shared.Config)
 local Catalog = require(Shared.Catalog)
 local Looks = require(Shared.Looks)
 local Builder = require(Shared.Builder)
+local AvatarLook = require(Shared.AvatarLook)
 -- the muscle-tier body parts' templates (one CreateMeshPartAsync per tier and part) load in the background
 -- from the start, so the first boxers are built on them without waiting
 require(Shared.BuilderTiers).Preload()
@@ -264,7 +265,16 @@ end
 -- Character look (serialized per player; previews use a temporary look)
 ------------------------------------------------------------------------
 local lookState = {}
-local function applyLook(player, previewApp, hands, popts)
+local applyLook
+-- the player's avatar hair & face arrived (AvatarLook's background fetch): rebuild with whatever the last
+-- request was (a Creator / barber preview stays a preview)
+local function avatarArrived(player)
+	local st = lookState[player]
+	if player.Parent and st then
+		applyLook(player, st.app, st.hands, st.popts)
+	end
+end
+function applyLook(player, previewApp, hands, popts)
 	local st = lookState[player]
 	if not st then
 		st = { needFull = true } -- the first build of a character is always a full one
@@ -306,6 +316,15 @@ local function applyLook(player, previewApp, hands, popts)
 					end
 				end
 				st.needFull = false
+				-- the player's own avatar hair & face (appearance.avatar, default on): the record when it is
+				-- cached, else the game look now and a rebuild when the fetch lands (never waits on it)
+				if AvatarLook.Enabled(app) then
+					st.onAvatar = st.onAvatar or function()
+						avatarArrived(player)
+					end
+					opts.avatar = AvatarLook.Request(player.UserId, st.onAvatar)
+					opts.avatarUser = player.UserId
+				end
 				local ok, err = pcall(Builder.Apply, char, app, build, gear, opts)
 				if not ok then
 					warn("[Boxer] look error:", err)
@@ -1368,6 +1387,7 @@ local function customLook(profile, section, input)
 	local out = table.clone(old)
 	if section == "barber" then
 		out.hair = san.hair
+		out.avatar = san.avatar -- "Use my avatar's hair & face" (free)
 		out.beard = old.gender == 2 and old.beard or san.beard
 		-- "Beard matches hair colour": the client sends no beard.color; Sanitize would keep the old one
 		if out.beard == san.beard and type(input) == "table" and type(input.beard) == "table" and input.beard.color == nil then
@@ -1531,6 +1551,20 @@ function handlers.CustomizeLook(player, profile, section, look, opts)
 	applyLook(player)
 	task.spawn(DataManager.Save, player)
 	return { ok = true, price = price }
+end
+
+-- the Settings screen's "Use my avatar's hair & face" (saved as appearance.avatar; the creator and the barber
+-- send it with the look)
+function handlers.SetAvatarLook(player, profile, on)
+	if type(on) ~= "boolean" or type(profile.appearance) ~= "table" then
+		return { ok = false }
+	end
+	if profile.appearance.avatar ~= on then
+		profile.appearance.avatar = on
+		applyLook(player)
+		task.spawn(DataManager.Save, player)
+	end
+	return { ok = true, avatar = on }
 end
 
 function handlers.GetOffers(player, profile)
@@ -2256,6 +2290,7 @@ Players.PlayerRemoving:Connect(function(player)
 	end
 	customizing[player] = nil
 	lookState[player] = nil
+	AvatarLook.Forget(player.UserId)
 	lastPreview[player] = nil
 	lastSim[player] = nil
 	buckets[player] = nil

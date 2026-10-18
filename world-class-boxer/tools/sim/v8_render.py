@@ -353,6 +353,41 @@ def render_lineup(scene_dir, out_dir, looks, samples):
     print("rendered lineup", flush=True)
 
 
+def render_hairfit(scene_dir, out_dir, looks, samples):
+    """head close-ups (3/4, side, back 3/4, top 3/4) of every rest-pose look: how the hair sits on the classic head"""
+    views = [("3/4", (35, 6, 1.0)), ("side", (90, 2, 1.0)), ("back 3/4", (145, 8, 1.0)), ("top 3/4", (35, 40, 1.0))]
+    rows = []
+    for look in looks:
+        if look.get("pose", "rest") != "rest":
+            continue
+        d = json.load(open(os.path.join(scene_dir, look["file"])))
+        sc = V8Scene(res=(340, 340), samples=samples, lens=85, bg=(0.11, 0.115, 0.125))
+        add_boxer(sc, scene_dir, d)
+        f = tuple(np.array(d["head"]["cf"][:3]) + np.array([0, 0.02, 0]))
+        sc.rig(f, 1.0)
+        paths = []
+        for name, v in views:
+            p = os.path.join(out_dir, f"{look['id']}_fit_{name.replace('/', '').replace(' ', '')}.png")
+            sc.render(p, view=v, dist=0.78 / math.tan(math.atan(18 / 85)), focus=f)
+            paths.append(p)
+        rows.append((look, paths))
+        print("hairfit", look["id"], flush=True)
+    from PIL import Image, ImageDraw, ImageFont
+    w, h, lab = 340, 340, 24
+    W = Image.new("RGB", (4 * w, 46 + len(rows) * (h + lab)), (26, 27, 30))
+    dr = ImageDraw.Draw(W)
+    tf = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
+    f = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 15)
+    dr.text((12, 12), "v8 hair on the classic head (HairAssets.Build placement): 3/4, side, back 3/4, top 3/4", fill=(235, 235, 235), font=tf)
+    for r, (look, paths) in enumerate(rows):
+        y = 46 + r * (h + lab)
+        for c, p in enumerate(paths):
+            W.paste(Image.open(p).convert("RGB"), (c * w, y))
+        dr.text((8, y + h + 3), f"{look['id']}: {look['hair'].get('entry')}  ({views[0][0]}, {views[1][0]}, {views[2][0]}, {views[3][0]})",
+                fill=(210, 210, 210), font=f)
+    W.save(os.path.join(out_dir, "hairfit.jpg"), quality=88)
+
+
 if __name__ == "__main__":
     argv = sys.argv[1:]
     if "--" in sys.argv:
@@ -362,7 +397,7 @@ if __name__ == "__main__":
     i = 2
     while i < len(argv):
         k = argv[i]
-        if k == "--no-lineup" or k == "--lineup-only":
+        if k in ("--no-lineup", "--lineup-only", "--no-hairfit"):
             opts[k] = True
             i += 1
         else:
@@ -379,3 +414,5 @@ if __name__ == "__main__":
             render_look(scene_dir, out_dir, l, samples, views)
     if not opts.get("--no-lineup"):
         render_lineup(scene_dir, out_dir, [l for l in idx["looks"]], samples)
+    if not opts.get("--no-hairfit"):
+        render_hairfit(scene_dir, out_dir, [l for l in idx["looks"] if not only or l["id"] in only], samples)

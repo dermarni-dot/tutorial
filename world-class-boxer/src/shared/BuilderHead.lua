@@ -346,6 +346,22 @@ local function faceBuild(model, app, opts, build)
 	folder:SetAttribute("Extra", 0)
 end
 
+-- a player's avatar face (Builder: the AvatarFace attribute): the head and face the engine put on from the
+-- avatar's description (a Dynamic Head carries its face; a classic avatar face is the engine's "face" decal)
+-- stay exactly as they are. No classic head swap, no decal of ours, no FaceKey (FaceFX leaves it alone)
+function Head.AvatarFace(model, _app, opts)
+	if not model:FindFirstChild("Head") then
+		return
+	end
+	if model:GetAttribute("FaceKey") ~= nil then
+		model:SetAttribute("FaceKey", nil)
+	end
+	local folder = getFolder(model, "Face")
+	folder:SetAttribute("Detail", (Config.DetailLevel(opts or {})))
+	folder:SetAttribute("Extra", 0)
+	folder:SetAttribute("Avatar", true)
+end
+
 local function beardBuild(model, app, opts)
 	opts = opts or {}
 	app = app or {}

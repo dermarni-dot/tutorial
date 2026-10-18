@@ -1586,6 +1586,10 @@ local function resolve(look)
 	local hair = type(look.hair) == "table" and look.hair or {}
 	local style = type(hair.style) == "string" and hair.style or "Fade"
 	local htype = TYPES[hair.type] and hair.type or "Straight"
+	if hair.avatar == true then
+		-- the player's avatar hair accessories replace the game hair: drawn as nothing (build: no stubble either)
+		return "Bald", htype
+	end
 	if not R[style] and style ~= "Bald" then
 		style = BASE[style] or style
 	end
@@ -1639,7 +1643,7 @@ local function build(look, lod, ctx, style, htype, nScale)
 	H.nScale = nScale
 	if style == "Bald" then
 		-- a shaved head shows its regrowth as a shadow; freshly shaved: no hair meshes at all
-		if H.growth <= 0.05 then
+		if H.growth <= 0.05 or (type(look.hair) == "table" and look.hair.avatar == true) then
 			return H, true
 		end
 		local full = H.lod == "full"

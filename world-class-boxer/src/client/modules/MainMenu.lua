@@ -1032,6 +1032,21 @@ local function screenSettings(layer)
 		Settings.Set("controlHints", on)
 	end)
 	add(hintsRow, nudge(hintsRow, true))
+	-- the boxer's hair & face from the player's Roblox avatar (saved with the boxer: appearance.avatar)
+	local P = State.P
+	if P and P.created and type(P.appearance) == "table" then
+		local avatarRow = UI.Toggle(body, "Use my avatar's hair & face", P.appearance.avatar ~= false, function(on)
+			P.appearance.avatar = on
+			task.spawn(function()
+				local r = State.req("SetAvatarLook", on)
+				if not (r and r.ok) then
+					State.toast((r and r.err) or "Couldn't change that right now.", T.red)
+				end
+			end)
+		end)
+		add(avatarRow, nudge(avatarRow, true))
+		add(UI.Text(body, "On: your boxer wears your Roblox avatar's hair, and its face if it has one. Off: the hairstyle and face you picked in the creator and at the barber.", { TextSize = 13, TextColor3 = T.sub }))
+	end
 	header("CONTROLS")
 	local movesBtn = UI.Button(body, "MOVES & CONTROLS  ·  REMAP KEYS AND BUTTONS", { Size = UDim2.fromOffset(420, 40) }, function()
 		openControls("moves")

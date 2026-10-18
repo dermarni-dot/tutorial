@@ -432,6 +432,14 @@ local function hairBuild(model, app, opts)
 		return
 	end
 	local folder = getFolder(model, "Hair")
+	if model:GetAttribute("AvatarHair") == true then
+		-- the player's avatar hair (accessories the engine attached from the description) replaces the game's:
+		-- an empty folder (it seals the step's cache; the beard reads Extra 0)
+		folder:SetAttribute("Avatar", true)
+		folder:SetAttribute("Extra", 0)
+		Hair.ApplyHairHidden(model)
+		return
+	end
 	local hair = app.hair or Looks.Defaults(app.gender).hair
 	local style = hair.style or "Fade"
 	if not DRAWN[style] then
@@ -1055,12 +1063,60 @@ end
 ------------------------------------------------------------------------
 -- Hair under headgear / a robe hood
 ------------------------------------------------------------------------
+-- the avatar's hair accessories on the rig (an Accessory whose AccessoryType is Hair, or whose handle hangs
+-- from the HairAttachment: older items carry no type)
+local function isHairAccessory(acc)
+	if not acc:IsA("Accessory") then
+		return false
+	end
+	local okT, t = pcall(function()
+		return acc.AccessoryType
+	end)
+	local handle = acc:FindFirstChild("Handle")
+	return (okT and t == Enum.AccessoryType.Hair) or (handle ~= nil and handle:FindFirstChild("HairAttachment") ~= nil)
+end
+Hair.IsHairAccessory = isHairAccessory
+
+local function hairAccessories(model)
+	local out = {}
+	for _, acc in ipairs(model:GetChildren()) do
+		if isHairAccessory(acc) then
+			table.insert(out, acc)
+		end
+	end
+	return out
+end
+Hair.HairAccessories = hairAccessories
+
+-- hides / restores one part (HGHidden, HGBaseT: the transparency to restore)
+local function hidePart(d, hide)
+	if hide then
+		if not d:GetAttribute("HGHidden") then
+			d:SetAttribute("HGBaseT", d.Transparency)
+		end
+		d:SetAttribute("HGHidden", true)
+		d.Transparency = 1
+	elseif d:GetAttribute("HGHidden") then
+		d.Transparency = d:GetAttribute("HGBaseT") or 0
+		d:SetAttribute("HGHidden", nil)
+		d:SetAttribute("HGBaseT", nil)
+	end
+end
+
 -- hides every hair part / strand the shell or hood would swallow and restores them afterwards.
 -- Parts get attribute HGHidden (and HGBaseT, the transparency to restore); strands are disabled.
+-- Avatar hair accessories hide whole (an accessory mesh cannot be cut): their Handle and any parts in them.
 function Hair.ApplyHairHidden(model)
 	bind()
 	local hg = model:GetAttribute("HairHiddenHeadgear") == true
 	local hood = model:GetAttribute("HairHiddenHood") == true
+	for _, acc in ipairs(hairAccessories(model)) do
+		for _, d in ipairs(acc:GetDescendants()) do
+			if d:IsA("BasePart") then
+				hidePart(d, hg or hood)
+			end
+		end
+	end
 	local look = model:FindFirstChild("BoxerLook")
 	local hair = look and look:FindFirstChild("Hair")
 	local head = part(model, "Head")
@@ -1082,18 +1138,7 @@ function Hair.ApplyHairHidden(model)
 	for _, d in ipairs(hair:GetDescendants()) do
 		if d:IsA("BasePart") then
 			if d.Name ~= "StrandAnchor" and d.Name ~= "BouncePivot" then
-				local hide = hidden(hcf:PointToObjectSpace(d.Position), d.Size)
-				if hide then
-					if not d:GetAttribute("HGHidden") then
-						d:SetAttribute("HGBaseT", d.Transparency)
-					end
-					d:SetAttribute("HGHidden", true)
-					d.Transparency = 1
-				elseif d:GetAttribute("HGHidden") then
-					d.Transparency = d:GetAttribute("HGBaseT") or 0
-					d:SetAttribute("HGHidden", nil)
-					d:SetAttribute("HGBaseT", nil)
-				end
+				hidePart(d, hidden(hcf:PointToObjectSpace(d.Position), d.Size))
 			end
 		elseif d:IsA("Beam") then
 			local a0 = d.Attachment0
@@ -1107,6 +1152,53 @@ function Hair.SetHairHidden(model, region, on)
 	bind()
 	model:SetAttribute(region == "hood" and "HairHiddenHood" or "HairHiddenHeadgear", on and true or nil)
 	Hair.ApplyHairHidden(model)
+end
+
+-- avatar accessories whose AccessoryWeld lost its head (BuilderHead's classic head swap after ApplyDescription
+-- attached them, a head the engine replaced): welded again, handle attachment on the head's attachment of the
+-- same name (what Humanoid:AddAccessory does). Returns how many were re-welded
+function Hair.FixAccessories(model)
+	local head = model:FindFirstChild("Head")
+	if not (head and head:IsA("BasePart")) then
+		return 0
+	end
+	local n = 0
+	for _, acc in ipairs(model:GetChildren()) do
+		local handle = acc:IsA("Accessory") and acc:FindFirstChild("Handle")
+		if handle and handle:IsA("BasePart") then
+			local weld = handle:FindFirstChild("AccessoryWeld")
+			local p0 = weld and weld.Part0
+			local p1 = weld and weld.Part1
+			local onModel = p0 and p1 and p0:IsDescendantOf(model) and p1:IsDescendantOf(model)
+			if not onModel then
+				-- the handle attachment that has a partner on the head (hair: HairAttachment; hats: HatAttachment...)
+				local ha, pa
+				for _, a in ipairs(handle:GetChildren()) do
+					if a:IsA("Attachment") then
+						local partner = head:FindFirstChild(a.Name)
+						if partner and partner:IsA("Attachment") then
+							ha, pa = a, partner
+							break
+						end
+					end
+				end
+				if ha then
+					if weld then
+						weld:Destroy()
+					end
+					local w = Instance.new("Weld")
+					w.Name = "AccessoryWeld"
+					w.Part0 = handle
+					w.Part1 = head
+					w.C0 = ha.CFrame
+					w.C1 = pa.CFrame
+					w.Parent = handle
+					n += 1
+				end
+			end
+		end
+	end
+	return n
 end
 
 ------------------------------------------------------------------------

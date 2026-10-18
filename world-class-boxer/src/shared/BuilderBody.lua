@@ -20,6 +20,7 @@ local Catalog = require(Shared:WaitForChild("Catalog"))
 local Looks = require(Shared:WaitForChild("Looks"))
 local Kit = require(script.Parent:WaitForChild("BuilderKit"))
 local BodyTiers = require(script.Parent:WaitForChild("BodyTiers"))
+local Hair = require(script.Parent:WaitForChild("BuilderHair")) -- (IsHairAccessory: the avatar's hair stays)
 
 local Body = {}
 
@@ -284,8 +285,10 @@ local function colorBody(model, app, gear, opts)
 			ut.Material = SMOOTH
 		end
 	end
+	-- (a player's avatar hair accessories stay: Builder's AvatarHair, the description put them on)
+	local keepHair = model:GetAttribute("AvatarHair") == true
 	for _, c in ipairs(model:GetChildren()) do
-		if c:IsA("Shirt") or c:IsA("Pants") or c:IsA("ShirtGraphic") or c:IsA("Accessory") then
+		if c:IsA("Shirt") or c:IsA("Pants") or c:IsA("ShirtGraphic") or (c:IsA("Accessory") and not (keepHair and Hair.IsHairAccessory(c))) then
 			c:Destroy()
 		end
 	end

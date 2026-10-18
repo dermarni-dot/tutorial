@@ -107,6 +107,11 @@ local function step(model, rig, now, camPos)
 		return
 	end
 	r.nextT = now + 1 / FaceFX.RATE
+	-- a player's avatar face (Dynamic Head / the avatar's decal face, Builder's AvatarFace attribute): ours to
+	-- leave alone (its texture is the avatar's, not a BodyTiers face)
+	if model:GetAttribute("AvatarFace") == true then
+		return
+	end
 	local decal, head = faceDecal(model)
 	if not decal then
 		return

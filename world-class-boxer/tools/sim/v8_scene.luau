@@ -432,21 +432,25 @@ for _, L in ipairs(LOOKS) do
 		end
 		local R = math.rad
 		-- orthodox guard: left hand forward at chin height, right hand at the cheek, elbows in, chin down, knees soft
-		tr("LeftShoulder", CFrame.Angles(R(62), R(-18), R(-10)))
-		tr("LeftElbow", CFrame.Angles(R(118), 0, 0))
-		tr("LeftWrist", CFrame.Angles(R(-20), 0, 0))
-		tr("RightShoulder", CFrame.Angles(R(48), R(28), R(12)))
-		tr("RightElbow", CFrame.Angles(R(132), 0, 0))
-		tr("RightWrist", CFrame.Angles(R(-20), 0, 0))
-		tr("Waist", CFrame.Angles(R(6), R(-22), 0))
-		tr("Neck", CFrame.Angles(R(-8), R(18), 0))
-		tr("Root", CFrame.new(0, -0.14, 0) * CFrame.Angles(0, R(10), 0))
-		tr("LeftHip", CFrame.Angles(R(16), R(8), R(-4)))
-		tr("LeftKnee", CFrame.Angles(R(-20), 0, 0))
-		tr("LeftAnkle", CFrame.Angles(R(4), 0, 0))
-		tr("RightHip", CFrame.Angles(R(-8), R(-20), R(6)))
-		tr("RightKnee", CFrame.Angles(R(-18), 0, 0))
-		tr("RightAnkle", CFrame.Angles(R(26), 0, 0))
+		-- (fromEulerAnglesYXZ = Ry * Rx * Rz: the limb flares (Z), pitches forward (X), then turns (Y))
+		local function ypr(pitch, yaw, roll)
+			return CFrame.fromEulerAnglesYXZ(R(pitch), R(yaw), R(roll))
+		end
+		tr("LeftShoulder", ypr(42, -22, 6))
+		tr("LeftElbow", ypr(112, 0, 0))
+		tr("LeftWrist", ypr(-12, 0, 0))
+		tr("RightShoulder", ypr(30, 30, -6))
+		tr("RightElbow", ypr(132, 0, 0))
+		tr("RightWrist", ypr(-12, 0, 0))
+		tr("Waist", ypr(5, -10, 0))
+		tr("Neck", ypr(-8, 10, 0))
+		tr("Root", CFrame.new(0, -0.14, 0) * ypr(0, 14, 0))
+		tr("LeftHip", ypr(16, 6, -4))
+		tr("LeftKnee", ypr(-20, 0, 0))
+		tr("LeftAnkle", ypr(4, 0, 0))
+		tr("RightHip", ypr(-8, -16, 6))
+		tr("RightKnee", ypr(-18, 0, 0))
+		tr("RightAnkle", ypr(26, 0, 0))
 		solve(model)
 	end
 
@@ -610,6 +614,24 @@ for _, L in ipairs(LOOKS) do
 		end
 	end
 	model:Destroy()
+end
+-- (--only: the other looks of an earlier run stay in the index, in LOOKS order)
+if only and fs.isFile(OUT .. "/index.json") then
+	local serde = require("@lune/serde")
+	local prev = serde.decode("json", fs.readFile(OUT .. "/index.json"))
+	local byId = {}
+	for _, l in ipairs(prev.looks or {}) do
+		byId[l.id] = l
+	end
+	for _, l in ipairs(index.looks) do
+		byId[l.id] = l
+	end
+	index.looks = {}
+	for _, L in ipairs(LOOKS) do
+		if byId[L.id] then
+			table.insert(index.looks, byId[L.id])
+		end
+	end
 end
 Host.WriteJSON(OUT .. "/index.json", index, true)
 for _, l in ipairs(report) do

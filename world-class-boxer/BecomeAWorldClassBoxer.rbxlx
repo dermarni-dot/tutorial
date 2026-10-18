@@ -1611,6 +1611,10 @@ local function resolve(look)
 	local hair = type(look.hair) == "table" and look.hair or {}
 	local style = type(hair.style) == "string" and hair.style or "Fade"
 	local htype = TYPES[hair.type] and hair.type or "Straight"
+	if hair.avatar == true then
+		-- the player's avatar hair accessories replace the game hair: drawn as nothing (build: no stubble either)
+		return "Bald", htype
+	end
 	if not R[style] and style ~= "Bald" then
 		style = BASE[style] or style
 	end
@@ -1664,7 +1668,7 @@ local function build(look, lod, ctx, style, htype, nScale)
 	H.nScale = nScale
 	if style == "Bald" then
 		-- a shaved head shows its regrowth as a shadow; freshly shaved: no hair meshes at all
-		if H.growth <= 0.05 then
+		if H.growth <= 0.05 or (type(look.hair) == "table" and look.hair.avatar == true) then
 			return H, true
 		end
 		local full = H.lod == "full"
@@ -7776,6 +7780,234 @@ return AnatomySkull
       </Item>
       <Item class="ModuleScript" referent="9">
         <Properties>
+          <string name="Name">AvatarLook</string>
+          <string name="Source"><![CDATA[-- AvatarLook: a player's own Roblox avatar hair and face on their boxer (server side; Config.AvatarLook).
+-- * Request(userId, onReady): the avatar record from the cache, or nil while it is fetched in the background
+--   (Players:GetHumanoidDescriptionFromUserId, pcall'd, never blocking the caller); onReady(rec) runs when a
+--   fetch that was still pending succeeds. A failed fetch is retried after Config.AvatarLook.retry seconds,
+--   doubling up to maxRetry. Forget(userId) when the player leaves.
+-- * FromDescription(desc) -> rec = { useHair, hair = "id,id" (normalised, at most maxHair), face, head }:
+--   the only fields copied into the boxer's HumanoidDescription (never body parts, scales, clothes, other
+--   accessories). Key(rec) is what Builder puts in the ScaleKey and the AvatarLook model attribute;
+--   State(key) reads it back ({ hair = bool, face = bool, dynamic = bool }).
+-- * ApplyFailed(userId): ApplyDescription refused the avatar's items (offsale / deleted): the game look for
+--   maxRetry seconds, then the avatar is tried again.
+-- * ParseIds(v): asset ids from a number, "123", "rbxassetid://123", catalog / asset URLs or a comma list.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+
+local AvatarLook = {}
+
+-- tests replace these (a fake Players with GetHumanoidDescriptionFromUserId, a clock)
+AvatarLook.Services = {}
+local function players()
+	return AvatarLook.Services.Players or game:GetService("Players")
+end
+local function now()
+	return AvatarLook.Services.clock and AvatarLook.Services.clock() or os.clock()
+end
+local function cfg()
+	return Config.AvatarLook or {}
+end
+
+------------------------------------------------------------------------
+-- Ids
+------------------------------------------------------------------------
+local function idOf(s)
+	s = string.gsub(string.gsub(s, "^%s+", ""), "%s+$", "")
+	if s == "" then
+		return nil
+	end
+	local n = string.match(s, "^(%d+)$")
+		or string.match(s, "^rbxassetid://(%d+)$")
+		or string.match(s, "[?&]id=(%d+)")
+		or string.match(s, "roblox%.com/catalog/(%d+)")
+		or string.match(s, "roblox%.com/library/(%d+)")
+		or string.match(s, "create%.roblox%.com/store/asset/(%d+)")
+	n = tonumber(n)
+	return (n and n > 0) and n or nil
+end
+
+-- every asset id in v (number, string, comma-separated string, or a list of those), in order, no repeats
+function AvatarLook.ParseIds(v)
+	local out, seen = {}, {}
+	local function add(n)
+		if n and not seen[n] then
+			seen[n] = true
+			table.insert(out, n)
+		end
+	end
+	local function one(x)
+		if type(x) == "number" then
+			add((x == x and x > 0 and x % 1 == 0) and x or nil)
+		elseif type(x) == "string" then
+			-- (a URL has no commas; a list of ids does)
+			for piece in string.gmatch(x, "[^,]+") do
+				add(idOf(piece))
+			end
+		end
+	end
+	if type(v) == "table" then
+		for _, x in ipairs(v) do
+			one(x)
+		end
+	else
+		one(v)
+	end
+	return out
+end
+
+------------------------------------------------------------------------
+-- Records
+------------------------------------------------------------------------
+function AvatarLook.Enabled(app)
+	local c = cfg()
+	return c.enabled ~= false and (c.hair ~= false or c.face ~= false) and not (type(app) == "table" and app.avatar == false)
+end
+
+function AvatarLook.FromDescription(desc)
+	local c = cfg()
+	local ids = AvatarLook.ParseIds(desc and desc.HairAccessory or "")
+	local cap = tonumber(c.maxHair) or 8
+	while #ids > cap do
+		table.remove(ids)
+	end
+	local strs = {}
+	for i, n in ipairs(ids) do
+		strs[i] = string.format("%d", n)
+	end
+	local face = c.face ~= false and math.max(0, math.floor(tonumber(desc and desc.Face) or 0)) or 0
+	local head = c.face ~= false and math.max(0, math.floor(tonumber(desc and desc.Head) or 0)) or 0
+	return { useHair = c.hair ~= false, hair = c.hair ~= false and table.concat(strs, ",") or "", face = face, head = head }
+end
+
+-- "" for no record: the ScaleKey / attribute of a boxer on the game look are exactly what they were
+function AvatarLook.Key(rec)
+	if type(rec) ~= "table" then
+		return ""
+	end
+	return string.format("A%s|f%d|d%d", rec.useHair and ("h" .. (rec.hair or "")) or "-", rec.face or 0, rec.head or 0)
+end
+
+-- what a key applied: hair = the avatar's hair replaces the game hair (even none: bald), face = the avatar's
+-- face / head replaces the classic face, dynamic = a Dynamic Head
+function AvatarLook.State(key)
+	if type(key) ~= "string" or string.sub(key, 1, 1) ~= "A" then
+		return { hair = false, face = false, dynamic = false }
+	end
+	local h, f, d = string.match(key, "^A([^|]*)|f(%d+)|d(%d+)$")
+	f, d = tonumber(f) or 0, tonumber(d) or 0
+	return { hair = h ~= nil and string.sub(h, 1, 1) == "h", face = f > 0 or d > 0, dynamic = d > 0 }
+end
+
+------------------------------------------------------------------------
+-- Fetching (per user, cached for the session)
+------------------------------------------------------------------------
+local cache = {} -- userId -> { rec, pending, tries, nextTry, badUntil, waiters, gen }
+
+function AvatarLook.Get(userId)
+	local e = cache[userId]
+	if not (e and e.rec) then
+		return nil
+	end
+	if e.badUntil and now() < e.badUntil then
+		return nil
+	end
+	return e.rec
+end
+
+local fetch
+local function schedule(userId, e, delay)
+	local gen = e.gen
+	task.delay(delay, function()
+		if cache[userId] == e and e.gen == gen and not e.rec and not e.pending then
+			fetch(userId, e)
+		end
+	end)
+end
+
+function fetch(userId, e)
+	e.pending = true
+	local ok, desc = pcall(function()
+		return players():GetHumanoidDescriptionFromUserId(userId)
+	end)
+	e.pending = false
+	if cache[userId] ~= e then
+		return -- forgotten (the player left) while the request was out
+	end
+	if ok and desc then
+		local okR, rec = pcall(AvatarLook.FromDescription, desc)
+		if okR and rec then
+			e.rec = rec
+			local waiters = e.waiters
+			e.waiters = {}
+			for _, fn in ipairs(waiters) do
+				task.spawn(fn, rec)
+			end
+			return
+		end
+		desc = rec
+	end
+	e.tries += 1
+	local c = cfg()
+	local wait = math.min((tonumber(c.retry) or 20) * 2 ^ (e.tries - 1), tonumber(c.maxRetry) or 600)
+	e.nextTry = now() + wait
+	warn(string.format("[Boxer] avatar look for %s not loaded (retry in %ds):", tostring(userId), math.floor(wait)), desc)
+	schedule(userId, e, wait)
+end
+
+-- the record now, or nil (and a background fetch, once; onReady(rec) when it arrives)
+function AvatarLook.Request(userId, onReady)
+	if type(userId) ~= "number" or userId <= 0 then
+		return nil -- (Studio test players / NPCs: no avatar)
+	end
+	local e = cache[userId]
+	if not e then
+		e = { tries = 0, nextTry = 0, waiters = {}, gen = 0 }
+		cache[userId] = e
+	end
+	if e.rec then
+		return AvatarLook.Get(userId)
+	end
+	if onReady and not table.find(e.waiters, onReady) then
+		table.insert(e.waiters, onReady)
+	end
+	if not e.pending and now() >= e.nextTry then
+		task.spawn(fetch, userId, e)
+	end
+	return nil
+end
+
+function AvatarLook.ApplyFailed(userId)
+	local e = cache[userId]
+	if e and e.rec then
+		e.badUntil = now() + (tonumber(cfg().maxRetry) or 600)
+	end
+end
+
+function AvatarLook.Forget(userId)
+	local e = cache[userId]
+	if e then
+		e.gen += 1
+	end
+	cache[userId] = nil
+end
+
+-- tests
+function AvatarLook.Reset()
+	for _, e in pairs(cache) do
+		e.gen += 1
+	end
+	table.clear(cache)
+end
+
+return AvatarLook
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="10">
+        <Properties>
           <string name="Name">BodyAssetData</string>
           <string name="Source"><![CDATA[-- GENERATED by tools/body/publish_body.py from tools/body/out (build_body.py, faces.py) and the upload
 -- cache tools/body/uploaded.json. Do not edit by hand: rebuild and re-run publish_body.py.
@@ -9027,7 +9259,7 @@ return {
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="10">
+      <Item class="ModuleScript" referent="11">
         <Properties>
           <string name="Name">BodyTiers</string>
           <string name="Source"><![CDATA[-- BodyTiers: the pure half of the standard R15 body (tools/body/CONTRACT.md). No Instances, deterministic, so
@@ -9434,7 +9666,7 @@ return BodyTiers
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="11">
+      <Item class="ModuleScript" referent="12">
         <Properties>
           <string name="Name">Builder</string>
           <string name="Source"><![CDATA[-- Builder: turns a boxer's look data into a 3D character (server side). Public facade.
@@ -9462,6 +9694,7 @@ local Body = require(script.Parent:WaitForChild("BuilderBody"))
 local LookData = require(script.Parent:WaitForChild("LookData"))
 local BodyTiers = require(script.Parent:WaitForChild("BodyTiers"))
 local BuilderTiers = require(script.Parent:WaitForChild("BuilderTiers"))
+local AvatarLook = require(script.Parent:WaitForChild("AvatarLook"))
 
 local Builder = {}
 
@@ -9533,15 +9766,42 @@ function Builder.Description(app, build, opts)
 	desc.HeadScale = sc.head
 	desc.BodyTypeScale = sc.bodyType
 	desc.ProportionScale = sc.proportion
+	-- a player's own avatar hair and face (opts.avatar = an AvatarLook record; players only, never NPCs): the
+	-- engine loads and attaches the hair accessories and puts on the face / Dynamic Head. Nothing else of the
+	-- avatar is copied: the body stays the muscle-tier body
+	local av = opts and opts.avatar
+	if type(av) == "table" then
+		if av.useHair then
+			desc.HairAccessory = av.hair or ""
+		end
+		desc.Face = av.face or 0
+		desc.Head = av.head or 0
+	end
 	return desc
 end
 
 -- quantised to 0.01 so only real changes re-apply the description (which yields); "p3" = the standard R15
 -- body at BodyTypeScale 0 (characters scaled under an older key re-apply once)
+-- body at BodyTypeScale 0 (characters scaled under an older key re-apply once). A player's avatar hair / face
+-- (opts.avatar) adds its AvatarLook.Key: a new avatar, the setting turned on / off re-apply once; the game
+-- look's key is exactly the old one
 function Builder.ScaleKey(app, build, opts)
 	local sc = Builder.Scales(app, build, opts)
-	return string.format("%.2f|%.2f|%.2f|%d|%.2f|%.2f|%.2f|p3", sc.height, sc.width, sc.depth, app.gender or 1, sc.bodyType, sc.proportion, sc.head)
+	local av = AvatarLook.Key(opts and opts.avatar)
+	return string.format("%.2f|%.2f|%.2f|%d|%.2f|%.2f|%.2f|%sp3", sc.height, sc.width, sc.depth, app.gender or 1, sc.bodyType, sc.proportion, sc.head,
+		av ~= "" and (av .. "|") or "")
 end
+
+-- the avatar hair / face this rig carries (what the last ApplyDescription put on: the AvatarLook attribute
+-- Builder.Apply writes), as AvatarHair / AvatarFace attributes the hair and face steps, FaceFX and the clients
+-- read. Every Cosmetics caller (fights included) follows the rig, not its own opts
+local function avatarState(model)
+	local st = AvatarLook.State(model:GetAttribute("AvatarLook"))
+	setAttr(model, "AvatarHair", st.hair or nil)
+	setAttr(model, "AvatarFace", st.face or nil)
+	return st
+end
+Builder.AvatarState = avatarState
 
 -- the muscle tier of every body part from the build (BodyTiers) and the swap (BuilderTiers, change-only)
 function Builder.Tiers(app, build, sp)
@@ -9616,8 +9876,9 @@ local HEAD_SIG_SKIP = {
 local function headSig(model, app, build, opts, name)
 	local head = model:FindFirstChild("Head")
 	local f = type(app.face) == "table" and app.face or {}
+	local avHair, avFace = model:GetAttribute("AvatarHair") == true, model:GetAttribute("AvatarFace") == true
 	if name == "Face" then
-		return Kit.sig("HD3", name, f.key or "smile", head and head.Size or false)
+		return Kit.sig("HD3", name, f.key or "smile", head and head.Size or false, avFace)
 	end
 	local o = {}
 	for k, v in pairs(opts) do
@@ -9627,7 +9888,7 @@ local function headSig(model, app, build, opts, name)
 		end
 	end
 	return Kit.sig("HD3", name, app.gender, app.skin, app.height, app.face, app.hair, app.beard, o,
-		head and head.Size or false, Config.BaldMode)
+		head and head.Size or false, Config.BaldMode, name == "Hair" and avHair or false)
 end
 
 -- The head is scaled (HeadScale), and BuilderHead swaps the engine's default head (a MeshPart) for the classic
@@ -9716,7 +9977,11 @@ local function headStep(model, app, build, opts, name)
 	end
 	local ok
 	if name == "Face" then
-		ok = step("Face", Head.Face, model, app, opts, build)
+		if model:GetAttribute("AvatarFace") == true then
+			ok = step("Face", Head.AvatarFace, model, app, opts)
+		else
+			ok = step("Face", Head.Face, model, app, opts, build)
+		end
 	elseif name == "Hair" then
 		ok = step("Hair", Hair.Build, model, app, opts)
 	else
@@ -9745,6 +10010,8 @@ local function faceStep(model, app, build, opts)
 		headStep(model, app, build, opts, "Face")
 	end
 	pcall(seatHead, model)
+	-- avatar hair accessories put on before a head swap hang on the old head: weld them to the new one
+	step("Accessories", Hair.FixAccessories, model)
 end
 
 ------------------------------------------------------------------------
@@ -9784,6 +10051,7 @@ end
 function Builder.Cosmetics(model, app, build, gear, opts)
 	opts = opts or {}
 	app = app or Looks.Defaults(1)
+	avatarState(model)
 	-- preview path: rebuild only the requested head folders, in order
 	if type(opts.only) == "table" then
 		for _, name in ipairs({ "Face", "Hair", "Beard" }) do
@@ -9822,6 +10090,10 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	faceStep(model, app, build, opts)
 	headStep(model, app, build, opts, "Hair")
 	headStep(model, app, build, opts, "Beard")
+	-- avatar hair accessories (re)attached by ApplyDescription stay hidden under a headgear / hood
+	if model:GetAttribute("AvatarHair") == true then
+		step("HairHidden", Hair.ApplyHairHidden, model)
+	end
 	local _, env = step("Muscles", Body.Muscles, model, app, build, opts, sp, gear)
 	step("Attire", Body.Attire, model, app, opts, gear, sp, type(env) == "table" and env or nil)
 	step("Hands", Body.Hands, model, app, gear, opts, sp)
@@ -9862,10 +10134,28 @@ function Builder.Apply(character, app, build, gear, opts)
 		local ok, err = pcall(function()
 			hum:ApplyDescription(Builder.Description(app, build, opts))
 		end)
+		local av = opts and opts.avatar
+		if not ok and type(av) == "table" then
+			-- the avatar's items would not load (offsale, deleted, moderated, a web hiccup): the game look,
+			-- and the avatar again only after AvatarLook's back-off
+			warn("[Boxer] ApplyDescription with the avatar look failed (game look instead):", err)
+			if opts.avatarUser then
+				AvatarLook.ApplyFailed(opts.avatarUser)
+			end
+			av = nil
+			local plain = table.clone(opts)
+			plain.avatar = nil
+			key = Builder.ScaleKey(app, build, plain)
+			ok, err = pcall(function()
+				hum:ApplyDescription(Builder.Description(app, build, plain))
+			end)
+		end
 		if not ok then
 			warn("[Boxer] ApplyDescription failed:", err)
 		end
 		character:SetAttribute("ScaleKey", key)
+		local avKey = AvatarLook.Key(av)
+		character:SetAttribute("AvatarLook", avKey ~= "" and avKey or nil)
 	end
 	if character.Parent then
 		Builder.Cosmetics(character, app, build, gear, opts)
@@ -9906,7 +10196,7 @@ return Builder
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">BuilderBody</string>
           <string name="Source"><![CDATA[-- BuilderBody: everything built on the body below the head (server side), split out of Builder.
@@ -9931,6 +10221,7 @@ local Catalog = require(Shared:WaitForChild("Catalog"))
 local Looks = require(Shared:WaitForChild("Looks"))
 local Kit = require(script.Parent:WaitForChild("BuilderKit"))
 local BodyTiers = require(script.Parent:WaitForChild("BodyTiers"))
+local Hair = require(script.Parent:WaitForChild("BuilderHair")) -- (IsHairAccessory: the avatar's hair stays)
 
 local Body = {}
 
@@ -10195,8 +10486,10 @@ local function colorBody(model, app, gear, opts)
 			ut.Material = SMOOTH
 		end
 	end
+	-- (a player's avatar hair accessories stay: Builder's AvatarHair, the description put them on)
+	local keepHair = model:GetAttribute("AvatarHair") == true
 	for _, c in ipairs(model:GetChildren()) do
-		if c:IsA("Shirt") or c:IsA("Pants") or c:IsA("ShirtGraphic") or c:IsA("Accessory") then
+		if c:IsA("Shirt") or c:IsA("Pants") or c:IsA("ShirtGraphic") or (c:IsA("Accessory") and not (keepHair and Hair.IsHairAccessory(c))) then
 			c:Destroy()
 		end
 	end
@@ -11304,7 +11597,7 @@ return Body
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">BuilderHair</string>
           <string name="Source"><![CDATA[-- BuilderHair: the hair on the head (server side), split verbatim out of BuilderHead so the hair and
@@ -11741,6 +12034,14 @@ local function hairBuild(model, app, opts)
 		return
 	end
 	local folder = getFolder(model, "Hair")
+	if model:GetAttribute("AvatarHair") == true then
+		-- the player's avatar hair (accessories the engine attached from the description) replaces the game's:
+		-- an empty folder (it seals the step's cache; the beard reads Extra 0)
+		folder:SetAttribute("Avatar", true)
+		folder:SetAttribute("Extra", 0)
+		Hair.ApplyHairHidden(model)
+		return
+	end
 	local hair = app.hair or Looks.Defaults(app.gender).hair
 	local style = hair.style or "Fade"
 	if not DRAWN[style] then
@@ -12364,12 +12665,60 @@ end
 ------------------------------------------------------------------------
 -- Hair under headgear / a robe hood
 ------------------------------------------------------------------------
+-- the avatar's hair accessories on the rig (an Accessory whose AccessoryType is Hair, or whose handle hangs
+-- from the HairAttachment: older items carry no type)
+local function isHairAccessory(acc)
+	if not acc:IsA("Accessory") then
+		return false
+	end
+	local okT, t = pcall(function()
+		return acc.AccessoryType
+	end)
+	local handle = acc:FindFirstChild("Handle")
+	return (okT and t == Enum.AccessoryType.Hair) or (handle ~= nil and handle:FindFirstChild("HairAttachment") ~= nil)
+end
+Hair.IsHairAccessory = isHairAccessory
+
+local function hairAccessories(model)
+	local out = {}
+	for _, acc in ipairs(model:GetChildren()) do
+		if isHairAccessory(acc) then
+			table.insert(out, acc)
+		end
+	end
+	return out
+end
+Hair.HairAccessories = hairAccessories
+
+-- hides / restores one part (HGHidden, HGBaseT: the transparency to restore)
+local function hidePart(d, hide)
+	if hide then
+		if not d:GetAttribute("HGHidden") then
+			d:SetAttribute("HGBaseT", d.Transparency)
+		end
+		d:SetAttribute("HGHidden", true)
+		d.Transparency = 1
+	elseif d:GetAttribute("HGHidden") then
+		d.Transparency = d:GetAttribute("HGBaseT") or 0
+		d:SetAttribute("HGHidden", nil)
+		d:SetAttribute("HGBaseT", nil)
+	end
+end
+
 -- hides every hair part / strand the shell or hood would swallow and restores them afterwards.
 -- Parts get attribute HGHidden (and HGBaseT, the transparency to restore); strands are disabled.
+-- Avatar hair accessories hide whole (an accessory mesh cannot be cut): their Handle and any parts in them.
 function Hair.ApplyHairHidden(model)
 	bind()
 	local hg = model:GetAttribute("HairHiddenHeadgear") == true
 	local hood = model:GetAttribute("HairHiddenHood") == true
+	for _, acc in ipairs(hairAccessories(model)) do
+		for _, d in ipairs(acc:GetDescendants()) do
+			if d:IsA("BasePart") then
+				hidePart(d, hg or hood)
+			end
+		end
+	end
 	local look = model:FindFirstChild("BoxerLook")
 	local hair = look and look:FindFirstChild("Hair")
 	local head = part(model, "Head")
@@ -12391,18 +12740,7 @@ function Hair.ApplyHairHidden(model)
 	for _, d in ipairs(hair:GetDescendants()) do
 		if d:IsA("BasePart") then
 			if d.Name ~= "StrandAnchor" and d.Name ~= "BouncePivot" then
-				local hide = hidden(hcf:PointToObjectSpace(d.Position), d.Size)
-				if hide then
-					if not d:GetAttribute("HGHidden") then
-						d:SetAttribute("HGBaseT", d.Transparency)
-					end
-					d:SetAttribute("HGHidden", true)
-					d.Transparency = 1
-				elseif d:GetAttribute("HGHidden") then
-					d.Transparency = d:GetAttribute("HGBaseT") or 0
-					d:SetAttribute("HGHidden", nil)
-					d:SetAttribute("HGBaseT", nil)
-				end
+				hidePart(d, hidden(hcf:PointToObjectSpace(d.Position), d.Size))
 			end
 		elseif d:IsA("Beam") then
 			local a0 = d.Attachment0
@@ -12416,6 +12754,53 @@ function Hair.SetHairHidden(model, region, on)
 	bind()
 	model:SetAttribute(region == "hood" and "HairHiddenHood" or "HairHiddenHeadgear", on and true or nil)
 	Hair.ApplyHairHidden(model)
+end
+
+-- avatar accessories whose AccessoryWeld lost its head (BuilderHead's classic head swap after ApplyDescription
+-- attached them, a head the engine replaced): welded again, handle attachment on the head's attachment of the
+-- same name (what Humanoid:AddAccessory does). Returns how many were re-welded
+function Hair.FixAccessories(model)
+	local head = model:FindFirstChild("Head")
+	if not (head and head:IsA("BasePart")) then
+		return 0
+	end
+	local n = 0
+	for _, acc in ipairs(model:GetChildren()) do
+		local handle = acc:IsA("Accessory") and acc:FindFirstChild("Handle")
+		if handle and handle:IsA("BasePart") then
+			local weld = handle:FindFirstChild("AccessoryWeld")
+			local p0 = weld and weld.Part0
+			local p1 = weld and weld.Part1
+			local onModel = p0 and p1 and p0:IsDescendantOf(model) and p1:IsDescendantOf(model)
+			if not onModel then
+				-- the handle attachment that has a partner on the head (hair: HairAttachment; hats: HatAttachment...)
+				local ha, pa
+				for _, a in ipairs(handle:GetChildren()) do
+					if a:IsA("Attachment") then
+						local partner = head:FindFirstChild(a.Name)
+						if partner and partner:IsA("Attachment") then
+							ha, pa = a, partner
+							break
+						end
+					end
+				end
+				if ha then
+					if weld then
+						weld:Destroy()
+					end
+					local w = Instance.new("Weld")
+					w.Name = "AccessoryWeld"
+					w.Part0 = handle
+					w.Part1 = head
+					w.C0 = ha.CFrame
+					w.C1 = pa.CFrame
+					w.Parent = handle
+					n += 1
+				end
+			end
+		end
+	end
+	return n
 end
 
 ------------------------------------------------------------------------
@@ -12472,7 +12857,7 @@ return Hair
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">BuilderHead</string>
           <string name="Source"><![CDATA[-- BuilderHead: everything built on the head (server side; the Creator also calls SetDamage locally).
@@ -12821,6 +13206,22 @@ local function faceBuild(model, app, opts, build)
 	local folder = getFolder(model, "Face")
 	folder:SetAttribute("Detail", (Config.DetailLevel(opts)))
 	folder:SetAttribute("Extra", 0)
+end
+
+-- a player's avatar face (Builder: the AvatarFace attribute): the head and face the engine put on from the
+-- avatar's description (a Dynamic Head carries its face; a classic avatar face is the engine's "face" decal)
+-- stay exactly as they are. No classic head swap, no decal of ours, no FaceKey (FaceFX leaves it alone)
+function Head.AvatarFace(model, _app, opts)
+	if not model:FindFirstChild("Head") then
+		return
+	end
+	if model:GetAttribute("FaceKey") ~= nil then
+		model:SetAttribute("FaceKey", nil)
+	end
+	local folder = getFolder(model, "Face")
+	folder:SetAttribute("Detail", (Config.DetailLevel(opts or {})))
+	folder:SetAttribute("Extra", 0)
+	folder:SetAttribute("Avatar", true)
 end
 
 local function beardBuild(model, app, opts)
@@ -13383,7 +13784,7 @@ return Head
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">BuilderKit</string>
           <string name="Source"><![CDATA[-- BuilderKit: part and colour helpers shared by the character builder modules.
@@ -13667,7 +14068,7 @@ return Kit
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">BuilderTiers</string>
           <string name="Source"><![CDATA[-- BuilderTiers: the muscle-tier body parts on the server (tools/body/CONTRACT.md). The rig is the standard R15
@@ -14045,7 +14446,7 @@ return BuilderTiers
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">Catalog</string>
           <string name="Source"><![CDATA[-- Catalog: gym equipment levels, gear (gloves, shoes, wraps, mouthguards, robes),
@@ -14534,7 +14935,7 @@ return Catalog
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">CityProps</string>
           <string name="Source"><![CDATA[-- CityProps: small procedural props shared by the server city (CityMap) and the client's
@@ -14874,7 +15275,7 @@ return CityProps
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">Config</string>
           <string name="Source"><![CDATA[-- Config: core tunable data for "Become a World Class Boxer"
@@ -16117,6 +16518,28 @@ Config.HairAssets = {
 	alphaTransparency = 0.02,
 }
 
+-- Avatar hair & face: a PLAYER's boxer wears the hair accessories and the face (a classic face, or a Dynamic
+-- Head, which carries its face) of that player's own Roblox avatar, on top of the game's muscle-tier body
+-- (AvatarLook.lua; the server fetches Players:GetHumanoidDescriptionFromUserId once per player and session,
+-- builds the boxer with the game look meanwhile and re-applies the description when the avatar arrives). Only
+-- HairAccessory, Face and Head are copied: never the avatar's body parts, scales, clothes or other accessories.
+-- Each player can turn it off ("Use my avatar's hair & face" in the creator, the barber and the settings;
+-- saved as appearance.avatar, default on): off = the game's own hair styles and classic faces. NPCs always
+-- wear the game look.
+--
+-- FOR THE OWNER: nothing to upload. enabled = false turns it off for everyone; hair / face = false keeps that
+-- part on the game look. A failed fetch keeps the game look and is retried after retry seconds (doubling up to
+-- maxRetry); an avatar whose items fail to load (offsale / deleted / moderated) falls back to the game look
+-- and is not tried again for maxRetry seconds.
+Config.AvatarLook = {
+	enabled = true,
+	hair = true, -- the avatar's hair accessories (an avatar without hair = a bald boxer)
+	face = true, -- the avatar's face / Dynamic Head (an avatar with neither keeps the chosen classic face)
+	maxHair = 8, -- accessory ids copied at most
+	retry = 20,
+	maxRetry = 600,
+}
+
 -- Expr model attribute values (face rig blend targets on the client)
 Config.Expressions = { "neutral", "confident", "determined", "anger", "fear", "fatigue", "pain", "dazed", "effort", "happy", "ko" }
 
@@ -16331,7 +16754,7 @@ return Config
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">DrillScore</string>
           <string name="Source"><![CDATA[-- DrillScore: how a training drill is judged. Shared by the client, which plays the drill with these
@@ -17361,7 +17784,7 @@ return DrillScore
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">FightMotion</string>
           <string name="Source"><![CDATA[--!strict
@@ -17758,7 +18181,7 @@ return FightMotion
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="22">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">Gamepad</string>
           <string name="Source"><![CDATA[-- Gamepad: which device the player is using right now (keyboard and mouse, gamepad or touch), the names
@@ -18009,7 +18432,7 @@ return Gamepad
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="24">
         <Properties>
           <string name="Name">HairAssetData</string>
           <string name="Source"><![CDATA[-- GENERATED by tools/hair/publish.py from tools/hair/out/*/style.json and the upload cache
@@ -22192,7 +22615,7 @@ return {
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="25">
         <Properties>
           <string name="Name">HairAssetKit</string>
           <string name="Source"><![CDATA[-- HairAssetKit: the pure half of the asset hair (tools/hair/CONTRACT.md; the client's HairAssets does the
@@ -23052,7 +23475,7 @@ end
 function HK.Tint(src, sw, sh, f, colors, flipV, gain)
 	f = max(1, floor(f or 1))
 	gain = gain or 1
-	local unit64 = 4 + 9 * f * f
+	local unit64 = 6 + 12 * f * f -- (the dark-colour lift costs a little per texel)
 	local n64 = 0
 	local w, h = sw // f, sh // f
 	stepNow()
@@ -23165,7 +23588,7 @@ return HK
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">Keymap</string>
           <string name="Source"><![CDATA[-- Keymap: every fight action, its default keys on keyboard + mouse and on a controller, and the player's
@@ -23611,7 +24034,7 @@ return Keymap
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">LookData</string>
           <string name="Source"><![CDATA[-- LookData: the exact inputs the client-side asset hair (and its generated fallback) reads, published by the
@@ -23640,7 +24063,8 @@ return Keymap
 --   face = { shape, every Looks.FaceKeys number, eyeColor, eyeColor2, seed, undertone, browStyle, noseType },
 --   battle = { ears, nose, scars = { { kind, side, at, size } } },
 --   hair = { style, type, length, density, thickness, growth (preview growth applied), color, hl, hcolor,
---            dye, hairline, part, clump, frizz, volume, curlSize },
+--            dye, hairline, part, clump, frizz, volume, curlSize, avatar (true: the player's avatar hair
+--            accessories replace the game hair; the clients build none) },
 --   beard = { style, growth, color },
 --   body = { frame, physique (resolved id), arms, chest, shoulders, waist, legs, neck (sliders),
 --            lv = { [Config.MuscleParts id] = 0..1.35 level after physique shaping (0.04 steps) },
@@ -24182,6 +24606,11 @@ function LookData.FromBuilder(model, app, build, opts, sp, scales)
 	end
 	hr.growth = tonumber(opts.previewGrowth) or tonumber(hair.growth) or 0
 	hr.color, hr.hcolor, hr.hl = copyRGB(hair.color), copyRGB(hair.hcolor), hair.hl == true
+	-- the player's avatar hair is on (Builder's AvatarHair attribute): the clients build no hair (and the Hair
+	-- sig moves when it is turned on / off). Absent otherwise: the game look's LookData is unchanged
+	if model and model:GetAttribute("AvatarHair") == true then
+		hr.avatar = true
+	end
 	look.hair = hr
 	look.beard = { style = type(beard.style) == "string" and beard.style or "None", growth = tonumber(beard.growth) or 0, color = copyRGB(beard.color) }
 	local body = {
@@ -24314,7 +24743,7 @@ return LookData
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">Looks</string>
           <string name="Source"><![CDATA[-- Looks: everything about how a boxer looks (face, hair, body frame, attire, gloves).
@@ -24512,6 +24941,9 @@ function Looks.Defaults(gender)
 	local female = gender == 2
 	return {
 		gender = female and 2 or 1,
+		-- a player's boxer wears the hair and face of the player's own Roblox avatar (AvatarLook,
+		-- Config.AvatarLook); false = the game's hair styles and classic faces. NPCs never use it
+		avatar = true,
 		skin = 6,
 		height = female and 66 or 70,
 		face = {
@@ -24651,6 +25083,11 @@ function Looks.Sanitize(input, old)
 	local base = old or Looks.Defaults(input.gender == 2 and 2 or 1)
 	local out = Looks.Defaults((input.gender == 2 or base.gender == 2) and 2 or 1)
 	out.gender = input.gender == 2 and 2 or 1
+	if input.avatar ~= nil then
+		out.avatar = input.avatar == true
+	else
+		out.avatar = base.avatar ~= false
+	end
 	out.skin = math.floor(num(input.skin, 1, #Looks.SkinTones, num(base.skin, 1, #Looks.SkinTones, 5)))
 	out.height = math.floor(num(input.height, 60, 84, num(base.height, 60, 84, 70)))
 
@@ -25020,7 +25457,7 @@ return Looks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">MeshKit</string>
           <string name="Source"><![CDATA[-- MeshKit: pure-Luau mesh data and procedural modelling for the anatomy meshes (shared, deterministic).
@@ -27905,7 +28342,7 @@ return MeshKit
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">Moves</string>
           <string name="Source"><![CDATA[-- Moves: the special moves (data only; FightEngine runs them, FightAI picks them, FightClient /
@@ -28127,7 +28564,7 @@ return Moves
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">UI</string>
           <string name="Source"><![CDATA[-- UI: the game's design system - "fight night broadcast".
@@ -30431,15 +30868,15 @@ return UI
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="31">
+  <Item class="ServerScriptService" referent="32">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="32">
+    <Item class="Folder" referent="33">
       <Properties>
         <string name="Name">BoxerModules</string>
       </Properties>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">Ambient</string>
           <string name="Source"><![CDATA[-- Ambient: gym members, coaches and staff that bring the training complex to life.
@@ -30747,7 +31184,7 @@ return Ambient
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">Career</string>
           <string name="Source"><![CDATA[-- Career: character creation, fight offers, camps, economy, titles, promotions,
@@ -32065,7 +32502,7 @@ return Career
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">CityMap</string>
           <string name="Source"><![CDATA[-- CityMap: the neighbourhood around the gym, so the world outside feels like a real town.
@@ -34515,7 +34952,7 @@ return CityMap
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">DataManager</string>
           <string name="Source"><![CDATA[-- DataManager: loads/saves each player's career with DataStoreService.
@@ -35122,7 +35559,7 @@ return DataManager
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">FightAI</string>
           <string name="Source"><![CDATA[-- FightAI: adaptive opponent brain.
@@ -35605,7 +36042,7 @@ return FightAI
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">FightEngine</string>
           <string name="Source"><![CDATA[-- FightEngine: server-authoritative real-time boxing.
@@ -39083,7 +39520,7 @@ return FightEngine
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">GymDecor</string>
           <string name="Source"><![CDATA[-- GymDecor: everything that turns the training complex from a box into a real boxing gym.
@@ -40601,7 +41038,7 @@ return GymDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">MapBuilder</string>
           <string name="Source"><![CDATA[-- MapBuilder: builds the training complex entirely from parts.
@@ -41616,7 +42053,7 @@ return MapBuilder
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">Poser</string>
           <string name="Source"><![CDATA[-- Poser: puts a character (player or NPC) at a training spot in the right posture
@@ -41810,7 +42247,7 @@ return Poser
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">PvP</string>
           <string name="Source"><![CDATA[-- PvP: player vs player boxing in the same server.
@@ -42367,7 +42804,7 @@ return PvP
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">Training</string>
           <string name="Source"><![CDATA[-- Training: the advanced training system.
@@ -44913,7 +45350,7 @@ return Training
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="44">
+      <Item class="ModuleScript" referent="45">
         <Properties>
           <string name="Name">Venues</string>
           <string name="Source"><![CDATA[-- Venues: fight-night ring system. Builds one template per venue in ServerStorage at boot and
@@ -47178,7 +47615,7 @@ return Venues
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="45">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">World</string>
           <string name="Source"><![CDATA[-- World: generates and maintains the AI boxing world (270 boxers), rankings for
@@ -47657,7 +48094,7 @@ return World
         </Properties>
       </Item>
     </Item>
-    <Item class="Script" referent="46">
+    <Item class="Script" referent="47">
       <Properties>
         <string name="Name">Main</string>
         <token name="RunContext">0</token>
@@ -47677,6 +48114,7 @@ local Config = require(Shared.Config)
 local Catalog = require(Shared.Catalog)
 local Looks = require(Shared.Looks)
 local Builder = require(Shared.Builder)
+local AvatarLook = require(Shared.AvatarLook)
 -- the muscle-tier body parts' templates (one CreateMeshPartAsync per tier and part) load in the background
 -- from the start, so the first boxers are built on them without waiting
 require(Shared.BuilderTiers).Preload()
@@ -47927,7 +48365,16 @@ end
 -- Character look (serialized per player; previews use a temporary look)
 ------------------------------------------------------------------------
 local lookState = {}
-local function applyLook(player, previewApp, hands, popts)
+local applyLook
+-- the player's avatar hair & face arrived (AvatarLook's background fetch): rebuild with whatever the last
+-- request was (a Creator / barber preview stays a preview)
+local function avatarArrived(player)
+	local st = lookState[player]
+	if player.Parent and st then
+		applyLook(player, st.app, st.hands, st.popts)
+	end
+end
+function applyLook(player, previewApp, hands, popts)
 	local st = lookState[player]
 	if not st then
 		st = { needFull = true } -- the first build of a character is always a full one
@@ -47969,6 +48416,15 @@ local function applyLook(player, previewApp, hands, popts)
 					end
 				end
 				st.needFull = false
+				-- the player's own avatar hair & face (appearance.avatar, default on): the record when it is
+				-- cached, else the game look now and a rebuild when the fetch lands (never waits on it)
+				if AvatarLook.Enabled(app) then
+					st.onAvatar = st.onAvatar or function()
+						avatarArrived(player)
+					end
+					opts.avatar = AvatarLook.Request(player.UserId, st.onAvatar)
+					opts.avatarUser = player.UserId
+				end
 				local ok, err = pcall(Builder.Apply, char, app, build, gear, opts)
 				if not ok then
 					warn("[Boxer] look error:", err)
@@ -49031,6 +49487,7 @@ local function customLook(profile, section, input)
 	local out = table.clone(old)
 	if section == "barber" then
 		out.hair = san.hair
+		out.avatar = san.avatar -- "Use my avatar's hair & face" (free)
 		out.beard = old.gender == 2 and old.beard or san.beard
 		-- "Beard matches hair colour": the client sends no beard.color; Sanitize would keep the old one
 		if out.beard == san.beard and type(input) == "table" and type(input.beard) == "table" and input.beard.color == nil then
@@ -49194,6 +49651,20 @@ function handlers.CustomizeLook(player, profile, section, look, opts)
 	applyLook(player)
 	task.spawn(DataManager.Save, player)
 	return { ok = true, price = price }
+end
+
+-- the Settings screen's "Use my avatar's hair & face" (saved as appearance.avatar; the creator and the barber
+-- send it with the look)
+function handlers.SetAvatarLook(player, profile, on)
+	if type(on) ~= "boolean" or type(profile.appearance) ~= "table" then
+		return { ok = false }
+	end
+	if profile.appearance.avatar ~= on then
+		profile.appearance.avatar = on
+		applyLook(player)
+		task.spawn(DataManager.Save, player)
+	end
+	return { ok = true, avatar = on }
 end
 
 function handlers.GetOffers(player, profile)
@@ -49919,6 +50390,7 @@ Players.PlayerRemoving:Connect(function(player)
 	end
 	customizing[player] = nil
 	lookState[player] = nil
+	AvatarLook.Forget(player.UserId)
 	lastPreview[player] = nil
 	lastSim[player] = nil
 	buckets[player] = nil
@@ -49965,17 +50437,17 @@ print("[Boxer] " .. Config.GameName .. " server ready")
       </Properties>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="47">
+  <Item class="StarterPlayer" referent="48">
     <Properties>
       <string name="Name">StarterPlayer</string>
       <float name="CharacterWalkSpeed">6.5</float>
       <bool name="EnableMouseLockOption">false</bool>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="48">
+    <Item class="StarterPlayerScripts" referent="49">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="49">
+      <Item class="LocalScript" referent="50">
         <Properties>
           <string name="Name">Animator</string>
           <string name="Source"><![CDATA[-- Animator: motion-capture-feeling procedural animation for everyone in the game, no animation
@@ -51278,11 +51750,11 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="50">
+      <Item class="Folder" referent="51">
         <Properties>
           <string name="Name">BoxerClient</string>
         </Properties>
-        <Item class="ModuleScript" referent="51">
+        <Item class="ModuleScript" referent="52">
           <Properties>
             <string name="Name">Activities</string>
             <string name="Source"><![CDATA[-- Activities: every training session and its minigame.
@@ -55820,7 +56292,7 @@ return Activities
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="52">
+        <Item class="ModuleScript" referent="53">
           <Properties>
             <string name="Name">Ambience</string>
             <string name="Source"><![CDATA[-- Ambience: brings the gym and the town to life on the client.
@@ -57024,7 +57496,7 @@ return Ambience
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="53">
+        <Item class="ModuleScript" referent="54">
           <Properties>
             <string name="Name">AnatomyClient</string>
             <string name="Source"><![CDATA[-- AnatomyClient: the client-built meshes on every character: today only the HAIR (the uploaded hair cards,
@@ -58079,8 +58551,14 @@ end
 -- estimated bytes of one section at one level: the cached generation if there is one, else the budget. Hair
 -- that would be drawn from the uploaded assets (rec given): their tinted images (MBs; the meshes are not
 -- Editable), HairAssets.Cost
+-- the player's avatar hair is on (look.hair.avatar, from the server's AvatarHair attribute): no asset hair; the
+-- generator draws nothing (AnatomyHair resolves it as a fresh shave), so the Hair section is empty
+local function avatarHair(look)
+	return type(look) == "table" and type(look.hair) == "table" and look.hair.avatar == true
+end
+
 local function sectionCost(section, sig, lod, rec)
-	if section == "Hair" and rec and HairAssets and not assetOff then
+	if section == "Hair" and rec and HairAssets and not assetOff and not avatarHair(rec.look) then
 		local ok, n = pcall(HairAssets.Cost, rec.look, lod, texturesFor(section, rec), rec.priority)
 		if ok and type(n) == "number" then
 			return n
@@ -58332,7 +58810,7 @@ local function runJob(job)
 	-- anything of it failing to load marks its id and this same job generates instead (the fallback)
 	local made, result
 	local assetWait
-	if section == "Hair" and HairAssets and not assetOff then
+	if section == "Hair" and HairAssets and not assetOff and not avatarHair(look) then
 		local status
 		made, result, status = assetHair(rec, look, lod, job)
 		if status == "stop" then
@@ -59773,7 +60251,7 @@ return AnatomyClient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="54">
+        <Item class="ModuleScript" referent="55">
           <Properties>
             <string name="Name">AnatomyStatus</string>
             <string name="Source"><![CDATA[-- AnatomyStatus: tells the player (and the Output) whether the organic mesh characters are on.
@@ -60017,7 +60495,7 @@ return AnatomyStatus
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="55">
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">AnimDown</string>
             <string name="Source"><![CDATA[-- AnimDown: knockdowns, knockouts, the count and the get-up.
@@ -61462,7 +61940,7 @@ return AnimDown
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="56">
+        <Item class="ModuleScript" referent="57">
           <Properties>
             <string name="Name">AnimFight</string>
             <string name="Source"><![CDATA[-- AnimFight: everything a boxer does on his feet in the ring.
@@ -64428,7 +64906,7 @@ return AnimFight
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="57">
+        <Item class="ModuleScript" referent="58">
           <Properties>
             <string name="Name">AnimGym</string>
             <string name="Source"><![CDATA[-- AnimGym: training poses that work the right muscles, flex poses, gym life and the people who
@@ -65634,7 +66112,7 @@ return AnimGym
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="58">
+        <Item class="ModuleScript" referent="59">
           <Properties>
             <string name="Name">AnimKit</string>
             <string name="Source"><![CDATA[-- AnimKit: the pure math behind the procedural animation (no Instances, no Roblox services), so it
@@ -66066,7 +66544,7 @@ return AnimKit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="59">
+        <Item class="ModuleScript" referent="60">
           <Properties>
             <string name="Name">AnimLoco</string>
             <string name="Source"><![CDATA[-- AnimLoco: locomotion and feet for the procedural Animator.
@@ -68217,7 +68695,7 @@ return AnimLoco
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="60">
+        <Item class="ModuleScript" referent="61">
           <Properties>
             <string name="Name">AnimRig</string>
             <string name="Source"><![CDATA[-- AnimRig: rig geometry, inverse kinematics and the pose building blocks shared by the Animator
@@ -69216,7 +69694,7 @@ return AnimRig
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="61">
+        <Item class="ModuleScript" referent="62">
           <Properties>
             <string name="Name">BodyMap</string>
             <string name="Source"><![CDATA[-- BodyMap: an anatomical body map (front + back views), one region per Config.MuscleParts id.
@@ -70073,7 +70551,7 @@ return BodyMap
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="62">
+        <Item class="ModuleScript" referent="63">
           <Properties>
             <string name="Name">CharacterLight</string>
             <string name="Source"><![CDATA[-- CharacterLight: a camera-aware fill and rim light for the boxers on screen (client only).
@@ -70297,7 +70775,7 @@ return CharacterLight
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="63">
+        <Item class="ModuleScript" referent="64">
           <Properties>
             <string name="Name">CityStores</string>
             <string name="Source"><![CDATA[-- CityStores: the counters of the city's walk-in shops (prompts in CityMap, dispatched through
@@ -70579,7 +71057,7 @@ return CityStores
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="64">
+        <Item class="ModuleScript" referent="65">
           <Properties>
             <string name="Name">CityVisuals</string>
             <string name="Source"><![CDATA[-- CityVisuals: the city reflects YOUR career. Everything here is client-side (workspace.LocalCity
@@ -72416,7 +72894,7 @@ return CityVisuals
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="65">
+        <Item class="ModuleScript" referent="66">
           <Properties>
             <string name="Name">ControlsMenu</string>
             <string name="Source"><![CDATA[-- ControlsMenu: the Moves & Controls window. Opened from the main menu (CONTROLS, or Settings > Controls),
@@ -73123,7 +73601,7 @@ return ControlsMenu
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="66">
+        <Item class="ModuleScript" referent="67">
           <Properties>
             <string name="Name">Creator</string>
             <string name="Source"><![CDATA[-- Creator: the character creator, as seven steps with Back / Next and a step bar (jump to any step).
@@ -73703,9 +74181,29 @@ local function faceSwatch(art, key)
 	return sq
 end
 
+-- "Use my avatar's hair & face" (appearance.avatar, default on; the server copies the avatar's hair accessories
+-- and face onto the boxer): the toggle and its note at the top of the hair and face pages. true = the avatar's
+local AVATAR_NOTE = "From your Roblox avatar: your boxer wears your avatar's hair, and its face if it has one (an avatar without hair is bald). Turn this off to pick a hairstyle and a face here."
+local function avatarToggle()
+	UI.Header(body, "FROM YOUR ROBLOX AVATAR")
+	local on = C.look.avatar ~= false
+	UI.Toggle(body, "Use my avatar's hair & face", on, edit(nil, function(v)
+		C.look.avatar = v == true
+		preview()
+		render()
+	end))
+	if on then
+		UI.Line(body, AVATAR_NOTE, { TextColor3 = T.sub, TextSize = 13 })
+	end
+	return on
+end
+
 local function pageFace()
 	local f = C.look.face
 	hintLine(PAGE_HINTS.Face)
+	if avatarToggle() then
+		UI.Line(body, "The face below is used when your avatar has no face of its own.", { TextColor3 = T.sub, TextSize = 13 })
+	end
 	UI.Header(body, "CHOOSE A FACE")
 	local items = {}
 	for _, face in ipairs(BodyTiers.Pickable()) do
@@ -73760,6 +74258,20 @@ local function pageHair()
 	local beard = C.look.beard
 	local def = defaults()
 	hintLine(PAGE_HINTS.Hair)
+	local avatar = avatarToggle()
+	if avatar then
+		-- the avatar's hair replaces the game styles: only the beard is picked here
+		if C.look.gender == 1 then
+			UI.Header(body, "BEARD")
+			chips(Looks.BeardStyles, beard.style, 3, function(v)
+				pushUndo(nil)
+				beard.style = v
+				previewHead()
+				render()
+			end)
+		end
+		return
+	end
 	if not Config.BaldMode then
 		UI.Cycler(body, "Hair type", Looks.HairTypeOrder, h.type, edit(nil, function(v)
 			h.type = v
@@ -74769,7 +75281,7 @@ return Creator
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="67">
+        <Item class="ModuleScript" referent="68">
           <Properties>
             <string name="Name">FaceFX</string>
             <string name="Source"><![CDATA[-- FaceFX: the classic face's expressions. Client-only, driven by the Animator (FaceFX.Update every frame, Hit /
@@ -74881,6 +75393,11 @@ local function step(model, rig, now, camPos)
 		return
 	end
 	r.nextT = now + 1 / FaceFX.RATE
+	-- a player's avatar face (Dynamic Head / the avatar's decal face, Builder's AvatarFace attribute): ours to
+	-- leave alone (its texture is the avatar's, not a BodyTiers face)
+	if model:GetAttribute("AvatarFace") == true then
+		return
+	end
 	local decal, head = faceDecal(model)
 	if not decal then
 		return
@@ -74931,7 +75448,7 @@ return FaceFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="68">
+        <Item class="ModuleScript" referent="69">
           <Properties>
             <string name="Name">FighterCard</string>
             <string name="Source"><![CDATA[-- FighterCard: the professional fighter card / tale of the tape for the local boxer.
@@ -75776,7 +76293,7 @@ return FighterCard
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="69">
+        <Item class="ModuleScript" referent="70">
           <Properties>
             <string name="Name">Flags</string>
             <string name="Source"><![CDATA[-- Flags: simplified national flags drawn from frames (no image assets) for every Config.Nationalities
@@ -76111,7 +76628,7 @@ return Flags
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="70">
+        <Item class="ModuleScript" referent="71">
           <Properties>
             <string name="Name">GymFacility</string>
             <string name="Source"><![CDATA[-- GymFacility: what YOUR gym looks like as a whole, drawn on your client only (everyone shares
@@ -78239,7 +78756,7 @@ return GymFacility
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="71">
+        <Item class="ModuleScript" referent="72">
           <Properties>
             <string name="Name">GymMirror</string>
             <string name="Source"><![CDATA[-- GymMirror: a live mirror at the shadow-boxing station. While you are within a few strides of
@@ -78609,7 +79126,7 @@ return GymMirror
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="72">
+        <Item class="ModuleScript" referent="73">
           <Properties>
             <string name="Name">GymSound</string>
             <string name="Source"><![CDATA[-- GymSound: every gym sound effect on the client, played from ONE pool of positional sounds
@@ -78854,7 +79371,7 @@ return GymSound
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="73">
+        <Item class="ModuleScript" referent="74">
           <Properties>
             <string name="Name">GymVisuals</string>
             <string name="Source"><![CDATA[-- GymVisuals: draws YOUR gym's equipment (client side) at every station, matched to
@@ -82369,7 +82886,7 @@ return GymVisuals
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="74">
+        <Item class="ModuleScript" referent="75">
           <Properties>
             <string name="Name">HairAssets</string>
             <string name="Source"><![CDATA[-- HairAssets: the asset hair (tools/hair/CONTRACT.md): hair-card meshes modelled in Blender and uploaded as
@@ -83068,7 +83585,7 @@ return HairAssets
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="75">
+        <Item class="ModuleScript" referent="76">
           <Properties>
             <string name="Name">HairFX</string>
             <string name="Source"><![CDATA[-- HairFX: hair that moves like hair. Client-only, driven by the Animator every frame (HairFX.Update) and on
@@ -85044,7 +85561,7 @@ return HairFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="76">
+        <Item class="ModuleScript" referent="77">
           <Properties>
             <string name="Name">Hub</string>
             <string name="Source"><![CDATA[-- Hub: the Career Hub window.
@@ -86948,7 +87465,7 @@ return Hub
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="77">
+        <Item class="ModuleScript" referent="78">
           <Properties>
             <string name="Name">LightLevels</string>
             <string name="Source"><![CDATA[-- LightLevels: the game's exposure targets in one place, plus the player's brightness preference.
@@ -87141,7 +87658,7 @@ return LightLevels
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="78">
+        <Item class="ModuleScript" referent="79">
           <Properties>
             <string name="Name">LookKit</string>
             <string name="Source"><![CDATA[-- LookKit: the look editors' shared parts (Creator, barber): plain-word readouts, short labels and
@@ -87523,7 +88040,7 @@ return LookKit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="79">
+        <Item class="ModuleScript" referent="80">
           <Properties>
             <string name="Name">MainMenu</string>
             <string name="Source"><![CDATA[-- MainMenu: the title screen. Your boxer stands in his corner of a ring in a gym at night (MenuStage: a
@@ -88560,6 +89077,21 @@ local function screenSettings(layer)
 		Settings.Set("controlHints", on)
 	end)
 	add(hintsRow, nudge(hintsRow, true))
+	-- the boxer's hair & face from the player's Roblox avatar (saved with the boxer: appearance.avatar)
+	local P = State.P
+	if P and P.created and type(P.appearance) == "table" then
+		local avatarRow = UI.Toggle(body, "Use my avatar's hair & face", P.appearance.avatar ~= false, function(on)
+			P.appearance.avatar = on
+			task.spawn(function()
+				local r = State.req("SetAvatarLook", on)
+				if not (r and r.ok) then
+					State.toast((r and r.err) or "Couldn't change that right now.", T.red)
+				end
+			end)
+		end)
+		add(avatarRow, nudge(avatarRow, true))
+		add(UI.Text(body, "On: your boxer wears your Roblox avatar's hair, and its face if it has one. Off: the hairstyle and face you picked in the creator and at the barber.", { TextSize = 13, TextColor3 = T.sub }))
+	end
 	header("CONTROLS")
 	local movesBtn = UI.Button(body, "MOVES & CONTROLS  ·  REMAP KEYS AND BUTTONS", { Size = UDim2.fromOffset(420, 40) }, function()
 		openControls("moves")
@@ -88968,7 +89500,7 @@ return MainMenu
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="80">
+        <Item class="ModuleScript" referent="81">
           <Properties>
             <string name="Name">MenuStage</string>
             <string name="Source"><![CDATA[-- MenuStage: the main menu's set. A closed boxing-gym corner built on this client, far above the map,
@@ -89485,7 +90017,7 @@ return MenuStage
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="81">
+        <Item class="ModuleScript" referent="82">
           <Properties>
             <string name="Name">MuscleScreen</string>
             <string name="Source"><![CDATA[-- MuscleScreen: the Muscle Progression screen (Hub Body tab "3D MUSCLE VIEW", training result "MUSCLES").
@@ -90494,7 +91026,7 @@ return MuscleScreen
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="82">
+        <Item class="ModuleScript" referent="83">
           <Properties>
             <string name="Name">Perf</string>
             <string name="Source"><![CDATA[-- Perf: the one performance level every client system reads (optimization pass).
@@ -90822,7 +91354,7 @@ return Perf
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="83">
+        <Item class="ModuleScript" referent="84">
           <Properties>
             <string name="Name">PvP</string>
             <string name="Source"><![CDATA[-- PvP (client): challenge other players, answer challenges, Find Match, the PvP record.
@@ -91561,7 +92093,7 @@ return PvP
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="84">
+        <Item class="ModuleScript" referent="85">
           <Properties>
             <string name="Name">Services</string>
             <string name="Source"><![CDATA[-- Services: the gym's service windows.
@@ -91869,7 +92401,18 @@ function Services.Barber()
 		local grown = (P.appearance.hair and P.appearance.hair.growth) or 0
 		local days = math.floor(grown / (Config.HairGrowthPerDay or 0.02) + 0.5)
 		UI.Line(body, string.format("Big Lou: \"Sit down, champ. That's about %d day%s of growth since your last cut.\"", days, days == 1 and "" or "s"), { TextColor3 = Color3.fromRGB(255, 210, 160), TextSize = 14 })
-		if not Config.BaldMode then
+		-- "Use my avatar's hair & face" (appearance.avatar; free): on = the avatar's hair, no game styles here
+		UI.Header(body, "FROM YOUR ROBLOX AVATAR")
+		local avatar = s.look.avatar ~= false
+		UI.Toggle(body, "Use my avatar's hair & face", avatar, function(v)
+			s.look.avatar = v == true
+			s.preview()
+			s.render()
+		end)
+		if avatar then
+			UI.Line(body, "From your Roblox avatar: your boxer wears your avatar's hair (and its face, if it has one). Turn this off for a cut from Big Lou.", { TextColor3 = T.sub, TextSize = 13 })
+		end
+		if not Config.BaldMode and not avatar then
 			UI.Cycler(body, "Hair type", Looks.HairTypeOrder, h.type, function(v)
 				h.type = v
 				s.preview()
@@ -92355,7 +92898,7 @@ return Services
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="85">
+        <Item class="ModuleScript" referent="86">
           <Properties>
             <string name="Name">Settings</string>
             <string name="Source"><![CDATA[-- Settings: the player's options, applied on this client straight away.
@@ -92643,7 +93186,7 @@ return Settings
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="86">
+        <Item class="ModuleScript" referent="87">
           <Properties>
             <string name="Name">State</string>
             <string name="Source"><![CDATA[-- State: shared client state and helpers (latest profile, server requests, toasts,
@@ -92805,7 +93348,7 @@ return State
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="87">
+        <Item class="ModuleScript" referent="88">
           <Properties>
             <string name="Name">VenueFX</string>
             <string name="Source"><![CDATA[-- VenueFX: client-only fight-night presentation for the player's own venue (stream G).
@@ -95342,7 +95885,7 @@ return VenueFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="88">
+        <Item class="ModuleScript" referent="89">
           <Properties>
             <string name="Name">WorldLOD</string>
             <string name="Source"><![CDATA[-- WorldLOD: the Graphics level (Perf) applied to the world's own lights, signs, particles and shadow
@@ -95934,7 +96477,7 @@ return WorldLOD
           </Properties>
         </Item>
       </Item>
-      <Item class="LocalScript" referent="89">
+      <Item class="LocalScript" referent="90">
         <Properties>
           <string name="Name">ClientMain</string>
           <string name="Source"><![CDATA[-- ClientMain: wires the client together - main menu at join, the gym HUD (player plate, condition
@@ -96715,7 +97258,7 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="LocalScript" referent="90">
+      <Item class="LocalScript" referent="91">
         <Properties>
           <string name="Name">FightClient</string>
           <string name="Source"><![CDATA[-- FightClient: fight-night presentation and controls (also used for gym sparring).
@@ -101744,7 +102287,7 @@ end)
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="91">
+  <Item class="Workspace" referent="92">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="NeedsPivotMigration">false</bool>

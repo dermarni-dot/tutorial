@@ -24,7 +24,8 @@
 --   face = { shape, every Looks.FaceKeys number, eyeColor, eyeColor2, seed, undertone, browStyle, noseType },
 --   battle = { ears, nose, scars = { { kind, side, at, size } } },
 --   hair = { style, type, length, density, thickness, growth (preview growth applied), color, hl, hcolor,
---            dye, hairline, part, clump, frizz, volume, curlSize },
+--            dye, hairline, part, clump, frizz, volume, curlSize, avatar (true: the player's avatar hair
+--            accessories replace the game hair; the clients build none) },
 --   beard = { style, growth, color },
 --   body = { frame, physique (resolved id), arms, chest, shoulders, waist, legs, neck (sliders),
 --            lv = { [Config.MuscleParts id] = 0..1.35 level after physique shaping (0.04 steps) },
@@ -566,6 +567,11 @@ function LookData.FromBuilder(model, app, build, opts, sp, scales)
 	end
 	hr.growth = tonumber(opts.previewGrowth) or tonumber(hair.growth) or 0
 	hr.color, hr.hcolor, hr.hl = copyRGB(hair.color), copyRGB(hair.hcolor), hair.hl == true
+	-- the player's avatar hair is on (Builder's AvatarHair attribute): the clients build no hair (and the Hair
+	-- sig moves when it is turned on / off). Absent otherwise: the game look's LookData is unchanged
+	if model and model:GetAttribute("AvatarHair") == true then
+		hr.avatar = true
+	end
 	look.hair = hr
 	look.beard = { style = type(beard.style) == "string" and beard.style or "None", growth = tonumber(beard.growth) or 0, color = copyRGB(beard.color) }
 	local body = {

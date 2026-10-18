@@ -303,7 +303,18 @@ function Services.Barber()
 		local grown = (P.appearance.hair and P.appearance.hair.growth) or 0
 		local days = math.floor(grown / (Config.HairGrowthPerDay or 0.02) + 0.5)
 		UI.Line(body, string.format("Big Lou: \"Sit down, champ. That's about %d day%s of growth since your last cut.\"", days, days == 1 and "" or "s"), { TextColor3 = Color3.fromRGB(255, 210, 160), TextSize = 14 })
-		if not Config.BaldMode then
+		-- "Use my avatar's hair & face" (appearance.avatar; free): on = the avatar's hair, no game styles here
+		UI.Header(body, "FROM YOUR ROBLOX AVATAR")
+		local avatar = s.look.avatar ~= false
+		UI.Toggle(body, "Use my avatar's hair & face", avatar, function(v)
+			s.look.avatar = v == true
+			s.preview()
+			s.render()
+		end)
+		if avatar then
+			UI.Line(body, "From your Roblox avatar: your boxer wears your avatar's hair (and its face, if it has one). Turn this off for a cut from Big Lou.", { TextColor3 = T.sub, TextSize = 13 })
+		end
+		if not Config.BaldMode and not avatar then
 			UI.Cycler(body, "Hair type", Looks.HairTypeOrder, h.type, function(v)
 				h.type = v
 				s.preview()

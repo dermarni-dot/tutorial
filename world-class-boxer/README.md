@@ -350,7 +350,8 @@ trains, the classic head with a classic face, his own hair and his gear.
 2. `BuilderTiers` swaps each of the 14 non-head parts for its tier's MeshPart (`Humanoid:ReplaceBodyPartR15`),
    only when that part's tier changed (one part replicates). See **Body** below.
 3. `BuilderHead` swaps the default head for the classic head (a Part with the Head SpecialMesh) once and gives
-   it a Decal `face`. The head sits on the Neck pivot (no neck lift: the tier torso has no neck stub).
+   it a Decal `face` (not for a player wearing their avatar's face: see **Hair & faces from the player's
+   avatar** below). The head sits on the Neck pivot (no neck lift: the tier torso has no neck stub).
 4. The layers on top: the round-1 hair (the fallback under the asset hair), the beard, trunks, boots,
    gloves / wraps, robe, headgear, damage marks and sweat.
 5. `LookData` (a compact JSON attribute) carries what the clients build the hair from (`headShape =
@@ -412,6 +413,32 @@ turns heavier and darker.
 Most styles are drawn with **asset hair** (see [Asset hair](#asset-hair)); every other style, and any
 style whose assets fail to load, keeps the generated hair, laid on the classic head's own shape
 (`AnatomyHairKit.CLASSIC`, a rounded cylinder).
+
+**Hair & faces from the player's avatar.** A player's boxer wears the hair and the face of that player's own
+Roblox avatar on the game's muscle-tier body (`src/shared/AvatarLook.lua`, `Config.AvatarLook`). NPCs always
+wear the game look.
+- The server fetches the avatar once per player and session (`Players:GetHumanoidDescriptionFromUserId`,
+  pcall'd, in the background: the boxer is built with the game look at once and rebuilt when the avatar
+  arrives; a failed fetch is retried after 20 s, doubling up to 10 min). Only `HairAccessory` (every id, at most
+  8), `Face` and `Head` (a Dynamic Head, which carries its face) are copied into the boxer's
+  HumanoidDescription: never the avatar's body parts, scales, clothes or other accessories. The engine loads
+  and attaches the hair accessories (`ApplyDescription`). The avatar choice is part of `Builder.ScaleKey`, so
+  the description is re-applied only when the avatar or the setting changes, never on every cosmetics run.
+- With avatar hair, the model carries `AvatarHair = true`: no round-1 hair parts (an empty sealed `Hair`
+  folder), and `LookData` gets `hair.avatar = true` (it moves the HairSig), so the clients build no asset or
+  generated hair. An avatar without hair gives a bald boxer. The beard is the game's, as before.
+- With an avatar face or Dynamic Head, the model carries `AvatarFace = true`: the classic head swap and the
+  face decal are skipped (the engine's head and face stay), there is no `FaceKey`, and FaceFX's mood faces
+  are off for that boxer. An avatar with neither keeps the chosen classic face. With avatar hair on the classic
+  head, the accessories are re-welded to the classic head after the swap (`BuilderHair.FixAccessories`).
+- Headgear and hoods hide the hair accessories whole (their Handle's `Transparency`, restored afterwards, the
+  same `HGHidden` / `HGBaseT` attributes as the built hair).
+- The setting "Use my avatar's hair & face" (saved as `appearance.avatar`, default on; old saves get it on) is
+  in the creator (hair and face pages), at the barber (free) and on the Settings screen (`SetAvatarLook`). Off
+  = the game's hair styles and faces exactly as before.
+- If the avatar's items fail to load (offsale, deleted, moderated), `ApplyDescription` is retried without
+  them: the game look, and the avatar is tried again after 10 minutes. `Config.AvatarLook.enabled = false`
+  turns it off for everyone; `hair` / `face = false` keep that part on the game look.
 
 **Damage and condition.** Black eyes, cuts, bruises, swelling, a bloody nose and a split lip show as simple
 overlays on the head at the classic face's features (translucent marks, blood as Beams); a damage layer

@@ -575,9 +575,29 @@ local function faceSwatch(art, key)
 	return sq
 end
 
+-- "Use my avatar's hair & face" (appearance.avatar, default on; the server copies the avatar's hair accessories
+-- and face onto the boxer): the toggle and its note at the top of the hair and face pages. true = the avatar's
+local AVATAR_NOTE = "From your Roblox avatar: your boxer wears your avatar's hair, and its face if it has one (an avatar without hair is bald). Turn this off to pick a hairstyle and a face here."
+local function avatarToggle()
+	UI.Header(body, "FROM YOUR ROBLOX AVATAR")
+	local on = C.look.avatar ~= false
+	UI.Toggle(body, "Use my avatar's hair & face", on, edit(nil, function(v)
+		C.look.avatar = v == true
+		preview()
+		render()
+	end))
+	if on then
+		UI.Line(body, AVATAR_NOTE, { TextColor3 = T.sub, TextSize = 13 })
+	end
+	return on
+end
+
 local function pageFace()
 	local f = C.look.face
 	hintLine(PAGE_HINTS.Face)
+	if avatarToggle() then
+		UI.Line(body, "The face below is used when your avatar has no face of its own.", { TextColor3 = T.sub, TextSize = 13 })
+	end
 	UI.Header(body, "CHOOSE A FACE")
 	local items = {}
 	for _, face in ipairs(BodyTiers.Pickable()) do
@@ -632,6 +652,20 @@ local function pageHair()
 	local beard = C.look.beard
 	local def = defaults()
 	hintLine(PAGE_HINTS.Hair)
+	local avatar = avatarToggle()
+	if avatar then
+		-- the avatar's hair replaces the game styles: only the beard is picked here
+		if C.look.gender == 1 then
+			UI.Header(body, "BEARD")
+			chips(Looks.BeardStyles, beard.style, 3, function(v)
+				pushUndo(nil)
+				beard.style = v
+				previewHead()
+				render()
+			end)
+		end
+		return
+	end
 	if not Config.BaldMode then
 		UI.Cycler(body, "Hair type", Looks.HairTypeOrder, h.type, edit(nil, function(v)
 			h.type = v

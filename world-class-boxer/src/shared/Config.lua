@@ -1238,6 +1238,28 @@ Config.HairAssets = {
 	alphaTransparency = 0.02,
 }
 
+-- Avatar hair & face: a PLAYER's boxer wears the hair accessories and the face (a classic face, or a Dynamic
+-- Head, which carries its face) of that player's own Roblox avatar, on top of the game's muscle-tier body
+-- (AvatarLook.lua; the server fetches Players:GetHumanoidDescriptionFromUserId once per player and session,
+-- builds the boxer with the game look meanwhile and re-applies the description when the avatar arrives). Only
+-- HairAccessory, Face and Head are copied: never the avatar's body parts, scales, clothes or other accessories.
+-- Each player can turn it off ("Use my avatar's hair & face" in the creator, the barber and the settings;
+-- saved as appearance.avatar, default on): off = the game's own hair styles and classic faces. NPCs always
+-- wear the game look.
+--
+-- FOR THE OWNER: nothing to upload. enabled = false turns it off for everyone; hair / face = false keeps that
+-- part on the game look. A failed fetch keeps the game look and is retried after retry seconds (doubling up to
+-- maxRetry); an avatar whose items fail to load (offsale / deleted / moderated) falls back to the game look
+-- and is not tried again for maxRetry seconds.
+Config.AvatarLook = {
+	enabled = true,
+	hair = true, -- the avatar's hair accessories (an avatar without hair = a bald boxer)
+	face = true, -- the avatar's face / Dynamic Head (an avatar with neither keeps the chosen classic face)
+	maxHair = 8, -- accessory ids copied at most
+	retry = 20,
+	maxRetry = 600,
+}
+
 -- Expr model attribute values (face rig blend targets on the client)
 Config.Expressions = { "neutral", "confident", "determined", "anger", "fear", "fatigue", "pain", "dazed", "effort", "happy", "ko" }
 

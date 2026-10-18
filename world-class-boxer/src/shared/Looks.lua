@@ -193,6 +193,9 @@ function Looks.Defaults(gender)
 	local female = gender == 2
 	return {
 		gender = female and 2 or 1,
+		-- a player's boxer wears the hair and face of the player's own Roblox avatar (AvatarLook,
+		-- Config.AvatarLook); false = the game's hair styles and classic faces. NPCs never use it
+		avatar = true,
 		skin = 6,
 		height = female and 66 or 70,
 		face = {
@@ -332,6 +335,11 @@ function Looks.Sanitize(input, old)
 	local base = old or Looks.Defaults(input.gender == 2 and 2 or 1)
 	local out = Looks.Defaults((input.gender == 2 or base.gender == 2) and 2 or 1)
 	out.gender = input.gender == 2 and 2 or 1
+	if input.avatar ~= nil then
+		out.avatar = input.avatar == true
+	else
+		out.avatar = base.avatar ~= false
+	end
 	out.skin = math.floor(num(input.skin, 1, #Looks.SkinTones, num(base.skin, 1, #Looks.SkinTones, 5)))
 	out.height = math.floor(num(input.height, 60, 84, num(base.height, 60, 84, 70)))
 
