@@ -1,0 +1,128 @@
+{
+ "faces": [
+  {
+   "key": "smile",
+   "name": "Smile",
+   "file": "face_smile.png",
+   "creator": true
+  },
+  {
+   "key": "grin",
+   "name": "Grin",
+   "file": "face_grin.png",
+   "creator": true
+  },
+  {
+   "key": "smirk",
+   "name": "Smirk",
+   "file": "face_smirk.png",
+   "creator": true
+  },
+  {
+   "key": "confident",
+   "name": "Confident",
+   "file": "face_confident.png",
+   "creator": true
+  },
+  {
+   "key": "cool",
+   "name": "Cool",
+   "file": "face_cool.png",
+   "creator": true
+  },
+  {
+   "key": "happy",
+   "name": "Happy",
+   "file": "face_happy.png",
+   "creator": true
+  },
+  {
+   "key": "wink",
+   "name": "Wink",
+   "file": "face_wink.png",
+   "creator": true
+  },
+  {
+   "key": "determined",
+   "name": "Determined",
+   "file": "face_determined.png",
+   "creator": true
+  },
+  {
+   "key": "focused",
+   "name": "Focused",
+   "file": "face_focused.png",
+   "creator": true
+  },
+  {
+   "key": "stern",
+   "name": "Stern",
+   "file": "face_stern.png",
+   "creator": true
+  },
+  {
+   "key": "angry",
+   "name": "Angry",
+   "file": "face_angry.png",
+   "creator": false
+  },
+  {
+   "key": "grit",
+   "name": "Grit",
+   "file": "face_grit.png",
+   "creator": false
+  },
+  {
+   "key": "surprised",
+   "name": "Surprised",
+   "file": "face_surprised.png",
+   "creator": false
+  },
+  {
+   "key": "tired",
+   "name": "Tired",
+   "file": "face_tired.png",
+   "creator": false
+  },
+  {
+   "key": "hurt",
+   "name": "Hurt",
+   "file": "face_hurt.png",
+   "creator": false
+  },
+  {
+   "key": "dazed",
+   "name": "Dazed",
+   "file": "face_dazed.png",
+   "creator": false
+  },
+  {
+   "key": "ko",
+   "name": "KO",
+   "file": "face_ko.png",
+   "creator": false
+  }
+ ],
+ "default": "smile",
+ "expressions": {
+  "neutral": null,
+  "guard": "focused",
+  "attack": "determined",
+  "block": "determined",
+  "effort": "grit",
+  "hurt": "hurt",
+  "stunned": "dazed",
+  "dazed": "dazed",
+  "ko": "ko",
+  "tired": "tired",
+  "angry": "angry",
+  "surprised": "surprised",
+  "taunt": "smirk",
+  "confident": "confident",
+  "happy": "grin",
+  "celebrate": "happy",
+  "rest": "smile",
+  "train": "focused",
+  "lose": "tired"
+ }
+}

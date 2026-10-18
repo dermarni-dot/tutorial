@@ -1,23 +1,28 @@
-"""Muscle-tier R15 body parts (PROTOTYPE for visual sign-off): the standard smooth Roblox R15 body with
-muscles added in 5 tiers (1 lean, 2 toned, 3 athletic, 4 muscular, 5 elite), plus a plain "default body"
-reconstruction (tier 0) for comparison.
+"""Muscle-tier R15 body parts: the standard smooth Roblox R15 body with muscles added in 5 tiers (1 lean,
+2 toned, 3 athletic, 4 muscular, 5 elite), at the game's athletic proportions (CONTRACT.md), plus a plain
+"default body" reconstruction (tier 0) for comparison.
 
-Run with Blender's Python (Cycles CPU renders):
-    /opt/bpyenv/bin/python tools/body/build_body.py                 # build + export + 3 sheets
+Run with Blender's Python (Cycles CPU renders); faces.py draws the face textures the renders use:
+    python3 tools/body/faces.py
+    /opt/bpyenv/bin/python tools/body/build_body.py                 # build + export + 5 sheets
     /opt/bpyenv/bin/python tools/body/build_body.py --no-render     # build + export only
-    /opt/bpyenv/bin/python tools/body/build_body.py --samples 24 --sheets 1
+    /opt/bpyenv/bin/python tools/body/build_body.py --samples 24 --sheets 1,4
 
 Outputs
     tools/body/out/tier<N>/<Part>.mesh   Roblox mesh v2.00, vertices relative to the part's bbox centre
                                          (= the MeshPart origin Roblox gives an imported mesh)
-    tools/body/out/tier<N>/parts.json    per part: size (bbox), attachments (part space), tris, verts
-    tools/body/out/body_tiers.json       all tiers + the skeleton it was built on
+    tools/body/out/tier<N>/parts.json    per part: size (bbox = OriginalSize), attachments (part space: every R15
+                                         RigAttachment, the body accessory attachments, Grip on hands), tris;
+                                         per tier: fit (gear girths / widths at fixed heights)
+    tools/body/out/body_tiers.json       unit (the unscaled rig the meshes are modelled for) + all tiers
     tools/body/blend/body_tiers.blend    rest-pose parts per tier + the lineup scene
-    <scratch>/lineup_front.png, views_34_back.png, compare_default_t3.png
+    <scratch>/lineup_front.png, views_34_back.png, compare_proportions_t3.png, guard_pose.png, faces_heads.png
 
 Coordinates: game space, numerically (no axis conversion): studs, +X = the character's right, +Y up,
--Z forward. The body is modelled in one "rest" space (feet on Y = 0) around the R15 Block rig's joint
-pivots (SKELETON below), every part as its own closed shell. At a joint both neighbours carry the same
+-Z forward. Each part is modelled on the R15 Classic Block rig's joint pivots (SKELETON below, the approved
+prototype), then mapped into the game's proportions (game_joints / to_game: the Rthro blend x SLIM_W / SLIM_D the
+game builds today), every part scaled about the joint it hangs from so the pivots stay shared. Feet on Y = 0.
+Every part is its own closed shell. At a joint both neighbours carry the same
 cross-section and end in a dome centred near the pivot, so each part's rounded end hides inside its
 neighbour (the default body's ball-joint trick) and no gap opens when a joint turns.
 
@@ -39,6 +44,7 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "hair"))
+sys.path.insert(0, HERE)
 import hairlib as hl  # noqa: E402  (Piece, write_mesh_v2)
 
 OUT = os.path.join(HERE, "out")
@@ -100,6 +106,8 @@ def tier_joints(tr):
         for jn in ("Elbow", "Wrist"):
             x, y, z = J[side + jn]
             Jt[side + jn] = (sg * ax, y, z)
+        # the hand's grip point: palm centre, a little inside the wrist axis
+        Jt[side + "Grip"] = (sg * (ax - 0.06), 1.98, 0.0)
     return Jt
 YW, YN, YS = J["Waist"][1], J["Neck"][1], J["RightShoulder"][1]
 YE, YWR, YH, YK, YA = J["RightElbow"][1], J["RightWrist"][1], J["RightHip"][1], J["RightKnee"][1], J["RightAnkle"][1]
@@ -125,6 +133,69 @@ TIERS = {
     4: dict(name="muscular", f=1.0, m=0.75, d=0.88),
     5: dict(name="elite", f=1.0, m=1.0, d=1.0),
 }
+
+# ------------------------------------------------------------------------------------------ game proportions
+# Every part is modelled above on the Classic R15 block skeleton (the approved prototype's style), then mapped
+# into the game's proportions: the athletic rig Builder.Scales builds for a 70-inch Athletic man today = the
+# engine's Classic -> Rthro part factors at BodyTypeScale 1 (ProportionScale 0) x SLIM_W / SLIM_D (Width /
+# Depth) x Height 1. Each part is scaled about the joint it hangs from (as the engine scales a part and its
+# attachments) and the joints are chained from the root, so every joint pivot stays exactly shared. The game
+# then applies the description with BodyTypeScale = 0 / ProportionScale = 0 and only Height / Width / Depth /
+# Head scales: Width 1 / Depth 1 / Height 1 reproduce this rig.
+RTHRO = {  # Classic -> Rthro Normal (x, y, z) per part, the engine's scaling at BodyTypeScale 1
+    "UpperTorso": (1.033, 1.309, 1.140), "LowerTorso": (1.033, 1.309, 1.140),
+    "UpperArm": (1.129, 1.342, 1.132), "LowerArm": (1.129, 1.342, 1.132), "Hand": (1.066, 1.174, 1.231),
+    "UpperLeg": (1.023, 1.506, 1.023), "LowerLeg": (1.023, 1.506, 1.023), "Foot": (1.079, 1.267, 1.129),
+    "Head": (0.942, 0.942, 0.942),
+}
+SLIM_W, SLIM_D = 0.77, 0.84         # Builder.lua
+HEAD_FRAME = 0.82                   # Builder FRAME_PROPORTIONS.Athletic.head
+HEAD_SIZE = 1.2 * HEAD_FRAME * RTHRO["Head"][0]  # 0.927: today's head; the game's HeadScale = 0.82 x 0.942
+ANCHOR = {"UpperTorso": "Waist", "LowerTorso": "Root", "UpperArm": "Elbow", "LowerArm": "Elbow",
+          "Hand": "Wrist", "UpperLeg": "Hip", "LowerLeg": "Knee", "Foot": "Ankle"}
+# per tier: the arm axis' extra x in game space so the upper arm's inner side rests on the torso's side
+# (the arm fix, re-measured at the new proportions; see arm_gap() in the build log)
+ARM_DX = {0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0}
+
+
+def game_scale(base):
+    rx, ry, rz = RTHRO[base]
+    return np.array([rx * SLIM_W, ry, rz * SLIM_D])
+
+
+def game_joints(tr, n=None):
+    """prototype joints -> game rest space (feet on Y = 0): chained from the root, each segment scaled by the
+    part it lies in. Returns (G, Jo): game joints, prototype joints (both with Left / Right / Grip)."""
+    Jo = {k: np.array(v, float) for k, v in tier_joints(tr).items()}
+    ST, SA, SH = game_scale("UpperTorso"), game_scale("UpperArm"), game_scale("Hand")
+    SL, SF = game_scale("UpperLeg"), game_scale("Foot")
+    G = {"Root": np.zeros(3)}
+    r = Jo["Root"]
+    for k in ("Waist", "Neck"):
+        G[k] = ST * (Jo[k] - r)
+    dx = ARM_DX.get(n, 0.0) if n is not None else 0.0
+    for side, sg in (("Right", 1), ("Left", -1)):
+        for k in ("Shoulder", "Hip"):
+            G[side + k] = ST * (Jo[side + k] - r)
+        G[side + "Knee"] = G[side + "Hip"] + SL * (Jo[side + "Knee"] - Jo[side + "Hip"])
+        G[side + "Ankle"] = G[side + "Knee"] + SL * (Jo[side + "Ankle"] - Jo[side + "Knee"])
+        G[side + "Elbow"] = G[side + "Shoulder"] + SA * (Jo[side + "Elbow"] - Jo[side + "Shoulder"])
+        G[side + "Elbow"][0] += sg * dx
+        G[side + "Wrist"] = G[side + "Elbow"] + SA * (Jo[side + "Wrist"] - Jo[side + "Elbow"])
+        G[side + "Grip"] = G[side + "Wrist"] + SH * (Jo[side + "Grip"] - Jo[side + "Wrist"])
+    floor = G["RightAnkle"][1] - SF[1] * Jo["RightAnkle"][1]  # the foot's sole is at prototype Y = 0
+    for k in G:
+        G[k] = G[k] - np.array([0.0, floor, 0.0])
+    return G, Jo
+
+
+def to_game(lp, base, key, Jo, G):
+    """maps one prototype part into game space about its anchor joint `key`; normals by the inverse transpose"""
+    S = game_scale(base)
+    P = G[key] + (lp["P"] - Jo[key]) * S
+    N = lp["N"] / S
+    N = N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+    return {"P": P, "N": N, "U": lp["U"], "T": lp["T"]}
 
 
 # ------------------------------------------------------------------------------------------ maths
@@ -686,9 +757,12 @@ BUILDERS = {"UpperTorso": upper_torso, "LowerTorso": lower_torso, "UpperArm": up
             "Hand": hand, "UpperLeg": upper_leg, "LowerLeg": lower_leg, "Foot": foot}
 
 
-def head_mesh():
-    """a classic Roblox-style head: rounded cylinder-block, 1.2 studs, planar face UVs (front only)"""
-    a, b, c = 0.6, 0.6, 0.58
+def head_mesh(center=None, size=1.2):
+    """a classic Roblox-style head: rounded cylinder-block (1.2 studs nominal, scaled to `size`), planar face UVs
+    across the whole front (like a Decal on the head's Front face)"""
+    HC = np.array(center if center is not None else HEAD_C, float)
+    k = size / 1.2
+    a, b, c = 0.6 * k, 0.6 * k, 0.58 * k
     nu, nv = 64, 40
     P, U = [], []
     for i in range(nv + 1):
@@ -702,7 +776,7 @@ def head_mesh():
             r = (abs(s) ** 2.6 + abs(co) ** 2.6) ** (-1 / 2.6)
             x, z = a * r * s * sc, -c * r * co * sc
             P.append((x, y, z))
-    P = np.array(P) + np.array(HEAD_C)
+    P = np.array(P) + HC
     T = []
     for i in range(nv):
         for j in range(nu):
@@ -710,33 +784,27 @@ def head_mesh():
             a1, b1 = (i + 1) * nu + j, (i + 1) * nu + (j + 1) % nu
             T += [(a0, b0, b1), (a0, b1, a1)]
     T = np.array(T)
-    Q = P - np.array(HEAD_C)
-    UVv = np.where(Q[:, 2:3] < 0.05, np.stack([0.5 - Q[:, 0] / 1.3, 0.5 - Q[:, 1] / 1.3], axis=1), [[0.01, 0.01]])
+    Q = (P - HC) / k
+    UVv = np.where(Q[:, 2:3] < 0.05, np.stack([0.5 - Q[:, 0] / 1.2, 0.5 - Q[:, 1] / 1.2], axis=1), [[0.002, 0.002]])
     UV = UVv[T]
     D = Dense(P, T, UV)
-    D.orient(np.array(HEAD_C))
+    D.orient(HC)
     return D
 
 
-def face_texture(path):
-    from PIL import Image, ImageDraw
-    W = 1024
-    im = Image.new("RGBA", (W, W), (0, 0, 0, 0))
-    d = ImageDraw.Draw(im)
-    k = (20, 16, 14, 255)
-    for cx in (0.415, 0.585):
-        d.ellipse([(cx - 0.026) * W, (0.405 - 0.06) * W, (cx + 0.026) * W, (0.405 + 0.06) * W], fill=k)
-    # smile: lower arc, thick, rounded ends
-    cx, cy, r, w = 0.5, 0.47, 0.135, 0.022
-    a0, a1 = 25, 155
-    d.arc([(cx - r) * W, (cy - r) * W, (cx + r) * W, (cy + r) * W], a0, a1, fill=k, width=int(w * W))
-    for a in (a0, a1):
-        rr = r - w / 2
-        px, py = cx + rr * math.cos(math.radians(a)), cy + rr * math.sin(math.radians(a))
-        d.ellipse([(px - w / 2) * W, (py - w / 2) * W, (px + w / 2) * W, (py + w / 2) * W], fill=k)
-    im = im.resize((512, 512), Image.LANCZOS)
-    im.save(path)
-    return path
+FACES_DIR = os.path.join(OUT, "faces")
+
+
+def face_png(key):
+    """tools/body/out/faces/face_<key>.png (faces.py draws any that are missing)"""
+    p = os.path.join(FACES_DIR, "face_%s.png" % key)
+    if not os.path.exists(p):
+        import faces
+        f = faces.Face()
+        faces.DRAW[key](f)
+        os.makedirs(FACES_DIR, exist_ok=True)
+        f.save(p)
+    return p
 
 
 # ------------------------------------------------------------------------------------------ Blender
@@ -771,25 +839,140 @@ def side_joint(part, side):
             for j in PART_JOINTS[part]]
 
 
-def build_tier(bpy, n):
+def build_tier(bpy, n, proto=False):
+    """the tier's 14 parts in game rest space (feet on Y = 0) + "_J" (game joints) / "_J0" (prototype joints).
+    proto=True keeps the prototype's Classic block proportions (comparison renders only)"""
     tr = TIERS[n]
+    G, Jo = game_joints(tr, n)
+    if proto:
+        G = Jo
     parts = {}
     for base, fn in BUILDERS.items():
         lp = fn(tr)
         if base in ("UpperTorso", "LowerTorso"):
-            parts[base] = lp
+            parts[base] = lp if proto else to_game(lp, base, ANCHOR[base], Jo, G)
         else:
+            lp = lp if proto else to_game(lp, base, "Right" + ANCHOR[base], Jo, G)
             parts["Right" + base] = lp
             parts["Left" + base] = mirror_lp(lp)
-    parts["_J"] = tier_joints(tr)
+    parts["_J"] = {k: tuple(float(x) for x in v) for k, v in G.items()}
+    parts["_J0"] = {k: tuple(float(x) for x in v) for k, v in Jo.items()}
     return parts
 
 
 def joint_pos(name, Jt):
-    if name.endswith("Grip"):
-        sg = 1 if name.startswith("Right") else -1
-        return (Jt[name.replace("Grip", "Wrist")][0] - sg * 0.06, 1.98, 0.0)
     return Jt[name]
+
+
+def raycast(lp, o, d):
+    """distance along d from o to the nearest hit on the part's triangles (Moller-Trumbore), None if missed"""
+    P, T = lp["P"], lp["T"]
+    o, d = np.asarray(o, float), np.asarray(d, float)
+    v0, v1, v2 = P[T[:, 0]], P[T[:, 1]], P[T[:, 2]]
+    e1, e2 = v1 - v0, v2 - v0
+    pv = np.cross(d, e2)
+    det = np.einsum("ij,ij->i", e1, pv)
+    ok = np.abs(det) > 1e-12
+    inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
+    tv = o - v0
+    u = np.einsum("ij,ij->i", tv, pv) * inv
+    qv = np.cross(tv, e1)
+    v = (qv @ d) * inv
+    t = np.einsum("ij,ij->i", e2, qv) * inv
+    hit = ok & (u >= 0) & (v >= 0) & (u + v <= 1) & (t > 0)
+    return float(t[hit].min()) if hit.any() else None
+
+
+def surface(lp, x, y, z, d):
+    """the surface point hit from far outside along direction d through (x, y, z)"""
+    d = np.asarray(d, float)
+    o = np.array([x, y, z], float) - d * 10
+    t = raycast(lp, o, d)
+    return o + d * t if t is not None else np.array([x, y, z], float)
+
+
+# accessory attachments (rest space) per part: the body accessory points Roblox's R15 rig carries
+def accessory_points(name, lp, Jt):
+    side = "Right" if name.startswith("Right") else ("Left" if name.startswith("Left") else "")
+    sg = -1 if side == "Left" else 1
+    out = {}
+    if name == "UpperTorso":
+        yc = (Jt["Waist"][1] + Jt["Neck"][1]) / 2  # the UpperTorso box centre (the default's BodyFront height)
+        out["BodyFrontAttachment"] = surface(lp, 0, yc, 0, (0, 0, 1))
+        out["BodyBackAttachment"] = surface(lp, 0, yc, 0, (0, 0, -1))
+        out["NeckAttachment"] = np.array(Jt["Neck"], float)
+        c = surface(lp, Jt["RightShoulder"][0] * 0.82, 0, 0, (0, -1, 0))
+        out["RightCollarAttachment"] = c
+        out["LeftCollarAttachment"] = c * np.array([-1.0, 1.0, 1.0])
+    elif name == "LowerTorso":
+        y = Jt["Root"][1]
+        out["WaistCenterAttachment"] = np.array(Jt["Root"], float)
+        out["WaistFrontAttachment"] = surface(lp, 0, y, 0, (0, 0, 1))
+        out["WaistBackAttachment"] = surface(lp, 0, y, 0, (0, 0, -1))
+    elif name.endswith("UpperArm"):
+        out[side + "ShoulderAttachment"] = surface(lp, Jt[side + "Elbow"][0], 0, 0, (0, -1, 0))
+    elif name.endswith("Foot"):
+        a = Jt[side + "Ankle"]
+        out[side + "FootAttachment"] = np.array([a[0], float(lp["P"][:, 1].min()), a[2]])
+    return out
+
+
+def section(lp, y):
+    """the convex hull of the part's cross-section at height y: (perimeter, width x, depth z)"""
+    P, T = lp["P"], lp["T"]
+    pts = []
+    for a, b in ((0, 1), (1, 2), (2, 0)):
+        pa, pb = P[T[:, a]], P[T[:, b]]
+        m = (pa[:, 1] - y) * (pb[:, 1] - y) < 0
+        t = (y - pa[m, 1]) / (pb[m, 1] - pa[m, 1])
+        q = pa[m] + (pb[m] - pa[m]) * t[:, None]
+        pts.append(q[:, [0, 2]])
+    Q = np.unique(np.round(np.vstack(pts), 6), axis=0)
+    if len(Q) < 3:
+        return 0.0, 0.0, 0.0
+    Q = Q[np.lexsort((Q[:, 1], Q[:, 0]))]
+
+    def half(R):
+        h = []
+        for p in R:
+            while len(h) >= 2 and ((h[-1][0] - h[-2][0]) * (p[1] - h[-2][1])
+                                   - (h[-1][1] - h[-2][1]) * (p[0] - h[-2][0])) <= 0:
+                h.pop()
+            h.append(p)
+        return h
+    hull = half(Q)[:-1] + half(Q[::-1])[:-1]
+    H = np.array(hull)
+    per = float(np.linalg.norm(np.roll(H, -1, axis=0) - H, axis=1).sum())
+    return per, float(np.ptp(Q[:, 0])), float(np.ptp(Q[:, 1]))
+
+
+def proto_y(part_base, y0, parts):
+    """a prototype height on one part -> game height (that part's mapping)"""
+    G, Jo = parts["_J"], parts["_J0"]
+    key = ANCHOR[part_base] if part_base in ("UpperTorso", "LowerTorso") else "Right" + ANCHOR[part_base]
+    return G[key][1] + (y0 - Jo[key][1]) * game_scale(part_base)[1]
+
+
+# gear fit: girths (convex hull, studs) at fixed anatomical heights, from the prototype's muscle centres
+FIT_AT = {
+    "chest": ("UpperTorso", 3.23), "waist": ("UpperTorso", 2.42), "hips": ("LowerTorso", 1.99),
+    "upperArm": ("UpperArm", 3.10), "forearm": ("LowerArm", 2.62), "wrist": ("LowerArm", 2.22),
+    "thigh": ("UpperLeg", 1.45), "knee": ("UpperLeg", 1.05), "calf": ("LowerLeg", 0.72), "ankle": ("LowerLeg", 0.40),
+}
+
+
+def fit_sizes(parts):
+    out = {}
+    for k, (base, y0) in FIT_AT.items():
+        name = base if base in ("UpperTorso", "LowerTorso") else "Right" + base
+        y = proto_y(base, y0, parts)
+        per, w, d = section(parts[name], y)
+        out[k] = {"y": round(float(y), 3), "girth": round(per, 3), "width": round(w, 3), "depth": round(d, 3)}
+    # silhouette widths: shoulders (outside of both delts), the whole body's widest point
+    ua = parts["RightUpperArm"]["P"]
+    out["shoulderSpan"] = round(2 * float(ua[:, 0].max()), 3)
+    out["chestDepth"] = round(float(np.ptp(parts["UpperTorso"]["P"][:, 2])), 3)
+    return out
 
 
 def export_tier(n, parts):
@@ -797,6 +980,7 @@ def export_tier(n, parts):
     os.makedirs(outdir, exist_ok=True)
     rec = {}
     total = 0
+    Jt = parts["_J"]
     for name in PARTS:
         lp = parts[name]
         lo, hi = lp["P"].min(0), lp["P"].max(0)
@@ -813,16 +997,44 @@ def export_tier(n, parts):
         side = "Right" if name.startswith("Right") else ("Left" if name.startswith("Left") else "")
         atts = {}
         for jn in (side_joint(base, side) if side else PART_JOINTS[base]):
-            p = np.array(joint_pos(jn, parts["_J"])) - cen
+            p = np.array(joint_pos(jn, Jt)) - cen
             atts[jn + ("RigAttachment" if not jn.endswith("Grip") else "Attachment")] = [round(float(x), 4) for x in p]
+        for an, p in accessory_points(name, lp, Jt).items():
+            atts[an] = [round(float(x), 4) for x in (np.asarray(p) - cen)]
         rec[name] = {"mesh_file": name + ".mesh", "size": [round(float(x), 4) for x in hi - lo],
                      "rest_center": [round(float(x), 4) for x in cen],
                      "attachments": atts, "nv": pc.nv, "nt": pc.nt}
         total += pc.nt
-    data = {"tier": n, "name": TIERS[n]["name"], "params": TIERS[n], "tris": total, "parts": rec}
+    data = {"tier": n, "name": TIERS[n]["name"], "params": TIERS[n], "tris": total, "fit": fit_sizes(parts),
+            "parts": rec}
     with open(os.path.join(outdir, "parts.json"), "w") as f:
         json.dump(data, f, indent=1)
     return data
+
+
+def unit_rig(tiers):
+    """the unscaled rig the meshes are modelled for (game rest space, studs, feet on Y = 0, -Z forward)"""
+    G = tiers[3]["_J"]
+    box = {"UpperTorso": (2, 1.6, 1), "LowerTorso": (2, 0.4, 1), "UpperArm": (1, 1.169, 1), "LowerArm": (1, 1.052, 1),
+           "Hand": (1, 0.3, 1), "UpperLeg": (1, 1.217, 1), "LowerLeg": (1, 1.193, 1), "Foot": (1, 0.3, 1)}
+    j = {k: [round(float(x), 4) for x in v] for k, v in G.items() if not k.startswith("Left")}
+    return {
+        "description": {"BodyTypeScale": 0, "ProportionScale": 0, "HeightScale": 1, "WidthScale": 1,
+                        "DepthScale": 1, "HeadScale": round(HEAD_FRAME * RTHRO["Head"][0], 4)},
+        "basis": "R15 Classic block x Rthro(BodyTypeScale 1) x (SLIM_W %.2f, 1, SLIM_D %.2f): Builder.Scales' "
+                 "70-inch Athletic man" % (SLIM_W, SLIM_D),
+        "partScale": {k: [round(float(x), 4) for x in game_scale(k)] for k in box},
+        "rigBox": {k: [round(float(a * b), 4) for a, b in zip(box[k], game_scale(k))] for k in box},
+        "head": round(HEAD_SIZE, 4),
+        "joints": j,
+        "armAxisX": {str(n): round(float(tiers[n]["_J"]["RightElbow"][0]), 4) for n in sorted(tiers) if n >= 1},
+        "rootHeight": round(float(G["Root"][1]), 4),
+        "hipHeight": round(float(G["RightHip"][1]), 4),
+        "neckHeight": round(float(G["Neck"][1]), 4),
+        "shoulderHeight": round(float(G["RightShoulder"][1]), 4),
+        "wristHeight": round(float(G["RightWrist"][1]), 4),
+        "standingHeight": round(float(G["Neck"][1] + HEAD_SIZE), 4),
+    }
 
 
 # ------------------------------------------------------------------------------------------ posing
@@ -894,9 +1106,7 @@ class Stage:
         self.coll = bpy.data.collections.new("Lineup")
         sc.collection.children.link(self.coll)
         self.skin = self.material("skin", SKIN)
-        self.face_png = os.path.join(SCRATCH, "face_smile.png")
-        face_texture(self.face_png)
-        self.headmat = self.material("head", SKIN, self.face_png)
+        self.headmats = {}
         self.floormat = self.material("floor", (0.30, 0.31, 0.33), rough=0.9)
         self._lights()
         cam = bpy.data.cameras.new("cam")
@@ -960,14 +1170,22 @@ class Stage:
         self.coll.objects.link(ob)
         return ob
 
-    def figure(self, tag, parts, x, yaw=0.0, guard=False):
-        place = M4(roty(yaw), (x, 0, 0))
+    def headmat(self, face):
+        if face not in self.headmats:
+            self.headmats[face] = self.material("head_" + face, SKIN, face_png(face))
+        return self.headmats[face]
+
+    def figure(self, tag, parts, x, yaw=0.0, guard=False, face="smile", z=0.0, only=None):
+        place = M4(roty(yaw), (x, 0, z))
         pm = pose_mats(parts.get("_J"), guard=guard)
         for name, lp in parts.items():
-            if name.startswith("_"):
+            if name.startswith("_") or (only and name not in only):
                 continue
             self.add("%s_%s" % (tag, name), lp, place @ pm[name], self.skin)
-        self.add(tag + "_Head", None, place, self.headmat, D=head_mesh())
+        # the classic head sits on the neck pivot (no neck lift), at today's head size
+        neck = np.array(parts["_J"]["Neck"])
+        self.add(tag + "_Head", None, place, self.headmat(face),
+                 D=head_mesh(neck + np.array([0, HEAD_SIZE / 2, 0]), HEAD_SIZE))
 
     def floor(self, w=60):
         D = Dense(np.array([(-w, -0.002, -w), (w, -0.002, -w), (w, -0.002, w), (-w, -0.002, w)]),
@@ -1018,49 +1236,62 @@ def label(path, labels, title=None, strip=44):
 
 def render_sheets(bpy, tiers, which, samples):
     paths = []
-    sp = 4.3
+    CY = 3.25  # frame centre height (a 70-inch boxer stands ~6.2 studs)
     if 1 in which:
-        st = Stage(bpy, (1600, 700), samples)
+        st = Stage(bpy, (1600, 800), samples)
         st.floor()
+        sp = 3.4
+        faces = ("smile", "confident", "determined", "grin", "focused")
         for i, n in enumerate((1, 2, 3, 4, 5)):
-            st.figure("T%d" % n, tiers[n], -(i - 2) * sp)  # game +X shows on the viewer's left
-        p = st.shoot(os.path.join(SCRATCH, "lineup_front.png"), 0, 2.75, 5 * sp + 0.2, elev=3)
-        label(p, ["1 lean", "2 toned", "3 athletic", "4 muscular", "5 elite"],
-              "Muscle tiers on the standard R15 body (front, relaxed A-pose)")
+            st.figure("T%d" % n, tiers[n], -(i - 2) * sp, face=faces[i])  # game +X shows on the viewer's left
+        p = st.shoot(os.path.join(SCRATCH, "lineup_front.png"), 0, CY, 5 * sp + 0.4, elev=3)
+        label(p, ["1 lean / smile", "2 toned / confident", "3 athletic / determined", "4 muscular / grin",
+                  "5 elite / focused"], "Muscle tiers at the game's athletic proportions (front, relaxed A-pose)")
         paths.append(p)
     if 2 in which:
-        st = Stage(bpy, (1600, 700), samples)
+        st = Stage(bpy, (1600, 800), samples)
         st.floor()
-        # 3/4: the figure turned so the camera sees its front-right (yaw -35 deg about +Y)
-        order = [(1, -38), (3, -38), (5, -38), (1, 180), (3, 180), (5, 180)]
-        sp2 = 3.9
-        for i, (n, yaw) in enumerate(order):
-            st.figure("V%d_%d" % (i, n), tiers[n], -(i - 2.5) * sp2, yaw=yaw)
-        p = st.shoot(os.path.join(SCRATCH, "views_34_back.png"), 0, 2.75, 6 * sp2 + 0.2, elev=6)
+        order = [(1, -38, "smirk"), (3, -38, "cool"), (5, -38, "stern"), (1, 180, "smile"), (3, 180, "smile"),
+                 (5, 180, "smile")]
+        sp2 = 3.1
+        for i, (n, yaw, fc) in enumerate(order):
+            st.figure("V%d_%d" % (i, n), tiers[n], -(i - 2.5) * sp2, yaw=yaw, face=fc)
+        p = st.shoot(os.path.join(SCRATCH, "views_34_back.png"), 0, CY, 6 * sp2 + 0.3, elev=6)
         label(p, ["1 lean 3/4", "3 athletic 3/4", "5 elite 3/4", "1 lean back", "3 athletic back", "5 elite back"],
               "Tiers 1 / 3 / 5: three-quarter and back views")
         paths.append(p)
     if 3 in which:
-        st = Stage(bpy, (1600, 700), samples)
+        st = Stage(bpy, (1600, 800), samples)
         st.floor()
-        order = [(0, 0), (3, 0), (0, -38), (3, -38), (0, 180), (3, 180)]
-        sp2 = 3.9
-        for i, (n, yaw) in enumerate(order):
-            st.figure("C%d_%d" % (i, n), tiers[n], -(i - 2.5) * sp2, yaw=yaw)
-        p = st.shoot(os.path.join(SCRATCH, "compare_default_t3.png"), 0, 2.75, 6 * sp2 + 0.2, elev=5)
-        label(p, ["default body", "tier 3 athletic", "default 3/4", "tier 3 3/4", "default back", "tier 3 back"],
-              "Plain default-body reconstruction vs tier 3")
+        old = build_tier(bpy, 3, proto=True)
+        order = [(old, 0), (tiers[3], 0), (old, -38), (tiers[3], -38), (old, 90), (tiers[3], 90)]
+        sp2 = 3.1
+        for i, (pt, yaw) in enumerate(order):
+            st.figure("C%d" % i, pt, -(i - 2.5) * sp2, yaw=yaw)
+        p = st.shoot(os.path.join(SCRATCH, "compare_proportions_t3.png"), 0, CY, 6 * sp2 + 0.3, elev=5)
+        label(p, ["prototype (Classic)", "game proportions", "prototype 3/4", "game 3/4", "prototype side",
+                  "game side"], "Tier 3: the prototype's Classic block proportions vs the game's athletic rig")
         paths.append(p)
     if 4 in which:
-        st = Stage(bpy, (1600, 700), samples)
+        st = Stage(bpy, (1600, 800), samples)
         st.floor()
-        order = [(1, 0), (3, 0), (5, 0), (1, -38), (3, -38), (5, -38)]
-        sp2 = 3.9
-        for i, (n, yaw) in enumerate(order):
-            st.figure("G%d_%d" % (i, n), tiers[n], -(i - 2.5) * sp2, yaw=yaw, guard=True)
-        p = st.shoot(os.path.join(SCRATCH, "guard_pose.png"), 0, 2.75, 6 * sp2 + 0.2, elev=5)
+        order = [(1, 0, "focused"), (3, 0, "determined"), (5, 0, "grit"), (1, -38, "focused"), (3, -38, "determined"),
+                 (5, -38, "grit")]
+        sp2 = 3.1
+        for i, (n, yaw, fc) in enumerate(order):
+            st.figure("G%d_%d" % (i, n), tiers[n], -(i - 2.5) * sp2, yaw=yaw, guard=True, face=fc)
+        p = st.shoot(os.path.join(SCRATCH, "guard_pose.png"), 0, CY, 6 * sp2 + 0.3, elev=5)
         label(p, ["1 lean guard", "3 athletic guard", "5 elite guard", "1 lean 3/4", "3 athletic 3/4", "5 elite 3/4"],
               "Boxing guard check (upper arms forward 48 deg / in 38 deg, elbows 112 deg)")
+        paths.append(p)
+    if 5 in which:
+        st = Stage(bpy, (1800, 560), samples)
+        faces = ("smile", "grin", "determined", "grit", "hurt", "dazed", "ko")
+        sp2 = 1.95
+        for i, fc in enumerate(faces):
+            st.figure("F%d" % i, tiers[3], -(i - 3) * sp2, face=fc, only=("UpperTorso",))
+        p = st.shoot(os.path.join(SCRATCH, "faces_heads.png"), 0, 5.15, 7 * sp2 + 0.1, elev=4)
+        label(p, list(faces), "Classic head (0.927 studs) wearing the faces, tier 3")
         paths.append(p)
     return paths
 
@@ -1092,7 +1323,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-render", action="store_true")
     ap.add_argument("--samples", type=int, default=40)
-    ap.add_argument("--sheets", default="1,2,3,4")
+    ap.add_argument("--sheets", default="1,2,3,4,5")
     ap.add_argument("--tiers", default="0,1,2,3,4,5")
     a = ap.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:])
     import bpy
@@ -1107,11 +1338,13 @@ def main():
             print("tier %d %-9s %5d tris" % (n, d["name"], d["tris"]), {k: v["nt"] for k, v in d["parts"].items()
                                                                       if not k.startswith("Left")})
     if summary:
+        unit = unit_rig(tiers)
         with open(os.path.join(OUT, "body_tiers.json"), "w") as f:
-            json.dump({"skeleton": {k: list(v) for k, v in J.items()},
-                       "arm_axis_x": {str(n): round(arm_x(TIERS[n]), 4) for n in summary}, "head_center": HEAD_C,
+            json.dump({"unit": unit, "prototype_skeleton": {k: list(v) for k, v in J.items()},
                        "r15_block_reference": R15_BLOCK,
                        "tiers": {str(k): v for k, v in summary.items()}}, f, indent=1)
+        print("unit", json.dumps({k: unit[k] for k in ("rootHeight", "hipHeight", "shoulderHeight", "neckHeight",
+                                                       "standingHeight", "armAxisX")}))
     if not a.no_render:
         for p in render_sheets(bpy, tiers, [int(x) for x in a.sheets.split(",")], a.samples):
             print("sheet", p)

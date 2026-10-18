@@ -1,15 +1,16 @@
 -- Builder: turns a boxer's look data into a 3D character (server side). Public facade.
--- * Scales / Description / ScaleKey: frame + physique scaling through a HumanoidDescription
--- * Cosmetics / Apply / CreateNPC: build every procedural layer on a character, in order, with
---   per-folder rebuild caching, detail levels and the CONTRACTS section 4 opts
+-- * Scales / Description / ScaleKey: the standard R15 body's HumanoidDescription (height, frame, gender)
+-- * Tiers: the muscle tier of every body part from the build (BodyTiers); BuilderTiers swaps the parts
+-- * Cosmetics / Apply / CreateNPC: build every layer on a character, in order, with per-folder rebuild
+--   caching, detail levels and the CONTRACTS section 4 opts
 -- The layers live in sub-modules that share the part helpers in BuilderKit:
--- * BuilderHead: procedural face, beard, fight damage, sweat shine, sparring headgear
+-- * BuilderTiers: the 14 muscle-tier body parts (Humanoid:ReplaceBodyPartR15, only on a tier change)
+-- * BuilderHead: the classic head and its face decal, beard, fight damage, sweat shine, sparring headgear
 -- * BuilderHair: hair styles x hair types, strands, sway joints, hair under headgear / hoods, wet hair
--- * BuilderBody: skin/trunks/shoe colours, muscles, attire, gloves and wraps, robe, body sweat / bruises
+-- * BuilderBody: skin/trunks/shoe colours, attire, gloves and wraps, robe, body sweat / bruises
 -- FaceLayout, SetDamage, SetSweat, SetHeadgear, SetHairHidden and SetRobe are forwarded from them.
--- Every Cosmetics run also publishes LookData (+ LookSig and the Body / Head / Hair section sigs) on the
--- model, change-only, and SetDamage publishes LookFx: the inputs the client-side anatomy meshes are
--- generated from (LookData.lua, ANATOMY_CONTRACTS.md).
+-- Every Cosmetics run also publishes LookData (+ LookSig and the section sigs) on the model, change-only, and
+-- SetDamage publishes LookFx: the inputs the client-side asset hair is built from (LookData.lua).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -20,10 +21,12 @@ local Head = require(script.Parent:WaitForChild("BuilderHead"))
 local Hair = require(script.Parent:WaitForChild("BuilderHair"))
 local Body = require(script.Parent:WaitForChild("BuilderBody"))
 local LookData = require(script.Parent:WaitForChild("LookData"))
+local BodyTiers = require(script.Parent:WaitForChild("BodyTiers"))
+local BuilderTiers = require(script.Parent:WaitForChild("BuilderTiers"))
 
 local Builder = {}
 
-local frameOf, avgDev = Body.frameOf, Body.avgDev
+local frameOf = Body.frameOf
 local setAttr = Kit.setAttr
 
 -- run one build step; a failing layer warns instead of taking the whole character down with it
@@ -41,48 +44,36 @@ end
 ------------------------------------------------------------------------
 -- Scales / HumanoidDescription
 ------------------------------------------------------------------------
--- Athletic proportions. The default R15 body is Roblox's "Classic" block: about 4.5 heads tall, the hip
--- pivot at 38 % of the height. Humanoid scaling blends every part toward Rthro as BodyTypeScale goes to 1
--- (legs x 1.5, torso x 1.31, arms x 1.34, head x 0.94 tall) and ProportionScale blends Rthro Normal toward
--- Slender (narrower shoulders and limbs, slightly shorter legs). With the head brought down to a real
--- head's share a 70-inch boxer stands about 6.5 studs and 7.3 heads, hip pivot at 45 %, shoulders at 81 %,
--- wrists at 50 % (a real athlete: 7-7.5 heads, about 47 / 82 / 48 %). The meshes and the round-1 parts all
--- follow the rig the engine builds; HipHeight follows automatically.
--- Per frame (bone structure, never the trained physique: legs do not grow from bench pressing): lean frames
--- take the full Rthro length, heavier frames keep a little of the Classic block (shorter legs, a heavier
--- head and neck) on top of their extra width. Women: a touch of Slender (shoulders narrower than the hips).
+-- The standard R15 body (tools/body/CONTRACT.md): the description has empty body-part ids (the engine's default
+-- parts), BodyTypeScale 0 and ProportionScale 0, and BuilderTiers then swaps the 14 non-head parts for their
+-- muscle-tier MeshParts. The tiers are modelled at the game's proportions (the athletic 70-inch Athletic man the
+-- old Rthro blend made: about 6.2 studs, 7 heads), so Height / Width / Depth only carry the boxer's height, his
+-- frame's build (BodyTypes width / depth) and the women's narrower shoulders; training never widens the frame
+-- (the tiers carry the muscle). The head is the standard head at the frame's head share: FRAME_PROPORTIONS'
+-- head x RTHRO_HEAD (what BodyTypeScale 1 used to take off it), so it stays the size it was (0.927 studs).
+-- With every id 0 the default parts stay: the classic block body at these scales.
 local FRAME_PROPORTIONS = {
-	Lean = { bodyType = 1, head = 0.81 },
-	Athletic = { bodyType = 1, head = 0.82 },
-	Muscular = { bodyType = 0.96, head = 0.83 },
-	["Power Build"] = { bodyType = 0.92, head = 0.84 },
-	["Heavyweight Build"] = { bodyType = 0.87, head = 0.85 },
+	Lean = { head = 0.81 },
+	Athletic = { head = 0.82 },
+	Muscular = { head = 0.83 },
+	["Power Build"] = { head = 0.84 },
+	["Heavyweight Build"] = { head = 0.85 },
 }
 Builder.FRAME_PROPORTIONS = FRAME_PROPORTIONS
--- The R15 boxes are fat for their length (a Classic limb is nearly as wide as it is long, the torso box 2 studs
--- across with the arms hung outside it): at Rthro length an untouched width still reads as a toy. Every
--- frame's width and depth are taken down so the shoulders land at about a quarter of the height, the limbs
--- and the chest at an athlete's thickness; the frame, the physique and training still widen from there.
-local SLIM_W, SLIM_D = 0.77, 0.84
+local RTHRO_HEAD = 0.942
 
--- opts (optional) carries the physique (Career.LookOpts): archetypes widen / narrow the frame
+-- (build, opts: kept for the callers; the physique and training no longer change the scales)
 function Builder.Scales(app, build, opts)
 	local frame = frameOf(app)
-	local b = app.body or {}
 	local female = app.gender == 2
-	local fat = build and tonumber(build.fat) or 14
-	local upper = avgDev(build, { "shoulders", "back", "chest" })
-	local ph = Body.Resolve(app, build, opts).ph
-	local width = frame.width * (1 + 0.12 * upper + 0.05 * (b.shoulders or 0)) * (female and 0.92 or 1) + (ph.width or 0)
-	local depth = frame.depth * (1 + 0.08 * avgDev(build, { "chest" }) + 0.012 * (fat - 14) + 0.04 * (b.chest or 0)) * (female and 0.94 or 1) + (ph.depth or 0)
 	local pr = FRAME_PROPORTIONS[frame.id] or FRAME_PROPORTIONS.Athletic
 	return {
 		height = math.clamp((app.height or 70) / 70, 0.86, 1.2),
-		width = math.clamp(width, 0.75, 1.4) * SLIM_W,
-		depth = math.clamp(depth, 0.75, 1.4) * SLIM_D,
-		bodyType = pr.bodyType,
-		proportion = female and 0.25 or 0,
-		head = pr.head * (female and 0.97 or 1),
+		width = math.clamp(frame.width * (female and 0.92 or 1), 0.7, 1.4),
+		depth = math.clamp(frame.depth * (female and 0.94 or 1), 0.7, 1.4),
+		bodyType = 0,
+		proportion = 0,
+		head = pr.head * RTHRO_HEAD * (female and 0.97 or 1),
 	}
 end
 
@@ -106,11 +97,23 @@ function Builder.Description(app, build, opts)
 	return desc
 end
 
--- quantised to 0.01 so training only re-applies the description (which yields) on real changes; "p2" =
--- the athletic-proportions rig (characters scaled under the old Classic key re-apply once)
+-- quantised to 0.01 so only real changes re-apply the description (which yields); "p3" = the standard R15
+-- body at BodyTypeScale 0 (characters scaled under an older key re-apply once)
 function Builder.ScaleKey(app, build, opts)
 	local sc = Builder.Scales(app, build, opts)
-	return string.format("%.2f|%.2f|%.2f|%d|%.2f|%.2f|%.2f|p2", sc.height, sc.width, sc.depth, app.gender or 1, sc.bodyType, sc.proportion, sc.head)
+	return string.format("%.2f|%.2f|%.2f|%d|%.2f|%.2f|%.2f|p3", sc.height, sc.width, sc.depth, app.gender or 1, sc.bodyType, sc.proportion, sc.head)
+end
+
+-- the muscle tier of every body part from the build (BodyTiers) and the swap (BuilderTiers, change-only)
+function Builder.Tiers(app, build, sp)
+	local frame = sp and sp.frame or frameOf(app)
+	return BodyTiers.Tiers(build, { potential = frame.potential, female = app.gender == 2 })
+end
+
+local function tiersStep(model, app, build, opts, sp)
+	local tiers = BodyTiers.Tiers(build, { potential = sp.frame.potential, female = sp.female }, BuilderTiers.Current(model))
+	local sc = Builder.Scales(app, build, opts)
+	BuilderTiers.Apply(model, tiers, Vector3.new(sc.width, sc.height, sc.depth))
 end
 
 ------------------------------------------------------------------------
@@ -162,20 +165,21 @@ Builder.Resolve = Body.Resolve -- (app, build, opts) -> body spec (levels, fat, 
 ------------------------------------------------------------------------
 -- Rebuild caching for the head steps (the body steps cache themselves in BuilderBody)
 ------------------------------------------------------------------------
--- opts keys the head steps never read (grime is keyed below as the quantised value the face really uses);
--- everything else that is a plain value goes in the signature
+-- opts keys the head steps never read; everything else that is a plain value goes in the signature
 local HEAD_SIG_SKIP = {
 	sweat = true, hands = true, robe = true, waistText = true, name = true, nick = true, nat = true,
 	fightNight = true, physique = true, tier = true, sponsorTrunks = true, sponsorRobe = true, grime = true,
+	mouthguard = true, damage = true,
 }
--- Inputs the head steps read beyond the plain opts. Face = face fat, opts.grime (stored on the face
--- folder as OptGrime), the mouthguard colour and its bloodied tint (opts.damage.lip > 0.6), and only the
--- hair / beard fields it really uses (Head.FaceSigParts: brow colour, lips covered), so a barber visit
--- never rebuilds the face. The Grime ATTRIBUTE (CONTRACTS section 7: I sets it after roadwork, the
--- shower clears it) is deliberately not in the key: BuilderHead draws face dirt in its own FaceGrime
--- folder from that attribute on every Head.SetSweat, which Cosmetics always runs last, so roadwork and
--- the shower never cost a full face rebuild.
+-- Inputs the head steps read. Face = the classic head swap and its decal: the face key and the head's size
+-- only (a barber visit, a fight or the sliders never rebuild it). Hair / Beard: the look's hair / beard, the
+-- face's FaceLayout inputs and the plain opts (detail, age, ...).
 local function headSig(model, app, build, opts, name)
+	local head = model:FindFirstChild("Head")
+	local f = type(app.face) == "table" and app.face or {}
+	if name == "Face" then
+		return Kit.sig("HD3", name, f.key or "smile", head and head.Size or false)
+	end
 	local o = {}
 	for k, v in pairs(opts) do
 		local t = type(v)
@@ -183,34 +187,12 @@ local function headSig(model, app, build, opts, name)
 			o[k] = v
 		end
 	end
-	local head = model:FindFirstChild("Head")
-	local fat, extra = 0, false
-	local hair, beard = app.hair, app.beard
-	if name == "Face" then
-		-- whole percent steps are plenty for cheeks / jowls
-		fat = build and tonumber(build.fat) or 0
-		local at = type(app.attire) == "table" and app.attire or {}
-		local og = tonumber(opts.grime)
-		local dmg = type(opts.damage) == "table" and opts.damage or nil
-		extra = {
-			grime = og and math.floor(math.clamp(og, 0, 1) * 10 + 0.5) or "attr",
-			guard = opts.mouthguard and (at.mouthguard or true) or false,
-			guardBlood = opts.mouthguard and dmg ~= nil and (tonumber(dmg.lip) or 0) > 0.6 or false,
-		}
-		if type(Head.FaceSigParts) == "function" then
-			local ok, parts = pcall(Head.FaceSigParts, app)
-			if ok and type(parts) == "table" then
-				hair, beard = parts, false
-			end
-		end
-	end
-	-- HD2: folders sealed under the old key rebuild once
-	return Kit.sig("HD2", name, app.gender, app.skin, app.height, app.face, hair, beard, app.battle, o,
-		math.floor(fat + 0.5), head and head.Size or false, Config.BaldMode, extra)
+	return Kit.sig("HD3", name, app.gender, app.skin, app.height, app.face, app.hair, app.beard, o,
+		head and head.Size or false, Config.BaldMode)
 end
 
--- The head is scaled (HeadScale x the body-type factor), and BuilderHead swaps the default dynamic head (a
--- MeshPart) for a plain Part of the same size once. Humanoid:ReplaceBodyPartR15 scales the new part "as
+-- The head is scaled (HeadScale), and BuilderHead swaps the engine's default head (a MeshPart) for the classic
+-- head (a plain Part with the Head SpecialMesh, which takes the face Decal) of the same size once. Humanoid:ReplaceBodyPartR15 scales the new part "as
 -- normal", so the engine may take that already-scaled size as unscaled and scale it a second time (with the
 -- old Classic HeadScale 1 that was harmless). headRecord / keepHeadScale put back the size, the OriginalSize
 -- record and the attachments the engine gave the original head, and re-aim the neck: the head is scaled
@@ -267,20 +249,16 @@ local function keepHeadScale(model, rec)
 	return fixed
 end
 
--- the neck: the engine's R15 rig puts the Neck pivot at the base of the head, so the chin sits on the
--- trapezius. The Head's NeckRigAttachment (and Neck.C1) go lower in head space by a share of the head's
--- height: the head rides higher on the same torso (HipHeight, the torso and every other joint unchanged) and
--- the Head mesh's own neck (AnatomySkull.Neck follows rig.joints.Neck C1) runs from the jaw down to the
--- pivot. Absolute (from the head's size): idempotent across rebuilds, rescales and head swaps.
-local NECK_LIFT = { 0.26, 0.22 } -- x the head's height: men, women
-local function liftHead(model, app)
+-- the neck: the classic head sits on the Neck pivot (the tiers' UpperTorso ends just above it), its base at the
+-- pivot whatever head the engine or the swap left: the Head's NeckRigAttachment (and Neck.C1) at -half its
+-- height. Absolute (from the head's size): idempotent across rebuilds, rescales and head swaps.
+local function seatHead(model)
 	local head = model:FindFirstChild("Head")
 	local na = head and head:FindFirstChild("NeckRigAttachment")
 	if not (head and head:IsA("BasePart") and na and na:IsA("Attachment")) then
 		return
 	end
-	local hy = head.Size.Y
-	local y = -0.5 * hy - NECK_LIFT[app and app.gender == 2 and 2 or 1] * hy
+	local y = -0.5 * head.Size.Y
 	local p = na.Position
 	if math.abs(p.Y - y) > 1e-4 then
 		na.Position = Vector3.new(p.X, y, p.Z)
@@ -310,8 +288,8 @@ local function headStep(model, app, build, opts, name)
 	end
 end
 
--- the Face step (which may swap the head), kept at the engine's head scale; the face is rebuilt once on the
--- corrected head (its size is in the Face cache key) when the swap changed it
+-- the Face step (the classic head swap and its face decal), kept at the engine's head scale; the face is rebuilt
+-- once on the corrected head (its size is in the Face cache key) when the swap changed it
 local function faceStep(model, app, build, opts)
 	-- quiet pcalls: the guard is a safety net, it must never cost a face
 	local okR, rec = pcall(headRecord, model)
@@ -327,7 +305,7 @@ local function faceStep(model, app, build, opts)
 		end
 		headStep(model, app, build, opts, "Face")
 	end
-	pcall(liftHead, model, app)
+	pcall(seatHead, model)
 end
 
 ------------------------------------------------------------------------
@@ -364,33 +342,6 @@ end
 -- fightNight, sponsorTrunks / sponsorRobe ({ text, fg, bg }), dry, outfit ("referee"|"cornerman"),
 -- only ({ Face, Hair, Beard }), previewGrowth. gear = { gloves, glovesCond, wraps, wrapsCond, shoes,
 -- shoesCond, mouthguard, robe } (missing ids default to the starter kit).
--- An NPC marked HullOnly (CreateNPC, medium detail with the anatomy meshes on) keeps a light muscle layer:
--- the hull, neck, fat and the mass domes that make the part-built body read as a boxer on a client
--- without the meshes (chest / bust, shoulder caps, biceps, traps, and the abs where the definition shows
--- them; the neck SCMs too, though only full detail builds them); the other tagged domes go (part + weld
--- + SpecialMesh each: obliques, lats, glutes, front / rear delts, triceps, forearms, quads, calves). The
--- Body meshes replace the whole layer on every capable client, except on the officials: a referee or
--- cornerman keeps his part-built body everywhere (AnatomyBody skips outfits), so everyone sees this layer
--- under his shirt. The folder's envelope attributes (what Attire fits) stay. Change-only: a cached
--- (sealed) folder was trimmed when it was built.
-local HULL_KEEP = { pecs = true, sideDelt = true, biceps = true, traps = true, neckSCM = true }
-local HULL_ABS_DEF = 0.45 -- the abs fade in with definition (BuilderBody): fainter than this, they go too
-
-local function hullOnly(model, sp)
-	local look = model:FindFirstChild("BoxerLook")
-	local f = look and look:FindFirstChild("Muscles")
-	if not (f and f:GetAttribute("Hull") == true) or (sp ~= nil and sp.detail == "full") then
-		return -- low detail has no hull (its few domes are all the body it has); full keeps every dome
-	end
-	local abs = sp ~= nil and (sp.def or 0) >= HULL_ABS_DEF
-	for _, p in ipairs(f:GetChildren()) do
-		local id = p:GetAttribute("Part")
-		if p:IsA("BasePart") and p:GetAttribute("Layer") ~= nil and not (HULL_KEEP[id] or (abs and id == "abs")) then
-			p:Destroy()
-		end
-	end
-end
-
 function Builder.Cosmetics(model, app, build, gear, opts)
 	opts = opts or {}
 	app = app or Looks.Defaults(1)
@@ -426,14 +377,13 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	if model:GetAttribute("HairHiddenHood") and not (robe and robe:FindFirstChild("Hood")) then
 		Builder.SetHairHidden(model, "hood", false)
 	end
+	-- the muscle-tier body parts first: every layer below is built on (and coloured over) the final parts
+	step("Tiers", tiersStep, model, app, build, opts, sp)
 	step("Colors", Body.Colors, model, app, gear, opts)
 	faceStep(model, app, build, opts)
 	headStep(model, app, build, opts, "Hair")
 	headStep(model, app, build, opts, "Beard")
 	local _, env = step("Muscles", Body.Muscles, model, app, build, opts, sp, gear)
-	if model:GetAttribute("HullOnly") == true then
-		step("HullOnly", hullOnly, model, sp)
-	end
 	step("Attire", Body.Attire, model, app, opts, gear, sp, type(env) == "table" and env or nil)
 	step("Hands", Body.Hands, model, app, gear, opts, sp)
 	-- body attributes the client reads (stance, veins, LOD); change-only
@@ -501,11 +451,6 @@ function Builder.CreateNPC(app, build, gear, displayName, opts)
 	if hum then
 		hum.DisplayName = displayName or "Boxer"
 		hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-	end
-	-- gym members / officials: hull-only muscle layer (see hullOnly); players and opponents are full
-	local anatomy = Config.Anatomy
-	if anatomy and anatomy.enabled and anatomy.npcHullOnly and Config.DetailLevel(opts) == "medium" then
-		model:SetAttribute("HullOnly", true)
 	end
 	Builder.Cosmetics(model, app, build, gear, opts)
 	-- nothing in the game listens for touches: an NPC's parts that report none cost the physics less (the

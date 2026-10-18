@@ -47,3 +47,14 @@ return {
 ```
 
 An id of 0 means "not uploaded": the game then keeps the default body part / the default smile.
+
+As generated, besides the fields above: `tiers[n]` also has `name`, `tris` and `fit` (gear-fit girths /
+widths / depths in unscaled studs at fixed heights: chest, waist, hips, upperArm, forearm, wrist, thigh, knee,
+calf, ankle, plus shoulderSpan and chestDepth); each part has `nt`; each face has `creator` (true = offered in
+the creator, false = a mood face only); `defaultFace = "smile"`. `unit` holds `description` (the scales that
+reproduce it: BodyTypeScale 0, ProportionScale 0, Height / Width / Depth 1, HeadScale 0.7724), `partScale` (the
+per-part factors applied to the Classic block), `rigBox` (the Classic R15 boxes at those factors), `joints` (rest
+space, feet on Y = 0, right side; the left mirrors X), `armAxisX` per tier, `head`, `rootHeight`, `hipHeight`,
+`shoulderHeight`, `neckHeight`, `wristHeight`, `standingHeight`. Attachment positions carry no rotation: every
+one is axis-aligned with its part, except the Grip, which takes R15's usual orientation
+(CFrame.Angles(-math.pi / 2, 0, 0)).
