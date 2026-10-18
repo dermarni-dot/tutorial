@@ -10205,6 +10205,10 @@ return Builder
 -- * body resolution (Resolve): physique archetype, per-muscle levels, fat, definition, veins, detail level
 --   (the model attributes, LookData and the training screens read it)
 -- * colours: skin, satin trunks, shoes, referee / cornerman outfits on the R15 parts
+-- * the gear is the Blender-modelled meshes of BuilderGear (tools/body/build_gear.py) fitted to every muscle tier:
+--   trunks per style (waistband, seat, legs, side stripe, hem), boots / low-tops (foot, sole, laces, shaft, sock),
+--   the women's sports top, gloves (glove, cuff, strap) and hand wraps, coloured from the look's gear colours.
+--   Whatever is not available (a default part, an id 0, a failed load) falls back to the part-built gear below:
 -- * attire: trunks, sponsor patches, socks, trainers / boxing boots by brand (sole types, laces with swinging
 --   tails), referee and cornerman outfits, robe: sized from the parts' own boxes (the tier meshes' bounding
 --   boxes, BodyAssetData sizes x the description's scales), so they fit every tier
@@ -10222,6 +10226,7 @@ local Looks = require(Shared:WaitForChild("Looks"))
 local Kit = require(script.Parent:WaitForChild("BuilderKit"))
 local BodyTiers = require(script.Parent:WaitForChild("BodyTiers"))
 local Hair = require(script.Parent:WaitForChild("BuilderHair")) -- (IsHairAccessory: the avatar's hair stays)
+local Gear = require(script.Parent:WaitForChild("BuilderGear")) -- the Blender-modelled gear meshes
 
 local Body = {}
 
@@ -10479,7 +10484,9 @@ local function colorBody(model, app, gear, opts)
 			end
 		end
 	end
-	if app.gender == 2 and not shirt then
+	-- women: the sports top. The mesh top (Attire) goes over a skin torso; without it the whole UpperTorso takes the
+	-- top's colour (the part-built look; Attire repaints it should the mesh top fail to load)
+	if app.gender == 2 and not shirt and not Gear.Available(model, "top", "Top") then
 		local ut = model:FindFirstChild("UpperTorso")
 		if ut then
 			ut.Color = Looks.Color(a.trim, WHITE)
@@ -10708,6 +10715,37 @@ local function shoesBuild(folder, model, app, opts, gear, sp, env)
 	end
 end
 
+-- the mesh boots / shoes (BuilderGear): upper in the shoe colour (leather boots, fabric trainers), the sole by its
+-- kind (SOLE: foam, rubber in the trim colour, gum, suede, split), laces, socks
+local function shoesMesh(folder, app, gear, pieces)
+	local a = app.attire or {}
+	local shoe = shoeOf(gear)
+	local brand = Catalog.GearBrand("shoes", shoe.id)
+	local trainer = shoe.style == "trainer"
+	local soleKind = shoe.sole or brand.sole or "Rubber"
+	local so = SOLE[soleKind] or SOLE.Rubber
+	local soleColor = so.color or Looks.Color(a.trim, WHITE)
+	if trainer and soleKind ~= "Gum" then
+		soleColor = Color3.fromRGB(238, 238, 232) -- (a trainer's foam midsole)
+	end
+	local laceColor = Looks.Color(a.laces, Color3.fromRGB(240, 240, 240))
+	if (gear.shoesCond or 100) < 40 then
+		laceColor = lerpColor(laceColor, Color3.fromRGB(170, 160, 140), 0.5)
+	end
+	local shoeColor = shoeColorOf(app, gear)
+	local socks = Looks.Color(a.socks, WHITE)
+	return Gear.Build(folder, pieces, function(slot)
+		if slot == "soles" then
+			return soleColor, trainer and SMOOTH or so.mat, 0
+		elseif slot == "laces" then
+			return laceColor, SMOOTH, 0
+		elseif slot == "socks" then
+			return socks, FABRIC, 0
+		end
+		return shoeColor, trainer and FABRIC or LEATHER, 0
+	end)
+end
+
 local function outfitBuild(folder, model, app, opts, sp)
 	local outfit = sp.outfit
 	local shirt = outfitColors(app, outfit)
@@ -10816,19 +10854,72 @@ local function attireBuild(model, app, opts, gear, sp, env)
 	local eUL = { x = up(env.UL.x), zf = up(env.UL.zf), zb = up(env.UL.zb) }
 	local eLL = { x = up(env.LL.x), zf = up(env.LL.zf), zb = up(env.LL.zb) }
 	local spT, spF, spB = sponsorOf(opts.sponsorTrunks)
-	local key = Kit.sig("A3", a, opts.waistText or "", spT or "", spF or "", spB or "", sp.outfit, sp.detail, gear.shoes, shoeCond(gear), gear.shoesCond >= 60, gear.shoesCond >= 40,
-		eUL, a.trunkStyle == "Long" and eLL or false, topRel, opts.name or "", app.gender, sizesOf(model, ATTIRE_PARTS))
+	-- the Blender-modelled gear for the tiers the parts show (BuilderGear); nil = the part-built gear below
+	local official = sp.outfit == "referee" or sp.outfit == "cornerman"
+	local meshTrunks, meshShoes, meshTop
+	if not official then
+		meshTrunks = Gear.Resolve(model, "trunks", table.find(Looks.TrunkStyles, a.trunkStyle) and a.trunkStyle or "Classic")
+		meshShoes = Gear.Resolve(model, "shoes", a.shoeStyle == "Low-Top" and "Low-Top" or "High-Top")
+		meshTop = app.gender == 2 and Gear.Resolve(model, "top", "Top") or nil
+	end
+	local key = Kit.sig("A4", a, opts.waistText or "", spT or "", spF or "", spB or "", sp.outfit, sp.detail, gear.shoes, shoeCond(gear), gear.shoesCond >= 60, gear.shoesCond >= 40,
+		eUL, a.trunkStyle == "Long" and eLL or false, topRel, opts.name or "", app.gender, sizesOf(model, ATTIRE_PARTS),
+		Gear.Key(meshTrunks), Gear.Key(meshShoes), Gear.Key(meshTop))
 	if Kit.cached(model, "Attire", key) then
 		return
 	end
 	local folder = getFolder(model, "Attire")
-	if sp.outfit == "referee" or sp.outfit == "cornerman" then
+	if official then
 		outfitBuild(folder, model, app, opts, sp)
 		Kit.seal(model, "Attire", key)
 		return
 	end
 	local trunks = Looks.Color(a.trunks, Color3.fromRGB(200, 25, 30))
 	local trim = Looks.Color(a.trim, WHITE)
+	if app.gender == 2 then
+		local ut = part(model, "UpperTorso")
+		if meshTop then
+			-- the sports top in the top colour (trim) with an underband in the trunks colour
+			Gear.Build(folder, meshTop, function(slot)
+				return slot == "topTrim" and trunks or trim, SMOOTH, 0
+			end)
+		elseif ut then
+			ut.Color = trim -- (no mesh top: the whole torso is the top, as colorBody paints it without one)
+			ut.Material = SMOOTH
+		end
+	end
+	if meshTrunks then
+		-- satin trunks: the seat and legs in the trunks colour, the waistband, side stripe and hem in the trim
+		local made = Gear.Build(folder, meshTrunks, function(slot)
+			if slot == "trim" then
+				return trim, SMOOTH, 0.02
+			end
+			return trunks, SMOOTH, 0.03
+		end)
+		local band = made.Waistband
+		local text = opts.waistText or ""
+		if band and lt and text ~= "" then
+			local bs = band.Size
+			textPatch(folder, lt, "WaistText", V3(bs.X * 0.42, bs.Y * 0.55, 0.02), band.CFrame * CF(0, 0, -bs.Z / 2 - 0.012), text:upper(), contrast(trim))
+		end
+		local leg = made.TrunkLeg_R or made.TrunkLegLong_R
+		local ul = part(model, "RightUpperLeg")
+		if spT and leg and ul and sp.lod >= 2 then
+			-- the sponsor on the front of the right leg (the left leg carries the boxer's own colours)
+			local ls = leg.Size
+			textPatch(folder, ul, "SponsorPatch", V3(ls.X * 0.5, math.min(0.2, ls.Y * 0.2), 0.02), leg.CFrame * CF(0, ls.Y * 0.08, -ls.Z / 2 - 0.012), spT, spF, Enum.NormalId.Front, "GothamBlack", spB)
+		end
+	end
+	if meshShoes then
+		shoesMesh(folder, app, gear, meshShoes)
+	end
+	if meshTrunks then
+		if not meshShoes then
+			shoesBuild(folder, model, app, opts, gear, sp, env)
+		end
+		Kit.seal(model, "Attire", key)
+		return
+	end
 	if lt then
 		local s = lt.Size
 		local bh, by = waistBand(lt)
@@ -10888,7 +10979,9 @@ local function attireBuild(model, app, opts, gear, sp, env)
 			mk(folder, ll, "TrunkLeg", V3(s.X * wx, s.Y * 0.25, fr + bk), ll.CFrame * CF(0, s.Y * 0.38, (bk - fr) / 2), trunks, "Block", SMOOTH)
 		end
 	end
-	shoesBuild(folder, model, app, opts, gear, sp, env)
+	if not meshShoes then
+		shoesBuild(folder, model, app, opts, gear, sp, env)
+	end
 	Kit.seal(model, "Attire", key)
 end
 
@@ -11245,6 +11338,98 @@ local function glovesBuild(folder, model, app, gear, opts, sp)
 	end
 end
 
+-- the glove's colours and finish (glovesBuild's derivation, shared by the mesh gloves)
+local function gloveStyle(app, gear, opts)
+	local g = app.gloves or {}
+	local gloveDef = Catalog.Find(Catalog.Gloves, gear.gloves) or Catalog.Gloves[1]
+	local brand = Catalog.GearBrand("gloves", gloveDef.id, g.brand)
+	local custom = gloveDef.custom or {}
+	local cond = gear.glovesCond or 100
+	local pal = brand.palette or {}
+	local main = wearColor(Looks.Color(g.color, rgb(pal.primary, Color3.fromRGB(200, 25, 30))), cond)
+	local trim = custom.trim and Looks.Color(g.trim, WHITE) or wearColor(Color3.fromRGB(236, 234, 228), cond)
+	local finish = custom.finish and (g.finish or brand.finish or "Leather") or (brand.finish or "Leather")
+	if finish == "Metallic" and not (custom.metallic or brand.finish == "Metallic") then
+		finish = "Patent"
+	end
+	local material, refl = LEATHER, 0.04
+	if finish == "Matte" then
+		material, refl = LEATHER, 0
+	elseif finish == "Patent" then
+		material, refl = SMOOTH, 0.22
+	elseif finish == "Metallic" then
+		material, refl = Enum.Material.Foil, 0.35
+	end
+	if gloveDef.id == "WorldChampion" then
+		trim = GOLD
+	end
+	local strap = custom.trim and trim or rgb(pal.secondary, trim)
+	if brand.closure == "lace" then
+		strap = trim -- (lace-ups: the rolled trim band)
+	end
+	if opts and opts.fightNight then
+		strap = Color3.fromRGB(246, 246, 242) -- fight night: the cuffs taped over
+	end
+	return { def = gloveDef, brand = brand, custom = custom, main = main, trim = trim, strap = strap, material = material, refl = refl }
+end
+
+-- the mesh gloves (BuilderGear): the glove (named GloveL / GloveR: the fight animation's contact spheres read them)
+-- and its cuff in the glove colour and finish, the strap in the strap / trim colour; the logo on the back of the hand
+local function glovesMesh(folder, model, app, gear, opts, sp, pieces)
+	local st = gloveStyle(app, gear, opts)
+	local made = Gear.Build(folder, pieces, function(slot)
+		if slot == "gloveTrim" then
+			return st.strap, st.material == Enum.Material.Foil and SMOOTH or st.material, math.min(st.refl, 0.1)
+		end
+		return st.main, st.material, st.refl
+	end, { Glove_L = "GloveL", Glove_R = "GloveR" })
+	for name, p in pairs(made) do
+		wet(p, "glove", p.Reflectance)
+		if st.def.aura and (name == "Glove_L" or name == "Glove_R") then
+			local sp2 = Instance.new("Sparkles")
+			sp2.SparkleColor = Color3.fromRGB(255, 210, 60)
+			sp2.Parent = p
+		end
+	end
+	local g = app.gloves or {}
+	local glyph
+	if st.custom.logo and g.logo and g.logo ~= "None" then
+		glyph = Catalog.LogoGlyphs[g.logo]
+		if g.logo == "Initials" then
+			glyph = initials(opts.name)
+		elseif g.logo == "Flag" then
+			glyph = tostring(opts.nat or "USA"):sub(1, 3):upper()
+		end
+	elseif sp.cfg.wordmarks and (st.brand.glyph or "") ~= "" then
+		glyph = st.brand.glyph
+	end
+	if glyph and glyph ~= "" and sp.lod >= 2 then
+		for _, side in ipairs({ "Left", "Right" }) do
+			local gl = made["Glove_" .. side:sub(1, 1)]
+			local hand = part(model, side .. "Hand")
+			if gl and hand then
+				local sign = side == "Left" and -1 or 1
+				local gs = gl.Size
+				textPatch(folder, hand, "Logo", V3(0.02, gs.Y * 0.22, gs.Z * 0.3), gl.CFrame * CF(sign * (gs.X * 0.5 + 0.004), -gs.Y * 0.08, 0), glyph, st.trim,
+					sign > 0 and Enum.NormalId.Right or Enum.NormalId.Left, st.brand.font)
+			end
+		end
+	end
+	return made
+end
+
+-- the mesh wraps (BuilderGear): the hand in the wrap colour, the wrist turns in the pattern's second colour
+local function wrapsMesh(folder, app, gear, pieces)
+	local wc, c2 = wrapColors(app, gear)
+	local made = Gear.Build(folder, pieces, function(slot)
+		return slot == "wraps2" and c2 or wc, FABRIC, 0
+	end)
+	for _, p in pairs(made) do
+		wet(p, "wrap")
+	end
+	return made
+end
+
 local HAND_PARTS = { "LeftHand", "LeftLowerArm", "RightHand", "RightLowerArm" }
 
 local function handsBuild(model, app, gear, opts, sp)
@@ -11256,8 +11441,15 @@ local function handsBuild(model, app, gear, opts, sp)
 		mode = "bare" -- officials work bare-handed
 	end
 	local a = app.attire or {}
-	local key = Kit.sig("H4", mode, sp.female, sp.detail, gear.gloves, gear.wraps, q(gear.glovesCond or 100, 5), q(gear.wrapsCond or 100, 10), app.gloves, a.wraps, a.wrapPattern or "", a.trim, a.trunks,
-		opts.name or "", opts.nick or "", opts.nat or "", opts.fightNight == true, sizesOf(model, HAND_PARTS))
+	-- the Blender-modelled gloves / wraps for the tiers the hands and forearms show (nil: the part-built ones)
+	local mesh
+	if mode == "wraps" then
+		mesh = Gear.Resolve(model, "wraps", "Wraps")
+	elseif mode ~= "bare" then
+		mesh = Gear.Resolve(model, "gloves", "Gloves")
+	end
+	local key = Kit.sig("H5", mode, sp.female, sp.detail, gear.gloves, gear.wraps, q(gear.glovesCond or 100, 5), q(gear.wrapsCond or 100, 10), app.gloves, a.wraps, a.wrapPattern or "", a.trim, a.trunks,
+		opts.name or "", opts.nick or "", opts.nat or "", opts.fightNight == true, sizesOf(model, HAND_PARTS), Gear.Key(mesh))
 	if Kit.cached(model, "Hands", key) then
 		return
 	end
@@ -11272,9 +11464,17 @@ local function handsBuild(model, app, gear, opts, sp)
 		end
 	end
 	if mode == "wraps" then
-		wrapsBuild(folder, model, app, gear, opts, sp)
+		if mesh then
+			wrapsMesh(folder, app, gear, mesh)
+		else
+			wrapsBuild(folder, model, app, gear, opts, sp)
+		end
 	elseif mode ~= "bare" then
-		glovesBuild(folder, model, app, gear, opts, sp)
+		if mesh then
+			glovesMesh(folder, model, app, gear, opts, sp, mesh)
+		else
+			glovesBuild(folder, model, app, gear, opts, sp)
+		end
 	end
 	Kit.seal(model, "Hands", key)
 end
@@ -11598,6 +11798,313 @@ return Body
         </Properties>
       </Item>
       <Item class="ModuleScript" referent="14">
+        <Properties>
+          <string name="Name">BuilderGear</string>
+          <string name="Source"><![CDATA[-- BuilderGear: the Blender-modelled boxing gear on the server (tools/body/build_gear.py, uploaded by
+-- tools/body/publish_gear.py into the generated GearAssetData). Every piece is fitted to ONE body part of ONE muscle
+-- tier (the waistband and the seat to the LowerTorso, a shorts leg to its UpperLeg, the cuff to the LowerArm, the
+-- boot shaft to the LowerLeg...; the glove, wrap and boot foot are the same at every tier) and is welded to it:
+-- * templates: one MeshPart per mesh id, made once per server with AssetService:CreateMeshPartAsync (pcall;
+--   concurrent callers wait for the same load; a failed id is retried after RETRY seconds), like BuilderTiers
+-- * Resolve(model, group, style): the pieces a style wears (GearAssetData.sets) for the tiers the model's parts show
+--   (their BodyTier attribute). Nothing is half built: when a part is not a tier part, an id is 0 or a load failed,
+--   it returns nil and the caller builds its part-built gear (BuilderBody's blocks)
+-- * Build(folder, pieces, paint): a clone per piece, sized ONCE to the template's size x the body part's scale
+--   ratio (Size / OriginalSize: the ratio BuilderTiers gave the part, so the gear scales exactly with the mesh under
+--   it), welded at part.CFrame * CFrame.new(offset x ratio) (a Weld: it follows the part through every pose), and
+--   painted per colour slot: paint(slot, piece name) -> colour, material, reflectance
+-- * a tier change swaps the body part; the caller's cache signature carries Key(pieces) (the mesh ids and the
+--   parts' sizes), so the gear is rebuilt for the new tier on the next Cosmetics
+-- Tests: BuilderGear.Services = { AssetService = fake, Content = fake }, BuilderGear.SetData(t), BuilderGear.Reset().
+local BuilderGear = {}
+
+local Shared = script.Parent
+local BuilderTiers = require(Shared:WaitForChild("BuilderTiers"))
+
+local V3 = Vector3.new
+BuilderGear.RETRY = 120
+BuilderGear.Services = {}
+
+------------------------------------------------------------------------
+-- GearAssetData
+------------------------------------------------------------------------
+local data
+local function load()
+	if data == nil then
+		local ok, res = false, nil
+		local m = Shared:FindFirstChild("GearAssetData")
+		if m then
+			ok, res = pcall(require, m)
+		end
+		data = (ok and type(res) == "table") and res or {}
+	end
+	return data
+end
+function BuilderGear.Data()
+	return load()
+end
+-- tests / tools: use this table instead of the module (nil: load the module again)
+function BuilderGear.SetData(d)
+	data = d
+end
+
+local function idOf(v)
+	local n = tonumber(v)
+	return (n and n > 0) and math.floor(n) or nil
+end
+local function vec(t)
+	if type(t) ~= "table" or type(t[1]) ~= "number" or type(t[2]) ~= "number" or type(t[3]) ~= "number" then
+		return nil
+	end
+	return V3(t[1], t[2], t[3])
+end
+
+-- the piece `name` for a body part of tier `tier`: { id, offset, size, part, slot, group, name } or nil
+function BuilderGear.Entry(tier, name, d)
+	d = d or load()
+	local tiers = type(d.tiers) == "table" and d.tiers or nil
+	local t = tiers and (tiers[tier] or tiers[tostring(tier)])
+	local e = type(t) == "table" and t[name] or nil
+	local p = type(d.pieces) == "table" and d.pieces[name] or nil
+	if type(e) ~= "table" or type(p) ~= "table" then
+		return nil
+	end
+	local id, offset, size = idOf(e.mesh), vec(e.offset), vec(e.size)
+	if not (id and offset and size) or size.X <= 0 or size.Y <= 0 or size.Z <= 0 then
+		return nil
+	end
+	return { id = id, offset = offset, size = size, part = p.part, slot = p.slot, group = p.group, name = name, tier = tier }
+end
+
+-- the piece names a style wears (sided names expanded to _L / _R), or nil when the manifest has no such set
+function BuilderGear.SetPieces(group, style, d)
+	d = d or load()
+	local g = type(d.sets) == "table" and d.sets[group] or nil
+	local list = type(g) == "table" and g[style] or nil
+	if type(list) ~= "table" then
+		return nil
+	end
+	local out = {}
+	for _, base in ipairs(list) do
+		local pieces = type(d.pieces) == "table" and d.pieces or {}
+		if pieces[base .. "_R"] or pieces[base .. "_L"] then
+			table.insert(out, base .. "_L")
+			table.insert(out, base .. "_R")
+		else
+			table.insert(out, base)
+		end
+	end
+	return out
+end
+
+------------------------------------------------------------------------
+-- Templates
+------------------------------------------------------------------------
+local cache = {} -- id -> { part = template } | { loading = true } | { failed = os.clock() }
+local stats = { loads = 0, failed = 0, built = 0 }
+
+function BuilderGear.Reset()
+	for _, e in pairs(cache) do
+		if e.part then
+			pcall(function()
+				e.part:Destroy()
+			end)
+		end
+	end
+	table.clear(cache)
+	stats.loads, stats.failed, stats.built = 0, 0, 0
+end
+
+function BuilderGear.Stats()
+	return table.clone(stats)
+end
+
+local function assetService()
+	return BuilderGear.Services.AssetService or game:GetService("AssetService")
+end
+
+local function contentOf(uri)
+	local C = BuilderGear.Services.Content or Content
+	if C and C.fromUri then
+		return C.fromUri(uri)
+	end
+	return uri
+end
+
+-- the template MeshPart for a mesh id (unscaled: Size = the mesh bbox), or nil + reason. Yields on the first call
+-- for an id (CreateMeshPartAsync); later calls are free
+function BuilderGear.Template(id, size)
+	if not idOf(id) then
+		return nil, "not uploaded"
+	end
+	local c = cache[id]
+	while c and c.loading do
+		task.wait()
+		c = cache[id]
+	end
+	if c and c.part then
+		return c.part
+	elseif c and c.failed and os.clock() - c.failed < BuilderGear.RETRY then
+		return nil, "failed"
+	end
+	cache[id] = { loading = true }
+	stats.loads += 1
+	local ok, mp = pcall(function()
+		return assetService():CreateMeshPartAsync(contentOf("rbxassetid://" .. id), {
+			CollisionFidelity = Enum.CollisionFidelity.Box, RenderFidelity = Enum.RenderFidelity.Automatic,
+		})
+	end)
+	if ok and mp then
+		ok = pcall(function()
+			mp.Anchored = false
+			mp.CanCollide = false
+			mp.CanQuery = false
+			mp.CanTouch = false
+			mp.Massless = true
+			mp.CastShadow = false
+			if size then
+				mp.Size = size
+			end
+			mp:SetAttribute("GearMesh", id)
+		end)
+	end
+	if not (ok and mp) then
+		stats.failed += 1
+		cache[id] = { failed = os.clock() }
+		warn(string.format("[Gear] mesh %d did not load (%s); the part-built gear stays", id, tostring(mp)))
+		return nil, "failed"
+	end
+	cache[id] = { part = mp }
+	return mp
+end
+
+-- load every uploaded gear mesh in the background (server start)
+function BuilderGear.Preload()
+	task.spawn(function()
+		local d = load()
+		local seen = {}
+		for tier, t in pairs(type(d.tiers) == "table" and d.tiers or {}) do
+			for name in pairs(type(t) == "table" and t or {}) do
+				local e = BuilderGear.Entry(tier, name, d)
+				if e and not seen[e.id] then
+					seen[e.id] = true
+					BuilderGear.Template(e.id, e.size)
+				end
+			end
+		end
+	end)
+end
+
+------------------------------------------------------------------------
+-- Resolve / build
+------------------------------------------------------------------------
+-- the pieces `style` of `group` puts on this model: { { name, entry, body, template, ratio } ... }, or nil + reason
+-- (the caller builds its part-built gear). Every body part must be a muscle-tier part (BodyTier attribute)
+function BuilderGear.Resolve(model, group, style)
+	local names = BuilderGear.SetPieces(group, style)
+	if not names or #names == 0 then
+		return nil, "no set"
+	end
+	local out = {}
+	for _, name in ipairs(names) do
+		local d = load()
+		local p = type(d.pieces) == "table" and d.pieces[name] or nil
+		local body = p and model:FindFirstChild(p.part)
+		local tier = body and tonumber(body:GetAttribute("BodyTier"))
+		if not tier then
+			return nil, "not a tier part: " .. tostring(p and p.part or name)
+		end
+		local e = BuilderGear.Entry(tier, name, d)
+		if not e then
+			return nil, "not uploaded: " .. name
+		end
+		local template = BuilderGear.Template(e.id, e.size)
+		if not template then
+			return nil, "failed: " .. name
+		end
+		local ratio = BuilderTiers.RatioOf(body) or V3(1, 1, 1)
+		table.insert(out, { name = name, entry = e, body = body, template = template, ratio = ratio })
+	end
+	return out
+end
+
+-- a signature of resolved pieces (mesh ids + the body parts' sizes) for the callers' rebuild caches
+function BuilderGear.Key(pieces)
+	if not pieces then
+		return "blocks"
+	end
+	local parts = {}
+	for _, r in ipairs(pieces) do
+		local s = r.body.Size
+		table.insert(parts, string.format("%s:%d:%.3f,%.3f,%.3f", r.name, r.entry.id, s.X, s.Y, s.Z))
+	end
+	return table.concat(parts, "|")
+end
+
+-- clone, size, weld and paint every resolved piece into folder. paint(slot, name) -> Color3, Material, reflectance.
+-- Returns { [name] = MeshPart }
+function BuilderGear.Build(folder, pieces, paint, rename)
+	local made = {}
+	for _, r in ipairs(pieces) do
+		local e, body, ratio = r.entry, r.body, r.ratio
+		local p = r.template:Clone()
+		p.Name = (rename and rename[r.name]) or r.name
+		p.Size = e.size * ratio
+		local c0 = CFrame.new(e.offset * ratio)
+		p.CFrame = body.CFrame * c0
+		local color, material, refl = paint(e.slot, r.name)
+		if color then
+			p.Color = color
+		end
+		if material then
+			p.Material = material
+		end
+		p.Reflectance = refl or 0
+		p:SetAttribute("GearPiece", r.name)
+		p:SetAttribute("GearSlot", e.slot)
+		local w = Instance.new("Weld")
+		w.Name = "GearWeld"
+		w.Part0 = body
+		w.Part1 = p
+		w.C0 = c0
+		w.C1 = CFrame.new()
+		w.Parent = p
+		p.Parent = folder
+		made[r.name] = p
+		stats.built += 1
+	end
+	return made
+end
+
+-- true when the model shows tier parts for every piece of the style and every one of them is uploaded (no loads:
+-- for colour decisions made before the gear is built, e.g. the women's top over the UpperTorso)
+function BuilderGear.Available(model, group, style)
+	local names = BuilderGear.SetPieces(group, style)
+	if not names or #names == 0 then
+		return false
+	end
+	local d = load()
+	for _, name in ipairs(names) do
+		local p = type(d.pieces) == "table" and d.pieces[name] or nil
+		local body = p and model:FindFirstChild(p.part)
+		local tier = body and tonumber(body:GetAttribute("BodyTier"))
+		local e = tier and BuilderGear.Entry(tier, name, d)
+		if not e then
+			return false
+		end
+		local c = cache[e.id]
+		if c and c.failed and os.clock() - c.failed < BuilderGear.RETRY then
+			return false
+		end
+	end
+	return true
+end
+
+return BuilderGear
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">BuilderHair</string>
           <string name="Source"><![CDATA[-- BuilderHair: the hair on the head (server side), split verbatim out of BuilderHead so the hair and
@@ -12857,7 +13364,7 @@ return Hair
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">BuilderHead</string>
           <string name="Source"><![CDATA[-- BuilderHead: everything built on the head (server side; the Creator also calls SetDamage locally).
@@ -13784,7 +14291,7 @@ return Head
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">BuilderKit</string>
           <string name="Source"><![CDATA[-- BuilderKit: part and colour helpers shared by the character builder modules.
@@ -14012,7 +14519,7 @@ end
 -- a rescale through ApplyDescription replaces or moves the anchors, so the old parts are stale)
 local function intact(model, folder)
 	for _, d in ipairs(folder:GetDescendants()) do
-		if d:IsA("WeldConstraint") or d:IsA("Motor6D") then
+		if d:IsA("WeldConstraint") or d:IsA("Motor6D") or d:IsA("Weld") then
 			local p0 = d.Part0
 			if not (p0 and p0:IsDescendantOf(model)) or not d.Part1 then
 				return false
@@ -14068,7 +14575,7 @@ return Kit
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">BuilderTiers</string>
           <string name="Source"><![CDATA[-- BuilderTiers: the muscle-tier body parts on the server (tools/body/CONTRACT.md). The rig is the standard R15
@@ -14446,7 +14953,7 @@ return BuilderTiers
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">Catalog</string>
           <string name="Source"><![CDATA[-- Catalog: gym equipment levels, gear (gloves, shoes, wraps, mouthguards, robes),
@@ -14935,7 +15442,7 @@ return Catalog
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">CityProps</string>
           <string name="Source"><![CDATA[-- CityProps: small procedural props shared by the server city (CityMap) and the client's
@@ -15275,7 +15782,7 @@ return CityProps
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">Config</string>
           <string name="Source"><![CDATA[-- Config: core tunable data for "Become a World Class Boxer"
@@ -16754,7 +17261,7 @@ return Config
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">DrillScore</string>
           <string name="Source"><![CDATA[-- DrillScore: how a training drill is judged. Shared by the client, which plays the drill with these
@@ -17784,7 +18291,7 @@ return DrillScore
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="22">
+      <Item class="ModuleScript" referent="23">
         <Properties>
           <string name="Name">FightMotion</string>
           <string name="Source"><![CDATA[--!strict
@@ -18181,7 +18688,7 @@ return FightMotion
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="23">
+      <Item class="ModuleScript" referent="24">
         <Properties>
           <string name="Name">Gamepad</string>
           <string name="Source"><![CDATA[-- Gamepad: which device the player is using right now (keyboard and mouse, gamepad or touch), the names
@@ -18432,7 +18939,1515 @@ return Gamepad
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="24">
+      <Item class="ModuleScript" referent="25">
+        <Properties>
+          <string name="Name">GearAssetData</string>
+          <string name="Source"><![CDATA[-- GENERATED by tools/body/publish_gear.py from tools/body/out/gear (build_gear.py) and the upload cache
+-- tools/body/uploaded.json. Do not edit by hand: rebuild and re-run publish_gear.py.
+-- The boxing gear (Mesh assets) fitted to the muscle-tier body: tiers[n][piece] = the piece for a body part
+-- of tier n (mesh id, offset = its centre in the body part's space, rest pose, unscaled; size = the mesh
+-- bbox = the MeshPart's unscaled Size; nt = tris). pieces[piece] = the body part it welds to, its colour
+-- slot and group; sets = the pieces each style wears (a sided name stands for _L and _R). An id of 0 =
+-- not uploaded: BuilderGear falls back to the part-built gear.
+return {
+	pieces = {
+		AnkleSock_L = {
+			group = "shoes",
+			part = "LeftLowerLeg",
+			slot = "socks",
+		},
+		AnkleSock_R = {
+			group = "shoes",
+			part = "RightLowerLeg",
+			slot = "socks",
+		},
+		BootFoot_L = {
+			group = "shoes",
+			part = "LeftFoot",
+			slot = "shoes",
+		},
+		BootFoot_R = {
+			group = "shoes",
+			part = "RightFoot",
+			slot = "shoes",
+		},
+		BootLaces_L = {
+			group = "shoes",
+			part = "LeftLowerLeg",
+			slot = "laces",
+		},
+		BootLaces_R = {
+			group = "shoes",
+			part = "RightLowerLeg",
+			slot = "laces",
+		},
+		BootShaft_L = {
+			group = "shoes",
+			part = "LeftLowerLeg",
+			slot = "shoes",
+		},
+		BootShaft_R = {
+			group = "shoes",
+			part = "RightLowerLeg",
+			slot = "shoes",
+		},
+		BootSock_L = {
+			group = "shoes",
+			part = "LeftLowerLeg",
+			slot = "socks",
+		},
+		BootSock_R = {
+			group = "shoes",
+			part = "RightLowerLeg",
+			slot = "socks",
+		},
+		GloveCuff_L = {
+			group = "gloves",
+			part = "LeftLowerArm",
+			slot = "gloves",
+		},
+		GloveCuff_R = {
+			group = "gloves",
+			part = "RightLowerArm",
+			slot = "gloves",
+		},
+		GloveStrap_L = {
+			group = "gloves",
+			part = "LeftLowerArm",
+			slot = "gloveTrim",
+		},
+		GloveStrap_R = {
+			group = "gloves",
+			part = "RightLowerArm",
+			slot = "gloveTrim",
+		},
+		Glove_L = {
+			group = "gloves",
+			part = "LeftHand",
+			slot = "gloves",
+		},
+		Glove_R = {
+			group = "gloves",
+			part = "RightHand",
+			slot = "gloves",
+		},
+		ShoeCollar_L = {
+			group = "shoes",
+			part = "LeftLowerLeg",
+			slot = "shoes",
+		},
+		ShoeCollar_R = {
+			group = "shoes",
+			part = "RightLowerLeg",
+			slot = "shoes",
+		},
+		ShoeLaces_L = {
+			group = "shoes",
+			part = "LeftFoot",
+			slot = "laces",
+		},
+		ShoeLaces_R = {
+			group = "shoes",
+			part = "RightFoot",
+			slot = "laces",
+		},
+		Sole_L = {
+			group = "shoes",
+			part = "LeftFoot",
+			slot = "soles",
+		},
+		Sole_R = {
+			group = "shoes",
+			part = "RightFoot",
+			slot = "soles",
+		},
+		Top = {
+			group = "top",
+			part = "UpperTorso",
+			slot = "top",
+		},
+		TopBand = {
+			group = "top",
+			part = "UpperTorso",
+			slot = "topTrim",
+		},
+		TrunkHemLong_L = {
+			group = "trunks",
+			part = "LeftUpperLeg",
+			slot = "trim",
+		},
+		TrunkHemLong_R = {
+			group = "trunks",
+			part = "RightUpperLeg",
+			slot = "trim",
+		},
+		TrunkHem_L = {
+			group = "trunks",
+			part = "LeftUpperLeg",
+			slot = "trim",
+		},
+		TrunkHem_R = {
+			group = "trunks",
+			part = "RightUpperLeg",
+			slot = "trim",
+		},
+		TrunkLegLong_L = {
+			group = "trunks",
+			part = "LeftUpperLeg",
+			slot = "trunks",
+		},
+		TrunkLegLong_R = {
+			group = "trunks",
+			part = "RightUpperLeg",
+			slot = "trunks",
+		},
+		TrunkLeg_L = {
+			group = "trunks",
+			part = "LeftUpperLeg",
+			slot = "trunks",
+		},
+		TrunkLeg_R = {
+			group = "trunks",
+			part = "RightUpperLeg",
+			slot = "trunks",
+		},
+		TrunkSeat = {
+			group = "trunks",
+			part = "LowerTorso",
+			slot = "trunks",
+		},
+		TrunkStripe_L = {
+			group = "trunks",
+			part = "LeftUpperLeg",
+			slot = "trim",
+		},
+		TrunkStripe_R = {
+			group = "trunks",
+			part = "RightUpperLeg",
+			slot = "trim",
+		},
+		Waistband = {
+			group = "trunks",
+			part = "LowerTorso",
+			slot = "trim",
+		},
+		WrapWrist_L = {
+			group = "wraps",
+			part = "LeftLowerArm",
+			slot = "wraps2",
+		},
+		WrapWrist_R = {
+			group = "wraps",
+			part = "RightLowerArm",
+			slot = "wraps2",
+		},
+		Wrap_L = {
+			group = "wraps",
+			part = "LeftHand",
+			slot = "wraps",
+		},
+		Wrap_R = {
+			group = "wraps",
+			part = "RightHand",
+			slot = "wraps",
+		},
+	},
+	sets = {
+		gloves = {
+			Gloves = {
+				"Glove",
+				"GloveCuff",
+				"GloveStrap",
+			},
+		},
+		shoes = {
+			["High-Top"] = {
+				"BootFoot",
+				"Sole",
+				"ShoeLaces",
+				"BootShaft",
+				"BootLaces",
+				"BootSock",
+			},
+			["Low-Top"] = {
+				"BootFoot",
+				"Sole",
+				"ShoeLaces",
+				"ShoeCollar",
+				"AnkleSock",
+			},
+		},
+		top = {
+			Top = {
+				"Top",
+				"TopBand",
+			},
+		},
+		trunks = {
+			Classic = {
+				"Waistband",
+				"TrunkSeat",
+				"TrunkLeg",
+			},
+			Long = {
+				"Waistband",
+				"TrunkSeat",
+				"TrunkLegLong",
+				"TrunkHemLong",
+			},
+			Pro = {
+				"Waistband",
+				"TrunkSeat",
+				"TrunkLeg",
+				"TrunkStripe",
+				"TrunkHem",
+			},
+			Striped = {
+				"Waistband",
+				"TrunkSeat",
+				"TrunkLeg",
+				"TrunkStripe",
+			},
+		},
+		wraps = {
+			Wraps = {
+				"Wrap",
+				"WrapWrist",
+			},
+		},
+	},
+	slots = {
+		"trunks",
+		"trim",
+		"gloves",
+		"gloveTrim",
+		"wraps",
+		"wraps2",
+		"shoes",
+		"soles",
+		"laces",
+		"socks",
+		"top",
+		"topTrim",
+	},
+	tiers = {
+		{
+			AnkleSock_L = {
+				mesh = 116246516199857,
+				nt = 240,
+				offset = { -0.0001, -0.5207, -0.0004 },
+				size = { 0.3569, 0.3107, 0.3918 },
+			},
+			AnkleSock_R = {
+				mesh = 130855883042217,
+				nt = 240,
+				offset = { 0.0001, -0.5207, -0.0004 },
+				size = { 0.3569, 0.3107, 0.3918 },
+			},
+			BootFoot_L = {
+				mesh = 133662573456962,
+				nt = 192,
+				offset = { 0, 0.019, 0 },
+				size = { 0.4575, 0.4988, 0.8836 },
+			},
+			BootFoot_R = {
+				mesh = 103724559135971,
+				nt = 192,
+				offset = { 0, 0.019, 0 },
+				size = { 0.4575, 0.4988, 0.8836 },
+			},
+			BootLaces_L = {
+				mesh = 106636509013390,
+				nt = 96,
+				offset = { 0, -0.3531, -0.2233 },
+				size = { 0.164, 0.444, 0.0684 },
+			},
+			BootLaces_R = {
+				mesh = 85445377769150,
+				nt = 96,
+				offset = { 0, -0.3531, -0.2233 },
+				size = { 0.164, 0.444, 0.0684 },
+			},
+			BootShaft_L = {
+				mesh = 101082317781739,
+				nt = 272,
+				offset = { 0.0003, -0.3964, 0.0095 },
+				size = { 0.4845, 0.6852, 0.5166 },
+			},
+			BootShaft_R = {
+				mesh = 85472348062486,
+				nt = 272,
+				offset = { -0.0003, -0.3964, 0.0095 },
+				size = { 0.4845, 0.6852, 0.5166 },
+			},
+			BootSock_L = {
+				mesh = 114832808494764,
+				nt = 176,
+				offset = { 0.0002, -0.0577, 0.0119 },
+				size = { 0.4485, 0.1468, 0.4878 },
+			},
+			BootSock_R = {
+				mesh = 104380707165691,
+				nt = 176,
+				offset = { -0.0002, -0.0577, 0.0119 },
+				size = { 0.4485, 0.1468, 0.4878 },
+			},
+			GloveCuff_L = {
+				mesh = 113320760370453,
+				nt = 240,
+				offset = { 0.0156, -0.3745, -0.0524 },
+				size = { 0.5964, 0.638, 0.6947 },
+			},
+			GloveCuff_R = {
+				mesh = 88148400623933,
+				nt = 240,
+				offset = { -0.0156, -0.3745, -0.0524 },
+				size = { 0.5964, 0.638, 0.6947 },
+			},
+			GloveStrap_L = {
+				mesh = 132003440998622,
+				nt = 160,
+				offset = { -0.0001, -0.3475, -0.0117 },
+				size = { 0.506, 0.2176, 0.5632 },
+			},
+			GloveStrap_R = {
+				mesh = 113280505276807,
+				nt = 160,
+				offset = { 0.0001, -0.3475, -0.0117 },
+				size = { 0.506, 0.2176, 0.5632 },
+			},
+			Glove_L = {
+				mesh = 86353302762173,
+				nt = 416,
+				offset = { 0.0261, -0.1286, -0.01 },
+				size = { 0.5994, 0.95, 0.8074 },
+			},
+			Glove_R = {
+				mesh = 100201584132386,
+				nt = 416,
+				offset = { -0.0261, -0.1286, -0.01 },
+				size = { 0.5994, 0.95, 0.8074 },
+			},
+			ShoeCollar_L = {
+				mesh = 103679174506722,
+				nt = 240,
+				offset = { -0.0001, -0.5882, -0.0055 },
+				size = { 0.3972, 0.1777, 0.4287 },
+			},
+			ShoeCollar_R = {
+				mesh = 124830087503147,
+				nt = 240,
+				offset = { 0.0001, -0.5882, -0.0055 },
+				size = { 0.3972, 0.1777, 0.4287 },
+			},
+			ShoeLaces_L = {
+				mesh = 93110833100707,
+				nt = 96,
+				offset = { 0, 0.1411, -0.1191 },
+				size = { 0.1806, 0.1564, 0.3011 },
+			},
+			ShoeLaces_R = {
+				mesh = 96687088364188,
+				nt = 96,
+				offset = { 0, 0.1411, -0.1191 },
+				size = { 0.1806, 0.1564, 0.3011 },
+			},
+			Sole_L = {
+				mesh = 102244152041027,
+				nt = 192,
+				offset = { 0.0001, -0.1974, 0.0004 },
+				size = { 0.514, 0.102, 0.8748 },
+			},
+			Sole_R = {
+				mesh = 74547155321293,
+				nt = 192,
+				offset = { -0.0001, -0.1974, 0.0004 },
+				size = { 0.514, 0.102, 0.8748 },
+			},
+			Top = {
+				mesh = 137814501589723,
+				nt = 464,
+				offset = { 0, 0.6114, -0.0071 },
+				size = { 1.5396, 1.2917, 0.9342 },
+			},
+			TopBand = {
+				mesh = 85240130107266,
+				nt = 160,
+				offset = { 0, 0.0298, 0.0045 },
+				size = { 1.4434, 0.1385, 0.9005 },
+			},
+			TrunkHemLong_L = {
+				mesh = 87315504962363,
+				nt = 128,
+				offset = { -0.0249, -0.4499, -0.0157 },
+				size = { 0.7507, 0.1216, 0.7729 },
+			},
+			TrunkHemLong_R = {
+				mesh = 82561402623408,
+				nt = 128,
+				offset = { 0.0249, -0.4499, -0.0157 },
+				size = { 0.7507, 0.1216, 0.7729 },
+			},
+			TrunkHem_L = {
+				mesh = 111292842660674,
+				nt = 128,
+				offset = { -0.0272, -0.08, -0.0156 },
+				size = { 0.8126, 0.1215, 0.8491 },
+			},
+			TrunkHem_R = {
+				mesh = 71298455268553,
+				nt = 128,
+				offset = { 0.0272, -0.08, -0.0156 },
+				size = { 0.8126, 0.1215, 0.8491 },
+			},
+			TrunkLegLong_L = {
+				mesh = 117677923341624,
+				nt = 368,
+				offset = { -0.0175, 0.1269, -0.007 },
+				size = { 0.7665, 1.2652, 0.8309 },
+			},
+			TrunkLegLong_R = {
+				mesh = 97491039851556,
+				nt = 368,
+				offset = { 0.0175, 0.1269, -0.007 },
+				size = { 0.7665, 1.2652, 0.8309 },
+			},
+			TrunkLeg_L = {
+				mesh = 103132899846826,
+				nt = 304,
+				offset = { -0.0272, 0.3119, -0.011 },
+				size = { 0.7947, 0.8953, 0.8403 },
+			},
+			TrunkLeg_R = {
+				mesh = 99501128083897,
+				nt = 304,
+				offset = { 0.0272, 0.3119, -0.011 },
+				size = { 0.7947, 0.8953, 0.8403 },
+			},
+			TrunkSeat = {
+				mesh = 83105524019252,
+				nt = 312,
+				offset = { 0, -0.1723, -0.002 },
+				size = { 1.6018, 0.695, 1.1671 },
+			},
+			TrunkStripe_L = {
+				mesh = 81046497619499,
+				nt = 48,
+				offset = { -0.4012, 0.1237, -0.0108 },
+				size = { 0.0608, 0.4814, 0.1202 },
+			},
+			TrunkStripe_R = {
+				mesh = 102113354841187,
+				nt = 48,
+				offset = { 0.4012, 0.1237, -0.0108 },
+				size = { 0.0608, 0.4814, 0.1202 },
+			},
+			Waistband = {
+				mesh = 93821876390940,
+				nt = 336,
+				offset = { 0, 0.2566, -0.0185 },
+				size = { 1.4805, 0.3758, 1.0859 },
+			},
+			WrapWrist_L = {
+				mesh = 93146323165032,
+				nt = 336,
+				offset = { -0.0002, -0.4135, -0.0209 },
+				size = { 0.4315, 0.4961, 0.5495 },
+			},
+			WrapWrist_R = {
+				mesh = 139385220301640,
+				nt = 336,
+				offset = { 0.0002, -0.4135, -0.0209 },
+				size = { 0.4315, 0.4961, 0.5495 },
+			},
+			Wrap_L = {
+				mesh = 119287280962614,
+				nt = 304,
+				offset = { 0.007, 0.059, 0.0056 },
+				size = { 0.3636, 0.4427, 0.5947 },
+			},
+			Wrap_R = {
+				mesh = 100046140806949,
+				nt = 304,
+				offset = { -0.007, 0.059, 0.0056 },
+				size = { 0.3636, 0.4427, 0.5947 },
+			},
+		},
+		{
+			AnkleSock_L = {
+				mesh = 135934294810458,
+				nt = 240,
+				offset = { -0.0001, -0.5207, -0.0045 },
+				size = { 0.366, 0.3107, 0.4005 },
+			},
+			AnkleSock_R = {
+				mesh = 80072219131587,
+				nt = 240,
+				offset = { 0.0001, -0.5207, -0.0045 },
+				size = { 0.366, 0.3107, 0.4005 },
+			},
+			BootFoot_L = {
+				mesh = 133662573456962,
+				nt = 192,
+				offset = { 0, 0.019, 0 },
+				size = { 0.4575, 0.4988, 0.8836 },
+			},
+			BootFoot_R = {
+				mesh = 103724559135971,
+				nt = 192,
+				offset = { 0, 0.019, 0 },
+				size = { 0.4575, 0.4988, 0.8836 },
+			},
+			BootLaces_L = {
+				mesh = 133801591059231,
+				nt = 96,
+				offset = { 0, -0.3531, -0.2338 },
+				size = { 0.164, 0.444, 0.0736 },
+			},
+			BootLaces_R = {
+				mesh = 126795305641209,
+				nt = 96,
+				offset = { 0, -0.3531, -0.2338 },
+				size = { 0.164, 0.444, 0.0736 },
+			},
+			BootShaft_L = {
+				mesh = 74956534043021,
+				nt = 272,
+				offset = { 0.0006, -0.3964, 0.0076 },
+				size = { 0.5012, 0.6852, 0.5415 },
+			},
+			BootShaft_R = {
+				mesh = 111779138443440,
+				nt = 272,
+				offset = { -0.0006, -0.3964, 0.0076 },
+				size = { 0.5012, 0.6852, 0.5415 },
+			},
+			BootSock_L = {
+				mesh = 91453337204797,
+				nt = 176,
+				offset = { 0.0005, -0.0577, 0.0111 },
+				size = { 0.4649, 0.1468, 0.5168 },
+			},
+			BootSock_R = {
+				mesh = 86891816497087,
+				nt = 176,
+				offset = { -0.0005, -0.0577, 0.0111 },
+				size = { 0.4649, 0.1468, 0.5168 },
+			},
+			GloveCuff_L = {
+				mesh = 127113199885691,
+				nt = 240,
+				offset = { 0.0106, -0.3745, -0.0488 },
+				size = { 0.6063, 0.638, 0.7021 },
+			},
+			GloveCuff_R = {
+				mesh = 79195865053321,
+				nt = 240,
+				offset = { -0.0106, -0.3745, -0.0488 },
+				size = { 0.6063, 0.638, 0.7021 },
+			},
+			GloveStrap_L = {
+				mesh = 108159816013251,
+				nt = 160,
+				offset = { -0.0003, -0.3475, -0.0093 },
+				size = { 0.5187, 0.2176, 0.5701 },
+			},
+			GloveStrap_R = {
+				mesh = 74553417395989,
+				nt = 160,
+				offset = { 0.0003, -0.3475, -0.0093 },
+				size = { 0.5187, 0.2176, 0.5701 },
+			},
+			Glove_L = {
+				mesh = 86353302762173,
+				nt = 416,
+				offset = { 0.0272, -0.1286, -0.0113 },
+				size = { 0.5994, 0.95, 0.8074 },
+			},
+			Glove_R = {
+				mesh = 100201584132386,
+				nt = 416,
+				offset = { -0.0272, -0.1286, -0.0113 },
+				size = { 0.5994, 0.95, 0.8074 },
+			},
+			ShoeCollar_L = {
+				mesh = 109301544805807,
+				nt = 240,
+				offset = { -0.0001, -0.5882, -0.0106 },
+				size = { 0.4033, 0.1777, 0.4343 },
+			},
+			ShoeCollar_R = {
+				mesh = 91214508350459,
+				nt = 240,
+				offset = { 0.0001, -0.5882, -0.0106 },
+				size = { 0.4033, 0.1777, 0.4343 },
+			},
+			ShoeLaces_L = {
+				mesh = 93110833100707,
+				nt = 96,
+				offset = { 0, 0.1411, -0.1191 },
+				size = { 0.1806, 0.1564, 0.3011 },
+			},
+			ShoeLaces_R = {
+				mesh = 96687088364188,
+				nt = 96,
+				offset = { 0, 0.1411, -0.1191 },
+				size = { 0.1806, 0.1564, 0.3011 },
+			},
+			Sole_L = {
+				mesh = 102244152041027,
+				nt = 192,
+				offset = { 0.0001, -0.1974, 0.0004 },
+				size = { 0.514, 0.102, 0.8748 },
+			},
+			Sole_R = {
+				mesh = 74547155321293,
+				nt = 192,
+				offset = { -0.0001, -0.1974, 0.0004 },
+				size = { 0.514, 0.102, 0.8748 },
+			},
+			Top = {
+				mesh = 137876450340753,
+				nt = 464,
+				offset = { 0, 0.6099, -0.0076 },
+				size = { 1.5774, 1.316, 0.9957 },
+			},
+			TopBand = {
+				mesh = 140471749480701,
+				nt = 160,
+				offset = { 0, 0.0162, 0.0089 },
+				size = { 1.4842, 0.1386, 0.9275 },
+			},
+			TrunkHemLong_L = {
+				mesh = 125921261726382,
+				nt = 128,
+				offset = { -0.0273, -0.4499, -0.0185 },
+				size = { 0.7681, 0.1218, 0.8045 },
+			},
+			TrunkHemLong_R = {
+				mesh = 97489665035412,
+				nt = 128,
+				offset = { 0.0273, -0.4499, -0.0185 },
+				size = { 0.7681, 0.1218, 0.8045 },
+			},
+			TrunkHem_L = {
+				mesh = 110714157107509,
+				nt = 128,
+				offset = { -0.0307, -0.08, -0.0194 },
+				size = { 0.8354, 0.1215, 0.8844 },
+			},
+			TrunkHem_R = {
+				mesh = 110865751681938,
+				nt = 128,
+				offset = { 0.0307, -0.08, -0.0194 },
+				size = { 0.8354, 0.1215, 0.8844 },
+			},
+			TrunkLegLong_L = {
+				mesh = 112479821734164,
+				nt = 368,
+				offset = { -0.0226, 0.1269, -0.0065 },
+				size = { 0.779, 1.2652, 0.8724 },
+			},
+			TrunkLegLong_R = {
+				mesh = 82991578191406,
+				nt = 368,
+				offset = { 0.0226, 0.1269, -0.0065 },
+				size = { 0.779, 1.2652, 0.8724 },
+			},
+			TrunkLeg_L = {
+				mesh = 106662672716854,
+				nt = 304,
+				offset = { -0.0307, 0.3119, -0.0114 },
+				size = { 0.8174, 0.8953, 0.8835 },
+			},
+			TrunkLeg_R = {
+				mesh = 95392822678356,
+				nt = 304,
+				offset = { 0.0307, 0.3119, -0.0114 },
+				size = { 0.8174, 0.8953, 0.8835 },
+			},
+			TrunkSeat = {
+				mesh = 126307098283763,
+				nt = 312,
+				offset = { 0, -0.1723, -0.0072 },
+				size = { 1.6018, 0.695, 1.1673 },
+			},
+			TrunkStripe_L = {
+				mesh = 87498823389092,
+				nt = 48,
+				offset = { -0.4086, 0.1238, -0.0197 },
+				size = { 0.0755, 0.4815, 0.1134 },
+			},
+			TrunkStripe_R = {
+				mesh = 123708485166984,
+				nt = 48,
+				offset = { 0.4086, 0.1238, -0.0197 },
+				size = { 0.0755, 0.4815, 0.1134 },
+			},
+			Waistband = {
+				mesh = 136695235593284,
+				nt = 336,
+				offset = { 0, 0.2566, -0.0237 },
+				size = { 1.4718, 0.3758, 1.0858 },
+			},
+			WrapWrist_L = {
+				mesh = 132781594840085,
+				nt = 336,
+				offset = { -0.0004, -0.4135, -0.0209 },
+				size = { 0.4478, 0.4961, 0.5495 },
+			},
+			WrapWrist_R = {
+				mesh = 73207032480075,
+				nt = 336,
+				offset = { 0.0004, -0.4135, -0.0209 },
+				size = { 0.4478, 0.4961, 0.5495 },
+			},
+			Wrap_L = {
+				mesh = 119287280962614,
+				nt = 304,
+				offset = { 0.008, 0.059, 0.0043 },
+				size = { 0.3636, 0.4427, 0.5947 },
+			},
+			Wrap_R = {
+				mesh = 100046140806949,
+				nt = 304,
+				offset = { -0.008, 0.059, 0.0043 },
+				size = { 0.3636, 0.4427, 0.5947 },
+			},
+		},
+		{
+			AnkleSock_L = {
+				mesh = 109664429999394,
+				nt = 240,
+				offset = { 0, -0.5207, -0.0079 },
+				size = { 0.3752, 0.3107, 0.4092 },
+			},
+			AnkleSock_R = {
+				mesh = 110695696585897,
+				nt = 240,
+				offset = { 0, -0.5207, -0.0079 },
+				size = { 0.3752, 0.3107, 0.4092 },
+			},
+			BootFoot_L = {
+				mesh = 133662573456962,
+				nt = 192,
+				offset = { 0, 0.019, 0 },
+				size = { 0.4575, 0.4988, 0.8836 },
+			},
+			BootFoot_R = {
+				mesh = 103724559135971,
+				nt = 192,
+				offset = { 0, 0.019, 0 },
+				size = { 0.4575, 0.4988, 0.8836 },
+			},
+			BootLaces_L = {
+				mesh = 89620706036122,
+				nt = 96,
+				offset = { 0, -0.3531, -0.2438 },
+				size = { 0.164, 0.444, 0.079 },
+			},
+			BootLaces_R = {
+				mesh = 88514874295482,
+				nt = 96,
+				offset = { 0, -0.3531, -0.2438 },
+				size = { 0.164, 0.444, 0.079 },
+			},
+			BootShaft_L = {
+				mesh = 120213736036234,
+				nt = 272,
+				offset = { 0.0009, -0.3964, 0.0069 },
+				size = { 0.5174, 0.6852, 0.5675 },
+			},
+			BootShaft_R = {
+				mesh = 76083805455963,
+				nt = 272,
+				offset = { -0.0009, -0.3964, 0.0069 },
+				size = { 0.5174, 0.6852, 0.5675 },
+			},
+			BootSock_L = {
+				mesh = 101840853078488,
+				nt = 176,
+				offset = { 0.0008, -0.0577, 0.0101 },
+				size = { 0.4807, 0.1468, 0.5441 },
+			},
+			BootSock_R = {
+				mesh = 76303894047985,
+				nt = 176,
+				offset = { -0.0008, -0.0577, 0.0101 },
+				size = { 0.4807, 0.1468, 0.5441 },
+			},
+			GloveCuff_L = {
+				mesh = 118702566046125,
+				nt = 240,
+				offset = { 0.0059, -0.3745, -0.0451 },
+				size = { 0.6157, 0.638, 0.7095 },
+			},
+			GloveCuff_R = {
+				mesh = 99733524440675,
+				nt = 240,
+				offset = { -0.0059, -0.3745, -0.0451 },
+				size = { 0.6157, 0.638, 0.7095 },
+			},
+			GloveStrap_L = {
+				mesh = 108041924803212,
+				nt = 160,
+				offset = { -0.0005, -0.3475, -0.007 },
+				size = { 0.5311, 0.2176, 0.5771 },
+			},
+			GloveStrap_R = {
+				mesh = 90354786728191,
+				nt = 160,
+				offset = { 0.0005, -0.3475, -0.007 },
+				size = { 0.5311, 0.2176, 0.5771 },
+			},
+			Glove_L = {
+				mesh = 86353302762173,
+				nt = 416,
+				offset = { 0.0282, -0.1286, -0.0126 },
+				size = { 0.5994, 0.95, 0.8074 },
+			},
+			Glove_R = {
+				mesh = 100201584132386,
+				nt = 416,
+				offset = { -0.0282, -0.1286, -0.0126 },
+				size = { 0.5994, 0.95, 0.8074 },
+			},
+			ShoeCollar_L = {
+				mesh = 81449706590363,
+				nt = 240,
+				offset = { -0.0001, -0.5882, -0.015 },
+				size = { 0.4094, 0.1777, 0.4398 },
+			},
+			ShoeCollar_R = {
+				mesh = 83756803048074,
+				nt = 240,
+				offset = { 0.0001, -0.5882, -0.015 },
+				size = { 0.4094, 0.1777, 0.4398 },
+			},
+			ShoeLaces_L = {
+				mesh = 93110833100707,
+				nt = 96,
+				offset = { 0, 0.1411, -0.1191 },
+				size = { 0.1806, 0.1564, 0.3011 },
+			},
+			ShoeLaces_R = {
+				mesh = 96687088364188,
+				nt = 96,
+				offset = { 0, 0.1411, -0.1191 },
+				size = { 0.1806, 0.1564, 0.3011 },
+			},
+			Sole_L = {
+				mesh = 102244152041027,
+				nt = 192,
+				offset = { 0.0001, -0.1974, 0.0004 },
+				size = { 0.514, 0.102, 0.8748 },
+			},
+			Sole_R = {
+				mesh = 74547155321293,
+				nt = 192,
+				offset = { -0.0001, -0.1974, 0.0004 },
+				size = { 0.514, 0.102, 0.8748 },
+			},
+			Top = {
+				mesh = 126644781939617,
+				nt = 464,
+				offset = { 0, 0.6082, -0.0084 },
+				size = { 1.6146, 1.34, 1.0589 },
+			},
+			TopBand = {
+				mesh = 112449160512491,
+				nt = 160,
+				offset = { 0, 0.0025, 0.0163 },
+				size = { 1.5236, 0.1386, 0.9616 },
+			},
+			TrunkHemLong_L = {
+				mesh = 128942940746580,
+				nt = 128,
+				offset = { -0.0285, -0.4498, -0.019 },
+				size = { 0.7859, 0.1219, 0.8373 },
+			},
+			TrunkHemLong_R = {
+				mesh = 87160542480571,
+				nt = 128,
+				offset = { 0.0285, -0.4498, -0.019 },
+				size = { 0.7859, 0.1219, 0.8373 },
+			},
+			TrunkHem_L = {
+				mesh = 117995698714213,
+				nt = 128,
+				offset = { -0.0325, -0.08, -0.0202 },
+				size = { 0.8592, 0.1214, 0.9303 },
+			},
+			TrunkHem_R = {
+				mesh = 105121056517654,
+				nt = 128,
+				offset = { 0.0325, -0.08, -0.0202 },
+				size = { 0.8592, 0.1214, 0.9303 },
+			},
+			TrunkLegLong_L = {
+				mesh = 90681640815628,
+				nt = 368,
+				offset = { -0.0249, 0.1269, -0.0091 },
+				size = { 0.7993, 1.2652, 0.9059 },
+			},
+			TrunkLegLong_R = {
+				mesh = 140117040993881,
+				nt = 368,
+				offset = { 0.0249, 0.1269, -0.0091 },
+				size = { 0.7993, 1.2652, 0.9059 },
+			},
+			TrunkLeg_L = {
+				mesh = 132825187065314,
+				nt = 304,
+				offset = { -0.0325, 0.3119, -0.016 },
+				size = { 0.8413, 0.8953, 0.9209 },
+			},
+			TrunkLeg_R = {
+				mesh = 107470342726752,
+				nt = 304,
+				offset = { 0.0325, 0.3119, -0.016 },
+				size = { 0.8413, 0.8953, 0.9209 },
+			},
+			TrunkSeat = {
+				mesh = 77339951505142,
+				nt = 312,
+				offset = { 0, -0.1723, -0.0121 },
+				size = { 1.6019, 0.695, 1.1692 },
+			},
+			TrunkStripe_L = {
+				mesh = 102886112512716,
+				nt = 48,
+				offset = { -0.4139, 0.1239, -0.0191 },
+				size = { 0.0936, 0.4816, 0.1393 },
+			},
+			TrunkStripe_R = {
+				mesh = 119784910502758,
+				nt = 48,
+				offset = { 0.4139, 0.1239, -0.0191 },
+				size = { 0.0936, 0.4816, 0.1393 },
+			},
+			Waistband = {
+				mesh = 101108820698229,
+				nt = 336,
+				offset = { 0, 0.2566, -0.0268 },
+				size = { 1.4624, 0.3758, 1.0939 },
+			},
+			WrapWrist_L = {
+				mesh = 89735963080215,
+				nt = 336,
+				offset = { -0.0006, -0.4135, -0.0209 },
+				size = { 0.4626, 0.4961, 0.5495 },
+			},
+			WrapWrist_R = {
+				mesh = 120331705308367,
+				nt = 336,
+				offset = { 0.0006, -0.4135, -0.0209 },
+				size = { 0.4626, 0.4961, 0.5495 },
+			},
+			Wrap_L = {
+				mesh = 119287280962614,
+				nt = 304,
+				offset = { 0.009, 0.059, 0.003 },
+				size = { 0.3636, 0.4427, 0.5947 },
+			},
+			Wrap_R = {
+				mesh = 100046140806949,
+				nt = 304,
+				offset = { -0.009, 0.059, 0.003 },
+				size = { 0.3636, 0.4427, 0.5947 },
+			},
+		},
+		{
+			AnkleSock_L = {
+				mesh = 115813151682740,
+				nt = 240,
+				offset = { -0.0001, -0.5207, -0.0096 },
+				size = { 0.3843, 0.3107, 0.418 },
+			},
+			AnkleSock_R = {
+				mesh = 136497703449120,
+				nt = 240,
+				offset = { 0.0001, -0.5207, -0.0096 },
+				size = { 0.3843, 0.3107, 0.418 },
+			},
+			BootFoot_L = {
+				mesh = 133662573456962,
+				nt = 192,
+				offset = { 0, 0.019, 0 },
+				size = { 0.4575, 0.4988, 0.8836 },
+			},
+			BootFoot_R = {
+				mesh = 103724559135971,
+				nt = 192,
+				offset = { 0, 0.019, 0 },
+				size = { 0.4575, 0.4988, 0.8836 },
+			},
+			BootLaces_L = {
+				mesh = 115633804733769,
+				nt = 96,
+				offset = { 0, -0.3531, -0.2518 },
+				size = { 0.164, 0.444, 0.0843 },
+			},
+			BootLaces_R = {
+				mesh = 138253281472466,
+				nt = 96,
+				offset = { 0, -0.3531, -0.2518 },
+				size = { 0.164, 0.444, 0.0843 },
+			},
+			BootShaft_L = {
+				mesh = 79790341378268,
+				nt = 272,
+				offset = { 0.001, -0.3964, 0.0079 },
+				size = { 0.5328, 0.6852, 0.5929 },
+			},
+			BootShaft_R = {
+				mesh = 110833145222389,
+				nt = 272,
+				offset = { -0.001, -0.3964, 0.0079 },
+				size = { 0.5328, 0.6852, 0.5929 },
+			},
+			BootSock_L = {
+				mesh = 139140298454343,
+				nt = 176,
+				offset = { 0.0015, -0.0577, 0.0107 },
+				size = { 0.4969, 0.1468, 0.5706 },
+			},
+			BootSock_R = {
+				mesh = 86814859784175,
+				nt = 176,
+				offset = { -0.0015, -0.0577, 0.0107 },
+				size = { 0.4969, 0.1468, 0.5706 },
+			},
+			GloveCuff_L = {
+				mesh = 128065179566135,
+				nt = 240,
+				offset = { 0.0015, -0.3745, -0.0414 },
+				size = { 0.6245, 0.638, 0.7168 },
+			},
+			GloveCuff_R = {
+				mesh = 117845673881017,
+				nt = 240,
+				offset = { -0.0015, -0.3745, -0.0414 },
+				size = { 0.6245, 0.638, 0.7168 },
+			},
+			GloveStrap_L = {
+				mesh = 136825921650616,
+				nt = 160,
+				offset = { -0.0006, -0.3475, -0.0046 },
+				size = { 0.5433, 0.2176, 0.5839 },
+			},
+			GloveStrap_R = {
+				mesh = 105345327605794,
+				nt = 160,
+				offset = { 0.0006, -0.3475, -0.0046 },
+				size = { 0.5433, 0.2176, 0.5839 },
+			},
+			Glove_L = {
+				mesh = 86353302762173,
+				nt = 416,
+				offset = { 0.0292, -0.1286, -0.0139 },
+				size = { 0.5994, 0.95, 0.8074 },
+			},
+			Glove_R = {
+				mesh = 100201584132386,
+				nt = 416,
+				offset = { -0.0292, -0.1286, -0.0139 },
+				size = { 0.5994, 0.95, 0.8074 },
+			},
+			ShoeCollar_L = {
+				mesh = 94082041561383,
+				nt = 240,
+				offset = { -0.0001, -0.5882, -0.0176 },
+				size = { 0.4155, 0.1777, 0.4454 },
+			},
+			ShoeCollar_R = {
+				mesh = 90781080031573,
+				nt = 240,
+				offset = { 0.0001, -0.5882, -0.0176 },
+				size = { 0.4155, 0.1777, 0.4454 },
+			},
+			ShoeLaces_L = {
+				mesh = 93110833100707,
+				nt = 96,
+				offset = { 0, 0.1411, -0.1191 },
+				size = { 0.1806, 0.1564, 0.3011 },
+			},
+			ShoeLaces_R = {
+				mesh = 96687088364188,
+				nt = 96,
+				offset = { 0, 0.1411, -0.1191 },
+				size = { 0.1806, 0.1564, 0.3011 },
+			},
+			Sole_L = {
+				mesh = 102244152041027,
+				nt = 192,
+				offset = { 0.0001, -0.1974, 0.0004 },
+				size = { 0.514, 0.102, 0.8748 },
+			},
+			Sole_R = {
+				mesh = 74547155321293,
+				nt = 192,
+				offset = { -0.0001, -0.1974, 0.0004 },
+				size = { 0.514, 0.102, 0.8748 },
+			},
+			Top = {
+				mesh = 123091217280800,
+				nt = 464,
+				offset = { 0, 0.6063, -0.009 },
+				size = { 1.6512, 1.3636, 1.119 },
+			},
+			TopBand = {
+				mesh = 136670354067976,
+				nt = 160,
+				offset = { 0, -0.0112, 0.0252 },
+				size = { 1.56, 0.1386, 0.9932 },
+			},
+			TrunkHemLong_L = {
+				mesh = 96398423571887,
+				nt = 128,
+				offset = { -0.0289, -0.4498, -0.0196 },
+				size = { 0.8032, 0.1219, 0.8697 },
+			},
+			TrunkHemLong_R = {
+				mesh = 116089070585108,
+				nt = 128,
+				offset = { 0.0289, -0.4498, -0.0196 },
+				size = { 0.8032, 0.1219, 0.8697 },
+			},
+			TrunkHem_L = {
+				mesh = 101547283026921,
+				nt = 128,
+				offset = { -0.0338, -0.08, -0.0191 },
+				size = { 0.8773, 0.1214, 0.9693 },
+			},
+			TrunkHem_R = {
+				mesh = 100859647502245,
+				nt = 128,
+				offset = { 0.0338, -0.08, -0.0191 },
+				size = { 0.8773, 0.1214, 0.9693 },
+			},
+			TrunkLegLong_L = {
+				mesh = 111046227647027,
+				nt = 368,
+				offset = { -0.0259, 0.1269, -0.0096 },
+				size = { 0.8197, 1.2652, 0.9434 },
+			},
+			TrunkLegLong_R = {
+				mesh = 92695357604931,
+				nt = 368,
+				offset = { 0.0259, 0.1269, -0.0096 },
+				size = { 0.8197, 1.2652, 0.9434 },
+			},
+			TrunkLeg_L = {
+				mesh = 84687365294804,
+				nt = 304,
+				offset = { -0.0338, 0.3119, -0.016 },
+				size = { 0.8594, 0.8953, 0.9575 },
+			},
+			TrunkLeg_R = {
+				mesh = 85263395870872,
+				nt = 304,
+				offset = { 0.0338, 0.3119, -0.016 },
+				size = { 0.8594, 0.8953, 0.9575 },
+			},
+			TrunkSeat = {
+				mesh = 83990478198747,
+				nt = 312,
+				offset = { 0, -0.1723, -0.0152 },
+				size = { 1.6019, 0.695, 1.1755 },
+			},
+			TrunkStripe_L = {
+				mesh = 72495745730273,
+				nt = 48,
+				offset = { -0.4185, 0.1241, -0.009 },
+				size = { 0.1041, 0.4818, 0.1336 },
+			},
+			TrunkStripe_R = {
+				mesh = 112667820785348,
+				nt = 48,
+				offset = { 0.4185, 0.1241, -0.009 },
+				size = { 0.1041, 0.4818, 0.1336 },
+			},
+			Waistband = {
+				mesh = 92471778998777,
+				nt = 336,
+				offset = { 0, 0.2566, -0.0266 },
+				size = { 1.4536, 0.3758, 1.1098 },
+			},
+			WrapWrist_L = {
+				mesh = 108770100581039,
+				nt = 336,
+				offset = { -0.0007, -0.4135, -0.0188 },
+				size = { 0.4765, 0.4961, 0.5535 },
+			},
+			WrapWrist_R = {
+				mesh = 117585057929862,
+				nt = 336,
+				offset = { 0.0007, -0.4135, -0.0188 },
+				size = { 0.4765, 0.4961, 0.5535 },
+			},
+			Wrap_L = {
+				mesh = 119287280962614,
+				nt = 304,
+				offset = { 0.0101, 0.059, 0.0017 },
+				size = { 0.3636, 0.4427, 0.5947 },
+			},
+			Wrap_R = {
+				mesh = 100046140806949,
+				nt = 304,
+				offset = { -0.0101, 0.059, 0.0017 },
+				size = { 0.3636, 0.4427, 0.5947 },
+			},
+		},
+		{
+			AnkleSock_L = {
+				mesh = 133929700870247,
+				nt = 240,
+				offset = { -0.0001, -0.5207, -0.0098 },
+				size = { 0.3935, 0.3107, 0.4271 },
+			},
+			AnkleSock_R = {
+				mesh = 121003141865733,
+				nt = 240,
+				offset = { 0.0001, -0.5207, -0.0098 },
+				size = { 0.3935, 0.3107, 0.4271 },
+			},
+			BootFoot_L = {
+				mesh = 133662573456962,
+				nt = 192,
+				offset = { 0, 0.019, 0 },
+				size = { 0.4575, 0.4988, 0.8836 },
+			},
+			BootFoot_R = {
+				mesh = 103724559135971,
+				nt = 192,
+				offset = { 0, 0.019, 0 },
+				size = { 0.4575, 0.4988, 0.8836 },
+			},
+			BootLaces_L = {
+				mesh = 74630965323659,
+				nt = 96,
+				offset = { 0, -0.3531, -0.2582 },
+				size = { 0.164, 0.444, 0.0894 },
+			},
+			BootLaces_R = {
+				mesh = 81193154377917,
+				nt = 96,
+				offset = { 0, -0.3531, -0.2582 },
+				size = { 0.164, 0.444, 0.0894 },
+			},
+			BootShaft_L = {
+				mesh = 111245935578465,
+				nt = 272,
+				offset = { 0.001, -0.3964, 0.0098 },
+				size = { 0.5477, 0.6852, 0.6168 },
+			},
+			BootShaft_R = {
+				mesh = 75998682530150,
+				nt = 272,
+				offset = { -0.001, -0.3964, 0.0098 },
+				size = { 0.5477, 0.6852, 0.6168 },
+			},
+			BootSock_L = {
+				mesh = 96951626922477,
+				nt = 176,
+				offset = { 0.0024, -0.0577, 0.0123 },
+				size = { 0.5134, 0.1468, 0.5951 },
+			},
+			BootSock_R = {
+				mesh = 134536223618561,
+				nt = 176,
+				offset = { -0.0024, -0.0577, 0.0123 },
+				size = { 0.5134, 0.1468, 0.5951 },
+			},
+			GloveCuff_L = {
+				mesh = 87967146456726,
+				nt = 240,
+				offset = { -0.0015, -0.3745, -0.0377 },
+				size = { 0.6348, 0.638, 0.7242 },
+			},
+			GloveCuff_R = {
+				mesh = 139505174240731,
+				nt = 240,
+				offset = { 0.0015, -0.3745, -0.0377 },
+				size = { 0.6348, 0.638, 0.7242 },
+			},
+			GloveStrap_L = {
+				mesh = 87044841226574,
+				nt = 160,
+				offset = { -0.0005, -0.3475, -0.0022 },
+				size = { 0.5552, 0.2176, 0.5908 },
+			},
+			GloveStrap_R = {
+				mesh = 73324054692162,
+				nt = 160,
+				offset = { 0.0005, -0.3475, -0.0022 },
+				size = { 0.5552, 0.2176, 0.5908 },
+			},
+			Glove_L = {
+				mesh = 86353302762173,
+				nt = 416,
+				offset = { 0.0303, -0.1286, -0.0152 },
+				size = { 0.5994, 0.95, 0.8074 },
+			},
+			Glove_R = {
+				mesh = 100201584132386,
+				nt = 416,
+				offset = { -0.0303, -0.1286, -0.0152 },
+				size = { 0.5994, 0.95, 0.8074 },
+			},
+			ShoeCollar_L = {
+				mesh = 77052856089347,
+				nt = 240,
+				offset = { -0.0001, -0.5882, -0.0186 },
+				size = { 0.4215, 0.1777, 0.4509 },
+			},
+			ShoeCollar_R = {
+				mesh = 125835457382557,
+				nt = 240,
+				offset = { 0.0001, -0.5882, -0.0186 },
+				size = { 0.4215, 0.1777, 0.4509 },
+			},
+			ShoeLaces_L = {
+				mesh = 93110833100707,
+				nt = 96,
+				offset = { 0, 0.1411, -0.1191 },
+				size = { 0.1806, 0.1564, 0.3011 },
+			},
+			ShoeLaces_R = {
+				mesh = 96687088364188,
+				nt = 96,
+				offset = { 0, 0.1411, -0.1191 },
+				size = { 0.1806, 0.1564, 0.3011 },
+			},
+			Sole_L = {
+				mesh = 102244152041027,
+				nt = 192,
+				offset = { 0.0001, -0.1974, 0.0004 },
+				size = { 0.514, 0.102, 0.8748 },
+			},
+			Sole_R = {
+				mesh = 74547155321293,
+				nt = 192,
+				offset = { -0.0001, -0.1974, 0.0004 },
+				size = { 0.514, 0.102, 0.8748 },
+			},
+			Top = {
+				mesh = 132475041271562,
+				nt = 464,
+				offset = { 0, 0.6043, -0.0099 },
+				size = { 1.6875, 1.387, 1.1769 },
+			},
+			TopBand = {
+				mesh = 120080519171992,
+				nt = 160,
+				offset = { 0, -0.0249, 0.035 },
+				size = { 1.5924, 0.1386, 1.024 },
+			},
+			TrunkHemLong_L = {
+				mesh = 128496172603778,
+				nt = 128,
+				offset = { -0.0273, -0.4498, -0.0194 },
+				size = { 0.8269, 0.122, 0.9002 },
+			},
+			TrunkHemLong_R = {
+				mesh = 114784473480867,
+				nt = 128,
+				offset = { 0.0273, -0.4498, -0.0194 },
+				size = { 0.8269, 0.122, 0.9002 },
+			},
+			TrunkHem_L = {
+				mesh = 86570538033263,
+				nt = 128,
+				offset = { -0.0327, -0.08, -0.0197 },
+				size = { 0.9001, 0.1214, 1.015 },
+			},
+			TrunkHem_R = {
+				mesh = 95295369505749,
+				nt = 128,
+				offset = { 0.0327, -0.08, -0.0197 },
+				size = { 0.9001, 0.1214, 1.015 },
+			},
+			TrunkLegLong_L = {
+				mesh = 89850918894438,
+				nt = 368,
+				offset = { -0.0273, 0.1269, -0.0086 },
+				size = { 0.8349, 1.2652, 0.9808 },
+			},
+			TrunkLegLong_R = {
+				mesh = 96423085914750,
+				nt = 368,
+				offset = { 0.0273, 0.1269, -0.0086 },
+				size = { 0.8349, 1.2652, 0.9808 },
+			},
+			TrunkLeg_L = {
+				mesh = 73609996109283,
+				nt = 304,
+				offset = { -0.0327, 0.3119, -0.0179 },
+				size = { 0.8822, 0.8953, 1.0008 },
+			},
+			TrunkLeg_R = {
+				mesh = 131154787938603,
+				nt = 304,
+				offset = { 0.0327, 0.3119, -0.0179 },
+				size = { 0.8822, 0.8953, 1.0008 },
+			},
+			TrunkSeat = {
+				mesh = 132457725123189,
+				nt = 312,
+				offset = { 0, -0.1723, -0.0174 },
+				size = { 1.6019, 0.695, 1.1817 },
+			},
+			TrunkStripe_L = {
+				mesh = 101655842601476,
+				nt = 48,
+				offset = { -0.421, 0.1241, 0.0065 },
+				size = { 0.1219, 0.4819, 0.1336 },
+			},
+			TrunkStripe_R = {
+				mesh = 134827888106530,
+				nt = 48,
+				offset = { 0.421, 0.1241, 0.0065 },
+				size = { 0.1219, 0.4819, 0.1336 },
+			},
+			Waistband = {
+				mesh = 107026485489146,
+				nt = 336,
+				offset = { 0, 0.2566, -0.0256 },
+				size = { 1.4446, 0.3758, 1.1249 },
+			},
+			WrapWrist_L = {
+				mesh = 84158394671924,
+				nt = 336,
+				offset = { -0.0007, -0.4135, -0.0156 },
+				size = { 0.4899, 0.4961, 0.56 },
+			},
+			WrapWrist_R = {
+				mesh = 119423835355489,
+				nt = 336,
+				offset = { 0.0007, -0.4135, -0.0156 },
+				size = { 0.4899, 0.4961, 0.56 },
+			},
+			Wrap_L = {
+				mesh = 119287280962614,
+				nt = 304,
+				offset = { 0.0111, 0.059, 0.0004 },
+				size = { 0.3636, 0.4427, 0.5947 },
+			},
+			Wrap_R = {
+				mesh = 100046140806949,
+				nt = 304,
+				offset = { -0.0111, 0.059, 0.0004 },
+				size = { 0.3636, 0.4427, 0.5947 },
+			},
+		},
+	},
+	version = 1,
+}
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">HairAssetData</string>
           <string name="Source"><![CDATA[-- GENERATED by tools/hair/publish.py from tools/hair/out/*/style.json and the upload cache
@@ -22615,7 +24630,7 @@ return {
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">HairAssetKit</string>
           <string name="Source"><![CDATA[-- HairAssetKit: the pure half of the asset hair (tools/hair/CONTRACT.md; the client's HairAssets does the
@@ -23588,7 +25603,7 @@ return HK
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">Keymap</string>
           <string name="Source"><![CDATA[-- Keymap: every fight action, its default keys on keyboard + mouse and on a controller, and the player's
@@ -24034,7 +26049,7 @@ return Keymap
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">LookData</string>
           <string name="Source"><![CDATA[-- LookData: the exact inputs the client-side asset hair (and its generated fallback) reads, published by the
@@ -24743,7 +26758,7 @@ return LookData
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">Looks</string>
           <string name="Source"><![CDATA[-- Looks: everything about how a boxer looks (face, hair, body frame, attire, gloves).
@@ -25457,7 +27472,7 @@ return Looks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">MeshKit</string>
           <string name="Source"><![CDATA[-- MeshKit: pure-Luau mesh data and procedural modelling for the anatomy meshes (shared, deterministic).
@@ -28342,7 +30357,7 @@ return MeshKit
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="32">
         <Properties>
           <string name="Name">Moves</string>
           <string name="Source"><![CDATA[-- Moves: the special moves (data only; FightEngine runs them, FightAI picks them, FightClient /
@@ -28564,7 +30579,7 @@ return Moves
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="31">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">UI</string>
           <string name="Source"><![CDATA[-- UI: the game's design system - "fight night broadcast".
@@ -30868,15 +32883,15 @@ return UI
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="32">
+  <Item class="ServerScriptService" referent="34">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="33">
+    <Item class="Folder" referent="35">
       <Properties>
         <string name="Name">BoxerModules</string>
       </Properties>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">Ambient</string>
           <string name="Source"><![CDATA[-- Ambient: gym members, coaches and staff that bring the training complex to life.
@@ -31184,7 +33199,7 @@ return Ambient
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">Career</string>
           <string name="Source"><![CDATA[-- Career: character creation, fight offers, camps, economy, titles, promotions,
@@ -32502,7 +34517,7 @@ return Career
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">CityMap</string>
           <string name="Source"><![CDATA[-- CityMap: the neighbourhood around the gym, so the world outside feels like a real town.
@@ -34952,7 +36967,7 @@ return CityMap
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">DataManager</string>
           <string name="Source"><![CDATA[-- DataManager: loads/saves each player's career with DataStoreService.
@@ -35559,7 +37574,7 @@ return DataManager
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">FightAI</string>
           <string name="Source"><![CDATA[-- FightAI: adaptive opponent brain.
@@ -36042,7 +38057,7 @@ return FightAI
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">FightEngine</string>
           <string name="Source"><![CDATA[-- FightEngine: server-authoritative real-time boxing.
@@ -39520,7 +41535,7 @@ return FightEngine
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">GymDecor</string>
           <string name="Source"><![CDATA[-- GymDecor: everything that turns the training complex from a box into a real boxing gym.
@@ -41038,7 +43053,7 @@ return GymDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">MapBuilder</string>
           <string name="Source"><![CDATA[-- MapBuilder: builds the training complex entirely from parts.
@@ -42053,7 +44068,7 @@ return MapBuilder
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">Poser</string>
           <string name="Source"><![CDATA[-- Poser: puts a character (player or NPC) at a training spot in the right posture
@@ -42247,7 +44262,7 @@ return Poser
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="45">
         <Properties>
           <string name="Name">PvP</string>
           <string name="Source"><![CDATA[-- PvP: player vs player boxing in the same server.
@@ -42804,7 +44819,7 @@ return PvP
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="44">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">Training</string>
           <string name="Source"><![CDATA[-- Training: the advanced training system.
@@ -45350,7 +47365,7 @@ return Training
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="45">
+      <Item class="ModuleScript" referent="47">
         <Properties>
           <string name="Name">Venues</string>
           <string name="Source"><![CDATA[-- Venues: fight-night ring system. Builds one template per venue in ServerStorage at boot and
@@ -47615,7 +49630,7 @@ return Venues
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="46">
+      <Item class="ModuleScript" referent="48">
         <Properties>
           <string name="Name">World</string>
           <string name="Source"><![CDATA[-- World: generates and maintains the AI boxing world (270 boxers), rankings for
@@ -48094,7 +50109,7 @@ return World
         </Properties>
       </Item>
     </Item>
-    <Item class="Script" referent="47">
+    <Item class="Script" referent="49">
       <Properties>
         <string name="Name">Main</string>
         <token name="RunContext">0</token>
@@ -48118,6 +50133,7 @@ local AvatarLook = require(Shared.AvatarLook)
 -- the muscle-tier body parts' templates (one CreateMeshPartAsync per tier and part) load in the background
 -- from the start, so the first boxers are built on them without waiting
 require(Shared.BuilderTiers).Preload()
+require(Shared.BuilderGear).Preload()
 local DrillScore = require(Shared.DrillScore)
 local DataManager = require(Modules.DataManager)
 local World = require(Modules.World)
@@ -50437,17 +52453,17 @@ print("[Boxer] " .. Config.GameName .. " server ready")
       </Properties>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="48">
+  <Item class="StarterPlayer" referent="50">
     <Properties>
       <string name="Name">StarterPlayer</string>
       <float name="CharacterWalkSpeed">6.5</float>
       <bool name="EnableMouseLockOption">false</bool>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="49">
+    <Item class="StarterPlayerScripts" referent="51">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="50">
+      <Item class="LocalScript" referent="52">
         <Properties>
           <string name="Name">Animator</string>
           <string name="Source"><![CDATA[-- Animator: motion-capture-feeling procedural animation for everyone in the game, no animation
@@ -51750,11 +53766,11 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="51">
+      <Item class="Folder" referent="53">
         <Properties>
           <string name="Name">BoxerClient</string>
         </Properties>
-        <Item class="ModuleScript" referent="52">
+        <Item class="ModuleScript" referent="54">
           <Properties>
             <string name="Name">Activities</string>
             <string name="Source"><![CDATA[-- Activities: every training session and its minigame.
@@ -56292,7 +58308,7 @@ return Activities
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="53">
+        <Item class="ModuleScript" referent="55">
           <Properties>
             <string name="Name">Ambience</string>
             <string name="Source"><![CDATA[-- Ambience: brings the gym and the town to life on the client.
@@ -57496,7 +59512,7 @@ return Ambience
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="54">
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">AnatomyClient</string>
             <string name="Source"><![CDATA[-- AnatomyClient: the client-built meshes on every character: today only the HAIR (the uploaded hair cards,
@@ -60251,7 +62267,7 @@ return AnatomyClient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="55">
+        <Item class="ModuleScript" referent="57">
           <Properties>
             <string name="Name">AnatomyStatus</string>
             <string name="Source"><![CDATA[-- AnatomyStatus: tells the player (and the Output) whether the organic mesh characters are on.
@@ -60495,7 +62511,7 @@ return AnatomyStatus
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="56">
+        <Item class="ModuleScript" referent="58">
           <Properties>
             <string name="Name">AnimDown</string>
             <string name="Source"><![CDATA[-- AnimDown: knockdowns, knockouts, the count and the get-up.
@@ -61940,7 +63956,7 @@ return AnimDown
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="57">
+        <Item class="ModuleScript" referent="59">
           <Properties>
             <string name="Name">AnimFight</string>
             <string name="Source"><![CDATA[-- AnimFight: everything a boxer does on his feet in the ring.
@@ -64906,7 +66922,7 @@ return AnimFight
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="58">
+        <Item class="ModuleScript" referent="60">
           <Properties>
             <string name="Name">AnimGym</string>
             <string name="Source"><![CDATA[-- AnimGym: training poses that work the right muscles, flex poses, gym life and the people who
@@ -66112,7 +68128,7 @@ return AnimGym
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="59">
+        <Item class="ModuleScript" referent="61">
           <Properties>
             <string name="Name">AnimKit</string>
             <string name="Source"><![CDATA[-- AnimKit: the pure math behind the procedural animation (no Instances, no Roblox services), so it
@@ -66544,7 +68560,7 @@ return AnimKit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="60">
+        <Item class="ModuleScript" referent="62">
           <Properties>
             <string name="Name">AnimLoco</string>
             <string name="Source"><![CDATA[-- AnimLoco: locomotion and feet for the procedural Animator.
@@ -68695,7 +70711,7 @@ return AnimLoco
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="61">
+        <Item class="ModuleScript" referent="63">
           <Properties>
             <string name="Name">AnimRig</string>
             <string name="Source"><![CDATA[-- AnimRig: rig geometry, inverse kinematics and the pose building blocks shared by the Animator
@@ -69694,7 +71710,7 @@ return AnimRig
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="62">
+        <Item class="ModuleScript" referent="64">
           <Properties>
             <string name="Name">BodyMap</string>
             <string name="Source"><![CDATA[-- BodyMap: an anatomical body map (front + back views), one region per Config.MuscleParts id.
@@ -70551,7 +72567,7 @@ return BodyMap
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="63">
+        <Item class="ModuleScript" referent="65">
           <Properties>
             <string name="Name">CharacterLight</string>
             <string name="Source"><![CDATA[-- CharacterLight: a camera-aware fill and rim light for the boxers on screen (client only).
@@ -70775,7 +72791,7 @@ return CharacterLight
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="64">
+        <Item class="ModuleScript" referent="66">
           <Properties>
             <string name="Name">CityStores</string>
             <string name="Source"><![CDATA[-- CityStores: the counters of the city's walk-in shops (prompts in CityMap, dispatched through
@@ -71057,7 +73073,7 @@ return CityStores
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="65">
+        <Item class="ModuleScript" referent="67">
           <Properties>
             <string name="Name">CityVisuals</string>
             <string name="Source"><![CDATA[-- CityVisuals: the city reflects YOUR career. Everything here is client-side (workspace.LocalCity
@@ -72894,7 +74910,7 @@ return CityVisuals
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="66">
+        <Item class="ModuleScript" referent="68">
           <Properties>
             <string name="Name">ControlsMenu</string>
             <string name="Source"><![CDATA[-- ControlsMenu: the Moves & Controls window. Opened from the main menu (CONTROLS, or Settings > Controls),
@@ -73601,7 +75617,7 @@ return ControlsMenu
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="67">
+        <Item class="ModuleScript" referent="69">
           <Properties>
             <string name="Name">Creator</string>
             <string name="Source"><![CDATA[-- Creator: the character creator, as seven steps with Back / Next and a step bar (jump to any step).
@@ -75281,7 +77297,7 @@ return Creator
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="68">
+        <Item class="ModuleScript" referent="70">
           <Properties>
             <string name="Name">FaceFX</string>
             <string name="Source"><![CDATA[-- FaceFX: the classic face's expressions. Client-only, driven by the Animator (FaceFX.Update every frame, Hit /
@@ -75448,7 +77464,7 @@ return FaceFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="69">
+        <Item class="ModuleScript" referent="71">
           <Properties>
             <string name="Name">FighterCard</string>
             <string name="Source"><![CDATA[-- FighterCard: the professional fighter card / tale of the tape for the local boxer.
@@ -76293,7 +78309,7 @@ return FighterCard
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="70">
+        <Item class="ModuleScript" referent="72">
           <Properties>
             <string name="Name">Flags</string>
             <string name="Source"><![CDATA[-- Flags: simplified national flags drawn from frames (no image assets) for every Config.Nationalities
@@ -76628,7 +78644,7 @@ return Flags
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="71">
+        <Item class="ModuleScript" referent="73">
           <Properties>
             <string name="Name">GymFacility</string>
             <string name="Source"><![CDATA[-- GymFacility: what YOUR gym looks like as a whole, drawn on your client only (everyone shares
@@ -78756,7 +80772,7 @@ return GymFacility
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="72">
+        <Item class="ModuleScript" referent="74">
           <Properties>
             <string name="Name">GymMirror</string>
             <string name="Source"><![CDATA[-- GymMirror: a live mirror at the shadow-boxing station. While you are within a few strides of
@@ -79126,7 +81142,7 @@ return GymMirror
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="73">
+        <Item class="ModuleScript" referent="75">
           <Properties>
             <string name="Name">GymSound</string>
             <string name="Source"><![CDATA[-- GymSound: every gym sound effect on the client, played from ONE pool of positional sounds
@@ -79371,7 +81387,7 @@ return GymSound
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="74">
+        <Item class="ModuleScript" referent="76">
           <Properties>
             <string name="Name">GymVisuals</string>
             <string name="Source"><![CDATA[-- GymVisuals: draws YOUR gym's equipment (client side) at every station, matched to
@@ -82886,7 +84902,7 @@ return GymVisuals
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="75">
+        <Item class="ModuleScript" referent="77">
           <Properties>
             <string name="Name">HairAssets</string>
             <string name="Source"><![CDATA[-- HairAssets: the asset hair (tools/hair/CONTRACT.md): hair-card meshes modelled in Blender and uploaded as
@@ -83585,7 +85601,7 @@ return HairAssets
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="76">
+        <Item class="ModuleScript" referent="78">
           <Properties>
             <string name="Name">HairFX</string>
             <string name="Source"><![CDATA[-- HairFX: hair that moves like hair. Client-only, driven by the Animator every frame (HairFX.Update) and on
@@ -85561,7 +87577,7 @@ return HairFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="77">
+        <Item class="ModuleScript" referent="79">
           <Properties>
             <string name="Name">Hub</string>
             <string name="Source"><![CDATA[-- Hub: the Career Hub window.
@@ -87465,7 +89481,7 @@ return Hub
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="78">
+        <Item class="ModuleScript" referent="80">
           <Properties>
             <string name="Name">LightLevels</string>
             <string name="Source"><![CDATA[-- LightLevels: the game's exposure targets in one place, plus the player's brightness preference.
@@ -87658,7 +89674,7 @@ return LightLevels
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="79">
+        <Item class="ModuleScript" referent="81">
           <Properties>
             <string name="Name">LookKit</string>
             <string name="Source"><![CDATA[-- LookKit: the look editors' shared parts (Creator, barber): plain-word readouts, short labels and
@@ -88040,7 +90056,7 @@ return LookKit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="80">
+        <Item class="ModuleScript" referent="82">
           <Properties>
             <string name="Name">MainMenu</string>
             <string name="Source"><![CDATA[-- MainMenu: the title screen. Your boxer stands in his corner of a ring in a gym at night (MenuStage: a
@@ -89500,7 +91516,7 @@ return MainMenu
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="81">
+        <Item class="ModuleScript" referent="83">
           <Properties>
             <string name="Name">MenuStage</string>
             <string name="Source"><![CDATA[-- MenuStage: the main menu's set. A closed boxing-gym corner built on this client, far above the map,
@@ -90017,7 +92033,7 @@ return MenuStage
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="82">
+        <Item class="ModuleScript" referent="84">
           <Properties>
             <string name="Name">MuscleScreen</string>
             <string name="Source"><![CDATA[-- MuscleScreen: the Muscle Progression screen (Hub Body tab "3D MUSCLE VIEW", training result "MUSCLES").
@@ -91026,7 +93042,7 @@ return MuscleScreen
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="83">
+        <Item class="ModuleScript" referent="85">
           <Properties>
             <string name="Name">Perf</string>
             <string name="Source"><![CDATA[-- Perf: the one performance level every client system reads (optimization pass).
@@ -91354,7 +93370,7 @@ return Perf
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="84">
+        <Item class="ModuleScript" referent="86">
           <Properties>
             <string name="Name">PvP</string>
             <string name="Source"><![CDATA[-- PvP (client): challenge other players, answer challenges, Find Match, the PvP record.
@@ -92093,7 +94109,7 @@ return PvP
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="85">
+        <Item class="ModuleScript" referent="87">
           <Properties>
             <string name="Name">Services</string>
             <string name="Source"><![CDATA[-- Services: the gym's service windows.
@@ -92898,7 +94914,7 @@ return Services
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="86">
+        <Item class="ModuleScript" referent="88">
           <Properties>
             <string name="Name">Settings</string>
             <string name="Source"><![CDATA[-- Settings: the player's options, applied on this client straight away.
@@ -93186,7 +95202,7 @@ return Settings
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="87">
+        <Item class="ModuleScript" referent="89">
           <Properties>
             <string name="Name">State</string>
             <string name="Source"><![CDATA[-- State: shared client state and helpers (latest profile, server requests, toasts,
@@ -93348,7 +95364,7 @@ return State
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="88">
+        <Item class="ModuleScript" referent="90">
           <Properties>
             <string name="Name">VenueFX</string>
             <string name="Source"><![CDATA[-- VenueFX: client-only fight-night presentation for the player's own venue (stream G).
@@ -95885,7 +97901,7 @@ return VenueFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="89">
+        <Item class="ModuleScript" referent="91">
           <Properties>
             <string name="Name">WorldLOD</string>
             <string name="Source"><![CDATA[-- WorldLOD: the Graphics level (Perf) applied to the world's own lights, signs, particles and shadow
@@ -96477,7 +98493,7 @@ return WorldLOD
           </Properties>
         </Item>
       </Item>
-      <Item class="LocalScript" referent="90">
+      <Item class="LocalScript" referent="92">
         <Properties>
           <string name="Name">ClientMain</string>
           <string name="Source"><![CDATA[-- ClientMain: wires the client together - main menu at join, the gym HUD (player plate, condition
@@ -97258,7 +99274,7 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="LocalScript" referent="91">
+      <Item class="LocalScript" referent="93">
         <Properties>
           <string name="Name">FightClient</string>
           <string name="Source"><![CDATA[-- FightClient: fight-night presentation and controls (also used for gym sparring).
@@ -102287,7 +104303,7 @@ end)
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="92">
+  <Item class="Workspace" referent="94">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="NeedsPivotMigration">false</bool>
