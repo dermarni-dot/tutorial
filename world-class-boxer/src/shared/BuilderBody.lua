@@ -4,6 +4,10 @@
 -- * body resolution (Resolve): physique archetype, per-muscle levels, fat, definition, veins, detail level
 --   (the model attributes, LookData and the training screens read it)
 -- * colours: skin, satin trunks, shoes, referee / cornerman outfits on the R15 parts
+-- * the gear is the Blender-modelled meshes of BuilderGear (tools/body/build_gear.py) fitted to every muscle tier:
+--   trunks per style (waistband, seat, legs, side stripe, hem), boots / low-tops (foot, sole, laces, shaft, sock),
+--   the women's sports top, gloves (glove, cuff, strap) and hand wraps, coloured from the look's gear colours.
+--   Whatever is not available (a default part, an id 0, a failed load) falls back to the part-built gear below:
 -- * attire: trunks, sponsor patches, socks, trainers / boxing boots by brand (sole types, laces with swinging
 --   tails), referee and cornerman outfits, robe: sized from the parts' own boxes (the tier meshes' bounding
 --   boxes, BodyAssetData sizes x the description's scales), so they fit every tier
@@ -21,6 +25,7 @@ local Looks = require(Shared:WaitForChild("Looks"))
 local Kit = require(script.Parent:WaitForChild("BuilderKit"))
 local BodyTiers = require(script.Parent:WaitForChild("BodyTiers"))
 local Hair = require(script.Parent:WaitForChild("BuilderHair")) -- (IsHairAccessory: the avatar's hair stays)
+local Gear = require(script.Parent:WaitForChild("BuilderGear")) -- the Blender-modelled gear meshes
 
 local Body = {}
 
@@ -278,7 +283,9 @@ local function colorBody(model, app, gear, opts)
 			end
 		end
 	end
-	if app.gender == 2 and not shirt then
+	-- women: the sports top. The mesh top (Attire) goes over a skin torso; without it the whole UpperTorso takes the
+	-- top's colour (the part-built look; Attire repaints it should the mesh top fail to load)
+	if app.gender == 2 and not shirt and not Gear.Available(model, "top", "Top") then
 		local ut = model:FindFirstChild("UpperTorso")
 		if ut then
 			ut.Color = Looks.Color(a.trim, WHITE)
@@ -507,6 +514,37 @@ local function shoesBuild(folder, model, app, opts, gear, sp, env)
 	end
 end
 
+-- the mesh boots / shoes (BuilderGear): upper in the shoe colour (leather boots, fabric trainers), the sole by its
+-- kind (SOLE: foam, rubber in the trim colour, gum, suede, split), laces, socks
+local function shoesMesh(folder, app, gear, pieces)
+	local a = app.attire or {}
+	local shoe = shoeOf(gear)
+	local brand = Catalog.GearBrand("shoes", shoe.id)
+	local trainer = shoe.style == "trainer"
+	local soleKind = shoe.sole or brand.sole or "Rubber"
+	local so = SOLE[soleKind] or SOLE.Rubber
+	local soleColor = so.color or Looks.Color(a.trim, WHITE)
+	if trainer and soleKind ~= "Gum" then
+		soleColor = Color3.fromRGB(238, 238, 232) -- (a trainer's foam midsole)
+	end
+	local laceColor = Looks.Color(a.laces, Color3.fromRGB(240, 240, 240))
+	if (gear.shoesCond or 100) < 40 then
+		laceColor = lerpColor(laceColor, Color3.fromRGB(170, 160, 140), 0.5)
+	end
+	local shoeColor = shoeColorOf(app, gear)
+	local socks = Looks.Color(a.socks, WHITE)
+	return Gear.Build(folder, pieces, function(slot)
+		if slot == "soles" then
+			return soleColor, trainer and SMOOTH or so.mat, 0
+		elseif slot == "laces" then
+			return laceColor, SMOOTH, 0
+		elseif slot == "socks" then
+			return socks, FABRIC, 0
+		end
+		return shoeColor, trainer and FABRIC or LEATHER, 0
+	end)
+end
+
 local function outfitBuild(folder, model, app, opts, sp)
 	local outfit = sp.outfit
 	local shirt = outfitColors(app, outfit)
@@ -615,19 +653,72 @@ local function attireBuild(model, app, opts, gear, sp, env)
 	local eUL = { x = up(env.UL.x), zf = up(env.UL.zf), zb = up(env.UL.zb) }
 	local eLL = { x = up(env.LL.x), zf = up(env.LL.zf), zb = up(env.LL.zb) }
 	local spT, spF, spB = sponsorOf(opts.sponsorTrunks)
-	local key = Kit.sig("A3", a, opts.waistText or "", spT or "", spF or "", spB or "", sp.outfit, sp.detail, gear.shoes, shoeCond(gear), gear.shoesCond >= 60, gear.shoesCond >= 40,
-		eUL, a.trunkStyle == "Long" and eLL or false, topRel, opts.name or "", app.gender, sizesOf(model, ATTIRE_PARTS))
+	-- the Blender-modelled gear for the tiers the parts show (BuilderGear); nil = the part-built gear below
+	local official = sp.outfit == "referee" or sp.outfit == "cornerman"
+	local meshTrunks, meshShoes, meshTop
+	if not official then
+		meshTrunks = Gear.Resolve(model, "trunks", table.find(Looks.TrunkStyles, a.trunkStyle) and a.trunkStyle or "Classic")
+		meshShoes = Gear.Resolve(model, "shoes", a.shoeStyle == "Low-Top" and "Low-Top" or "High-Top")
+		meshTop = app.gender == 2 and Gear.Resolve(model, "top", "Top") or nil
+	end
+	local key = Kit.sig("A4", a, opts.waistText or "", spT or "", spF or "", spB or "", sp.outfit, sp.detail, gear.shoes, shoeCond(gear), gear.shoesCond >= 60, gear.shoesCond >= 40,
+		eUL, a.trunkStyle == "Long" and eLL or false, topRel, opts.name or "", app.gender, sizesOf(model, ATTIRE_PARTS),
+		Gear.Key(meshTrunks), Gear.Key(meshShoes), Gear.Key(meshTop))
 	if Kit.cached(model, "Attire", key) then
 		return
 	end
 	local folder = getFolder(model, "Attire")
-	if sp.outfit == "referee" or sp.outfit == "cornerman" then
+	if official then
 		outfitBuild(folder, model, app, opts, sp)
 		Kit.seal(model, "Attire", key)
 		return
 	end
 	local trunks = Looks.Color(a.trunks, Color3.fromRGB(200, 25, 30))
 	local trim = Looks.Color(a.trim, WHITE)
+	if app.gender == 2 then
+		local ut = part(model, "UpperTorso")
+		if meshTop then
+			-- the sports top in the top colour (trim) with an underband in the trunks colour
+			Gear.Build(folder, meshTop, function(slot)
+				return slot == "topTrim" and trunks or trim, SMOOTH, 0
+			end)
+		elseif ut then
+			ut.Color = trim -- (no mesh top: the whole torso is the top, as colorBody paints it without one)
+			ut.Material = SMOOTH
+		end
+	end
+	if meshTrunks then
+		-- satin trunks: the seat and legs in the trunks colour, the waistband, side stripe and hem in the trim
+		local made = Gear.Build(folder, meshTrunks, function(slot)
+			if slot == "trim" then
+				return trim, SMOOTH, 0.02
+			end
+			return trunks, SMOOTH, 0.03
+		end)
+		local band = made.Waistband
+		local text = opts.waistText or ""
+		if band and lt and text ~= "" then
+			local bs = band.Size
+			textPatch(folder, lt, "WaistText", V3(bs.X * 0.42, bs.Y * 0.55, 0.02), band.CFrame * CF(0, 0, -bs.Z / 2 - 0.012), text:upper(), contrast(trim))
+		end
+		local leg = made.TrunkLeg_R or made.TrunkLegLong_R
+		local ul = part(model, "RightUpperLeg")
+		if spT and leg and ul and sp.lod >= 2 then
+			-- the sponsor on the front of the right leg (the left leg carries the boxer's own colours)
+			local ls = leg.Size
+			textPatch(folder, ul, "SponsorPatch", V3(ls.X * 0.5, math.min(0.2, ls.Y * 0.2), 0.02), leg.CFrame * CF(0, ls.Y * 0.08, -ls.Z / 2 - 0.012), spT, spF, Enum.NormalId.Front, "GothamBlack", spB)
+		end
+	end
+	if meshShoes then
+		shoesMesh(folder, app, gear, meshShoes)
+	end
+	if meshTrunks then
+		if not meshShoes then
+			shoesBuild(folder, model, app, opts, gear, sp, env)
+		end
+		Kit.seal(model, "Attire", key)
+		return
+	end
 	if lt then
 		local s = lt.Size
 		local bh, by = waistBand(lt)
@@ -687,7 +778,9 @@ local function attireBuild(model, app, opts, gear, sp, env)
 			mk(folder, ll, "TrunkLeg", V3(s.X * wx, s.Y * 0.25, fr + bk), ll.CFrame * CF(0, s.Y * 0.38, (bk - fr) / 2), trunks, "Block", SMOOTH)
 		end
 	end
-	shoesBuild(folder, model, app, opts, gear, sp, env)
+	if not meshShoes then
+		shoesBuild(folder, model, app, opts, gear, sp, env)
+	end
 	Kit.seal(model, "Attire", key)
 end
 
@@ -1044,6 +1137,98 @@ local function glovesBuild(folder, model, app, gear, opts, sp)
 	end
 end
 
+-- the glove's colours and finish (glovesBuild's derivation, shared by the mesh gloves)
+local function gloveStyle(app, gear, opts)
+	local g = app.gloves or {}
+	local gloveDef = Catalog.Find(Catalog.Gloves, gear.gloves) or Catalog.Gloves[1]
+	local brand = Catalog.GearBrand("gloves", gloveDef.id, g.brand)
+	local custom = gloveDef.custom or {}
+	local cond = gear.glovesCond or 100
+	local pal = brand.palette or {}
+	local main = wearColor(Looks.Color(g.color, rgb(pal.primary, Color3.fromRGB(200, 25, 30))), cond)
+	local trim = custom.trim and Looks.Color(g.trim, WHITE) or wearColor(Color3.fromRGB(236, 234, 228), cond)
+	local finish = custom.finish and (g.finish or brand.finish or "Leather") or (brand.finish or "Leather")
+	if finish == "Metallic" and not (custom.metallic or brand.finish == "Metallic") then
+		finish = "Patent"
+	end
+	local material, refl = LEATHER, 0.04
+	if finish == "Matte" then
+		material, refl = LEATHER, 0
+	elseif finish == "Patent" then
+		material, refl = SMOOTH, 0.22
+	elseif finish == "Metallic" then
+		material, refl = Enum.Material.Foil, 0.35
+	end
+	if gloveDef.id == "WorldChampion" then
+		trim = GOLD
+	end
+	local strap = custom.trim and trim or rgb(pal.secondary, trim)
+	if brand.closure == "lace" then
+		strap = trim -- (lace-ups: the rolled trim band)
+	end
+	if opts and opts.fightNight then
+		strap = Color3.fromRGB(246, 246, 242) -- fight night: the cuffs taped over
+	end
+	return { def = gloveDef, brand = brand, custom = custom, main = main, trim = trim, strap = strap, material = material, refl = refl }
+end
+
+-- the mesh gloves (BuilderGear): the glove (named GloveL / GloveR: the fight animation's contact spheres read them)
+-- and its cuff in the glove colour and finish, the strap in the strap / trim colour; the logo on the back of the hand
+local function glovesMesh(folder, model, app, gear, opts, sp, pieces)
+	local st = gloveStyle(app, gear, opts)
+	local made = Gear.Build(folder, pieces, function(slot)
+		if slot == "gloveTrim" then
+			return st.strap, st.material == Enum.Material.Foil and SMOOTH or st.material, math.min(st.refl, 0.1)
+		end
+		return st.main, st.material, st.refl
+	end, { Glove_L = "GloveL", Glove_R = "GloveR" })
+	for name, p in pairs(made) do
+		wet(p, "glove", p.Reflectance)
+		if st.def.aura and (name == "Glove_L" or name == "Glove_R") then
+			local sp2 = Instance.new("Sparkles")
+			sp2.SparkleColor = Color3.fromRGB(255, 210, 60)
+			sp2.Parent = p
+		end
+	end
+	local g = app.gloves or {}
+	local glyph
+	if st.custom.logo and g.logo and g.logo ~= "None" then
+		glyph = Catalog.LogoGlyphs[g.logo]
+		if g.logo == "Initials" then
+			glyph = initials(opts.name)
+		elseif g.logo == "Flag" then
+			glyph = tostring(opts.nat or "USA"):sub(1, 3):upper()
+		end
+	elseif sp.cfg.wordmarks and (st.brand.glyph or "") ~= "" then
+		glyph = st.brand.glyph
+	end
+	if glyph and glyph ~= "" and sp.lod >= 2 then
+		for _, side in ipairs({ "Left", "Right" }) do
+			local gl = made["Glove_" .. side:sub(1, 1)]
+			local hand = part(model, side .. "Hand")
+			if gl and hand then
+				local sign = side == "Left" and -1 or 1
+				local gs = gl.Size
+				textPatch(folder, hand, "Logo", V3(0.02, gs.Y * 0.22, gs.Z * 0.3), gl.CFrame * CF(sign * (gs.X * 0.5 + 0.004), -gs.Y * 0.08, 0), glyph, st.trim,
+					sign > 0 and Enum.NormalId.Right or Enum.NormalId.Left, st.brand.font)
+			end
+		end
+	end
+	return made
+end
+
+-- the mesh wraps (BuilderGear): the hand in the wrap colour, the wrist turns in the pattern's second colour
+local function wrapsMesh(folder, app, gear, pieces)
+	local wc, c2 = wrapColors(app, gear)
+	local made = Gear.Build(folder, pieces, function(slot)
+		return slot == "wraps2" and c2 or wc, FABRIC, 0
+	end)
+	for _, p in pairs(made) do
+		wet(p, "wrap")
+	end
+	return made
+end
+
 local HAND_PARTS = { "LeftHand", "LeftLowerArm", "RightHand", "RightLowerArm" }
 
 local function handsBuild(model, app, gear, opts, sp)
@@ -1055,8 +1240,15 @@ local function handsBuild(model, app, gear, opts, sp)
 		mode = "bare" -- officials work bare-handed
 	end
 	local a = app.attire or {}
-	local key = Kit.sig("H4", mode, sp.female, sp.detail, gear.gloves, gear.wraps, q(gear.glovesCond or 100, 5), q(gear.wrapsCond or 100, 10), app.gloves, a.wraps, a.wrapPattern or "", a.trim, a.trunks,
-		opts.name or "", opts.nick or "", opts.nat or "", opts.fightNight == true, sizesOf(model, HAND_PARTS))
+	-- the Blender-modelled gloves / wraps for the tiers the hands and forearms show (nil: the part-built ones)
+	local mesh
+	if mode == "wraps" then
+		mesh = Gear.Resolve(model, "wraps", "Wraps")
+	elseif mode ~= "bare" then
+		mesh = Gear.Resolve(model, "gloves", "Gloves")
+	end
+	local key = Kit.sig("H5", mode, sp.female, sp.detail, gear.gloves, gear.wraps, q(gear.glovesCond or 100, 5), q(gear.wrapsCond or 100, 10), app.gloves, a.wraps, a.wrapPattern or "", a.trim, a.trunks,
+		opts.name or "", opts.nick or "", opts.nat or "", opts.fightNight == true, sizesOf(model, HAND_PARTS), Gear.Key(mesh))
 	if Kit.cached(model, "Hands", key) then
 		return
 	end
@@ -1071,9 +1263,17 @@ local function handsBuild(model, app, gear, opts, sp)
 		end
 	end
 	if mode == "wraps" then
-		wrapsBuild(folder, model, app, gear, opts, sp)
+		if mesh then
+			wrapsMesh(folder, app, gear, mesh)
+		else
+			wrapsBuild(folder, model, app, gear, opts, sp)
+		end
 	elseif mode ~= "bare" then
-		glovesBuild(folder, model, app, gear, opts, sp)
+		if mesh then
+			glovesMesh(folder, model, app, gear, opts, sp, mesh)
+		else
+			glovesBuild(folder, model, app, gear, opts, sp)
+		end
 	end
 	Kit.seal(model, "Hands", key)
 end

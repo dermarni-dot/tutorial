@@ -6,7 +6,8 @@
 Per look: three views (3/4 full body, front close-up of head + shoulders, back), a sheet <id>.jpg; then one cast
 lineup (every look side by side) lineup.jpg. Reuses tools/hair/render.py (Scene, materials, add_mesh, camera, sheet)
 and previews.py (rgba -> png). Geometry is exactly what the scene file says:
-  * meshes: the tier MeshParts (world-space triangles), skin material tinted by the part colour
+  * meshes: the tier MeshParts (world-space triangles), skin material tinted by the part colour, and the gear meshes
+    (BuilderGear's pieces, world-space triangles) in a gear material by their Material / colour
   * head: the classic head revolved from AnatomyHairKit.CLASSIC (a cylinder of radius half the width whose top and
     bottom edges round off), scaled to the head's Size, at its CFrame; the face decal planar-projected onto its front
   * parts: Kit.mk gear by shape (Block, Ball, Cylinder along X, Ellipsoid, Wedge)
@@ -231,8 +232,11 @@ def add_boxer(sc, scene_dir, d, offset=(0, 0, 0)):
         P = np.asarray(m["p"]).reshape(-1, 3) + off
         T = np.asarray(m["t"]).reshape(-1, 3) - 1
         col = m["color"]
-        skinlike = m["material"] in ("SmoothPlastic", "Plastic") and m["name"] not in ("LowerTorso",) and not (
-            m["name"] == "UpperTorso" and d["g"] == 2)
+        # a tier part in the head's colour is skin; the gear meshes and a part painted another colour (the trunks'
+        # LowerTorso under the seat, a woman's torso without the mesh top) take a gear material
+        skin = d["head"]["color"]
+        skinlike = (not m.get("gear") and m["material"] in ("SmoothPlastic", "Plastic")
+                    and max(abs(a - b) for a, b in zip(col, skin)) < 0.02)
         if skinlike:
             sc.add_world(P, T, m["name"], material="skin", tint=srgb2lin(col), normals=m["n"])
         else:
@@ -348,7 +352,7 @@ def render_lineup(scene_dir, out_dir, looks, samples):
     dr = ImageDraw.Draw(W)
     tf = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
     f = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
-    dr.text((12, 11), "v8 cast lineup (Builder.Cosmetics + HairAssets.Build, classic heads, tier bodies)", fill=(235, 235, 235),
+    dr.text((12, 11), "v8 cast lineup (Builder.Cosmetics + HairAssets.Build, classic heads, tier bodies, mesh gear)", fill=(235, 235, 235),
             font=tf)
     for i, look in enumerate(looks):
         cx = xs[i] * im.width

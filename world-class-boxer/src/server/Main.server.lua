@@ -18,6 +18,7 @@ local AvatarLook = require(Shared.AvatarLook)
 -- the muscle-tier body parts' templates (one CreateMeshPartAsync per tier and part) load in the background
 -- from the start, so the first boxers are built on them without waiting
 require(Shared.BuilderTiers).Preload()
+require(Shared.BuilderGear).Preload()
 local DrillScore = require(Shared.DrillScore)
 local DataManager = require(Modules.DataManager)
 local World = require(Modules.World)

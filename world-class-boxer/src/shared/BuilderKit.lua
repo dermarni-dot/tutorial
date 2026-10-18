@@ -223,7 +223,7 @@ end
 -- a rescale through ApplyDescription replaces or moves the anchors, so the old parts are stale)
 local function intact(model, folder)
 	for _, d in ipairs(folder:GetDescendants()) do
-		if d:IsA("WeldConstraint") or d:IsA("Motor6D") then
+		if d:IsA("WeldConstraint") or d:IsA("Motor6D") or d:IsA("Weld") then
 			local p0 = d.Part0
 			if not (p0 and p0:IsDescendantOf(model)) or not d.Part1 then
 				return false
