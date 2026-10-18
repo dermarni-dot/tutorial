@@ -84,7 +84,23 @@ for _k in list(J):
         J["Left" + _k[5:]] = (-x, y, z)
 J["Root"] = (0.0, Y_LT, 0.0)  # the block LowerTorso centre (RootRigAttachment: copy from the live rig)
 HEAD_C = (0.0, J["Neck"][1] + 0.6, 0.0)
-ARM_X, LEG_X = 1.5, 0.5
+ARM_X, LEG_X = 1.5, 0.5  # ARM_X: the R15 Block arm axis (reference only; the tiers use arm_x below)
+
+
+def arm_x(tr):
+    """the arm's axis per tier: the upper arm's inner side sits against the torso's side in the relaxed pose.
+    The Shoulder pivot stays at the R15 position (x = +-1); the Elbow / Wrist pivots lie on this axis."""
+    return 1.20 + 0.22 * tr["m"]
+
+
+def tier_joints(tr):
+    Jt = dict(J)
+    ax = arm_x(tr)
+    for side, sg in (("Right", 1), ("Left", -1)):
+        for jn in ("Elbow", "Wrist"):
+            x, y, z = J[side + jn]
+            Jt[side + jn] = (sg * ax, y, z)
+    return Jt
 YW, YN, YS = J["Waist"][1], J["Neck"][1], J["RightShoulder"][1]
 YE, YWR, YH, YK, YA = J["RightElbow"][1], J["RightWrist"][1], J["RightHip"][1], J["RightKnee"][1], J["RightAnkle"][1]
 
@@ -546,6 +562,8 @@ def upper_torso(tr):
         # traps: neck-to-shoulder slope, upper back
         Bp((0.34, 3.78, 0.08), (0.30, 0.42, 0.34, 0.18, 0.35, 0.30), amp(tr, 0.02, 0.095, 0.0)),
         Bp((0.42, 3.40, 0.40), (0.36, 0.38, 0.34, 0.30, 0.25, 0.25), amp(tr, 0.005, 0.055, 0.004)),  # upper back
+        # shoulder cap: the torso's shoulder rounds into the deltoid (no notch from the front / 3/4)
+        Bp((0.90, 3.56, 0.0), (0.24, 0.16, 0.22, 0.20, 0.36, 0.36), amp(tr, 0.025, 0.05, 0.0)),
         # spine groove
         Bp((0.0, 2.95, 0.45), (0.07, 0.07, 0.75, 0.65, 0.3, 0.3), amp(tr, -0.006, -0.014, -0.02)),
     ]
@@ -574,10 +592,11 @@ def upper_arm(tr):
               ax=([0.29, 0.30, 0.32, 0.35, 0.37], [0.03, 0.05, 0.07, 0.09, 0.10]),
               af=([0.28, 0.29, 0.31, 0.33, 0.35], [0.02, 0.04, 0.05, 0.06, 0.07]),
               p=2.1, cx=[0.0, 0.0, 0.0, -0.01, -0.03])
-    X = ARM_X
+    X = arm_x(tr)
     b = [
         Bp((X + 0.08, 3.50, 0.0), (0.32, 0.28, 0.40, 0.30, 0.36, 0.36), amp(tr, 0.012, 0.075, 0.0)),  # delt cap
         Bp((X - 0.02, 3.48, -0.20), (0.26, 0.24, 0.32, 0.25, 0.20, 0.25), amp(tr, 0.0, 0.05, 0.0)),  # front delt
+        Bp((X - 0.17, 3.62, 0.0), (0.18, 0.22, 0.24, 0.20, 0.34, 0.34), amp(tr, 0.02, 0.05, 0.0)),  # delt wrap over the shoulder
         Bp((X - 0.02, 3.48, 0.20), (0.26, 0.24, 0.30, 0.25, 0.25, 0.20), amp(tr, 0.0, 0.035, 0.0)),  # rear delt
         Bp((X, 3.08, -0.22), (0.24, 0.24, 0.22, 0.32, 0.26, 0.26), amp(tr, 0.008, 0.08, 0.008)),  # biceps
         Bp((X + 0.04, 3.20, 0.22), (0.20, 0.24, 0.30, 0.24, 0.25, 0.25), amp(tr, 0.008, 0.075, 0.005)),  # triceps
@@ -591,7 +610,7 @@ def lower_arm(tr):
               ax=([0.15, 0.18, 0.23, 0.27, 0.29], [0.01, 0.02, 0.04, 0.05, 0.03]),
               af=([0.19, 0.20, 0.235, 0.265, 0.28], [0.01, 0.02, 0.03, 0.04, 0.02]),
               p=2.1)
-    X = ARM_X
+    X = arm_x(tr)
     b = [
         Bp((X + 0.07, 2.64, -0.08), (0.22, 0.22, 0.38, 0.22, 0.24, 0.24), amp(tr, 0.006, 0.045, 0.0)),  # brachioradialis
         Bp((X - 0.10, 2.62, -0.04), (0.18, 0.18, 0.32, 0.18, 0.22, 0.22), amp(tr, 0.004, 0.04, 0.0)),  # flexors
@@ -601,7 +620,7 @@ def lower_arm(tr):
 
 
 def hand(tr):
-    X = ARM_X
+    X = arm_x(tr)
     pr = Prof([1.93, 2.05, 2.17],
               ax=([0.125, 0.15, 0.14], [0.01, 0.01, 0.01]),
               af=([0.215, 0.215, 0.18], [0.01, 0.01, 0.01]),
@@ -632,7 +651,7 @@ def upper_leg(tr):
         Bp((X - 0.15, 1.14, -0.24), (0.14, 0.15, 0.14, 0.22, 0.20, 0.20), amp(tr, 0.004, 0.05, 0.012)),  # teardrop
         Bp((X + 0.26, 1.36, -0.05), (0.16, 0.16, 0.36, 0.30, 0.30, 0.30), amp(tr, 0.0, 0.03, 0.0)),  # outer sweep
         Bp((X, 1.36, 0.32), (0.28, 0.28, 0.35, 0.30, 0.25, 0.25), amp(tr, 0.004, 0.04, 0.0)),  # hamstrings
-        Bp((X - 0.02, 1.76, 0.36), (0.32, 0.30, 0.18, 0.22, 0.25, 0.25), amp(tr, 0.012, 0.035, 0.0)),  # glute fold
+        Bp((X - 0.02, 1.72, 0.36), (0.32, 0.30, 0.18, 0.09, 0.25, 0.25), amp(tr, 0.012, 0.035, 0.0)),  # glute fold (stays under the hem)
     ]
     return loft(pr, tr["m"], YK, 1.96, (0.29, 1.0, 2, 0.88), (0.22, 0.9, 3), nb=10, nseg=14, frame=VERT(X),
                 shrink=[(1.96, 0.20, 0.12)], bumps=b)
@@ -762,14 +781,15 @@ def build_tier(bpy, n):
         else:
             parts["Right" + base] = lp
             parts["Left" + base] = mirror_lp(lp)
+    parts["_J"] = tier_joints(tr)
     return parts
 
 
-def joint_pos(name):
+def joint_pos(name, Jt):
     if name.endswith("Grip"):
         sg = 1 if name.startswith("Right") else -1
-        return (sg * (ARM_X - 0.06), 1.98, 0.0)
-    return J[name]
+        return (Jt[name.replace("Grip", "Wrist")][0] - sg * 0.06, 1.98, 0.0)
+    return Jt[name]
 
 
 def export_tier(n, parts):
@@ -793,7 +813,7 @@ def export_tier(n, parts):
         side = "Right" if name.startswith("Right") else ("Left" if name.startswith("Left") else "")
         atts = {}
         for jn in (side_joint(base, side) if side else PART_JOINTS[base]):
-            p = np.array(joint_pos(jn)) - cen
+            p = np.array(joint_pos(jn, parts["_J"])) - cen
             atts[jn + ("RigAttachment" if not jn.endswith("Grip") else "Attachment")] = [round(float(x), 4) for x in p]
         rec[name] = {"mesh_file": name + ".mesh", "size": [round(float(x), 4) for x in hi - lo],
                      "rest_center": [round(float(x), 4) for x in cen],
@@ -819,16 +839,23 @@ def about(p, R):
     return M4(None, p) @ M4(R) @ M4(None, -p)
 
 
-def pose_mats(sh=7.0, el=7.0, hip=3.0):
-    """relaxed A-pose: arms out `sh` deg, elbows bent `el` deg forward, legs out `hip` deg"""
+def pose_mats(Jt=None, sh=5.0, el=7.0, hip=3.0, guard=False):
+    """relaxed A-pose: arms out `sh` deg, elbows bent `el` deg forward, legs out `hip` deg.
+    guard: upper arms raised forward 48 deg and swung in 38 deg, elbows bent 112 deg (fists by the chin)"""
+    Jt = Jt or J
     M = {"UpperTorso": np.eye(4), "LowerTorso": np.eye(4), "Head": np.eye(4)}
     for side, sg in (("Right", 1), ("Left", -1)):
-        ua = about(J[side + "Shoulder"], rotz(sg * sh))
-        la = ua @ about(J[side + "Elbow"], rotx(el) @ rotz(sg * 3))
-        hd = la @ about(J[side + "Wrist"], rotz(-sg * 4))
-        ul = about(J[side + "Hip"], rotz(sg * hip))
+        if guard:
+            ua = about(Jt[side + "Shoulder"], roty(sg * 38) @ rotx(48) @ rotz(sg * 4))
+            la = ua @ about(Jt[side + "Elbow"], rotx(112) @ roty(-sg * 10))
+            hd = la @ about(Jt[side + "Wrist"], rotx(15))
+        else:
+            ua = about(Jt[side + "Shoulder"], rotz(sg * sh))
+            la = ua @ about(Jt[side + "Elbow"], rotx(el) @ rotz(sg * 3))
+            hd = la @ about(Jt[side + "Wrist"], rotz(-sg * 4))
+        ul = about(Jt[side + "Hip"], rotz(sg * hip))
         ll = ul
-        ft = ll @ about(J[side + "Ankle"], rotz(-sg * hip))
+        ft = ll @ about(Jt[side + "Ankle"], rotz(-sg * hip))
         M.update({side + "UpperArm": ua, side + "LowerArm": la, side + "Hand": hd, side + "UpperLeg": ul,
                   side + "LowerLeg": ll, side + "Foot": ft})
     return M
@@ -933,10 +960,12 @@ class Stage:
         self.coll.objects.link(ob)
         return ob
 
-    def figure(self, tag, parts, x, yaw=0.0, pose=None):
+    def figure(self, tag, parts, x, yaw=0.0, guard=False):
         place = M4(roty(yaw), (x, 0, 0))
-        pm = pose or pose_mats()
+        pm = pose_mats(parts.get("_J"), guard=guard)
         for name, lp in parts.items():
+            if name.startswith("_"):
+                continue
             self.add("%s_%s" % (tag, name), lp, place @ pm[name], self.skin)
         self.add(tag + "_Head", None, place, self.headmat, D=head_mesh())
 
@@ -1022,6 +1051,17 @@ def render_sheets(bpy, tiers, which, samples):
         label(p, ["default body", "tier 3 athletic", "default 3/4", "tier 3 3/4", "default back", "tier 3 back"],
               "Plain default-body reconstruction vs tier 3")
         paths.append(p)
+    if 4 in which:
+        st = Stage(bpy, (1600, 700), samples)
+        st.floor()
+        order = [(1, 0), (3, 0), (5, 0), (1, -38), (3, -38), (5, -38)]
+        sp2 = 3.9
+        for i, (n, yaw) in enumerate(order):
+            st.figure("G%d_%d" % (i, n), tiers[n], -(i - 2.5) * sp2, yaw=yaw, guard=True)
+        p = st.shoot(os.path.join(SCRATCH, "guard_pose.png"), 0, 2.75, 6 * sp2 + 0.2, elev=5)
+        label(p, ["1 lean guard", "3 athletic guard", "5 elite guard", "1 lean 3/4", "3 athletic 3/4", "5 elite 3/4"],
+              "Boxing guard check (upper arms forward 48 deg / in 38 deg, elbows 112 deg)")
+        paths.append(p)
     return paths
 
 
@@ -1036,6 +1076,8 @@ def save_blend(bpy, tiers):
         st.sc.collection.children.link(c)
         c.hide_render = True
         for name, lp in tiers[n].items():
+            if name.startswith("_"):
+                continue
             ob = bpy_mesh(bpy, "tier%d_%s" % (n, name), Dense(lp["P"], lp["T"], lp["U"][lp["T"]]), normals=lp["N"])
             ob.data.materials.append(st.skin)
             ob.parent = st.root
@@ -1050,7 +1092,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-render", action="store_true")
     ap.add_argument("--samples", type=int, default=40)
-    ap.add_argument("--sheets", default="1,2,3")
+    ap.add_argument("--sheets", default="1,2,3,4")
     ap.add_argument("--tiers", default="0,1,2,3,4,5")
     a = ap.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:])
     import bpy
@@ -1066,7 +1108,8 @@ def main():
                                                                       if not k.startswith("Left")})
     if summary:
         with open(os.path.join(OUT, "body_tiers.json"), "w") as f:
-            json.dump({"skeleton": {k: list(v) for k, v in J.items()}, "head_center": HEAD_C,
+            json.dump({"skeleton": {k: list(v) for k, v in J.items()},
+                       "arm_axis_x": {str(n): round(arm_x(TIERS[n]), 4) for n in summary}, "head_center": HEAD_C,
                        "r15_block_reference": R15_BLOCK,
                        "tiers": {str(k): v for k, v in summary.items()}}, f, indent=1)
     if not a.no_render:
