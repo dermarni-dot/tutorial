@@ -326,16 +326,21 @@ def render_lineup(scene_dir, out_dir, looks, samples):
     labels = []
     for i, look in enumerate(looks):
         d = json.load(open(os.path.join(scene_dir, look["file"])))
-        x = (i - (n - 1) / 2) * gap
+        # (the boxers face -Z, the camera looks at their fronts: +X is the viewer's left)
+        x = -(i - (n - 1) / 2) * gap
         add_boxer(sc, scene_dir, d, offset=(x, 0, 0))
-        labels.append(look["id"])
+        labels.append((look, x))
     width = (n - 1) * gap + 2.4
     focus = (0, 3.1, 0)
     # horizontal fov (sensor 36 mm across the width)
-    dist = (width / 2) / math.tan(math.atan(18 / 50)) * 1.02
+    dist = (width / 2) / math.tan(math.atan(18 / 50)) * 1.12
     sc.rig(focus, 6.0)
     p = os.path.join(out_dir, "lineup.png")
     sc.render(p, view=(14, 7, 1.0), dist=dist, focus=focus)
+    from bpy_extras.object_utils import world_to_camera_view
+    from mathutils import Vector
+    M = sc.root.matrix_world
+    xs = [world_to_camera_view(sc.sc, sc.cam, M @ Vector((x, 0.0, 0.0))).x for _, x in labels]
     from PIL import Image, ImageDraw, ImageFont
     im = Image.open(p).convert("RGB")
     W = Image.new("RGB", (im.width, im.height + 80), (26, 27, 30))
@@ -346,7 +351,7 @@ def render_lineup(scene_dir, out_dir, looks, samples):
     dr.text((12, 11), "v8 cast lineup (Builder.Cosmetics + HairAssets.Build, classic heads, tier bodies)", fill=(235, 235, 235),
             font=tf)
     for i, look in enumerate(looks):
-        cx = im.width / 2 + ((i - (n - 1) / 2) / (n / 2 + 0.3)) * im.width / 2 * 0.93
+        cx = xs[i] * im.width
         txt = f"{look['id']} (T{look['tierKey'][0]})"
         dr.text((cx - dr.textlength(txt, font=f) / 2, im.height + 52), txt, fill=(210, 210, 210), font=f)
     W.save(os.path.join(out_dir, "lineup.jpg"), quality=88)
