@@ -1312,71 +1312,136 @@ function Body.SetRobe(model, app, on, opts)
 		end
 		return
 	end
-	local env = readEnv(model)
 	local color = Looks.Color(a.robe, Color3.fromRGB(200, 25, 30))
 	local trim = robeId == "Champion" and GOLD or Looks.Color(a.robeTrim, WHITE)
 	-- satin robes (a soft sheen); the hooded robe is heavier terry cloth
 	local mat = robeId == "Hooded" and FABRIC or SMOOTH
 	local refl = robeId == "Hooded" and 0 or 0.04
 	local ut, lt = part(model, "UpperTorso"), part(model, "LowerTorso")
-	-- the robe is sized around the muscles (pecs, lats, traps, delts) so nothing pokes through it
-	local eUT, eUA = env.UT, env.UA
+	-- Sized to the body it drapes: the tier MeshParts' Size IS the mesh's bounding box (BodyAssetData tiers[n].parts,
+	-- scaled by the rig's height / width / depth), so a shell a few hundredths of a stud outside each part's box
+	-- clears every muscle of every tier, height and frame without standing off it (the old shells were sized for
+	-- the retired muscle hull: 16-25% over the box, and read a size too big on the tier bodies). Satin hangs
+	-- closer than the terry-cloth hooded robe.
+	local slack = robeId == "Hooded" and 1.4 or 1
+	local MT, MA = 0.045 * slack, 0.03 * slack -- studs per side: torso / skirt, sleeves
+	-- the rest offset of a limb in its parent's space (the joint's C0 * C1^-1: never the animated pose)
+	local function restIn(child, jointName)
+		local m = child and child:FindFirstChild(jointName)
+		if m and m:IsA("Motor6D") then
+			return m.C0 * m.C1:Inverse()
+		end
+		return nil
+	end
+	-- what the robe goes OVER besides the skin: the attire (trunks, waistband, the women's top) welded to these body
+	-- parts (anchors: body part -> its rest frame in the space of the part the shell hangs on), as the x / z extents
+	-- of their boxes between yMin and yMax in that space, grown from x0, x1, z0, z1
+	local look = model:FindFirstChild("BoxerLook")
+	local attire = look and look:FindFirstChild("Attire")
+	local function bounds(anchors, x0, x1, z0, z1, yMin, yMax)
+		if not attire then
+			return x0, x1, z0, z1
+		end
+		for _, q in ipairs(attire:GetDescendants()) do
+			if q:IsA("BasePart") and q.Transparency < 1 then
+				local j = q:FindFirstChildOfClass("Weld") or q:FindFirstChildOfClass("WeldConstraint")
+				local a = j and j.Part0
+				local rest = a and anchors[a]
+				if rest then
+					local off
+					if j:IsA("WeldConstraint") then
+						off = a.CFrame:Inverse() * q.CFrame
+					else
+						off = j.C0 * j.C1:Inverse()
+					end
+					local cf = rest * off
+					local h = q.Size / 2
+					for _, c in ipairs({ V3(h.X, h.Y, h.Z), V3(-h.X, h.Y, h.Z), V3(h.X, -h.Y, h.Z), V3(h.X, h.Y, -h.Z),
+						V3(-h.X, -h.Y, h.Z), V3(-h.X, h.Y, -h.Z), V3(h.X, -h.Y, -h.Z), V3(-h.X, -h.Y, -h.Z) }) do
+						local p = cf * c
+						if p.Y >= yMin and p.Y <= yMax then
+							x0, x1 = math.min(x0, p.X), math.max(x1, p.X)
+							z0, z1 = math.min(z0, p.Z), math.max(z1, p.Z)
+						end
+					end
+				end
+			end
+		end
+		return x0, x1, z0, z1
+	end
 	if ut then
 		local s = ut.Size
-		local rx = math.max(1.16, eUT.x + 0.08)
-		local rz = math.max(1.25, math.max(eUT.zf, eUT.zb) + 0.1)
-		local ry = math.clamp(eUT.y + 0.04, 1.06, 1.32)
-		local shell = mk(folder, ut, "RobeTorso", s * V3(rx, ry, rz), ut.CFrame * CF(0, s.Y * (ry - 1.06) * 0.25, 0), color, "Block", mat)
+		local x0, x1, z0, z1 = bounds({ [ut] = CF() }, -s.X / 2, s.X / 2, -s.Z / 2, s.Z / 2, -s.Y / 2, s.Y / 2)
+		local rs = V3(x1 - x0 + 2 * MT, s.Y + 0.05, z1 - z0 + 2 * MT)
+		local shell = mk(folder, ut, "RobeTorso", rs, ut.CFrame * CF((x0 + x1) / 2, 0.02, (z0 + z1) / 2), color, "Block", mat)
 		shell.Reflectance = refl
+		local front = rs.Z * 0.5 - (z0 + z1) / 2
 		for _, side in ipairs({ -1, 1 }) do
-			mk(folder, ut, "Lapel", V3(0.25, s.Y * 1.05, 0.05), ut.CFrame * CF(side * 0.15, 0, -s.Z * rz * 0.5 - 0.03) * ANG(0, 0, RAD(-12 * side)), trim, "Block", mat)
+			mk(folder, ut, "Lapel", V3(0.22 * math.min(1, s.X / 1.6), s.Y * 1.0, 0.04), ut.CFrame * CF(side * 0.14 * s.X / 1.6, 0.02, -front - 0.02) * ANG(0, 0, RAD(-12 * side)), trim, "Block", mat)
 		end
 		local nick = opts and opts.nick or ""
 		if nick ~= "" then
-			textPatch(folder, ut, "RobeName", V3(s.X * 1.0, s.Y * 0.35, 0.02), shell.CFrame * CF(0, s.Y * 0.15, s.Z * rz * 0.5 + 0.012), nick:upper(), trim, Enum.NormalId.Back)
+			textPatch(folder, ut, "RobeName", V3(s.X * 0.9, s.Y * 0.22, 0.02), shell.CFrame * CF(0, s.Y * 0.18, front + 0.012), nick:upper(), trim, Enum.NormalId.Back)
 		end
 		local spT, spF, spB = sponsorOf(opts and opts.sponsorRobe)
 		if spT then
-			textPatch(folder, ut, "SponsorPatch", V3(s.X * 0.7, s.Y * 0.16, 0.02), shell.CFrame * CF(0, -s.Y * 0.22, s.Z * rz * 0.5 + 0.012), spT, spF, Enum.NormalId.Back, "GothamBlack", spB)
+			textPatch(folder, ut, "SponsorPatch", V3(s.X * 0.62, s.Y * 0.1, 0.02), shell.CFrame * CF(0, -s.Y * 0.08, front + 0.012), spT, spF, Enum.NormalId.Back, "GothamBlack", spB)
 		end
 		if robeId == "Hooded" or robeId == "Champion" then
 			-- the hood is UP for the walkout (BuilderHead hides the hair under it): a shell over the crown,
 			-- sides and back, welded to the head so it turns with it. Its front edge sits at about -0.41 of
 			-- the head depth: in front of A's hidden-hair line (-0.36), behind the face (-0.5), so the face
-			-- stays open. The drape is the fabric falling from the hood onto the shoulders.
-			mk(folder, ut, "HoodDrape", V3(s.X * 0.75, s.Y * 0.55, s.Z * 0.8), ut.CFrame * CF(0, s.Y * 0.55 + (ry - 1.06) * s.Y * 0.4, s.Z * 0.45), color, "Ellipsoid", mat)
+			-- stays open. The drape is the fabric falling from the hood onto the shoulders and upper back.
+			mk(folder, ut, "HoodDrape", V3(s.X * 0.62, s.Y * 0.3, s.Z * 0.75), ut.CFrame * CF(0, s.Y * 0.42, s.Z * 0.32), color, "Ellipsoid", mat)
 			local head = part(model, "Head")
 			if head then
 				local hs = head.Size
 				-- keep the name "Hood": Builder.Cosmetics checks for it before restoring hidden hair
-				mk(folder, head, "Hood", V3(hs.X * 1.26, hs.Y * 1.18, hs.Z * 1.14), head.CFrame * CF(0, hs.Y * 0.1, hs.Z * 0.16), color, "Ellipsoid", mat)
+				mk(folder, head, "Hood", V3(hs.X * 1.2, hs.Y * 1.14, hs.Z * 1.1), head.CFrame * CF(0, hs.Y * 0.08, hs.Z * 0.14), color, "Ellipsoid", mat)
 			end
 		end
 	end
 	if lt then
-		-- skirt and belt around the glutes and the hip-shape slider (the LT envelope)
+		-- skirt and belt: round the hips AND both thighs at rest (the hips' box alone is narrower than the legs'
+		-- spread on the wider frames), from the waist to just above the knees
 		local s = lt.Size
-		local eLT = env.LT
-		local kx = math.max(1.25, eLT.x + 0.08)
-		local kz = math.max(1.35, math.max(eLT.zf, eLT.zb) + 0.12)
-		mk(folder, lt, "RobeSkirt", V3(s.X * kx, 2.2, s.Z * kz), lt.CFrame * CF(0, -1.0, 0), color, "Block", mat).Reflectance = refl
-		mk(folder, lt, "RobeBelt", V3(s.X * (kx + 0.03), 0.22, s.Z * (kz + 0.03)), lt.CFrame * CF(0, 0.1, 0), trim, "Block", mat)
+		local x0, x1, z0, z1 = -s.X / 2, s.X / 2, -s.Z / 2, s.Z / 2
+		local bottom = -s.Y / 2 - 0.9
+		local anchors = { [lt] = CF() }
+		for _, side in ipairs({ "Left", "Right" }) do
+			local ul = part(model, side .. "UpperLeg")
+			local off = restIn(ul, side .. "Hip")
+			if ul and off then
+				local p, us = off.Position, ul.Size
+				x0, x1 = math.min(x0, p.X - us.X / 2), math.max(x1, p.X + us.X / 2)
+				z0, z1 = math.min(z0, p.Z - us.Z / 2), math.max(z1, p.Z + us.Z / 2)
+				bottom = p.Y - us.Y * 0.28
+				anchors[ul] = off
+			end
+		end
+		local waist = restIn(ut, "Waist")
+		local top = waist and waist.Position.Y or s.Y * 0.45
+		-- the trunks under it (their seat and legs stand off the body's boxes), down to the skirt's hem
+		x0, x1, z0, z1 = bounds(anchors, x0, x1, z0, z1, bottom, top + 0.3)
+		local h = math.max(0.6, top - bottom)
+		local cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
+		local w, d = x1 - x0 + 2 * MT, z1 - z0 + 2 * MT
+		mk(folder, lt, "RobeSkirt", V3(w, h, d), lt.CFrame * CF(cx, top - h / 2, cz), color, "Block", mat).Reflectance = refl
+		mk(folder, lt, "RobeBelt", V3(w + 0.03, 0.18, d + 0.03), lt.CFrame * CF(cx, top - 0.16, cz), trim, "Block", mat)
 	end
-	local sx = math.max(1.2, eUA.x + 0.1)
-	local sz = math.max(1.2, math.max(eUA.zf, eUA.zb) + 0.1)
-	local sy = math.clamp(eUA.y, 1.02, 1.2)
-	-- forearm sleeves around the flexors / brachioradialis
-	local eLA = env.LA
-	local lx = math.max(1.22, eLA.x + 0.1)
-	local lz = math.max(1.22, math.max(eLA.zf, eLA.zb) + 0.1)
 	for _, side in ipairs({ "Left", "Right" }) do
 		local ua, la = part(model, side .. "UpperArm"), part(model, side .. "LowerArm")
 		if ua then
-			mk(folder, ua, "Sleeve", ua.Size * V3(sx, sy, sz), ua.CFrame * CF(0, ua.Size.Y * (sy - 1.02) * 0.5, 0), color, "Block", mat).Reflectance = refl
+			local us = ua.Size
+			mk(folder, ua, "Sleeve", V3(us.X + 2 * MA, us.Y + 0.03, us.Z + 2 * MA), ua.CFrame * CF(0, 0.015, 0), color, "Block", mat).Reflectance = refl
 		end
 		if la then
-			mk(folder, la, "SleeveLow", la.Size * V3(lx, 0.7, lz), la.CFrame * CF(0, la.Size.Y * 0.12, 0), color, "Block", mat).Reflectance = refl
-			mk(folder, la, "SleeveTrim", V3(la.Size.X * (lx + 0.03), 0.1, la.Size.Z * (lz + 0.03)), la.CFrame * CF(0, -la.Size.Y * 0.22, 0), trim, "Block", mat)
+			-- forearm sleeve: the upper 70% of the forearm, the trim at its cuff
+			local ls = la.Size
+			local len = ls.Y * 0.7
+			local cy = ls.Y * 0.5 - len / 2
+			mk(folder, la, "SleeveLow", V3(ls.X + 2 * MA, len, ls.Z + 2 * MA), la.CFrame * CF(0, cy, 0), color, "Block", mat).Reflectance = refl
+			mk(folder, la, "SleeveTrim", V3(ls.X + 2 * MA + 0.03, 0.08, ls.Z + 2 * MA + 0.03), la.CFrame * CF(0, cy - len / 2 + 0.04, 0), trim, "Block", mat)
 		end
 	end
 	local hood = robeId == "Hooded" or robeId == "Champion"
@@ -1487,9 +1552,11 @@ function Body.SetDamage(model, app, dmg)
 			end
 			local c = lerpColor(skin, bruiseColor(skin, dmg.age), 0.75)
 			-- the bruise wraps the lower ribs from the flank round to the front
-			mk(folder, ut, "RibBruise", V3((0.28 + 0.1 * v) * s.X, math.min(0.26 + 0.14 * v, hMax) * s.Y, s.Z * 1.06), ut.CFrame * CF(side * (0.38 * s.X - inX), cy * s.Y, -0.02), c, "Ellipsoid", SMOOTH, math.clamp(0.78 - 0.4 * v, 0.35, 0.8))
+			-- (a tier torso's box is its mesh's bounds: at the flank the body is thinner than the box, so the bruise is a
+			-- touch shallower than the box and translucent, a mark on the skin rather than a ball standing off it)
+			mk(folder, ut, "RibBruise", V3((0.26 + 0.08 * v) * s.X, math.min(0.24 + 0.12 * v, hMax) * s.Y, s.Z * (inX > 0 and 0.97 or 1.06)), ut.CFrame * CF(side * (0.38 * s.X - inX), cy * s.Y, -0.02), c, "Ellipsoid", SMOOTH, math.clamp(0.84 - 0.36 * v, 0.5, 0.86))
 			if v > 0.5 then
-				mk(folder, ut, "RibBruise", V3(0.16 * s.X, 0.14 * s.Y, s.Z * 1.08), ut.CFrame * CF(side * (0.42 * s.X - inX), cy2 * s.Y, -0.02), darken(c, 0.85), "Ellipsoid", SMOOTH, math.clamp(0.85 - 0.5 * v, 0.4, 0.8))
+				mk(folder, ut, "RibBruise", V3(0.15 * s.X, 0.13 * s.Y, s.Z * (inX > 0 and 0.99 or 1.08)), ut.CFrame * CF(side * (0.42 * s.X - inX), cy2 * s.Y, -0.02), darken(c, 0.85), "Ellipsoid", SMOOTH, math.clamp(0.88 - 0.4 * v, 0.55, 0.86))
 			end
 		end
 	end

@@ -679,7 +679,8 @@ local function faceBuild(model, app, opts, build)
 				lerpColor(lerpColor(eyeColor, Color3.fromRGB(196, 150, 80), 0.32), WHITE, 0.08), "Ellipsoid", SMOOTH, 0.35)
 		end
 		mk(folder, holder, "Pupil", V3(iris * 0.46, math.min(iris * 0.46, h * 0.6), 0.02 * s.Z), e(0, 0, -0.032), Color3.fromRGB(8, 8, 10), "Ellipsoid")
-		add("Glint", V3(iris * 0.18, iris * 0.18, 0.01), at(x + iris * 0.15, y + iris * 0.15, z - 0.04), WHITE, "Ellipsoid")
+		local glint = add("Glint", V3(iris * 0.18, iris * 0.18, 0.01), at(x + iris * 0.15, y + iris * 0.15, z - 0.04), WHITE, "Ellipsoid")
+		glint:SetAttribute("Side", side) -- (SetDamage hides it while a swollen lid has the eye shut)
 		-- upper lid: shapes the eye (hooded lids cover more of it); damage swelling hides it
 		local lidH = h * (0.32 + 0.22 * heavy)
 		local lid = rig("Lid" .. roleSide, side, "Lid", V3(w * 1.08, lidH, 0.045 * s.Z), e(0, h * (0.42 - 0.08 * heavy), -0.012), lidColor, "Ellipsoid")
@@ -1309,6 +1310,16 @@ function Head.SetDamage(model, app, dmg, folderName)
 				local side = c:GetAttribute("Side")
 				if c.Name == "Lid" then
 					c.Transparency = (side and math.clamp((eyeV[side] - 0.3) / 0.7, 0, 1) > 0) and 1 or 0
+					-- a black eye darkens the lid too (from its build colour: a lighter state heals it)
+					local baseC = c:GetAttribute("BaseColor")
+					if typeof(baseC) ~= "Color3" then
+						baseC = c.Color
+						c:SetAttribute("BaseColor", baseC)
+					end
+					local v = side and eyeV[side] or 0
+					c.Color = v > 0.15 and lerpColor(baseC, bruiseColor(skinOf(app), math.max(0, tonumber(dmg.age) or 0)), clamp(v, 0, 1) * 0.45) or baseC
+				elseif c.Name == "Glint" then
+					c.Transparency = (side and math.clamp((eyeV[side] - 0.3) / 0.7, 0, 1) > 0) and 1 or 0
 				elseif c.Name == "Lashes" then
 					-- the lash line rides on its lid: hidden while the swollen lid replaces it
 					local closed = side and eyeV[side] > 0.3
@@ -1342,15 +1353,22 @@ function Head.SetDamage(model, app, dmg, folderName)
 				at(x, y + h * (0.5 - cover / 2), L.front(x) - 0.016), lerpColor(darken(skin, 0.92), bruise, v * 0.6 * fade), "Ellipsoid")
 		end
 		if v > 0.15 then
-			local size = (0.18 + 0.12 * v) * s.X
-			add("SwollenEye", V3(size, size * 0.8, (0.08 + 0.03 * v) * s.Z), at(x, y + 0.01 * s.Y, L.front(x) + 0.01), bruise, "Ellipsoid", math.clamp(0.75 - v * 0.6 * fade, 0.15, 0.85))
+			-- the black eye: a translucent bruise lying ON the skin round the socket (thin, oriented on the head
+			-- surface, its front behind the eye's own parts: the eye stays open and readable inside it), darker
+			-- under the eye where the blood pools. (A ball in front of the eye read as a black blob on the face.)
+			local k = clamp(v, 0, 1) * fade
+			local bw, bh = (0.21 + 0.07 * v) * s.X, (0.17 + 0.05 * v) * s.Y
+			add("BlackEye", V3(bw, bh, 0.016 * s.Z), hcf * surfCF(L, x, y + 0.008 * s.Y, 0.001), bruise, "Ellipsoid", clamp(0.7 - 0.38 * k, 0.32, 0.8))
+			add("BlackEyeLow", V3(bw * 0.72, bh * 0.36, 0.018 * s.Z), hcf * surfCF(L, x + side * 0.01 * s.X, y - h * 0.62, 0.002), darken(bruise, 0.82), "Ellipsoid",
+				clamp(0.75 - 0.4 * k, 0.35, 0.85))
 		end
-		-- swelling under the eye on the cheekbone
+		-- swelling under the eye on the cheekbone: a low dome hugging the cheek, skin going bruise-coloured
 		local ck = n(side == -1 and "cheekL" or "cheekR")
 		if ck > 0.15 then
-			local cx = side * 0.3 * s.X
-			add("CheekSwell", V3((0.2 + 0.12 * ck) * s.X, (0.14 + 0.06 * ck) * s.Y, (0.1 + 0.06 * ck) * s.Z), at(cx, -0.03 * s.Y, L.front(cx) + 0.03 - 0.03 * ck),
-				lerpColor(skin, bruise, 0.25 + 0.35 * ck * fade), "Ellipsoid")
+			local cx = side * 0.28 * s.X
+			local k = clamp(ck, 0, 1)
+			add("CheekSwell", V3((0.17 + 0.07 * k) * s.X, (0.12 + 0.05 * k) * s.Y, (0.045 + 0.035 * k) * s.Z), hcf * surfCF(L, cx, -0.035 * s.Y, -0.008 + 0.008 * k),
+				lerpColor(skin, bruise, 0.2 + 0.3 * k * fade), "Ellipsoid")
 		end
 		-- swollen ear (the hematoma that becomes a cauliflower ear)
 		local ear = n(side == -1 and "earL" or "earR")
@@ -1389,7 +1407,7 @@ function Head.SetDamage(model, app, dmg, folderName)
 	if br > 0.2 then
 		for side = -1, 1, 2 do
 			local x = side * 0.3 * s.X
-			add("Bruise", V3(0.22 * s.X, 0.16 * s.Y, 0.04), at(x, -0.06 * s.Y, L.front(x)), bruise, "Ellipsoid", math.clamp(0.85 - br * 0.55 * fade, 0.3, 0.88))
+			add("Bruise", V3(0.22 * s.X, 0.16 * s.Y, 0.02 * s.Z), hcf * surfCF(L, x, -0.07 * s.Y, 0.002), bruise, "Ellipsoid", math.clamp(0.85 - br * 0.5 * fade, 0.38, 0.88))
 		end
 	elseif stage >= 1 or n("redness") > 0.1 then
 		local r = math.max(n("redness"), 0.3)
@@ -1472,7 +1490,8 @@ local function faceSweat(model, app, q)
 	}
 	for i, sp in ipairs(spots) do
 		if detail == "full" or i <= 3 then
-			mk(folder, head, "Sheen", V3(sp[3] * s.X, sp[4] * s.Y, 0.02 * s.Z), hcf * surfCF(L, sp[1], sp[2], 0.004), WHITE, "Ellipsoid", SMOOTH, 0.94 - 0.18 * q)
+			-- (faint: a wet face catches the light, it does not wear white patches)
+			mk(folder, head, "Sheen", V3(sp[3] * s.X * 0.85, sp[4] * s.Y * 0.85, 0.012 * s.Z), hcf * surfCF(L, sp[1], sp[2], 0.002), WHITE, "Ellipsoid", SMOOTH, 0.96 - 0.1 * q)
 		end
 	end
 	if detail ~= "full" then

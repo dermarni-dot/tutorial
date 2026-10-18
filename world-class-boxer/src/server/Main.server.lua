@@ -923,7 +923,20 @@ local function runFight(player, profile)
 		nick = type(profile.identity) == "table" and profile.identity.nickname or nil,
 		gymTier = gymTierOf(profile),
 		supporters = math.clamp(popularity / 100, 0, 1),
+		-- how big a night it is (the house: Venues.Importance): the career tier, the purse, the opponent's best ranking
+		careerTier = profile.tier, purse = offer.purse,
 	}
+	do
+		local best
+		for _, r in pairs(type(offer.opp) == "table" and type(offer.opp.ranks) == "table" and offer.opp.ranks or {}) do
+			if r == "C" then
+				best = "C"
+			elseif best ~= "C" and tonumber(r) and (best == nil or tonumber(r) < best) then
+				best = tonumber(r)
+			end
+		end
+		venueOpts.oppRank = best
+	end
 	local okSponsors, sponsors = pcall(Career.ActiveSponsors, profile)
 	if okSponsors and type(sponsors) == "table" then
 		venueOpts.sponsors = sponsors

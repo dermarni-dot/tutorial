@@ -8,7 +8,9 @@
 --     moved, HipHeight, the BodyTiers attribute, change-only), a failed load (the default part kept, the failure
 --     cached), every id 0 (nothing loaded, nothing swapped)
 --   * Looks: the face key sanitised (creator faces only), old saves migrated to the smile, NPC faces
---   * FaceFX: the decal texture follows the mood (hit -> hurt -> back to the chosen face)
+--   * the built face on the classic head (BuilderHead, the v7 face): no decal, the FaceFX rig, the part budget per
+--     detail level; FaceFX animates it (expressions, blinks on a hit); the post-workout flow (Grime, a tier-up rebuild,
+--     SetSweat) and the damage presets never darken the face (no near-black part over the skin but the features)
 --   * the asset hair on the classic head (HK.Fit with CLASSIC_FIT): cards clear the head, the cap's worst point
 --   lune run tools/sim/test_bodytiers.luau
 local roblox = require("@lune/roblox")
@@ -477,58 +479,6 @@ do
 end
 
 ------------------------------------------------------------------------
--- FaceFX: the texture follows the mood
-------------------------------------------------------------------------
-do
-	BodyTiers.SetData(REAL)
-	local FaceFX = H.require("FaceFX")
-	local model = E.new("Model", E.workspace)
-	model.Name = "NPC"
-	local head = E.new("Part", model)
-	head.Name = "Head"
-	head.CFrame = CFrame.new(0, 5, -3)
-	local decal = E.new("Decal", head)
-	decal.Name = "face"
-	model:SetAttribute("FaceKey", "cool")
-	decal.Texture = BodyTiers.FaceTexture("cool")
-	local rigs = { [model] = { isFighter = true } }
-	local function tex(k)
-		return BodyTiers.FaceTexture(k)
-	end
-	FaceFX.Update(1 / 60, 0, Vector3.new(0, 5, 0), rigs)
-	check("FaceFX: neutral -> his own face", decal.Texture == tex("cool"), decal.Texture)
-	FaceFX.Hit(model, 1)
-	FaceFX.Update(1 / 60, 0, Vector3.new(0, 5, 0), rigs)
-	check("FaceFX: a hit -> hurt", decal.Texture == tex("hurt"), decal.Texture)
-	model:SetAttribute("Guard", "down")
-	model:SetAttribute("Expr", "ko")
-	task.wait(0.1)
-	FaceFX.Update(1 / 60, 0, Vector3.new(0, 5, 0), rigs)
-	check("FaceFX: down + ko -> ko", decal.Texture == tex("ko"), decal.Texture)
-	model:SetAttribute("Guard", "up")
-	model:SetAttribute("Expr", "happy")
-	task.wait(1)
-	FaceFX.Update(1 / 60, 0, Vector3.new(0, 5, 0), rigs)
-	check("FaceFX: Expr happy -> grin", decal.Texture == tex("grin"), decal.Texture)
-	model:SetAttribute("Expr", nil)
-	model:SetAttribute("Stam", 0.2)
-	task.wait(0.1)
-	FaceFX.Update(1 / 60, 0, Vector3.new(0, 5, 0), rigs)
-	check("FaceFX: spent in a fight -> tired", decal.Texture == tex("tired"), decal.Texture)
-	model:SetAttribute("Stam", 1)
-	task.wait(0.1)
-	FaceFX.Update(1 / 60, 0, Vector3.new(0, 5, 0), rigs)
-	check("FaceFX: back to his own face", decal.Texture == tex("cool"), decal.Texture)
-	-- ids 0: every mood stays on the engine smile
-	BodyTiers.SetData({ faces = { { key = "smile", id = 0 }, { key = "hurt", id = 0, creator = false } }, expressions = { hurt = "hurt" } })
-	FaceFX.Hit(model, 1)
-	task.wait(0.1)
-	FaceFX.Update(1 / 60, 0, Vector3.new(0, 5, 0), rigs)
-	check("FaceFX ids 0: the engine smile", decal.Texture == BodyTiers.DEFAULT_TEXTURE, decal.Texture)
-	BodyTiers.SetData(REAL)
-end
-
-------------------------------------------------------------------------
 -- the asset hair on the classic head
 ------------------------------------------------------------------------
 do
@@ -632,8 +582,8 @@ do
 	local h = model:FindFirstChild("Head")
 	local decal = h and h:FindFirstChild("face")
 	check("classic head swapped in", h and h.ClassName == "Part" and h:FindFirstChildOfClass("SpecialMesh") ~= nil)
-	check("face decal = the chosen face", decal and decal.Texture == BodyTiers.FaceTexture("cool"), decal and decal.Texture)
-	check("FaceKey attribute", model:GetAttribute("FaceKey") == "cool")
+	check("no decal face: the built face", decal == nil and h and h:FindFirstChildOfClass("Decal") == nil)
+	check("no FaceKey attribute", model:GetAttribute("FaceKey") == nil)
 	check("head seated on the neck pivot", h and near(h:FindFirstChild("NeckRigAttachment").Position.Y, -0.5 * h.Size.Y, 1e-4))
 	check("tier 4 body (60)", model:GetAttribute("BodyTiers") == string.rep("4", 14), model:GetAttribute("BodyTiers"))
 	local look = model:FindFirstChild("BoxerLook")
@@ -654,6 +604,189 @@ do
 	check("no round-1 muscles", look and look:FindFirstChild("Muscles") == nil)
 	local ld = model:GetAttribute("LookData")
 	check("LookData says classic head", type(ld) == "string" and ld:find('"headShape":"classic"', 1, true) ~= nil)
+end
+
+
+------------------------------------------------------------------------
+-- The built face: rig, budget, FaceFX, workouts and damage
+------------------------------------------------------------------------
+do
+	local Builder = H.require("Builder")
+	local Looks = H.require("Looks")
+	BodyTiers.SetData(REAL)
+	local function rigWithHead()
+		BuilderTiers.Reset()
+		BuilderTiers.Services = { AssetService = fakeAssets(), Content = Content }
+		local model, hum = newRig(Vector3.new(1, 1, 1), "keep")
+		local head = E.new("MeshPart", model)
+		head.Name = "Head"
+		head.Size = Vector3.new(0.927, 0.927, 0.927)
+		head.CFrame = CFrame.new(0, 6, 0)
+		local na = E.new("Attachment", head)
+		na.Name = "NeckRigAttachment"
+		na.Position = Vector3.new(0, -0.46, 0)
+		local neck = E.new("Motor6D", head)
+		neck.Name = "Neck"
+		neck.Part0, neck.Part1 = model:FindFirstChild("UpperTorso"), head
+		neck.C0, neck.C1 = CFrame.new(0, 0.8, 0), CFrame.new(0, -0.46, 0)
+		hum.ReplaceBodyPartR15 = (function(inner)
+			return function(self, enum, part)
+				if enum.Name == "Head" then
+					local old = model:FindFirstChild("Head")
+					neck.Part1 = part
+					neck.Parent = part
+					part.Parent = model
+					old:Destroy()
+					return true
+				end
+				return inner(self, enum, part)
+			end
+		end)(hum.ReplaceBodyPartR15)
+		return model
+	end
+	local function faceParts(model)
+		local look = model:FindFirstChild("BoxerLook")
+		local f = look and look:FindFirstChild("Face")
+		local n, roles = 0, {}
+		for _, d in ipairs(f and f:GetDescendants() or {}) do
+			if d:IsA("BasePart") then
+				n += 1
+			elseif d.ClassName == "Motor6D" and d.Name == "FaceJoint" then
+				roles[d:GetAttribute("Role")] = d
+			end
+		end
+		return n, roles, f
+	end
+	local app = Looks.Defaults(1)
+	app.face.shape = "Square"
+	app.face.jawWidth = 0.5
+	local counts = {}
+	for _, detail in ipairs({ "full", "medium", "low" }) do
+		local model = rigWithHead()
+		local ok, err = pcall(Builder.Cosmetics, model, app, build(30), nil, { hands = "gloves", detail = detail })
+		check("built face (" .. detail .. ") builds", ok, err)
+		local n, roles, f = faceParts(model)
+		counts[detail] = n
+		check("built face (" .. detail .. "): Extra within A's cap", f and (f:GetAttribute("Extra") or 99) <= ({ full = 38, medium = 6, low = -2 })[detail] + 0.5,
+			f and f:GetAttribute("Extra"))
+		if detail == "full" then
+			for _, role in ipairs({ "EyeL", "EyeR", "BrowL", "BrowR", "LidL", "LidR", "LowerLidL", "LowerLidR", "UpperLip", "LowerLip", "MouthCornerL", "MouthCornerR", "MouthInside" }) do
+				check("full rig role " .. role, roles[role] ~= nil)
+			end
+		elseif detail == "medium" then
+			check("medium rig: eyes and brows only", roles.EyeL ~= nil and roles.BrowR ~= nil and roles.LidL == nil)
+		else
+			check("low: no rig", next(roles) == nil)
+		end
+		model:Destroy()
+	end
+	check("part count falls with detail", counts.full > counts.medium and counts.medium > counts.low, string.format("%d %d %d", counts.full, counts.medium, counts.low))
+
+	-- FaceFX animates the rig: an expression moves the brows, a hit blinks
+	local model = rigWithHead()
+	model.Parent = E.workspace
+	pcall(Builder.Cosmetics, model, app, build(30), nil, { hands = "gloves", detail = "full" })
+	for _, d in ipairs(model:GetDescendants()) do
+		if d.ClassName == "SpecialMesh" then
+			d.Scale = d.Scale or Vector3.new(1, 1, 1)
+			d.Offset = d.Offset or Vector3.zero
+		end
+	end
+	local FaceFX = H.require("FaceFX")
+	local _, roles = faceParts(model)
+	local head = model:FindFirstChild("Head")
+	local cam = head.Position + Vector3.new(0, 0, -3)
+	model:SetAttribute("Expr", "anger")
+	for i = 1, 40 do
+		FaceFX.Update(1 / 30, i / 30, cam, nil, 99)
+	end
+	local dbg = FaceFX.Debug(model)
+	check("FaceFX tracks the rig", dbg ~= nil and dbg.roles and dbg.active, dbg and dbg.roleCount)
+	local bt = roles.BrowL and roles.BrowL.Transform
+	check("anger moves the brows", bt ~= nil and (bt.Position.Magnitude > 1e-4 or bt.LookVector:Dot(Vector3.new(0, 0, -1)) < 0.99999), bt)
+	local lip = roles.UpperLip and roles.UpperLip.Transform
+	check("anger lifts the upper lip (snarl)", lip ~= nil and lip.Position.Y > 0, lip and lip.Position)
+	FaceFX.Hit(model, 1)
+	FaceFX.Update(1 / 30, 2, cam, nil, 99)
+	FaceFX.Update(1 / 30, 2.03, cam, nil, 99)
+	local blinked = false
+	for i = 1, 6 do
+		task.wait(0.02)
+		FaceFX.Update(1 / 30, 2.05 + i / 30, cam, nil, 99)
+		for _, d in ipairs(model:GetDescendants()) do
+			if d.Name == "BlinkLid" and d.Transparency < 1 then
+				blinked = true
+			end
+		end
+	end
+	check("a hit squeezes the eyes shut (BlinkLid shown)", blinked)
+
+	-- after a workout: road grime, a tier-up rebuild (applyLook), the session's sweat: the face stays a face
+	local DARK_OK = { Pupil = true, Lashes = true, Brow = true, BrowInner = true, BrowOuter = true, Nostril = true, MouthLine = true,
+		MouthInside = true, Limbal = true, Iris = true, MouthCorner = true }
+	local function lumOf(c)
+		return 0.299 * c.R + 0.587 * c.G + 0.114 * c.B
+	end
+	local function darkOverSkin(m)
+		local bad = {}
+		local look = m:FindFirstChild("BoxerLook")
+		for _, fname in ipairs({ "Face", "FaceSweat", "FaceGrime", "Damage", "Beard" }) do
+			local f = look and look:FindFirstChild(fname)
+			for _, p in ipairs(f and f:GetDescendants() or {}) do
+				if p:IsA("BasePart") and p.Transparency < 0.6 and not DARK_OK[p.Name] and lumOf(p.Color) < 0.12 then
+					table.insert(bad, fname .. "/" .. p.Name)
+				end
+			end
+		end
+		return bad
+	end
+	local skin0 = head.Color
+	model:SetAttribute("Grime", 0.8)
+	pcall(Builder.Cosmetics, model, app, build(60), nil, { hands = "wraps", detail = "full" })
+	Builder.SetSweat(model, app, 0.85)
+	head = model:FindFirstChild("Head")
+	check("workout: the head keeps its skin colour", head.Color == skin0)
+	check("workout: the head's sheen stays subtle", head.Reflectance <= 0.08 + 1e-6, head.Reflectance)
+	check("workout: no decal on the head", head:FindFirstChildOfClass("Decal") == nil)
+	local bad = darkOverSkin(model)
+	check("workout: nothing near-black over the skin", #bad == 0, table.concat(bad, ", "))
+	local n = faceParts(model)
+	check("workout: the face is still built", n > 30, n)
+	-- the damage presets (the Creator's): black eyes are translucent and lie behind the eye's own parts
+	local severe = { leftEye = 1, rightEye = 0.85, cut = 1.1, cutSide = -1, cut2 = 0.6, bruise = 0.9, lip = 1, noseBleed = 1, nose = true, cheekL = 1, cheekR = 0.7, forehead = 0.8, earL = 0.6 }
+	Builder.SetDamage(model, app, severe)
+	local look = model:FindFirstChild("BoxerLook")
+	local dmgF = look and look:FindFirstChild("Damage")
+	local be, beOk = 0, true
+	for _, p in ipairs(dmgF and dmgF:GetChildren() or {}) do
+		if p.Name == "BlackEye" or p.Name == "BlackEyeLow" then
+			be += 1
+			beOk = beOk and p.Transparency >= 0.3 and p.Size.Z < 0.03
+		end
+	end
+	check("severe: black eyes on both sides, translucent and thin", be == 4 and beOk, be)
+	check("severe: no ball over the eyes (SwollenEye retired)", dmgF and dmgF:FindFirstChild("SwollenEye") == nil)
+	bad = darkOverSkin(model)
+	check("severe: nothing near-black over the skin", #bad == 0, table.concat(bad, ", "))
+	local lidDark
+	for _, p in ipairs(look.Face:GetChildren()) do
+		if p.Name == "Lid" then
+			lidDark = lidDark or (p.Transparency >= 1 or p.Color ~= p:GetAttribute("BaseColor"))
+		end
+	end
+	check("severe: the lids swell shut / take the bruise", lidDark == true)
+	Builder.SetDamage(model, app, {})
+	local healed = true
+	for _, p in ipairs(look.Face:GetChildren()) do
+		if p.Name == "Lid" then
+			healed = healed and p.Transparency == 0 and p.Color == p:GetAttribute("BaseColor")
+		end
+	end
+	check("healed: the lids are back", healed)
+	check("healed: no damage marks", #look.Damage:GetChildren() == 0)
+	Builder.SetSweat(model, app, 0)
+	check("dry: no face sweat folder", look:FindFirstChild("FaceSweat") == nil)
+	model:Destroy()
 end
 
 print(string.format("test_bodytiers: %d passed, %d failed", pass, fail))

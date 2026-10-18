@@ -61,6 +61,8 @@ local DAMAGE = {
 	Severe = { leftEye = 1, rightEye = 0.85, cut = 1.1, cutSide = -1, cut2 = 0.6, bruise = 0.9, lip = 1, noseBleed = 1, nose = true, cheekL = 1, cheekR = 0.7, forehead = 0.8, earL = 0.6 },
 	-- three days after a heavy fight: the bruises gone blue-purple / yellow, no blood
 	Healing = { leftEye = 0.6, cut = 0.5, cutSide = -1, bruise = 0.5, cheekL = 0.4, age = 3 },
+	-- body shots: the rib bruises (Body.SetDamage) over a heavy face
+	Body = { leftEye = 0.5, bruise = 0.4, ribsL = 0.9, ribsR = 0.45 },
 }
 local LOOKS = {
 	{ id = "m_classic", label = "Classic, tier 2", g = 1, tier = 2, skin = 6, preset = "Classic", eye = 2 },
@@ -97,10 +99,26 @@ for _, d in ipairs({ "Light", "Moderate", "Heavy", "Severe", "Healing" }) do
 	entry(byId.m_chiselled, "dmg" .. d, { damage = d })
 end
 entry(byId.f_heart, "dmgHeavy", { damage = "Heavy" })
+entry(byId.m_chiselled, "dmgBody", { damage = "Body" })
+entry(byId.f_heart, "dmgBody", { damage = "Body" })
+entry(byId.m_veteran, "dmgBody", { damage = "Body" })
 for _, id in ipairs({ "m_classic", "m_chiselled", "f_heart", "m_babyface" }) do
 	entry(byId[id], "workout", { workout = true })
 end
 entry(byId.m_classic, "workoutRoad", { workout = true, grime = 0.7 })
+-- the walkout robe on every tier, the frames and the heights (body views; clearance metrics in the report)
+local ROBES = {
+	{ id = "robe_t1_lean_62", g = 1, tier = 1, skin = 6, frame = "Lean", height = 62, robe = "Classic" },
+	{ id = "robe_t2_athletic_70", g = 1, tier = 2, skin = 3, frame = "Athletic", height = 70, robe = "Classic" },
+	{ id = "robe_t3_muscular_74", g = 1, tier = 3, skin = 9, frame = "Muscular", height = 74, robe = "Champion" },
+	{ id = "robe_t4_power_72", g = 1, tier = 4, skin = 10, frame = "Power Build", height = 72, robe = "Hooded" },
+	{ id = "robe_t5_heavy_80", g = 1, tier = 5, skin = 6, frame = "Heavyweight Build", height = 80, robe = "Classic" },
+	{ id = "robe_f3_athletic_66", g = 2, tier = 3, skin = 8, frame = "Athletic", height = 66, robe = "Classic" },
+}
+for _, r in ipairs(ROBES) do
+	local L = { id = r.id, label = r.id, g = r.g, tier = r.tier, skin = r.skin, preset = "Classic", frame = r.frame, height = r.height }
+	table.insert(ENTRIES, { id = r.id, look = L, state = "robe", robe = r.robe })
+end
 
 ------------------------------------------------------------------------
 -- host: the fake engine
@@ -383,6 +401,12 @@ local function appFor(L)
 		app.beard = { style = L.beard.style, growth = L.beard.growth }
 	end
 	app.battle = L.battle
+	if L.frame then
+		app.body.frame = L.frame
+	end
+	if L.height then
+		app.height = L.height
+	end
 	return app
 end
 
@@ -430,6 +454,48 @@ for _, e in ipairs(ENTRIES) do
 	if e.damage then
 		Builder.SetDamage(model, app, DAMAGE[e.damage])
 		solve(model)
+	end
+	local robeReport
+	if e.robe then
+		Builder.SetRobe(model, app, true, { robe = e.robe, nick = "THE KID" })
+		solve(model)
+		-- clearance: every tier-mesh vertex of the part a shell is welded to, in the shell's box (inside = covered;
+		-- the margin = how far the box stands off the body at its widest)
+		local look = model:FindFirstChild("BoxerLook")
+		local robe = look and look:FindFirstChild("Robe")
+		local out = {}
+		for _, shell in ipairs(robe and robe:GetChildren() or {}) do
+			local w = shell:FindFirstChildOfClass("WeldConstraint")
+			local p0 = w and w.Part0
+			if not (p0 and p0:GetAttribute("BodyTier") and (shell.Name == "RobeTorso" or shell.Name == "Sleeve" or shell.Name == "SleeveLow" or shell.Name == "RobeSkirt")) then
+				continue
+			end
+			local parts = { p0 }
+			if shell.Name == "RobeSkirt" then
+				parts = { model:FindFirstChild("LeftUpperLeg"), model:FindFirstChild("RightUpperLeg"), p0 }
+			end
+			local inside, total, gapX, gapZ = 0, 0, math.huge, math.huge
+			local hs = shell.Size / 2
+			for _, bp in ipairs(parts) do
+				local m = MeshV2.Read(string.format("%s/tools/body/out/tier%d/%s.mesh", root, bp:GetAttribute("BodyTier"), bp.Name))
+				local cx, cy, cz, bx, by, bz = MeshV2.Bounds(m)
+				local ks = bp.Size
+				for i = 1, #m.P, 3 do
+					local wpos = bp.CFrame * Vector3.new((m.P[i] - cx) * ks.X / bx, (m.P[i + 1] - cy) * ks.Y / by, (m.P[i + 2] - cz) * ks.Z / bz)
+					local lp = shell.CFrame:PointToObjectSpace(wpos)
+					if math.abs(lp.Y) <= hs.Y then
+						total += 1
+						if math.abs(lp.X) <= hs.X and math.abs(lp.Z) <= hs.Z then
+							inside += 1
+						end
+						gapX = math.min(gapX, hs.X - math.abs(lp.X))
+						gapZ = math.min(gapZ, hs.Z - math.abs(lp.Z))
+					end
+				end
+			end
+			table.insert(out, string.format("%s %.0f%% inside, min gap x %+.3f z %+.3f", shell.Name, total > 0 and 100 * inside / total or 0, gapX, gapZ))
+		end
+		robeReport = table.concat(out, "; ")
 	end
 	local head = model:FindFirstChild("Head")
 	if e.expr or FaceFX then
@@ -533,6 +599,9 @@ for _, e in ipairs(ENTRIES) do
 	table.insert(index.looks, { id = e.id, file = e.id .. ".json", label = scene.label, look = L.id, state = e.state, counts = counts })
 	table.insert(report, string.format("%-24s face parts %3d  rig joints %2d  drawn parts %3d  head %s", e.id, counts.face, counts.rig, counts.parts,
 		scene.head and string.format("%.3f", scene.head.size[1]) or "?"))
+	if robeReport then
+		table.insert(report, "    " .. robeReport)
+	end
 	model:Destroy()
 	currentModel = nil
 end

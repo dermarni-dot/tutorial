@@ -406,6 +406,20 @@ local function setup()
 	end } }
 end
 
+-- the game's built face (BuilderHead): its Face folder's parts, and no decal / FaceKey of the retired classic faces
+local function builtFace(model)
+	local look = model:FindFirstChild("BoxerLook")
+	local f = look and look:FindFirstChild("Face")
+	local n = 0
+	for _, d in ipairs(f and f:GetDescendants() or {}) do
+		if d:IsA("BasePart") then
+			n += 1
+		end
+	end
+	local head = model:FindFirstChild("Head")
+	return n > 20 and model:GetAttribute("FaceKey") == nil and head ~= nil and head:FindFirstChild("face") == nil
+end
+
 local function hairParts(model)
 	local look = model:FindFirstChild("BoxerLook")
 	local hair = look and look:FindFirstChild("Hair")
@@ -453,7 +467,7 @@ do
 	check("game look: no avatar attributes", model:GetAttribute("AvatarLook") == nil and model:GetAttribute("AvatarHair") == nil and model:GetAttribute("AvatarFace") == nil)
 	check("game look: round-1 hair built", hairParts(model) > 0, hairParts(model))
 	local head = model:FindFirstChild("Head")
-	check("game look: classic head + chosen face", head.ClassName == "Part" and model:GetAttribute("FaceKey") == "smile" and head.face.Texture == BodyTiers.FaceTexture("smile"))
+	check("game look: classic head + the built face", head.ClassName == "Part" and builtFace(model))
 	local look = LookData.Get(model)
 	check("game look: LookData hair has no avatar flag", look and look.hair and look.hair.avatar == nil)
 	gameSigs = model:GetAttribute("HairSig")
@@ -478,7 +492,7 @@ do
 	local n, folder = hairParts(model)
 	check("avatar hair: no round-1 hair parts (empty sealed folder)", n == 0 and folder ~= nil and folder:GetAttribute("Avatar") == true and folder:GetAttribute("Sig") ~= nil)
 	check("avatar hair: two accessories", #accessories(model) == 2)
-	check("avatar hair: game face kept (classic head swapped in)", model:FindFirstChild("Head").ClassName == "Part" and model:GetAttribute("FaceKey") == "smile")
+	check("avatar hair: game face kept (classic head swapped in)", model:FindFirstChild("Head").ClassName == "Part" and builtFace(model))
 	check("avatar hair: accessories re-welded to the classic head", weldedToHead(model))
 	local look = LookData.Get(model)
 	check("avatar hair: LookData hair.avatar", look and look.hair.avatar == true)
@@ -553,8 +567,7 @@ do
 	-- off again: the default head comes back from the engine, then the classic head and the chosen face
 	Builder.Apply(model, app, build(40), nil, { hands = "wraps" })
 	head = model:FindFirstChild("Head")
-	check("dynamic off: classic head + chosen face back", head.ClassName == "Part" and model:GetAttribute("FaceKey") == "cool"
-		and head.face.Texture == BodyTiers.FaceTexture("cool") and model:GetAttribute("AvatarFace") == nil)
+	check("dynamic off: classic head + the built face back", head.ClassName == "Part" and builtFace(model) and model:GetAttribute("AvatarFace") == nil)
 end
 
 ------------------------------------------------------------------------
@@ -592,7 +605,7 @@ do
 	check("failure: Apply survives", ok)
 	check("failure: applied again without the avatar", stats.applies == 2 and (stats.last.HairAccessory or "") == "")
 	check("failure: the game look", model:GetAttribute("AvatarLook") == nil and model:GetAttribute("AvatarHair") == nil and hairParts(model) > 0
-		and model:GetAttribute("FaceKey") == "smile")
+		and builtFace(model))
 	check("failure: the avatar is held back (ApplyFailed)", AvatarLook.Get(42) == nil)
 	check("failure: the next Apply (no avatar) re-applies nothing", (function()
 		Builder.Apply(model, app, build(40), nil, { hands = "wraps", avatar = AvatarLook.Get(42), avatarUser = 42 })

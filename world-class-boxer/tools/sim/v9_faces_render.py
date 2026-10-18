@@ -4,7 +4,8 @@
                                                        [--sheets SPEC.json] [--res 360]
 
 Per entry: head close-ups (front, 3/4 by default) as <id>_<view>.png. Then the sheets in SPEC (a JSON list of
-{ "file": "name.jpg", "title": "...", "cols": n, "items": [[id, view, label], ...] }), when given.
+{ "file": "name.jpg", "title": "...", "cols": n, "items": [[id, view, label, dir?], ...] }; dir = another render
+folder, e.g. the "before" set), when given; --render 0 only lays out the sheets.
 Geometry is exactly what the scene file says (v8_render.py's shapes and studio rig): the tier meshes, the classic head
 (AnatomyHairKit.CLASSIC revolved; its decal on an older src), and every Kit.mk part by shape, colour, material,
 reflectance and TRANSPARENCY (a translucent part is drawn translucent: the sweat sheen, the grime, the bruises).
@@ -90,7 +91,8 @@ def add_scene(sc, scene_dir, d):
                 poly.use_smooth = False
 
 
-VIEWS = {"front": (0, 2, 1.0), "34": (32, 4, 1.0), "side": (80, 2, 1.0)}
+VIEWS = {"front": (0, 2, 1.0), "34": (32, 4, 1.0), "side": (80, 2, 1.0),
+         "body": (0, 6, 1.0), "body34": (35, 8, 1.0), "bodyside": (90, 4, 1.0)}
 
 
 def render_entry(scene_dir, out_dir, look, samples, views, res):
@@ -100,9 +102,17 @@ def render_entry(scene_dir, out_dir, look, samples, views, res):
     f = tuple(np.array(d["head"]["cf"][:3]) + np.array([0, -0.04, 0]))
     sc.rig(f, 1.0)
     out = []
+    top = d["head"]["cf"][1] + d["head"]["size"][1] / 2 + 0.1
     for v in views:
         p = os.path.join(out_dir, f"{look['id']}_{v}.png")
-        sc.render(p, view=VIEWS[v], dist=0.78 / math.tan(math.atan(18 / 85)), focus=f)
+        if v.startswith("body"):
+            # the whole boxer (the robe previews): head to feet
+            bf = (0, top / 2, 0)
+            sc.rig(bf, 3.0)
+            sc.render(p, view=VIEWS[v], dist=(top / 2 + 0.35) / math.tan(math.atan(18 / 85)), focus=bf)
+        else:
+            sc.rig(f, 1.0)
+            sc.render(p, view=VIEWS[v], dist=0.78 / math.tan(math.atan(18 / 85)), focus=f)
         out.append(p)
     print("rendered", look["id"], flush=True)
     return out
@@ -112,7 +122,7 @@ def sheets(out_dir, spec):
     for sh in spec:
         paths, labels = [], []
         for it in sh["items"]:
-            p = os.path.join(out_dir, f"{it[0]}_{it[1]}.png")
+            p = os.path.join(it[3] if len(it) > 3 else out_dir, f"{it[0]}_{it[1]}.png")
             if os.path.isfile(p):
                 paths.append(p)
                 labels.append(it[2])
