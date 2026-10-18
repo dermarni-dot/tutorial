@@ -97,7 +97,7 @@ function FE.new()
 			_class = className, _name = className, _kids = {}, _attr = {}, _attrSig = {}, _props = {},
 			_parent = nil, _destroyed = false,
 			AncestryChanged = Signal(), DescendantAdded = Signal(), Destroying = Signal(), ChildAdded = Signal(),
-			ChildRemoved = Signal(), Changed = Signal(),
+			ChildRemoved = Signal(), Changed = Signal(), AttributeChanged = Signal(),
 		}
 		local o = setmetatable(raw, Inst)
 		instSet[o] = true
@@ -250,6 +250,36 @@ function FE.new()
 		walk(o)
 		return out
 	end
+	function methods.FindFirstAncestorOfClass(o, cls)
+		local p = rawget(o, "_parent")
+		while p do
+			if rawget(p, "_class") == cls then
+				return p
+			end
+			p = rawget(p, "_parent")
+		end
+		return nil
+	end
+	function methods.FindFirstAncestorWhichIsA(o, cls)
+		local p = rawget(o, "_parent")
+		while p do
+			if p:IsA(cls) then
+				return p
+			end
+			p = rawget(p, "_parent")
+		end
+		return nil
+	end
+	function methods.FindFirstAncestor(o, name)
+		local p = rawget(o, "_parent")
+		while p do
+			if rawget(p, "_name") == name then
+				return p
+			end
+			p = rawget(p, "_parent")
+		end
+		return nil
+	end
 	function methods.IsDescendantOf(o, other)
 		local p = rawget(o, "_parent")
 		while p do
@@ -285,6 +315,7 @@ function FE.new()
 		if s then
 			s:Fire()
 		end
+		o.AttributeChanged:Fire(k)
 	end
 	function methods.GetAttributeChangedSignal(o, k)
 		local t = rawget(o, "_attrSig")
