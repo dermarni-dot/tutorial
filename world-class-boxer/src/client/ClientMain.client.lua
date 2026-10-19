@@ -102,19 +102,22 @@ UI.Corner(ovrBox, UI.R.md)
 UI.Stroke(ovrBox, T.gold, 1, 0.35)
 local hudOvr = UI.Text(ovrBox, "", { Face = "number", TextSize = 24, TextColor3 = T.gold, Size = UDim2.new(1, 0, 0, 26), Position = UDim2.fromOffset(0, 1), AutomaticSize = Enum.AutomaticSize.None,
 	TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+UI.GoldText(hudOvr)
 UI.Text(ovrBox, "OVR", { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Size = UDim2.new(1, 0, 0, 12), Position = UDim2.new(0, 0, 1, -14), AutomaticSize = Enum.AutomaticSize.None,
 	TextXAlignment = Enum.TextXAlignment.Center })
 local hudTier = UI.Text(hud, "", { Name = "Tier", Font = T.semi, TextSize = 12, TextColor3 = T.gold, LayoutOrder = 2, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 local nums = UI.Frame(hud, { Name = "Numbers", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52), LayoutOrder = 3 })
 UI.List(nums, 8, true)
-local _, recVal, recCap = UI.Stat(nums, "0-0-0", "RECORD", { Size = UDim2.new(0.5, -4, 1, 0), valueSize = 24, order = 1, scaled = true })
-local _, moneyVal = UI.Stat(nums, "$0", "PURSE", { Size = UDim2.new(0.5, -4, 1, 0), valueSize = 24, order = 2, valueColor = T.gold, scaled = true })
+local _, recVal, recCap = UI.Stat(nums, "0-0-0", "RECORD", { Size = UDim2.new(0.5, -4, 1, 0), valueSize = 24, order = 1, scaled = true, icon = "gloves", iconSize = 14 })
+local _, moneyVal = UI.Stat(nums, "$0", "PURSE", { Size = UDim2.new(0.5, -4, 1, 0), valueSize = 24, order = 2, valueColor = T.gold, scaled = true, icon = "money", iconSize = 14, iconColor = T.goldDeep })
 local bars = UI.Frame(hud, { Name = "Meters", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 })
 UI.List(bars, 5)
-local function miniBar(label, color, order)
+local function miniBar(label, color, order, icon)
 	local f = UI.Frame(bars, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = order })
-	UI.Text(f, label, { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Size = UDim2.new(0, 84, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
-	local _, set = UI.Bar(f, { Position = UDim2.new(0, 86, 0.5, -3), Size = UDim2.new(1, -126, 0, 6) }, color)
+	-- the meter's icon in its colour, then its caption
+	UI.Icon(f, icon, 14, color, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5) })
+	UI.Text(f, label, { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(20, 0), Size = UDim2.new(0, 82, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	local _, set = UI.Bar(f, { Position = UDim2.new(0, 104, 0.5, -3), Size = UDim2.new(1, -144, 0, 6) }, color)
 	local val = UI.Text(f, "", { Face = "number", TextSize = 15, Position = UDim2.new(1, -34, 0, 0), Size = UDim2.new(0, 34, 1, 0), TextXAlignment = Enum.TextXAlignment.Right,
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	return function(v, c)
@@ -122,10 +125,10 @@ local function miniBar(label, color, order)
 		val.Text = tostring(math.floor(v))
 	end
 end
-local setEnergy = miniBar("ENERGY", T.gold, 1)
-local setHydration = miniBar("HYDRATION", T.cyan, 2)
-local setNutrition = miniBar("NUTRITION", T.green, 3)
-local setFatigue = miniBar("FATIGUE", T.orange, 4)
+local setEnergy = miniBar("ENERGY", T.gold, 1, "energy")
+local setHydration = miniBar("HYDRATION", T.cyan, 2, "water")
+local setNutrition = miniBar("NUTRITION", T.green, 3, "food")
+local setFatigue = miniBar("FATIGUE", T.orange, 4, "pulse")
 -- the phone plate: the four meters as one line of chips under the name
 local condStrip = UI.Frame(hud, { Name = "CondStrip", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 4, Visible = false })
 UI.List(condStrip, 6, true)
@@ -344,7 +347,16 @@ local function showResult(data)
 	local bodyTop = short and 108 or 150
 	body.Position = UDim2.fromOffset(28, bodyTop)
 	body.Size = UDim2.new(1, -56, 1, -(bodyTop + 72))
-	UI.Kicker(win, (data.venue and data.venue ~= "") and ("FIGHT NIGHT  ·  " .. data.venue) or "FIGHT NIGHT", T.sub, { Position = UDim2.fromOffset(28, short and 16 or 22), Size = UDim2.new(1, -120, 0, 18) })
+	UI.Kicker(win, (data.venue and data.venue ~= "") and ("FIGHT NIGHT  ·  " .. data.venue) or "FIGHT NIGHT", T.sub, { Position = UDim2.fromOffset(28, short and 16 or 22), Size = UDim2.new(1, -120, 0, 18),
+		icon = "bell" })
+	-- the outcome's emblem (a trophy for a win, the KO burst for a stoppage, gloves for a decision / loss) beside the
+	-- headline, left of the close button
+	local stoppage = res.method == "KO" or res.method == "TKO" or res.method == "RTD"
+	local emblem = res.outcome == "win" and (stoppage and "ko" or "trophy") or (res.outcome == "loss" and (stoppage and "ko" or "gloves") or "versus")
+	local es = short and 52 or 76
+	local tile = UI.IconTile(win, emblem, es, col, { Name = "Emblem", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -84, 0, short and 30 or 40), iconScale = 0.62 })
+	local tileScale = UI.New("UIScale", { Scale = 0.6, Parent = tile })
+	UI.Tween(tileScale, { Scale = 1 }, UI.Motion.spring)
 	local big = UI.Title(win, title, { TextSize = short and 54 or 84, TextColor3 = col, Position = UDim2.fromOffset(24, short and 30 or 38), Size = UDim2.new(1, -48, 0, short and 58 or 88),
 		TextTransparency = 1 })
 	UI.Tween(big, { TextTransparency = 0 }, UI.Motion.slow)
@@ -361,7 +373,7 @@ local function showResult(data)
 	end
 	-- the three judges
 	if res.cards and res.cards[1] and (res.cards[1][1] + res.cards[1][2]) > 0 then
-		UI.Kicker(body, "SCORECARDS  (YOU - OPPONENT)", T.sub)
+		UI.Kicker(body, "SCORECARDS  (YOU - OPPONENT)", T.sub, { icon = "contract" })
 		local row = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 64) })
 		UI.List(row, 10, true)
 		for j, c in ipairs(res.cards) do
@@ -375,7 +387,7 @@ local function showResult(data)
 		end
 	end
 	if res.landed then
-		UI.Kicker(body, "FIGHT STATS  ·  RED = YOU, BLUE = OPPONENT", T.sub)
+		UI.Kicker(body, "FIGHT STATS  ·  RED = YOU, BLUE = OPPONENT", T.sub, { icon = "chart" })
 		local stats = UI.Card(body, { pad = 16 })
 		versusRow(stats, "PUNCHES LANDED", res.landed or 0, res.oppLanded or 0, nil, 1)
 		versusRow(stats, "PUNCHES THROWN", res.thrown or res.landed or 0, res.oppThrown or 0, nil, 2)
@@ -393,7 +405,7 @@ local function showResult(data)
 		UI.Line(body, "Simulated fight", { TextColor3 = T.sub, TextSize = 13 })
 	end
 	local purse = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 58) })
-	UI.Kicker(purse, "EARNINGS", T.green, { Size = UDim2.new(1, 0, 0, 18) })
+	UI.Kicker(purse, "EARNINGS", T.green, { Size = UDim2.new(1, 0, 0, 18), icon = "money" })
 	UI.Title(purse, Config.Money(data.earnings or 0), { TextSize = 38, TextColor3 = T.green, Position = UDim2.fromOffset(0, 16), Size = UDim2.new(1, 0, 0, 42) })
 	for _, n in ipairs(data.notes or {}) do
 		local bigNote = n:find("CHAMPION") or n:find("PRO") or n:find("LEGEND") or n:find("TOP 10") or n:find("Promoted") or n:find("SPECIAL MOVE")

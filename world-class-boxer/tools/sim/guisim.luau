@@ -1469,6 +1469,106 @@ function GS.new(device, opts)
 end
 
 -- the boxes of a collect() for tools/sim/ui_preview.py: { w, h, device, topbar, safe, guis = [...], items = [...] }
+-- the look of an object for a mock render (tools/ui/render_mock.py): colours 0..255, the paint order key
+-- (ZIndex then creation order at every level, as Sibling ZIndexBehavior draws), corner radius, stroke,
+-- gradient, font, image (asset id and rect)
+local function c3(c)
+	if typeof(c) ~= "Color3" then
+		return nil
+	end
+	return { math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5) }
+end
+local function firstKid(o, cls)
+	for _, c in ipairs(rawget(o, "_kids")) do
+		if rawget(c, "_class") == cls then
+			return c
+		end
+	end
+	return nil
+end
+local function paintKey(o)
+	local parts = {}
+	local n = o
+	while n and rawget(n, "_parent") and rawget(n, "_class") ~= "ScreenGui" do
+		local par = rawget(n, "_parent")
+		local idx = table.find(rawget(par, "_kids"), n) or 0
+		local z = rawget(n, "_props").ZIndex or 1
+		table.insert(parts, 1, string.format("%04d%05d", math.clamp(z + 1000, 0, 9999), idx))
+		n = par
+	end
+	return table.concat(parts, ".")
+end
+local function styleOf(it)
+	local o = it.obj
+	local pr = rawget(o, "_props")
+	local st = { key = paintKey(o), bg = c3(pr.BackgroundColor3), rot = pr.Rotation }
+	local corner = firstKid(o, "UICorner")
+	if corner then
+		local cr = rawget(corner, "_props").CornerRadius
+		if cr then
+			st.radius = (cr.Scale * math.min(it.w, it.h) + cr.Offset * it.unit)
+		else
+			st.radius = 8 * it.unit
+		end
+	end
+	local stroke = firstKid(o, "UIStroke")
+	if stroke and rawget(stroke, "_props").Enabled ~= false then
+		local sp = rawget(stroke, "_props")
+		st.stroke = { c = c3(sp.Color or Color3.new(0, 0, 0)), t = sp.Transparency or 0, w = (sp.Thickness or 1) * it.unit,
+			border = (sp.ApplyStrokeMode == Enum.ApplyStrokeMode.Border or not it.text) or nil }
+	end
+	local grad = firstKid(o, "UIGradient")
+	if grad and rawget(grad, "_props").Enabled ~= false then
+		local gp = rawget(grad, "_props")
+		local g = { rot = gp.Rotation or 0 }
+		if gp.Color then
+			g.c = {}
+			for _, k in ipairs(gp.Color.Keypoints) do
+				table.insert(g.c, { k.Time, c3(k.Value) })
+			end
+		end
+		if gp.Transparency then
+			g.t = {}
+			for _, k in ipairs(gp.Transparency.Keypoints) do
+				table.insert(g.t, { k.Time, k.Value })
+			end
+		end
+		if gp.Offset then
+			g.off = { gp.Offset.X, gp.Offset.Y }
+		end
+		st.grad = g
+	end
+	if it.text then
+		st.tc = c3(pr.TextColor3)
+		st.tt = pr.TextTransparency or 0
+		st.cond = isCondensed(o) or nil
+		local heavy = false
+		local ok, ff = pcall(function()
+			return pr.FontFace
+		end)
+		if ok and ff then
+			local wn = tostring(ff.Weight or "")
+			heavy = wn:find("Bold") ~= nil or wn:find("Heavy") ~= nil or wn:find("Black") ~= nil or wn:find("SemiBold") ~= nil
+		end
+		local fe = tostring(pr.Font or "")
+		heavy = heavy or fe:find("Bold") ~= nil or fe:find("Black") ~= nil
+		st.heavy = heavy or nil
+		st.ya = pr.TextYAlignment and tostring(pr.TextYAlignment):match("(%a+)$") or nil
+		st.scaled = pr.TextScaled or nil
+		st.rich = pr.RichText or nil
+		st.strokeT = pr.TextStrokeTransparency
+	end
+	if it.class == "ImageLabel" or it.class == "ImageButton" then
+		st.img = pr.Image
+		st.ic = c3(pr.ImageColor3 or Color3.new(1, 1, 1))
+		st.it = pr.ImageTransparency or 0
+		if pr.ImageRectSize then
+			st.rect = { pr.ImageRectOffset and pr.ImageRectOffset.X or 0, pr.ImageRectOffset and pr.ImageRectOffset.Y or 0, pr.ImageRectSize.X, pr.ImageRectSize.Y }
+		end
+	end
+	return st
+end
+
 function GS.WriteBoxes(path, S, items, extra)
 	local list = {}
 	for _, it in ipairs(items) do
@@ -1485,6 +1585,7 @@ function GS.WriteBoxes(path, S, items, extra)
 				textW = (it.text and it.text ~= "" and it.textSize) and math.floor(GS.LineWidth(it.text:match("^[^\n]*"), it.textSize, isCondensed(it.obj)) * it.unit) or nil,
 				truncate = it.text and rawget(it.obj, "_props").TextTruncate ~= Enum.TextTruncate.None or nil,
 				wrapped = it.text and (rawget(it.obj, "_props").TextWrapped == true) or nil,
+				style = styleOf(it),
 			}
 		end
 	end

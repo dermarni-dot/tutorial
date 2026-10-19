@@ -614,9 +614,14 @@ local function belt(parent, name, held, order, w)
 	end
 	UI.Text(plate, name, { Face = "number", TextSize = 15, TextColor3 = held and Color3.fromRGB(60, 40, 6) or T.dim, Size = UDim2.fromScale(1, 1),
 		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+	-- the side plates: a star on each (lit gold when held)
 	for _, x in ipairs({ 0.1, 0.9 }) do
-		local stud = UI.Frame(b, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(x, 0.5), Size = UDim2.fromOffset(9, 9), BackgroundColor3 = held and T.goldDeep or T.line })
-		UI.Corner(stud, 5)
+		if UI.IconEntry("star") then
+			UI.Icon(b, "star", 12, held and T.gold or T.line, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(x, 0.5) })
+		else
+			local stud = UI.Frame(b, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(x, 0.5), Size = UDim2.fromOffset(9, 9), BackgroundColor3 = held and T.goldDeep or T.line })
+			UI.Corner(stud, 5)
+		end
 	end
 	return b
 end
@@ -737,7 +742,7 @@ function FighterCard.Full(parent, P, opts)
 	local info = UI.Scroll(card, { Name = "Info", Position = UDim2.new(0, photoW + (small and 20 or 36), 0, 0), Size = UDim2.new(1, -(photoW + (small and 20 or 36)), 1, 0) })
 	UI.List(info, small and 8 or 10)
 	UI.Pad(info, 0, 2)
-	UI.Kicker(info, ri.pro and ("PROFESSIONAL BOXER  ·  " .. string.upper(P.className or "") .. " DIVISION") or ("AMATEUR BOXER  ·  " .. string.upper(P.className or "")), T.gold, { order = 1 })
+	UI.Kicker(info, ri.pro and ("PROFESSIONAL BOXER  ·  " .. string.upper(P.className or "") .. " DIVISION") or ("AMATEUR BOXER  ·  " .. string.upper(P.className or "")), T.gold, { order = 1, icon = "gloves" })
 	nameBlock(info, P, small and 48 or 68, 2)
 	-- the headline numbers: record, knockouts, KO ratio, ranking (a dash / UNRANKED until they mean something)
 	local cardW = (opts.Size and opts.Size.X.Offset > 0) and opts.Size.X.Offset or 1240
@@ -771,10 +776,11 @@ function FighterCard.Full(parent, P, opts)
 	end
 	for i, n in ipairs(numbers) do
 		local row = rows[(tight and i == 4) and 2 or 1]
-		UI.Stat(row, n[1], n[2], { Size = UDim2.new(n[4], n[4] < 1 and -8 or -2, 1, 0), valueColor = n[3], valueSize = small and 28 or 38, order = i, scaled = true })
+		UI.Stat(row, n[1], n[2], { Size = UDim2.new(n[4], n[4] < 1 and -8 or -2, 1, 0), valueColor = n[3], valueSize = small and 28 or 38, order = i, scaled = true,
+			icon = ({ "gloves", "ko", "fist", "podium" })[i], iconSize = small and 14 or 18 })
 	end
 	-- tale of the tape
-	UI.Kicker(info, "TALE OF THE TAPE", T.sub, { order = 4 })
+	UI.Kicker(info, "TALE OF THE TAPE", T.sub, { order = 4, icon = "user" })
 	-- four cells a row (two on a narrow info column: a phone). The values scale down to fit, so the
 	-- longest ("Counter Puncher", ~101 px at the 15 px floor) fits a quarter of any column 520 wide or more
 	-- (a tablet's 994-wide card included) and the tape stays two rows: the rankings and recent form
@@ -798,22 +804,22 @@ function FighterCard.Full(parent, P, opts)
 		tapeCell(grid, c[1], c[2], i, c[3])
 	end
 	-- the championships: the four world belts as goals, lit when held
-	UI.Kicker(info, "CHAMPIONSHIPS", T.gold, { order = 6 })
+	UI.Kicker(info, "CHAMPIONSHIPS", T.gold, { order = 6, icon = "belt" })
 	beltRow(info, P, 7, small and 96 or 112)
 	-- rankings by organisation
-	UI.Kicker(info, "WORLD RANKINGS", T.sub, { order = 8 })
+	UI.Kicker(info, "WORLD RANKINGS", T.sub, { order = 8, icon = "podium" })
 	local ranks = UI.Frame(info, { Name = "Ranks", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 9 })
 	UI.List(ranks, 8, true)
 	for i, org in ipairs(Config.Orgs) do
 		local r = type(P.ranks) == "table" and P.ranks[org]
 		local text = r == "C" and (org .. "  CHAMPION") or (r and (org .. "  #" .. tostring(r)) or (org .. "  —"))
 		if r == "C" then
-			UI.Badge(ranks, text, T.gold, { order = i, h = 28, TextSize = 13 })
+			UI.Badge(ranks, text, T.gold, { order = i, h = 28, TextSize = 13, icon = "crown" })
 		else
 			UI.Chip(ranks, text, r and T.text or T.dim, { order = i, h = 28, TextSize = 13 })
 		end
 	end
-	UI.Kicker(info, "RECENT FORM", T.sub, { order = 10 })
+	UI.Kicker(info, "RECENT FORM", T.sub, { order = 10, icon = "chart" })
 	formBubbles(info, FighterCard.Form(P, 6), 11)
 	return card
 end
@@ -843,8 +849,9 @@ function FighterCard.Compact(parent, P, opts)
 	local rankText, champ = FighterCard.BestRank(P)
 	-- (the line above the name already says amateur / pro: "RECORD" fits the narrow tile on a phone)
 	local widths = { 0.27, 0.16, 0.17, 0.34 } -- the record tile holds its caption at the phone's text floor
+	local statIcons = { "gloves", "ko", "star", "podium" }
 	for i, n in ipairs({ { ri.text, "RECORD" }, { tostring(ri.ko), "KOS" }, { tostring(P.overall or 0), "OVR" }, { rankText, "RANKING" } }) do
-		UI.Stat(strip, n[1], n[2], { Size = UDim2.new(widths[i], -8, 1, 0), valueSize = 26, order = i, scaled = true,
+		UI.Stat(strip, n[1], n[2], { Size = UDim2.new(widths[i], -8, 1, 0), valueSize = 26, order = i, scaled = true, icon = statIcons[i], iconSize = 14,
 			valueColor = (i == 4 and champ) and T.gold or ((i == 2 and ri.ko > 0) and T.red or ((i == 4 and rankText == "UNRANKED") and T.sub or T.text)) })
 	end
 	return card

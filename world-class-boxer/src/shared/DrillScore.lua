@@ -14,6 +14,8 @@
 --   j.result()            the segment's numbers; DrillScore.Aggregate turns them into the 0..1 score
 -- No Roblox services: it loads on both sides and in plain Luau tests.
 local DrillScore = {}
+-- the exercise-specific workouts' judges and plans (installed at the end of this file)
+local Workouts = require(script.Parent:WaitForChild("DrillWorkouts"))
 
 local TAP_HOLD = 0.35 -- a press held this long is a hold (released on let-go); shorter is a tap toggle
 local RT_FLOOR = 0.1 -- an answer faster than this jumped the cue: nobody reacts in under a tenth
@@ -43,6 +45,8 @@ DrillScore.WAIT = {
 	slam = 0.22, -- the ball driven down after a slam
 	catch = 0.35, -- the catch off the bounce
 	ladder = 0.6, -- after a ladder drill
+	rebound = 0.45, -- after a double-end rebound
+	steps = 0.4, -- after the shadow boxing footwork pattern
 }
 -- an "@" may come this much before the plan's pacing allows (clock rounding); earlier, the segment
 -- starts at the allowed time and what the client did before it counts for nothing
@@ -811,10 +815,13 @@ AGG.rhythm = function(plan, res)
 	return sum / math.max(1, #plan.segs)
 end
 AGG.reaction = function(plan, res)
-	local s1, n1, s2, n2 = 0, 0, 0, 0
+	local s1, n1, s2, n2, s3, n3 = 0, 0, 0, 0, 0, 0
 	for i, seg in ipairs(plan.segs) do
 		local r = res[i]
-		if seg.j == "cue" then
+		if seg.j == "rebound" then
+			n3 += 1
+			s3 += Workouts.ReboundScore(seg, r)
+		elseif seg.j == "cue" then
 			n1 += 1
 			if r and r.correct then
 				s1 += 1 - 0.4 * (r.rt / seg.window)
@@ -828,7 +835,11 @@ AGG.reaction = function(plan, res)
 			end
 		end
 	end
-	return 0.55 * clamp(s1 / math.max(1, n1) / 0.85, 0, 1) + 0.45 * clamp(s2 / math.max(1, n2) / 0.9, 0, 1)
+	local react, counter = clamp(s1 / math.max(1, n1) / 0.85, 0, 1), clamp(s2 / math.max(1, n2) / 0.9, 0, 1)
+	if n3 == 0 then
+		return 0.55 * react + 0.45 * counter
+	end
+	return 0.35 * react + 0.3 * counter + 0.35 * clamp(s3 / n3 / 0.9, 0, 1)
 end
 -- a called combination / a flow chain: how much of it, minus half a step per wrong press, plus speed
 function DrillScore.SeqScore(r, partW, fastW, cap)
@@ -846,10 +857,15 @@ AGG.mitts = function(plan, res)
 	return sum / math.max(1, #plan.segs)
 end
 AGG.shadow = function(plan, res)
-	local s1, n1, s2, n2 = 0, 0, 0, 0
+	local s1, n1, s2, n2, s3, n3 = 0, 0, 0, 0, 0, 0
 	for i, seg in ipairs(plan.segs) do
 		local r = res[i]
-		if seg.j == "cue" then
+		if seg.j == "notes" then
+			n3 += 1
+			if r then
+				s3 += math.max(0, r.perfect + r.good * 0.7 - 0.5 * (r.stray or 0)) / math.max(1, #seg.lanes)
+			end
+		elseif seg.j == "cue" then
 			n1 += 1
 			if r and r.correct then
 				s1 += 1 - 0.35 * r.rt / seg.window
@@ -859,7 +875,11 @@ AGG.shadow = function(plan, res)
 			s2 += DrillScore.SeqScore(r, 0.8, 0.4, 1)
 		end
 	end
-	return 0.5 * clamp(s1 / math.max(1, n1) / 0.85, 0, 1) + 0.5 * clamp(s2 / math.max(1, n2), 0, 1)
+	local moves, flows = clamp(s1 / math.max(1, n1) / 0.85, 0, 1), clamp(s2 / math.max(1, n2), 0, 1)
+	if n3 == 0 then
+		return 0.5 * moves + 0.5 * flows
+	end
+	return 0.35 * moves + 0.3 * clamp(s3 / n3 / 0.9, 0, 1) + 0.35 * flows
 end
 AGG.reps = function(plan, res)
 	local sum = 0
@@ -1016,9 +1036,14 @@ function DrillScore.MinTime(plan)
 			for k = 1, #seg.ids - 1 do
 				total += seg.delays[k] or 0
 			end
+		else
+			total += Workouts.MinTime(seg) or 0
 		end
 	end
 	return total
 end
+
+DrillScore.Workouts = Workouts
+Workouts.Install(DrillScore, J, AGG)
 
 return DrillScore

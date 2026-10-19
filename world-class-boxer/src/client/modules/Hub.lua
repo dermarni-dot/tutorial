@@ -42,6 +42,12 @@ local NAV = {
 	{ "LIFE", { "Gear", "Sponsors", "Life", "Shop" } },
 }
 local tabButtons = {}
+-- each tab's icon (the side navigation)
+local TAB_ICONS = {
+	Career = "belt", Rankings = "podium", Rivals = "target", PvP = "versus", Legacy = "laurel", Training = "dumbbell", Body = "muscle",
+	Stats = "chart", Gym = "heavybag", Coaches = "whistle", Gear = "gloves", Sponsors = "contract", Life = "home", Shop = "store",
+}
+Hub.TabIcons = TAB_ICONS
 
 local function money(n)
 	return Config.Money(n)
@@ -216,10 +222,10 @@ local function showBoxer(id)
 		Size = UDim2.new(1, -44, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	local strip = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 64) })
 	UI.List(strip, 8, true)
-	UI.Stat(strip, string.format("%d-%d-%d", b.record.w, b.record.l, b.record.d), "RECORD", { Size = UDim2.new(0.36, -8, 1, 0), order = 1, valueSize = 28, scaled = true })
-	UI.Stat(strip, tostring(b.record.ko), "KOS", { Size = UDim2.new(0.2, -8, 1, 0), order = 2, valueSize = 28, valueColor = T.red })
-	UI.Stat(strip, tostring(b.overall), "OVERALL", { Size = UDim2.new(0.22, -8, 1, 0), order = 3, valueSize = 28, valueColor = T.gold })
-	UI.Stat(strip, tostring(math.floor(b.heat or 0)), "RIVALRY", { Size = UDim2.new(0.22, -8, 1, 0), order = 4, valueSize = 28 })
+	UI.Stat(strip, string.format("%d-%d-%d", b.record.w, b.record.l, b.record.d), "RECORD", { Size = UDim2.new(0.36, -8, 1, 0), order = 1, valueSize = 28, scaled = true, icon = "gloves" })
+	UI.Stat(strip, tostring(b.record.ko), "KOS", { Size = UDim2.new(0.2, -8, 1, 0), order = 2, valueSize = 28, valueColor = T.red, icon = "ko" })
+	UI.Stat(strip, tostring(b.overall), "OVERALL", { Size = UDim2.new(0.22, -8, 1, 0), order = 3, valueSize = 28, valueColor = T.gold, icon = "star" })
+	UI.Stat(strip, tostring(math.floor(b.heat or 0)), "RIVALRY", { Size = UDim2.new(0.22, -8, 1, 0), order = 4, valueSize = 28, icon = "flame" })
 	UI.Line(body, string.format("%s  ·  %s  ·  %s", b.style, b.archetype ~= "" and b.archetype or "?", b.personality), { TextColor3 = T.sub, TextSize = 14 })
 	UI.Line(body, "Rankings: " .. rankText(b.ranks), { Font = T.semi, TextSize = 14 })
 	if b.belts and #b.belts > 0 then
@@ -297,12 +303,12 @@ R.Career = function(body, P)
 	end
 	local chips = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26) })
 	UI.List(chips, 8, true)
-	UI.Chip(chips, "Day " .. P.day, T.text, { order = 1 })
-	UI.Chip(chips, "Purse " .. money(P.money), T.gold, { order = 2 })
-	UI.Chip(chips, commas(followers(P)) .. " followers", T.cyan, { order = 3 })
-	UI.Chip(chips, "Popularity " .. P.popularity, T.text, { order = 4 })
+	UI.Chip(chips, "Day " .. P.day, T.text, { order = 1, icon = "calendar" })
+	UI.Chip(chips, "Purse " .. money(P.money), T.gold, { order = 2, icon = "money" })
+	UI.Chip(chips, commas(followers(P)) .. " followers", T.cyan, { order = 3, icon = "user" })
+	UI.Chip(chips, "Popularity " .. P.popularity, T.text, { order = 4, icon = "star" })
 	if #deals > 0 then
-		UI.Chip(chips, "Sponsored: " .. table.concat(deals, ", "), T.green, { order = 5 })
+		UI.Chip(chips, "Sponsored: " .. table.concat(deals, ", "), T.green, { order = 5, icon = "contract" })
 	end
 	local belts = {}
 	for _, org in ipairs(Config.Orgs) do
@@ -337,9 +343,9 @@ R.Career = function(body, P)
 		-- camp countdown and the weight cut
 		local meters = UI.Frame(c, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 58) })
 		UI.List(meters, 8, true)
-		UI.Stat(meters, tostring(P.camp.daysLeft), "CAMP DAYS LEFT", { Size = UDim2.new(0.33, -6, 1, 0), order = 1, valueSize = 28, valueColor = P.camp.daysLeft <= 0 and T.gold or T.text })
+		UI.Stat(meters, tostring(P.camp.daysLeft), "CAMP DAYS LEFT", { Size = UDim2.new(0.33, -6, 1, 0), order = 1, valueSize = 28, valueColor = P.camp.daysLeft <= 0 and T.gold or T.text, icon = "calendar" })
 		UI.Stat(meters, string.format("%.1f", P.weight), string.format("WEIGHT / %d LBS", P.weightLimit), { Size = UDim2.new(0.33, -6, 1, 0), order = 2, valueSize = 28, valueColor = P.overWeight > 0 and T.red or T.green })
-		UI.Stat(meters, money(o.purse), "PURSE", { Size = UDim2.new(0.34, -6, 1, 0), order = 3, valueSize = 28, valueColor = T.green, scaled = true })
+		UI.Stat(meters, money(o.purse), "PURSE", { Size = UDim2.new(0.34, -6, 1, 0), order = 3, valueSize = 28, valueColor = T.green, scaled = true, icon = "money" })
 		if P.overWeight > 0 then
 			UI.Line(c, string.format("You're %.1f lbs over the limit! Burn fat with cardio or cut water in the sauna before fight night - missing weight costs stamina and %s.", P.overWeight, P.overWeight > 2 and "20% of your purse" or "no fine yet"), { TextColor3 = T.red, TextSize = 13 })
 		end
@@ -513,8 +519,10 @@ local function partLevel(P, id)
 end
 
 -- one condition meter tile: big number, caption, bar
+local METER_ICONS = { ENERGY = "energy", HYDRATION = "water", NUTRITION = "food", FATIGUE = "pulse" }
 local function meterTile(parent, caption, value, color, order)
-	local f, v = UI.Stat(parent, tostring(math.floor(value)), caption, { Size = UDim2.new(0.25, -8, 1, 0), order = order, valueSize = 30, valueColor = color })
+	local f, v = UI.Stat(parent, tostring(math.floor(value)), caption, { Size = UDim2.new(0.25, -8, 1, 0), order = order, valueSize = 30, valueColor = color,
+		icon = METER_ICONS[caption], iconColor = color, iconSize = 18 })
 	local _, set = UI.Bar(f, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 12, 1, -8), Size = UDim2.new(1, -24, 0, 4) }, color)
 	set(value / 100)
 	return f, v
@@ -699,7 +707,7 @@ R.Training = function(body, P)
 		meterTile(meters, "FATIGUE", c.fatigue, c.fatigue > 70 and T.red or (c.fatigue > 40 and T.orange or T.green), 4)
 		local chips = UI.Frame(card, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 24) })
 		UI.List(chips, 6, true)
-		UI.Chip(chips, string.format("Sleep %d%%", math.floor(c.sleepQ * 100)), T.blue, { order = 1, TextSize = 12 })
+		UI.Chip(chips, string.format("Sleep %d%%", math.floor(c.sleepQ * 100)), T.blue, { order = 1, TextSize = 12, icon = "sleep" })
 		UI.Chip(chips, string.format("%.1f / %d lbs", P.weight, P.weightLimit), P.overWeight > 0 and T.red or T.text, { order = 2, TextSize = 12 })
 		UI.Chip(chips, string.format("Body fat %.1f%%", P.body.fat or 14), T.text, { order = 3, TextSize = 12 })
 	end
@@ -1724,6 +1732,10 @@ local function styleTab(name, b)
 	if bar then
 		bar.Visible = on
 	end
+	local icon = b:FindFirstChild("TabIcon")
+	if icon then
+		UI.SetIconColor(icon, on and T.gold or T.sub)
+	end
 end
 
 -- rebuilds the open tab now: the hub's own clicks and pad steps (the selection moves on what they drew)
@@ -1823,8 +1835,14 @@ function Hub.Open(which)
 			UI.Hover(b, { amount = 0.94 })
 			local bar = UI.Frame(b, { Name = "Active", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(3, rail and 18 or 20), BackgroundColor3 = T.gold, Visible = false })
 			UI.Corner(bar, 2)
-			UI.Text(b, string.upper(name), { Name = "Label", Face = "displayMed", TextSize = rail and 16 or 18, TextColor3 = T.sub, Position = UDim2.fromOffset(rail and 6 or 14, 0),
-				Size = UDim2.new(1, rail and -8 or -14, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
+			-- the tab's icon before its label (the phone rail keeps the label alone: it needs the width)
+			local lx = rail and 6 or 14
+			if not rail and TAB_ICONS[name] then
+				UI.Icon(b, TAB_ICONS[name], 18, T.sub, { Name = "TabIcon", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0.5, 0) })
+				lx = 42
+			end
+			UI.Text(b, string.upper(name), { Name = "Label", Face = "displayMed", TextSize = rail and 16 or 18, TextColor3 = T.sub, Position = UDim2.fromOffset(lx, 0),
+				Size = UDim2.new(1, -(lx + (rail and 2 or 0)), 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
 				TextXAlignment = rail and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left })
 			b.MouseButton1Click:Connect(function()
 				tab = name

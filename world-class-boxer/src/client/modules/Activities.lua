@@ -3,17 +3,28 @@
 -- heart-rate / calorie readout and the drill's own numbers on the panel (and on the smart
 -- screens), coach technique tips during the rests, and a graded result with personal
 -- bests (the server keeps the records).
---  combo     heavy bag: combinations, power shots on a power meter, speed burst
+--  combo     heavy bag: combinations (the later ones called by number), power shots, speed burst
 --  rhythm    speed bag: alternating rhythm, then faster doubles / triplets
---  reaction  double-end bag: react, then slip & counter
+--  reaction  double-end bag: react, slip & counter, then slip the bag's rebound off your own punch
 --  mitts     mitt work: the coach calls combos over two rounds
---  shadow    mirror: single moves, then flow chains
---  reps      bench, dumbbells, deadlift, squat, pull-ups: 2 sets x 5 reps at a real load
---  pace      treadmill / bike / rower intervals with live machine readouts
+--  shadow    mirror: single moves, footwork patterns on the beat, then flow chains
+--  bench     keep the bar level as it drifts (one side is weaker), grind the sticking point, call the spotter
+--  deadlift  set the back on the needle, drive through the knees, keep the grip squeezed
+--  squat     sink (faster as you go) and stop in the depth zone, drive out of the hole in the bounce window
+--  pullup    alternate arms through the bottom of the swing, go hollow to kill the swing
+--  curls     tempo hold notes, one arm at a time (both at once is a swing)
+--  medball   medicine ball: overhead slams on the pad, then Russian twists on the beat
+--  treadmill follow the program's speed and incline steps on the console
+--  bike      a hill profile: pedal cadence in the band, gears for the gradient
+--  rower     catch - drive - finish - recovery: the timing of every stroke at the piece's rate
 --  ladder    named agility drills (smart reaction lights at the top level)
 --  rope      basic bounce, boxer skip, double unders
---  medball   medicine ball: overhead slams on the pad, then Russian twists on the beat
---  hold      recovery breathing: ice bath, stretching, massage, sauna, recovery chamber
+--  icebath   full breaths from empty and long exhales against a cold-shock meter (cold waves)
+--  stretch   four poses: hold the depth in a range that creeps deeper, never past it
+--  massage   pick the sorest muscle groups off the body map, relax into the therapist's strokes
+--  chamber   ride the pressure profile (pressurise / vent) and equalize the ears
+--  sauna     the weight cut: stay in the heat for the water, step out before the red, sip
+--  reps / pace / hold  the older shared lift / cardio / breathing drills (still playable)
 --  course    roadwork loop      swim  pool lengths (both measured by the server)
 -- Sparring opens the intensity picker and hands over to the fight client.
 -- While you work the body shows it: Effort / LivePump (client-local attributes the Animator reads),
@@ -126,7 +137,8 @@ local function packNames(obj, names, size, width, height)
 	return ""
 end
 -- how hard each drill works you even between presses (heart-rate effort floor, 0..1)
-local BASE_EFFORT = { combo = 0.45, rhythm = 0.3, reaction = 0.5, mitts = 0.55, shadow = 0.45, ladder = 0.45, rope = 0.45, medball = 0.5 }
+local BASE_EFFORT = { combo = 0.45, rhythm = 0.3, reaction = 0.5, mitts = 0.55, shadow = 0.45, ladder = 0.45, rope = 0.45, medball = 0.5,
+	pullup = 0.4, curls = 0.35, treadmill = 0.5, bike = 0.45, rower = 0.55 }
 -- the pose to strike when you press FLEX after a session (Config.Pump.poses), by exercise
 local FLEX_FOR = { Bench = "flex_chest", Dumbbells = "flex_biceps", PullUps = "flex_lat", Barbell = "flex_most", Squat = "flex_most", MedBall = "flex_abs",
 	HeavyBag = "flex_most", MittWork = "flex_biceps" }
@@ -137,6 +149,13 @@ local camKick = { t = 0, amp = 0 }
 -- the space the panels leave)
 local camFrame = { fx = 0.5 }
 local pumpFadeToken = 0 -- a new session stops the previous session's pump fade
+
+-- every pose attribute a drill may write on the character (cleared when the session ends); AnimGym reads them
+local POSE_ATTRS = { "PoseDrive", "PoseSpeed", "RepCount", "RopeSpin", "RopeFoot", "Effort", "TwistSide", "PoseTilt", "PoseSet", "PoseGrip",
+	"PoseSwing", "CurlSide", "PoseIncline", "PoseClimb", "PoseLungs", "PoseShiver", "PoseStretch", "PoseHeat" }
+-- the drills' arrows and symbols in one place (plain text today; icons can be swapped in here)
+local GLYPH = { up = "^", down = "v", left = "<", right = ">", next = ">", prev = "<", line = "|", dot = "-" }
+local DARK = Color3.fromRGB(28, 30, 38) -- the drills' empty tracks and gauges
 
 local WINDUP = { jab = 0.16, cross = 0.22, leadhook = 0.24, rearhook = 0.26, uppercut = 0.26, overhand = 0.34 }
 local HAND = { jab = "L", cross = "R", leadhook = "L", rearhook = "R", uppercut = "R", overhand = "R" }
@@ -321,6 +340,8 @@ local function resolveAction(a)
 	return r
 end
 
+-- the boxing numbers a coach calls combinations by
+local PUNCH_NUMBER = { jab = "1", cross = "2", leadhook = "3", rearhook = "4", uppercut = "5", overhand = "6" }
 local LABEL = { jab = "JAB", cross = "CROSS", leadhook = "L.HOOK", rearhook = "R.HOOK", uppercut = "UPPER", overhand = "OVERHAND",
 	slipL = "SLIP L", slipR = "SLIP R", roll = "ROLL", pivotL = "PIVOT", parry = "PARRY",
 	F = "STEP IN", B = "STEP BACK", L = "CIRCLE L", R = "CIRCLE R" }
@@ -1314,6 +1335,18 @@ local function newContext(info)
 			char:SetAttribute("PoseSpeed", w)
 		end
 	end
+	-- a pose attribute written only when it changes by a step (the Animator reacts to every write)
+	local attrShown = {}
+	function ctx.attrQ(name, v, step)
+		if type(v) == "number" then
+			step = step or 0.02
+			v = math.floor(v / step + 0.5) * step
+		end
+		if attrShown[name] ~= v then
+			attrShown[name] = v
+			ctx.attr(name, v)
+		end
+	end
 	function ctx.attr(name, v)
 		if char then
 			char:SetAttribute(name, v)
@@ -1402,7 +1435,7 @@ local function newContext(info)
 			panel:Destroy()
 		end
 		if char then
-			for _, a in ipairs({ "PoseDrive", "PoseSpeed", "RepCount", "RopeSpin", "RopeFoot", "Effort", "TwistSide" }) do
+			for _, a in ipairs(POSE_ATTRS) do
 				char:SetAttribute(a, nil)
 			end
 			-- the live pump fades over half a minute instead of vanishing with the panel
@@ -1558,9 +1591,12 @@ GAMES.combo = function(ctx)
 		end
 	end
 
-	-- ROUND 1: COMBINATIONS
+	-- ROUND 1: COMBINATIONS (the later ones called by number: 1 jab, 2 cross, 3 lead hook, 4 rear hook,
+	-- 5 uppercut, 6 overhand - the number keys throw them too)
 	ctx.bind(PUNCH_ACTIONS)
-	ctx.setInfo("Throw each combination in order before the bar runs out. (body) = dig it to the body." .. (ctx.smart and "  SMART BAG: impact tracking on." or ""))
+	local INFO_NAMES = "Throw each combination in order before the bar runs out. (body) = dig it to the body." .. (ctx.smart and "  SMART BAG: impact tracking on." or "")
+	local INFO_NUMBERS = "CALLED BY NUMBER: 1 jab, 2 cross, 3 lead hook, 4 rear hook, 5 uppercut, 6 overhand. B = to the body."
+	ctx.setInfo(INFO_NAMES)
 	if not ctx.round(1, 3, "COMBINATIONS") then
 		return nil
 	end
@@ -1568,11 +1604,23 @@ GAMES.combo = function(ctx)
 	for r = 1, combos do
 		UI.Clear(ctx.stage)
 		local seg = ctx.peek()
-		local labels = {}
+		local byNumber = seg.call == "numbers"
+		ctx.setInfo(byNumber and INFO_NUMBERS or INFO_NAMES)
+		local labels, call = {}, {}
 		for i, name in ipairs(seg.ids or {}) do
-			labels[i] = (LABEL[name] or name) .. ((seg.body and seg.body[i]) and " (body)" or "")
+			local body = seg.body and seg.body[i]
+			if byNumber then
+				labels[i] = (PUNCH_NUMBER[name] or "?") .. (body and "B" or "")
+				call[i] = labels[i]
+			else
+				labels[i] = (LABEL[name] or name) .. (body and " (body)" or "")
+			end
 		end
-		local chips = chipRow(ctx, labels, 34, false, 100)
+		local chips = chipRow(ctx, labels, 34, false, byNumber and 56 or 100)
+		if byNumber then
+			UI.Text(ctx.stage, "COACH: \"" .. table.concat(call, "-") .. "!\"", { Font = T.bold, TextSize = 14, TextColor3 = T.gold, Position = UDim2.fromOffset(10, 80), Size = UDim2.new(1, -20, 0, 18),
+				AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		end
 		local setTime = timeBar(ctx, 14)
 		local limit = seg.limit or 3
 		chips[1].BackgroundColor3 = T.gold
@@ -1929,7 +1977,7 @@ end
 -- 2 rounds: react (punch / slip / roll on cue), then slip & counter (defend, then punch straight back)
 GAMES.reaction = function(ctx)
 	local lv = ctx.level
-	local cues, cues2 = 0, 0
+	local cues, cues2, cues3 = 0, 0, 0
 	local window = 0.8
 	for _, seg in ipairs(ctx.plan.segs) do
 		if seg.j == "cue" then
@@ -1937,8 +1985,11 @@ GAMES.reaction = function(ctx)
 			window = seg.window or window
 		elseif seg.j == "counter" then
 			cues2 += 1
+		elseif seg.j == "rebound" then
+			cues3 += 1
 		end
 	end
+	local rounds = cues3 > 0 and 3 or 2
 	local actions = { { id = "punch", label = "PUNCH", keys = { K.J, K.K }, map = { "jab", "cross" } }, { id = "slipL", label = "SLIP L", keys = { K.Q }, map = "slipL" },
 		{ id = "slipR", label = "SLIP R", keys = { K.E }, map = "slipR" } }
 	if lv >= 2 then
@@ -1959,7 +2010,7 @@ GAMES.reaction = function(ctx)
 
 	-- ROUND 1: REACT
 	ctx.setInfo(string.format("PUNCH when the bag comes into range, SLIP or ROLL when it swings back at you. Reaction window %.2fs.", window))
-	if not ctx.round(1, 2, "REACT") then
+	if not ctx.round(1, rounds, "REACT") then
 		return nil
 	end
 	local hits = 0
@@ -2016,7 +2067,7 @@ GAMES.reaction = function(ctx)
 
 	-- ROUND 2: SLIP & COUNTER
 	ctx.setInfo("The bag swings at you: make the defensive move first, then PUNCH straight back before it settles.")
-	if not ctx.round(2, 2, "SLIP & COUNTER") then
+	if not ctx.round(2, rounds, "SLIP & COUNTER") then
 		return nil
 	end
 	local counters = 0
@@ -2080,12 +2131,94 @@ GAMES.reaction = function(ctx)
 			return nil
 		end
 	end
-	local acc = math.floor((hits + counters) / math.max(1, cues + cues2) * 100 + 0.5)
+	-- ROUND 3: REBOUNDS - punch the bag, then slip it as it comes back off your own punch
+	local slipped = 0
+	if cues3 > 0 then
+		if not ctx.rest(WAIT.rest, "ROUND 2 DONE", string.format("%d/%d counters%savg %d ms", counters, cues2, DOT, avgMs())) then
+			return nil
+		end
+		ctx.setInfo("PUNCH the bag, then read it coming back: slip the side shown as it RETURNS - not before. Too soon and you slip straight back into it.")
+		if not ctx.round(3, rounds, "REBOUNDS") then
+			return nil
+		end
+		for i = 1, cues3 do
+			UI.Clear(ctx.stage)
+			local seg = ctx.peek()
+			if not ctx.wait(seg.delay or 0.6) then
+				return nil
+			end
+			local cw = math.min(190, math.floor((stageWidth(ctx) - 60) / 2))
+			local c1 = chip(ctx.stage, "PUNCH!", 0, cw, T.green)
+			c1.Position = UDim2.new(0.5, -cw - 24, 0.5, -34)
+			UI.Text(ctx.stage, GLYPH.next, { Font = T.bold, TextSize = 20, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0.5, -24, 0.5, -34), Size = UDim2.fromOffset(48, 40), AutomaticSize = Enum.AutomaticSize.None })
+			local c2 = chip(ctx.stage, DEF_TEXT[seg.want] or "?", 0, cw, T.panel2)
+			c2.Position = UDim2.new(0.5, 24, 0.5, -34)
+			-- the bag's return: a bar that fills up to the moment it comes back (the gold tick)
+			local track = UI.Frame(ctx.stage, { Position = UDim2.new(0, 20, 1, -22), Size = UDim2.new(1, -40, 0, 8), BackgroundColor3 = DARK })
+			UI.Corner(track, 3)
+			local span = seg.ret + seg.w + 0.25
+			UI.Frame(track, { Position = UDim2.fromScale((seg.ret - seg.w) / span, 0), Size = UDim2.fromScale(2 * seg.w / span, 1), BackgroundColor3 = T.gold })
+			local fillBar = UI.Frame(track, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.4 })
+			local j = ctx.begin()
+			ctx.on(function(id, down, t)
+				local a = j.input(id, down, t)
+				if not a then
+					return
+				end
+				react(id)
+				if a.punch then
+					c1.BackgroundColor3 = T.ink
+					c2.BackgroundColor3 = T.orange
+					-- the bag swings back at you from the punch
+					task.delay(math.max(0, seg.ret - 0.2), function()
+						ctx.impact(-0.8, seg.want == "slipL" and 1 or -1)
+					end)
+				end
+			end)
+			local okPlay = playSegment(ctx, j, function(now)
+				local rt = j.returnAt()
+				if rt then
+					fillBar.Size = UDim2.fromScale(math.clamp((now - (rt - seg.ret)) / span, 0, 1), 1)
+				end
+			end)
+			ctx.on(nil)
+			if not okPlay then
+				return nil
+			end
+			local r = ctx.close(j)
+			if r.ok then
+				slipped += 1
+				c2.BackgroundColor3 = T.green
+				local ms = math.floor(math.abs(r.dt or 0) * 1000 + 0.5)
+				ctx.feedback(ms <= 40 and "SLIPPED IT CLEAN!" or string.format("SLIPPED  %d ms %s", ms, (r.dt or 0) < 0 and "early" or "late"), ms <= 40 and T.gold or T.green)
+			elseif r.early then
+				c2.BackgroundColor3 = T.red
+				ctx.feedback("TOO SOON - IT CAUGHT YOU", T.red)
+			elseif r.punched then
+				c2.BackgroundColor3 = T.red
+				ctx.feedback(r.hit and "CLIPPED ON THE RETURN" or "WRONG WAY", T.red)
+			else
+				c1.BackgroundColor3 = T.red
+				ctx.feedback("THROW THE PUNCH FIRST", T.red)
+			end
+			ctx.stats(string.format("Rebounds %d/%d", slipped, i))
+			ctx.progress(i / cues3)
+			if not ctx.wait(WAIT.rebound) then
+				return nil
+			end
+		end
+	end
+	local acc = math.floor((hits + counters + slipped) / math.max(1, cues + cues2 + cues3) * 100 + 0.5)
 	ctx.put("accuracy", acc)
 	ctx.put("counters", counters)
+	if cues3 > 0 then
+		ctx.put("rebounds", slipped)
+	end
 	ctx.note(string.format("Avg reaction %d ms", avgMs()))
-	ctx.note(string.format("%d/%d reactions", hits, cues))
-	ctx.note(string.format("%d/%d counters", counters, cues2))
+	ctx.note(string.format("%d/%d reactions%s%d/%d counters", hits, cues, DOT, counters, cues2))
+	if cues3 > 0 then
+		ctx.note(string.format("%d/%d rebounds slipped", slipped, cues3))
+	end
 	return ctx.score()
 end
 
@@ -2256,18 +2389,21 @@ GAMES.shadow = function(ctx)
 			GymVisuals.SetDisplay("mirror", text)
 		end
 	end
-	local n, chains = 0, 0
+	local n, chains, steps = 0, 0, 0
 	for _, seg in ipairs(ctx.plan.segs) do
 		if seg.j == "cue" then
 			n += 1
+		elseif seg.j == "notes" then
+			steps += 1
 		else
 			chains += 1
 		end
 	end
+	local rounds = steps > 0 and 3 or 2
 
 	-- ROUND 1: MOVES
 	ctx.setInfo("Footwork (W/A/S/D), head movement ({slipL}/{slipR}/{dodge}) and punches ({jab}/{cross}/{leadhook}): follow the prompts in the mirror.")
-	if not ctx.round(1, 2, "MOVES") then
+	if not ctx.round(1, rounds, "MOVES") then
 		return nil
 	end
 	local score, movesHit = 0, 0
@@ -2311,9 +2447,99 @@ GAMES.shadow = function(ctx)
 		return nil
 	end
 
-	-- ROUND 2: FLOW - chains of 3-4 mixed moves
+	-- ROUND 2: FOOTWORK PATTERNS - named step patterns on the beat, four lanes (in, back, left, right)
+	local onBeat, stepCount = 0, 0
+	if steps > 0 then
+		local seg = ctx.peek()
+		ctx.setInfo(string.format("Step the patterns on the beat (W/A/S/D or arrows): each arrow as it reaches the gold line. %d BPM - stay on the balls of your feet.", seg.bpm or 80))
+		if not ctx.round(2, rounds, seg.name or "FOOTWORK", "ROUND") then
+			return nil
+		end
+		UI.Clear(ctx.stage)
+		local lineX = 70
+		local LANE_Y = { F = 16, L = 40, R = 64, B = 88 }
+		local LANE_TEXT = { F = GLYPH.up .. " IN", L = GLYPH.left .. " LEFT", R = GLYPH.right .. " RIGHT", B = GLYPH.down .. " BACK" }
+		for id, y in pairs(LANE_Y) do
+			UI.Text(ctx.stage, LANE_TEXT[id], { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(4, y - 7), Size = UDim2.fromOffset(52, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		end
+		UI.Frame(ctx.stage, { Position = UDim2.new(0, lineX - 2, 0, 4), Size = UDim2.new(0, 4, 1, -8), BackgroundColor3 = T.gold })
+		local j, sg, M = ctx.begin()
+		local frames = {}
+		for i, nt in ipairs(j.notes) do
+			local f = UI.Frame(ctx.stage, { Size = UDim2.fromOffset(22, 20), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(NOTE_FAR, LANE_Y[nt.lane] or 50), BackgroundColor3 = T.blue })
+			UI.Corner(f, 6)
+			frames[i] = f
+		end
+		local streak = 0
+		ctx.on(function(id, down, t)
+			if not down then
+				return
+			end
+			local hit = j.input(id, down, t)
+			if hit and (hit.stray or hit.grade) then
+				shadowMove(ctx, id)
+			end
+			if hit and hit.stray then
+				streak = 0
+				ctx.feedback("OFF THE BEAT", T.orange)
+			elseif hit and hit.grade then
+				frames[hit.note].Visible = false
+				if hit.grade == "off" then
+					streak = 0
+					ctx.feedback("LATE FEET", T.orange)
+				else
+					streak += 1
+					ctx.feedback(hit.grade == "perfect" and ("ON THE BEAT x" .. streak) or "GOOD STEP", hit.grade == "perfect" and T.gold or T.green)
+				end
+			end
+		end)
+		local pps = 200
+		local start = M + sg.lead
+		while true do
+			if ctx.cancelled then
+				ctx.on(nil)
+				return nil
+			end
+			local now = ctx.now()
+			for _ in ipairs(j.advance(now) or {}) do
+				streak = 0
+				ctx.feedback("MISSED STEP", T.red)
+			end
+			local alive = false
+			for i, nt in ipairs(j.notes) do
+				local f = frames[i]
+				if nt.judged then
+					if f.Visible then
+						f.Visible = false
+					end
+				else
+					alive = true
+					local x = lineX + (nt.t - now) * pps
+					if x < NOTE_FAR then
+						f.Position = UDim2.fromOffset(x, LANE_Y[nt.lane] or 50)
+					end
+				end
+			end
+			ctx.progress((now - start) / math.max(1, #sg.lanes * sg.interval))
+			if not alive or j.closed then
+				break
+			end
+			RunService.Heartbeat:Wait()
+		end
+		ctx.on(nil)
+		local r = ctx.close(j)
+		onBeat, stepCount = r.hits, r.count
+		if not ctx.wait(WAIT.steps) then
+			return nil
+		end
+		if not ctx.rest(WAIT.rest, "ROUND 2 DONE", string.format("%d/%d steps on the beat", r.hits, r.count)) then
+			return nil
+		end
+	end
+
+	-- FLOW - chains of 3-4 mixed moves
 	ctx.setInfo("Flow through each chain in order: punches, head movement and footwork blended together. Smooth beats fast.")
-	if not ctx.round(2, 2, "FLOW") then
+	if not ctx.round(rounds, rounds, "FLOW") then
 		return nil
 	end
 	local score2, flowsClean = 0, 0
@@ -2367,6 +2593,10 @@ GAMES.shadow = function(ctx)
 	local acc = math.floor((movesHit / math.max(1, n) * 0.5 + r2 * 0.5) * 100 + 0.5)
 	ctx.put("accuracy", acc)
 	ctx.put("cleanFlows", flowsClean)
+	if stepCount > 0 then
+		ctx.put("footwork", math.floor(onBeat / stepCount * 100 + 0.5))
+		ctx.note(string.format("%d/%d steps on the beat", onBeat, stepCount))
+	end
 	ctx.note(string.format("%d/%d moves", movesHit, n))
 	ctx.note(string.format("%d/%d clean flows", flowsClean, chains))
 	return ctx.score()
@@ -2879,8 +3109,8 @@ end
 
 -- AGILITY LADDER --------------------------------------------------------
 local LADDER_DIRS = {
-	{ id = "F", label = "UP", keys = { K.W, K.Up }, arrow = "^" }, { id = "L", label = "LEFT", keys = { K.A, K.Left }, arrow = "<" },
-	{ id = "B", label = "DOWN", keys = { K.S, K.Down }, arrow = "v" }, { id = "R", label = "RIGHT", keys = { K.D, K.Right }, arrow = ">" },
+	{ id = "F", label = "UP", keys = { K.W, K.Up }, arrow = GLYPH.up }, { id = "L", label = "LEFT", keys = { K.A, K.Left }, arrow = GLYPH.left },
+	{ id = "B", label = "DOWN", keys = { K.S, K.Down }, arrow = GLYPH.down }, { id = "R", label = "RIGHT", keys = { K.D, K.Right }, arrow = GLYPH.right },
 }
 local LADDER_PAD = { F = 1, L = 3, B = 4, R = 2 } -- reaction pods: forward, right, left, back
 
@@ -3330,6 +3560,1344 @@ GAMES.hold = function(ctx)
 	return ctx.score()
 end
 
+-- WORKOUT KIT ----------------------------------------------------------
+-- (the exercise-specific workouts: their judges and plans are DrillWorkouts', DrillScore runs them)
+local Workouts = DrillScore.Workouts
+
+-- a one-line label that never runs out of its box (cut with "..." instead)
+local function label(parent, text, props)
+	local p = { Font = T.semi, TextSize = 13, TextColor3 = T.text, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd }
+	for k, v in pairs(props or {}) do
+		p[k] = v
+	end
+	return UI.Text(parent, text, p)
+end
+
+-- a horizontal track with zones, a fill and a marker (values 0..1 along it); every setter skips a write
+-- that would not move anything
+local function meter(parent, pos, size)
+	local f = UI.Frame(parent, { Position = pos, Size = size, BackgroundColor3 = DARK })
+	UI.Corner(f, 4)
+	local m = { frame = f }
+	function m.zone(lo, hi, color, transparency)
+		local z = UI.Frame(f, { Position = UDim2.fromScale(lo, 0), Size = UDim2.fromScale(math.max(0, hi - lo), 1), BackgroundColor3 = color, BackgroundTransparency = transparency or 0.45 })
+		local last = { lo, hi }
+		return function(a, b)
+			if math.abs(a - last[1]) > 0.002 or math.abs(b - last[2]) > 0.002 then
+				last = { a, b }
+				z.Position = UDim2.fromScale(math.clamp(a, 0, 1), 0)
+				z.Size = UDim2.fromScale(math.clamp(b, 0, 1) - math.clamp(a, 0, 1), 1)
+			end
+		end, z
+	end
+	local fill = UI.Frame(f, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.gold, BackgroundTransparency = 0.3, Visible = false })
+	UI.Corner(fill, 4)
+	local mk = UI.Frame(f, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.new(0, 4, 1, 8), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 3, Visible = false })
+	m.marker, m.fillFrame = mk, fill
+	local lastMark, lastFill = -1, -1
+	function m.mark(v, color)
+		mk.Visible = true
+		v = math.clamp(v, 0, 1)
+		if math.abs(v - lastMark) > 0.002 then
+			lastMark = v
+			mk.Position = UDim2.fromScale(v, 0.5)
+		end
+		if color and mk.BackgroundColor3 ~= color then
+			mk.BackgroundColor3 = color
+		end
+	end
+	function m.fill(v, color)
+		fill.Visible = true
+		v = math.clamp(v, 0, 1)
+		if math.abs(v - lastFill) > 0.002 then
+			lastFill = v
+			fill.Size = UDim2.fromScale(v, 1)
+		end
+		if color and fill.BackgroundColor3 ~= color then
+			fill.BackgroundColor3 = color
+		end
+	end
+	return m
+end
+
+-- a label whose text is written only when it changes
+local function setText(lbl, text, color)
+	if lbl.Text ~= text then
+		lbl.Text = text
+	end
+	if color and lbl.TextColor3 ~= color then
+		lbl.TextColor3 = color
+	end
+end
+
+local function pct(v)
+	return string.format("%d%%", math.floor(math.clamp(v, 0, 1) * 100 + 0.5))
+end
+
+-- a timed one-segment drill (cardio machines, recovery): the banner, then the judge until its end with
+-- draw(j, seg, now) every frame; react(j, seg, hit) on each answered input. Returns the result or nil.
+local function timedDrill(ctx, name, kind, draw, react)
+	if not ctx.round(1, 1, name, kind or "SESSION") then
+		return nil
+	end
+	local j, seg, start = ctx.begin()
+	if not j then
+		return nil
+	end
+	ctx.on(function(id, down, t)
+		local hit = j.input(id, down, t)
+		if hit and react then
+			react(j, seg, hit)
+		end
+	end)
+	local dur = seg.duration or 30
+	local partialAt = -math.huge
+	local okPlay = playSegment(ctx, j, function(now)
+		draw(j, seg, now)
+		ctx.setProgress((now - start) / dur)
+		-- QUALITY moves from the first second: the time on target so far, on the session's scale
+		if now - partialAt >= 0.25 and j.acc then
+			partialAt = now
+			local el = math.max(0.01, now - start)
+			ctx.partial = { w = 1, g = math.clamp(j.acc * Workouts.TICK / el / Workouts.TIMED_FULL, 0, 1) }
+			ctx.updateMetrics()
+		end
+	end)
+	ctx.on(nil)
+	if not okPlay then
+		return nil
+	end
+	local res = ctx.close(j)
+	ctx.partial = nil
+	return res, seg
+end
+
+-- 2 sets of reps of one judge (bench, deadlift, squat, pull-ups): the station's real load on the stage,
+-- REP / GOOD on the strip, the weight lowered between reps, an RPE after each set. o = {
+--   actions, perRow, info, build(loadText) -> draw(j, seg, now), react(j, seg, hit), verdict(res) -> text,
+--   color, top(res) (the drive the weight is lowered from), onRep(res) }
+local function repSets(ctx, o)
+	local load, loadText, exName, bodyweight = liftLoad(ctx)
+	exName = exName or ctx.act.name:upper()
+	local sets, reps = 0, 0
+	for _, seg in ipairs(ctx.plan.segs) do
+		sets = math.max(sets, seg.set or 1)
+		reps = math.max(reps, seg.rep or 1)
+	end
+	ctx.bind(o.actions, o.perRow)
+	ctx.setInfo(o.info)
+	UI.Clear(ctx.stage)
+	local draw = o.build(loadText)
+	local P = State.P
+	local fatigue = P and P.condition and P.condition.fatigue or 0
+	local goodReps, fails, lastRpe, qSum = 0, 0, 6, 0
+	local function rpeText(v)
+		return "RPE " .. (v % 1 == 0 and tostring(math.floor(v)) or string.format("%.1f", v))
+	end
+	for set = 1, sets do
+		if not ctx.round(set, sets, exName, "SET") then
+			return nil
+		end
+		local setGood, setFails = 0, 0
+		ctx.stats(nil)
+		for r = 1, reps do
+			ctx.setRep(r, reps, setGood)
+			ctx.attr("RepCount", (set - 1) * reps + r)
+			ctx.intensity = 0.35
+			local j, seg = ctx.begin()
+			if not j then
+				return nil
+			end
+			ctx.on(function(id, down, t)
+				local hit = j.input(id, down, t)
+				if hit and o.react then
+					o.react(j, seg, hit)
+				end
+			end)
+			local okPlay = playSegment(ctx, j, function(now)
+				draw(j, seg, now)
+			end)
+			ctx.on(nil)
+			if not okPlay then
+				return nil
+			end
+			local res = ctx.close(j)
+			qSum += res.q
+			local text, col = o.verdict(res)
+			ctx.feedback(text, col, res.q)
+			if res.q >= 0.7 then
+				goodReps += 1
+				setGood += 1
+				ctx.pump(res.q >= 0.9 and 0.1 or 0.07)
+			elseif res.verdict ~= "none" then
+				if res.q < 0.3 then
+					fails += 1
+					setFails += 1
+				end
+				ctx.pump(0.03)
+			end
+			if o.onRep then
+				o.onRep(res)
+			end
+			draw(j, seg, ctx.now())
+			-- lower the weight
+			ctx.intensity = 0.5
+			local top = o.top and o.top(res) or (res.p or 0)
+			local t0 = os.clock()
+			while os.clock() - t0 < WAIT.lower do
+				if ctx.cancelled then
+					return nil
+				end
+				ctx.drive(top * (1 - (os.clock() - t0) / WAIT.lower))
+				RunService.Heartbeat:Wait()
+			end
+			ctx.drive(0)
+			ctx.setRep(r, reps, setGood)
+			ctx.stats(setFails > 0 and string.format("%d spotted", setFails) or nil)
+			ctx.progress(r / reps)
+			if not ctx.wait(WAIT.rerack) then
+				return nil
+			end
+		end
+		local rpe = math.clamp(6 + setFails * 1.2 + (reps - setGood) * 0.35 + (set - 1) * 0.6 + fatigue / 50, 6, 10)
+		rpe = math.floor(rpe * 2 + 0.5) / 2
+		lastRpe = rpe
+		ctx.intensity = nil
+		if set < sets then
+			local left = math.max(0, math.floor(10 - rpe))
+			if not ctx.rest(WAIT.rest, string.format("SET %d DONE%s%s", set, DOT, rpeText(rpe)), string.format("%d/%d good reps%s%s", setGood, reps, DOT, left > 0 and (left .. " more in the tank") or "nothing left in the tank")) then
+				return nil
+			end
+		else
+			ctx.feedback(rpeText(rpe), rpe >= 9 and T.red or (rpe >= 8 and T.orange or T.green))
+		end
+	end
+	ctx.intensity = nil
+	ctx.put(bodyweight and "addedLoad" or "load", load or 0)
+	ctx.put("goodReps", goodReps)
+	if load and not bodyweight then
+		ctx.put("volume", load * goodReps)
+	end
+	ctx.put("form", math.floor(qSum / math.max(1, sets * reps) * 100 + 0.5))
+	ctx.note(exName .. (loadText and (" " .. loadText) or ""))
+	ctx.note(string.format("%d/%d good reps", goodReps, sets * reps))
+	if fails > 0 then
+		ctx.note(string.format("%d failed or spotted", fails))
+	end
+	ctx.note(rpeText(lastRpe))
+	if not ctx.wait(0.6) then
+		return nil
+	end
+	return ctx.score()
+end
+
+-- BENCH PRESS -----------------------------------------------------------
+-- Press the bar while it drifts out of level (one side is weaker): push the low end back up, get through
+-- the sticking point and lock it out; the spotter is there when it goes wrong (or when you call him).
+GAMES.bench = function(ctx)
+	return repSets(ctx, {
+		actions = {
+			{ id = "press", label = "PRESS", say = "PRESS", keys = { K.Space }, color = T.blue },
+			{ id = "L", label = "LEFT UP", keys = { K.A, K.Left } },
+			{ id = "R", label = "RIGHT UP", keys = { K.D, K.Right } },
+			{ id = "spot", label = "SPOTTER!", keys = { K.F }, color = T.orange },
+		},
+		perRow = 4,
+		info = "Tap or hold PRESS (SPACE) to drive the bar. Keep it level: lift the low end with LEFT UP ({L}) or RIGHT UP ({R}). Stalled? Call the SPOTTER ({spot}).",
+		build = function(loadText)
+			local sw = stageWidth(ctx)
+			local cx, half = math.floor(sw * 0.24), math.floor(math.min(120, sw * 0.18))
+			local dots = {}
+			for i = 1, 11 do
+				local d = UI.Frame(ctx.stage, { Size = UDim2.fromOffset(8, 6), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = Color3.fromRGB(200, 200, 210) })
+				dots[i] = d
+			end
+			local plateL = UI.Frame(ctx.stage, { Size = UDim2.fromOffset(10, 34), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = T.red })
+			local plateR = UI.Frame(ctx.stage, { Size = UDim2.fromOffset(10, 34), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = T.red })
+			UI.Corner(plateL, 3)
+			UI.Corner(plateR, 3)
+			local x0 = math.floor(sw * 0.5)
+			local mw = sw - x0 - 12
+			label(ctx.stage, "BAR LEVEL", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(x0, 6), Size = UDim2.fromOffset(mw, 14) })
+			local tilt = meter(ctx.stage, UDim2.fromOffset(x0, 22), UDim2.fromOffset(mw, 16))
+			tilt.zone(0.4, 0.6, T.green, 0.3)
+			tilt.zone(0, 0.1, T.red, 0.3)
+			tilt.zone(0.9, 1, T.red, 0.3)
+			label(ctx.stage, "LOCKOUT", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(x0, 46), Size = UDim2.fromOffset(mw * 0.5, 14) })
+			local lockText = label(ctx.stage, "", { Face = "number", TextSize = 13, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(x0 + mw, 44), Size = UDim2.fromOffset(mw * 0.5, 16), TextXAlignment = Enum.TextXAlignment.Right })
+			local lock = meter(ctx.stage, UDim2.fromOffset(x0, 62), UDim2.fromOffset(mw, 14))
+			local setStick = lock.zone(0.42, 0.6, T.orange, 0.55)
+			label(ctx.stage, loadText or "", { Font = T.bold, TextColor3 = T.gold, Position = UDim2.fromOffset(x0, 84), Size = UDim2.fromOffset(mw, 18) })
+			return function(j, seg, now)
+				local y = 96 - j.p * 62
+				local dy = j.x * 22
+				for i, d in ipairs(dots) do
+					local k = (i - 1) / (#dots - 1)
+					d.Position = UDim2.fromOffset(cx - half + 2 * half * k, y + dy * (1 - 2 * k))
+				end
+				local danger = math.abs(j.x) > 0.6
+				plateL.Position = UDim2.fromOffset(cx - half - 6, y + dy)
+				plateR.Position = UDim2.fromOffset(cx + half + 6, y - dy)
+				local lowL, lowR = j.x > 0.25, j.x < -0.25
+				plateL.BackgroundColor3 = (danger and j.x > 0) and T.gold or (lowL and T.orange or T.red)
+				plateR.BackgroundColor3 = (danger and j.x < 0) and T.gold or (lowR and T.orange or T.red)
+				tilt.mark(0.5 - j.x / 2, danger and T.red or (math.abs(j.x) > 0.2 and T.orange or T.green))
+				setStick(seg.stickLo, seg.stickHi)
+				lock.fill(j.p, T.gold)
+				setText(lockText, j.started and pct(j.p) or "PRESS!", j.started and T.text or T.gold)
+				ctx.drive(j.p)
+				ctx.attrQ("PoseTilt", j.x, 0.05)
+				ctx.intensity = j.press.on and 0.9 or 0.45
+			end
+		end,
+		react = function(_, _, hit)
+			if hit.spot then
+				ctx.feedback("SPOTTER: I GOT IT", T.orange)
+			end
+		end,
+		verdict = function(res)
+			local v = res.verdict
+			if v == "lockout" then
+				return res.q >= 0.9 and "LEVEL LOCKOUT!" or (res.q >= 0.7 and "GOOD REP" or "SHAKY REP"), res.q >= 0.9 and T.gold or (res.q >= 0.7 and T.green or T.orange)
+			elseif v == "assisted" then
+				return "ASSISTED REP", T.orange
+			elseif v == "tilted" then
+				return "BAR TIPPED - SPOTTER!", T.red
+			elseif v == "stalled" then
+				return "STALLED - SPOTTER!", T.red
+			end
+			return "NO PRESS", T.red
+		end,
+		onRep = function()
+			ctx.attrQ("PoseTilt", 0)
+		end,
+	})
+end
+
+-- DEADLIFT --------------------------------------------------------------
+-- SET YOUR BACK (press as the back-angle needle passes neutral), then drive the bar through the knees
+-- with the grip squeezed (the grip drains while the bar is off the floor).
+GAMES.deadlift = function(ctx)
+	return repSets(ctx, {
+		actions = {
+			{ id = "lift", label = "SET & LIFT", say = "LIFT", keys = { K.Space }, color = T.blue },
+			{ id = "grip", label = "SQUEEZE GRIP", keys = { K.J, K.F }, color = T.panel2 },
+		},
+		perRow = 2,
+		info = "Press LIFT (SPACE) as the needle crosses NEUTRAL to set your back, then keep driving. SQUEEZE GRIP ({grip}) before your grip runs out.",
+		build = function(loadText)
+			local sw = stageWidth(ctx)
+			local mw = sw - 24
+			local status = label(ctx.stage, "", { Font = T.bold, TextSize = 15, Position = UDim2.fromOffset(12, 4), Size = UDim2.fromOffset(mw * 0.6, 20) })
+			label(ctx.stage, loadText or "", { Font = T.bold, TextColor3 = T.gold, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(12 + mw, 4), Size = UDim2.fromOffset(mw * 0.4, 20), TextXAlignment = Enum.TextXAlignment.Right })
+			local back = meter(ctx.stage, UDim2.fromOffset(12, 28), UDim2.fromOffset(mw, 16))
+			local setNeutral = back.zone(0.4, 0.6, T.gold, 0.2)
+			label(ctx.stage, "ROUNDED", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 46), Size = UDim2.fromOffset(90, 14) })
+			label(ctx.stage, "OVER-ARCHED", { TextSize = 11, TextColor3 = T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(12 + mw, 46), Size = UDim2.fromOffset(110, 14), TextXAlignment = Enum.TextXAlignment.Right })
+			local bar = meter(ctx.stage, UDim2.fromOffset(12, 66), UDim2.fromOffset(math.floor(mw * 0.62), 14))
+			local setStick = bar.zone(0.32, 0.58, T.orange, 0.55)
+			label(ctx.stage, "BAR", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 82), Size = UDim2.fromOffset(60, 14) })
+			local gx = 24 + math.floor(mw * 0.62)
+			local grip = meter(ctx.stage, UDim2.fromOffset(gx, 66), UDim2.fromOffset(12 + mw - gx, 14))
+			local gripText = label(ctx.stage, "GRIP", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(gx, 82), Size = UDim2.fromOffset(12 + mw - gx, 14) })
+			return function(j, seg, now)
+				setNeutral(seg.c - seg.w, seg.c + seg.w)
+				setStick(seg.stickLo, seg.stickHi)
+				if j.phase == "set" then
+					local pos = j.needleAt(now)
+					local d = math.abs(pos - seg.c)
+					back.mark(pos, d <= seg.w and T.gold or Color3.new(1, 1, 1))
+					setText(status, "SET YOUR BACK", T.gold)
+					ctx.attrQ("PoseSet", 1 - math.min(1, d * 2), 0.05)
+				else
+					back.mark(j.setPos or seg.c, (j.setQ or 0) >= 0.8 and T.green or T.orange)
+					local stick = j.p >= seg.stickLo and j.p <= seg.stickHi
+					setText(status, j.closed and "" or (stick and "THROUGH THE KNEES!" or (j.lift.on and "DRIVE!" or "KEEP PULLING")), stick and T.orange or T.text)
+				end
+				bar.fill(j.p, T.gold)
+				local g = j.g or 1
+				grip.fill(g, g < 0.25 and T.red or (g < 0.5 and T.orange or T.green))
+				setText(gripText, g < 0.3 and "GRIP SLIPPING!" or "GRIP", g < 0.3 and T.red or T.sub)
+				ctx.drive(j.p)
+				ctx.attrQ("PoseGrip", g, 0.05)
+				ctx.intensity = j.lift.on and 0.95 or 0.4
+			end
+		end,
+		react = function(_, _, hit)
+			if hit.set then
+				local q = hit.setQ
+				ctx.feedback(q >= 0.85 and "NEUTRAL BACK" or (q >= 0.6 and "BACK SET" or "ROUNDED BACK!"), q >= 0.85 and T.green or (q >= 0.6 and T.text or T.orange), false)
+				ctx.attrQ("PoseSet", q, 0.05)
+			end
+		end,
+		verdict = function(res)
+			local v = res.verdict
+			if v == "lockout" then
+				return res.q >= 0.9 and "PERFECT PULL!" or (res.q >= 0.7 and "GOOD LOCKOUT" or "UGLY PULL"), res.q >= 0.9 and T.gold or (res.q >= 0.7 and T.green or T.orange)
+			elseif v == "grip" then
+				return "GRIP GAVE OUT", T.red
+			elseif v == "stalled" then
+				return "STUCK AT THE KNEES", T.red
+			end
+			return "NEVER SET UP", T.red
+		end,
+		onRep = function()
+			ctx.attrQ("PoseGrip", 1)
+		end,
+	})
+end
+
+-- SQUAT -----------------------------------------------------------------
+-- Sink (it speeds up the deeper you go), stop in the depth zone, then drive out of the hole inside the
+-- bounce window and keep driving to the top.
+GAMES.squat = function(ctx)
+	return repSets(ctx, {
+		actions = { { id = "sit", label = "SINK / DRIVE", say = "SQUAT", keys = { K.Space }, color = T.blue } },
+		perRow = 1,
+		info = "Tap or hold SPACE to sink and let go in the DEPTH zone. Then press again inside the bounce window and drive all the way up.",
+		build = function(loadText)
+			local sw = stageWidth(ctx)
+			local x0 = 120
+			local mw = sw - x0 - 14
+			-- the depth gauge: standing at the top, the hole at the bottom
+			local gauge = UI.Frame(ctx.stage, { Position = UDim2.fromOffset(20, 6), Size = UDim2.fromOffset(40, 100), BackgroundColor3 = DARK })
+			UI.Corner(gauge, 4)
+			local zone = UI.Frame(gauge, { BackgroundColor3 = T.green, BackgroundTransparency = 0.35, Size = UDim2.fromScale(1, 0.15) })
+			UI.Frame(gauge, { BackgroundColor3 = T.red, BackgroundTransparency = 0.35, Position = UDim2.fromScale(0, 0.94), Size = UDim2.fromScale(1, 0.06) })
+			local hip = UI.Frame(gauge, { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.new(1, 10, 0, 5), Position = UDim2.fromScale(0.5, 0), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 3 })
+			label(ctx.stage, "DEPTH", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(66, 6), Size = UDim2.fromOffset(50, 14) })
+			local status = label(ctx.stage, "", { Font = T.bold, TextSize = 16, Position = UDim2.fromOffset(x0, 6), Size = UDim2.fromOffset(mw, 22) })
+			label(ctx.stage, "BOUNCE WINDOW", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(x0, 34), Size = UDim2.fromOffset(mw, 14) })
+			local win = meter(ctx.stage, UDim2.fromOffset(x0, 50), UDim2.fromOffset(mw, 14))
+			local setWin = win.zone(0.1, 0.5, T.green, 0.3)
+			label(ctx.stage, "DRIVE UP", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(x0, 70), Size = UDim2.fromOffset(mw * 0.5, 14) })
+			local up = meter(ctx.stage, UDim2.fromOffset(x0, 86), UDim2.fromOffset(math.floor(mw * 0.55), 12))
+			label(ctx.stage, loadText or "", { Font = T.bold, TextColor3 = T.gold, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(x0 + mw, 82), Size = UDim2.fromOffset(mw * 0.42, 18), TextXAlignment = Enum.TextXAlignment.Right })
+			local WIN_SPAN = 1.2
+			return function(j, seg, now)
+				zone.Position = UDim2.fromScale(0, seg.lo)
+				zone.Size = UDim2.fromScale(1, seg.hi - seg.lo)
+				local z = j.depth()
+				hip.Position = UDim2.fromScale(0.5, z)
+				local inZone = z >= seg.lo and z <= seg.hi
+				hip.BackgroundColor3 = inZone and T.green or (z > seg.hi and T.orange or Color3.new(1, 1, 1))
+				setWin(seg.bounce / WIN_SPAN, seg.pause / WIN_SPAN)
+				local ph = j.phase
+				if ph == "ready" then
+					setText(status, "SINK", T.text)
+				elseif ph == "descend" then
+					setText(status, inZone and "DEPTH! LET GO" or "SINKING...", inZone and T.green or T.text)
+				elseif ph == "bottom" then
+					local since = now - j.bottomT
+					win.mark(since / WIN_SPAN, (since >= seg.bounce and since <= seg.pause) and T.green or T.orange)
+					setText(status, since < seg.bounce and "HOLD THE HOLE..." or "DRIVE NOW!", since < seg.bounce and T.text or T.gold)
+				elseif ph == "drive" then
+					win.mark((j.pressDt or 0) / WIN_SPAN)
+					setText(status, j.sit.on and "DRIVE!" or "KEEP DRIVING!", j.sit.on and T.green or T.orange)
+				end
+				up.fill(j.u, T.gold)
+				ctx.drive(1 - z)
+				ctx.intensity = (ph == "drive" or ph == "bottom") and 0.95 or 0.5
+			end
+		end,
+		verdict = function(res)
+			local v = res.verdict
+			if v == "stand" then
+				local depth = ({ zone = "PARALLEL", high = "HIGH", deep = "DEEP", dive = "DIVE-BOMBED" })[res.depth] or ""
+				local drive = ({ good = "", bounce = " · BOUNCED", pause = " · SLOW OUT" })[res.drive] or ""
+				return (res.q >= 0.9 and "PERFECT! " or "") .. depth .. drive, res.q >= 0.9 and T.gold or (res.q >= 0.7 and T.green or T.orange)
+			elseif v == "stalled" then
+				return "STUCK - RACKED IT", T.red
+			elseif v == "stuck" then
+				return "LOST IT IN THE HOLE", T.red
+			end
+			return "NO REP", T.red
+		end,
+		top = function(res)
+			return res.verdict == "stand" and 1 or 0.4
+		end,
+	})
+end
+
+-- PULL-UPS --------------------------------------------------------------
+-- Pull LEFT and RIGHT in turn through the bottom of the swing; HOLLOW kills the swing (and slows you).
+GAMES.pullup = function(ctx)
+	local nextHand = "L"
+	return repSets(ctx, {
+		actions = {
+			{ id = "L", label = "PULL LEFT", keys = { K.J, K.A, K.Left }, color = T.blue },
+			{ id = "R", label = "PULL RIGHT", keys = { K.K, K.D, K.Right }, color = T.red },
+			{ id = "hollow", label = "HOLLOW BODY", say = "HOLLOW", keys = { K.Space } },
+		},
+		perRow = 3,
+		info = "Pull LEFT ({L}) and RIGHT ({R}) in turn as the swing passes the middle. Swinging too much? Tap HOLLOW (SPACE) to brace and kill it.",
+		build = function(loadText)
+			local sw = stageWidth(ctx)
+			local mw = sw - 110
+			label(ctx.stage, "SWING", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 6), Size = UDim2.fromOffset(80, 14) })
+			local swing = meter(ctx.stage, UDim2.fromOffset(12, 22), UDim2.fromOffset(mw, 18))
+			swing.zone(0.42, 0.58, T.green, 0.3)
+			swing.zone(0, 0.06, T.red, 0.3)
+			swing.zone(0.94, 1, T.red, 0.3)
+			local status = label(ctx.stage, "", { Font = T.bold, TextSize = 15, Position = UDim2.fromOffset(12, 48), Size = UDim2.fromOffset(mw, 20) })
+			label(ctx.stage, loadText or "", { Font = T.bold, TextColor3 = T.gold, Position = UDim2.fromOffset(12, 76), Size = UDim2.fromOffset(mw, 18) })
+			-- the height: the chin climbs to the bar line
+			local col = UI.Frame(ctx.stage, { Position = UDim2.fromOffset(sw - 80, 16), Size = UDim2.fromOffset(28, 88), BackgroundColor3 = DARK })
+			UI.Corner(col, 4)
+			UI.Frame(ctx.stage, { Position = UDim2.fromOffset(sw - 92, 12), Size = UDim2.fromOffset(52, 4), BackgroundColor3 = Color3.fromRGB(190, 190, 200) })
+			local chin = UI.Frame(col, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.fromScale(1, 0), BackgroundColor3 = T.gold })
+			UI.Corner(chin, 4)
+			label(ctx.stage, "CHIN", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(sw - 44, 10), Size = UDim2.fromOffset(40, 14) })
+			return function(j, seg, now)
+				local s = j.swing(now)
+				local off = math.abs(math.sin(j.phaseAt(now)))
+				swing.mark(0.5 + s / 2, off < 0.3 and T.green or Color3.new(1, 1, 1))
+				chin.Size = UDim2.fromScale(1, math.clamp(j.h, 0, 1))
+				local want = j.last == "L" and "RIGHT" or (j.last == "R" and "LEFT" or (nextHand == "L" and "LEFT" or "RIGHT"))
+				if j.hollow.on then
+					setText(status, "HOLLOW - BRACED", T.cyan)
+				elseif j.A > 0.6 then
+					setText(status, "SWINGING! GO HOLLOW", T.orange)
+				else
+					setText(status, "NEXT: PULL " .. want, T.text)
+				end
+				ctx.drive(0.15 + 0.85 * j.h)
+				ctx.attrQ("PoseSwing", s, 0.04)
+				ctx.intensity = 0.4 + 0.5 * j.h
+			end
+		end,
+		react = function(_, _, hit)
+			if hit.alt == false then
+				ctx.feedback("OTHER ARM!", T.orange, false)
+			elseif hit.off and hit.off > 0.6 then
+				ctx.feedback("KIPPING", T.orange, false)
+			end
+		end,
+		verdict = function(res)
+			local v = res.verdict
+			if v == "chin" then
+				return res.q >= 0.9 and "STRICT REP!" or (res.q >= 0.7 and "CHIN OVER" or "SWINGY REP"), res.q >= 0.9 and T.gold or (res.q >= 0.7 and T.green or T.orange)
+			elseif v == "swung" then
+				return "SWUNG OFF THE BAR", T.red
+			elseif v == "stalled" then
+				return "RAN OUT OF PULL", T.red
+			end
+			return "DEAD HANG", T.red
+		end,
+		top = function(res)
+			return 0.15 + 0.85 * (res.h or 0)
+		end,
+		onRep = function(res)
+			nextHand = res.pulls and res.pulls % 2 == 1 and "R" or "L"
+			ctx.attrQ("PoseSwing", 0)
+		end,
+	})
+end
+
+-- DUMBBELL CURLS ----------------------------------------------------------
+-- Hold notes on a tempo: press the arm's button as its bar reaches the line (curl up), hold through the
+-- squeeze, let go as the tail passes (lower). Two sets: alternating curls, then slower tempo curls.
+GAMES.curls = function(ctx)
+	local load, loadText, exName = liftLoad(ctx)
+	exName = exName or "DUMBBELL CURLS"
+	ctx.bind({ { id = "L", label = "LEFT ARM", keys = { K.J, K.A, K.F }, color = T.blue }, { id = "R", label = "RIGHT ARM", keys = { K.K, K.D, K.G }, color = T.red } }, 2)
+	ctx.setInfo("Hold LEFT ARM ({L}) or RIGHT ARM ({R}) as its bar reaches the line, keep holding through the squeeze, let go at its end. One arm at a time - no swinging.")
+	local segs = ctx.plan.segs
+	local sumAll, countAll, swingsAll, perfectAll = 0, 0, 0, 0
+	local lineX, LANE_Y = 64, { L = 30, R = 70 }
+	for si, seg0 in ipairs(segs) do
+		if not ctx.round(si, #segs, (seg0.name or exName) .. DOT .. (seg0.bpm or 60) .. " BPM", "SET") then
+			return nil
+		end
+		UI.Clear(ctx.stage)
+		UI.Frame(ctx.stage, { Position = UDim2.new(0, lineX - 2, 0, 6), Size = UDim2.new(0, 4, 1, -12), BackgroundColor3 = T.gold })
+		label(ctx.stage, "L", { Font = T.bold, Position = UDim2.fromOffset(10, LANE_Y.L - 9), Size = UDim2.fromOffset(40, 18), TextColor3 = T.blue })
+		label(ctx.stage, "R", { Font = T.bold, Position = UDim2.fromOffset(10, LANE_Y.R - 9), Size = UDim2.fromOffset(40, 18), TextColor3 = T.red })
+		label(ctx.stage, loadText or "", { Font = T.bold, TextSize = 12, TextColor3 = T.gold, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 2), Size = UDim2.fromOffset(160, 16), TextXAlignment = Enum.TextXAlignment.Right })
+		local j, seg = ctx.begin()
+		if not j then
+			return nil
+		end
+		local pps = 120 / (seg.beat or 1)
+		local frames = {}
+		for i, n in ipairs(j.notes) do
+			local f = UI.Frame(ctx.stage, { AnchorPoint = Vector2.new(0, 0.5), Size = UDim2.fromOffset(math.max(16, (n.te - n.ts) * pps), 22), Position = UDim2.fromOffset(NOTE_FAR, LANE_Y[n.lane]),
+				BackgroundColor3 = n.lane == "L" and T.blue or T.red, BackgroundTransparency = 0.25 })
+			UI.Corner(f, 8)
+			frames[i] = f
+		end
+		local held = {}
+		local hand = {}
+		ctx.intensity = 0.45
+		ctx.on(function(id, down, t)
+			local hit = j.input(id, down, t)
+			held[id] = down
+			if down then
+				hand[id] = t
+			end
+			if not hit then
+				return
+			end
+			if hit.swing then
+				ctx.feedback("NO SWINGING!", T.orange, false)
+			end
+			if hit.stray then
+				ctx.feedback("OFF TEMPO", T.orange, false)
+			end
+		end)
+		local VERDICT = { early = { "DROPPED IT EARLY", T.orange }, late = { "TOO LONG AT THE TOP", T.orange }, miss = { "MISSED THE CURL", T.red } }
+		local okPlay = playSegment(ctx, j, function(now)
+			for i, n in ipairs(j.notes) do
+				local f = frames[i]
+				if n.judged then
+					if f.Visible then
+						-- judged since the last frame (let go, held too long or never started): its grade once
+						f.Visible = false
+						local v = VERDICT[n.endText]
+						if v then
+							ctx.feedback(v[1], v[2], n.q)
+						else
+							ctx.feedback(n.q >= 0.9 and "PERFECT TEMPO" or "GOOD CURL", n.q >= 0.9 and T.gold or T.green, n.q)
+						end
+						if n.q >= 0.8 then
+							ctx.pump(0.05)
+						end
+					end
+				else
+					local x = lineX + (n.ts - now) * pps
+					if n.startT then
+						-- curled: the bar's head stays on the line while the tail runs in
+						local w = math.max(6, (n.te - now) * pps)
+						f.Position = UDim2.fromOffset(lineX, LANE_Y[n.lane])
+						f.Size = UDim2.fromOffset(w, 22)
+						f.BackgroundTransparency = 0
+					elseif x < NOTE_FAR then
+						f.Position = UDim2.fromOffset(x, LANE_Y[n.lane])
+					end
+				end
+			end
+			-- the animation: the arm being held curls up over half a second and lowers when let go
+			local side = held.L and "L" or (held.R and "R" or nil)
+			if side then
+				ctx.attrQ("CurlSide", side)
+				ctx.drive(math.min(1, (now - (hand[side] or now)) / 0.45))
+			else
+				ctx.drive(math.max(0, (ctx.poseDrive or 0) - 0.04))
+			end
+			ctx.progress((now - (j.notes[1] and j.notes[1].ts or now)) / math.max(1, j.endT - (j.notes[1] and j.notes[1].ts or now)))
+			ctx.stats(string.format("%d/%d curls%s%d perfect", j.perfect, #j.notes, DOT, j.perfect))
+		end)
+		ctx.on(nil)
+		if not okPlay then
+			return nil
+		end
+		local res = ctx.close(j)
+		sumAll += res.sum
+		countAll += res.count
+		swingsAll += res.swings
+		perfectAll += res.perfect
+		ctx.drive(0)
+		if si < #segs then
+			if not ctx.rest(WAIT.rest, string.format("SET %d DONE", si), string.format("%d/%d perfect curls%s%d swings", res.perfect, res.count, DOT, res.swings)) then
+				return nil
+			end
+		end
+	end
+	ctx.intensity = nil
+	ctx.put("load", load or 0)
+	ctx.put("tempo", math.floor(sumAll / math.max(1, countAll) * 100 + 0.5))
+	ctx.put("perfectCurls", perfectAll)
+	ctx.note(exName .. (loadText and (" " .. loadText) or ""))
+	ctx.note(string.format("%d/%d perfect curls", perfectAll, countAll))
+	if swingsAll > 0 then
+		ctx.note(string.format("%d swings", swingsAll))
+	end
+	if not ctx.wait(0.6) then
+		return nil
+	end
+	return ctx.score()
+end
+
+-- TREADMILL -------------------------------------------------------------
+-- The program calls speed and incline; step the console to follow it.
+GAMES.treadmill = function(ctx)
+	ctx.bind({
+		{ id = "spdDn", label = "SPEED -", keys = { K.S, K.Down } },
+		{ id = "spdUp", label = "SPEED +", keys = { K.W, K.Up }, color = T.blue },
+		{ id = "incDn", label = "INCLINE -", keys = { K.A, K.Left } },
+		{ id = "incUp", label = "INCLINE +", keys = { K.D, K.Right }, color = T.green },
+	}, 4)
+	ctx.setInfo("Follow the program: SPEED +/- ({spdUp}/{spdDn}) and INCLINE +/- ({incUp}/{incDn}). The closer you track both targets, the better.")
+	UI.Clear(ctx.stage)
+	local sw = stageWidth(ctx)
+	local x0, mw = 96, sw - 96 - 14
+	local stepText = label(ctx.stage, "", { Font = T.bold, TextSize = 15, Position = UDim2.fromOffset(12, 2), Size = UDim2.fromOffset(sw * 0.55, 20) })
+	local nextText = label(ctx.stage, "", { TextSize = 12, TextColor3 = T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(sw - 12, 4), Size = UDim2.fromOffset(sw * 0.42, 16), TextXAlignment = Enum.TextXAlignment.Right })
+	local spdText = label(ctx.stage, "", { Face = "number", TextSize = 14, Position = UDim2.fromOffset(12, 28), Size = UDim2.fromOffset(x0 - 16, 18) })
+	local spd = meter(ctx.stage, UDim2.fromOffset(x0, 30), UDim2.fromOffset(mw, 16))
+	local setSpd = spd.zone(0, 0.1, T.green, 0.3)
+	local incText = label(ctx.stage, "", { Face = "number", TextSize = 14, Position = UDim2.fromOffset(12, 58), Size = UDim2.fromOffset(x0 - 16, 18) })
+	local inc = meter(ctx.stage, UDim2.fromOffset(x0, 60), UDim2.fromOffset(mw, 16))
+	local setInc = inc.zone(0, 0.1, T.green, 0.3)
+	local readout = label(ctx.stage, "", { TextSize = 13, TextColor3 = Color3.fromRGB(120, 220, 255), Position = UDim2.fromOffset(12, 88), Size = UDim2.fromOffset(sw - 24, 18) })
+	local miles, topSpeed, lastNow, screenAt, lastStep = 0, 0, nil, -math.huge, nil
+	local res, seg = timedDrill(ctx, "TREADMILL PROGRAM", "PROGRAM", function(j, sg, now)
+		local tg = j.target(now)
+		local nx = nil
+		for _, p in ipairs(sg.program) do
+			if p.t > now - ctx.segAt + 1e-6 then
+				nx = p
+				break
+			end
+		end
+		if tg ~= lastStep then
+			lastStep = tg
+			setText(stepText, tg.name or "INTERVAL", T.gold)
+		end
+		setText(nextText, nx and string.format("NEXT %s in %ds", nx.name, math.ceil(nx.t - (now - ctx.segAt))) or "LAST INTERVAL")
+		setSpd((tg.mph - sg.tolMph) / sg.mphMax, (tg.mph + sg.tolMph) / sg.mphMax)
+		setInc((tg.incl - sg.tolIncl) / sg.inclMax, (tg.incl + sg.tolIncl) / sg.inclMax)
+		local okS, okI = math.abs(j.mph - tg.mph) <= sg.tolMph + 1e-6, math.abs(j.incl - tg.incl) <= sg.tolIncl + 1e-6
+		spd.mark(j.mph / sg.mphMax, okS and T.green or T.orange)
+		inc.mark(j.incl / sg.inclMax, okI and T.green or T.orange)
+		setText(spdText, string.format("%.1f mph", j.mph), okS and T.text or T.orange)
+		setText(incText, string.format("%d%% grade", j.incl), okI and T.text or T.orange)
+		local dt = lastNow and (now - lastNow) or 0
+		lastNow = now
+		miles += j.mph / 3600 * dt * TIME_SCALE
+		topSpeed = math.max(topSpeed, j.mph)
+		setText(readout, string.format("TARGET %.1f mph%s%d%%%s%.2f mi", tg.mph, DOT, tg.incl, DOT, miles))
+		ctx.intensity = math.clamp(0.2 + j.mph / 14 * 0.6 + j.incl / 12 * 0.3, 0, 1)
+		ctx.speed(0.4 + j.mph / 14 * 1.6)
+		ctx.attrQ("PoseIncline", j.incl / 12, 0.05)
+		if now - screenAt >= 0.25 then
+			screenAt = now
+			GymVisuals.SetDisplay(ctx.station, string.format("%.1f MPH\nINCLINE %d%%\n%.2f mi", j.mph, j.incl, miles))
+			ctx.stats(string.format("%.1f mph%s%d%% incline%s%.2f mi", j.mph, DOT, j.incl, DOT, miles))
+		end
+	end, function(_, _, hit)
+		ctx.pulse(0.5)
+	end)
+	if not res then
+		return nil
+	end
+	ctx.intensity = nil
+	ctx.speed(1)
+	local onTarget = math.floor(res.acc / seg.duration * 100 + 0.5)
+	ctx.grade(math.clamp(res.acc / seg.duration / Workouts.TIMED_FULL, 0, 1))
+	ctx.put("distance", math.floor(miles * 100 + 0.5) / 100)
+	ctx.put("topSpeed", math.floor(topSpeed * 10 + 0.5) / 10)
+	ctx.put("inZone", onTarget)
+	ctx.note(string.format("%.2f mi%stop %.1f mph", miles, DOT, topSpeed))
+	ctx.note(string.format("%d%% on the program", onTarget))
+	GymVisuals.SetDisplay(ctx.station, string.format("DONE\n%.2f mi", miles))
+	if not ctx.wait(0.5) then
+		return nil
+	end
+	return ctx.score()
+end
+
+-- BIKE ------------------------------------------------------------------
+-- A hill profile: pedal LEFT / RIGHT for cadence, shift gears so the strokes you can keep up turn into a
+-- cadence inside the band.
+GAMES.bike = function(ctx)
+	local lv = ctx.level
+	ctx.bind({
+		{ id = "L", label = "PEDAL L", keys = { K.J, K.A, K.Left }, color = T.blue },
+		{ id = "R", label = "PEDAL R", keys = { K.K, K.D, K.Right }, color = T.red },
+		{ id = "gearDn", label = "GEAR -", keys = { K.S, K.Down } },
+		{ id = "gearUp", label = "GEAR +", keys = { K.W, K.Up } },
+	}, 4)
+	ctx.setInfo("Pedal LEFT and RIGHT in turn ({L} / {R}) and keep the cadence in the green band. Hills bog you down: shift GEAR - ({gearDn}); flats and descents want GEAR + ({gearUp}).")
+	UI.Clear(ctx.stage)
+	local sw = stageWidth(ctx)
+	local seg0 = ctx.peek()
+	local hill = seg0.hill or {}
+	local total = seg0.duration or 30
+	-- the hill profile: a column per section, as tall as it is steep
+	local px0, pw = 12, sw - 24
+	for i, h in ipairs(hill) do
+		local t1 = hill[i + 1] and hill[i + 1].t or total
+		local hgt = math.clamp(10 + h.grade * 3, 4, 40)
+		local c = UI.Frame(ctx.stage, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromOffset(px0 + pw * h.t / total, 46), Size = UDim2.fromOffset(math.max(2, pw * (t1 - h.t) / total - 2), hgt),
+			BackgroundColor3 = h.grade >= 6 and T.red or (h.grade >= 3 and T.orange or (h.grade < 0 and T.cyan or T.green)), BackgroundTransparency = 0.45 })
+		UI.Corner(c, 2)
+	end
+	local rider = UI.Frame(ctx.stage, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromOffset(px0, 4), Size = UDim2.fromOffset(4, 44), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 3 })
+	local gearText = label(ctx.stage, "", { Face = "number", TextSize = 14, Position = UDim2.fromOffset(12, 54), Size = UDim2.fromOffset(110, 18) })
+	local rpmBar = meter(ctx.stage, UDim2.fromOffset(126, 56), UDim2.fromOffset(sw - 126 - 12, 14))
+	local RPM_MAX = 140
+	rpmBar.zone(seg0.lo / RPM_MAX, seg0.hi / RPM_MAX, T.green, 0.35)
+	local status = label(ctx.stage, "", { Font = T.bold, TextSize = 14, Position = UDim2.fromOffset(12, 80), Size = UDim2.fromOffset(sw * 0.5, 18) })
+	local readout = label(ctx.stage, "", { TextSize = 13, TextColor3 = Color3.fromRGB(120, 220, 255), AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(sw - 12, 80), Size = UDim2.fromOffset(sw * 0.48, 18), TextXAlignment = Enum.TextXAlignment.Right })
+	local km, maxWatts, rpmSum, rpmT, lastNow, screenAt = 0, 0, 0, 0, nil, -math.huge
+	local res, seg = timedDrill(ctx, "HILL PROFILE", "RIDE", function(j, sg, now)
+		local el = now - ctx.segAt
+		rider.Position = UDim2.fromOffset(px0 + pw * math.clamp(el / total, 0, 1), 4)
+		local h = j.hill(now)
+		local rpm = j.rpm(now)
+		local ideal = Workouts.IdealGear(h.grade, sg.gears)
+		local band = rpm >= sg.lo and rpm <= sg.hi
+		rpmBar.mark(rpm / RPM_MAX, band and T.green or T.orange)
+		setText(gearText, string.format("GEAR %d%s%d RPM", j.gear, DOT, math.floor(rpm + 0.5)))
+		local hint
+		if not j.lastTap or now - j.lastTap > 1.5 then
+			hint = "PEDAL!"
+		elseif j.gear > ideal + 1 then
+			hint = "TOO HEAVY - SHIFT DOWN"
+		elseif j.gear < ideal - 1 then
+			hint = "SPINNING OUT - SHIFT UP"
+		elseif rpm < sg.lo then
+			hint = "FASTER LEGS"
+		elseif rpm > sg.hi then
+			hint = "EASE THE CADENCE"
+		else
+			hint = (h.name or "RIDE") .. string.format(" %+d%%", h.grade)
+		end
+		setText(status, hint, (band and math.abs(j.gear - ideal) <= 1) and T.green or T.orange)
+		local dt = lastNow and (now - lastNow) or 0
+		lastNow = now
+		local watts = 0.02 * rpm * rpm * (0.7 + 0.12 * j.gear) * (1 + math.max(0, h.grade) * 0.06) * (0.9 + 0.12 * lv)
+		maxWatts = math.max(maxWatts, watts)
+		local kmh = rpm * j.gear * 0.055 / (1 + math.max(0, h.grade) * 0.08)
+		km += kmh / 3600 * dt * TIME_SCALE
+		if rpm > 0 then
+			rpmSum += rpm * dt
+			rpmT += dt
+		end
+		setText(readout, string.format("%d W%s%.1f km/h%s%.2f km", math.floor(watts), DOT, kmh, DOT, km))
+		ctx.intensity = math.clamp(0.25 + watts / 450, 0, 1)
+		ctx.speed(math.clamp(rpm / 80, 0, 2))
+		ctx.attrQ("PoseClimb", h.grade >= 6 and 1 or 0)
+		if now - screenAt >= 0.25 then
+			screenAt = now
+			GymVisuals.SetDisplay(ctx.station, string.format("RPM %d\n%d WATTS\nGEAR %d", math.floor(rpm), math.floor(watts), j.gear))
+			ctx.stats(string.format("%d RPM%s%d W", math.floor(rpm), DOT, math.floor(watts)))
+		end
+	end, function(_, _, hit)
+		if hit.alt == false then
+			ctx.feedback("OTHER PEDAL", T.orange, false)
+		end
+	end)
+	if not res then
+		return nil
+	end
+	ctx.intensity = nil
+	ctx.speed(1)
+	ctx.grade(math.clamp(res.acc / seg.duration / Workouts.TIMED_FULL, 0, 1))
+	local avgRpm = rpmT > 0 and rpmSum / rpmT or 0
+	ctx.put("maxWatts", math.floor(maxWatts))
+	ctx.put("avgRpm", math.floor(avgRpm))
+	ctx.put("inZone", math.floor(res.inBand / seg.duration * 100 + 0.5))
+	ctx.note(string.format("Max %d W%savg %d RPM", math.floor(maxWatts), DOT, math.floor(avgRpm)))
+	ctx.note(string.format("%d%% in the cadence band", math.floor(res.inBand / seg.duration * 100 + 0.5)))
+	GymVisuals.SetDisplay(ctx.station, string.format("DONE\nMAX %d W", math.floor(maxWatts)))
+	return ctx.score()
+end
+
+-- ROWER -----------------------------------------------------------------
+-- Catch, drive, finish, recover: ROW at the catch, let go at the finish, let the slide come back.
+GAMES.rower = function(ctx)
+	ctx.bind({ { id = "row", label = "ROW: DRIVE", say = "ROW", keys = { K.Space }, color = T.blue } }, 1)
+	ctx.setInfo("Press ROW (SPACE) at the CATCH and hold the drive, let go at the FINISH. The slide comes back by itself - catch it as it arrives, don't rush it.")
+	UI.Clear(ctx.stage)
+	local sw = stageWidth(ctx)
+	local mw = sw - 24
+	local pieceText = label(ctx.stage, "", { Font = T.bold, TextSize = 15, Position = UDim2.fromOffset(12, 2), Size = UDim2.fromOffset(mw * 0.6, 20) })
+	local spmText = label(ctx.stage, "", { Face = "number", TextSize = 14, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(12 + mw, 4), Size = UDim2.fromOffset(mw * 0.4, 18), TextXAlignment = Enum.TextXAlignment.Right })
+	label(ctx.stage, "CATCH", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 28), Size = UDim2.fromOffset(80, 14) })
+	label(ctx.stage, "FINISH", { TextSize = 11, TextColor3 = T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(12 + mw, 28), Size = UDim2.fromOffset(80, 14), TextXAlignment = Enum.TextXAlignment.Right })
+	local slide = meter(ctx.stage, UDim2.fromOffset(12, 44), UDim2.fromOffset(mw, 20))
+	local seg0 = ctx.peek()
+	slide.zone(0, seg0.catchW or 0.1, T.green, 0.3)
+	slide.zone(seg0.finishLo or 0.86, 1, T.green, 0.3)
+	local phaseText = label(ctx.stage, "", { Font = T.bold, TextSize = 14, Position = UDim2.fromOffset(12, 72), Size = UDim2.fromOffset(mw * 0.5, 18) })
+	local lastText = label(ctx.stage, "", { TextSize = 13, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(12 + mw, 72), Size = UDim2.fromOffset(mw * 0.5, 18), TextXAlignment = Enum.TextXAlignment.Right })
+	local readout = label(ctx.stage, "", { TextSize = 13, TextColor3 = Color3.fromRGB(120, 220, 255), Position = UDim2.fromOffset(12, 94), Size = UDim2.fromOffset(mw, 18) })
+	local meters, maxSpm, lastStrokeT, spm, screenAt, lastPiece = 0, 0, nil, 0, -math.huge, nil
+	local res = timedDrill(ctx, "ROWING PIECES", "PIECE", function(j, sg, now)
+		local pc = j.piece(now)
+		if pc ~= lastPiece then
+			lastPiece = pc
+			setText(pieceText, string.format("%s%s%d SPM", pc.name, DOT, pc.spm), T.gold)
+		end
+		slide.mark(j.x, j.phase == "drive" and T.gold or Color3.new(1, 1, 1))
+		local ph = j.phase
+		setText(phaseText, ph == "drive" and (j.x >= 1 and "LET GO - FINISH!" or "DRIVE!") or (ph == "catch" and "CATCH - ROW!" or "RECOVER..."), ph == "catch" and T.gold or (ph == "drive" and T.green or T.sub))
+		local split = spm > 0 and math.clamp(150 - (spm - 18) * 2.2 - (j.last and j.last.q or 0.5) * 18, 85, 175) or 0
+		setText(spmText, string.format("%d SPM", math.floor(spm + 0.5)), (math.abs(spm - pc.spm) <= 2) and T.green or T.text)
+		setText(readout, split > 0 and string.format("%s /500m%s%d m%s%d strokes", clock(split), DOT, math.floor(meters), DOT, #j.strokes) or "")
+		ctx.drive(j.x)
+		ctx.intensity = ph == "drive" and 0.9 or 0.55
+		if now - screenAt >= 0.25 then
+			screenAt = now
+			GymVisuals.SetDisplay(ctx.station, split > 0 and string.format("%s /500\n%d SPM\n%d m", clock(split), math.floor(spm + 0.5), math.floor(meters)) or "ROW")
+			ctx.stats(string.format("%d spm%s%d m", math.floor(spm + 0.5), DOT, math.floor(meters)))
+		end
+	end, function(_, _, hit)
+		if hit.catch == "rushed" then
+			ctx.feedback("RUSHED THE SLIDE", T.orange, false)
+		elseif hit.stroke then
+			local st = hit.stroke
+			if lastStrokeT then
+				spm = 60 / math.max(0.5, st.t - lastStrokeT)
+				maxSpm = math.max(maxSpm, spm)
+			end
+			lastStrokeT = st.t
+			meters += 7 + 4 * st.q
+			setText(lastText, string.format("%s CATCH%s%s", string.upper(st.catch or "clean"), DOT, string.upper(st.finish)), st.q >= 0.9 and T.green or T.orange)
+			ctx.feedback(st.q >= 0.95 and "PERFECT STROKE" or (st.finish == "short" and "SHORT STROKE" or (st.catch == "pause" and "PAUSED AT THE CATCH" or "GOOD STROKE")), ctx.gradeColor(st.q), st.q)
+		end
+	end)
+	if not res then
+		return nil
+	end
+	ctx.intensity = nil
+	ctx.put("meters", math.floor(meters))
+	ctx.put("maxSpm", math.floor(maxSpm))
+	ctx.put("strokes", res.strokes)
+	ctx.note(string.format("%d m rowed%s%d strokes", math.floor(meters), DOT, res.strokes))
+	ctx.note(string.format("max %d spm", math.floor(maxSpm)))
+	GymVisuals.SetDisplay(ctx.station, string.format("DONE\n%d m", math.floor(meters)))
+	return ctx.score()
+end
+
+-- RECOVERY STATIONS -------------------------------------------------------
+local function toF(c)
+	return math.floor(c * 9 / 5 + 32 + 0.5)
+end
+
+-- ICE BATH: full breaths from empty, long exhales, ride out the cold waves
+GAMES.icebath = function(ctx)
+	local lv = ctx.level
+	local tempC = Config.IceBathTempC[math.clamp(lv, 1, #Config.IceBathTempC)]
+	ctx.bind({ { id = "breathe", label = "BREATHE IN", say = "BREATHE", keys = { K.Space }, color = T.blue } }, 1)
+	ctx.setInfo("Hold (or tap) BREATHE IN (SPACE) for a full breath, let go for a long slow exhale until you're empty. Calm breathing beats the cold shock.")
+	UI.Clear(ctx.stage)
+	local sw = stageWidth(ctx)
+	local lungs = UI.Frame(ctx.stage, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(62, 58), Size = UDim2.fromOffset(30, 30), BackgroundColor3 = Color3.fromRGB(80, 170, 255), BackgroundTransparency = 0.3 })
+	UI.Corner(lungs, 60)
+	local x0 = 130
+	local mw = sw - x0 - 12
+	local breathText = label(ctx.stage, "", { Font = T.bold, TextSize = 15, Position = UDim2.fromOffset(x0, 4), Size = UDim2.fromOffset(mw, 20) })
+	label(ctx.stage, "COLD SHOCK", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(x0, 30), Size = UDim2.fromOffset(mw * 0.5, 14) })
+	local waveText = label(ctx.stage, "", { Font = T.bold, TextSize = 12, TextColor3 = T.cyan, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(x0 + mw, 29), Size = UDim2.fromOffset(mw * 0.5, 15), TextXAlignment = Enum.TextXAlignment.Right })
+	local cold = meter(ctx.stage, UDim2.fromOffset(x0, 46), UDim2.fromOffset(mw, 16))
+	cold.zone(0, 0.5, T.green, 0.55)
+	cold.zone(0.5, 0.8, T.orange, 0.55)
+	cold.zone(0.8, 1, T.red, 0.45)
+	local line1 = label(ctx.stage, "", { TextSize = 13, TextColor3 = Color3.fromRGB(150, 210, 255), Position = UDim2.fromOffset(x0, 70), Size = UDim2.fromOffset(mw, 18) })
+	local line2 = label(ctx.stage, "", { TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromOffset(x0, 90), Size = UDim2.fromOffset(mw, 18) })
+	local res, seg = timedDrill(ctx, string.format("WATER %d°F", toF(tempC)), "SESSION", function(j, sg, now)
+		local size = 30 + 66 * j.l
+		lungs.Size = UDim2.fromOffset(size, size)
+		local on = j.br.on
+		if on then
+			setText(breathText, j.l >= 1 and "FULL - LET IT GO" or "BREATHE IN...", j.l >= 1 and T.gold or T.text)
+		else
+			setText(breathText, j.l > 0.02 and "LONG EXHALE..." or "EMPTY - BREATHE IN", j.l > 0.02 and T.cyan or T.gold)
+		end
+		cold.mark(j.S, j.S < 0.5 and T.green or (j.S < 0.8 and T.orange or T.red))
+		setText(waveText, j.wave(now) and "COLD WAVE!" or "")
+		setText(line1, string.format("WATER %d°F (%d°C)%sTIME IN %s", toF(tempC), tempC, DOT, clock((now - ctx.segAt) * TIME_SCALE)))
+		setText(line2, string.format("Calm breaths %d / %d", j.good, j.breaths), j.S >= 0.8 and T.red or T.sub)
+		ctx.drive(j.l)
+		ctx.attrQ("PoseLungs", j.l, 0.05)
+		ctx.attrQ("PoseShiver", j.S, 0.05)
+		ctx.stats(string.format("Cold %s%sbreaths %d", pct(j.S), DOT, j.good))
+	end, function(_, _, hit)
+		if hit.exhale then
+			if hit.good then
+				ctx.feedback("CALM BREATH", T.green, false)
+			elseif not hit.full then
+				ctx.feedback("GASPING - FILL UP", T.orange, false)
+			else
+				ctx.feedback("EMPTY OUT FIRST", T.orange, false)
+			end
+		end
+	end)
+	if not res then
+		return nil
+	end
+	local calmPct = math.floor(res.calm / seg.duration * 100 + 0.5)
+	ctx.grade(math.clamp(res.calm / seg.duration / Workouts.TIMED_FULL, 0, 1))
+	ctx.put("sync", calmPct)
+	ctx.put("calmBreaths", res.good)
+	ctx.note(string.format("%s at %d°F", clock(seg.duration * TIME_SCALE), toF(tempC)))
+	ctx.note(string.format("Calm %d%% of the time%s%d calm breaths", calmPct, DOT, res.good))
+	return ctx.score()
+end
+
+-- STRETCHING: ease into each pose and keep it in the range as the muscle lets go - never past it
+GAMES.stretch = function(ctx)
+	ctx.bind({ { id = "sink", label = "SINK DEEPER", say = "SINK", keys = { K.Space }, color = T.blue } }, 1)
+	ctx.setInfo("Hold (or tap) SINK DEEPER (SPACE) to ease in, let go to back off. Stay in the green range as it creeps deeper. Past it is an overstretch.")
+	local segs = ctx.plan.segs
+	local inSum, overs, tweaks = 0, 0, 0
+	for i, seg0 in ipairs(segs) do
+		local name = seg0.name or "STRETCH"
+		if not ctx.round(i, #segs, name, "POSE") then
+			return nil
+		end
+		UI.Clear(ctx.stage)
+		local sw = stageWidth(ctx)
+		local mw = sw - 24
+		local status = label(ctx.stage, "", { Font = T.bold, TextSize = 16, Position = UDim2.fromOffset(12, 4), Size = UDim2.fromOffset(mw * 0.6, 22) })
+		local timeText = label(ctx.stage, "", { Face = "number", TextSize = 14, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(12 + mw, 6), Size = UDim2.fromOffset(mw * 0.35, 18), TextXAlignment = Enum.TextXAlignment.Right })
+		label(ctx.stage, "EASY", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 32), Size = UDim2.fromOffset(60, 14) })
+		label(ctx.stage, "TOO FAR", { TextSize = 11, TextColor3 = T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(12 + mw, 32), Size = UDim2.fromOffset(80, 14), TextXAlignment = Enum.TextXAlignment.Right })
+		local range = meter(ctx.stage, UDim2.fromOffset(12, 48), UDim2.fromOffset(mw, 22))
+		local setBand = range.zone(0, 0.1, T.green, 0.3)
+		local setOver = range.zone(0.9, 1, T.red, 0.45)
+		local romText = label(ctx.stage, "", { TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 80), Size = UDim2.fromOffset(mw, 18) })
+		ctx.attrQ("PoseStretch", seg0.pose or 0)
+		local j, seg, start = ctx.begin()
+		if not j then
+			return nil
+		end
+		ctx.on(function(id, down, t)
+			j.input(id, down, t)
+		end)
+		local wasOver = false
+		local okPlay = playSegment(ctx, j, function(now)
+			local lo, hi = j.band(now)
+			setBand(lo, hi)
+			setOver(hi + seg.overMargin, 1)
+			local over = j.z > hi + seg.overMargin
+			local inR = j.z >= lo and j.z <= hi
+			range.mark(j.z, over and T.red or (inR and T.green or Color3.new(1, 1, 1)))
+			setText(status, over and "OVERSTRETCH - BACK OFF!" or (inR and "HOLD IT... BREATHE" or (j.z < lo and "EASE DEEPER" or "EASY NOW")), over and T.red or (inR and T.green or T.text))
+			setText(timeText, string.format("%.1fs", math.max(0, seg.dur - (now - start))))
+			setText(romText, string.format("%s%sin range %.1fs", name, DOT, j.inT * Workouts.TICK))
+			if over and not wasOver then
+				ctx.feedback("OUCH - TOO FAR", T.red, false)
+			end
+			wasOver = over
+			ctx.drive(j.z)
+			ctx.progress((now - start) / seg.dur)
+		end)
+		ctx.on(nil)
+		if not okPlay then
+			return nil
+		end
+		local res = ctx.close(j)
+		inSum += res.inRange
+		overs += res.overs
+		if res.tweaked then
+			tweaks += 1
+		end
+		ctx.feedback(res.tweaked and "TWEAKED IT" or (res.q >= 0.9 and "PERFECT HOLD" or (res.q >= 0.65 and "GOOD STRETCH" or "NOT IN IT")), res.tweaked and T.red or ctx.gradeColor(res.q), res.q)
+	end
+	ctx.drive(0)
+	ctx.put("sync", math.floor(ctx.score() * 100 + 0.5))
+	ctx.put("timeInRange", math.floor(inSum * 10 + 0.5) / 10)
+	ctx.note(string.format("%.1fs in range over %d stretches", inSum, #segs))
+	if overs > 0 then
+		ctx.note(string.format("%d overstretch%s%s", overs, overs > 1 and "es" or "", tweaks > 0 and " (tweaked one)" or ""))
+	end
+	return ctx.score()
+end
+
+-- MASSAGE: pick the sore groups (the body map shows them), then relax into each stroke
+local GROUP_LABEL = { back = "BACK", shoulders = "DELTS", legs = "LEGS", arms = "ARMS", chest = "CHEST", core = "CORE", neck = "NECK" }
+GAMES.massage = function(ctx)
+	local seg0 = ctx.peek()
+	local groups = seg0.groups or Workouts.MassageGroups
+	local function bindChoose()
+		ctx.bind({
+			{ id = "prev", label = GLYPH.prev .. " PREV", keys = { K.A, K.Left } },
+			{ id = "ok", label = "WORK THIS", say = "WORK THIS", keys = { K.Space }, color = T.gold },
+			{ id = "next", label = "NEXT " .. GLYPH.next, keys = { K.D, K.Right } },
+		}, 3)
+		if ctx.buttons.ok then
+			ctx.buttons.ok.TextColor3 = T.bg
+		end
+		ctx.setInfo("Where does it hurt? Move ({prev} / {next}) to the sorest group on the map and WORK THIS (SPACE). The sorest group left scores best.")
+	end
+	local function bindWork()
+		ctx.bind({ { id = "ok", label = "RELAX", say = "RELAX", keys = { K.Space }, color = T.blue } }, 1)
+		ctx.setInfo("Breathe out and RELAX (SPACE) as each stroke lands on the line.")
+	end
+	-- the body map: each group's parts glow by its soreness
+	local function paintMap(j)
+		if not ctx.map then
+			return
+		end
+		local w = {}
+		for _, p in ipairs(Config.MuscleParts) do
+			local v = j.sore[p.group] or 0
+			if j.worked[p.group] then
+				v *= 0.25
+			end
+			w[p.id] = v
+		end
+		pcall(function()
+			ctx.map:SetTargets(w, T.orange, 1)
+		end)
+	end
+	bindChoose()
+	if not ctx.round(1, 1, "WHERE'S IT SORE?", "SESSION") then
+		return nil
+	end
+	UI.Clear(ctx.stage)
+	local sw = stageWidth(ctx)
+	local n = #groups
+	local cw = math.floor((sw - 20 - (n - 1) * 4) / n)
+	local chips = {}
+	for i, g in ipairs(groups) do
+		local f = UI.Frame(ctx.stage, { Position = UDim2.fromOffset(10 + (i - 1) * (cw + 4), 6), Size = UDim2.fromOffset(cw, 50), BackgroundColor3 = T.panel2 })
+		UI.Corner(f, 6)
+		local nm = label(f, GROUP_LABEL[g] or string.upper(g), { Font = T.bold, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(2, 4), Size = UDim2.new(1, -4, 0, 16) })
+		local bg = UI.Frame(f, { Position = UDim2.new(0, 6, 1, -16), Size = UDim2.new(1, -12, 0, 8), BackgroundColor3 = DARK })
+		UI.Corner(bg, 3)
+		local fill = UI.Frame(bg, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.orange })
+		UI.Corner(fill, 3)
+		chips[i] = { frame = f, name = nm, fill = fill }
+	end
+	local status = label(ctx.stage, "", { Font = T.bold, TextSize = 15, Position = UDim2.fromOffset(12, 62), Size = UDim2.fromOffset(sw * 0.6, 20) })
+	local timeText = label(ctx.stage, "", { TextSize = 12, TextColor3 = T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(sw - 12, 64), Size = UDim2.fromOffset(sw * 0.35, 16), TextXAlignment = Enum.TextXAlignment.Right })
+	-- the work phase's strokes slide in along one lane to the line
+	local lineX = 70
+	local lane = UI.Frame(ctx.stage, { Position = UDim2.fromOffset(10, 86), Size = UDim2.new(1, -20, 0, 26), BackgroundColor3 = DARK, BackgroundTransparency = 0.3 })
+	UI.Corner(lane, 6)
+	UI.Frame(ctx.stage, { Position = UDim2.fromOffset(lineX - 2, 84), Size = UDim2.fromOffset(4, 30), BackgroundColor3 = T.gold, ZIndex = 2 })
+	local dots = {}
+	for k = 1, seg0.strokes or 5 do
+		local d = UI.Frame(ctx.stage, { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(20, 20), Position = UDim2.fromOffset(NOTE_FAR, 99), BackgroundColor3 = T.cyan, ZIndex = 3 })
+		UI.Corner(d, 10)
+		dots[k] = d
+	end
+	local j, seg = ctx.begin()
+	if not j then
+		return nil
+	end
+	paintMap(j)
+	local phase = "choose"
+	local pickTexts = {}
+	ctx.on(function(id, down, t)
+		local hit = j.input(id, down, t)
+		if not hit then
+			return
+		end
+		if hit.stroke then
+			ctx.feedback(hit.stroke.grade == "perfect" and "AHHH..." or "RELAX", hit.stroke.grade == "perfect" and T.green or T.text, false)
+		elseif hit.stray then
+			ctx.feedback("TENSING UP", T.orange, false)
+		elseif hit.already then
+			ctx.feedback("ALREADY DONE", T.orange, false)
+		end
+	end)
+	local pps = 150 / (seg.beat or 1)
+	local okPlay = playSegment(ctx, j, function(now)
+		-- a pick made since the last frame (yours, or the therapist's when the time ran out)
+		while #pickTexts < #j.picks do
+			local p = j.picks[#pickTexts + 1]
+			if p.timedOut then
+				ctx.feedback("TOO SLOW - THERAPIST'S CHOICE", T.orange, 0)
+			else
+				ctx.feedback(p.q >= 0.95 and "RIGHT ON THE KNOT" or (p.q >= 0.6 and "TIGHT THERE" or "NOT MUCH THERE"), ctx.gradeColor(p.q), p.q)
+			end
+			table.insert(pickTexts, GROUP_LABEL[p.group] or p.group)
+		end
+		if j.phase ~= phase then
+			phase = j.phase
+			if phase == "work" then
+				bindWork()
+			else
+				bindChoose()
+			end
+			paintMap(j)
+		end
+		for i, g in ipairs(groups) do
+			local c = chips[i]
+			local v = (j.sore[g] or 0) * (j.worked[g] and 0.25 or 1)
+			c.fill.Size = UDim2.fromScale(math.clamp(v, 0, 1), 1)
+			local sel = phase == "choose" and i == j.cursor
+			local col = sel and T.gold or (j.worked[g] and T.ink or T.panel2)
+			if c.frame.BackgroundColor3 ~= col then
+				c.frame.BackgroundColor3 = col
+				c.name.TextColor3 = sel and T.bg or (j.worked[g] and T.sub or T.text)
+			end
+		end
+		if phase == "choose" then
+			setText(status, string.format("ROUND %d/%d: PICK A SORE SPOT", j.round, seg.rounds), T.gold)
+			setText(timeText, string.format("%ds", math.max(0, math.ceil(seg.chooseT - (now - j.chooseAt)))))
+			for _, d in ipairs(dots) do
+				d.Visible = false
+			end
+		else
+			local p = j.picks[#j.picks]
+			setText(status, "WORKING: " .. ((p and GROUP_LABEL[p.group]) or ""), T.text)
+			setText(timeText, "")
+			for k, st in ipairs(j.strokes or {}) do
+				local d = dots[k]
+				if d then
+					d.Visible = not st.judged
+					if not st.judged then
+						d.Position = UDim2.fromOffset(math.min(NOTE_FAR, lineX + (st.t - now) * pps), 99)
+					end
+				end
+			end
+		end
+		ctx.progress(((j.round - 1) + (phase == "work" and 0.5 or 0)) / math.max(1, seg.rounds))
+	end)
+	ctx.on(nil)
+	if not okPlay then
+		return nil
+	end
+	local res = ctx.close(j)
+	ctx.put("sync", math.floor(res.relax / math.max(1, res.strokes) * 100 + 0.5))
+	ctx.put("soreSpots", math.floor(res.pickSum / math.max(1, res.rounds) * 100 + 0.5))
+	ctx.note("Worked: " .. table.concat(pickTexts, ", "))
+	ctx.note(string.format("Found the knots %d%%", math.floor(res.pickSum / math.max(1, res.rounds) * 100 + 0.5)))
+	return ctx.score()
+end
+
+-- RECOVERY CHAMBER: ride the pressure profile, clear your ears
+GAMES.chamber = function(ctx)
+	ctx.bind({
+		{ id = "down", label = "VENT", keys = { K.S, K.Down } },
+		{ id = "eq", label = "EQUALIZE", say = "EQUALIZE", keys = { K.Space }, color = T.cyan },
+		{ id = "up", label = "PRESSURISE", keys = { K.W, K.Up }, color = T.blue },
+	}, 3)
+	if ctx.buttons.eq then
+		ctx.buttons.eq.TextColor3 = T.bg
+	end
+	ctx.setInfo("Follow the pressure line: hold PRESSURISE ({up}) or VENT ({down}). Every change fills your ears - EQUALIZE (SPACE) before they hurt.")
+	UI.Clear(ctx.stage)
+	local sw = stageWidth(ctx)
+	local seg0 = ctx.peek()
+	local gx, gw, gy, gh = 12, sw - 24, 6, 62
+	local graph = UI.Frame(ctx.stage, { Position = UDim2.fromOffset(gx, gy), Size = UDim2.fromOffset(gw, gh), BackgroundColor3 = DARK, BackgroundTransparency = 0.2 })
+	UI.Corner(graph, 4)
+	local maxP = seg0.maxP or 1.6
+	local function yOf(p)
+		return gh - 4 - (p - 1) / (maxP - 1) * (gh - 8)
+	end
+	-- the target line as dots (a straight run of pressure readings, no rotated frames)
+	local pts = seg0.profile or { { 0, 1 }, { 1, 1 } }
+	local dur = seg0.duration or 30
+	for k = 0, 40 do
+		local el = dur * k / 40
+		local p = 1
+		for i = 2, #pts do
+			if el <= pts[i][1] then
+				local a, b = pts[i - 1], pts[i]
+				p = a[2] + (b[2] - a[2]) * math.clamp((el - a[1]) / math.max(1e-6, b[1] - a[1]), 0, 1)
+				break
+			end
+		end
+		UI.Frame(graph, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(gw * k / 40, yOf(p)), Size = UDim2.fromOffset(4, 4), BackgroundColor3 = T.green, BackgroundTransparency = 0.2 })
+	end
+	local you = UI.Frame(graph, { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(12, 12), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 3 })
+	UI.Corner(you, 6)
+	local pText = label(ctx.stage, "", { Face = "number", TextSize = 14, Position = UDim2.fromOffset(12, 74), Size = UDim2.fromOffset(sw * 0.5, 18) })
+	label(ctx.stage, "EARS", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(sw * 0.52, 76), Size = UDim2.fromOffset(40, 14) })
+	local ear = meter(ctx.stage, UDim2.fromOffset(sw * 0.52 + 42, 76), UDim2.fromOffset(sw * 0.48 - 54, 14))
+	ear.zone(0.75, 1, T.red, 0.45)
+	local recText = label(ctx.stage, "", { TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 96), Size = UDim2.fromOffset(sw - 24, 18) })
+	local res, seg = timedDrill(ctx, string.format("%.1f ATA DIVE", pts[2] and pts[2][2] or 1.3), "SESSION", function(j, sg, now)
+		local el = now - ctx.segAt
+		you.Position = UDim2.fromOffset(gw * math.clamp(el / dur, 0, 1), yOf(j.P))
+		local tg = j.target(now)
+		local d = math.abs(j.P - tg)
+		you.BackgroundColor3 = d <= sg.tol and T.green or (d <= 2.5 * sg.tol and T.orange or T.red)
+		local pain = now < j.painUntil
+		setText(pText, string.format("%.2f ATA%sTARGET %.2f", j.P, DOT, tg), d <= sg.tol and T.text or T.orange)
+		ear.fill(j.ear, j.ear >= 0.75 and T.red or (j.ear >= 0.45 and T.orange or T.green))
+		setText(recText, pain and "EAR PAIN - EQUALIZE!" or string.format("O2 %d%%%scell recovery %d%%", 94 + math.floor(el / dur * 4), DOT, math.floor(j.acc * Workouts.TICK / dur * 100 / Workouts.TIMED_FULL)), pain and T.red or T.sub)
+		ctx.stats(string.format("%.2f ATA%sears %s", j.P, DOT, pct(j.ear)))
+	end, function(_, _, hit)
+		if hit.eq then
+			ctx.feedback(hit.cleared > 0.2 and "POP - CLEAR" or "NOTHING TO CLEAR", hit.cleared > 0.2 and T.green or T.sub, false)
+		end
+	end)
+	if not res then
+		return nil
+	end
+	local onLine = math.floor(res.acc / seg.duration * 100 + 0.5)
+	ctx.grade(math.clamp(res.acc / seg.duration / Workouts.TIMED_FULL, 0, 1))
+	ctx.put("sync", onLine)
+	ctx.note(string.format("On the pressure line %d%%", onLine))
+	ctx.note(res.pains > 0 and string.format("%d ear squeeze%s", res.pains, res.pains > 1 and "s" or "") or "Clean dive, no ear pain")
+	return ctx.score()
+end
+
+-- SAUNA (weight cut): push the heat for the cut, step out before you go light-headed, sip to stay sharp
+GAMES.sauna = function(ctx)
+	local lv = ctx.level
+	local saunaC = Config.SaunaTempC[math.clamp(lv, 1, #Config.SaunaTempC)]
+	local P = State.P
+	local hyd0 = P and P.condition and tonumber(P.condition.hydration) or 80
+	local st = Catalog.Stations[ctx.station]
+	local lvMult = st and st.levels[math.clamp(lv, 1, #st.levels)] and st.levels[math.clamp(lv, 1, #st.levels)].mult or 1
+	local hydCost = math.abs(ctx.act.recovery and ctx.act.recovery.hydration or 25)
+	ctx.bind({
+		{ id = "door", label = "STEP OUT / IN", say = "STEP OUT", keys = { K.Space }, color = T.orange },
+		{ id = "sip", label = "SIP WATER", keys = { K.J, K.F }, color = T.cyan },
+	}, 2)
+	ctx.setInfo("Stay in the heat to cut water, STEP OUT (SPACE) before your core temperature hits the red, step back in once cooled. SIP ({sip}) to take the edge off.")
+	UI.Clear(ctx.stage)
+	local sw = stageWidth(ctx)
+	local x0 = 108
+	local mw = sw - x0 - 12
+	local where = label(ctx.stage, "", { Font = T.bold, TextSize = 15, Position = UDim2.fromOffset(12, 4), Size = UDim2.fromOffset(sw - 24, 20) })
+	label(ctx.stage, "CORE TEMP", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 32), Size = UDim2.fromOffset(x0 - 16, 14) })
+	local temp = meter(ctx.stage, UDim2.fromOffset(x0, 30), UDim2.fromOffset(mw, 16))
+	temp.zone(0.7, 0.85, T.orange, 0.5)
+	temp.zone(0.85, 1, T.red, 0.4)
+	label(ctx.stage, "WATER CUT", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 56), Size = UDim2.fromOffset(x0 - 16, 14) })
+	local cut = meter(ctx.stage, UDim2.fromOffset(x0, 54), UDim2.fromOffset(mw, 16))
+	label(ctx.stage, "HYDRATION", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 80), Size = UDim2.fromOffset(x0 - 16, 14) })
+	local hyd = meter(ctx.stage, UDim2.fromOffset(x0, 78), UDim2.fromOffset(mw * 0.6, 14))
+	local cutText = label(ctx.stage, "", { Face = "number", TextSize = 13, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(x0 + mw, 78), Size = UDim2.fromOffset(mw * 0.38, 16), TextXAlignment = Enum.TextXAlignment.Right })
+	local wasInside = true
+	local res, seg = timedDrill(ctx, saunaC > 0 and string.format("%d°F", toF(saunaC)) or "SAUNA SUIT", "WEIGHT CUT", function(j, sg, now)
+		local forced = now < j.forcedUntil
+		if j.inside then
+			setText(where, saunaC > 0 and string.format("IN THE HEAT - %d°F", toF(saunaC)) or "SAUNA SUIT - SWEATING", j.T > 0.85 and T.red or T.text)
+		else
+			setText(where, forced and "LIGHT-HEADED - COACH PULLED YOU OUT" or "COOLING OFF OUTSIDE", forced and T.red or T.cyan)
+		end
+		if j.inside ~= wasInside then
+			wasInside = j.inside
+			if ctx.buttons.door then
+				ctx.buttons.door.Text = j.inside and "STEP OUT" or "STEP IN"
+			end
+		end
+		temp.mark(j.T, j.T > 0.85 and T.red or (j.T > 0.7 and T.orange or T.green))
+		local share = math.clamp(j.w / sg.goal, 0, 1)
+		cut.fill(share, share >= 1 and T.gold or T.green)
+		local lost = j.w * lvMult * 2.5 / sg.goal
+		setText(cutText, string.format("-%.1f lbs", lost))
+		local h = math.clamp(hyd0 - hydCost * math.min(1, j.w / sg.goal), 0, 100)
+		hyd.fill(h / 100, h < 40 and T.red or T.cyan)
+		ctx.attrQ("PoseHeat", j.inside and j.T or 0, 0.05)
+		ctx.stats(string.format("Core %s%scut %s", pct(j.T), DOT, pct(share)))
+	end, function(_, _, hit)
+		if hit.sip then
+			ctx.feedback("SIP", T.cyan, false)
+		elseif hit.wait then
+			ctx.feedback("SMALL SIPS", T.sub, false)
+		elseif hit.forced then
+			ctx.feedback("SIT DOWN A MOMENT", T.orange, false)
+		end
+	end)
+	if not res then
+		return nil
+	end
+	local q = Workouts.SaunaScore(res)
+	ctx.grade(q)
+	local lost = 2.5 * lvMult * (0.8 + 0.2 * (0.5 + q * 0.95))
+	ctx.put("waterLost", math.floor(lost * 10 + 0.5) / 10)
+	ctx.note(string.format("~%.1f lbs water", lost))
+	if res.faints > 0 then
+		ctx.note("Went light-headed - pulled out")
+	end
+	ctx.note("Rehydrate after the weigh-in")
+	return ctx.score()
+end
+
 -- ROADWORK & SWIM -------------------------------------------------------
 -- running speed from the character's movement, smoothed (drives the heart rate)
 local function trackMovement(ctx, state, dt)
@@ -3684,11 +5252,13 @@ local STAT_NAMES = {
 	maxSpm = "Stroke rate", inZone = "Time in zone", stepsPerSec = "Foot speed", drills = "Drills completed",
 	cleanJumps = "Clean jumps", doubleUnders = "Double unders", sync = "Breathing sync", waterLost = "Water cut",
 	lengths = "Lengths", speed = "Average speed", cleanSlams = "Clean slams", twists = "Twists on the beat",
+	form = "Form", tempo = "Tempo", perfectCurls = "Perfect curls", strokes = "Strokes", calmBreaths = "Calm breaths",
+	timeInRange = "Time in range", soreSpots = "Sore spots found", rebounds = "Rebounds slipped", footwork = "Footwork on the beat",
 }
 local STAT_UNITS = {
 	maxPower = " lbs", handSpeed = " punches/s", accuracy = "%", load = " lbs", addedLoad = " lbs", volume = " lbs",
 	distance = " mi", topSpeed = " mph", maxWatts = " W", avgRpm = " rpm", meters = " m", maxSpm = " spm", inZone = "%",
-	stepsPerSec = " steps/s", sync = "%", waterLost = " lbs",
+	stepsPerSec = " steps/s", sync = "%", waterLost = " lbs", form = "%", tempo = "%", timeInRange = " s", soreSpots = "%", footwork = "%",
 }
 local function statText(actId, key, v)
 	local unit = STAT_UNITS[key] or ""

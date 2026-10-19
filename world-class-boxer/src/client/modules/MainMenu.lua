@@ -386,7 +386,63 @@ end
 ------------------------------------------------------------------------
 -- Logo
 ------------------------------------------------------------------------
+-- the game's logo image (tools/ui: BECOME A / WORLD CLASS / BOXER beside a championship plate): it slides
+-- in, a shine sweeps across it every few seconds (a band of the logo's white silhouette), and the tagline
+-- fades in under it. Before the image is uploaded the text lockup below stands in.
+local function buildImageLogo(layer)
+	local small = compact()
+	local logoY = small and 56 or 70
+	local lw, lh = small and 252 or 540, small and 126 or 270
+	local logo = UI.Frame(layer, { Name = "Logo", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 46 or 72, logoY + topShift(logoY)), Size = UDim2.fromOffset(lw, lh + (small and 0 or 24)) })
+	local img = UI.Logo(logo, { Size = UDim2.fromOffset(lw, lh), ImageTransparency = 1 })
+	if not img then
+		logo:Destroy()
+		return nil
+	end
+	local shine = UI.Logo(logo, { Size = img.Size, ImageTransparency = 1, ZIndex = 2 }, true)
+	local shineGrad = UI.Gradient(shine, Color3.new(1, 1, 1), 20, NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.44, 1), NumberSequenceKeypoint.new(0.5, 0.35), NumberSequenceKeypoint.new(0.56, 1), NumberSequenceKeypoint.new(1, 1),
+	}), { offset = Vector2.new(-1, 0) })
+	local tag
+	if not small then
+		tag = UI.Text(logo, "FROM UNKNOWN AMATEUR TO BOXING LEGEND", { Name = "Tagline", Font = T.semi, TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromOffset(math.floor(lw * 0.29), lh + 2),
+			Size = UDim2.fromOffset(420, 16), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTransparency = 1 })
+	end
+	if intro then
+		local goal = img.Position
+		img.Position = goal + UDim2.fromOffset(-40, 0)
+		task.delay(0.2, function()
+			if img.Parent then
+				UI.Tween(img, { Position = goal, ImageTransparency = 0 }, UI.Motion.slow)
+			end
+		end)
+	else
+		img.ImageTransparency = 0
+	end
+	task.delay(intro and 0.75 or 0, function()
+		if tag and tag.Parent then
+			UI.Tween(tag, { TextTransparency = 0 }, UI.Motion.slow)
+		end
+		if shine.Parent then
+			shine.ImageTransparency = 0
+		end
+	end)
+	task.spawn(function()
+		task.wait(1.1)
+		while shine.Parent do
+			shineGrad.Offset = Vector2.new(-1, 0)
+			UI.Tween(shineGrad, { Offset = Vector2.new(1, 0) }, TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut))
+			task.wait(5.5)
+		end
+	end)
+	return logo
+end
+
 local function buildLogo(layer)
+	local imageLogo = buildImageLogo(layer)
+	if imageLogo then
+		return imageLogo
+	end
 	local small = compact()
 	-- on short screens the logo sits below the engine's top bar buttons (no kicker line)
 	local logoY = small and 60 or 74
@@ -457,15 +513,15 @@ end
 -- Menu
 ------------------------------------------------------------------------
 local ITEMS = {
-	{ id = "continue", label = "CONTINUE", desc = "Back to the gym floor", need = "created" },
-	{ id = "new", label = "NEW CAREER", desc = "Create your boxer and start as an amateur", only = "new" },
-	{ id = "career", label = "CAREER", desc = "Fighter card, record, belts and rankings", need = "created" },
-	{ id = "character", label = "CHARACTER", desc = "Barber, locker room, physique and stats", need = "created" },
-	{ id = "gym", label = "GYM", desc = "Walk into the gym and train", need = "created" },
-	{ id = "rankings", label = "RANKINGS", desc = "World rankings by division and sanctioning body", need = "created" },
-	{ id = "store", label = "STORE", desc = "Gear, homes, cars and upgrades", need = "created" },
-	{ id = "controls", label = "CONTROLS", desc = "Every move with its keys and buttons, remapping, console options" },
-	{ id = "settings", label = "SETTINGS", desc = "Display, effects, audio, graphics and controls" },
+	{ id = "continue", label = "CONTINUE", icon = "play", desc = "Back to the gym floor", need = "created" },
+	{ id = "new", label = "NEW CAREER", icon = "gloves", desc = "Create your boxer and start as an amateur", only = "new" },
+	{ id = "career", label = "CAREER", icon = "belt", desc = "Fighter card, record, belts and rankings", need = "created" },
+	{ id = "character", label = "CHARACTER", icon = "user", desc = "Barber, locker room, physique and stats", need = "created" },
+	{ id = "gym", label = "GYM", icon = "dumbbell", desc = "Walk into the gym and train", need = "created" },
+	{ id = "rankings", label = "RANKINGS", icon = "podium", desc = "World rankings by division and sanctioning body", need = "created" },
+	{ id = "store", label = "STORE", icon = "store", desc = "Gear, homes, cars and upgrades", need = "created" },
+	{ id = "controls", label = "CONTROLS", icon = "gamepad", desc = "Every move with its keys and buttons, remapping, console options" },
+	{ id = "settings", label = "SETTINGS", icon = "settings", desc = "Display, effects, audio, graphics and controls" },
 }
 
 -- the Moves & Controls window over the menu: the menu's own pad navigation steps aside while it is open
@@ -549,7 +605,11 @@ local function selectItem(i, instant)
 		local locked = it.locked
 		UI.Tween(fr.title, { TextTransparency = on and 0 or (locked and 0.72 or 0.32), Position = UDim2.fromOffset(on and 62 or 48, 0) }, instant and 0 or UI.Motion.base)
 		fr.title.TextColor3 = on and T.white or T.text
-		fr.index.TextColor3 = on and T.gold or T.dim
+		if fr.icon then
+			UI.SetIconColor(fr.icon, on and T.gold or (locked and T.dim or T.sub))
+		else
+			fr.index.TextColor3 = on and T.gold or T.dim
+		end
 		UI.Tween(fr.glow, { BackgroundTransparency = on and 0 or 1 }, instant and 0 or UI.Motion.base)
 		fr.desc.Visible = on and not fr.desc:GetAttribute("Off")
 	end
@@ -601,8 +661,15 @@ local function buildMenu(layer)
 		end
 		local glow = UI.Frame(b, { Name = "Glow", Position = UDim2.fromOffset(14, 0), Size = UDim2.new(two and 1 or 0.85, two and -14 or 0, 1, 0), BackgroundColor3 = T.gold, BackgroundTransparency = 1 })
 		UI.Gradient(glow, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.82), NumberSequenceKeypoint.new(0.6, 0.96), NumberSequenceKeypoint.new(1, 1) }))
-		local index = UI.Text(b, string.format("%02d", i), { Name = "Index", Face = "number", TextSize = small and 13 or 15, TextColor3 = T.dim, Position = UDim2.fromOffset(18, 0), Size = UDim2.fromOffset(26, h),
-			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		-- the item's icon in the index column (the number where the icon set is not uploaded)
+		local index, icon
+		if UI.HasIcon(it.icon) and UI.IconEntry(it.icon) then
+			local is = small and 18 or 24
+			icon = UI.Icon(b, it.icon, is, T.sub, { Name = "ItemIcon", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, small and 20 or 18, 0.5, 0) })
+		else
+			index = UI.Text(b, string.format("%02d", i), { Name = "Index", Face = "number", TextSize = small and 13 or 15, TextColor3 = T.dim, Position = UDim2.fromOffset(18, 0), Size = UDim2.fromOffset(26, h),
+				AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		end
 		local title = UI.Title(b, it.label, { Name = "Title", TextSize = size, Position = UDim2.fromOffset(48, 0), Size = UDim2.fromOffset(two and (rowW - 62) or 300, h),
 			TextYAlignment = Enum.TextYAlignment.Center, TextTransparency = 1 })
 		-- (two columns: no room for the line beside the item; a tap opens it straight away anyway)
@@ -616,7 +683,7 @@ local function buildMenu(layer)
 			-- locked items too), and a lock fixed to the row landed on its last letters (CHARACTER's R)
 			UI.Icon(title, "lock", small and 12 or 14, T.dim, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, small and 128 or 184, 0.5, 0) })
 		end
-		itemFrames[i] = { button = b, title = title, index = index, glow = glow, desc = desc }
+		itemFrames[i] = { button = b, title = title, index = index, icon = icon, glow = glow, desc = desc }
 		b.MouseEnter:Connect(function()
 			if sel ~= i then
 				selectItem(i)
@@ -649,12 +716,16 @@ end
 ------------------------------------------------------------------------
 -- Home extras: profile plate, status chips, hints
 ------------------------------------------------------------------------
-local function chip(parent, label, value, color, order)
+local function chip(parent, label, value, color, order, icon)
 	local f = UI.Frame(parent, { Name = "Status", Size = UDim2.fromOffset(0, 40), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.bg, BackgroundTransparency = 0.25, LayoutOrder = order })
 	UI.Corner(f, UI.R.md)
 	UI.Stroke(f, Color3.new(1, 1, 1), 1, 0.88)
-	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14), Parent = f })
+	UI.Gradient(f, { Color3.new(1, 1, 1), Color3.fromRGB(170, 170, 170) }, 90)
+	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 14), Parent = f })
 	UI.List(f, 8, true)
+	if icon then
+		UI.Icon(f, icon, 18, color or T.sub, { LayoutOrder = 0 })
+	end
 	UI.Text(f, label, { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false, LayoutOrder = 1 })
 	UI.Text(f, value, { Face = "number", TextSize = 22, TextColor3 = color or T.text, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false, LayoutOrder = 2 })
 	return f
@@ -668,10 +739,10 @@ local function buildStatus(layer)
 	local small = compact()
 	local bar = UI.Frame(layer, { Name = "StatusBar", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, small and -32 or -48, 0, small and 62 or 64), Size = UDim2.fromOffset(600, 40) })
 	UI.List(bar, 8, true, Enum.HorizontalAlignment.Right)
-	chip(bar, "DAY", tostring(P.day or 1), T.text, 1)
-	chip(bar, "PURSE", Config.Money(P.money or 0), T.gold, 2)
+	chip(bar, "DAY", tostring(P.day or 1), T.text, 1, "calendar")
+	chip(bar, "PURSE", Config.Money(P.money or 0), T.gold, 2, "money")
 	local c = P.condition or {}
-	chip(bar, "ENERGY", tostring(c.energy or 0), (c.energy or 100) < 25 and T.red or T.green, 3)
+	chip(bar, "ENERGY", tostring(c.energy or 0), (c.energy or 100) < 25 and T.red or T.green, 3, "energy")
 end
 
 local function buildProfile(layer)
@@ -809,16 +880,16 @@ end
 local TILES = {
 	{ "BARBER SHOP", "Cuts, fades, colour, beards. Your hair grows out over the weeks.", function()
 		State.open.Barber()
-	end },
+	end, "scissors" },
 	{ "LOCKER ROOM", "Trunks, robe, boots, wraps and glove customisation.", function()
 		State.open.Locker()
-	end },
+	end, "robe" },
 	{ "PHYSIQUE", "Every muscle you have built, soreness, veins - and FLEX.", function()
 		State.open.Hub("Body")
-	end },
+	end, "muscle" },
 	{ "STATS", "Core and mental attributes, style and specialty.", function()
 		State.open.Hub("Stats")
-	end },
+	end, "chart" },
 }
 local function screenCharacter(layer)
 	local small = compact()
@@ -836,7 +907,11 @@ local function screenCharacter(layer)
 		UI.Corner(accent, 2)
 		UI.Text(b, string.format("%02d", i), { Face = "number", TextSize = 16, TextColor3 = T.dim, Position = UDim2.fromOffset(22, small and 12 or 20), Size = UDim2.fromOffset(40, 18),
 			AutomaticSize = Enum.AutomaticSize.None })
-		UI.Title(b, t[1], { TextSize = small and 26 or 34, Position = UDim2.fromOffset(22, small and 30 or 42), Size = UDim2.new(1, -44, 0, small and 32 or 40) })
+		if t[4] then
+			UI.IconTile(b, t[4], small and 40 or 56, i % 2 == 1 and T.gold or T.red, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -18, 0, small and 12 or 18), ZIndex = b.ZIndex })
+		end
+		UI.Title(b, t[1], { TextSize = small and 26 or 34, Position = UDim2.fromOffset(22, small and 30 or 42), Size = UDim2.new(1, -(44 + (small and 46 or 62)), 0, small and 32 or 40),
+			TextTruncate = Enum.TextTruncate.AtEnd })
 		UI.Text(b, t[2], { TextSize = small and 12 or 14, TextColor3 = T.sub, Position = UDim2.fromOffset(22, small and 66 or 90), Size = UDim2.new(1, -44, 0, 48), AutomaticSize = Enum.AutomaticSize.None })
 		UI.Icon(b, "right", 16, T.gold, { AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -18, 1, -16) })
 	end
