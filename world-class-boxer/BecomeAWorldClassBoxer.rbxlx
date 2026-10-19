@@ -8223,6 +8223,90 @@ return {
 			key = "wcb_grit",
 			name = "Boxer Grit",
 		},
+		{
+			creator = true,
+			id = 128064263185676,
+			key = "wcb_confident",
+			name = "Boxer Confident",
+		},
+		{
+			creator = true,
+			id = 122901636746556,
+			key = "wcb_grin",
+			name = "Boxer Grin",
+		},
+		{
+			creator = true,
+			id = 101616530546336,
+			key = "wcb_cool",
+			name = "Boxer Cool",
+		},
+		{
+			creator = true,
+			id = 90728048091208,
+			key = "wcb_wink",
+			name = "Boxer Wink",
+		},
+		{
+			creator = true,
+			id = 101255929551842,
+			key = "wcb_stern",
+			name = "Boxer Stern",
+		},
+		{
+			creator = true,
+			id = 78331766537954,
+			key = "wcb_determined",
+			name = "Boxer Determined",
+		},
+		{
+			creator = true,
+			id = 139013764083343,
+			key = "wcb_toothy",
+			name = "Boxer Toothy Grin",
+		},
+		{
+			creator = true,
+			id = 116046602465581,
+			key = "wcb_scarred",
+			name = "Boxer Scarred",
+		},
+		{
+			creator = false,
+			id = 93250063512830,
+			key = "wcb_shout",
+			name = "Boxer Shout",
+		},
+		{
+			creator = false,
+			id = 126463125778150,
+			key = "wcb_hurt",
+			name = "Boxer Hurt",
+		},
+		{
+			creator = false,
+			id = 132872399750334,
+			key = "wcb_dazed",
+			name = "Boxer Dazed",
+		},
+		{
+			creator = false,
+			id = 122518228264182,
+			key = "wcb_ko",
+			name = "Boxer KO",
+		},
+		{
+			creator = false,
+			id = 70932305441688,
+			key = "wcb_tired",
+			name = "Boxer Tired",
+		},
+		{
+			creator = false,
+			id = 70510565356748,
+			key = "wcb_surprised",
+			name = "Boxer Surprised",
+		},
 	},
 	tiers = {
 		{
@@ -9596,14 +9680,28 @@ BodyTiers.DEFAULT_FACE = "smile" -- (BodyAssetData.defaultFace)
 -- the engine's own classic smile (what an id 0 draws)
 BodyTiers.DEFAULT_TEXTURE = "rbxasset://textures/face.png"
 
--- Face styles (look.face.style): "built" = the face BuilderHead builds from parts (the default, every old save),
--- or one of the drawn Boxer faces (the user's pack, tools/body/faces.py PACK): the head then wears that drawn face
--- as its front Decal, and FaceFX swaps among the four by mood (STYLE_MOODS)
+-- Face styles (look.face.style): one of the drawn Boxer faces (the user's pack, tools/body/faces.py PACK): the head
+-- wears that drawn face as its front Decal, and FaceFX swaps it for a mood face by mood (STYLE_MOODS). Every boxer
+-- has one (DefaultStyle). "built" = the face BuilderHead builds from parts: no longer a player option, only the
+-- emergency fallback while no drawn face is uploaded (old "built" saves read as the default drawn face)
 BodyTiers.BUILT_STYLE = "built"
-BodyTiers.STYLE_KEYS = { "wcb_neutral", "wcb_focused", "wcb_smirk", "wcb_grit" }
+-- the resting faces a boxer can wear (the Creator offers them, in this order): the user's four, then the faces
+-- drawn after them in the same style (tools/body/wcb_faces_draw.py)
+BodyTiers.STYLE_KEYS = {
+	"wcb_neutral", "wcb_focused", "wcb_smirk", "wcb_grit",
+	"wcb_confident", "wcb_grin", "wcb_cool", "wcb_wink", "wcb_stern", "wcb_determined", "wcb_toothy", "wcb_scarred",
+}
+-- faces only a mood shows (FaceFX, STYLE_MOODS): never a boxer's chosen face
+BodyTiers.STYLE_MOOD_KEYS = { "wcb_shout", "wcb_hurt", "wcb_dazed", "wcb_ko", "wcb_tired", "wcb_surprised" }
+-- every drawn face key (resting first); RESTING marks the ones a look may keep
 BodyTiers.STYLE_INDEX = {}
+BodyTiers.STYLE_RESTING = {}
 for i, k in ipairs(BodyTiers.STYLE_KEYS) do
 	BodyTiers.STYLE_INDEX[k] = i
+	BodyTiers.STYLE_RESTING[k] = true
+end
+for i, k in ipairs(BodyTiers.STYLE_MOOD_KEYS) do
+	BodyTiers.STYLE_INDEX[k] = #BodyTiers.STYLE_KEYS + i
 end
 
 -- the face list (always starts with the smile, even when the data has none)
@@ -9718,18 +9816,46 @@ end
 ------------------------------------------------------------------------
 -- Face styles (look.face.style; the keys are above)
 ------------------------------------------------------------------------
--- a drawn style key that is uploaded (an id 0 = not offered: the boxer keeps the built face)
-function BodyTiers.IsDrawnStyle(style, d)
-	if type(style) ~= "string" or not BodyTiers.STYLE_INDEX[style] then
+-- a drawn face key (resting or mood) that is uploaded (an id 0 = not offered)
+function BodyTiers.IsDrawnFace(key, d)
+	if type(key) ~= "string" or not BodyTiers.STYLE_INDEX[key] then
 		return false
 	end
-	local f = BodyTiers.Face(style, d)
+	local f = BodyTiers.Face(key, d)
 	return f ~= nil and f.id ~= nil
 end
 
--- the Creator's choices: Built first, then every uploaded drawn face, in STYLE_KEYS order ({ key, name })
+-- a drawn style a look may wear (a resting face, uploaded): mood-only faces are never anyone's chosen face
+function BodyTiers.IsDrawnStyle(style, d)
+	return BodyTiers.STYLE_RESTING[style] == true and BodyTiers.IsDrawnFace(style, d)
+end
+
+-- the face style every boxer gets when none was chosen (new boxers, old saves, a "built" save, NPCs without
+-- one): the drawn Boxer Neutral, else the first uploaded drawn face, else (no drawn face uploaded at all, an
+-- emergency fallback only) the built face
+BodyTiers.DEFAULT_STYLE = "wcb_neutral"
+function BodyTiers.DefaultStyle(d)
+	if BodyTiers.IsDrawnStyle(BodyTiers.DEFAULT_STYLE, d) then
+		return BodyTiers.DEFAULT_STYLE
+	end
+	for _, k in ipairs(BodyTiers.STYLE_KEYS) do
+		if BodyTiers.IsDrawnStyle(k, d) then
+			return k
+		end
+	end
+	return BodyTiers.BUILT_STYLE
+end
+
+-- true while any drawn face is uploaded: every boxer wears one, and the built face (its parts, its rig and the
+-- Creator controls that only shape it) is out of the game
+function BodyTiers.DrawnFaces(d)
+	return BodyTiers.DefaultStyle(d) ~= BodyTiers.BUILT_STYLE
+end
+
+-- the Creator's choices: every uploaded drawn face in STYLE_KEYS order ({ key, name }). The built face is no
+-- player option (empty when nothing is uploaded: the emergency built fallback has no UI)
 function BodyTiers.FaceStyles(d)
-	local out = { { key = BodyTiers.BUILT_STYLE, name = "Built" } }
+	local out = {}
 	for _, k in ipairs(BodyTiers.STYLE_KEYS) do
 		if BodyTiers.IsDrawnStyle(k, d) then
 			table.insert(out, { key = k, name = BodyTiers.Face(k, d).name })
@@ -9738,41 +9864,69 @@ function BodyTiers.FaceStyles(d)
 	return out
 end
 
--- look.face.style from untrusted input: an offered style, else the old (saved) one when it is still offered,
--- else "built" (old saves have none)
+-- look.face.style from untrusted input: an uploaded drawn style, else the old (saved) one when it is still one,
+-- else the default (old saves with no style and "built" saves get the drawn Boxer Neutral)
 function BodyTiers.SanitizeFaceStyle(style, old, d)
-	if style == BodyTiers.BUILT_STYLE or BodyTiers.IsDrawnStyle(style, d) then
+	if BodyTiers.IsDrawnStyle(style, d) then
 		return style
-	elseif old == BodyTiers.BUILT_STYLE or BodyTiers.IsDrawnStyle(old, d) then
+	elseif BodyTiers.IsDrawnStyle(old, d) then
 		return old
 	end
-	return BodyTiers.BUILT_STYLE
+	return BodyTiers.DefaultStyle(d)
 end
 
--- the style a boxer's head shows (nil = the built face): app.face.style when it is drawn and uploaded
+-- the drawn style a boxer's head shows: app.face.style when it is drawn and uploaded, else the default drawn face
+-- (a missing or "built" style, any look at all). nil only when no drawn face is uploaded (the built fallback)
 function BodyTiers.DrawnStyleOf(app, d)
 	local face = type(app) == "table" and type(app.face) == "table" and app.face or nil
 	local st = face and face.style
-	return BodyTiers.IsDrawnStyle(st, d) and st or nil
+	if BodyTiers.IsDrawnStyle(st, d) then
+		return st
+	end
+	local def = BodyTiers.DefaultStyle(d)
+	return def ~= BodyTiers.BUILT_STYLE and def or nil
 end
 
--- the moods (BodyAssetData.expressions' names, MoodOf, plus FaceFX's "guard" / "train") -> one of the drawn set;
--- nil = the boxer's own chosen face. Neutral is the set's baseline and the chosen face the resting face; a KO,
--- a daze or a spent boxer go blank (neutral, the closest of the four)
+-- the look's face keys and options that only shape the part-built face (its eyes, brows, nose and lips, the lip
+-- tint the undertone gives): a drawn face draws its own features, so the look editors (LookKit.FaceShown) hide them
+-- while drawn faces are in. (tools/sim/test_bodytiers checks each one changes nothing on the drawn face, and every
+-- face control left shown changes it)
+BodyTiers.BUILT_ONLY = {
+	noseWidth = true, noseLength = true, noseBridge = true, lips = true, browThick = true, browHeight = true,
+	browAngle = true, mouthWidth = true, asym = true, eyeShape = true, eyeSize = true, eyeDist = true, lashes = true,
+	eyeTilt = true, lidHeavy = true, noseBreak = true,
+	-- (the birthmark: on a drawn face it always lands on the padded ink, so it is never drawn)
+	marks = true,
+	browStyle = true, eyeColor = true, eyeColor2 = true, undertone = true, noseType = true,
+}
+function BodyTiers.FaceControlShown(key, d)
+	return not (BodyTiers.BUILT_ONLY[key] and BodyTiers.DrawnFaces(d))
+end
+
+-- the moods (BodyAssetData.expressions' names, MoodOf, plus FaceFX's "guard" / "train") -> a drawn face; nil = the
+-- boxer's own chosen (resting) face. A mood whose face is not uploaded keeps the chosen face
 BodyTiers.STYLE_MOODS = {
 	neutral = nil, rest = nil,
-	guard = "wcb_focused", attack = "wcb_focused", block = "wcb_focused", train = "wcb_focused",
-	effort = "wcb_grit", hurt = "wcb_grit", angry = "wcb_grit",
-	taunt = "wcb_smirk", happy = "wcb_smirk", confident = "wcb_smirk", celebrate = "wcb_smirk",
-	ko = "wcb_neutral", stunned = "wcb_neutral", dazed = "wcb_neutral", tired = "wcb_neutral", lose = "wcb_neutral",
-	surprised = "wcb_neutral",
+	guard = "wcb_focused", block = "wcb_focused",
+	attack = "wcb_determined", train = "wcb_determined",
+	effort = "wcb_grit",
+	hurt = "wcb_hurt",
+	angry = "wcb_shout",
+	taunt = "wcb_smirk",
+	confident = "wcb_confident",
+	happy = "wcb_grin",
+	celebrate = "wcb_toothy",
+	ko = "wcb_ko",
+	stunned = "wcb_dazed", dazed = "wcb_dazed",
+	tired = "wcb_tired", lose = "wcb_tired",
+	surprised = "wcb_surprised",
 }
 
 -- the drawn face a mood shows on a boxer whose chosen style is `chosen` (the chosen face when the mood keeps it or
 -- its face is not uploaded)
 function BodyTiers.StyleMoodFace(mood, chosen, d)
 	local k = type(mood) == "string" and BodyTiers.STYLE_MOODS[mood] or nil
-	if k and BodyTiers.IsDrawnStyle(k, d) then
+	if k and BodyTiers.IsDrawnFace(k, d) then
 		return k
 	end
 	return chosen
@@ -10053,7 +10207,8 @@ local function headSig(model, app, build, opts, name)
 			guard = opts.mouthguard and (at.mouthguard or true) or false,
 			guardBlood = opts.mouthguard and dmg ~= nil and (tonumber(dmg.lip) or 0) > 0.6 or false,
 			avatar = avFace,
-			-- the face style (look.face.style): the built face or a drawn Boxer face decal (an id 0 reads as built)
+			-- the face style (look.face.style): the drawn Boxer face decal every boxer wears (built only in the
+			-- emergency fallback with no drawn face uploaded)
 			style = BodyTiers.DrawnStyleOf(app) or BodyTiers.BUILT_STYLE,
 		}
 		if type(Head.FaceSigParts) == "function" then
@@ -13744,6 +13899,9 @@ return Hair
 --   (full cheeks, jowls) and weight-cut hollows, grime (own folder, refreshed by SetSweat)
 -- * part budget: A's share of Config.Detail partBudget (+60 / +10 / 0 over the old face, hair and beard);
 --   optional face details and hair decorations are drawn in priority order while it lasts
+-- * the built face above is dormant: every boxer wears a drawn face (BodyTiers.DrawnStyleOf never returns nil while
+--   one is uploaded), so its parts and rig are only built in the emergency fallback with no drawn face uploaded
+--   (and by the lune tests through BodyTiers.SetData). The code stays in place, unused
 -- * drawn face styles (look.face.style = a BodyTiers.STYLE_KEYS key, the user's Boxer faces): the head wears the
 --   drawn face as its front Decal "face" (white, opaque, the whole square canvas) instead of the built eyes, brows,
 --   nose and lips (none of those parts, no face rig; the ears, head shape and skin details stay). Damage, sweat, grime
@@ -14367,7 +14525,8 @@ local function faceBuild(model, app, opts, build)
 	if model:GetAttribute("FaceKey") ~= nil then
 		model:SetAttribute("FaceKey", nil) -- (the retired classic decal face's key)
 	end
-	-- a drawn face style: its decal on the head front instead of the built eyes, brows, nose and mouth
+	-- a drawn face style: its decal on the head front instead of the built eyes, brows, nose and mouth (every boxer:
+	-- DrawnStyleOf falls back to the default drawn face; nil only with no drawn face uploaded)
 	local drawn = BodyTiers.DrawnStyleOf(app)
 	if drawn then
 		putFaceDecal(head, drawn)
@@ -29243,9 +29402,9 @@ function Looks.Defaults(gender)
 		face = {
 			-- the classic face (BodyAssetData.faces, BodyTiers): old saves get the smile through Fill
 			key = BodyTiers.DEFAULT_FACE,
-			-- the face style: "built" (the part-built face) or a drawn Boxer face (BodyTiers.STYLE_KEYS: the head's
-			-- front Decal, swapped by mood); old saves read as built
-			style = BodyTiers.BUILT_STYLE,
+			-- the face style: a drawn Boxer face (BodyTiers.STYLE_KEYS: the head's front Decal, swapped by mood); new
+			-- boxers, old saves and "built" saves get the drawn Boxer Neutral (BodyTiers.DefaultStyle)
+			style = BodyTiers.DefaultStyle(),
 			shape = "Oval", jawWidth = 0, jawDef = 0.5, chin = 0, cheek = 0, forehead = 0,
 			noseWidth = 0, noseLength = 0, noseBridge = 0, lips = female and 0.2 or 0, browThick = female and -0.4 or 0,
 			eyeShape = 0.5, eyeSize = 0, eyeDist = 0, lashes = female and 0.8 or 0.2, eyeColor = 2,
@@ -29308,6 +29467,10 @@ function Looks.Fill(app)
 	end
 	app.battle.ears = tonumber(app.battle.ears) or 0
 	app.battle.nose = tonumber(app.battle.nose) or 0
+	-- the face style: a save from before the drawn faces ("built", or none) gets the default drawn face
+	if type(app.face) == "table" then
+		app.face.style = BodyTiers.SanitizeFaceStyle(app.face.style, nil)
+	end
 	return app
 end
 
@@ -29526,6 +29689,13 @@ Looks.PhysiqueForArchetype = {
 -- opts: { class = weight class index, age, veteran = bool, height, archetype = Config.Archetypes id,
 --         champion = bool, fights = career bouts }. New traits come from Random(seed + 101)
 -- so faces generated before the overhaul stay the same.
+-- an NPC's resting drawn face: { key, share } (the shares add up to 1)
+local NPC_FACES = {
+	{ "wcb_neutral", 0.34 }, { "wcb_focused", 0.14 }, { "wcb_stern", 0.11 }, { "wcb_determined", 0.11 },
+	{ "wcb_smirk", 0.07 }, { "wcb_confident", 0.07 }, { "wcb_grit", 0.05 }, { "wcb_cool", 0.04 },
+	{ "wcb_scarred", 0.03 }, { "wcb_grin", 0.02 }, { "wcb_toothy", 0.01 }, { "wcb_wink", 0.01 },
+}
+
 function Looks.Random(seed, gender, opts)
 	opts = opts or {}
 	local rng = Random.new(seed)
@@ -29556,6 +29726,21 @@ function Looks.Random(seed, gender, opts)
 	f.shine = rng:NextNumber() * 0.4
 	f.smooth = rng:NextNumber()
 	f.seed = rng:NextInteger(1, 1000000)
+	-- the drawn face an NPC rests on, from its own stream (no other draw shifts): mostly neutral, then the
+	-- serious faces, a few cocky and friendly ones (FaceFX still swaps it by mood)
+	do
+		local srng = Random.new(seed + 9311)
+		local r = srng:NextNumber()
+		local st = "wcb_neutral"
+		for _, w in ipairs(NPC_FACES) do
+			if r < w[2] then
+				st = w[1]
+				break
+			end
+			r -= w[2]
+		end
+		f.style = BodyTiers.IsDrawnStyle(st) and st or BodyTiers.DefaultStyle()
+	end
 	-- a classic face from its own stream (no other draw shifts): the smile most often, then any creator face
 	do
 		local faces = BodyTiers.Pickable()
@@ -67692,7 +67877,8 @@ local gui = nil
 local offSince = nil -- meshes OFF continuously since (a start-up budget hiccup recovers within seconds)
 local onSince = nil
 local stageReported = nil
-local NOTICE_DELAY = 6 -- seconds OFF before the notice shows
+-- seconds OFF before the notice shows (a field: tools/sim/test_ui_layout shows the notice at once)
+AnatomyStatus.NOTICE_DELAY = 6
 
 local SETTING_HINT = "Turn on Game Settings > Security > Allow Mesh / Image APIs"
 
@@ -67801,22 +67987,33 @@ local function showNotice(reason, memory)
 		end
 		body.Parent = frame
 
+		-- the close button: a finger-sized (44 px) hit area, invisible, centred on the drawn 28 px "X" key (the key
+		-- sits 8 px in from the notice's top-right corner as before)
 		local close = Instance.new("TextButton")
 		close.Name = "Close"
-		close.AnchorPoint = Vector2.new(1, 0)
-		close.Position = UDim2.new(1, -8, 0, 8)
-		close.Size = UDim2.new(0, 28, 0, 28)
-		close.BackgroundColor3 = Color3.fromRGB(60, 56, 50)
+		close.AnchorPoint = Vector2.new(0.5, 0.5)
+		close.Position = UDim2.new(1, -22, 0, 22)
+		close.Size = UDim2.new(0, 44, 0, 44)
+		close.BackgroundTransparency = 1
 		close.BorderSizePixel = 0
-		close.Font = Enum.Font.GothamBold
-		close.TextSize = 14
-		close.TextColor3 = Color3.fromRGB(240, 236, 228)
-		close.Text = "X"
+		close.Text = ""
 		close.Selectable = true
 		close.Parent = frame
+		local key = Instance.new("TextLabel")
+		key.Name = "Key"
+		key.AnchorPoint = Vector2.new(0.5, 0.5)
+		key.Position = UDim2.fromScale(0.5, 0.5)
+		key.Size = UDim2.new(0, 28, 0, 28)
+		key.BackgroundColor3 = Color3.fromRGB(60, 56, 50)
+		key.BorderSizePixel = 0
+		key.Font = Enum.Font.GothamBold
+		key.TextSize = 14
+		key.TextColor3 = Color3.fromRGB(240, 236, 228)
+		key.Text = "X"
+		key.Parent = close
 		local cc = Instance.new("UICorner")
 		cc.CornerRadius = UDim.new(0, 6)
-		cc.Parent = close
+		cc.Parent = key
 		close.Activated:Connect(hideNotice)
 
 		sg.Parent = pg
@@ -67862,7 +68059,7 @@ local function poll()
 	else
 		onSince = nil
 		offSince = offSince or now
-		if (kind == "api" or kind == "generators") and now - offSince >= NOTICE_DELAY then
+		if (kind == "api" or kind == "generators") and now - offSince >= AnatomyStatus.NOTICE_DELAY then
 			showNotice(nice, kind == "api" and nice:find("memory") ~= nil)
 		end
 	end
@@ -81138,8 +81335,9 @@ return ControlsMenu
 -- readouts and one-line hints; an Advanced expander holds every other slider. The title row has UNDO
 -- (also Ctrl+Z / Y on a gamepad; the last 20 changes), RESET (this step back to the defaults) and RANDOM
 -- (this step randomised). Steps: Name (names, age, gender, nationality; voice and walkout song under
--- Advanced), Face (the built face: presets, shape, features, boxer wear; the expression and fight-damage
--- previews), Skin & Eyes, Hair (style, colour, beard), Body (type, height, division, weight, reach; training
+-- Advanced), Face (the drawn Boxer face: style, presets, shape, jaw / chin / cheeks, boxer wear; the expression
+-- and fight-damage previews; the built-face-only eye / brow / nose / lip controls are hidden, LookKit.BUILT_ONLY),
+-- Skin & Eyes (skin tone and skin details), Hair (style, colour, beard), Body (type, height, division, weight, reach; training
 -- sets the muscle tiers), Gear and Fight Style. Every change previews live on your character (server-built,
 -- sent at most four times a second while a slider moves and once when it is let go); the camera frames
 -- the face on the head steps and the whole body on the others, and turns (drag the 3D view, the dock's
@@ -81151,7 +81349,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Looks = require(Shared:WaitForChild("Looks"))
--- the face styles (built / the drawn Boxer faces) the face page offers
+-- the face styles (the drawn Boxer faces) the face page offers
 local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
 local UI = require(Shared:WaitForChild("UI"))
@@ -81186,10 +81384,14 @@ local page = "Identity"
 local PAGES = { "Identity", "Face", "Skin & Eyes", "Hair", "Body", "Gear", "Fight Style" }
 local SHORT = { Identity = "NAME", Face = "FACE", ["Skin & Eyes"] = "SKIN", Hair = "HAIR", Body = "BODY", Gear = "GEAR", ["Fight Style"] = "STYLE" }
 local TITLES = { Identity = "Your boxer" }
+if BodyTiers.DrawnFaces() then
+	-- (a drawn face has no eye controls: the step is the skin's)
+	TITLES["Skin & Eyes"] = "Skin"
+end
 local PAGE_HINTS = {
 	Identity = "Name your boxer - the rest can stay as it is. RANDOM on this step rolls a whole new look.",
 	Face = "Start from a face, then tune the main features. Advanced holds every detail.",
-	["Skin & Eyes"] = "Pick a skin tone and eye colour, then adjust the eyes and skin.",
+	["Skin & Eyes"] = "Pick a skin tone, then add freckles, scars and other skin detail.",
 	Hair = "Tap a style, then a colour. Length, volume and the beard are below.",
 	Body = "Pick a body type and your size. Training builds every muscle group up through five tiers.",
 	Gear = "Pick a kit, or set the main colours yourself.",
@@ -81484,7 +81686,7 @@ end
 -- the Advanced expander; returns true when it is open (the caller then builds the section)
 local function advancedToggle(count)
 	local open = advanced[page] == true
-	local b = UI.Button(body, (open and "HIDE ADVANCED" or "ADVANCED") .. string.format("   (%d more)", count), { Name = "AdvancedToggle", Size = UDim2.new(1, 0, 0, 40), TextSize = 15,
+	local b = UI.Button(body, (open and "HIDE ADVANCED" or "ADVANCED") .. string.format("   (%d more)", count), { Name = "AdvancedToggle", Size = UDim2.new(1, 0, 0, math.max(40, UI.MinHit(body))), TextSize = 15,
 		BackgroundColor3 = T.panel2, TextColor3 = open and T.gold or T.text }, function()
 		advanced[page] = not open
 		render()
@@ -81496,7 +81698,8 @@ end
 -- chips: a grid of text buttons, the picked one in gold
 local function chips(list, picked, cols, onPick, display)
 	local grid = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
-	UI.Grid(grid, UDim2.new(1 / cols, -6, 0, 36), nil, 6)
+	-- (touch: a fingertip high, UI.MinHit; the desktop keeps 36)
+	UI.Grid(grid, UDim2.new(1 / cols, -6, 0, math.max(36, UI.MinHit(body))), nil, 6)
 	for i, v in ipairs(list) do
 		local on = v == picked
 		UI.Button(grid, display and display(v) or tostring(v), { Name = "Chip_" .. tostring(v), LayoutOrder = i, TextSize = 14, BackgroundColor3 = on and T.gold or T.panel2, TextColor3 = on and T.bg or T.text }, function()
@@ -81700,7 +81903,9 @@ local function avatarToggle()
 	return on
 end
 
+-- (the built-face-only keys among them are hidden while drawn faces are in: LookKit.FaceShown)
 local FACE_MAIN = { "jawWidth", "chin", "cheek", "noseWidth", "noseLength", "lips" }
+local FACE_MAIN_DRAWN = { "jawWidth", "jawDef", "chin", "cheek" }
 
 local function applyFacePreset(p)
 	local f = C.look.face
@@ -81732,9 +81937,9 @@ local function pageFace()
 	if avatarToggle() then
 		UI.Line(body, "The face below is used when your avatar has no face of its own.", { TextColor3 = T.sub, TextSize = 13 })
 	end
-	-- the face style: the built face (default) or a drawn Boxer face (BodyTiers.FaceStyles: only the uploaded ones)
+	-- the face style: one of the drawn Boxer faces (BodyTiers.FaceStyles: only the uploaded ones; no Built option)
 	local styles = BodyTiers.FaceStyles()
-	if #styles > 1 then
+	if #styles > 0 then
 		UI.Header(body, "FACE STYLE")
 		local names, keys = {}, {}
 		for _, st in ipairs(styles) do
@@ -81753,9 +81958,7 @@ local function pageFace()
 		end, function(k)
 			return names[k] or k
 		end)
-		if cur ~= BodyTiers.BUILT_STYLE then
-			UI.Line(body, "A drawn face: its expression changes with the fight (focused, grit, smirk). The shape and skin below still apply; the eye, brow, nose and lip sliders only shape the Built face.", { TextColor3 = T.sub, TextSize = 13 })
-		end
+		UI.Line(body, "Your face's expression changes with the fight: focused, grit, smirk.", { TextColor3 = T.sub, TextSize = 13 })
 	end
 	UI.Header(body, "START FROM A FACE")
 	local items = {}
@@ -81771,11 +81974,13 @@ local function pageFace()
 		render()
 	end)
 	UI.Header(body, "MAIN FEATURES")
-	for _, k in ipairs(FACE_MAIN) do
+	local main = BodyTiers.DrawnFaces() and FACE_MAIN_DRAWN or FACE_MAIN
+	for _, k in ipairs(main) do
 		lookSlider(f, k, def, true, true)
 	end
-	local skip = setOf(FACE_MAIN)
-	local more = #Looks.FaceSliders - #FACE_MAIN + #Looks.WearSliders + 3
+	local skip = setOf(main)
+	local faceList, wearList = LookKit.Shown(Looks.FaceSliders), LookKit.Shown(Looks.WearSliders)
+	local more = #faceList - #main + #wearList + 3
 	if advancedToggle(more) then
 		UI.Header(body, "FACE SHAPE")
 		chips(Looks.FaceShapes, f.shape, 3, function(sh)
@@ -81785,10 +81990,10 @@ local function pageFace()
 			render()
 		end)
 		UI.Header(body, "MORE FEATURES")
-		sliderList(Looks.FaceSliders, f, def, skip)
+		sliderList(faceList, f, def, skip)
 		UI.Header(body, "BOXER WEAR")
-		sliderList(Looks.WearSliders, f, def)
-		UI.Line(body, "Fights add their own wear: deep cuts scar, broken noses bend and swollen ears can turn into cauliflower ears.", { TextColor3 = T.sub, TextSize = 13 })
+		sliderList(wearList, f, def)
+		UI.Line(body, "Fights add their own wear: deep cuts scar and swollen ears can turn into cauliflower ears.", { TextColor3 = T.sub, TextSize = 13 })
 		UI.Header(body, "PREVIEW")
 		UI.Cycler(body, "Expression", Config.Expressions, view.expr, function(v)
 			setExpression(v)
@@ -81817,39 +82022,47 @@ local function pageEyesSkin()
 		C.look.skin = i
 		preview()
 	end, { names = LookKit.SkinNames, size = 40 })
-	UI.Cycler(body, "Skin undertone", Looks.Undertones, f.undertone or "Neutral", edit(nil, function(v)
-		f.undertone = v
-		previewHead()
-	end))
-	UI.Swatches(body, "Eye colour", Looks.EyeColors, f.eyeColor, function(_, i)
-		pushUndo(nil)
-		f.eyeColor = i
-		previewHead()
-	end, { names = Looks.EyeColorNames, size = 40 })
-	UI.Cycler(body, "Eyebrow style", Looks.BrowStyles, f.browStyle or "Natural", edit(nil, function(v)
-		f.browStyle = v
-		previewHead()
-	end))
+	-- (the undertone, eye colour, brows and eye sliders only shape the built face: hidden while drawn faces are in)
+	local eyes = not BodyTiers.DrawnFaces()
+	if eyes then
+		UI.Cycler(body, "Skin undertone", Looks.Undertones, f.undertone or "Neutral", edit(nil, function(v)
+			f.undertone = v
+			previewHead()
+		end))
+		UI.Swatches(body, "Eye colour", Looks.EyeColors, f.eyeColor, function(_, i)
+			pushUndo(nil)
+			f.eyeColor = i
+			previewHead()
+		end, { names = Looks.EyeColorNames, size = 40 })
+		UI.Cycler(body, "Eyebrow style", Looks.BrowStyles, f.browStyle or "Natural", edit(nil, function(v)
+			f.browStyle = v
+			previewHead()
+		end))
+	end
 	UI.Header(body, "MAIN FEATURES")
-	for _, k in ipairs(EYE_MAIN) do
-		lookSlider(f, k, def, true, true)
+	if eyes then
+		for _, k in ipairs(EYE_MAIN) do
+			lookSlider(f, k, def, true, true)
+		end
 	end
 	for _, k in ipairs(SKIN_MAIN) do
 		lookSlider(f, k, def, true, true)
 	end
-	local more = #Looks.EyeSliders - #EYE_MAIN + #Looks.SkinSliders - #SKIN_MAIN + 2
+	local more = #Looks.SkinSliders - #SKIN_MAIN + 1 + (eyes and (#Looks.EyeSliders - #EYE_MAIN + 1) or 0)
 	if advancedToggle(more) then
-		local second = { 0 }
-		for i = 1, #Looks.EyeColors do
-			table.insert(second, i)
+		if eyes then
+			local second = { 0 }
+			for i = 1, #Looks.EyeColors do
+				table.insert(second, i)
+			end
+			UI.Cycler(body, "Right eye (heterochromia)", second, f.eyeColor2 or 0, edit(nil, function(v)
+				f.eyeColor2 = v
+				previewHead()
+			end), function(v)
+				return v == 0 and "Same as left" or (Looks.EyeColorNames[v] or tostring(v))
+			end)
+			sliderList(Looks.EyeSliders, f, def, setOf(EYE_MAIN))
 		end
-		UI.Cycler(body, "Right eye (heterochromia)", second, f.eyeColor2 or 0, edit(nil, function(v)
-			f.eyeColor2 = v
-			previewHead()
-		end), function(v)
-			return v == 0 and "Same as left" or (Looks.EyeColorNames[v] or tostring(v))
-		end)
-		sliderList(Looks.EyeSliders, f, def, setOf(EYE_MAIN))
 		UI.Header(body, "SKIN DETAILS")
 		sliderList(Looks.SkinSliders, f, def, setOf(SKIN_MAIN))
 		UI.Line(body, "Skin texture is suggested with a fine-grain finish and scattered pores up close; wrinkles also deepen with age.", { TextColor3 = T.sub, TextSize = 13 })
@@ -82207,6 +82420,8 @@ local RANDOMIZE = {
 		end
 		f.shape = r.face.shape
 		f.noseType = Looks.NoseTypes[R:NextInteger(1, #Looks.NoseTypes)]
+		-- one of the drawn Boxer faces (Looks.Random's per-seed draw)
+		f.style = BodyTiers.SanitizeFaceStyle(r.face.style, f.style)
 		chosen.face = nil
 		return true
 	end,
@@ -82280,7 +82495,7 @@ local RESET = {
 	end,
 	Face = function()
 		applyFacePreset(LookKit.FacePresets[1])
-		C.look.face.style = BodyTiers.BUILT_STYLE
+		C.look.face.style = BodyTiers.DefaultStyle()
 		return true
 	end,
 	["Skin & Eyes"] = function()
@@ -82935,6 +83150,9 @@ return Creator
 --    the baseline and the chosen face the resting face, focused on guard / attack / training, grit on effort / hurt /
 --    anger, smirk on a taunt / happy / confident, neutral when KO'd, dazed or spent), written to the decal's Texture
 --    on this client only (the server's Texture stays the chosen face, put back out of range)
+--  * the built-rig animation (blinks, gaze, expressions on the FaceJoint roles above) is dormant while drawn faces
+--    exist: every boxer wears one (BodyTiers.DrawnStyleOf), so no head carries a FaceRig and only the decal swap
+--    runs. The rig code stays in place, unused (the emergency fallback with no drawn face uploaded)
 -- Writes only Motor6D.Transform, SpecialMesh.Scale of the rigged parts and the Transparency of BlinkLid and the
 -- face veins (client-toggled parts, CONTRACTS section 5), and a drawn face's Decal.Texture. (The v7 anatomy mesh head path is retired with the
 -- EditableMesh heads; the retired classic decal faces' texture swap with it.)
@@ -95995,6 +96213,8 @@ return LightLevels
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Looks = require(Shared:WaitForChild("Looks"))
+-- whether the drawn Boxer faces are in (the built-face-only controls are then hidden)
+local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
 local UI = require(Shared:WaitForChild("UI"))
 local T = UI.Theme
 
@@ -96128,18 +96348,39 @@ function LookKit.Entry(key)
 end
 
 ------------------------------------------------------------------------
+-- Built-face-only controls
+------------------------------------------------------------------------
+-- (BodyTiers.BUILT_ONLY: the face keys and options that only shape the part-built face; hidden while drawn faces
+-- are in. Face shape, jaw, chin, cheeks, forehead, ears, skin details and wear still show)
+LookKit.BUILT_ONLY = BodyTiers.BUILT_ONLY
+-- true when the editors show this face key / option (false: built-face only, while drawn faces are in)
+function LookKit.FaceShown(key)
+	return BodyTiers.FaceControlShown(key)
+end
+-- a slider list without the hidden built-face-only keys
+function LookKit.Shown(list)
+	local out = {}
+	for _, e in ipairs(list) do
+		if LookKit.FaceShown(e.key) then
+			table.insert(out, e)
+		end
+	end
+	return out
+end
+
+------------------------------------------------------------------------
 -- Presets
 ------------------------------------------------------------------------
 -- face presets: a shape, a nose type and the face / sculpt keys that differ from the gender default
 LookKit.FacePresets = {
 	{ id = "Classic", shape = "Oval", desc = "Even features", set = {} },
 	{ id = "Chiselled", shape = "Square", desc = "Strong jaw", set = { jawWidth = 0.5, jawDef = 0.9, cheek = 0.5, chin = 0.3, jawAngle = 0.85, cheekHeight = 0.4 } },
-	{ id = "Rugged", shape = "Square", nose = "Boxer", desc = "Heavy brow", set = { jawWidth = 0.6, browRidge = 0.85, noseWidth = 0.4, noseBridge = 0.3, chin = 0.4, eyeDepth = 0.7, browThick = 0.4 } },
+	{ id = "Rugged", shape = "Square", nose = "Boxer", desc = "Wide jaw", set = { jawWidth = 0.6, browRidge = 0.85, noseWidth = 0.4, noseBridge = 0.3, chin = 0.4, eyeDepth = 0.7, browThick = 0.4 } },
 	{ id = "Baby Face", shape = "Round", nose = "Button", desc = "Soft and young", set = { jawWidth = -0.4, jawDef = 0.2, cheekFull = 0.6, chin = -0.3, eyeSize = 0.3, noseLength = -0.3, lips = 0.2, browRidge = 0.1, jawAngle = 0.2 } },
 	{ id = "Sharp", shape = "Diamond", nose = "Greek", desc = "High cheekbones", set = { cheek = 0.7, cheekHeight = 0.6, cheekFull = -0.5, jawWidth = -0.2, chin = 0.3, noseLength = 0.2, noseWidth = -0.3, jawAngle = 0.75 } },
 	{ id = "Long", shape = "Long", desc = "Long and lean", set = { forehead = 0.3, chin = 0.4, noseLength = 0.4, jawWidth = -0.2, skullLength = 0.3 } },
 	{ id = "Heart", shape = "Heart", desc = "Narrow chin", set = { forehead = 0.3, chin = -0.3, jawWidth = -0.4, cheek = 0.4, lips = 0.3 } },
-	{ id = "Brawler", shape = "Round", nose = "Flat", desc = "Flat nose", set = { noseWidth = 0.6, noseBridge = -0.4, lips = 0.4, jawWidth = 0.5, browThick = 0.5, browRidge = 0.95, noseBreak = 0.35 } },
+	{ id = "Brawler", shape = "Round", nose = "Flat", desc = "Broad and round", set = { noseWidth = 0.6, noseBridge = -0.4, lips = 0.4, jawWidth = 0.5, browThick = 0.5, browRidge = 0.95, noseBreak = 0.35 } },
 }
 
 -- gear kits: trunks, trim, socks, shoes, laces, gloves (+ cuff), robe (+ trim), wraps
@@ -100762,7 +101003,7 @@ return PvP
 --  Barber Shop  - grouped styles as cards with a little head wearing each, hair types, hairline / line-up,
 --                 part, recolour / dye / highlights, beards + beard colour; a fresh cut resets growth
 --                 (previewed live); prices from Looks.BarberPrice (the same function the server charges with)
---  Locker Room  - kits, trunks, socks, shoes, laces, wraps + wrap pattern, mouthguard, robe and glove
+--  Locker Room  - kits, trunks, socks, shoes, laces, wraps + wrap pattern, mouthguard (only with the built face), robe and glove
 --                 customization (glove options unlock with better gloves: trim, stitching, finishes,
 --                 metallic, logos, name & nickname embroidery, brand on custom gloves)
 --  Nutrition Bar, water coolers, and Sleep (ends the day with a day transition)
@@ -100773,6 +101014,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
 local Looks = require(Shared:WaitForChild("Looks"))
+-- whether the drawn Boxer faces are in (the locker then hides the mouthguard colour)
+local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
 local UI = require(Shared:WaitForChild("UI"))
 local State = require(script.Parent:WaitForChild("State"))
 local LookKit = require(script.Parent:WaitForChild("LookKit"))
@@ -101350,11 +101593,15 @@ function Services.Locker()
 			a.wrapPattern = v
 			s.preview()
 		end)
-		colorField(s, body, "Mouthguard", function()
-			return a.mouthguard
-		end, function(c)
-			a.mouthguard = c
-		end, pal)
+		-- the mouthguard shows only between the built face's lips (a drawn mouth wears no guard lens): its colour is
+		-- hidden while drawn faces are in
+		if not BodyTiers.DrawnFaces() then
+			colorField(s, body, "Mouthguard", function()
+				return a.mouthguard
+			end, function(c)
+				a.mouthguard = c
+			end, pal)
+		end
 	end, function(s)
 		UI.Button(s.footer, "SAVE", { Size = UDim2.new(0.62, 0, 1, 0), BackgroundColor3 = T.gold, TextColor3 = T.bg }, function()
 			local r = State.req("CustomizeLook", "locker", s.look, {})

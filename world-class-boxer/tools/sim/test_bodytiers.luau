@@ -213,8 +213,10 @@ do
 	for _, st in ipairs(styles) do
 		table.insert(sk, st.key .. "=" .. st.name)
 	end
-	check("styles: the 4 Boxer faces, no Built option (uploaded)", table.concat(sk, ",")
-		== "wcb_neutral=Boxer Neutral,wcb_focused=Boxer Focused,wcb_smirk=Boxer Smirk,wcb_grit=Boxer Grit", table.concat(sk, ","))
+	check("styles: the 12 resting Boxer faces in order, no Built option (uploaded)", table.concat(sk, ",")
+		== "wcb_neutral=Boxer Neutral,wcb_focused=Boxer Focused,wcb_smirk=Boxer Smirk,wcb_grit=Boxer Grit,wcb_confident=Boxer Confident,"
+			.. "wcb_grin=Boxer Grin,wcb_cool=Boxer Cool,wcb_wink=Boxer Wink,wcb_stern=Boxer Stern,wcb_determined=Boxer Determined,"
+			.. "wcb_toothy=Boxer Toothy Grin,wcb_scarred=Boxer Scarred", table.concat(sk, ","))
 	local allIds = true
 	for _, k in ipairs(BodyTiers.STYLE_KEYS) do
 		local f = BodyTiers.Face(k, REAL)
@@ -236,9 +238,9 @@ do
 	check("style sanitise: junk keeps the saved style", BodyTiers.SanitizeFaceStyle("cool", "wcb_focused", REAL) == "wcb_focused")
 	check("style sanitise: nothing -> Boxer Neutral", BodyTiers.SanitizeFaceStyle(nil, nil, REAL) == "wcb_neutral" and BodyTiers.SanitizeFaceStyle(5, "x", REAL) == "wcb_neutral")
 	check("style sanitise: not uploaded -> built", BodyTiers.SanitizeFaceStyle("wcb_grit", nil, ZERO) == "built")
-	local moodWant = { guard = "wcb_focused", attack = "wcb_focused", train = "wcb_focused", effort = "wcb_grit", hurt = "wcb_grit",
-		angry = "wcb_grit", taunt = "wcb_smirk", happy = "wcb_smirk", confident = "wcb_smirk", ko = "wcb_neutral", dazed = "wcb_neutral",
-		stunned = "wcb_neutral", neutral = "wcb_smirk", rest = "wcb_smirk" }
+	local moodWant = { guard = "wcb_focused", attack = "wcb_determined", train = "wcb_determined", effort = "wcb_grit", hurt = "wcb_hurt",
+		angry = "wcb_shout", taunt = "wcb_smirk", happy = "wcb_grin", confident = "wcb_confident", celebrate = "wcb_toothy", ko = "wcb_ko",
+		dazed = "wcb_dazed", stunned = "wcb_dazed", tired = "wcb_tired", surprised = "wcb_surprised", neutral = "wcb_smirk", rest = "wcb_smirk" }
 	local moodBad = {}
 	for mood, want in pairs(moodWant) do
 		local got = BodyTiers.StyleMoodFace(mood, "wcb_smirk", REAL)
@@ -307,9 +309,13 @@ do
 	check("Sanitize: junk style keeps the saved one", Looks.Sanitize({ face = { style = "ko" } }, savedS).face.style == "wcb_grit")
 	check("Sanitize: built refused, the saved drawn face kept", Looks.Sanitize({ face = { style = "built" } }, savedS).face.style == "wcb_grit")
 	check("Sanitize round trip", Looks.Sanitize(Looks.Sanitize({ face = { style = "wcb_focused" } })).face.style == "wcb_focused")
-	-- NPCs: a resting face among the four from their own stream (about 50 / 25 / 15 / 10 %), the same per seed
-	local npcCount, npcOk, npcSame = { wcb_neutral = 0, wcb_focused = 0, wcb_smirk = 0, wcb_grit = 0 }, true, true
-	local N = 400
+	-- NPCs: a resting face among the twelve from their own stream (neutral about a third), the same per seed; never
+	-- a mood-only face
+	local npcCount, npcOk, npcSame = {}, true, true
+	for _, k in ipairs(BodyTiers.STYLE_KEYS) do
+		npcCount[k] = 0
+	end
+	local N = 600
 	for seed = 1, N do
 		local g = seed % 2 + 1
 		local st = Looks.Random(seed * 131, g).face.style
@@ -319,11 +325,20 @@ do
 		end
 		npcSame = npcSame and Looks.Random(seed * 131, g).face.style == st
 	end
-	local mix = string.format("%d %d %d %d", npcCount.wcb_neutral, npcCount.wcb_focused, npcCount.wcb_smirk, npcCount.wcb_grit)
-	check("NPCs: always one of the four drawn faces", npcOk, mix)
+	local seen = 0
+	for _, k in ipairs(BodyTiers.STYLE_KEYS) do
+		if npcCount[k] > 0 then
+			seen += 1
+		end
+	end
+	local mix = string.format("neutral %d focused %d stern %d seen %d", npcCount.wcb_neutral, npcCount.wcb_focused, npcCount.wcb_stern, seen)
+	check("NPCs: always one of the resting drawn faces", npcOk, mix)
 	check("NPCs: the face is deterministic per seed", npcSame)
-	check("NPCs: mostly neutral, then focused, smirk, grit (all four seen)", npcCount.wcb_neutral > npcCount.wcb_focused and npcCount.wcb_focused > npcCount.wcb_grit
-		and npcCount.wcb_smirk > npcCount.wcb_grit and npcCount.wcb_grit > 0 and math.abs(npcCount.wcb_neutral / N - 0.5) < 0.08, mix)
+	check("NPCs: mostly neutral, then focused, and a spread of the others", npcCount.wcb_neutral > npcCount.wcb_focused
+		and npcCount.wcb_focused > npcCount.wcb_wink and seen >= 10 and math.abs(npcCount.wcb_neutral / N - 0.34) < 0.1, mix)
+	check("mood faces are never a look's style", not BodyTiers.IsDrawnStyle("wcb_ko", REAL) and BodyTiers.IsDrawnFace("wcb_ko", REAL)
+		and BodyTiers.SanitizeFaceStyle("wcb_hurt", nil, REAL) == BodyTiers.DEFAULT_STYLE)
+	check("the Creator offers the twelve resting faces", #BodyTiers.FaceStyles(REAL) == #BodyTiers.STYLE_KEYS, #BodyTiers.FaceStyles(REAL))
 end
 
 ------------------------------------------------------------------------
@@ -1165,22 +1180,24 @@ do
 	check("FaceFX decal: at rest the chosen face", t0 == tex("wcb_smirk"), t0)
 	check("FaceFX decal: guard up -> focused", run({ Guard = "up" }) == tex("wcb_focused"))
 	check("FaceFX decal: effort -> grit", run({ Expr = "effort" }) == tex("wcb_grit"))
-	check("FaceFX decal: anger -> grit", run({ Expr = "anger" }) == tex("wcb_grit"))
-	check("FaceFX decal: happy -> smirk", run({ Expr = "happy" }) == tex("wcb_smirk"))
-	check("FaceFX decal: KO -> neutral", run({ Expr = "ko", Guard = "down" }) == tex("wcb_neutral"))
+	check("FaceFX decal: anger -> shout", run({ Expr = "anger" }) == tex("wcb_shout"))
+	check("FaceFX decal: happy -> grin", run({ Expr = "happy" }) == tex("wcb_grin"))
+	check("FaceFX decal: KO -> KO", run({ Expr = "ko", Guard = "down" }) == tex("wcb_ko"))
 	dm:SetAttribute("Guard", nil) -- (out of the ring: no Guard attribute)
 	check("FaceFX decal: back at rest -> the chosen face", run({ Expr = "neutral" }) == tex("wcb_smirk"))
 	FaceFX.Hit(dm, 1)
 	task.wait(0.06) -- (the pain layer's 0.05 s attack; the swap itself skips the hold)
 	tclock += 1 / 30
 	FaceFX.Update(1 / 30, tclock, dcam, nil, 99)
-	check("FaceFX decal: a hit flashes grit at once", FaceFX.Debug(dm).decal.texture == tex("wcb_grit"))
+	check("FaceFX decal: a hit flashes hurt at once", FaceFX.Debug(dm).decal.texture == tex("wcb_hurt"))
 	check("FaceFX decal: the server's texture is the chosen face", BodyTiers.FaceTexture(Head.FaceStyle(dm)) == tex("wcb_smirk"))
 	-- after a workout on the drawn face: road grime, a tier-up rebuild (applyLook: the 14 body parts swapped, the
 	-- face built again), the session's sweat, then a tier-down rebuild: exactly one face decal, no built part or rig
 	local DRAWN_TEX0 = {}
-	for _, k in ipairs(BodyTiers.STYLE_KEYS) do
-		DRAWN_TEX0[tex(k)] = true
+	for _, list in ipairs({ BodyTiers.STYLE_KEYS, BodyTiers.STYLE_MOOD_KEYS }) do
+		for _, k in ipairs(list) do
+			DRAWN_TEX0[tex(k)] = true
+		end
 	end
 	dm:SetAttribute("Grime", 0.8)
 	local tiers0 = dm:GetAttribute("BodyTiers")
@@ -1191,7 +1208,7 @@ do
 	local wd = decals(dm:FindFirstChild("Head"))
 	check("drawn workout: the tier rebuild happened", tiers1 ~= nil and tiers1 ~= tiers0, tostring(tiers0) .. " -> " .. tostring(tiers1))
 	-- (the decal's Texture is FaceFX's mood swap on this client, the grit of the hit above: the decal's FaceStyle is
-	-- the chosen face the server put on)
+	-- the chosen face the server put on; the Texture may be any drawn face, mood faces included)
 	check("drawn workout: exactly one face decal (the chosen face), no built parts or rig", #wd == 1 and wd[1]:GetAttribute("FaceStyle") == "wcb_smirk"
 		and DRAWN_TEX0[wd[1].Texture] and #wl == 0, #wd .. " " .. tostring(wd[1] and wd[1].Texture) .. " " .. table.concat(wl, ","))
 	pcall(Builder.Cosmetics, dm, dapp, build(8), nil, { hands = "gloves", detail = "medium" })
