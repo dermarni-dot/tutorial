@@ -78,7 +78,7 @@ LookData.DEFAULT_REPLACES = {
 		{ r15 = "Head" },
 		{ folder = "Face", names = {
 			"Ear", "EarHelix", "Cauliflower", "Jaw", "JawAngle", "Chin", "LowerFace", "ChinCleft", "Jowl", "DoubleChin",
-			"Cheekbone", "Cheek", "Hollow", "BrowRidge", "Nose", "NoseTip", "Nostril", "NoseBump", "Nasolabial", "Philtrum",
+			"Cheekbone", "Cheek", "Hollow", "BrowRidge", "Nose", "NoseTip", "NoseWing", "Nostril", "NoseBump", "Nasolabial", "Philtrum",
 			"LipFold", "Freckle", "Mole", "Scar", "AcneScar", "Acne", "Birthmark", "BattleScar", "BrowGap", "SurgicalScar",
 			"Suture", "ForeheadLine", "CrowFeet", "Pore", "Blush", "Crease", "UnderEye",
 		} },

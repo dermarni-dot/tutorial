@@ -66,7 +66,7 @@ end
 local NCH = 12
 local EXPR = {
 	neutral = { 0, 0, 0, 0.05, 0, 0, 0.05, 0, 0, 0, 0, 0 },
-	confident = { 0.1, 0, 0, 0.12, 0.15, 0, 0.2, 0.35, 0, 0.05, 0.8, 0 },
+	confident = { 0.15, 0, 0, 0.14, 0.3, 0.03, 0.15, 0.65, 0, 0.12, 0.85, 0 },
 	determined = { -0.1, -0.5, 0.55, 0.15, 0.3, 0, 0.6, -0.1, 0, 0.05, 0, 0.05 },
 	anger = { -0.3, -1.0, 1.0, -0.18, 0.45, 0.08, 0.65, -0.35, 0.6, 0.3, 0.15, 0.15 },
 	fear = { 0.95, 1.0, 0.35, -0.5, 0, 0.32, 0, -0.35, 0.1, 0.85, 0, 0.3 },
@@ -74,7 +74,7 @@ local EXPR = {
 	pain = { 0.1, 0.55, 0.85, 0.55, 0.85, 0.3, 0, -0.6, 0.45, 0.6, 0.2, 0.2 },
 	dazed = { 0.2, 0.3, 0, 0.45, 0, 0.22, 0, -0.15, 0, 0, 0.3, 0.1 },
 	effort = { -0.1, -0.5, 0.7, 0.2, 0.6, 0.1, 0.3, -0.25, 0.5, 0.55, 0, 0.12 },
-	happy = { 0.2, 0.1, 0, 0.12, 0.55, 0.12, 0, 1.0, 0.1, 0.2, 0.1, 0.05 },
+	happy = { 0.25, 0.15, 0, 0.1, 0.65, 0.18, 0, 1.0, 0.15, 0.3, 0.1, 0.05 },
 	ko = { 0, 0.15, 0, 0.62, 0, 0.42, 0, -0.1, 0, 0, 0.4, 0.35 },
 	shout = { 0.15, -0.5, 0.6, 0.05, 0.35, 0.85, 0, -0.1, 0.5, 0.5, 0, 0.1 },
 }
@@ -158,6 +158,8 @@ local function roleRec(m)
 	return {
 		m = m, part = part, mesh = mesh, base = mesh and mesh.Scale or V3(1, 1, 1), off = mesh and mesh.Offset or Vector3.zero,
 		side = sideOf(part) or (m:GetAttribute("Side") and (m:GetAttribute("Side") < 0 and -1 or 1)) or 0, last = nil,
+		-- a lid's travel to shut the eye (BuilderHead: its edge to the bottom of the eye)
+		closeY = part and part:GetAttribute("CloseY"), sizeY = part and part.Size.Y,
 	}
 end
 
@@ -207,13 +209,15 @@ local function scan(rec)
 			elseif n == "TempleVein" or n == "ForeheadVein" then
 				local base = d:GetAttribute("BaseTransparency")
 				table.insert(rec.veins, { part = d, base = type(base) == "number" and base or 0.5 })
+			-- (the built parts are sunk into the head: VisW / VisH are the sizes that show, the Size is bigger)
 			elseif n == "Sclera" then
-				rec.h = d.Size.Y
-				rec.ew = d.Size.X
+				rec.h = d:GetAttribute("VisH") or d.Size.Y
+				rec.ew = d:GetAttribute("VisW") or d.Size.X
 			elseif n == "Iris" then
-				rec.iw, rec.ih = d.Size.X, d.Size.Y
+				local vw = d:GetAttribute("VisW")
+				rec.iw, rec.ih = vw or d.Size.X, vw or d.Size.Y
 			elseif n == "UpperLip" then
-				rec.mw = d.Size.X
+				rec.mw = d:GetAttribute("VisW") or d.Size.X
 			elseif n == "Brow" then
 				rec.bt = d.Size.Y
 			end
@@ -581,16 +585,21 @@ function FaceFX.Update(dt, t, camPos, rigs, budget)
 			if r and lidPart and lidPart.Transparency < 1 then
 				local c = clamp(lidBase + (daze >= 2 and 0.1 * s or 0) + ch[11] * 0.04 * s, -0.35, 1)
 				c = max(c, blinkC * 0.9)
-				if c >= 0 then
-					setT(r, CF(0, -c * h * 0.3, -c * 0.006))
-				else
+				local cy = r.closeY
+				if c < 0 then
 					setT(r, CF(0, -c * h * 0.16, 0))
+				elseif cy then
+					-- the lid grows down over the eye (mesh only, never Size) with its top edge kept: its edge
+					-- travels c x CloseY, and it stands a touch further out to clear the eye
+					setT(r, CF(0, -c * cy * 0.5, -c * 0.007))
+				else
+					setT(r, CF(0, -c * h * 0.3, -c * 0.006))
 				end
-				-- a closing lid also grows downwards over the eye (mesh only, never Size)
 				local q = math.floor(max(c, 0) * 50 + 0.5) / 50
 				if r.mesh and q ~= r.lc then
 					r.lc = q
-					r.mesh.Scale = V3(r.base.X, r.base.Y * (1 + 0.9 * q), r.base.Z)
+					local grow = (cy and r.sizeY and r.sizeY > 0) and cy / r.sizeY or 0.9
+					r.mesh.Scale = V3(r.base.X, r.base.Y * (1 + grow * q), r.base.Z)
 				end
 			end
 			local lr = roles[s < 0 and "LowerLidL" or "LowerLidR"]
@@ -600,13 +609,16 @@ function FaceFX.Update(dt, t, camPos, rigs, budget)
 		end
 		-- mouth
 		local open, press, smile, snarl, wide = clamp(ch[6], 0, 1), ch[7], ch[8], clamp(ch[9], 0, 1), ch[10]
-		setT(roles.UpperLip, CF(0, (snarl * 0.3 + open * 0.1 - press * 0.03) * mw * 0.25, 0))
-		setT(roles.LowerLip, CF(0, (-open * 0.34 + press * 0.04) * mw, -press * 0.004))
+		-- a smile parts the lips a little (a grin shows the teeth)
+		local grin = max(smile, 0)
+		setT(roles.UpperLip, CF(0, (snarl * 0.3 + open * 0.1 - press * 0.03 + grin * 0.16) * mw * 0.25, 0))
+		setT(roles.LowerLip, CF(0, (-open * 0.34 - grin * 0.05 + press * 0.04) * mw, -press * 0.004))
 		for s = -1, 1, 2 do
 			local r = roles[s < 0 and "MouthCornerL" or "MouthCornerR"]
 			if r then
 				local sm = smile * (1 + ch[11] * 0.8 * s)
-				setT(r, CF(s * wide * mw * 0.07, sm * mw * 0.085 - open * mw * 0.14, 0))
+				-- the corner pieces of the mouth line rise and curl (up in a smile, down in a frown)
+				setT(r, CF(s * (wide * 0.07 + max(sm, 0) * 0.03) * mw, sm * mw * 0.13 - open * mw * 0.14, 0) * A(0, 0, s * clamp(sm, -1, 1.4) * 0.75))
 			end
 		end
 		local inside = roles.MouthInside

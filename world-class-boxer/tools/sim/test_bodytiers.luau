@@ -765,14 +765,49 @@ do
 	Builder.SetDamage(model, app, severe)
 	local look = model:FindFirstChild("BoxerLook")
 	local dmgF = look and look:FindFirstChild("Damage")
+	-- the classic head's surface (AnatomyHairKit.CLASSIC, scaled to the head): signed distance, < 0 inside
+	local HK = H.require("AnatomyHairKit")
+	local function sdHead(hd, wp)
+		local lp = hd.CFrame:PointToObjectSpace(wp)
+		local k = hd.Size.X / 1.2
+		return HK.ClassicField(lp.X / k, lp.Y / k, lp.Z / k) * k
+	end
+	-- a part's innermost and outermost points along its own Z (the built face's parts: -Z out of the skin)
+	-- (the lines laid along the skin, BuilderHead surfaceLine, have the normal on their Y)
+	local LINES = { Nasolabial = true, LipFold = true, ForeheadLine = true, CrowFeet = true, TempleVein = true, ForeheadVein = true,
+		BattleScar = true, SurgicalScar = true, Suture = true }
+	local function standOff(hd, p)
+		local lv = LINES[p.Name] and p.CFrame.UpVector * (p.Size.Y / 2) or p.CFrame.LookVector * (p.Size.Z / 2)
+		return sdHead(hd, p.Position - lv), sdHead(hd, p.Position + lv)
+	end
 	local be, beOk = 0, true
 	for _, p in ipairs(dmgF and dmgF:GetChildren() or {}) do
 		if p.Name == "BlackEye" or p.Name == "BlackEyeLow" then
 			be += 1
-			beOk = beOk and p.Transparency >= 0.3 and p.Size.Z < 0.03
+			local inner, outer = standOff(head, p)
+			beOk = beOk and p.Transparency >= 0.3 and inner < 0 and outer < 0.012
 		end
 	end
-	check("severe: black eyes on both sides, translucent and thin", be == 4 and beOk, be)
+	check("severe: black eyes on both sides, translucent, lying on the skin", be == 4 and beOk, be)
+	-- every face / damage part hugs the head: it reaches into the skin (nothing floats) and stands at most a nose's
+	-- height off it (the parts hung under the jaw and the ears' cauliflower lumps aside)
+	local loose = {}
+	local HANG = { Jowl = true, DoubleChin = true, LowerFace = true, Cauliflower = true, EyeBall = true, DamageAnchor = true }
+	for _, fname in ipairs({ "Face", "Damage" }) do
+		for _, p in ipairs(look[fname] and look[fname]:GetDescendants() or {}) do
+			if p:IsA("BasePart") and not HANG[p.Name] and p.Parent and p.Parent.Name ~= "UpperTorso" and p.Name ~= "BloodChest" then
+				local inner, outer = standOff(head, p)
+				if inner > 0.002 or outer > 0.065 then
+					table.insert(loose, string.format("%s/%s %.3f %.3f", fname, p.Name, inner, outer))
+				end
+			end
+		end
+	end
+	check("severe: every face and damage part lies on the head", #loose == 0, table.concat(loose, ", "))
+	check("BuilderHead's classic head is AnatomyHairKit.CLASSIC", (function()
+		local a, b = H.require("BuilderHead").CLASSIC, HK.CLASSIC
+		return a.r == b.r and a.h == b.h and a.round == b.round
+	end)())
 	check("severe: no ball over the eyes (SwollenEye retired)", dmgF and dmgF:FindFirstChild("SwollenEye") == nil)
 	bad = darkOverSkin(model)
 	check("severe: nothing near-black over the skin", #bad == 0, table.concat(bad, ", "))
@@ -795,6 +830,60 @@ do
 	Builder.SetSweat(model, app, 0)
 	check("dry: no face sweat folder", look:FindFirstChild("FaceSweat") == nil)
 	model:Destroy()
+
+	-- every creator slider and option still changes the built face (its min against its max; every option value
+	-- against the default): a signature of every face part (name, place, size, colour, transparency) and the skin
+	local function sig(a)
+		local m = rigWithHead()
+		pcall(Builder.Cosmetics, m, a, build(30), nil, { hands = "gloves", detail = "full" })
+		local hd = m:FindFirstChild("Head")
+		local f = m:FindFirstChild("BoxerLook") and m.BoxerLook:FindFirstChild("Face")
+		local out = { tostring(hd.Material), string.format("%.4f", hd.Reflectance) }
+		for _, p in ipairs(f and f:GetDescendants() or {}) do
+			if p:IsA("BasePart") then
+				local lp = hd.CFrame:PointToObjectSpace(p.Position)
+				table.insert(out, string.format("%s %.4f %.4f %.4f %.4f %.4f %.4f %.3f %.3f %.3f %.2f", p.Name, lp.X, lp.Y, lp.Z, p.Size.X, p.Size.Y, p.Size.Z,
+					p.Color.R, p.Color.G, p.Color.B, p.Transparency))
+			end
+		end
+		m:Destroy()
+		table.sort(out)
+		return table.concat(out, "|")
+	end
+	local base = Looks.Defaults(1)
+	local dead = {}
+	for _, list in ipairs({ Looks.FaceSliders, Looks.EyeSliders, Looks.SkinSliders, Looks.WearSliders }) do
+		for _, sl in ipairs(list) do
+			local lo, hi = table.clone(base), table.clone(base)
+			lo.face, hi.face = table.clone(base.face), table.clone(base.face)
+			lo.face[sl.key], hi.face[sl.key] = sl.min, sl.max
+			if sig(lo) == sig(hi) then
+				table.insert(dead, sl.key)
+			end
+		end
+	end
+	local d0 = sig(base)
+	for _, opt in ipairs({ { "shape", Looks.FaceShapes }, { "browStyle", Looks.BrowStyles }, { "undertone", Looks.Undertones } }) do
+		for _, v in ipairs(opt[2]) do
+			if v ~= base.face[opt[1]] then
+				local a = table.clone(base)
+				a.face = table.clone(base.face)
+				a.face[opt[1]] = v
+				if sig(a) == d0 then
+					table.insert(dead, opt[1] .. "=" .. v)
+				end
+			end
+		end
+	end
+	for _, ec in ipairs({ { "eyeColor", 5 }, { "eyeColor2", 4 } }) do
+		local a = table.clone(base)
+		a.face = table.clone(base.face)
+		a.face[ec[1]] = ec[2]
+		if sig(a) == d0 then
+			table.insert(dead, ec[1])
+		end
+	end
+	check("every face slider / option changes the built face", #dead == 0, table.concat(dead, ", "))
 end
 
 print(string.format("test_bodytiers: %d passed, %d failed", pass, fail))

@@ -312,7 +312,7 @@ def add_obj(scene, path, material="skin", tint=SKIN, skip=(), vertex_colors=Fals
     for name, md in load_obj(path).items():
         if name in skip:
             continue
-        own = name.startswith(("Brow", "Sclera", "Iris", "Pupil", "Lips"))  # the classic face's own colours
+        own = name.startswith(("Brow", "Sclera", "Iris", "Pupil", "Lips", "Lashes", "Nostril"))  # the classic face's own colours
         if own:
             obs.append(scene.add_mesh(md, material="plastic", tint=(1, 1, 1), name=name))
             continue
@@ -322,6 +322,6 @@ def add_obj(scene, path, material="skin", tint=SKIN, skip=(), vertex_colors=Fals
                 md["c"] = np.tile([2.2, 2.2, 2.2], len(md["p"]) // 3)
             elif name.startswith("Mouth") or name.startswith("Lid"):
                 md["c"] = np.tile([0.85, 0.75, 0.75], len(md["p"]) // 3)
-        obs.append(scene.add_mesh(md, material=material if name in ("Head", "EarL", "EarR", "Nose") else "plastic",
+        obs.append(scene.add_mesh(md, material=material if name in ("Head", "EarL", "EarR", "Nose", "FaceSkin") else "plastic",
                                   tint=tint, name=name))
     return obs

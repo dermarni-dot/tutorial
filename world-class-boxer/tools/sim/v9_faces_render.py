@@ -1,7 +1,7 @@
 """Cycles renders of the v9 face scenes exported by tools/sim/v9_faces.luau (world space, studs, +Y up, face -Z).
 
     /opt/bpyenv/bin/python tools/sim/v9_faces_render.py SCENE_DIR OUT_DIR [--only id,id] [--samples N] [--views front,34]
-                                                       [--sheets SPEC.json] [--res 360]
+                                                       [--sheets SPEC.json] [--res 360] [--hair id:key,id:key]
 
 Per entry: head close-ups (front, 3/4 by default) as <id>_<view>.png. Then the sheets in SPEC (a JSON list of
 { "file": "name.jpg", "title": "...", "cols": n, "items": [[id, view, label, dir?], ...] }; dir = another render
@@ -91,20 +91,60 @@ def add_scene(sc, scene_dir, d):
                 poly.use_smooth = False
 
 
+def add_hair(sc, d, key):
+    """the v9 asset hair (tools/hair/out/<key>) on the scene's head, placed as tools/hair/previews_v9.py places it
+    (nominal head space, the classic fit0 = the identity) and scaled to the head (k = Head.Size / 1.2)"""
+    import previews_v9 as PV
+    import build_fades as bf
+    import hairlib as hl
+    st, pieces = PV.load_entry(hl.OUT, key)
+    _, cap_p = PV.load_entry(hl.OUT, "cap")
+    info = PV.entry_info(key, st)
+    tint = PV.TINTS[info["tint"]]
+    ref = bf.Ref()
+    capimg = PV.paint(ref, info, tag="after")
+    k = d["head"]["size"][0] / 1.2
+    cf = d["head"]["cf"]
+
+    def put(piece, tex, two_sided=True):
+        q, two = PV.dedup_twins(piece)
+        P = V.place(np.asarray(q.P, dtype=float) * k, cf, 0)
+        R = np.array(cf[3:]).reshape(3, 3)
+        md = {"p": P.ravel(), "t": np.asarray(q.T).ravel(), "uv": np.asarray(q.U).ravel(), "c": np.asarray(q.C).ravel(),
+              "n": (np.asarray(q.N, dtype=float) @ R.T).ravel(), "base": 0}
+        ob = sc.add_mesh(md, texture=tex, material="hair", tint=tint, alpha=True, name=q.name)
+        bf.matte(ob)
+        if two_sided:
+            bf.roblox_normals(ob, q)
+        PV.cull_backfaces(ob, two)
+        return ob
+
+    if st.get("cap", {}).get("cut") in ("style", "full"):
+        put(cap_p[0], capimg, two_sided=False)
+    for p in pieces:
+        if p.tex == "cap":
+            s_ = p.meta.get("capShell")
+            put(p, PV.paint(ref, info, shell=s_, tag="after") if s_ else capimg, two_sided=False)
+        else:
+            put(p, os.path.join(os.path.dirname(HERE), "hair", "textures", f"hair_{p.tex}.png"))
+
+
 VIEWS = {"front": (0, 2, 1.0), "34": (32, 4, 1.0), "side": (80, 2, 1.0),
          "body": (0, 6, 1.0), "body34": (35, 8, 1.0), "bodyside": (90, 4, 1.0)}
 
 
-def render_entry(scene_dir, out_dir, look, samples, views, res):
+def render_entry(scene_dir, out_dir, look, samples, views, res, hair=None):
     d = json.load(open(os.path.join(scene_dir, look["file"])))
     sc = V.V8Scene(res=(res, res), samples=samples, lens=85, bg=(0.11, 0.115, 0.125))
     add_scene(sc, scene_dir, d)
+    if hair:
+        add_hair(sc, d, hair)
     f = tuple(np.array(d["head"]["cf"][:3]) + np.array([0, -0.04, 0]))
     sc.rig(f, 1.0)
     out = []
     top = d["head"]["cf"][1] + d["head"]["size"][1] / 2 + 0.1
     for v in views:
-        p = os.path.join(out_dir, f"{look['id']}_{v}.png")
+        p = os.path.join(out_dir, f"{look['id']}{'__' + hair if hair else ''}_{v}.png")
         if v.startswith("body"):
             # the whole boxer (the robe previews): head to feet
             bf = (0, top / 2, 0)
@@ -150,8 +190,15 @@ if __name__ == "__main__":
     samples = int(opts.get("--samples", 32))
     views = opts.get("--views", "front,34").split(",")
     res = int(opts.get("--res", 360))
+    # --hair id:key,id:key : those entries again with the v9 asset hair (files <id>__<key>_<view>.png)
+    hair = [h.split(":") for h in opts["--hair"].split(",")] if "--hair" in opts else []
     if opts.get("--render", "1") != "0":
-        for l in looks:
-            render_entry(scene_dir, out_dir, l, samples, views, res)
+        if hair:
+            byid = {l["id"]: l for l in idx["looks"]}
+            for i, key in hair:
+                render_entry(scene_dir, out_dir, byid[i], samples, views, res, hair=key)
+        else:
+            for l in looks:
+                render_entry(scene_dir, out_dir, l, samples, views, res)
     if "--sheets" in opts:
         sheets(out_dir, json.load(open(opts["--sheets"])))

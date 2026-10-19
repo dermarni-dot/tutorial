@@ -13,8 +13,9 @@
 -- (shape, CFrame, size, colour, material, reflectance, transparency) with the tier meshes and the classic head (and
 -- its decal on an older src).
 --
---   lune run tools/sim/v9_faces.luau [--out DIR] [--src DIR] [--only id,id]
+--   lune run tools/sim/v9_faces.luau [--out DIR] [--src DIR] [--only id,id] [--detail full|medium|low]
 local fs = require("@lune/fs")
+local task = require("@lune/task")
 local process = require("@lune/process")
 local roblox = require("@lune/roblox")
 local Host = require("./host")
@@ -87,8 +88,30 @@ for _, l in ipairs(LOOKS) do
 	byId[l.id] = l
 	entry(l, "neutral")
 end
-for _, ex in ipairs({ "anger", "pain", "happy", "effort", "fatigue", "ko" }) do
+for _, ex in ipairs({ "anger", "pain", "happy", "confident", "effort", "fatigue", "ko" }) do
 	entry(byId.m_classic, ex, { expr = ex })
+end
+-- a blink: FaceFX's own blink caught while the eye is shut (BlinkLid shown, the lids down)
+entry(byId.m_classic, "blink", { blink = true })
+entry(byId.f_heart, "blink", { blink = true })
+entry(byId.m_rugged, "happy", { expr = "happy" })
+entry(byId.m_rugged, "anger", { expr = "anger" })
+-- the creator: every brow style, the eye / wear / skin sliders at their ends, the face shapes (face = overrides)
+for _, b in ipairs({ "Natural", "Straight", "Soft Arch", "High Arch", "Thick", "Thin" }) do
+	entry(byId.m_classic, "brow" .. b:gsub(" ", ""), { face = { browStyle = b } })
+end
+for _, f in ipairs({
+	{ "eyeRound", { eyeShape = 0 } }, { "eyeAlmond", { eyeShape = 1 } }, { "eyeBig", { eyeSize = 1 } }, { "eyeSmall", { eyeSize = -1 } },
+	{ "hooded", { lidHeavy = 1 } }, { "hetero", { eyeColor = 5, eyeColor2 = 4 } }, { "lashes", { lashes = 1 } }, { "tilt", { eyeTilt = 1 } },
+	{ "browHigh", { browHeight = 1, browAngle = 1 } }, { "browThickMax", { browThick = 1 } }, { "noseBig", { noseWidth = 1, noseLength = 1, noseBridge = 1 } },
+	{ "noseSmall", { noseWidth = -1, noseLength = -1, noseBridge = -1 } }, { "lipsFull", { lips = 1, mouthWidth = 1 } }, { "cheekHigh", { cheek = 1 } },
+	{ "chinBig", { chin = 1, chinCleft = 1 } }, { "wear", { cauliflower = 1, noseBreak = 1 } }, { "scarred", { scars = 3, wrinkles = 1 } },
+	{ "skin", { freckles = 1, moles = 3, marks = 1, acne = 0.6 } },
+}) do
+	entry(byId.m_classic, f[1], { face = f[2] })
+end
+for _, sh in ipairs({ "Square", "Diamond", "Round", "Long", "Heart" }) do
+	entry(byId.m_classic, "shape" .. sh, { face = { shape = sh } })
 end
 for _, ex in ipairs({ "anger", "happy", "pain" }) do
 	entry(byId.f_heart, ex, { expr = ex })
@@ -424,13 +447,16 @@ for _, e in ipairs(ENTRIES) do
 	end
 	local L = e.look
 	local app = appFor(L)
+	for k, v in pairs(e.face or {}) do
+		app.face[k] = v
+	end
 	local tier = L.tier
 	local _, b = buildFor(app, tier)
 	local sc = Builder.Scales(app, b)
 	local model = newRig(Vector3.new(sc.width, sc.height, sc.depth), 1.2 * sc.head)
 	model.Parent = E.workspace
 	currentModel = model
-	local opts = { hands = "gloves", detail = "full", age = L.age or 24 }
+	local opts = { hands = "gloves", detail = args.detail or "full", age = L.age or 24 }
 	local ok, err = pcall(Builder.Cosmetics, model, app, b, nil, opts)
 	if not ok then
 		error(e.id .. ": Cosmetics failed: " .. tostring(err))
@@ -526,10 +552,26 @@ for _, e in ipairs(ENTRIES) do
 				end
 			end
 		end
-		-- the still frame: never mid-blink
-		for _, d in ipairs(model:GetDescendants()) do
-			if d.Name == "BlinkLid" and d.Transparency < 1 then
-				d.Transparency = 1
+		if e.blink and FaceFX then
+			-- wait (real time: FaceFX times blinks by os.clock) for the eyes to shut, then stop there
+			local camPos = head.Position + Vector3.new(0, 0, -3)
+			local t0 = os.clock()
+			local i = 45
+			while os.clock() - t0 < 9 do
+				i += 1
+				pcall(FaceFX.Update, 1 / 30, i / 30, camPos, nil, 99)
+				local d = FaceFX.Debug(model)
+				if d and d.closed then
+					break
+				end
+				task.wait(0.01)
+			end
+		else
+			-- the still frame: never mid-blink
+			for _, d in ipairs(model:GetDescendants()) do
+				if d.Name == "BlinkLid" and d.Transparency < 1 then
+					d.Transparency = 1
+				end
 			end
 		end
 		solve(model)
@@ -597,7 +639,11 @@ for _, e in ipairs(ENTRIES) do
 	end
 	Host.WriteJSON(OUT .. "/" .. e.id .. ".json", scene)
 	table.insert(index.looks, { id = e.id, file = e.id .. ".json", label = scene.label, look = L.id, state = e.state, counts = counts })
-	table.insert(report, string.format("%-24s face parts %3d  rig joints %2d  drawn parts %3d  head %s", e.id, counts.face, counts.rig, counts.parts,
+	local ff = look and look:FindFirstChild("Face")
+	counts.extra = ff and ff:GetAttribute("Extra")
+	local bf = look and look:FindFirstChild("Beard")
+	counts.beardExtra = bf and bf:GetAttribute("Extra")
+	table.insert(report, string.format("%-24s face parts %3d (Extra %s)  rig joints %2d  drawn parts %3d  head %s", e.id, counts.face, tostring(counts.extra), counts.rig, counts.parts,
 		scene.head and string.format("%.3f", scene.head.size[1]) or "?"))
 	if robeReport then
 		table.insert(report, "    " .. robeReport)

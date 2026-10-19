@@ -7,9 +7,12 @@
   (AnatomyHairKit.CLASSIC: a vertical cylinder r 0.6 filling its 1.2 box, top and bottom edges rounded by 0.24,
   nominal), revolved finely. Kit.Scalp's classic field is the same shape, so the runtime fit, the cap's painted
   UV and this mesh agree exactly.
-* The built face on it (BuilderHead.FaceLayout and Head.Face at the default face, nominal = real / k): the ears
-  (shell + helix rim, at earSize +0.5 for the clearance boxes so a bigger ear still clears), the brows (inner /
-  body / tail), the eyes, the nose and the lips. The ears are part of the "Head" collider object (the builders
+* The built face on it: the game's own (BuilderHead Head.Face at the default face, full detail, nominal = real / k),
+  every part as its ellipsoid, from a v9_faces scene kept as ref/classic/face_m.json; refresh it after a face change:
+      lune run tools/sim/v9_faces.luau --only m_classic_neutral --out /tmp/claude-0/v9faces
+      /opt/bpyenv/bin/python tools/hair/classic_ref.py --scene /tmp/claude-0/v9faces/m_classic_neutral.json
+  The ears (shell + concha; scaled 1.1 about their middle for the clearance boxes so a bigger ear still clears),
+  the brows (inner / body / tail), the eyes and lids, the nose and the lips; skin sculpt parts go in FaceSkin. The ears are part of the "Head" collider object (the builders
   push hair clear of it); brows, eyes, nose and lips are separate objects (renders, the brow clearance check).
 * skull.json / skull_f.json: the game export plus `ears` (AABBs of the ear vertices, as the organic reference had)
   and `face` (brow / eye / ear landmarks and the brow band the hair must stay above).
@@ -20,6 +23,7 @@ import json
 import math
 import os
 import shutil
+import sys
 
 import numpy as np
 
@@ -103,55 +107,74 @@ def rot_z_m(a):
     return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
 
 
-def front(x):
-    k = max(-0.97, min(0.97, x / (S * 0.5)))
-    return -S * 0.5 * math.sqrt(1 - k * k)
+# the built face is not approximated here: it is the game's own (BuilderHead.Head.Face at the default face, full detail),
+# exported by tools/sim/v9_faces.luau and kept as a snapshot in nominal head space (FACE_SNAPSHOT)
+FACE_SNAPSHOT = os.path.join(REF, "face_m.json")
+# which object each built part goes to (the renderer keeps the own colours of Brow* / Sclera* / Iris* / Pupil* / Lips* /
+# Lashes* / Nostril*; the rest is tinted as skin)
+GROUPS = [
+    (("Ear", "EarHelix", "Cauliflower"), "Ear"),
+    (("Brow", "BrowInner", "BrowOuter", "BrowGap"), "Brow"),
+    (("Sclera",), "Sclera"),
+    (("Limbal", "Iris"), "Iris"),
+    (("Pupil", "Glint"), "Pupil"),
+    (("Lashes",), "Lashes"),
+    (("Nose", "NoseTip", "NoseWing", "NoseBump"), "Nose"),
+    (("Nostril",), "Nostril"),
+    (("UpperLip", "LowerLip", "MouthLine", "MouthCorner", "MouthInside", "TeethUpper", "TeethLower"), "Lips"),
+]
+SIDED = {"Ear", "Brow", "Sclera", "Iris", "Pupil", "Lashes"}
+HIDDEN = {"BlinkLid", "EyeBall", "TempleVein", "ForeheadVein"}  # (shown only while blinking / straining)
 
 
-def face_parts(ear_s=1.0):
-    """{name: (P, T, rgb)} of the built face at the default face (BuilderHead.Head.Face, full detail)"""
+def snapshot_from_scene(scene_path):
+    """a v9_faces scene (world space) -> the Face folder's visible parts in nominal head space"""
+    d = json.load(open(scene_path))
+    hc = np.array(d["head"]["cf"][:3])
+    HR = np.array(d["head"]["cf"][3:]).reshape(3, 3)
+    k = d["head"]["size"][0] / S
+    parts = []
+    for p in d["parts"]:
+        if p["folder"] != "Face" or p["name"] in HIDDEN or p.get("transparency", 0) >= 0.99 or p["shape"] != "Ellipsoid":
+            continue
+        c = HR.T @ (np.array(p["cf"][:3]) - hc) / k
+        M = HR.T @ np.array(p["cf"][3:]).reshape(3, 3)
+        parts.append({"name": p["name"], "c": [round(float(x), 5) for x in c], "m": [round(float(x), 5) for x in M.flatten()],
+                      "half": [round(x / 2 / k, 5) for x in p["size"]], "rgb": p["color"], "t": p.get("transparency", 0)})
+    return {"about": "BuilderHead's built face at the default face (full detail), nominal head space (1.2 box), from "
+                     + os.path.basename(scene_path) + " (tools/sim/v9_faces.luau)", "parts": parts}
+
+
+def face_parts(ear_s=1.0, snap=None):
+    """{name: (P, T, rgb)} of the built face from the snapshot; ear_s scales the ears about their own middle"""
+    snap = snap or json.load(open(FACE_SNAPSHOT))
+    acc = {}
+    for p in snap["parts"]:
+        group = "FaceSkin"
+        for names, g in GROUPS:
+            if p["name"] in names:
+                group = g
+        if p["t"] > 0.6:
+            continue  # (faint translucent marks: no clearance, no colour worth drawing)
+        if group in SIDED:
+            group += "L" if p["c"][0] < 0 else "R"
+        M = np.array(p["m"]).reshape(3, 3)
+        P, T = ellipsoid(p["c"], p["half"], nu=20, nv=12, frame=M)
+        cols = np.tile(p["rgb"], (len(P), 1))
+        acc.setdefault(group, []).append((P, T, cols))
     out = {}
-    eyeX, eyeY = 0.19 * S, 0.1 * S
-    browY = eyeY + 0.13 * S
-    # ears: shell + helix rim (ecf = at(side 0.5 s.X, 0.02 s.Y, 0.04 s.Z) * ANG(0, side 6 deg, 0))
-    for side, nm in ((-1, "L"), (1, "R")):
-        M = rot_y_m(side * math.radians(6))
-        c = np.array([side * 0.5 * S, 0.02 * S, 0.04 * S])
-        P1, T1 = ellipsoid(c, (0.04 * S, 0.125 * S * ear_s, 0.085 * S * ear_s), frame=M)
-        off = M @ np.array([side * 0.03 * S, 0.015 * S, 0.055 * S * ear_s])
-        P2, T2 = ellipsoid(c + off, (0.0225 * S, 0.13 * S * ear_s, 0.03 * S * ear_s), frame=M)
-        out["Ear" + nm] = (np.vstack([P1, P2]), np.vstack([T1, T2 + len(P1)]), None)
-    bt = (0.028 + 0.02) * S
-    blen = 0.21 * S
-    for side, nm in ((-1, "L"), (1, "R")):
-        bx = side * eyeX * 1.02
-        parts = [(bx, browY, blen * 0.23, bt * 0.5, 0.0175 * S, 0.0, -0.012),
-                 (bx - side * blen * 0.36, browY - bt * 0.1, blen * 0.18, bt * 0.56, 0.0175 * S, side * 0.12, -0.01),
-                 (bx + side * blen * 0.36, browY - bt * 0.18, blen * 0.19, bt * 0.37, 0.015 * S, -side * 0.2, -0.01)]
-        Ps, Ts, n = [], [], 0
-        for x, y, hx, hy, hz, tilt, dz in parts:
-            Pp, Tp = ellipsoid((x, y, front(x) + dz), (hx, hy, hz), frame=rot_z_m(tilt) @ rot_y_m(-side * 0.14))
-            Ps.append(Pp)
-            Ts.append(Tp + n)
-            n += len(Pp)
-        out["Brow" + nm] = (np.vstack(Ps), np.vstack(Ts), (0.045, 0.035, 0.03))
-        # eye: sclera, iris, pupil (layered on the face front)
-        ex = side * eyeX
-        z0 = front(ex)
-        out["Sclera" + nm] = ellipsoid((ex, eyeY, z0 + 0.004), (0.06, 0.045, 0.03)) + ((0.93, 0.92, 0.9),)
-        out["Iris" + nm] = ellipsoid((ex, eyeY, z0 - 0.022), (0.03, 0.03, 0.012)) + ((0.28, 0.17, 0.08),)
-        out["Pupil" + nm] = ellipsoid((ex, eyeY, z0 - 0.031), (0.014, 0.014, 0.006)) + ((0.02, 0.02, 0.02),)
-    noseTop = eyeY - 0.02 * S
-    noseLen = 0.2 * S
-    noseBot = noseTop - noseLen
-    nW, nB = 0.11 * S, 0.085 * S
-    Pn, Tn = ellipsoid((0, (noseTop + noseBot) / 2 + noseLen * 0.04, front(0) - nB * 0.3 + 0.012),
-                       (nW * 0.31, noseLen * 0.54, nB * 0.39), frame=np.array([[1, 0, 0], [0, math.cos(-0.17), -math.sin(-0.17)], [0, math.sin(-0.17), math.cos(-0.17)]]))
-    Pt, Tt = ellipsoid((0, noseBot + nW * 0.25, front(0) - nB * 0.75), (nW * 0.56, nW * 0.35, nB * 0.33))
-    out["Nose"] = (np.vstack([Pn, Pt]), np.vstack([Tn, Tt + len(Pn)]), None)
-    mouthY = -0.21 * S
-    mw = 0.26 * S
-    out["Lips"] = ellipsoid((0, mouthY, front(0) + 0.004), (mw * 0.5, 0.03, 0.03)) + ((0.5, 0.27, 0.24),)
+    for g, lst in acc.items():
+        Ps, Ts, Cs, n = [], [], [], 0
+        for P, T, C in lst:
+            Ps.append(P)
+            Ts.append(T + n)
+            Cs.append(C)
+            n += len(P)
+        P = np.vstack(Ps)
+        if g.startswith("Ear") and ear_s != 1.0:
+            m = P.mean(axis=0)
+            P = m + (P - m) * ear_s
+        out[g] = (P, np.vstack(Ts), np.vstack(Cs))
     return out
 
 
@@ -161,8 +184,8 @@ def write_obj(path, objs):
     base = 0
     for name, P, T, rgb in objs:
         lines.append(f"o {name}")
-        c = rgb or (0.8, 0.8, 0.8)
-        for p in P:
+        C = np.tile(rgb if rgb is not None else (0.8, 0.8, 0.8), (len(P), 1)) if rgb is None or np.ndim(rgb) == 1 else rgb
+        for p, c in zip(P, C):
             lines.append("v %.5f %.5f %.5f %.4f %.4f %.4f" % (p[0], p[1], p[2], c[0], c[1], c[2]))
         for t in T:
             lines.append("f %d %d %d" % (t[0] + 1 + base, t[1] + 1 + base, t[2] + 1 + base))
@@ -173,6 +196,11 @@ def write_obj(path, objs):
 
 def main():
     os.makedirs(REF, exist_ok=True)
+    if "--scene" in sys.argv:
+        snap = snapshot_from_scene(sys.argv[sys.argv.index("--scene") + 1])
+        with open(FACE_SNAPSHOT, "w") as f:
+            json.dump(snap, f, indent=0)
+        print("face snapshot", FACE_SNAPSHOT, len(snap["parts"]), "parts")
     Ph, Th = revolve(profile())
     parts = face_parts(ear_s=1.0)
     big = face_parts(ear_s=1.1)  # (earSize +0.5: the clearance boxes)
@@ -180,7 +208,7 @@ def main():
     PH, TH = [Ph], [Th]
     n = len(Ph)
     for e in ("EarL", "EarR"):
-        P, T, _ = parts[e]
+        P, T, _ = parts[e]  # (the head object is tinted as skin: the ears' own colours are dropped)
         PH.append(P)
         TH.append(T + n)
         n += len(P)
@@ -197,11 +225,14 @@ def main():
         P = big[nm][0]
         ears[side] = {"min": [round(float(x), 4) for x in P.min(axis=0)],
                       "max": [round(float(x), 4) for x in P.max(axis=0)], "verts": int(len(P))}
+    bP = np.vstack([parts["BrowL"][0], parts["BrowR"][0]])
+    bR = parts["BrowR"][0]
+    browTop = float(bP[:, 1].max())
     face = {"about": "the built face at the default face (BuilderHead.FaceLayout, nominal). browTop: the brows' top "
-                     "edge (centre, outer); browTopMax: with forehead +1 and browHeight +1 (the highest brows the "
-                     "creator makes); the hair's front edge stays above browTopMax + `browClear`",
-            "eyeY": 0.12, "eyeX": 0.228, "browY": 0.276, "browTop": 0.305, "browTopMax": 0.371,
-            "browClear": 0.03, "browX": [0.12, 0.35]}
+                     "edge; browTopMax: with forehead +1 and browHeight +1 (the highest brows the creator makes: "
+                     "+0.055 x 1.2); the hair's front edge stays above browTopMax + `browClear`",
+            "eyeY": 0.12, "eyeX": 0.228, "browY": 0.276, "browTop": round(browTop, 4), "browTopMax": round(browTop + 0.066, 4),
+            "browClear": 0.03, "browX": [round(float(bR[:, 0].min()), 3), round(float(bR[:, 0].max()), 3)]}
     lm = {}
     for nm in ("BrowL", "BrowR", "EarL", "EarR", "Nose", "Lips"):
         P = parts[nm][0]

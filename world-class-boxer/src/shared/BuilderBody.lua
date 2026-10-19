@@ -1513,8 +1513,77 @@ local function bruiseColor(skin, age)
 	return col(list[1])
 end
 
--- body shots: translucent bruising over the ribs (dmg.ribsL / ribsR). Adds to BoxerLook/Damage after
--- Head.SetDamage (which recreates the folder); never destroys the face damage. Partial tables are fine.
+-- The tier torsos' skin (each tier's UpperTorso.mesh sampled into its box, the same for both genders: the women's
+-- torso is the same mesh, scaled): per row v (-0.45 .. 0.45 of Size.Y by 0.1), per azimuth from the front (0) to the
+-- side (90 deg) by 15, the radius r of the skin, box-normalised: the skin is at (sin a r, v, -cos a r) x Size
+-- (both sides averaged). A torso without a tier is the plain box.
+local TORSO_SURF = {
+	[1] = { { 0.315, 0.321, 0.327, 0.321, 0.297, 0.283, 0.275 }, { 0.462, 0.471, 0.479, 0.469, 0.434, 0.414, 0.402 }, { 0.455, 0.466, 0.471, 0.460, 0.425, 0.405, 0.393 }, { 0.455, 0.467, 0.475, 0.468, 0.433, 0.413, 0.402 }, { 0.459, 0.471, 0.484, 0.481, 0.447, 0.427, 0.415 }, { 0.476, 0.490, 0.505, 0.502, 0.465, 0.444, 0.431 }, { 0.487, 0.513, 0.534, 0.525, 0.485, 0.462, 0.449 }, { 0.479, 0.505, 0.533, 0.537, 0.508, 0.491, 0.478 }, { 0.438, 0.453, 0.487, 0.514, 0.507, 0.501, 0.488 }, { 0.319, 0.328, 0.352, 0.375, 0.366, 0.361, 0.352 } },
+	[2] = { { 0.287, 0.294, 0.302, 0.301, 0.285, 0.275, 0.267 }, { 0.422, 0.431, 0.443, 0.442, 0.417, 0.401, 0.390 }, { 0.412, 0.437, 0.435, 0.437, 0.411, 0.395, 0.382 }, { 0.414, 0.440, 0.443, 0.444, 0.420, 0.405, 0.394 }, { 0.423, 0.445, 0.456, 0.461, 0.439, 0.425, 0.416 }, { 0.440, 0.471, 0.484, 0.489, 0.464, 0.449, 0.440 }, { 0.452, 0.515, 0.539, 0.519, 0.486, 0.469, 0.458 }, { 0.448, 0.501, 0.532, 0.524, 0.505, 0.496, 0.483 }, { 0.411, 0.426, 0.461, 0.491, 0.496, 0.499, 0.487 }, { 0.269, 0.277, 0.301, 0.330, 0.333, 0.337, 0.330 } },
+	[3] = { { 0.263, 0.269, 0.280, 0.283, 0.274, 0.268, 0.261 }, { 0.387, 0.396, 0.410, 0.417, 0.402, 0.391, 0.379 }, { 0.374, 0.412, 0.404, 0.415, 0.400, 0.388, 0.373 }, { 0.378, 0.419, 0.414, 0.423, 0.409, 0.399, 0.388 }, { 0.393, 0.426, 0.431, 0.445, 0.434, 0.426, 0.421 }, { 0.409, 0.461, 0.471, 0.477, 0.464, 0.456, 0.450 }, { 0.421, 0.516, 0.543, 0.516, 0.489, 0.478, 0.466 }, { 0.422, 0.495, 0.530, 0.514, 0.500, 0.500, 0.487 }, { 0.385, 0.397, 0.433, 0.467, 0.485, 0.498, 0.486 }, { 0.224, 0.231, 0.255, 0.292, 0.306, 0.318, 0.316 } },
+	[4] = { { 0.242, 0.248, 0.261, 0.268, 0.264, 0.262, 0.255 }, { 0.356, 0.365, 0.382, 0.394, 0.389, 0.383, 0.370 }, { 0.343, 0.390, 0.377, 0.394, 0.389, 0.382, 0.366 }, { 0.350, 0.401, 0.390, 0.404, 0.400, 0.395, 0.384 }, { 0.369, 0.411, 0.411, 0.433, 0.432, 0.429, 0.427 }, { 0.383, 0.457, 0.467, 0.467, 0.465, 0.463, 0.460 }, { 0.398, 0.517, 0.547, 0.515, 0.491, 0.488, 0.475 }, { 0.399, 0.488, 0.526, 0.507, 0.497, 0.503, 0.490 }, { 0.359, 0.370, 0.407, 0.443, 0.470, 0.495, 0.483 }, { 0.162, 0.167, 0.187, 0.253, 0.282, 0.302, 0.307 } },
+	[5] = { { 0.224, 0.230, 0.243, 0.254, 0.256, 0.255, 0.249 }, { 0.330, 0.338, 0.357, 0.373, 0.377, 0.376, 0.362 }, { 0.316, 0.370, 0.352, 0.373, 0.380, 0.378, 0.360 }, { 0.325, 0.383, 0.369, 0.388, 0.392, 0.392, 0.381 }, { 0.349, 0.398, 0.393, 0.422, 0.432, 0.432, 0.435 }, { 0.362, 0.464, 0.468, 0.459, 0.467, 0.472, 0.469 }, { 0.378, 0.517, 0.549, 0.516, 0.494, 0.499, 0.486 }, { 0.378, 0.477, 0.520, 0.500, 0.494, 0.507, 0.494 }, { 0.336, 0.347, 0.382, 0.421, 0.455, 0.485, 0.474 }, { 0.077, 0.080, 0.087, 0.192, 0.254, 0.288, 0.299 } },
+}
+
+local function torsoPoint(torso, a, v)
+	local T = TORSO_SURF[torso:GetAttribute("BodyTier")]
+	local r
+	if T then
+		local fv = math.clamp((v + 0.45) / 0.1, 0, 9)
+		local i0 = math.floor(fv)
+		local i1, tv = math.min(i0 + 1, 9), fv - i0
+		local fa = math.clamp(math.abs(math.deg(a)) / 15, 0, 6)
+		local j0 = math.floor(fa)
+		local j1, ta = math.min(j0 + 1, 6), fa - j0
+		local r0 = T[i0 + 1][j0 + 1] + (T[i0 + 1][j1 + 1] - T[i0 + 1][j0 + 1]) * ta
+		local r1 = T[i1 + 1][j0 + 1] + (T[i1 + 1][j1 + 1] - T[i1 + 1][j0 + 1]) * ta
+		r = r0 + (r1 - r0) * tv
+	else
+		r = 0.5 / math.max(math.abs(math.sin(a)), math.abs(math.cos(a)), 1e-3)
+	end
+	local s = torso.Size
+	return V3(math.sin(a) * r * s.X, v * s.Y, -math.cos(a) * r * s.Z)
+end
+
+-- a mark lying on the torso's skin (the face's lens: an ellipsoid sunk so a footprint w x h shows, rising `rise`): at u
+-- across (fraction of Size.X, + = +X) and v up (fraction of Size.Y) on the front half; welded to the torso
+function Body.SurfaceMark(folder, torso, name, u, v, w, h, color, transparency, rise, dk)
+	rise = rise or 0.004
+	local a = 0
+	for _ = 1, 16 do
+		local x = torsoPoint(torso, a, v).X / torso.Size.X
+		a = math.clamp(a + (u - x) * 1.5, -1.5, 1.5)
+	end
+	local p = torsoPoint(torso, a, v)
+	local ta = torsoPoint(torso, a + 0.02, v) - torsoPoint(torso, a - 0.02, v)
+	local tv = torsoPoint(torso, a, v + 0.02) - torsoPoint(torso, a, v - 0.02)
+	local nrm = ta:Cross(tv).Unit
+	if nrm:Dot(V3(p.X, 0, p.Z)) < 0 then
+		nrm = -nrm
+	end
+	local cf = CFrame.lookAt(p, p + nrm, tv.Unit)
+	local function sagAt(da, dv)
+		return math.max((p - torsoPoint(torso, a + da, v + dv)):Dot(nrm), 0)
+	end
+	local da = (w / 2) / math.max(ta.Magnitude / 0.04, 1e-3)
+	local dv = (h / 2) / torso.Size.Y
+	local sx = math.max(sagAt(da, 0), sagAt(-da, 0))
+	local sy = math.max(sagAt(0, dv), sagAt(0, -dv))
+	local D = math.max(rise / (1 - math.clamp(dk or 0.8, 0.05, 0.95)), 0.01)
+	local c = D - rise
+	local need = math.max(sx, sy) * 1.1 + 0.001
+	if c < need then
+		c = need
+		D = rise + need
+	end
+	local fx = math.sqrt(math.max(1 - ((c - sx) / D) ^ 2, 0.04))
+	local fy = math.sqrt(math.max(1 - ((c - sy) / D) ^ 2, 0.04))
+	return mk(folder, torso, name, V3(w / fx, h / fy, 2 * D), torso.CFrame * cf * CF(0, 0, c), color, "Ellipsoid", SMOOTH, transparency)
+end
+
+-- body shots: soft translucent bruising lying on the ribs (dmg.ribsL / ribsR), from the flank round toward the front.
+-- Adds to BoxerLook/Damage after Head.SetDamage (which recreates the folder); never destroys the face damage.
+-- Partial tables are fine.
 function Body.SetDamage(model, app, dmg)
 	local look = model:FindFirstChild("BoxerLook")
 	local ut = part(model, "UpperTorso")
@@ -1536,12 +1605,10 @@ function Body.SetDamage(model, app, dmg)
 	local s = ut.Size
 	-- women: on the bare midriff, under the sports top (which ends at -0.18 Y)
 	local female = app and app.gender == 2
-	local cy, cy2, hMax = -0.14, -0.18, 0.4
+	local cy, cy2, hMax = -0.2, -0.24, 0.36
 	if female then
-		cy, cy2, hMax = -0.33, -0.36, 0.26
+		cy, cy2, hMax = -0.34, -0.37, 0.2
 	end
-	-- a tier torso's box is as wide as the lats: the lower ribs sit further in than the default block's sides
-	local inX = ut:GetAttribute("BodyTier") ~= nil and 0.08 * s.X or 0
 	for _, e in ipairs({ { -1, "ribsL" }, { 1, "ribsR" } }) do
 		local side, v = e[1], math.clamp(tonumber(dmg[e[2]]) or 0, 0, 1)
 		if v > 0.08 then
@@ -1550,13 +1617,13 @@ function Body.SetDamage(model, app, dmg)
 				folder.Name = "Damage"
 				folder.Parent = look
 			end
-			local c = lerpColor(skin, bruiseColor(skin, dmg.age), 0.75)
-			-- the bruise wraps the lower ribs from the flank round to the front
-			-- (a tier torso's box is its mesh's bounds: at the flank the body is thinner than the box, so the bruise is a
-			-- touch shallower than the box and translucent, a mark on the skin rather than a ball standing off it)
-			mk(folder, ut, "RibBruise", V3((0.26 + 0.08 * v) * s.X, math.min(0.24 + 0.12 * v, hMax) * s.Y, s.Z * (inX > 0 and 0.97 or 1.06)), ut.CFrame * CF(side * (0.38 * s.X - inX), cy * s.Y, -0.02), c, "Ellipsoid", SMOOTH, math.clamp(0.84 - 0.36 * v, 0.5, 0.86))
+			local c = lerpColor(skin, bruiseColor(skin, dmg.age), 0.8)
+			Body.SurfaceMark(folder, ut, "RibBruise", side * 0.29, cy, (0.26 + 0.08 * v) * s.X, math.min(0.18 + 0.1 * v, hMax) * s.Y, c,
+				math.clamp(0.8 - 0.3 * v, 0.52, 0.84), 0.004, 0.8)
 			if v > 0.5 then
-				mk(folder, ut, "RibBruise", V3(0.15 * s.X, 0.13 * s.Y, s.Z * (inX > 0 and 0.99 or 1.08)), ut.CFrame * CF(side * (0.42 * s.X - inX), cy2 * s.Y, -0.02), darken(c, 0.85), "Ellipsoid", SMOOTH, math.clamp(0.88 - 0.4 * v, 0.55, 0.86))
+				-- a darker core inside it, off its middle
+				Body.SurfaceMark(folder, ut, "RibBruise", side * 0.31, cy2, 0.13 * s.X, math.min(0.1, hMax) * s.Y, darken(c, 0.85),
+					math.clamp(0.84 - 0.34 * v, 0.55, 0.84), 0.0065, 0.75)
 			end
 		end
 	end
