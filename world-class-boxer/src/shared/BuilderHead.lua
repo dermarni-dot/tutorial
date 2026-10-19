@@ -1563,10 +1563,11 @@ function Head.SetDamage(model, app, dmg, folderName)
 		local closing = clamp((v - 0.3) / 0.7, 0, 1)
 		local k = clamp(v, 0, 1) * fade
 		if closing > 0 then
-			local top, bottom = y + h * 1.05, y + h * (0.5 - (0.4 + 0.68 * closing))
-			local rise = (0.013 + 0.006 * closing) * s.Z
-			mark("SwollenLid", x, (top + bottom) / 2, w * (1.3 + 0.1 * closing), top - bottom, rise, 0.5,
-				lerpColor(lidColor, bruise, 0.12 + 0.22 * k), nil, side * L.eyeTilt)
+			-- (a wide, low swelling: the lid puffs out sideways more than it stands off the face)
+			local top, bottom = y + h * 0.95, y + h * (0.5 - (0.4 + 0.66 * closing))
+			local rise = (0.0115 + 0.005 * closing) * s.Z
+			mark("SwollenLid", x + side * 0.006 * s.X, (top + bottom) / 2, w * (1.42 + 0.12 * closing), top - bottom, rise, 0.62,
+				lerpColor(lidColor, bruise, 0.1 + 0.18 * k), nil, side * L.eyeTilt)
 			if closing > 0.6 then
 				-- shut: the lash line pressed into a slit at the swelling's lower edge
 				mark("SwollenSlit", x, bottom + h * 0.2, w * 0.95, 0.009 * s.Y, rise * 0.62, 0.5, Color3.fromRGB(62, 36, 34), 0.15, side * L.eyeTilt)
