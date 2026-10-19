@@ -20,8 +20,73 @@ import struct
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REF = os.path.join(HERE, "ref")
-OUT = os.path.join(HERE, "out")
+# the head the hair is modelled on: the classic Roblox head every boxer has (ref/classic, classic_ref.py; v9).
+# HAIR_REF=organic selects the retired organic skull (ref/, the v7 meshes' reference)
+REF = os.path.join(HERE, "ref") if os.environ.get("HAIR_REF") == "organic" else os.path.join(HERE, "ref", "classic")
+CLASSIC = REF.endswith("classic")
+OUT = os.environ.get("HAIR_OUT") or os.path.join(HERE, "out")
+
+
+def _fit0():
+    """the runtime skull fit's reference extents (CONTRACT.md): the reference skull.json's fit0 (the classic head:
+    W 0.6, T 0.6, Fz -0.6, Bz 0.6), else the organic default male's"""
+    try:
+        with open(os.path.join(REF, "skull.json")) as f:
+            d = json.load(f).get("fit0")
+        if d:
+            return {k: d[k] for k in ("W", "T", "Fz", "Bz")}
+    except OSError:
+        pass
+    return dict(W=0.383, T=0.591, Fz=-0.460, Bz=0.520)
+
+
+FIT0 = _fit0()
+
+# ----------------------------------------------------------------------------------- zones (classic -> organic)
+# The builders' zone tests (beside the ear, the temples, the fringe, the nape, the face guard ...) were written in
+# the organic skull's coordinates. On the classic head every such test reads org(p): a piecewise-linear map that
+# takes the classic head's landmarks onto the organic skull's (its sides x 0.6 -> 0.383; heights: the nape
+# -0.3 -> -0.27, the ear's centre 0.035 -> -0.08 and top 0.2 -> 0.053, the front hairline 0.421 -> 0.336, the top
+# 0.6 -> 0.611; depths: the face -0.6 -> -0.46, the ear 0.06 -> 0.15, the back 0.6 -> 0.52; the body far below
+# unchanged). Geometry is never built through it: only the predicates. Identity on the organic reference.
+_ZY = ((-2.5, -2.5), (-0.95, -0.95), (-0.6, -0.5), (-0.3, -0.27), (0.035, -0.08), (0.2, 0.053), (0.421, 0.336),
+       (0.6, 0.611), (1.5, 1.5))
+_ZZ = ((-1.6, -1.46), (-0.6, -0.46), (0.06, 0.15), (0.6, 0.52), (1.6, 1.52))
+ZX = 0.383 / 0.6
+
+
+def _pl(knots, v, inverse=False):
+    a = np.array([k[1 if inverse else 0] for k in knots])
+    b = np.array([k[0 if inverse else 1] for k in knots])
+    return np.interp(v, a, b, left=None, right=None) + np.where(v < a[0], v - a[0], 0) + np.where(v > a[-1], v - a[-1], 0)
+
+
+def org(p):
+    """classic-head point(s) -> the organic skull's equivalent (zone tests only); identity when not CLASSIC"""
+    if not CLASSIC:
+        return p
+    q = np.array(p, dtype=np.float64, copy=True)
+    q[..., 0] = q[..., 0] * ZX
+    q[..., 1] = _pl(_ZY, q[..., 1])
+    q[..., 2] = _pl(_ZZ, q[..., 2])
+    return q
+
+
+def unorg(q):
+    """the inverse of org"""
+    if not CLASSIC:
+        return q
+    p = np.array(q, dtype=np.float64, copy=True)
+    p[..., 0] = p[..., 0] / ZX
+    p[..., 1] = _pl(_ZY, p[..., 1], inverse=True)
+    p[..., 2] = _pl(_ZZ, p[..., 2], inverse=True)
+    return p
+
+
+def mean_radius(sk, th_max=2.0):
+    """the reference skull's mean radius over its upper part (box partings, scalp grids: ~0.47 organic)"""
+    m = sk.th <= th_max
+    return float(np.mean(sk.r[m]))
 
 # u ranges of the strips in each family atlas (must match strands.py)
 ATLAS = {

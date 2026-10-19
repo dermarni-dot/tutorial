@@ -7,20 +7,40 @@ The format shared by the Blender builders (`tools/hair`), the uploader (`publish
 
 Nominal head space, numerically: studs for a 1.2-stud head, +X the character's right, +Y up,
 -Z forward (the face), origin at the Head part's centre (the same space AnatomyHair builds in).
-Modelled on the default male skull (`ref/skull.json`).
+
+**v9: modelled on the classic head** (`ref/classic/`, written by `tools/sim/export_classic.luau` and
+`classic_ref.py`): every boxer has the classic Roblox head now (a Part with the Head SpecialMesh,
+`BuilderHead.classicHead`, sized by HeadScale: 0.927 studs at Athletic, nominal 1.2). Its shape is the game's
+`AnatomyHairKit.CLASSIC` (a vertical cylinder of radius 0.6 filling its 1.2 box, top and bottom edges rounded by
+0.24; `Kit.Scalp` of a look with `headShape = "classic"` is this field, centre (0, 0.05, 0)). `ref/classic` holds its
+radial table, the game's hairline lines on it (`Kit.ClassicKeys`: the front at 0.421 at the default face, the line
+round the ear on the ellipse `Kit.CLASSIC_HAIR.ear`, the nape at -0.3), the `Kit.Cut` coverage grids (fade weight
+lines lifted by `Kit.CLASSIC_HAIR.fadeSide` at the side, the burst round the ear), the ears (the built face's
+shell + helix, AABBs at earSize +0.5), the brows (`face`: centre y 0.276 at the default face, top 0.305, the highest
+the creator makes 0.371) and the head mesh with the face (`head_m.obj`, the collider "Head" = head + ears).
+`hairlib.REF` is `ref/classic` (`HAIR_REF=organic`: the retired organic skull `ref/skull.json`, the v7 reference).
+The builders' zone tests written for the organic skull read `hairlib.org(p)` (a piecewise-linear map of the classic
+head's landmarks onto the organic ones); geometry is always built on the classic head itself.
 
 At runtime every piece is placed by:
 1. **Skull fit** (affine, per boxer): from the boxer's own skull field (`Kit.Scalp(look)` / `S.ray`)
    take the half-width W (y 0.15, toward +X), the vertex T (straight up from the skull centre), the
-   front Fz (y 0.2, toward -Z) and the back Bz (y 0.1, toward +Z), and the same four on the default
-   male skull (`skull.json` `fit0`). Then `ax = W/W0`, `ay = T/T0` (anchored at y = 0),
-   `az = (Bz - Fz)/(Bz0 - Fz0)`, `dz = (Bz + Fz)/2 - (Bz0 + Fz0)/2`. Residual is at most 0.015
-   nominal, so every scalp-hugging layer sits at least 0.02 nominal above the scalp.
+   front Fz (y 0.2, toward -Z) and the back Bz (y 0.1, toward +Z), and the same four on the reference
+   (`data.fit0`, from the reference's `skull.json` `fit0`). Then `ax = W/W0`, `ay = T/T0` (anchored at y = 0),
+   `az = (Bz - Fz)/(Bz0 - Fz0)`, `dz = (Bz + Fz)/2 - (Bz0 + Fz0)/2`.
+   * v9: `fit0 = { W = 0.6, T = 0.6, Fz = -0.6, Bz = 0.6, shape = "classic" }` (`HK.FIT0_CLASSIC`). Every classic
+     head measures exactly that, so the fit is the identity: the meshes sit on the head as modelled (the cap
+     0.020 above it everywhere, the corners of the rounded box included; `check_classic_fit.py`).
+   * v7 manifests (`fit0` without `shape`, the organic default male W 0.383, T 0.591, Fz -0.460, Bz 0.520): on a
+     classic head `HK.CLASSIC_FIT` goes on top (x 1.06 / 1.2 / 1.2, 0.06 down), the stopgap the v7 meshes need there.
 2. **Length / volume** (per style flags, see `length` below), applied in nominal space.
 3. **Head size**: `k = Head.Size / 1.2` per axis.
 
 A piece's MeshPart gets `Size = bbox size * fit * k` and is welded to Head at its bbox centre run
 through the same transform (Roblox recentres an uploaded mesh on its bounding box).
+
+The cap's painted texels (`HK.CapGrid`) are read on the reference head the cap was modelled on (`fit0.shape`:
+the classic head's rays from (0, 0.05, 0), else the organic skull's), through the fit, onto the boxer's scalp.
 
 ## Textures (uploaded as Image assets; greyscale albedo, straight alpha)
 
@@ -46,7 +66,8 @@ shows them upside down.
 ## The scalp cap
 
 One shared cap mesh (`cap` style entry) covers the scalp from the forehead to the nape, at 0.012-0.02
-nominal above the skull. UV is polar: `u = az / 2pi` (az = 0 at the back, increasing toward +X),
+nominal above the skull (v9: 0.020 above the classic head, `thetaMax` 130 degrees from its centre; the v7 cap
+reached 148 degrees on the organic skull). UV is polar: `u = az / 2pi` (az = 0 at the back, increasing toward +X),
 `v = theta / CAP_THETA` (theta from +Y). The game paints its texture per boxer: a tile
 (the entry's `capTile`, else `shortcoil` for curly types, else `short`) repeated
 `tile = {nu, nv}` times, tinted, with alpha = tile alpha x the style's coverage mask (the same

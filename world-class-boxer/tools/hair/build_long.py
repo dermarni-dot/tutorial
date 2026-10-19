@@ -322,7 +322,8 @@ SKD = SK.data
 SKF_PATH = os.path.join(REF, "skull_f.json")
 SKF = hl.Skull(SKF_PATH) if os.path.exists(SKF_PATH) else None
 EARS = [(np.array(SKD["ears"][s]["min"]), np.array(SKD["ears"][s]["max"])) for s in ("left", "right")]
-FIT0 = dict(W=0.383, T=0.591, Fz=-0.460, Bz=0.520)  # HairAssetData fit0 (the default male skull)
+FIT0 = dict(hl.FIT0)  # HairAssetData fit0 (the default male skull)
+HEAD_LOW = -0.66 if hl.CLASSIC else -0.5  # (below this no part of the head: the full-head checks stop)
 CLEAR_MIN = 0.0225  # every vertex over the head at least this far above the head meshes (both sexes, with ears) and the skull tables
 EAR_CLEAR = 0.0225
 AXIS_Z = 0.04  # the neck / body's vertical axis (x = 0, z = AXIS_Z)
@@ -378,7 +379,17 @@ class Ref:
             sk = SKF.data
         ears = [(np.array(sk["ears"][s]["min"]) - 0.012, np.array(sk["ears"][s]["max"]) + 0.012)
                 for s in ("left", "right")]
-        keep = [t for t in F if not any(np.all((P[list(t)] > lo) & (P[list(t)] < hi)) for lo, hi in ears)]
+        on_head = None
+        if hl.CLASSIC:
+            # the classic head: the ears are their own shells off its wall; only those are left out (no hole)
+            Cc = SKD.get("classic") or {"r": 0.6, "h": 0.6, "round": 0.24}
+            qx = np.sqrt(P[:, 0] ** 2 + P[:, 2] ** 2) - (Cc["r"] - Cc["round"])
+            qy = np.abs(P[:, 1]) - (Cc["h"] - Cc["round"])
+            sd = (np.sqrt(np.maximum(qx, 0) ** 2 + np.maximum(qy, 0) ** 2) + np.minimum(np.maximum(qx, qy), 0)
+                  - Cc["round"])
+            on_head = np.abs(sd) < 1e-3
+        keep = [t for t in F if not any(np.all((P[list(t)] > lo) & (P[list(t)] < hi)) for lo, hi in ears)
+                or (on_head is not None and on_head[list(t)].all())]
         self.headP, self.headF = P, F
         self.head = BVHTree.FromPolygons([tuple(p) for p in P], keep)
         # the whole head with the ears (unsigned distances: the clearance checks near the ears), in its own space
@@ -446,6 +457,7 @@ def near_full(bvh, p, maxd):
 
 
 def ear_zone(p):
+    p = hl.org(p)
     return abs(p[0]) > 0.26 and -0.38 < p[1] < 0.12 and -0.02 < p[2] < 0.42
 
 
@@ -634,6 +646,19 @@ SEG2_Y = {"back": -0.80, "side": -0.80}  # and the second segment from here (the
 CHAINS = ["HairClump01", "HairClump02", "HairClump03", "HairClump04", "HairClump05", "HairClump06"]
 HAIRLINE_CARDS = True  # a ring of short sparse wispy cards rooted on the hairline (an irregular growing edge)
 HAIRFX = dict(stiff=0.3, mass=1.0, mass2=0.8)
+# the classic head (ref/classic): its ears sit further back round the head (the release behind them at ~70 deg from
+# the back), the hair falls straight from its vertical side walls (the jaw-line cone below the head's bottom
+# corner, as wide as the head), and the chains swing only from below the head
+CL = dict(yA=-0.45, rA_min=0.0, lock_x=0.53, tx=(0.36, 0.2), head_y=0.2, oh_y=-0.4, ear_band=(-0.35, 0.15, 0.2),
+          vol_band=(-0.08, -0.42, -0.84, -0.7), over_ear=(0.2, -0.06, 0.31, 0.02))
+if hl.CLASSIC:
+    AZ_EAR, LOCK_AZ = 70.0, 52.0
+    ANCHOR_Y = {"back": -0.52, "side": -0.55}
+    CL = dict(yA=-0.66, rA_min=0.64, lock_x=0.74, tx=(0.56, 0.18), head_y=0.62, oh_y=-0.62,
+              ear_band=(-0.25, 0.33, 0.42), vol_band=(-0.5, -0.68, -0.92, -0.8), over_ear=(0.42, -0.11, 0.29, 0.1))
+    for _L, _n in zip(LAYERS, (8, 13, 14, 13, 10)):
+        _L["n"] = _n  # (the larger head: ~1.1x the strands per layer, the cards a little wider)
+        _L["wmax"] = (_L["wmax"][0] * 1.12, _L["wmax"][1] * 1.06)
 SEG_OVERLAP = 0.05  # chain joints: segment 2 overlaps segment 1 by this much (no seam when they swing)
 
 
@@ -666,6 +691,8 @@ def release_point(f, side, rel):
     skull further under the occiput"""
     az = side * release_az(f)
     y = rel[0] + (rel[1] - rel[0]) * f
+    if hl.CLASSIC:
+        y = float(hl.unorg(np.array([0.3, y, 0.3]))[1])  # (the organic release heights, mapped)
     th = theta_at(az, lambda p: p[1] > y)
     return SK.point(th, az)
 
@@ -709,10 +736,11 @@ def scalp_path(f, side, layer, vol, rng, n=48):
                 th_i = theta_at(az[i], lambda q: style_edge(q[None])[0] >= margin, lo=0.02, hi=th[i])
                 p = SK.point(th_i, az[i])
             # above the ear: its box top + clearance + the card's half width (the card lies near vertical there)
-            if side * p[0] > 0.2 and -0.06 < p[2] < 0.31:
+            ox, oz0, oz1, oy = CL["over_ear"]
+            if side * p[0] > ox and oz0 < p[2] < oz1:
                 ytop = EARS[0][1][1] + EAR_CLEAR + hw * 0.9 + 0.012
-                k = smooth(0.31, 0.25, p[2]) * smooth(-0.06, 0.05, p[2])
-                ylim = 0.02 + (ytop - 0.02) * k
+                k = smooth(oz1, oz1 - 0.06, p[2]) * smooth(oz0, oz0 + 0.11, p[2])
+                ylim = oy + (ytop - oy) * k
                 if p[1] < ylim:
                     th_i = theta_at(az[i], lambda q: q[1] >= ylim, lo=0.02, hi=th[i])
                     p = SK.point(th_i, az[i])
@@ -728,11 +756,11 @@ def scalp_path(f, side, layer, vol, rng, n=48):
     ed = style_edge(P)
     base = 0.0225
     o_top, o_side = layer["off"]
-    yk = smooth(0.14, 0.5, P[:, 1])
+    yk = smooth(0.14, 0.5, hl.org(P)[:, 1])
     tgt = (o_side + (o_top - o_side) * yk) * vol
     # the sides gather in toward the ear (the hair tucks behind it): no shelf over the ear, a rounded silhouette
     sideness = smooth(0.55, 0.9, np.abs(P[:, 0]) / np.maximum(np.linalg.norm((P - C)[:, [0, 2]], axis=1), 1e-6))
-    tgt = tgt * (1 - 0.3 * smooth(0.3, 0.06, P[:, 1]) * sideness)
+    tgt = tgt * (1 - 0.3 * smooth(0.3, 0.06, hl.org(P)[:, 1]) * sideness)
     if layer.get("root") != "hairline":
         # the frontmost strands (the lower edge of every layer, over the temple and the ear) lie lower: the layers
         # thin out into the temple instead of ending in stacked shelves
@@ -842,7 +870,8 @@ def volume_push(P, gap):
     own volume holds it off the neck: a cone from behind the ears, not ropes on the neck)"""
     P = np.atleast_2d(P)
     y = P[:, 1]
-    g = np.asarray(gap) * smooth(-0.08, -0.42, y) * smooth(-0.84, -0.7, y)  # (below: the proxy trapezius, far wider than the torsos)
+    b0, b1, b2, b3 = CL["vol_band"]
+    g = np.asarray(gap) * smooth(b0, b1, y) * smooth(b2, b3, y)  # (below: the proxy trapezius, far wider than the torsos)
     r = np.hypot(P[:, 0], P[:, 2])
     az = np.arctan2(P[:, 0], P[:, 2])
     need = body_r(y, az) + g
@@ -929,11 +958,11 @@ def drape_path(st, body, phi, tx):
     Q = st.scalp[-1]
     TQ = unit(st.scalp[-1] - st.scalp[-3])
     bo = st.body_off
-    yA = -0.45
-    rA = float(body_r(yA, phi)) + st.gap
+    yA = CL["yA"]
+    rA = max(float(body_r(yA, phi)) + st.gap, CL["rA_min"] + 0.5 * st.gap)
     A = np.array([rA * math.sin(phi), yA, rA * math.cos(phi)])
     if st.lock:
-        A[0] = math.copysign(min(abs(A[0]), 0.53), A[0])
+        A[0] = math.copysign(min(abs(A[0]), CL["lock_x"]), A[0])
     # release -> the cone (leaving the head along the strand's own direction, turning down)
     seg1 = bezier(Q, Q + TQ * 0.09 + np.array([0, -0.03, 0]), A + np.array([0, 0.13, 0]), A, 16)
     pts = list(seg1)
@@ -992,7 +1021,7 @@ def hang_strands(strands, refs, cfg, log):
             ids.sort(key=lambda i: strands[i].az_rel)
             for r, i in enumerate(ids):
                 g = (r + 0.5) / max(1, len(ids))
-                tx[i] = 0.36 + 0.2 * (1 - g) + rs.uniform(-0.015, 0.015)
+                tx[i] = CL["tx"][0] + CL["tx"][1] * (1 - g) + rs.uniform(-0.015, 0.015)
     for i, st in enumerate(strands):
         a = st.az_rel
         if st.lock:
@@ -1028,8 +1057,8 @@ def collide_pts(P, off, body_off, refs, head=True):
     body_off = np.broadcast_to(np.asarray(body_off, dtype=np.float64), (len(P),))
     for idx in range(len(P)):
         p = P[idx]
-        if head and p[1] < 0.2:
-            oh = off[idx] if p[1] > -0.4 else min(off[idx], body_off[idx] + 0.01)
+        if head and p[1] < CL["head_y"]:
+            oh = off[idx] if p[1] > CL["oh_y"] else min(off[idx], body_off[idx] + 0.01)
             for ref in refs:
                 r = signed(ref.head, p, oh + 0.06)
                 if r is not None and r[2] < oh:
@@ -1039,7 +1068,7 @@ def collide_pts(P, off, body_off, refs, head=True):
                 r = signed(ref.torso, p, body_off[idx] + 0.06)
                 if r is not None and r[2] < body_off[idx]:
                     p = r[0] + r[1] * body_off[idx]
-        if -0.35 < p[1] < 0.15 and abs(p[0]) > 0.2:
+        if CL["ear_band"][0] < p[1] < CL["ear_band"][1] and abs(p[0]) > CL["ear_band"][2]:
             p = ear_push(p, EAR_CLEAR + 0.03)
         P[idx] = p
     return P
@@ -1547,16 +1576,17 @@ def enforce_clearance(P, refs, hang_mask):
     P = P.copy()
     # nothing on the forehead below the hairline
     # (the forehead: lifted to the hairline; beside the face, lower down: out to the side of the face)
-    fr = (P[:, 2] < -0.2) & (np.abs(P[:, 0]) < 0.3) & (P[:, 1] > 0.05)
+    Po = hl.org(P)
+    fr = (Po[:, 2] < -0.2) & (np.abs(Po[:, 0]) < 0.3) & (Po[:, 1] > 0.05)
     if fr.any():
         hy = hairline_y(P[fr]) - 0.003
         Q = P[fr]
         Q[:, 1] = np.maximum(Q[:, 1], hy)
         P[fr] = Q
-    fc = (P[:, 2] < -0.2) & (np.abs(P[:, 0]) < 0.3) & (P[:, 1] > -0.45) & (P[:, 1] <= 0.05)
+    fc = (Po[:, 2] < -0.2) & (np.abs(Po[:, 0]) < 0.3) & (Po[:, 1] > -0.45) & (Po[:, 1] <= 0.05)
     if fc.any():
-        P[fc, 0] = np.sign(P[fc, 0]) * 0.3
-    over = P[:, 1] > -0.42
+        P[fc, 0] = np.sign(P[fc, 0]) * (0.66 if hl.CLASSIC else 0.3)
+    over = P[:, 1] > (-0.62 if hl.CLASSIC else -0.42)
     P[over] = skull_push_v(P[over], CLEAR_MIN + 0.0005)
     ref_m, ref_f = refs
     sc = np.array([FIT_F["ax"], FIT_F["ay"], FIT_F["az"]])
@@ -1564,11 +1594,12 @@ def enforce_clearance(P, refs, hang_mask):
     for i in range(len(P)):
         p = P[i]
         if p[1] > -0.95:  # (every piece, the chains too, down the neck to the torso; below it the neck is buried)
+            # (the classic head reaches y -0.6: its full mesh checked down to there)
             r = signed(ref_m.head, p, CLEAR_MIN + 0.03)
             if r is not None and r[2] < CLEAR_MIN:
                 p = r[0] + r[1] * cm
             # the whole male head with its ears
-            r = near_full(ref_m.full, p, CLEAR_MIN + 0.02) if p[1] > -0.5 else None
+            r = near_full(ref_m.full, p, CLEAR_MIN + 0.02) if p[1] > HEAD_LOW else None
             if r is not None and r[0] < CLEAR_MIN:
                 p = p + r[1] * (cm - r[0])
             # the female head: forward (the hair carried onto it by the runtime fit, measured there) ...
@@ -1578,14 +1609,14 @@ def enforce_clearance(P, refs, hang_mask):
                 q2 = r[0] + r[1] * cm
                 p = p + (q2 - q) / sc
                 q = apply_fit(p, FIT_F)
-            r = near_full(ref_f.full, q, CLEAR_MIN + 0.02) if p[1] > -0.5 else None
+            r = near_full(ref_f.full, q, CLEAR_MIN + 0.02) if p[1] > HEAD_LOW else None
             if r is not None and r[0] < CLEAR_MIN:
                 p = p + r[1] * (cm - r[0]) / sc
             # ... and inverse (the female head carried back into nominal space)
-            r = near_full(ref_f.full_inv, p, CLEAR_MIN + 0.02) if p[1] > -0.5 else None
+            r = near_full(ref_f.full_inv, p, CLEAR_MIN + 0.02) if p[1] > HEAD_LOW else None
             if r is not None and r[0] < CLEAR_MIN:
                 p = p + r[1] * (cm - r[0])
-        if -0.35 < p[1] < 0.15 and abs(p[0]) > 0.2:
+        if CL["ear_band"][0] < p[1] < CL["ear_band"][1] and abs(p[0]) > CL["ear_band"][2]:
             p = ear_push(p, EAR_CLEAR)
         if p[1] < -0.45:
             for _k in range(4):
@@ -1860,15 +1891,16 @@ def clearance_report(pieces, refs):
         for lo, hi in EARS:
             dd = np.maximum(lo - P, P - hi)
             out["ear_box"] = min(out["ear_box"], float(np.max(dd, axis=1).min()))
-        fr = (P[:, 2] < -0.2) & (np.abs(P[:, 0]) < 0.3) & (P[:, 1] > -0.4)
+        Po = hl.org(P)
+        fr = (Po[:, 2] < -0.2) & (np.abs(Po[:, 0]) < 0.3) & (Po[:, 1] > -0.4)
         if fr.any():
             out["face_below_hairline"] += int((P[fr, 1] < hairline_y(P[fr]) - 0.005).sum())
-        out["face_below_hairline"] += int(((P[:, 2] < -0.2) & (np.abs(P[:, 0]) < 0.299) & (P[:, 1] > -0.45)
-                                           & (P[:, 1] <= 0.05)).sum())
+        out["face_below_hairline"] += int(((Po[:, 2] < -0.2) & (np.abs(Po[:, 0]) < 0.299) & (Po[:, 1] > -0.45)
+                                           & (Po[:, 1] <= 0.05)).sum())
         Pf = apply_fit(P, FIT_F)
         hm, thm = skull_height_v(SK, P)
         hn, thn = skull_height_v(SK, P / np.array([0.965, 1, 1]))
-        near = (hm < 0.12) & (P[:, 1] > -0.3) & (thm < 2.55)
+        near = (hm < 0.12) & (Po[:, 1] > -0.3) & (thm < 2.55)
         if near.any():
             out["skull_m"] = min(out["skull_m"], float(hm[near].min()))
             out["skull_m_narrow"] = min(out["skull_m_narrow"], float(hn[near].min()))
@@ -1881,18 +1913,18 @@ def clearance_report(pieces, refs):
                 out["head_m"] = min(out["head_m"], h)
                 if h < 0:
                     out["inside_m"] += 1
-                rr = near_full(ref_m.full, q, 0.3) if q[1] > -0.5 else None
+                rr = near_full(ref_m.full, q, 0.3) if q[1] > HEAD_LOW else None
                 if rr is not None:
                     out["head_m_ears"] = min(out["head_m_ears"], rr[0])
                 # the female head both ways: forward (hair through the fit, the whole head with ears) and inverse
                 # (the female head carried back into nominal space through the inverse fit)
                 hf = ref_f.height(qf)
-                rr = near_full(ref_f.full, qf, 0.3) if q[1] > -0.5 else None
+                rr = near_full(ref_f.full, qf, 0.3) if q[1] > HEAD_LOW else None
                 if rr is not None:
                     hf = min(hf, rr[0])
                 out["head_f_fit"] = min(out["head_f_fit"], hf)
-                rr = near_full(ref_f.full_inv, q, 0.3) if q[1] > -0.5 else signed(ref_f.full_inv, q, 0.3)
-                if rr is not None and q[1] <= -0.5:
+                rr = near_full(ref_f.full_inv, q, 0.3) if q[1] > HEAD_LOW else signed(ref_f.full_inv, q, 0.3)
+                if rr is not None and q[1] <= HEAD_LOW:
                     rr = (rr[2],)
                 if rr is not None:
                     out["head_f_inv"] = min(out["head_f_inv"], rr[0])

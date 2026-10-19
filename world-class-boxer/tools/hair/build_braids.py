@@ -181,7 +181,7 @@ def fit_of(skull_path):
     return dict(W=W, T=T, Fz=Fz, Bz=Bz)
 
 
-FIT0 = dict(W=0.383, T=0.591, Fz=-0.460, Bz=0.520)
+FIT0 = dict(hl.FIT0)
 
 
 def female_fit():
@@ -492,7 +492,7 @@ def fan_lanes(spec):
         if s > S[-1]:
             break
         p = at_s(ref, S, s)
-        if p[1] < spec.lane_ymin:
+        if hl.org(p)[1] < spec.lane_ymin:
             break
         for sg in ((1,) if k == 0 else (1, -1)):
             q = p * np.array([sg, 1, 1])
@@ -512,7 +512,7 @@ def leave_index(ln, i0, ny=-0.3):
     """where a braid running down lane ln from sample i0 leaves the scalp: the skull turns under (normal
     y below ny: -0.3 = pointing well down) or it reaches the nape hairline"""
     for i in range(i0, len(ln.P)):
-        if ln.S[i] - ln.S[i0] > 0.05 and (ln.N[i][1] < ny or ln.P[i][1] < -0.25):
+        if ln.S[i] - ln.S[i0] > 0.05 and (ln.N[i][1] < ny or hl.org(ln.P[i])[1] < -0.25):
             return i
     return len(ln.P) - 1
 
@@ -524,12 +524,15 @@ def front_roots(spec):
     if n <= 0:
         return out
     ys = np.linspace(0.13, 0.0, n) if n > 1 else [0.09]
+    if hl.CLASSIC:
+        ys = [float(hl.unorg(np.array([0.3, y, -0.1]))[1]) for y in ys]  # (the organic sideburn heights, mapped)
+    xs, z0 = (0.6, -0.35) if hl.CLASSIC else (0.38, -0.2)
     for sx in (1, -1):
         for y in ys:
             zmax = EAR_FRONT - EAR_CLEAR - spec.r - 0.006
             best = None
-            for z in np.linspace(-0.2, zmax, 60):
-                p, _n = on_scalp(np.array([sx * 0.38, y, z]) - C + C, 0)
+            for z in np.linspace(z0, zmax, 60):
+                p, _n = on_scalp(np.array([sx * xs, y, z]) - C + C, 0)
                 d = hair_inside(p)[0]
                 if d > 0.012 + 0.3 * spec.r:
                     best = p if best is None or p[2] < best[2] else best
@@ -568,7 +571,7 @@ def trace_front(root, spec, r):
         q, n = on_scalp(q, 0)
         pts.append(q)
         p = q
-        if p[1] < -0.1:
+        if hl.org(p)[1] < -0.1:
             break
     return resample(np.array(pts), 0.01)
 
@@ -617,7 +620,8 @@ def layout_braids(spec, rng):
             if s > ln.S[-1] - 0.05:
                 break
             q = at_s(ln.P, ln.S, s)
-            if q[1] < spec.root_ymin and abs(q[0]) < 0.2:
+            qo = hl.org(q)
+            if qo[1] < spec.root_ymin and abs(qo[0]) < 0.2:
                 continue  # (low on the back: covered by the braids hanging over it; they would pile up)
             cands.append((row, abs(k), k, s))
     cands.sort()
@@ -638,7 +642,8 @@ def layout_braids(spec, rng):
         P = np.concatenate([[b.root], ln.P[i0:i1 + 1]])
         b.surf = P if len(P) > 2 else ln.P[max(0, i1 - 2):i1 + 1]
         b.behind_ear = False
-        if spec.ear_route and abs(b.surf[-1][0]) > 0.3 and b.surf[-1][2] < z_pass(b.r) and b.surf[-1][1] > -0.1:
+        eo = hl.org(b.surf[-1])
+        if spec.ear_route and abs(eo[0]) > 0.3 and b.surf[-1][2] < z_pass(b.r) and eo[1] > -0.1:
             # (a braid whose lane ends over the ear: routed on back over the top of the ear to behind it, where it
             # hangs straight down; it would otherwise fall in front of the ear and slant across the neck)
             b.surf = np.concatenate([b.surf, ear_route(b.surf[-1], b.r)])
@@ -882,7 +887,8 @@ def hang_all(braids, spec, colliders):
                 tang = np.array([math.cos(phi), 0.0, -math.sin(phi)])
                 t = unit(t + tang * e * 0.35 * wgt)
             q = p + t * ds
-            if spec.hug_side and b.cls != "front" and abs(q[0]) > 0.25 and q[2] < 0.45 and q[1] > -0.2:
+            qo = hl.org(q)
+            if spec.hug_side and b.cls != "front" and abs(qo[0]) > 0.25 and qo[2] < 0.45 and qo[1] > -0.2:
                 # (behind the ears, down to the nape: the braid lies on the scalp instead of falling straight off
                 # the side of the head, so no bare scalp shows between the ear and the curtain)
                 th_, az_ = SK.angles(q - C)
@@ -1199,7 +1205,7 @@ def make_pads(spec, lanes, braids):
     # roots just inside the pad edge, tips forward over it
     for k in sorted(lanes):
         ln = lanes[k]
-        if ln.P[0][2] > -0.18:
+        if hl.org(ln.P[0])[2] > -0.18:
             continue
         q0, nn = on_scalp(ln.P[0], 0)
         t0 = unit(ln.P[3] - ln.P[0])
@@ -1717,7 +1723,16 @@ def colliders_for(head="m"):
 
 # ------------------------------------------------------------------------------------------- cornrows
 CORN = dict(n=10, axis=1.5, tan_max=0.205, width=0.06, ridge=0.0065, base=0.0015, arch=0.35, v_tile=0.15, across=9,
-            seed=31, ext=(0.0, 0.012), re=0.022)
+            seed=31, ext=(0.0, 0.012), re=0.022, y_full=0.32)
+if hl.CLASSIC:
+    # the classic head's flat top is as wide as the head (x +-0.6 down the walls): the outer rows' planes reach the
+    # side walls down to the hairline over the ear (tan 0.345 at the axis 1.5 under the head), 14 rows ~0.1 apart
+    CORN.update(n=14, tan_max=0.345, width=0.07, y_full=0.4, across=7)
+    # the box partings and lanes ~1.2x wider on the larger scalp (the braid counts and budgets near v7's)
+    BRAIDS.box, BRAIDS.lane, BRAIDS.r = 0.32, 0.125, 0.052
+    # (to the shoulders: the classic head's bottom is at -0.6, the organic chin was at -0.5)
+    BRAIDS.length_y, BRAIDS.front_y_end = (-1.0, -1.12), -0.95
+    BOX.box, BOX.lane, BOX.r = 0.16, 0.082, 0.023
 # (ridge: the row's centre above its edges, base: the edges above CLEAR (skull table), arch: the section's exponent,
 # lower = flatter top; ext: how far each row runs on past the nape hairline cut; re: the rounded tuck's radius)
 
@@ -1792,6 +1807,8 @@ def build_cornrows(spec, colliders):
     for i in range(n):
         tp = -spec["tan_max"] + 2 * spec["tan_max"] * i / (n - 1)
         P, ext = row_path(tp, spec, float(erng.uniform(*spec["ext"])))
+        if len(P) < 8:
+            continue  # (a plane that only grazes the hair region: no row)
         rows.append((tp, P, ext))
     A = spec["axis"]
     k = spec["across"]
@@ -1810,7 +1827,7 @@ def build_cornrows(spec, colliders):
             t = Pc[min(j + 1, len(Pc) - 1)] - Pc[max(j - 1, 0)]
             t = unit(t - nn * np.dot(t, nn))
             side = unit(np.cross(t, nn))
-            w = spec["width"] * min(1.0, (p[1] + A) / (0.32 + A)) ** 1.5
+            w = spec["width"] * min(1.0, (p[1] + A) / (spec["y_full"] + A)) ** 1.5
             w *= 0.35 + 0.65 * float(smooth(0.0, 0.04, s))  # starts at a point on the hairline
             w *= 1 - 0.35 * float(smooth(L - ext - 0.04, L - 0.005, s))  # the tuck narrows
             # the nape tuck: a rounded end (half a disc of radius RE), not a point
@@ -1841,7 +1858,7 @@ def build_cornrows(spec, colliders):
         t0 = unit(P[4] - P[0])
         t0 = unit(t0 - nn * np.dot(t0, nn))
         side = unit(np.cross(t0, nn))
-        w0 = spec["width"] * min(1.0, (P[0][1] + A) / (0.32 + A)) ** 1.5
+        w0 = spec["width"] * min(1.0, (P[0][1] + A) / (spec["y_full"] + A)) ** 1.5
         for kk in (-1.5, -0.5, 0.5, 1.5):
             ang = kk * rng.uniform(0.18, 0.3)
             dirn = unit(-t0 * math.cos(ang) + side * math.sin(ang))  # root -> tip: forward and a little out

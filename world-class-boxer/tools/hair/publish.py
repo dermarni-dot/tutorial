@@ -280,7 +280,10 @@ def main():
 
     if args.no_manifest:
         return
-    with open(os.path.join(HERE, "ref", "skull.json")) as f:
+    # the reference the meshes are modelled on (hairlib.REF): the classic head (v9: ref/classic, fit0 with shape
+    # "classic": HairAssetKit's fit is then the identity on a classic head) unless HAIR_REF=organic (v7: ref/)
+    ref = os.path.join(HERE, "ref") if os.environ.get("HAIR_REF") == "organic" else os.path.join(HERE, "ref", "classic")
+    with open(os.path.join(ref, "skull.json")) as f:
         fit0 = json.load(f).get("fit0")
     # the default male skull's four fit extents, measured on the game's field (CONTRACT.md)
     fit0 = fit0 or {"W": 0.383, "T": 0.591, "Fz": -0.460, "Bz": 0.520}

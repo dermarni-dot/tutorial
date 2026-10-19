@@ -41,19 +41,20 @@ do
 	check("male T = fit0", near(T, HK.FIT0.T, 0.002), T)
 	check("male Fz = fit0", near(Fz, HK.FIT0.Fz, 0.002), Fz)
 	check("male Bz = fit0", near(Bz, HK.FIT0.Bz, 0.002), Bz)
-	local f = HK.Fit(S, Data.fit0)
+	-- (the organic skull against the organic fit0: the v7 meshes' reference)
+	local f = HK.Fit(S, HK.FIT0)
 	check("male fit ~ identity", near(f.ax, 1, 0.006) and near(f.ay, 1, 0.006) and near(f.az, 1, 0.006) and near(f.dz, 0, 0.003),
 		string.format("%.3f %.3f %.3f %.3f", f.ax, f.ay, f.az, f.dz))
 
-	local fem = HK.Fit(Kit.Scalp(look(2)), Data.fit0)
+	local fem = HK.Fit(Kit.Scalp(look(2)), HK.FIT0)
 	print(string.format("female default ax %.3f ay %.3f az %.3f dz %.3f", fem.ax, fem.ay, fem.az, fem.dz))
 	check("female ax ~0.965", near(fem.ax, 0.965, 0.01), fem.ax)
 	check("female ay ~0.99", near(fem.ay, 0.99, 0.01), fem.ay)
 	check("female az ~0.995", near(fem.az, 0.995, 0.01), fem.az)
 	check("female dz ~-0.004", near(fem.dz, -0.004, 0.004), fem.dz)
 
-	local big = HK.Fit(Kit.Scalp(look(1, nil, { skullWidth = 1, skullLength = 1, crown = 1, forehead = 1 })), Data.fit0)
-	local small = HK.Fit(Kit.Scalp(look(2, nil, { skullWidth = -1, skullLength = -1, crown = -1, forehead = -1 })), Data.fit0)
+	local big = HK.Fit(Kit.Scalp(look(1, nil, { skullWidth = 1, skullLength = 1, crown = 1, forehead = 1 })), HK.FIT0)
+	local small = HK.Fit(Kit.Scalp(look(2, nil, { skullWidth = -1, skullLength = -1, crown = -1, forehead = -1 })), HK.FIT0)
 	print(string.format("male max      ax %.3f ay %.3f az %.3f dz %.3f", big.ax, big.ay, big.az, big.dz))
 	print(string.format("female min    ax %.3f ay %.3f az %.3f dz %.3f", small.ax, small.ay, small.az, small.dz))
 	check("male max fit range", near(big.ax, 1.05, 0.015) and near(big.ay, 1.03, 0.015) and near(big.az, 1.04, 0.015) and near(big.dz, 0.007, 0.005))
@@ -76,6 +77,51 @@ do
 end
 
 ------------------------------------------------------------------------
+-- the classic head (v9: the meshes modelled on it, data.fit0.shape = "classic")
+------------------------------------------------------------------------
+do
+	local lk = look(1, nil, nil, { headShape = "classic" })
+	local S = Kit.Scalp(lk)
+	local W, T, Fz, Bz = HK.Measure(S)
+	check("classic extents = FIT0_CLASSIC", near(W, HK.FIT0_CLASSIC.W, 0.002) and near(T, HK.FIT0_CLASSIC.T, 0.002)
+		and near(Fz, HK.FIT0_CLASSIC.Fz, 0.002) and near(Bz, HK.FIT0_CLASSIC.Bz, 0.002))
+	local f = HK.Fit(S, HK.FIT0_CLASSIC)
+	check("classic fit0: identity", near(f.ax, 1, 0.003) and near(f.ay, 1, 0.003) and near(f.az, 1, 0.003) and near(f.dz, 0, 0.002)
+		and f.dy == 0, string.format("%.3f %.3f %.3f %.3f %.3f", f.ax, f.ay, f.az, f.dz, f.dy))
+	local fem = HK.Fit(Kit.Scalp(look(2, nil, nil, { headShape = "classic" })), HK.FIT0_CLASSIC)
+	check("classic fit0: the female classic head too", near(fem.ax, 1, 0.003) and near(fem.az, 1, 0.003) and fem.dy == 0)
+	-- the v7 manifest (organic fit0) keeps today's stopgap on the classic head
+	local legacy = HK.Fit(S, HK.FIT0)
+	check("organic fit0 on the classic head: CLASSIC_FIT", near(legacy.dy, HK.CLASSIC_FIT.dy, 1e-9)
+		and near(legacy.ax, W / HK.FIT0.W * HK.CLASSIC_FIT.kx, 1e-6))
+	-- the classic hairline: above the built face's brows (browY 0.276, the highest brows' top 0.371), round the ear
+	local dist, height = Kit.Hairline(S, "Natural", 0)
+	check("classic hairline front ~0.42", near(height(0), 0.421, 0.02), height(0))
+	check("classic hairline over the ear above the ear top (0.2)", height(1.57) > 0.23, height(1.57))
+	check("classic hairline nape -0.3", near(height(math.pi), -0.3, 0.01), height(math.pi))
+	check("classic front hairline above the highest brows", height(0) - 0.04 > 0.371 - 0.03, height(0))
+	-- the cap's texels on a classic fit0 are read on the classic head (its own polar UV, rays from its centre)
+	local cov = HK.CapCoverage(lk, "full", { cut = "full" })
+	local pal = HK.Palette(lk, "Kinky")
+	local gw, gh, thMax = 24, 12, 2.27
+	local grid = HK.CapGrid(S, cov, pal, thMax, gw, gh, f)
+	local ok, worst = true, 0
+	for j = 0, gh - 1 do
+		for i = 0, gw - 1 do
+			local th, az = (j + 0.5) / gh * thMax, (i + 0.5) / gw * math.pi * 2
+			local x, y, z = S.ray(math.sin(th) * math.sin(az), math.cos(th), math.sin(th) * math.cos(az), 0.02)
+			local px, py, pz = S.onto(x, y, z, 0)
+			local c = math.clamp(cov(px, py, pz), 0, 1)
+			worst = math.max(worst, math.abs(grid.c[i + j * gw + 1] - c))
+			if math.abs(grid.c[i + j * gw + 1] - c) > 0.05 then
+				ok = false
+			end
+		end
+	end
+	check("classic cap grid samples the classic head's polar UV", ok, worst)
+end
+
+------------------------------------------------------------------------
 -- length / volume factors
 ------------------------------------------------------------------------
 do
@@ -93,7 +139,7 @@ end
 -- placement of sample pieces
 ------------------------------------------------------------------------
 local fakeData = {
-	fit0 = Data.fit0,
+	fit0 = HK.FIT0,
 	textures = { short = { id = 11, size = 256, tile = true }, straight = { id = 12, size = 1024 }, coily = { id = 13, size = 1024 },
 		braid = { id = 14, size = 1024 }, cornrow = { id = 15, size = 1024 } },
 	cap = { mesh = 20, bbox = { 0, 0.2, 0.03, 0.82, 0.86, 1.02 }, thetaMax = 2.2, tile = { 8, 4 }, points = {} },
@@ -493,7 +539,7 @@ end
 do
 	local lk = look(2, { style = "High Fade", type = "Straight", hairline = "Line-Up" }, { skullWidth = -1, skullLength = -1, crown = -1, forehead = -1 })
 	local cov, S = HK.CapCoverage(lk, "full", { cut = "style" })
-	local fit = HK.Fit(S, Data.fit0)
+	local fit = HK.Fit(S, HK.FIT0)
 	local pal = HK.Palette(lk, "Straight")
 	local gw, gh = 48, 24
 	local grid = HK.CapGrid(S, cov, pal, 2.2, gw, gh, fit)
@@ -796,7 +842,11 @@ do
 			nIds += 1
 		end
 		print(string.format("local manifest: %d entries, %d fake ids", #real.entries, nIds))
-		check("cap from out/cap", real.cap and real.cap.thetaMax and math.abs(real.cap.thetaMax - 2.58309) < 1e-4
+		-- (v9: modelled on the classic head, its cap to 130 deg from its centre; v7: the organic skull's, 148 deg)
+		local classicData = type(real.fit0) == "table" and real.fit0.shape == "classic"
+		local headX = classicData and { headShape = "classic" } or nil
+		check("cap from out/cap", real.cap and real.cap.thetaMax
+			and math.abs(real.cap.thetaMax - (classicData and 2.26893 or 2.58309)) < 1e-4
 			and real.cap.tiles and real.cap.tiles.Kinky == "shortcoil" and HK.Id(real.cap.mesh) ~= nil)
 		check("tiles flagged", real.textures.short.tile and real.textures.shortcoil.tile and real.textures.waves.tile
 			and not real.textures.crop.tile)
@@ -864,7 +914,7 @@ do
 			local worstIn, edgeMoved = math.huge, 0
 			for _, hair in ipairs({ { length = 0, volume = -1 }, { length = 0.5, volume = 0 }, { length = 1, growth = 1.5, volume = 1 } }) do
 				hair.style, hair.type = e.styles[1], (e.types and e.types[1]) or "Kinky"
-				local lk = look(1, hair)
+				local lk = look(1, hair, nil, headX)
 				local S = Kit.Scalp(lk)
 				local fit = HK.Fit(S, real.fit0)
 				local placed = HK.Place(real, e, lk, S, fit)

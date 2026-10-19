@@ -382,6 +382,7 @@ SK = hl.Skull()
 C = SK.c.copy()
 SKD = SK.data
 DOWN = np.array([0.0, -1.0, 0.0])
+R_MEAN = hl.mean_radius(SK) if hl.CLASSIC else 0.47  # the skull's mean radius (box partings, the scalp grid)
 
 
 def smooth(e0, e1, x):
@@ -429,10 +430,21 @@ class Ref:
         ears = [(np.array(e["min"]) - 0.012, np.array(e["max"]) + 0.012)
                 for e in ((sk or SKD)["ears"][s] for s in ("left", "right"))]
         keep = []
+        on_head = None
+        if hl.CLASSIC:
+            # the classic head: the ears are their own shells off the head's wall; only those are dropped (the
+            # wall under them stays: no hole in the collider)
+            Cc = SKD.get("classic") or {"r": 0.6, "h": 0.6, "round": 0.24}
+            qx = np.sqrt(P[:, 0] ** 2 + P[:, 2] ** 2) - (Cc["r"] - Cc["round"])
+            qy = np.abs(P[:, 1]) - (Cc["h"] - Cc["round"])
+            sd = (np.sqrt(np.maximum(qx, 0) ** 2 + np.maximum(qy, 0) ** 2) + np.minimum(np.maximum(qx, qy), 0)
+                  - Cc["round"])
+            on_head = np.abs(sd) < 1e-3
         for tri in F:
             q = P[list(tri)]
             if any(np.all((q > lo) & (q < hi)) for lo, hi in ears):
-                continue
+                if on_head is None or not on_head[list(tri)].all():
+                    continue
             keep.append(tri)
         self.headF_noear = keep
         self.head = BVHTree.FromPolygons([tuple(p) for p in P], keep)
@@ -594,7 +606,7 @@ def hairline_row(spacing, margin, rng, jitter=0.15):
     sarc = np.concatenate([[0], np.cumsum(seg)])
     n = int(round(sarc[-1] / spacing))
     out = []
-    crown = np.array([0.0, 0.62, 0.05])
+    crown = SK.point(0.0, 0.0, 0.0) + np.array([0, 0.01, 0.0]) if hl.CLASSIC else np.array([0.0, 0.62, 0.05])
     for k in range(n):
         t = (k + 0.5 + rng.uniform(-jitter, jitter)) * sarc[-1] / n
         p = np.array([np.interp(t, sarc, P[:, j]) for j in range(3)])
@@ -634,7 +646,7 @@ def box_roots(spacing, margin, seed, jitter=0.2, region=None, edge_spacing=None,
     if region is not None:
         edge = [r for r in edge if region(r["p"], r["e"])]
     Rm = _rot_from_y(pole) if pole is not None else np.eye(3)
-    r0 = 0.47
+    r0 = R_MEAN
     dth = spacing / r0
     out = []
 
@@ -685,9 +697,12 @@ def sideburn_roots(seed, ys, inset=0.5):
     out = []
     for side in ("right", "left"):
         E = np.array([e[:4] for e in ln[side] if e and len(e) >= 4], dtype=np.float64)
-        fr = E[(E[:, 0] >= 1.18) & (E[:, 0] <= 1.30)]  # front edge, y falling
-        bk = E[(E[:, 0] >= 1.30) & (E[:, 0] <= 1.80)]  # back edge, y rising, then over the ear
+        a0, a1, a2 = (1.16, 1.27, 1.8) if hl.CLASSIC else (1.18, 1.30, 1.80)
+        fr = E[(E[:, 0] >= a0) & (E[:, 0] <= a1)]  # front edge, y falling
+        bk = E[(E[:, 0] >= a1) & (E[:, 0] <= a2)]  # back edge, y rising, then over the ear
         for y in ys:
+            if hl.CLASSIC:
+                y = float(hl.unorg(np.array([0.3, y, -0.1]))[1])  # (the organic sideburn heights, mapped)
             zf = float(np.interp(-y, -fr[:, 2], fr[:, 3]))
             xf = float(np.interp(-y, -fr[:, 2], fr[:, 1]))
             if y <= bk[:, 2].max():
@@ -706,6 +721,7 @@ def sideburn_roots(seed, ys, inset=0.5):
 # ------------------------------------------------------------------------------------------- guides
 def in_ear_zone(p, rad):
     """beside or just above an ear, in front of its back edge: hanging hair must not drop here"""
+    p = hl.org(p)
     return abs(p[0]) > 0.18 and p[1] < 0.17 and p[2] < 0.25 + rad and p[1] > -0.4
 
 
@@ -729,7 +745,7 @@ def scalp_walk(root, heading, step, offs, n_max, y_tip, lift, drop=True, rad=0.0
             h = heading(sp, n)
             # the hair leaves the head where the scalp turns to face downward (past its widest point), only
             # behind the ears (never on the front half, never beside an ear)
-            if drop and n[1] < -0.1 and sp[2] > 0.2 and not in_ear_zone(sp, rad):
+            if drop and n[1] < -0.1 and hl.org(sp)[2] > 0.2 and not in_ear_zone(sp, rad):
                 scalp_len = s
                 continue
             q = p + h * step
@@ -1131,6 +1147,7 @@ def heading_hanging(back_front=1.7, side=0.1):
     target = np.array([0.0, 0.66, 0.38])
 
     def f(p, n):
+        p = hl.org(p)
         z = p[2]
         wf = float(smooth(0.05, -0.32, z)) * float(smooth(0.05, 0.25, p[1]))
         out = np.array([p[0], 0.0, 0.0])
@@ -1150,6 +1167,16 @@ def heading_hanging(back_front=1.7, side=0.1):
 
 def guard_hanging(p, rad):
     """keep hanging hair off the forehead and the face"""
+    if hl.CLASSIC:
+        # (the classic head's flat face: nothing in front of it, x within the brows' outer ends 0.5, below the
+        # hairline)
+        if p[2] < -0.12 and abs(p[0]) < 0.5 and -0.8 < p[1] < 0.32:
+            p = p.copy()
+            p[0] = math.copysign(0.5, p[0] if p[0] != 0 else 1.0)
+        if p[2] < -0.3 and p[1] < float(hairline_y(p)[0]) + 0.012 and p[1] > -0.25:
+            p = p.copy()
+            p[1] = float(hairline_y(p)[0]) + 0.012
+        return p
     if p[2] < -0.05 and abs(p[0]) < 0.42 and -0.6 < p[1] < 0.2 and abs(p[0]) < 0.3 + 0.2 * (p[2] + 0.05):
         p = p.copy()  # in front of the face: out to the side
         p[0] = math.copysign(0.3 + 0.2 * (p[2] + 0.05), p[0])
@@ -1168,13 +1195,14 @@ def guard_short(p, rad):
             p = p.copy()
             p[1] = hy
     h = SK.height(p)
-    hmax = 0.07 + 0.08 * float(smooth(0.25, 0.5, p[1]))
+    hmax = 0.07 + 0.08 * float(smooth(0.25, 0.5, hl.org(p)[1]))
     if h > hmax:
         d = p - C
         p = C + d * (1 - (h - hmax) / float(np.linalg.norm(d)))
-    if abs(p[0]) > 0.45:
+    xmax = 0.72 if hl.CLASSIC else 0.45  # (about 1.2 x the head's half width: the silhouette)
+    if abs(p[0]) > xmax:
         p = p.copy()
-        p[0] = math.copysign(0.45, p[0])
+        p[0] = math.copysign(xmax, p[0])
     return p
 
 
@@ -1213,6 +1241,14 @@ STYLES = {
 }
 
 
+if hl.CLASSIC:
+    # the classic head has ~1.9x the organic scalp's area: sections ~1.15-1.2x wider and locs a little thicker
+    # keep the loc counts (and the triangle budgets) near the v7 ones
+    for _k, _u in (("dreadlocks", dict(spacing=0.19, R=0.04, fill=8, fill2=12)),
+                   ("twists", dict(spacing=0.22, R=0.048, fill=6, fill2=8)),
+                   ("short_dreads", dict(spacing=0.132, R=0.03, fill=36, fill2=28, fill3=20))):
+        STYLES[_k].update(_u)
+
 _SCALP_GRID = None
 
 
@@ -1221,10 +1257,10 @@ def scalp_grid(step=0.028, e_min=0.035):
     global _SCALP_GRID
     if _SCALP_GRID is None:
         P, Nn = [], []
-        for th in np.arange(0.0, 2.3, step / 0.47):
-            n_az = max(1, int(round(TAU * 0.47 * math.sin(th) / step)))
+        for th in np.arange(0.0, 2.3, step / R_MEAN):
+            n_az = max(1, int(round(TAU * R_MEAN * math.sin(th) / step)))
             for j in range(n_az):
-                az = (j + 0.5 * (int(th / (step / 0.47)) % 2)) * TAU / n_az
+                az = (j + 0.5 * (int(th / (step / R_MEAN)) % 2)) * TAU / n_az
                 P.append(SK.point(th, az))
                 Nn.append(SK.normal(th, az))
         P, Nn = np.array(P), np.array(Nn)
@@ -1332,7 +1368,7 @@ def build_guides_hanging(cfg, ref, log):
     root_len = 0.05
 
     def make(r, rot=None, head_fn=None):
-        q = r["p"]
+        q = hl.org(r["p"])
         if abs(q[0]) > 0.28 and q[1] < 0.13 and q[2] < 0.07 and not r.get("sideburn"):
             return None  # low on the sideburn, in front of the ear: a hanging loc from here would cross the ear
         R = cfg["R"] * float(np.clip(1 + cfg["rvar"] * rng.normal(), 0.72, 1.35))
@@ -1340,7 +1376,7 @@ def build_guides_hanging(cfg, ref, log):
             R *= float(rng.uniform(0.6, 0.85))  # the hairline row: finer locs, uneven
         if r.get("sideburn"):
             R *= 0.9
-        sp = r["p"]
+        sp = hl.org(r["p"])  # (zone tests in the organic skull's terms)
         # the hairline row lies down from the root (within ~10 degrees of the scalp), the rest lift a little
         lift = 0.05 if r.get("edge") else (cfg["lift"] if r["e"] > 0.14 else 0.1)
         # front and side locs are a little shorter (they frame the face), back ones longest; ~14% of the top
@@ -1482,11 +1518,13 @@ def _snoise(p, seed):
 
 def side_zone(p):
     """the temples, the strip over the ears and just behind them (short, fine locs lying back over the ear)"""
+    p = hl.org(p)
     return abs(p[0]) > 0.22 and p[1] < 0.3 and -0.36 < p[2] < 0.24
 
 
 def front_w(p):
     """the front of the head above the forehead (the fringe zone), 0..1"""
+    p = hl.org(p)
     return float(smooth(-0.12, -0.28, p[2])) * (1 - float(smooth(0.2, 0.3, abs(p[0]))))
 
 
@@ -1504,15 +1542,16 @@ def short_flow(p, n, rot=0.0, back=False, fringe=0.0):
     # a spiral round the whorl (the crown locs wrap round it and cover it), radial further out
     near = 1 - float(smooth(0.1, 0.36, float(np.linalg.norm(p - w))))
     f = unit(rad * (1 - 0.9 * near) + sw * (0.2 + 1.3 * near))
+    po = hl.org(p)
     if back:
-        f = unit(-rad + 0.5 * unit(np.array([p[0], 0.0, 0.0]) + 1e-9) * float(smooth(0.05, 0.25, abs(p[0]))))
+        f = unit(-rad + 0.5 * unit(np.array([p[0], 0.0, 0.0]) + 1e-9) * float(smooth(0.05, 0.25, abs(po[0]))))
     elif side_zone(p):
-        k = float(smooth(0.22, 0.3, abs(p[0])))
+        k = float(smooth(0.22, 0.3, abs(po[0])))
         f = unit(f * (1 - k) + np.array([0.0, -0.35, 1.0]) * k)
     wf = fringe * front_w(p)
     if wf > 0:
         # the fringe: forward off the hairline and a little down, splaying out to the sides
-        ff = np.array([math.copysign(0.45 * float(smooth(0.03, 0.25, abs(p[0]))), p[0]), -0.6, -1.0])
+        ff = np.array([math.copysign(0.45 * float(smooth(0.03, 0.25, abs(po[0]))), p[0]), -0.6, -1.0])
         f = unit(f * (1 - wf) + unit(ff) * wf)
     a = math.radians(25) * _snoise(p, 0.0) * (1 - 0.6 * wf) + rot
     f = tproj(f, n)
@@ -1603,9 +1642,10 @@ def build_guides_short(cfg, ref, log):
 
     def make(r):
         sp = r["p"]
+        spo = hl.org(sp)
         R = cfg["R"] * float(np.clip(1 + cfg["rvar"] * rng.normal(), 0.7, 1.35))
-        top = float(smooth(0.3, 0.55, sp[1]))
-        front = float(smooth(-0.1, -0.35, sp[2]))
+        top = float(smooth(0.3, 0.55, spo[1]))
+        front = float(smooth(-0.1, -0.35, spo[2]))
         # lengths 0.3..0.6 (median ~0.4), a little shorter toward the front; uneven
         L = (0.3 + 0.22 * float(rng.beta(2.0, 2.2))) * (1.0 + 0.12 * top) * (1 - 0.12 * front) \
             * (0.85 + 0.3 * r["rnd"])
@@ -1678,7 +1718,7 @@ def build_guides_short(cfg, ref, log):
         sides = cfg["sides"]
         if r.get("side") or r.get("sideburn") or (r.get("edge") and side_zone(sp)):
             sides = 5
-        elif sp[2] > -0.05:
+        elif spo[2] > -0.05:
             sides = 6  # behind the front half: seen from further away
         return dict(root=r, R=R, P=Pm, L=L2, layer=0.0, scalp_len=0.0, root_len=rl, root_k=rk, halo=halo,
                     tip_r=tip_r, sides=sides, true_r=True)
@@ -1835,7 +1875,7 @@ def split_short(cfg, locs):
         lc["D"], lc["S"], lc["L"] = D, S, S[-1]
         lc["sA"] = None
         r = lc["root"]["p"]
-        if r[1] > 0.4:
+        if hl.org(r)[1] > 0.4:
             az = math.atan2(r[0], r[2] - C[2]) % TAU
             lc["cluster"] = int(az / TAU * K) % K
 
@@ -1918,7 +1958,8 @@ def enforce_clearance(P, N, ref, minh, body_min=0.0):
             r = Ref.signed(ref.torso, q, body_min + 0.01)
             if r is not None and r[2] < body_min:
                 q = r[0] + r[1] * (body_min + 0.0005)
-        if q[2] < -0.2 and abs(q[0]) < 0.32 and q[1] > -0.4:  # nothing on the forehead below the hairline
+        qo = hl.org(q)
+        if qo[2] < -0.2 and abs(qo[0]) < 0.32 and qo[1] > -0.4:  # nothing on the forehead below the hairline
             hy = float(hairline_y(q)[0]) - 0.003
             if q[1] < hy:
                 q = q.copy()
@@ -2273,7 +2314,7 @@ def fit_of(skull_path):
 
 
 def female_fit():
-    fm = dict(W=0.383, T=0.591, Fz=-0.460, Bz=0.520)
+    fm = dict(hl.FIT0)
     path = os.path.join(REF, "skull_f.json")
     if not os.path.exists(path):
         return dict(ax=0.965, ay=1.0, az=1.0, dz=0.0), None
@@ -2294,7 +2335,8 @@ def clearance_report(pieces, ref_m, ref_f, fit_f, skull_f_path):
         for lo, hi in EARS:
             dd = np.maximum(lo - P, P - hi)
             out["ear_box"] = min(out["ear_box"], float(np.max(dd, axis=1).min()))
-        fr = (P[:, 2] < -0.2) & (np.abs(P[:, 0]) < 0.3) & (P[:, 1] > -0.4)
+        Po = hl.org(P)
+        fr = (Po[:, 2] < -0.2) & (np.abs(Po[:, 0]) < 0.3) & (Po[:, 1] > -0.4)
         if fr.any():
             out["face_below_hairline"] += int((P[fr, 1] < hairline_y(P[fr]) - 0.005).sum())
         Pf = P * [fit_f["ax"], fit_f["ay"], fit_f["az"]] + [0, 0, fit_f["dz"]]

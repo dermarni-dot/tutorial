@@ -2,13 +2,26 @@
 -- head every boxer has now (look.headShape = "classic", AnatomyHairKit.CLASSIC). For every HairAssetData entry it
 -- places the pieces exactly as the client does (Kit.Scalp -> HK.Fit -> HK.Place) and measures each piece's
 -- point cloud against the classic head's surface (nominal studs: < 0 inside the head = clipping, > 0 above it).
---   lune run tools/sim/fit_classic_hair.luau [--organic]   (--organic: the same numbers on the old skull)
+--   lune run tools/sim/fit_classic_hair.luau [--organic] [--data FILE]
+--   (--organic: the same numbers on the old skull; --data: another manifest, e.g. publish.py --local's
+--   /tmp/claude-0/HairAssetData_local.lua with the v9 meshes before they are uploaded)
 local Host = require("./host")
 local process = require("@lune/process")
+local fs = require("@lune/fs")
+local luau = require("@lune/luau")
 local H = Host.new()
 local HK = H.require("HairAssetKit")
 local Kit = H.require("AnatomyHairKit")
-local Data = H.require("HairAssetData")
+local Data
+do
+	local i = table.find(process.args, "--data")
+	if i and process.args[i + 1] then
+		Data = luau.load(fs.readFile(process.args[i + 1]))()
+		print("manifest: " .. process.args[i + 1])
+	else
+		Data = H.require("HairAssetData")
+	end
+end
 
 local organic = table.find(process.args, "--organic") ~= nil
 

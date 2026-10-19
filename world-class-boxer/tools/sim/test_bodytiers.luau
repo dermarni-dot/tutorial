@@ -508,11 +508,19 @@ do
 			end
 		end
 	end
-	check("classic: cap's 2nd percentile within 0.025 of the head (HK.CLASSIC_FIT)", worstCap > -0.025, worstCap)
+	-- (v7 meshes: HK.CLASSIC_FIT on the organic fit0; v9 meshes, modelled on the classic head: a classic fit0, the
+	-- cap 0.02 above the head)
+	local v9 = type(Data.fit0) == "table" and Data.fit0.shape == "classic"
+	check("classic: cap's 2nd percentile within 0.025 of the head" .. (v9 and " (v9 classic fit0)" or " (HK.CLASSIC_FIT)"),
+		worstCap > (v9 and 0.01 or -0.025), worstCap)
 	check("classic: cards' 10th percentile outside the head", worstCard > 0, worstCard)
-	-- the organic skull keeps its identity fit (the old looks / tests)
-	local f0 = HK.Fit(Kit.Scalp(H.Look({ g = 1 })), Data.fit0)
+	-- the organic skull keeps its identity fit against the organic fit0 (the old looks / tests)
+	local f0 = HK.Fit(Kit.Scalp(H.Look({ g = 1 })), HK.FIT0)
 	check("organic fit untouched", near(f0.ax, 1, 0.006) and f0.dy == 0)
+	-- a classic fit0 on the classic head: the identity, nothing on top
+	local fc = HK.Fit(S, HK.FIT0_CLASSIC)
+	check("classic fit0: identity on the classic head", near(fc.ax, 1, 0.003) and near(fc.ay, 1, 0.003) and near(fc.az, 1, 0.003)
+		and near(fc.dz, 0, 0.002) and fc.dy == 0 and fc.shape == "classic")
 end
 
 ------------------------------------------------------------------------

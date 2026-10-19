@@ -274,6 +274,52 @@ local function sdClassic(x, y, z)
 end
 Kit.ClassicField = sdClassic
 
+-- The hairline and cut on the classic head. Its built face (BuilderHead.FaceLayout) puts the brows at y ~0.28
+-- (up to ~0.34 with a high forehead and brows) and the ears on the side wall (centre y 0.024, z 0.048, half
+-- height 0.15 .. 0.18): AnatomySkull's keys (front 0.336, over the ear 0.1 .. 0.125) would draw the hairline on the
+-- brows and through the ears. On the classic head the front of the line is lifted by `lift` (0.336 -> 0.421 at
+-- the default, so ~0.11 of forehead above the brows' tops), and from the sideburns back it goes round the ear on
+-- an ellipse `ear` (side plane z, y: centre and semi axes, the ear's own plus ~0.03 / 0.06 of skin), down the
+-- mastoid and to the nape at -0.3. The fades' weight lines sit `fadeSide` higher at the side (the ears sit
+-- 0.12 higher than on the old skull), and the burst fade's half circle is centred on the ear.
+-- tools/hair/ref/classic (the asset hair's reference) is exported from these: tools/sim/export_classic.luau.
+Kit.CLASSIC_HAIR = {
+	lift = 0.085,
+	ear = { z = 0.06, y = 0.035, rz = 0.16, ry = 0.23 },
+	fadeSide = 0.1,
+	burst = { y = 0.024, z = 0.048, r0 = 0.2, r1 = 0.36 },
+}
+function Kit.ClassicKeys(P)
+	local C = Kit.CLASSIC_HAIR
+	local lift = C.lift
+	local front = num(P.hairFront, 0.335) + lift
+	local temple = num(P.hairTemple, 0.275) + lift
+	local rec = num(P.recede, 0)
+	local fem = P.female == true
+	local E = C.ear
+	-- the ear's arc as keys (angle from the front about x = 0, z = 0.05 on the side wall, height)
+	local function arc(deg)
+		local a = math.rad(deg)
+		local z, y = E.z + E.rz * cos(a), E.y + E.ry * sin(a)
+		local x = sqrt(max(0.36 - z * z, 0.01))
+		return { math.atan2(x, 0.05 - z), y }
+	end
+	return {
+		{ 0.0, front },
+		{ 0.35, front - 0.012 - 0.02 * rec },
+		{ 0.64, temple },
+		{ 0.98, temple - 0.04 },
+		{ 1.2, temple - 0.1 },
+		{ 1.25, fem and 0.07 or -0.03 }, -- sideburn bottom (in front of the ear)
+		{ 1.3, fem and 0.09 or -0.015 }, -- sideburn back edge, at the front of the ear
+		arc(155), arc(130), arc(105), arc(80), arc(55), arc(30),
+		{ 1.86, 0.02 }, -- behind the ear, down the mastoid
+		{ 1.98, -0.1 },
+		{ 2.45, -0.22 },
+		{ pi, -0.3 }, -- nape centre
+	}
+end
+
 -- S = Kit.Scalp(look): the skull field (nominal), rays / normals / projection, the hairline keys and a
 -- body proxy. look.headShape == "classic": the classic head's field (the hairline, age, gender and seed still
 -- come from AnatomySkull's parameters). Reads only Hair-section look paths (rig.parts.Head, rig.joints.Neck, rig.parts.UpperTorso,
@@ -307,6 +353,7 @@ function Kit.Scalp(look)
 		P = table.clone(P)
 		P.cy, P.cz = 0.05, 0
 		field = sdClassic
+		keys = Kit.ClassicKeys(P)
 	end
 	local S = {
 		P = P, f = field, keys = keys, kx = num(P.kx, 1), ky = num(P.ky, 1), kz = num(P.kz, 1),
@@ -610,9 +657,11 @@ function Kit.Cut(S, spec)
 	local fadeKind = spec.fade
 	-- fadeLift: the fade's lines a little higher (dense coily hair hides a low gradient: it is cut higher)
 	local lift = spec.fadeLift or 0
-	if fade and lift ~= 0 then
+	-- on the classic head the weight lines sit higher at the side (Kit.CLASSIC_HAIR: its ears sit higher)
+	local cside = (S.classic and fade and fade.side) and Kit.CLASSIC_HAIR.fadeSide or 0
+	if fade and (lift ~= 0 or cside ~= 0) then
 		fade = table.clone(fade)
-		fade.side = fade.side and fade.side + lift
+		fade.side = fade.side and fade.side + lift + cside
 		fade.back = fade.back and fade.back + lift
 		fade.band = fade.band and fade.band * (1 + lift * 6)
 	end
@@ -635,6 +684,12 @@ function Kit.Cut(S, spec)
 			return lerp(1, lerp(bottom, 1, smoothstep(0, 1, u)), clamp(w, 0, 1))
 		elseif fadeKind == "burst" then
 			-- a half circle around each ear, the back stays full
+			if S.classic then
+				local B = Kit.CLASSIC_HAIR.burst
+				local r = sqrt((y - B.y) * (y - B.y) + (z - B.z) * (z - B.z))
+				local w = smoothstep(0.34, 0.5, abs(x)) * (1 - smoothstep(0.34, 0.52, z))
+				return lerp(1, lerp(bottom, 1, smoothstep(B.r0, B.r1, r)), w)
+			end
 			local r = sqrt((y - 0.01) * (y - 0.01) + (z - 0.02) * (z - 0.02))
 			local w = smoothstep(0.2, 0.34, abs(x)) * (1 - smoothstep(0.24, 0.42, z))
 			return lerp(1, lerp(bottom, 1, smoothstep(0.1, 0.27, r)), w)

@@ -64,13 +64,18 @@ import fades_tex  # noqa: E402
 
 TEX = os.path.join(HERE, "textures")
 BLEND = os.path.join(HERE, "blend")
-REF = os.path.join(HERE, "ref")
+REF = hairlib.REF
 FAM_DIR = "/tmp/claude-0/-home-user-tutorial/3e72dc83-9506-5d11-a575-9dd4f250e9a5/scratchpad/fam/fades"
 
 TAU = 2 * math.pi
 # the cap's polar UV: v = theta / THETA_MAX. The nape's hairline sits at theta ~141 deg, so the cap must
 # reach ~146 deg (the game's old placeholder 2.2 rad = 126 deg would cut the nape off)
 THETA_MAX = math.radians(148.0)
+CLASSIC = hairlib.CLASSIC
+if CLASSIC:
+    # the classic head (ref/classic): rays from its centre (0, 0.05, 0); the nape's hairline (y -0.3 on the back
+    # wall) sits at theta ~120 deg, the sideburns at ~98 deg; 130 deg leaves the receding / fade margins
+    THETA_MAX = math.radians(130.0)
 TILE = [8, 4]  # the tile repeats (u, v) over the cap: ~0.33 x 0.29 studs a tile at the equator
 CAP_OFF = 0.02  # the cap's height above the skull (the runtime fit's residual is <= 0.015)
 CLEAR = 0.02  # minimum height of any scalp-hugging layer above the skull / head mesh
@@ -88,6 +93,15 @@ EAR_RAD = 0.05
 # painted coverage is already 0 (no cut edge at partial / full coverage), and it rounds the natural hairline's
 # square sideburn / over-the-ear corners into one arc
 EAR_LINE = {"centre": [-0.07, 0.148], "axes": [0.19, 0.128], "xmin": 0.24, "feather": 0.03}
+# the side of the head (|x| past this: the ear trim / ear line apply) and the burst fade's arc round the ear
+SIDE_X = 0.24
+BURST = dict(y=0.01, z=0.02, r0=0.15, r1=0.33, x0=0.2, x1=0.34, z0=0.24, z1=0.42)
+if CLASSIC:
+    # the classic head's ears (classic_ref.py: centre y ~0.03, z 0.048; half 0.177 x 0.112 at earSize +0.5) inside
+    # the game's hairline arc round the ear (Kit.CLASSIC_HAIR.ear: y 0.024 +- 0.22, z 0.048 +- 0.15)
+    EAR_LINE = {"centre": [0.035, 0.06], "axes": [0.215, 0.148], "xmin": 0.42, "feather": 0.03}
+    SIDE_X = 0.42
+    BURST = dict(y=0.024, z=0.048, r0=0.21, r1=0.38, x0=0.34, x1=0.5, z0=0.34, z1=0.52)
 
 
 def build_textures():
@@ -220,6 +234,10 @@ class Ref:
         return out
 
     def ear_sdf(self, p, pad=EAR_PAD, rad=EAR_RAD):
+        if CLASSIC:
+            # the classic head: the trim is the ear line's own ellipse, 0.006 inside it (the cap ends where its
+            # painted coverage is already 0; the ear at earSize +0.5 stays inside the trim)
+            return float(self.earline_sdf(np.asarray(p, np.float64)[None])[0]) + 0.006
         """the cap's trim round the ear: signed distance (in the y-z side plane) to the ear's AABB grown by pad, its
         corners rounded by rad (>= 0.04: an arc over the ear, no rectangle); < 0 inside. Only on the side of the
         head (|x| > 0.24): points nearer the midline are always outside"""
@@ -231,7 +249,7 @@ class Ref:
             d = float(np.linalg.norm(np.maximum(q, 0.0)) + min(float(q.max()), 0.0) - rad)
             if np.sign(p[0]) != np.sign(c[0]):
                 d = 9.0
-            best = min(best, max(d, 0.24 - abs(float(p[0]))))
+            best = min(best, max(d, SIDE_X - abs(float(p[0]))))
         return best
 
     def earline_sdf(self, P):
@@ -298,7 +316,7 @@ def measure_fit(sk):
 
 
 def fit_map(sk_to, sk_from=None):
-    W0, T0, F0, B0 = measure_fit(sk_from) if sk_from is not None else (0.383, 0.591, -0.460, 0.520)
+    W0, T0, F0, B0 = measure_fit(sk_from) if sk_from is not None else tuple(hairlib.FIT0[k] for k in ("W", "T", "Fz", "Bz"))
     W, T, Fz, Bz = measure_fit(sk_to)
     return np.array([W / W0, T / T0, (Bz - Fz) / (B0 - F0)]), (Bz + Fz) / 2 - (B0 + F0) / 2
 
@@ -337,7 +355,7 @@ class HeadBVH:
         T = md["t"].reshape(-1, 3)
         self.P, self.T = P, T
         self.bvh = BVHTree.FromPolygons([tuple(p) for p in P], [tuple(int(i) for i in t) for t in T])
-        self.centre = np.array([0, 0.15, 0.035])
+        self.centre = Skull().c.copy()
 
     def signed(self, p):
         from mathutils import Vector
@@ -688,7 +706,7 @@ def profile(cb, spec):
     T = spec["top"]
     # the hairline taper: down to the cap over HL_TAPER inside the natural hairline, wider at the nape (the
     # neckline is graded, never a dense stack ending on a hard V)
-    nape = sstep(0.0, -0.2, y) * sstep(0.1, 0.3, z)
+    nape = (sstep(-0.05, -0.25, y) * sstep(0.2, 0.45, z)) if CLASSIC else (sstep(0.0, -0.2, y) * sstep(0.1, 0.3, z))
     e = sstep(0.0, HL_TAPER + spec.get("nape_ramp", 0.025) * nape, cb.dist_hl) ** 0.8
     # and down to the cap toward the ear line (EAR_LINE: the painted coverage is 0 on the ellipse round the ear and
     # full 0.03 outside it): the stack slopes in over 0.06, never cut off round the ear
@@ -700,16 +718,18 @@ def profile(cb, spec):
     d_out = cb.dist_out(spec.get("capFade") or kind, 0.45)
     g = sstep(0.0, spec.get("fade_ramp", 0.035), d_out)
     up = sstep(0.12, 0.72, ny)
-    dome = 0.85 + 0.15 * sstep(0.2, 0.55, y)
+    dome = 0.85 + 0.15 * (sstep(0.3, 0.6, y) if CLASSIC else sstep(0.2, 0.55, y))
     if shape == "fur":
         return np.full(len(S), T) * np.clip(e * 1.5, 0, 1) * spec.get("scale", 1.0)
     wall = spec.get("side", 0.032)
     if shape == "burst":
         # the back keeps its length: the burst's half-circle round each ear is the only fade
         # (not down the lower nape behind the ears, where the skull table stands ~0.025 off the head mesh)
-        wall = wall + (spec.get("back", wall) - wall) * sstep(0.05, 0.3, z) * sstep(-0.16, 0.04, y)
+        wall = wall + (spec.get("back", wall) - wall) * (sstep(0.15, 0.45, z) * sstep(-0.2, 0.05, y) if CLASSIC
+                                                         else sstep(0.05, 0.3, z) * sstep(-0.16, 0.04, y))
     if shape == "crew":
-        top = T * (1 - sstep(-0.38, 0.25, z)) + spec["crown"] * sstep(-0.38, 0.25, z)
+        z0, z1 = (-0.5, 0.3) if CLASSIC else (-0.38, 0.25)
+        top = T * (1 - sstep(z0, z1, z)) + spec["crown"] * sstep(z0, z1, z)
         H = top * sstep(0.3, 0.8, ny)  # the parietal ridge: sides and back cap-only (clippered short)
     else:
         H = (wall + (T - wall) * up) * dome
@@ -720,9 +740,10 @@ def profile(cb, spec):
         ft = cb.ref.fade_top.get(kind)
         if ft is not None:
             if shape == "burst":
-                r = np.sqrt((y - 0.01) ** 2 + (z - 0.02) ** 2)
-                w = sstep(0.2, 0.34, np.abs(x)) * (1 - sstep(0.24, 0.42, z))
-                ramp = 1 - w * (1 - sstep(0.15, 0.33, r))
+                B = BURST
+                r = np.sqrt((y - B["y"]) ** 2 + (z - B["z"]) ** 2)
+                w = sstep(B["x0"], B["x1"], np.abs(x)) * (1 - sstep(B["z0"], B["z1"], z))
+                ramp = 1 - w * (1 - sstep(B["r0"], B["r1"], r))
             else:
                 ramp = sstep(ft - 0.05, ft + 0.08, y)
             H = SHORT_SIDE + (H - SHORT_SIDE) * ramp
@@ -789,7 +810,9 @@ def build_shells(cb, spec, name, n, ts, tufts=0.006, lean=0.9, seed=5):
     bad = np.zeros(len(Pc), bool)
     for i in np.unique(T0.ravel()):
         q = Pc[i] + cb.Dn[i] * dmax[i]
-        bad[i] = cb.head.signed(q) < CLEAR or cb.ref.in_ear(q, 0.01)
+        # (the classic head's collider has the ears themselves; their AABB at earSize +0.5 reaches above the ear
+        # line's coverage, so the box test would cut the shells where the fade still paints them)
+        bad[i] = cb.head.signed(q) < CLEAR or (not CLASSIC and cb.ref.in_ear(q, 0.01))
         if not bad[i] and cb.fit is not None and len(cb.fit) > 3 and cb.fit[3] is not None:
             # (and clear of the fitted female head: behind the ear the outer shells run along the ear's back)
             bad[i] = cb.fit[3].signed(q * cb.fit[0] + np.array([0, 0, cb.fit[1]])) < CLEAR + 0.0005
@@ -918,6 +941,8 @@ def build_shells(cb, spec, name, n, ts, tufts=0.006, lean=0.9, seed=5):
 # Crop-top cards (straight / wavy): short tufts combed over the top, laid on guide curves
 # =============================================================================================
 FRINGE_Y = 0.305  # the Caesar's straight fringe line (the front hairline's centre is at y 0.336)
+if CLASSIC:
+    FRINGE_Y = 0.392  # (the classic head: the hairline's centre at 0.421, the brows' tops at ~0.305 .. 0.371)
 
 
 def build_crop(cb, spec, t_full, t_shell, seed=11, name="HairCrop"):
@@ -968,8 +993,12 @@ def build_crop(cb, spec, t_full, t_shell, seed=11, name="HairCrop"):
         grow /= np.linalg.norm(grow) + 1e-9
         # a combed flow field, not radial from the crown: the top combed forward and to one side; behind and below
         # the crown it falls down the back; on the sides down and forward along the head
-        wb = smoothstep(0.08, 0.3, p[2]) * smoothstep(0.6, 0.38, p[1])
-        ws = smoothstep(0.2, 0.34, abs(p[0])) * (1 - wb)
+        if CLASSIC:
+            wb = smoothstep(0.12, 0.42, p[2]) * smoothstep(0.62, 0.42, p[1])
+            ws = smoothstep(0.36, 0.52, abs(p[0])) * (1 - wb)
+        else:
+            wb = smoothstep(0.08, 0.3, p[2]) * smoothstep(0.6, 0.38, p[1])
+            ws = smoothstep(0.2, 0.34, abs(p[0])) * (1 - wb)
         down_fwd = grow + np.array([0, 0, -0.6])
         flow = sweep * (1 - wb - ws) + grow * wb + down_fwd * ws
         flow -= n * np.dot(flow, n)
@@ -1115,7 +1144,7 @@ def caesar_fringe(cb, spec, t_shell, rng):
     while len(out) < nf and tries < nf * 6:
         tries += 1
         az = math.pi + rng.uniform(-0.78, 0.78)
-        p_hl = sk.point(theta_for_y(az, 0.3), az, 0.0)
+        p_hl = sk.point(theta_for_y(az, 0.4 if CLASSIC else 0.3), az, 0.0)
         hl = float(np.interp(ref.da_of(p_hl), ref.hl_da, ref.hl_nat))
         yf = min(FRINGE_Y, hl - 0.022) + rng.uniform(-0.004, 0.004)  # (the blunt line a little staggered)
         th_tip = theta_for_y(az, yf)

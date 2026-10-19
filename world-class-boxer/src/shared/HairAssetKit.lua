@@ -4,7 +4,8 @@
 --   Gen.Resolve), nil for Bald, an unknown look or an entry with an id still missing (Usable)
 -- * CapTile / NeedsCapImage / TexturesOf: the painted cap image (the HairCap's, and every tex "cap" piece's: the
 --   fades' shells and fur) and the tile it is painted from (entry.capTile, else short / shortcoil by hair type)
--- * Fit(S, fit0): the per-boxer skull fit (W, T, Fz, Bz from the skull field, against the default male's)
+-- * Fit(S, fit0): the per-boxer skull fit (W, T, Fz, Bz from the skull field, against the reference the meshes
+--   were modelled on: data.fit0; v9 the classic head itself, shape "classic": the identity on a classic head)
 -- * LengthFactor / VolumeFactor(look): the per-style length / volume stretch
 -- * Place(data, entry, look, S): every piece's affine map nominal -> Head space (diagonal scale + offset),
 --   its MeshPart size and weld centre, its HairFX pivot / tip and point cloud, and the cap's
@@ -31,7 +32,8 @@ local function stepNow()
 end
 local readu8, writeu8, writeu32 = buffer.readu8, buffer.writeu8, buffer.writeu32
 
--- the default male skull's extents (skull.json fit0): the meshes are modelled on it
+-- the default male skull's extents (the organic skull.json fit0): the v7 meshes are modelled on it (the v9 meshes
+-- on the classic head: data.fit0 = HK.FIT0_CLASSIC, tools/hair/ref/classic)
 HK.FIT0 = { W = 0.383, T = 0.591, Fz = -0.460, Bz = 0.520 }
 -- textures drawn as one flat colour (tileable: no root or tip along v) even when the data does not say so
 local FLAT = { short = true, shortcoil = true, waves = true, braid = true, cornrow = true }
@@ -278,7 +280,12 @@ end
 -- the fit takes CLASSIC_FIT on top (per-axis x 1.06 / 1.20 / 1.20 and 0.06 down: the best per-axis map found
 -- for the cap, 2 % of its points at most 0.01 under the surface, worst 0.055 at the top corners, its middle
 -- 0.066 above the head)
+-- That was the v7 meshes' stopgap. The v9 meshes are modelled on the classic head itself (tools/hair/ref/classic,
+-- CONTRACT.md): their data.fit0 is the classic head's own extents with shape = "classic", the fit on a classic
+-- head is then the identity and CLASSIC_FIT stays off (it applies only to a manifest without the shape).
 HK.CLASSIC_FIT = { kx = 1.06, ky = 1.2, kz = 1.2, dy = -0.06 }
+-- the classic head's extents (Kit.CLASSIC: W, T, Fz, Bz of the rounded cylinder, centre y 0.05, z 0)
+HK.FIT0_CLASSIC = { W = 0.6, T = 0.6, Fz = -0.6, Bz = 0.6, shape = "classic" }
 
 function HK.Fit(S, fit0)
 	fit0 = type(fit0) == "table" and fit0 or HK.FIT0
@@ -289,7 +296,8 @@ function HK.Fit(S, fit0)
 		W = W, T = T, Fz = Fz, Bz = Bz,
 		ax = W / W0, ay = T / T0, az = (Bz - Fz) / (B0 - F0), dz = (Bz + Fz) / 2 - (B0 + F0) / 2, dy = 0,
 	}
-	if S.classic then
+	fit.shape = fit0.shape
+	if S.classic and fit0.shape ~= "classic" then
 		local C = HK.CLASSIC_FIT
 		fit.ax, fit.ay, fit.az, fit.dy = fit.ax * C.kx, fit.ay * C.ky, fit.az * C.kz, C.dy
 	end
@@ -546,13 +554,18 @@ end
 local CAP_OFF = 0.02
 local refScalp
 local refGrids = {}
-local function refGrid(thetaMax, gw, gh)
-	local key = table.concat({ thetaMax, gw, gh }, "|")
+local function refGrid(thetaMax, gw, gh, shape)
+	local classic = shape == "classic"
+	local key = table.concat({ thetaMax, gw, gh, classic and "classic" or "skull" }, "|")
 	local g = refGrids[key]
 	if g then
 		return g
 	end
-	refScalp = refScalp or Kit.Scalp({})
+	-- the head the cap mesh was modelled on (its polar UV's rays): the classic head for a classic fit0
+	refScalp = refScalp or {}
+	local rs = classic and "classic" or "skull"
+	refScalp[rs] = refScalp[rs] or Kit.Scalp(classic and { headShape = "classic" } or {})
+	local scalp = refScalp[rs]
 	local n = gw * gh
 	local X, Y, Z = table.create(n, 0), table.create(n, 0), table.create(n, 0)
 	local t0 = 0.5
@@ -562,7 +575,7 @@ local function refGrid(thetaMax, gw, gh)
 		for i = 0, gw - 1 do
 			local az = (i + 0.5) / gw * TAU
 			local dx, dy, dz = st * sin(az), ct, st * cos(az)
-			local x, y, z, t = refScalp.ray(dx, dy, dz, 0, t0)
+			local x, y, z, t = scalp.ray(dx, dy, dz, 0, t0)
 			t0 = t
 			local k = i + j * gw + 1
 			X[k], Y[k], Z[k] = x + dx * CAP_OFF, y + dy * CAP_OFF, z + dz * CAP_OFF
@@ -580,7 +593,7 @@ end
 -- (Place's map for the cap), onto this boxer's scalp. fit = HK.Fit(S) when not given
 function HK.CapGrid(S, cov, pal, thetaMax, gw, gh, fit)
 	fit = fit or HK.Fit(S)
-	local ref = refGrid(thetaMax, gw, gh)
+	local ref = refGrid(thetaMax, gw, gh, fit.shape)
 	local ax, ay, az, dz, dy = fit.ax, fit.ay, fit.az, fit.dz, num(fit.dy, 0)
 	local n = gw * gh
 	local R, G, B, C = table.create(n, 0), table.create(n, 0), table.create(n, 0), table.create(n, 0)

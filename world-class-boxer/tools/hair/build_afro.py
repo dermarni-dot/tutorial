@@ -89,6 +89,7 @@ C = SK.c.copy()
 SKD = SK.data
 EARS = [(np.array(SKD["ears"][s]["min"]) - EAR_PAD, np.array(SKD["ears"][s]["max"]) + EAR_PAD)
         for s in ("left", "right")]
+EAR_TOP = max(SKD["ears"][s]["max"][1] for s in ("left", "right"))
 
 
 # =============================================================================================== helpers
@@ -396,12 +397,84 @@ STYLES = {
 # per tile cell: (world size of one repeat in u, quads per repeat in u, in v): square quads, ~1200 px / stud
 # on the outer tiles (384 x 192 px -> 0.32 x 0.16), half that on the dense core (128 x 192 px -> 0.2 x 0.3)
 SHELL_REPEAT = {"TILE_S": (0.32, 4, 2), "TILE_S2": (0.32, 4, 2), "TILE_L": (0.32, 4, 2), "TILE_D": (0.2, 2, 3)}
+if hl.CLASSIC:
+    # the classic head's afro has ~1.25x the organic one's surface: the coil tiles ~1.12x larger and ~10 % fewer
+    # fins keep the triangle budget near v7's (the tile is still ~1070 px / stud on the outer shells)
+    SHELL_REPEAT = {k: (w * 1.12, nu, nv) for k, (w, nu, nv) in SHELL_REPEAT.items()}
+    for _sp in STYLES.values():
+        _sp["fins"]["n"] = int(_sp["fins"]["n"] * 0.9)
+
+
+# ---- the classic head (ref/classic): the same envelopes, thickness for thickness
+# The envelopes above were drawn round the organic skull (half width ~0.38, top 0.59). On the classic head (a
+# 1.2 rounded cylinder) the same egg would barely clear the sides. Instead the envelope is the classic head's own
+# surface offset by the organic style's thickness in the same direction (rays from each head's centre): the afro
+# keeps its proportions of hair over head, and its outer surface rounds the box's corners (an offset of a box
+# rounded by 0.24 by ~0.25 .. 0.35 is rounded by ~0.5 .. 0.6).
+CLASSIC = hl.CLASSIC
+ORG = None
+
+
+def _organic():
+    global ORG
+    if ORG is None:
+        ORG = Skull(os.path.join(HERE, "ref", "skull.json"))
+    return ORG
+
+
+def sd_classic(P):
+    Cc = SK.data.get("classic") or {"r": 0.6, "h": 0.6, "round": 0.24}
+    r, h, rr = Cc["r"], Cc["h"], Cc["round"]
+    qx = np.sqrt(P[:, 0] ** 2 + P[:, 2] ** 2) - (r - rr)
+    qy = np.abs(P[:, 1]) - (h - rr)
+    ox, oy = np.maximum(qx, 0), np.maximum(qy, 0)
+    return np.sqrt(ox * ox + oy * oy) + np.minimum(np.maximum(qx, qy), 0) - rr
+
+
+def classic_envelope(F_org, extra=0.0, dth=2.0, daz=3.0):
+    """F(P) < 0 inside: the classic head's field less the organic envelope F_org's thickness over the organic skull
+    along the same direction (a (theta, az) table from the organic skull's centre), plus `extra`"""
+    org = _organic()
+    th = np.radians(np.arange(0, 180.0 + 1e-9, dth))
+    az = np.radians(np.arange(0, 360.0, daz))
+    TH, AZ = np.meshgrid(th, az, indexing="ij")
+    D = dirs_of(TH.ravel(), AZ.ravel())
+    R0 = skull_r(org, TH.ravel(), AZ.ravel())
+    global C
+    c_save = C
+    C = org.c.copy()
+    try:
+        t = ray_hit(F_org, D, R0 + 0.005, np.full(len(D), 1.8))
+    finally:
+        C = c_save
+    Hg = np.maximum(t - R0, 0.0).reshape(TH.shape) + extra
+    nth, naz = len(th), len(az)
+
+    def Hat(Dq):
+        tq, aq = angles_of(Dq)
+        fi = np.clip(tq / math.radians(dth), 0, nth - 1.001)
+        i0 = np.floor(fi).astype(int)
+        ti = fi - i0
+        fa = aq / math.radians(daz)
+        j0 = np.floor(fa).astype(int) % naz
+        tj = fa - np.floor(fa)
+        j1 = (j0 + 1) % naz
+        a = Hg[i0, j0] * (1 - tj) + Hg[i0, j1] * tj
+        b = Hg[i0 + 1, j0] * (1 - tj) + Hg[i0 + 1, j1] * tj
+        return a * (1 - ti) + b * ti
+
+    def F(P):
+        return sd_classic(P) - Hat(P - SK.c)
+
+    return F
 
 
 def thickness(spec, grid, line):
     """H per grid vertex: the envelope, eased in from the line"""
     D = grid.D
     F = afro_sdf(spec["scale"]) if spec["shape"] == "afro" else hightop_sdf()
+    if CLASSIC:
+        F = classic_envelope(F)
     t = ray_hit(F, D, grid.R + 0.005, np.full(len(D), 1.6))
     Henv = np.maximum(t - grid.R, H0)
     da = da_of(grid.S)
@@ -416,7 +489,7 @@ def thickness(spec, grid, line):
         # over and around the ears the mass comes down at full thickness to just above the ear tops, then
         # rounds under into the short sideburn and the hair behind the ear (the ears stay clear)
         low = sstep(0.8, 1.1, da) * sstep(2.55, 2.25, da)
-        Hc = H0 + 2.3 * np.clip(y - 0.03, 0, None)
+        Hc = H0 + 2.3 * np.clip(y - (EAR_TOP + 0.01 if CLASSIC else 0.03), 0, None)
         H = H * (1 - low) + smin(H, Hc, 0.05) * low
     else:
         # the column grows out of the fade: from cap height at the fade's top line it lengthens smoothly over
@@ -913,7 +986,7 @@ def fin_cards(layer, li, spec, line, rng, region_fn=region_of):
     if spec["shape"] == "hightop":
         ok &= (S[:, 1] - line.y_at(da_of(S))) > fs.get("above", 0.07)
     else:
-        ok &= ~((S[:, 1] < 0.06) & (da_of(S) > 0.8))  # (not low on the sides, behind the ears or at the nape)
+        ok &= ~((S[:, 1] < LOW_Y - 0.02) & (da_of(S) > 0.8))  # (not low on the sides, behind the ears or at the nape)
     ok = np.nonzero(ok)[0]
     rng.shuffle(ok)
     cards = []
@@ -1020,6 +1093,8 @@ def edge_cards(line, spec, rng, step=0.0135):
 BAND_D = 0.09  # shells this close to the line stay in the root piece too (the layers have converged there)
 BASE_LAYERS = 1  # layers 0..BASE_LAYERS (with the hairline patches and tufts) form the unscaled root piece
 MIN_MASS_TRIS = 300  # a region mass smaller than this joins its neighbour (no MeshPart for a label)
+if hl.CLASSIC:
+    MIN_MASS_TRIS = 150  # (the high top's front line-up mass on the classic head: ~250 tris, its own piece as in v7)
 
 
 def low_card(cd):
@@ -1032,6 +1107,8 @@ def low_card(cd):
 
 
 LOW_Y = 0.08
+if hl.CLASSIC:
+    LOW_Y = 0.2  # (the classic head's ears reach y ~0.2)
 
 
 def make_pieces(spec, cards, names):
