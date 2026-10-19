@@ -202,8 +202,8 @@ function Looks.Defaults(gender)
 			-- the classic face (BodyAssetData.faces, BodyTiers): old saves get the smile through Fill
 			key = BodyTiers.DEFAULT_FACE,
 			-- the face style: "built" (the part-built face) or a drawn Boxer face (BodyTiers.STYLE_KEYS: the head's
-			-- front Decal, swapped by mood); old saves read as built
-			style = BodyTiers.BUILT_STYLE,
+			-- front Decal, swapped by mood); new boxers, old saves and NPCs get the drawn Boxer Neutral
+			style = BodyTiers.DefaultStyle(),
 			shape = "Oval", jawWidth = 0, jawDef = 0.5, chin = 0, cheek = 0, forehead = 0,
 			noseWidth = 0, noseLength = 0, noseBridge = 0, lips = female and 0.2 or 0, browThick = female and -0.4 or 0,
 			eyeShape = 0.5, eyeSize = 0, eyeDist = 0, lashes = female and 0.8 or 0.2, eyeColor = 2,
@@ -514,6 +514,14 @@ function Looks.Random(seed, gender, opts)
 	f.shine = rng:NextNumber() * 0.4
 	f.smooth = rng:NextNumber()
 	f.seed = rng:NextInteger(1, 1000000)
+	-- the drawn face an NPC rests on, from its own stream (no other draw shifts): mostly neutral, some focused,
+	-- a few smirks and grits (FaceFX still swaps it by mood)
+	do
+		local srng = Random.new(seed + 9311)
+		local r = srng:NextNumber()
+		local st = r < 0.5 and "wcb_neutral" or r < 0.75 and "wcb_focused" or r < 0.9 and "wcb_smirk" or "wcb_grit"
+		f.style = BodyTiers.IsDrawnStyle(st) and st or BodyTiers.DefaultStyle()
+	end
 	-- a classic face from its own stream (no other draw shifts): the smile most often, then any creator face
 	do
 		local faces = BodyTiers.Pickable()

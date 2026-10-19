@@ -384,32 +384,45 @@ function BodyTiers.IsDrawnStyle(style, d)
 	return f ~= nil and f.id ~= nil
 end
 
--- the Creator's choices: Built first, then every uploaded drawn face, in STYLE_KEYS order ({ key, name })
+-- the face style a boxer gets when none was chosen (new boxers, old saves, NPCs): the drawn Boxer Neutral once
+-- it is uploaded, else the built face
+BodyTiers.DEFAULT_STYLE = "wcb_neutral"
+function BodyTiers.DefaultStyle(d)
+	return BodyTiers.IsDrawnStyle(BodyTiers.DEFAULT_STYLE, d) and BodyTiers.DEFAULT_STYLE or BodyTiers.BUILT_STYLE
+end
+
+-- the Creator's choices: every uploaded drawn face in STYLE_KEYS order, then Built ({ key, name })
 function BodyTiers.FaceStyles(d)
-	local out = { { key = BodyTiers.BUILT_STYLE, name = "Built" } }
+	local out = {}
 	for _, k in ipairs(BodyTiers.STYLE_KEYS) do
 		if BodyTiers.IsDrawnStyle(k, d) then
 			table.insert(out, { key = k, name = BodyTiers.Face(k, d).name })
 		end
 	end
+	table.insert(out, { key = BodyTiers.BUILT_STYLE, name = "Built" })
 	return out
 end
 
 -- look.face.style from untrusted input: an offered style, else the old (saved) one when it is still offered,
--- else "built" (old saves have none)
+-- else the default style (old saves have none: they get the drawn Boxer Neutral)
 function BodyTiers.SanitizeFaceStyle(style, old, d)
 	if style == BodyTiers.BUILT_STYLE or BodyTiers.IsDrawnStyle(style, d) then
 		return style
 	elseif old == BodyTiers.BUILT_STYLE or BodyTiers.IsDrawnStyle(old, d) then
 		return old
 	end
-	return BodyTiers.BUILT_STYLE
+	return BodyTiers.DefaultStyle(d)
 end
 
--- the style a boxer's head shows (nil = the built face): app.face.style when it is drawn and uploaded
+-- the style a boxer's head shows (nil = the built face): app.face.style when it is drawn and uploaded (a missing
+-- style = the default)
 function BodyTiers.DrawnStyleOf(app, d)
 	local face = type(app) == "table" and type(app.face) == "table" and app.face or nil
 	local st = face and face.style
+	if face and st == nil then
+		-- a look from before face styles (an unsanitized NPC table): the default style
+		st = BodyTiers.DefaultStyle(d)
+	end
 	return BodyTiers.IsDrawnStyle(st, d) and st or nil
 end
 

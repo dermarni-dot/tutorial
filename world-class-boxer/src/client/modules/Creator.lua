@@ -598,7 +598,7 @@ local function pageFace()
 	if avatarToggle() then
 		UI.Line(body, "The face below is used when your avatar has no face of its own.", { TextColor3 = T.sub, TextSize = 13 })
 	end
-	-- the face style: the built face (default) or a drawn Boxer face (BodyTiers.FaceStyles: only the uploaded ones)
+	-- the face style: a drawn Boxer face (the default) or the built face (BodyTiers.FaceStyles: only the uploaded ones)
 	local styles = BodyTiers.FaceStyles()
 	if #styles > 1 then
 		UI.Header(body, "FACE STYLE")
@@ -1146,7 +1146,7 @@ local RESET = {
 	end,
 	Face = function()
 		applyFacePreset(LookKit.FacePresets[1])
-		C.look.face.style = BodyTiers.BUILT_STYLE
+		C.look.face.style = BodyTiers.DefaultStyle()
 		return true
 	end,
 	["Skin & Eyes"] = function()
