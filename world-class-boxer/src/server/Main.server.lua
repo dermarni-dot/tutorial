@@ -31,6 +31,8 @@ local Poser = require(Modules.Poser)
 local Ambient = require(Modules.Ambient)
 local CityMap = require(Modules.CityMap) -- same instance MapBuilder built the city with (travel targets, home interiors)
 local PvP = require(Modules.PvP)
+local TutorialFight = require(Modules.TutorialFight)
+local Tutorial = require(Shared.Tutorial)
 -- controls job: special moves (unlocks per style / tier / training) and the control map's sanitizer; both
 -- optional (nil-safe) so an older Shared folder still boots
 local Moves, Keymap
@@ -199,6 +201,8 @@ local function summary(player)
 	local s = Career.Summary(profile, DataManager.CanSave(player))
 	s.busy = busy[player]
 	s.studio = RunService:IsStudio()
+	-- the first-time tutorial fight: offered to a new player (no career behind him, not done or skipped yet)
+	s.tutorial = { offer = Tutorial.ShouldOffer(profile), done = profile.tutorialDone == true or profile.created == true }
 	-- PvP record / rating (read-only view; profile.pvp is created lazily by the first PvP bout)
 	s.pvp = PvP.View(profile)
 	-- R-ui: always a table (Settings.Supported() checks it); ui = the saved values, or nil before the first save
@@ -1391,6 +1395,95 @@ local function pvpOnLeave(player)
 end
 
 ------------------------------------------------------------------------
+-- The first-time tutorial fight (TutorialFight / Shared.Tutorial): a real FightEngine bout with guided steps,
+-- the player in the red corner as a RANDOM boxer (his own rig dressed as that boxer for the night) against a
+-- random, weaker opponent in a random venue. Nothing of the career is read or written: no fightWatch (so no
+-- result, forfeit or record), no Career / Training call, no face damage carried home; the only write is
+-- profile.tutorialDone (completed or skipped). The arena (the opponent and the referee live in it) goes with
+-- the engine's Cleanup; leaving or resetting aborts the bout.
+------------------------------------------------------------------------
+local tutorialWatch = {} -- player -> { profile, skipped, left }
+
+local function tutorialAssist(profile)
+	local ui = type(profile.settings) == "table" and type(profile.settings.ui) == "table" and profile.settings.ui or {}
+	return ASSIST_LEVEL[ui.aimAssist] or 0
+end
+
+local function runTutorial(player, profile, w)
+	endSession(player)
+	setBusy(player, "fight")
+	push(player)
+	local okBuild, built = pcall(TutorialFight.Build, rng, { assist = tutorialAssist(profile) })
+	if not okBuild then
+		warn("[Boxer] tutorial setup:", built)
+		built = nil
+	end
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local res, crashed, arena, diedConn = nil, built == nil, nil, nil
+	-- (a look build still running, the join's starter look: let it land first, so it cannot overwrite this one)
+	local t0 = os.clock()
+	while lookState[player] and lookState[player].running and os.clock() - t0 < 6 and player.Parent do
+		task.wait(0.1)
+	end
+	if built and char and hum and hum.Health > 0 and player.Parent and not w.skipped then
+		-- the tutorial boxer's height, frame, face, hair and kit on the player's own rig for the night
+		local okLook, errLook = pcall(Builder.Apply, char, built.pData.app, built.pData.build, built.pData.gear, TutorialFight.LookOpts(built.pData))
+		if not okLook then
+			warn("[Boxer] tutorial look:", errLook)
+		end
+		diedConn = hum.Died:Connect(function()
+			FightEngine.Abort(player)
+		end)
+		if player.Parent and not w.skipped and not w.left then
+			arena = Venues.New(built.venue, built.venueOpts)
+			local okRun, r = pcall(FightEngine.Run, player, FightRemote, built.offer, built.pData, built.oData, arena, { tutorial = true })
+			if okRun then
+				res = r
+			else
+				warn("[Boxer] tutorial fight crashed:", r)
+				crashed = true
+			end
+		end
+	end
+	if diedConn then
+		diedConn:Disconnect()
+	end
+	if arena and arena.Parent then
+		arena:Destroy()
+	end
+	if tutorialWatch[player] == w then
+		tutorialWatch[player] = nil
+	end
+	if busy[player] == "fight" then
+		setBusy(player, nil)
+	end
+	if not player.Parent or w.left then
+		return -- (left mid-tutorial: the engine cleaned the bout up; nothing is recorded)
+	end
+	if player.Character then
+		placeChar(player.Character, gymSpawnCFrame(), 4, true)
+	end
+	local how = w.skipped and "skipped" or (res and "completed") or (crashed and "crashed") or "aborted"
+	if DataManager.Get(player) == profile and TutorialFight.Finish(profile, how) then
+		task.spawn(DataManager.Save, player)
+	end
+	FightRemote:FireClient(player, {
+		t = "tutorialEnd", how = how, created = profile.created == true and not profile.retired,
+		you = built and built.pData.name or nil, opp = built and built.oData.name or nil, venue = built and built.venueName or nil,
+		result = res and { outcome = res.outcome, method = res.method, round = res.round, landed = res.landed, thrown = res.thrown, kdFor = res.kdFor } or nil,
+	})
+	-- the player's own look back (a new player: the creator's starter look, as at join)
+	local current = DataManager.Get(player)
+	if current and current.created and not current.retired then
+		applyLook(player)
+	elseif current then
+		applyLook(player, Looks.Defaults(1))
+	end
+	push(player)
+end
+
+------------------------------------------------------------------------
 -- Look customization (barber / locker room)
 ------------------------------------------------------------------------
 local GLOVE_FIELDS = { color = "color", trim = "trim", finish = "finish", logo = "logo", stitching = "stitching", embName = "embroidery", embNick = "embroidery", brand = "brand" }
@@ -1459,6 +1552,8 @@ function handlers.CreateBoxer(player, profile, data)
 	if type(profile.settings) == "table" and type(profile.settings.ui) == "table" then
 		newProfile.settings = { ui = profile.settings.ui }
 	end
+	-- a boxer of his own: the first-time tutorial is behind him (done, skipped or never needed)
+	newProfile.tutorialDone = true
 	DataManager.Set(player, newProfile)
 	customizing[player] = nil
 	applyLook(player)
@@ -2053,7 +2148,37 @@ function handlers.NewCareer(player, profile)
 	if type(profile.settings) == "table" and type(profile.settings.ui) == "table" then
 		blank.settings = { ui = profile.settings.ui }
 	end
+	blank.tutorialDone = true -- (a player, not a career, learns the controls)
 	DataManager.Set(player, blank)
+	return { ok = true }
+end
+
+-- the first-time tutorial fight: start it (a new player from the offer, anyone from the menus to replay it),
+-- or skip it (the offer's SKIP TUTORIAL; a skip during the bout is the Fight remote's "tutorialSkip")
+function handlers.StartTutorial(player, profile)
+	if profile.retired then
+		return { ok = false, err = "Start a new career first." }
+	end
+	if busy[player] or customizing[player] or pvpWatch[player] or tutorialWatch[player] or FightEngine.Active[player] or player:GetAttribute("InFight") == true then
+		return { ok = false, err = "Finish what you're doing first." }
+	end
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not (char and char:FindFirstChild("HumanoidRootPart") and hum and hum.Health > 0) then
+		return { ok = false, err = "Your character isn't ready." }
+	end
+	PvP.LeaveQueue(player)
+	local w = { profile = profile }
+	tutorialWatch[player] = w
+	setBusy(player, "fight")
+	task.spawn(runTutorial, player, profile, w)
+	return { ok = true }
+end
+
+function handlers.SkipTutorial(player, profile)
+	if TutorialFight.Finish(profile, "skipped") then
+		task.spawn(DataManager.Save, player)
+	end
 	return { ok = true }
 end
 
@@ -2130,7 +2255,8 @@ function handlers.GetMuscleHistory(player, profile)
 	return { ok = true, history = ok and hist or {}, xp = xp, level = okLv and level or nil, day = profile.day }
 end
 
-local PRE_CREATE = { GetProfile = true, CreateBoxer = true, NewCareer = true, PreviewLook = true, GetLegacy = true, SaveSettings = true }
+local PRE_CREATE = { GetProfile = true, CreateBoxer = true, NewCareer = true, PreviewLook = true, GetLegacy = true, SaveSettings = true,
+	StartTutorial = true, SkipTutorial = true }
 local READ_ONLY = { GetProfile = true, GetRankings = true, GetBoxer = true, PreviewLook = true, GetOffers = true, GetRivals = true, GetLegacy = true, GetPvP = true, GetMuscleHistory = true }
 -- (PvPQueue / PvPCancel / PvPRespond may be sent mid-drill: leaving the queue, cancelling, declining)
 local DURING_ACTIVITY = { FinishActivity = true, CancelActivity = true, Eat = true, SaveSettings = true, PvPQueue = true, PvPCancel = true, PvPRespond = true }
@@ -2196,6 +2322,15 @@ Request.OnServerInvoke = function(player, action, ...)
 end
 
 FightRemote.OnServerEvent:Connect(function(player, msg)
+	if type(msg) == "table" and msg.t == "tutorialSkip" then
+		-- SKIP TUTORIAL during the tutorial bout: call it off (runTutorial sets the flag); ignored otherwise
+		local w = tutorialWatch[player]
+		if w then
+			w.skipped = true
+			FightEngine.Abort(player)
+		end
+		return
+	end
 	FightEngine.Input(player, msg)
 end)
 
@@ -2293,6 +2428,13 @@ Players.PlayerRemoving:Connect(function(player)
 	local okPvP, errPvP = pcall(pvpOnLeave, player)
 	if not okPvP then
 		warn("[Boxer] PvP leave:", errPvP)
+	end
+	-- leaving mid-tutorial: the bout is aborted (the engine's Cleanup takes the arena, the opponent and the
+	-- referee with it) and runTutorial records nothing
+	local tw = tutorialWatch[player]
+	if tw then
+		tw.left = true
+		tutorialWatch[player] = nil
 	end
 	if not inPvP then
 		FightEngine.Abort(player)

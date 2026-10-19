@@ -4336,7 +4336,7 @@ local handlers = {}
 function handlers.start(msg)
 	F = { active = false, mash = 0, target = 10, arena = msg.arena, opp = msg.oppModel, ref = msg.refModel, rounds = msg.rounds, tape = msg.tape, kind = msg.kind,
 		spar = msg.spar, venue = msg.venue, venueName = msg.venueName, weighIn = msg.weighIn, notes = msg.notes, talk = msg.talk, myLine = msg.myLine,
-		moves = {}, moveList = {}, assist = tonumber(msg.assist) or 0 }
+		moves = {}, moveList = {}, assist = tonumber(msg.assist) or 0, tutorial = type(msg.tutorial) == "table" and msg.tutorial or nil }
 	-- the special moves the server will accept from this fighter (Moves.List order)
 	for _, id in ipairs(type(msg.moves) == "table" and msg.moves or {}) do
 		if type(id) == "string" then
@@ -4398,7 +4398,11 @@ function handlers.start(msg)
 	end
 	F.pvp = msg.pvp == true
 	local oppTag = type(msg.tape.opp.player) == "string" and (" (" .. msg.tape.opp.player .. ")") or ""
-	if F.spar then
+	if F.tutorial then
+		-- the first-time tutorial (the step card is BoxerClient.Tutorial's)
+		setBug("TUTORIAL  ·  PRACTICE FIGHT", T.blue, "TUTORIAL")
+		F.stakesText = "TUTORIAL FIGHT vs " .. msg.tape.opp.name
+	elseif F.spar then
 		setBug("SPARRING  ·  " .. string.upper(F.spar), T.blue, "SPAR")
 		F.stakesText = string.format("SPARRING (%s) vs %s%s", string.upper(F.spar), msg.tape.opp.name, oppTag)
 	elseif F.pvp then
@@ -5105,7 +5109,9 @@ function handlers.final(msg)
 	getup.Visible = false
 	local res = msg.result
 	local text
-	if res.method == "KO" or res.method == "TKO" or res.method == "RTD" then
+	if F.tutorial and res.method ~= "KO" then
+		text = "TUTORIAL COMPLETE"
+	elseif res.method == "KO" or res.method == "TKO" or res.method == "RTD" then
 		text = res.method .. "!"
 	elseif F.spar then
 		text = "TIME!"
@@ -5160,6 +5166,8 @@ end
 function handlers.aborted()
 	finish()
 end
+-- the tutorial bout is over (completed, skipped or called off): the wrap-up is BoxerClient.Tutorial's
+handlers.tutorialEnd = handlers.aborted
 
 FightRemote.OnClientEvent:Connect(function(msg)
 	if type(msg) ~= "table" then

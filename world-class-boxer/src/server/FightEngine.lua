@@ -36,6 +36,15 @@ do
 		Moves = ok and mod or nil
 	end
 end
+-- the first-time tutorial fight's steps and rules (Tutorial.lua), nil-safe if missing
+local Tutorial
+do
+	local tm = Shared:FindFirstChild("Tutorial")
+	if tm then
+		local ok, mod = pcall(require, tm)
+		Tutorial = ok and type(mod) == "table" and mod or nil
+	end
+end
 local FightAI = require(script.Parent.FightAI)
 local Career = require(script.Parent.Career)
 -- fight spacing (FightMotion.Spacing; the round-1 numbers if that module is missing)
@@ -731,6 +740,9 @@ function Fight:Punch(F, ptype, body, counter)
 	if O.ai then
 		O.ai:OnOppPunch(ptype, body, windup)
 	end
+	if self.tutorial and F == self.P then
+		self:TutorialNote({ k = "punch", p = ptype, body = body == true })
+	end
 	local fightId = self.id
 	local opts = outOfSlip and { counterPunch = true } or nil
 	task.delay(windup, function()
@@ -825,6 +837,9 @@ function Fight:Special(F, id)
 	F.tally.thrown += #hits
 	F.totals.thrown += #hits
 	self:Send({ t = "special", who = self:Who(F), id = sid, name = M.name })
+	if self.tutorial and F == self.P then
+		self:TutorialNote({ k = "special", id = sid })
+	end
 	-- each punch's body flag: Moves.Data bodies[i] (the body-head hook goes low, then high), else the move's
 	local function bodyOf(i)
 		local b = M.bodies and M.bodies[i]
@@ -1071,6 +1086,10 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	dmg *= 0.95 + (F.data.mental.Aggression or 50) / 1000
 	dmg *= self.rng:NextNumber(0.85, 1.15)
 	dmg *= self.damageScale
+	if self.tutorial and Tutorial then
+		-- the tutorial is forgiving: the player's shots land harder, the opponent's barely hurt
+		dmg *= O.isPlayer and Tutorial.DAMAGE_TAKEN or Tutorial.DAMAGE_DEALT
+	end
 	if angled then
 		dmg *= 1.1
 	end
@@ -1120,6 +1139,9 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		O.counterUntil = now + 0.55 * (os_.Countering / 70)
 		O.balance -= (P.stun or 10) * 0.25
 		self:Send({ t = "blocked", who = self:Who(O), punch = ptype })
+		if self.tutorial and O == self.P then
+			self:TutorialNote({ k = "blocked" })
+		end
 		self:SetAct(O, "blockhit")
 		self:CheckTier(O)
 		return
@@ -1193,6 +1215,9 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 				trauma = O.data.trauma, composure = O.data.mental.Composure,
 			})
 			p *= sp.kd or 1
+			if self.tutorial and Tutorial and not O.isPlayer then
+				p *= Tutorial.KO_MUL
+			end
 			if self.rng:NextNumber() < p then
 				kd = true
 				severity = (flash and tierBefore == 0) and "flash" or nil
@@ -1249,6 +1274,14 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		end
 	end
 
+	-- the tutorial: the player never goes down, the opponent only once the last step is up
+	if self.tutorial and Tutorial and (kd or liver) and (O.isPlayer or not Tutorial.CanDrop(self.tutorial)) then
+		kd, liver = false, nil
+		O.health = math.max(O.health, 25)
+		O.body = math.max(O.body, 25)
+		O.balance = math.max(O.balance, 60)
+		self:CheckTier(O)
+	end
 	if liver and not kd then
 		local fightId = self.id
 		task.delay(0.6, function()
@@ -1374,6 +1407,9 @@ function Fight:Slip(F, dir)
 	F.busyUntil = now + 0.42
 	F.slipAt = now -- a counter jab / cross may come straight out of this slip (Punch)
 	self:SetAct(F, "slip|" .. (dir == -1 and "L" or "R"))
+	if self.tutorial and F == self.P then
+		self:TutorialNote({ k = "slip" })
+	end
 end
 
 -- quick = the quick dodge (Shift + Space): a shorter window, a quicker recovery, cheaper
@@ -1385,6 +1421,9 @@ function Fight:Roll(F, quick)
 	F.rollUntil = now + ((quick and 0.2 or 0.3) + F.data.stats.HeadMovement * 0.003) * self:DefenseMul(F)
 	F.busyUntil = now + (quick and 0.36 or 0.55)
 	self:SetAct(F, "roll")
+	if self.tutorial and F == self.P then
+		self:TutorialNote({ k = "roll" })
+	end
 end
 
 function Fight:Parry(F)
@@ -1852,6 +1891,12 @@ function Fight:Knockdown(F, by, severity, fall, cause)
 	if F.state == "down" or self.finished then
 		return
 	end
+	if self.tutorial and Tutorial then
+		if F.isPlayer or not Tutorial.CanDrop(self.tutorial) then
+			return -- (the tutorial: see Resolve; a stray caller is refused here too)
+		end
+		self:TutorialNote({ k = "kd" })
+	end
 	severity = severity or "normal"
 	fall = fall or "back"
 	F.state = "down"
@@ -2142,6 +2187,9 @@ function Fight:CheckStoppage(F)
 	end
 	if n >= 4 then
 		self:Comment(self:Other(F).data.name .. " is unloading a flurry!")
+	end
+	if self.tutorial and Tutorial and (F.isPlayer or not Tutorial.CanDrop(self.tutorial)) then
+		return -- the tutorial: nobody is waved off before the last step
 	end
 	-- time since the fighter last threw, not counting a pause he could not punch through
 	local idle = now - math.max(F.lastPunch, self.resumedAt or 0)
@@ -2534,6 +2582,9 @@ function Fight:Update(dt)
 			F.blockTime = (F.blockTime or 0) + dt
 		end
 	end
+	if self.tutorial then
+		self:TutorialStep(dt, now)
+	end
 	self:UpdateReferee(now)
 	-- model attributes at 5 Hz (quantized, change-only)
 	self.attrAcc = (self.attrAcc or 0) + dt
@@ -2549,6 +2600,56 @@ function Fight:Update(dt)
 		self:SendEach(function(P)
 			return { t = "state", b = self:PackState(P, self:Other(P), time, now) }
 		end)
+	end
+end
+
+------------------------------------------------------------------------
+-- The first-time tutorial (Tutorial.lua): what the player does moves the guided steps on; the client's
+-- prompt card follows the "tutorial" messages
+------------------------------------------------------------------------
+function Fight:TutorialNote(ev)
+	local tr = self.tutorial
+	if not (tr and Tutorial) or tr.done then
+		return
+	end
+	ev.now = self:Now()
+	if Tutorial.Feed(tr, ev) then
+		self.aiWork = Tutorial.AiWork(tr)
+		self:SendTo(self.P, Tutorial.View(tr))
+		if tr.done and not self.tutorialEndAt then
+			-- (a knockdown: the count plays out first; Update ends the bout once both men are up, or the
+			-- count ends it as a KO)
+			self.tutorialEndAt = ev.now + 1.5
+		end
+	end
+end
+
+-- every frame of a live round: footwork, the guard held, the stamina tank, the step timeouts, the end
+function Fight:TutorialStep(dt, now)
+	local P = self.P
+	if self.live and not self.paused and not self.menuHold and P.state ~= "down" then
+		local root = P.root
+		if root then
+			local pos = root.Position
+			local last = self.tutorialPos
+			self.tutorialPos = pos
+			if last then
+				local d = flat(pos - last).Magnitude
+				if d > 0.01 and d < 3 then -- (a teleport back to the corner is not footwork)
+					self:TutorialNote({ k = "move", dist = d })
+				end
+			end
+		end
+		if P.blocking then
+			self:TutorialNote({ k = "block", dt = dt })
+		end
+		self:TutorialNote({ k = "stamina", pct = P.stamina / math.max(1, P.maxStam) })
+		self:TutorialNote({ k = "tick" })
+	else
+		self.tutorialPos = nil
+	end
+	if self.tutorialEndAt and now >= self.tutorialEndAt and not self.finished and P.state ~= "down" and self.O.state ~= "down" then
+		self:End(P, "Tutorial", "Tutorial complete")
 	end
 end
 
@@ -2966,13 +3067,18 @@ function Fight:Run()
 			talk = V == P and offer.talk or "", myLine = V == P and offer.myLine or "",
 			-- the special moves this viewer may throw (ids) and the aim-assist level the server will honour
 			moves = movesList(V), assist = V.assist,
+			-- the first-time tutorial: the client puts its step card up
+			tutorial = self.tutorial and Tutorial and { total = #Tutorial.STEPS, special = Tutorial.SPECIAL } or nil,
 		}
 	end)
+	if self.tutorial and Tutorial then
+		self:SendTo(P, Tutorial.View(self.tutorial))
+	end
 	-- the Animator only drives tagged models: tag now so the ring walk / warm-up (Guard "walkout") is animated
 	-- (E's integration request; the later AddTag calls are harmless no-ops)
 	CollectionService:AddTag(P.model, "Fighter")
 	CollectionService:AddTag(O.model, "Fighter")
-	if self.spar then
+	if self.spar or self.tutorial then
 		self:Place(O, self.anchors.BlueCorner.Position)
 		self:Place(P, self.anchors.RedCorner.Position)
 		task.wait(1.5)
@@ -2986,7 +3092,7 @@ function Fight:Run()
 	self:SetupFacing(O)
 	CollectionService:AddTag(P.model, "Fighter")
 	CollectionService:AddTag(O.model, "Fighter")
-	if not self.spar then
+	if not self.spar and not self.tutorial then
 		self:Send({ t = "tape" })
 		self:Wait(5)
 	end
@@ -3010,7 +3116,7 @@ function Fight:Run()
 		P.sprintOn, O.sprintOn = false, false
 		self:Send({ t = "round", n = r, total = self.rounds })
 		if r == 1 then
-			self:Comment(self.spar and "Sparring session starts. Work on your craft." or "Here we go! Round one!", true)
+			self:Comment(self.spar and "Sparring session starts. Work on your craft." or (self.tutorial and "Your first fight. Follow the steps on screen." or "Here we go! Round one!"), true)
 		elseif r == self.rounds then
 			self:Comment("Final round! Everything on the line!", true)
 		end
@@ -3029,12 +3135,23 @@ function Fight:Run()
 		while remaining > 0 and not self.finished and not self.aborted do
 			local dt = RunService.Heartbeat:Wait()
 			self:UpdateMenuHold(self:Now())
-			if self.paused then
+			-- the tutorial holds the clock while a step is being learned; round 1 ends soon after its last step
+			local tphase = self.tutorial and Tutorial and Tutorial.Phase(self.tutorial, r, self:Now()) or nil
+			if tphase == "break" and self.tutorialBreak ~= r then
+				self.tutorialBreak = r
+				remaining = math.min(remaining, Tutorial.BREAK_SECONDS)
+				self.roundEnd = self:Now() + remaining
+			end
+			if self.paused or tphase == "hold" then
 				self.roundEnd += dt
 			else
 				remaining -= dt
 			end
 			self:Update(dt)
+			if self.tutorial and not (self.player and self.player.Parent) then
+				-- (the player left: nothing would ever move a held clock on)
+				self.aborted, self.finished = true, true
+			end
 		end
 		self.live = false
 		if self.menuHold then
@@ -3047,9 +3164,18 @@ function Fight:Run()
 		end
 		local rc = self:ScoreRound()
 		self:Send({ t = "bell", n = r })
+		if self.tutorial then
+			self:TutorialNote({ k = "bell" })
+			if self.tutorial.done and not self.finished then
+				self:End(P, "Tutorial", "Tutorial complete")
+				break
+			end
+		end
 		if r < self.rounds then
 			self:Rest()
-			self:DoctorCheck()
+			if not self.tutorial then
+				self:DoctorCheck()
+			end
 			if self.finished then
 				break
 			end
@@ -3069,7 +3195,7 @@ function Fight:Run()
 					seconds = Config.RestSeconds, cond = self:ConditionReport(V),
 				}
 			end)
-			self:Wait(self.spar and 4 or Config.RestSeconds)
+			self:Wait(self.spar and 4 or (self.tutorial and Tutorial and Tutorial.REST_SECONDS) or Config.RestSeconds)
 		end
 	end
 	if self.aborted then
@@ -3082,7 +3208,7 @@ function Fight:Run()
 	else
 		res = Career.DecideCards(self.cards)
 		res.round = self.rounds
-		res.reason = self.spar and "Session complete" or "Decision"
+		res.reason = self.spar and "Session complete" or (self.tutorial and "Tutorial complete" or "Decision")
 	end
 	-- the winner celebrates, the loser slumps (the Animator reads Guard / Expr)
 	for _, F in ipairs({ P, O }) do
@@ -3239,6 +3365,15 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 	self.allowKD = (not sp) or sp.allowKD
 	self.aiWork = sp and sp.work or 1
 	self.aiRange = sp and sp.range or 1
+	-- the first-time tutorial (opts.tutorial): short rounds on a held clock, guided steps, a forgiving
+	-- opponent (FightAI reads aiWork / aiDefense), knockdowns only for the opponent and only at the end
+	if opts.tutorial and Tutorial and not oppPlayer and not sp then
+		self.tutorial = Tutorial.NewTracker()
+		self.rounds = Tutorial.ROUNDS
+		self.roundSeconds = Tutorial.ROUND_SECONDS
+		self.aiWork = Tutorial.AiWork(self.tutorial)
+		self.aiDefense = Tutorial.AI_DEFENSE
+	end
 	self.venue = opts.spar and "Gym" or (offer.venue or "Arena")
 	self.round = 0
 	self.rng = Random.new()

@@ -62,6 +62,9 @@
         "Training": {
           "$path": "src/server/Training.lua"
         },
+        "TutorialFight": {
+          "$path": "src/server/TutorialFight.lua"
+        },
         "Venues": {
           "$path": "src/server/Venues.lua"
         },

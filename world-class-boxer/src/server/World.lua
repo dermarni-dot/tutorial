@@ -81,6 +81,32 @@ local function newBoxer(world, rng, ci, target, usedNames, ageLo, ageHi)
 	}
 end
 
+-- a one-off boxer outside any saved world (the tutorial fight): the same generator as the world's boxers
+-- (name, nick, nationality, style, archetype, stats, look seed), a short record, an id of its own. Nothing
+-- is stored anywhere. opts = { female = bool (forces the gender), ageLo, ageHi }
+function World.RandomBoxer(rng, ci, target, opts)
+	opts = type(opts) == "table" and opts or {}
+	local scratch = { nextId = rng:NextInteger(1, 999999) }
+	local b
+	for _ = 1, 30 do
+		b = newBoxer(scratch, rng, ci, target, nil, opts.ageLo or 21, opts.ageHi or 32)
+		if opts.female == nil or (b.gender == 2) == (opts.female == true) then
+			break
+		end
+	end
+	if opts.female ~= nil and (b.gender == 2) ~= (opts.female == true) then
+		-- (30 draws of the 15% coin all missed: name the boxer for the gender asked)
+		b.gender = opts.female and 2 or 1
+		local first = opts.female and Config.FirstNamesF[rng:NextInteger(1, #Config.FirstNamesF)] or Config.FirstNames[rng:NextInteger(1, #Config.FirstNames)]
+		b.name = first .. " " .. Config.LastNames[rng:NextInteger(1, #Config.LastNames)]
+	end
+	b.id = "tut" .. b.id
+	local fights = rng:NextInteger(2, 12)
+	local w = math.floor(fights * rng:NextNumber(0.4, 0.8) + 0.5)
+	b.record = { w = w, l = fights - w, d = 0, ko = math.floor(w * rng:NextNumber(0.2, 0.6)) }
+	return b
+end
+
 -- full look + build + gear for an AI boxer (deterministic: the same boxer always looks the same).
 -- Looks.Random gets the ring personality / champion status / career length so the physique
 -- archetype and the boxer's battle wear (cauliflower ears, bent nose, scars) match who he is, and

@@ -175,3 +175,18 @@ python3 tools/sim/ui_preview.py tools/sim/out/ui/*.json --out DIR    # rough box
 Each screen x device runs in its own lune process (four at a time). The previews draw every object's bounding
 box (buttons blue, flagged ones red, the top bar hatched, the safe insets orange), not a render: the preview's
 font is scaled to the width guisim measured, so text that looks cut there is cut by the layout.
+
+## The first-time tutorial fight: test_tutorial
+
+`lune run tools/sim/test_tutorial.luau` (a few seconds) checks `src/shared/Tutorial.lua`, `src/server/TutorialFight.lua`
+and `src/client/modules/Tutorial.lua`: who is offered the tutorial (`Tutorial.ShouldOffer`, and `Tutorial.Backfill` on
+DataManager's load: an existing career or an older save counts as done), that `TutorialFight.Build` on a real career
+(`Career.CreateProfile`) leaves the profile, its records, money, injuries and move unlocks (`Moves.Info` /
+`Moves.Unlocked`) untouched while both corners are random boxers (`World.RandomBoxer`, the opponent weaker) in a fight
+venue with a modest crowd, that the end writes only `tutorialDone`, the ten steps in order (each advancing only on its
+own input; the round clock's hold / break / run; knockdowns only at the last step; the stamina step's drain, refill and
+timeout), the prompts' keys per device against `Keymap.ActionText` (a remapped key follows), and, through the real
+client module on guisim, the offer's and the step card's SKIP TUTORIAL and the wrap-up's way on (creator / menu).
+`test_ui_layout` lays out the step card over the fight HUD (`fight_tutorial`, `fight_tutorial_keys`), the offer
+(`tutorial_offer`) and the wrap-up (`tutorial_done`) on every device. The bout itself (FightEngine with
+`opts.tutorial`) needs Studio.

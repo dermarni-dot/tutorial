@@ -69,6 +69,19 @@ else
 	warn("[ClientMain] PvP unavailable:", PvPClient)
 	PvPClient = nil
 end
+-- the first-time tutorial fight (its offer, step card and wrap-up): optional like the city
+local okTut, TutorialClient = pcall(function()
+	return require(Modules:WaitForChild("Tutorial", 10))
+end)
+if okTut and type(TutorialClient) == "table" then
+	local okStart, errStart = pcall(TutorialClient.Start)
+	if not okStart then
+		warn("[ClientMain] Tutorial start:", errStart)
+	end
+else
+	warn("[ClientMain] Tutorial unavailable:", TutorialClient)
+	TutorialClient = nil
+end
 local gui = State.gui
 local rec = State.rec
 
@@ -491,6 +504,7 @@ end
 -- Profile updates
 ------------------------------------------------------------------------
 local menuShownOnce = false
+local tutorialOffered = false -- the first-time tutorial's offer was put up this session
 local lastFlag
 local hubShownKey = nil -- the profile / state the open hub was last rebuilt for
 -- the server is retrying a failed DataStore read: say so once (the career is not lost)
@@ -507,7 +521,24 @@ local function refresh()
 	local fight = State.inFight()
 	if not P.created then
 		hud.Visible, hudButtons.Visible, hint.Visible = false, false, false
+		-- the tutorial's offer, bout or wrap-up is up: it decides what comes next (the creator, the title)
+		if fight or State.busy() == "fight" or (TutorialClient and TutorialClient.Busy()) then
+			return
+		end
 		if not Creator.IsOpen() and not gui:FindFirstChild("Retired") then
+			-- a brand-new player is offered the tutorial fight first (SKIP leads to the title screen)
+			if TutorialClient and not tutorialOffered and not menuShownOnce and type(P.tutorial) == "table" and P.tutorial.offer == true then
+				tutorialOffered = true
+				menuShownOnce = true
+				TutorialClient.Offer(function()
+					if MainMenu then
+						MainMenu.Open()
+					else
+						Creator.Open()
+					end
+				end)
+				return
+			end
 			-- a new player meets the title screen first (NEW CAREER opens the creator)
 			if MainMenu and not menuShownOnce then
 				menuShownOnce = true

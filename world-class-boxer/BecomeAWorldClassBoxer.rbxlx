@@ -2047,6 +2047,52 @@ local function sdClassic(x, y, z)
 end
 Kit.ClassicField = sdClassic
 
+-- The hairline and cut on the classic head. Its built face (BuilderHead.FaceLayout) puts the brows at y ~0.28
+-- (up to ~0.34 with a high forehead and brows) and the ears on the side wall (centre y 0.024, z 0.048, half
+-- height 0.15 .. 0.18): AnatomySkull's keys (front 0.336, over the ear 0.1 .. 0.125) would draw the hairline on the
+-- brows and through the ears. On the classic head the front of the line is lifted by `lift` (0.336 -> 0.421 at
+-- the default, so ~0.11 of forehead above the brows' tops), and from the sideburns back it goes round the ear on
+-- an ellipse `ear` (side plane z, y: centre and semi axes, the ear's own plus ~0.03 / 0.06 of skin), down the
+-- mastoid and to the nape at -0.3. The fades' weight lines sit `fadeSide` higher at the side (the ears sit
+-- 0.12 higher than on the old skull), and the burst fade's half circle is centred on the ear.
+-- tools/hair/ref/classic (the asset hair's reference) is exported from these: tools/sim/export_classic.luau.
+Kit.CLASSIC_HAIR = {
+	lift = 0.085,
+	ear = { z = 0.06, y = 0.035, rz = 0.16, ry = 0.23 },
+	fadeSide = 0.1,
+	burst = { y = 0.024, z = 0.048, r0 = 0.2, r1 = 0.36 },
+}
+function Kit.ClassicKeys(P)
+	local C = Kit.CLASSIC_HAIR
+	local lift = C.lift
+	local front = num(P.hairFront, 0.335) + lift
+	local temple = num(P.hairTemple, 0.275) + lift
+	local rec = num(P.recede, 0)
+	local fem = P.female == true
+	local E = C.ear
+	-- the ear's arc as keys (angle from the front about x = 0, z = 0.05 on the side wall, height)
+	local function arc(deg)
+		local a = math.rad(deg)
+		local z, y = E.z + E.rz * cos(a), E.y + E.ry * sin(a)
+		local x = sqrt(max(0.36 - z * z, 0.01))
+		return { math.atan2(x, 0.05 - z), y }
+	end
+	return {
+		{ 0.0, front },
+		{ 0.35, front - 0.012 - 0.02 * rec },
+		{ 0.64, temple },
+		{ 0.98, temple - 0.04 },
+		{ 1.2, temple - 0.1 },
+		{ 1.25, fem and 0.07 or -0.03 }, -- sideburn bottom (in front of the ear)
+		{ 1.3, fem and 0.09 or -0.015 }, -- sideburn back edge, at the front of the ear
+		arc(155), arc(130), arc(105), arc(80), arc(55), arc(30),
+		{ 1.86, 0.02 }, -- behind the ear, down the mastoid
+		{ 1.98, -0.1 },
+		{ 2.45, -0.22 },
+		{ pi, -0.3 }, -- nape centre
+	}
+end
+
 -- S = Kit.Scalp(look): the skull field (nominal), rays / normals / projection, the hairline keys and a
 -- body proxy. look.headShape == "classic": the classic head's field (the hairline, age, gender and seed still
 -- come from AnatomySkull's parameters). Reads only Hair-section look paths (rig.parts.Head, rig.joints.Neck, rig.parts.UpperTorso,
@@ -2080,6 +2126,7 @@ function Kit.Scalp(look)
 		P = table.clone(P)
 		P.cy, P.cz = 0.05, 0
 		field = sdClassic
+		keys = Kit.ClassicKeys(P)
 	end
 	local S = {
 		P = P, f = field, keys = keys, kx = num(P.kx, 1), ky = num(P.ky, 1), kz = num(P.kz, 1),
@@ -2383,9 +2430,11 @@ function Kit.Cut(S, spec)
 	local fadeKind = spec.fade
 	-- fadeLift: the fade's lines a little higher (dense coily hair hides a low gradient: it is cut higher)
 	local lift = spec.fadeLift or 0
-	if fade and lift ~= 0 then
+	-- on the classic head the weight lines sit higher at the side (Kit.CLASSIC_HAIR: its ears sit higher)
+	local cside = (S.classic and fade and fade.side) and Kit.CLASSIC_HAIR.fadeSide or 0
+	if fade and (lift ~= 0 or cside ~= 0) then
 		fade = table.clone(fade)
-		fade.side = fade.side and fade.side + lift
+		fade.side = fade.side and fade.side + lift + cside
 		fade.back = fade.back and fade.back + lift
 		fade.band = fade.band and fade.band * (1 + lift * 6)
 	end
@@ -2408,6 +2457,12 @@ function Kit.Cut(S, spec)
 			return lerp(1, lerp(bottom, 1, smoothstep(0, 1, u)), clamp(w, 0, 1))
 		elseif fadeKind == "burst" then
 			-- a half circle around each ear, the back stays full
+			if S.classic then
+				local B = Kit.CLASSIC_HAIR.burst
+				local r = sqrt((y - B.y) * (y - B.y) + (z - B.z) * (z - B.z))
+				local w = smoothstep(0.34, 0.5, abs(x)) * (1 - smoothstep(0.34, 0.52, z))
+				return lerp(1, lerp(bottom, 1, smoothstep(B.r0, B.r1, r)), w)
+			end
 			local r = sqrt((y - 0.01) * (y - 0.01) + (z - 0.02) * (z - 0.02))
 			local w = smoothstep(0.2, 0.34, abs(x)) * (1 - smoothstep(0.24, 0.42, z))
 			return lerp(1, lerp(bottom, 1, smoothstep(0.1, 0.27, r)), w)
@@ -11735,8 +11790,77 @@ local function bruiseColor(skin, age)
 	return col(list[1])
 end
 
--- body shots: translucent bruising over the ribs (dmg.ribsL / ribsR). Adds to BoxerLook/Damage after
--- Head.SetDamage (which recreates the folder); never destroys the face damage. Partial tables are fine.
+-- The tier torsos' skin (each tier's UpperTorso.mesh sampled into its box, the same for both genders: the women's
+-- torso is the same mesh, scaled): per row v (-0.45 .. 0.45 of Size.Y by 0.1), per azimuth from the front (0) to the
+-- side (90 deg) by 15, the radius r of the skin, box-normalised: the skin is at (sin a r, v, -cos a r) x Size
+-- (both sides averaged). A torso without a tier is the plain box.
+local TORSO_SURF = {
+	[1] = { { 0.315, 0.321, 0.327, 0.321, 0.297, 0.283, 0.275 }, { 0.462, 0.471, 0.479, 0.469, 0.434, 0.414, 0.402 }, { 0.455, 0.466, 0.471, 0.460, 0.425, 0.405, 0.393 }, { 0.455, 0.467, 0.475, 0.468, 0.433, 0.413, 0.402 }, { 0.459, 0.471, 0.484, 0.481, 0.447, 0.427, 0.415 }, { 0.476, 0.490, 0.505, 0.502, 0.465, 0.444, 0.431 }, { 0.487, 0.513, 0.534, 0.525, 0.485, 0.462, 0.449 }, { 0.479, 0.505, 0.533, 0.537, 0.508, 0.491, 0.478 }, { 0.438, 0.453, 0.487, 0.514, 0.507, 0.501, 0.488 }, { 0.319, 0.328, 0.352, 0.375, 0.366, 0.361, 0.352 } },
+	[2] = { { 0.287, 0.294, 0.302, 0.301, 0.285, 0.275, 0.267 }, { 0.422, 0.431, 0.443, 0.442, 0.417, 0.401, 0.390 }, { 0.412, 0.437, 0.435, 0.437, 0.411, 0.395, 0.382 }, { 0.414, 0.440, 0.443, 0.444, 0.420, 0.405, 0.394 }, { 0.423, 0.445, 0.456, 0.461, 0.439, 0.425, 0.416 }, { 0.440, 0.471, 0.484, 0.489, 0.464, 0.449, 0.440 }, { 0.452, 0.515, 0.539, 0.519, 0.486, 0.469, 0.458 }, { 0.448, 0.501, 0.532, 0.524, 0.505, 0.496, 0.483 }, { 0.411, 0.426, 0.461, 0.491, 0.496, 0.499, 0.487 }, { 0.269, 0.277, 0.301, 0.330, 0.333, 0.337, 0.330 } },
+	[3] = { { 0.263, 0.269, 0.280, 0.283, 0.274, 0.268, 0.261 }, { 0.387, 0.396, 0.410, 0.417, 0.402, 0.391, 0.379 }, { 0.374, 0.412, 0.404, 0.415, 0.400, 0.388, 0.373 }, { 0.378, 0.419, 0.414, 0.423, 0.409, 0.399, 0.388 }, { 0.393, 0.426, 0.431, 0.445, 0.434, 0.426, 0.421 }, { 0.409, 0.461, 0.471, 0.477, 0.464, 0.456, 0.450 }, { 0.421, 0.516, 0.543, 0.516, 0.489, 0.478, 0.466 }, { 0.422, 0.495, 0.530, 0.514, 0.500, 0.500, 0.487 }, { 0.385, 0.397, 0.433, 0.467, 0.485, 0.498, 0.486 }, { 0.224, 0.231, 0.255, 0.292, 0.306, 0.318, 0.316 } },
+	[4] = { { 0.242, 0.248, 0.261, 0.268, 0.264, 0.262, 0.255 }, { 0.356, 0.365, 0.382, 0.394, 0.389, 0.383, 0.370 }, { 0.343, 0.390, 0.377, 0.394, 0.389, 0.382, 0.366 }, { 0.350, 0.401, 0.390, 0.404, 0.400, 0.395, 0.384 }, { 0.369, 0.411, 0.411, 0.433, 0.432, 0.429, 0.427 }, { 0.383, 0.457, 0.467, 0.467, 0.465, 0.463, 0.460 }, { 0.398, 0.517, 0.547, 0.515, 0.491, 0.488, 0.475 }, { 0.399, 0.488, 0.526, 0.507, 0.497, 0.503, 0.490 }, { 0.359, 0.370, 0.407, 0.443, 0.470, 0.495, 0.483 }, { 0.162, 0.167, 0.187, 0.253, 0.282, 0.302, 0.307 } },
+	[5] = { { 0.224, 0.230, 0.243, 0.254, 0.256, 0.255, 0.249 }, { 0.330, 0.338, 0.357, 0.373, 0.377, 0.376, 0.362 }, { 0.316, 0.370, 0.352, 0.373, 0.380, 0.378, 0.360 }, { 0.325, 0.383, 0.369, 0.388, 0.392, 0.392, 0.381 }, { 0.349, 0.398, 0.393, 0.422, 0.432, 0.432, 0.435 }, { 0.362, 0.464, 0.468, 0.459, 0.467, 0.472, 0.469 }, { 0.378, 0.517, 0.549, 0.516, 0.494, 0.499, 0.486 }, { 0.378, 0.477, 0.520, 0.500, 0.494, 0.507, 0.494 }, { 0.336, 0.347, 0.382, 0.421, 0.455, 0.485, 0.474 }, { 0.077, 0.080, 0.087, 0.192, 0.254, 0.288, 0.299 } },
+}
+
+local function torsoPoint(torso, a, v)
+	local T = TORSO_SURF[torso:GetAttribute("BodyTier")]
+	local r
+	if T then
+		local fv = math.clamp((v + 0.45) / 0.1, 0, 9)
+		local i0 = math.floor(fv)
+		local i1, tv = math.min(i0 + 1, 9), fv - i0
+		local fa = math.clamp(math.abs(math.deg(a)) / 15, 0, 6)
+		local j0 = math.floor(fa)
+		local j1, ta = math.min(j0 + 1, 6), fa - j0
+		local r0 = T[i0 + 1][j0 + 1] + (T[i0 + 1][j1 + 1] - T[i0 + 1][j0 + 1]) * ta
+		local r1 = T[i1 + 1][j0 + 1] + (T[i1 + 1][j1 + 1] - T[i1 + 1][j0 + 1]) * ta
+		r = r0 + (r1 - r0) * tv
+	else
+		r = 0.5 / math.max(math.abs(math.sin(a)), math.abs(math.cos(a)), 1e-3)
+	end
+	local s = torso.Size
+	return V3(math.sin(a) * r * s.X, v * s.Y, -math.cos(a) * r * s.Z)
+end
+
+-- a mark lying on the torso's skin (the face's lens: an ellipsoid sunk so a footprint w x h shows, rising `rise`): at u
+-- across (fraction of Size.X, + = +X) and v up (fraction of Size.Y) on the front half; welded to the torso
+function Body.SurfaceMark(folder, torso, name, u, v, w, h, color, transparency, rise, dk)
+	rise = rise or 0.004
+	local a = 0
+	for _ = 1, 16 do
+		local x = torsoPoint(torso, a, v).X / torso.Size.X
+		a = math.clamp(a + (u - x) * 1.5, -1.5, 1.5)
+	end
+	local p = torsoPoint(torso, a, v)
+	local ta = torsoPoint(torso, a + 0.02, v) - torsoPoint(torso, a - 0.02, v)
+	local tv = torsoPoint(torso, a, v + 0.02) - torsoPoint(torso, a, v - 0.02)
+	local nrm = ta:Cross(tv).Unit
+	if nrm:Dot(V3(p.X, 0, p.Z)) < 0 then
+		nrm = -nrm
+	end
+	local cf = CFrame.lookAt(p, p + nrm, tv.Unit)
+	local function sagAt(da, dv)
+		return math.max((p - torsoPoint(torso, a + da, v + dv)):Dot(nrm), 0)
+	end
+	local da = (w / 2) / math.max(ta.Magnitude / 0.04, 1e-3)
+	local dv = (h / 2) / torso.Size.Y
+	local sx = math.max(sagAt(da, 0), sagAt(-da, 0))
+	local sy = math.max(sagAt(0, dv), sagAt(0, -dv))
+	local D = math.max(rise / (1 - math.clamp(dk or 0.8, 0.05, 0.95)), 0.01)
+	local c = D - rise
+	local need = math.max(sx, sy) * 1.1 + 0.001
+	if c < need then
+		c = need
+		D = rise + need
+	end
+	local fx = math.sqrt(math.max(1 - ((c - sx) / D) ^ 2, 0.04))
+	local fy = math.sqrt(math.max(1 - ((c - sy) / D) ^ 2, 0.04))
+	return mk(folder, torso, name, V3(w / fx, h / fy, 2 * D), torso.CFrame * cf * CF(0, 0, c), color, "Ellipsoid", SMOOTH, transparency)
+end
+
+-- body shots: soft translucent bruising lying on the ribs (dmg.ribsL / ribsR), from the flank round toward the front.
+-- Adds to BoxerLook/Damage after Head.SetDamage (which recreates the folder); never destroys the face damage.
+-- Partial tables are fine.
 function Body.SetDamage(model, app, dmg)
 	local look = model:FindFirstChild("BoxerLook")
 	local ut = part(model, "UpperTorso")
@@ -11758,12 +11882,10 @@ function Body.SetDamage(model, app, dmg)
 	local s = ut.Size
 	-- women: on the bare midriff, under the sports top (which ends at -0.18 Y)
 	local female = app and app.gender == 2
-	local cy, cy2, hMax = -0.14, -0.18, 0.4
+	local cy, cy2, hMax = -0.2, -0.24, 0.36
 	if female then
-		cy, cy2, hMax = -0.33, -0.36, 0.26
+		cy, cy2, hMax = -0.34, -0.37, 0.2
 	end
-	-- a tier torso's box is as wide as the lats: the lower ribs sit further in than the default block's sides
-	local inX = ut:GetAttribute("BodyTier") ~= nil and 0.08 * s.X or 0
 	for _, e in ipairs({ { -1, "ribsL" }, { 1, "ribsR" } }) do
 		local side, v = e[1], math.clamp(tonumber(dmg[e[2]]) or 0, 0, 1)
 		if v > 0.08 then
@@ -11772,13 +11894,13 @@ function Body.SetDamage(model, app, dmg)
 				folder.Name = "Damage"
 				folder.Parent = look
 			end
-			local c = lerpColor(skin, bruiseColor(skin, dmg.age), 0.75)
-			-- the bruise wraps the lower ribs from the flank round to the front
-			-- (a tier torso's box is its mesh's bounds: at the flank the body is thinner than the box, so the bruise is a
-			-- touch shallower than the box and translucent, a mark on the skin rather than a ball standing off it)
-			mk(folder, ut, "RibBruise", V3((0.26 + 0.08 * v) * s.X, math.min(0.24 + 0.12 * v, hMax) * s.Y, s.Z * (inX > 0 and 0.97 or 1.06)), ut.CFrame * CF(side * (0.38 * s.X - inX), cy * s.Y, -0.02), c, "Ellipsoid", SMOOTH, math.clamp(0.84 - 0.36 * v, 0.5, 0.86))
+			local c = lerpColor(skin, bruiseColor(skin, dmg.age), 0.8)
+			Body.SurfaceMark(folder, ut, "RibBruise", side * 0.29, cy, (0.26 + 0.08 * v) * s.X, math.min(0.18 + 0.1 * v, hMax) * s.Y, c,
+				math.clamp(0.8 - 0.3 * v, 0.52, 0.84), 0.004, 0.8)
 			if v > 0.5 then
-				mk(folder, ut, "RibBruise", V3(0.15 * s.X, 0.13 * s.Y, s.Z * (inX > 0 and 0.99 or 1.08)), ut.CFrame * CF(side * (0.42 * s.X - inX), cy2 * s.Y, -0.02), darken(c, 0.85), "Ellipsoid", SMOOTH, math.clamp(0.88 - 0.4 * v, 0.55, 0.86))
+				-- a darker core inside it, off its middle
+				Body.SurfaceMark(folder, ut, "RibBruise", side * 0.31, cy2, 0.13 * s.X, math.min(0.1, hMax) * s.Y, darken(c, 0.85),
+					math.clamp(0.84 - 0.34 * v, 0.55, 0.84), 0.0065, 0.75)
 			end
 		end
 	end
@@ -13503,12 +13625,14 @@ return Hair
           <string name="Name">BuilderHead</string>
           <string name="Source"><![CDATA[-- BuilderHead: everything built on the head (server side; the Creator also calls SetDamage locally).
 -- * the head: the engine's default head is swapped once for the classic head (a Part with the Head SpecialMesh,
---   classicHead) and the face is BUILT on it from Parts (the v7 face; no decal, no EditableMesh): sculpted planes
---   (brow ridge, cheekbones, jaw angles, nasolabial folds, philtrum, chin, lip fold), layered eyes (tinted
---   sclera, iris with limbal ring and collarette, pupil, catchlight, lids with thickness, a wet lower lid and a
---   crease on hooded / ageing lids, under-eye shadow), full lips with a vermilion border, teeth + mouth interior
---   (mouthguard at teeth depth), ears with a helix rim, 6 brow styles, heterochromia, asymmetry, undertone, from
---   the creator's face shape and Face / Eye / Skin / Wear sliders (Looks)
+--   classicHead) and the face is BUILT on it from Parts (no decal, no EditableMesh). Every feature is a lens: an
+--   ellipsoid sunk into the classic head's exact surface (AnatomyHairKit.CLASSIC, FaceLayout surf / normal) so only
+--   a low dome of the size asked shows, its rim on the skin; nothing floats or sinks. Ears flush on the side wall,
+--   eyes set in (a shallow white, limbal ring, iris, pupil, catchlight; an upper lid fold whose edge is the lash
+--   line, a low lower lid), solid 3-piece brows on the style's arch (6 styles), a nose with a bridge, tip, wings and
+--   nostrils, two low lips overlapping at a dark seam with rigged corner pieces, teeth + interior behind them;
+--   cheekbones, jaw angles and a heavy brow ridge only where the sliders ask for them. No default blush. From the
+--   creator's face shape and Face / Eye / Skin / Wear sliders (Looks); heterochromia, asymmetry, undertone
 -- * boxer wear and skin: cauliflower ear, bent nose, permanent fight scars (app.battle), a stitched
 --   surgical repair scar, acne (active spots when young, pitted scars on adult skin), wrinkles by age,
 --   pore texture (an honest approximation: material + sparse dots), temple/forehead veins, face fat
@@ -13583,8 +13707,11 @@ local function axisCF(pos, dir)
 	return CFrame.lookAt(pos, pos + dir, up) * ANG(0, math.pi / 2, 0)
 end
 
--- the head surface: an ellipse across the face (front) that rounds back towards the crown and chin
+-- the head surface: the classic head (FaceLayout: L.surf / L.normal, AnatomyHairKit.CLASSIC exactly)
 local function surfNormal(L, x, y)
+	if L.normal then
+		return L.normal(x, y)
+	end
 	local e = 0.01
 	local px = V3(2 * e, 0, L.surf(x + e, y) - L.surf(x - e, y))
 	local py = V3(0, 2 * e, L.surf(x, y + e) - L.surf(x, y - e))
@@ -13628,33 +13755,121 @@ local function surfacePath(folder, anchor, head, L, name, pts, width, depth, col
 	end
 end
 
+-- a lens: an ellipsoid sunk into the head so that a footprint w x h (along the surface frame's X / Y at (x, y),
+-- turned `roll` about the normal) shows and its middle rises `rise` above the skin. dk = the share of its depth
+-- below the skin (0.3 a full dome with a steep rim .. 0.9 a nearly flat patch with a soft one). The head falls
+-- away under a wide footprint (the round wall, the rounded brow and chin): the ellipsoid is sunk at least that far
+-- so its rim never stands off the skin, and widened so the rim still lands at w / 2, h / 2. base lifts it off the
+-- skin (a brow on the brow ridge). Returns the head-local CFrame (-Z out of the skin) and the Size, plus the
+-- depth semi-axis D and the sink c (its height above the skin at (u, v) is D sqrt(1 - (u/a)^2 - (v/b)^2) - c).
+local function lens(L, x, y, w, h, rise, dk, roll, base)
+	local cf = surfCF(L, x, y, 0)
+	if roll and roll ~= 0 then
+		cf = cf * ANG(0, 0, roll)
+	end
+	local n, p0 = cf.LookVector, cf.Position
+	local function sagAt(dx, dy)
+		local t = p0 + cf.RightVector * dx + cf.UpVector * dy
+		return math.max((p0 - V3(t.X, t.Y, L.surf(t.X, t.Y))):Dot(n), 0)
+	end
+	local sx = math.max(sagAt(w / 2, 0), sagAt(-w / 2, 0))
+	local sy = math.max(sagAt(0, h / 2), sagAt(0, -h / 2))
+	if (dk or 0.6) >= 0.7 then
+		-- a flat patch (a bruise, a shadow, a scar): an ellipsoid barely flatter than the head under it would meet it in
+		-- a squarish outline, so it is shaped from the curvatures instead: the head's (from the sag) plus what it takes to
+		-- rise `rise` at the middle and come back to the skin at the footprint's edge, a near paraboloid there
+		-- (at least 1.7 x the head's curvature, or the outline goes diamond-shaped; a wide patch on the round wall
+		-- therefore rises a little more than asked. Neither semi-axis runs past 2.2 x the footprint: a long one poked
+		-- out of the head where it rounds off)
+		local hw, hh = w / 2, h / 2
+		rise = math.max(rise, 0.4 * math.max(sx, sy))
+		local kLx = math.max((2 * sx + 2 * rise) / (hw * hw), 1.7 * 2 * sx / (hw * hw))
+		local kLy = math.max((2 * sy + 2 * rise) / (hh * hh), 1.7 * 2 * sy / (hh * hh))
+		local m = 1.15 + (dk - 0.7) * 2
+		local D = math.max(kLx * (hw * m) ^ 2, kLy * (hh * m) ^ 2, 0.01)
+		local a = math.min(math.sqrt(D / kLx), 2.2 * hw)
+		local b = math.min(math.sqrt(D / kLy), 2.2 * hh)
+		return cf * CF(0, 0, D - rise - (base or 0)), V3(2 * a, 2 * b, 2 * D), D, D - rise
+	end
+	-- (Kit.mk keeps every axis >= 0.02: never thinner than that)
+	local D = math.max(rise / (1 - clamp(dk or 0.6, 0.05, 0.95)), 0.01)
+	local c = D - rise
+	local need = math.max(sx, sy) * 1.1 + 0.0006
+	if c < need then
+		c = need
+		D = rise + need
+	end
+	local fx = math.sqrt(math.max(1 - ((c - sx) / D) ^ 2, 0.04))
+	local fy = math.sqrt(math.max(1 - ((c - sy) / D) ^ 2, 0.04))
+	return cf * CF(0, 0, c - (base or 0)), V3(w / fx, h / fy, 2 * D), D, c
+end
+
+-- an ellipsoid on top of a dome (an iris on the white, a pupil on the iris): its middle stands rTop above the skin and
+-- its rim meets the dome, hBase above the skin, at radius rho. Returns the semi-axis across, the depth semi-axis and the
+-- sink below the skin.
+local function capOn(rTop, rho, hBase, D)
+	D = math.max(D or 0, 0.01, rTop + 0.0015)
+	local c = D - rTop
+	local f = math.sqrt(math.max(1 - ((math.max(hBase, 0) + c) / D) ^ 2, 0.04))
+	return rho / f, D, c
+end
+
 ------------------------------------------------------------------------
 -- Face layout
 ------------------------------------------------------------------------
+-- the classic head (AnatomyHairKit.CLASSIC, nominal 1.2 box: a vertical cylinder r 0.6, half height 0.6, its top and
+-- bottom edges rounded by 0.24, centred on the part); real = nominal x Size / 1.2 per axis. A copy (requiring the hair kit
+-- would load MeshKit on the server for three numbers); test_bodytiers checks it against AnatomyHairKit.CLASSIC
+local CLASSIC = { r = 0.6, h = 0.6, round = 0.24 }
+Head.CLASSIC = CLASSIC
+
 -- returns head-local positions for face features (shared with hair, beard and damage visuals)
--- Fields: s, front(x), surf(x, y), eyeX, eyeY, mouthY, eyeSize, eyeH, browY, noseLen, noseW, noseB,
--- noseTopY, noseBottomY, mouthW, eyeTilt, eyeYS[side], browTiltS[side], mouthTilt, noseDev
+-- Fields: s, front(x), surf(x, y), normal(x, y), shellCF(az, y, out), eyeX, eyeY, mouthY, eyeSize, eyeW, eyeHt, eyeH,
+-- browY, noseLen, noseW, noseB, noseTopY, noseBottomY, mouthW, eyeTilt, eyeYS[side], browTiltS[side], mouthTilt, noseDev
 function Head.FaceLayout(head, face)
 	face = face or {}
 	local s = head.Size
-	local function front(x)
-		local k = clamp(x / (s.X * 0.5), -0.97, 0.97)
-		return -s.Z * 0.5 * math.sqrt(1 - k * k)
-	end
-	-- the head mesh rounds back above the brows and below the mouth
-	local function vround(y)
-		local e = (math.abs(y) / s.Y - 0.3) / 0.28
+	local kx, ky, kz = s.X / 1.2, s.Y / 1.2, s.Z / 1.2
+	local R, RR = CLASSIC.r, CLASSIC.round
+	local core, flat = R - RR, CLASSIC.h - RR
+	-- the head's radius at nominal height yn and the tilt of its normal there (the rounded top / bottom edge)
+	local function rhoN(yn)
+		local e = math.abs(yn) - flat
 		if e <= 0 then
-			return 1
+			return R, 1, 0
 		end
-		e = math.min(e, 0.97)
-		return math.sqrt(1 - e * e)
+		e = math.min(e, RR * 0.995)
+		local r = core + math.sqrt(RR * RR - e * e)
+		return r, (r - core) / RR, (yn > 0 and 1 or -1) * e / RR
+	end
+	local function surf(x, y)
+		local r = rhoN(y / ky)
+		local xn = clamp(x / kx, -r * 0.985, r * 0.985)
+		return -kz * math.sqrt(r * r - xn * xn)
+	end
+	local function front(x)
+		return surf(x, 0)
+	end
+	local function normal(x, y)
+		local r, ct, st = rhoN(y / ky)
+		local xn = clamp(x / kx, -r * 0.985, r * 0.985)
+		local zn = -math.sqrt(r * r - xn * xn)
+		return V3(ct * xn / r / kx, st / ky, ct * zn / r / kz).Unit
+	end
+	-- a frame anywhere on the head: azimuth az from the front (+ towards +X), height y; -Z out of the skin
+	local function shellCF(az, y, out)
+		local yn = clamp(y / ky, -0.598, 0.598)
+		local r, ct, st = rhoN(yn)
+		local hx, hz = math.sin(az), -math.cos(az)
+		local nn = V3(ct * hx / kx, st / ky, ct * hz / kz).Unit
+		local p = V3(r * hx * kx, yn * ky, r * hz * kz) + nn * (out or 0)
+		return CFrame.lookAt(p, p + nn, V3(0, 1, 0))
 	end
 	local eyeX = (0.19 + 0.035 * (face.eyeDist or 0)) * s.X
 	local eyeY = 0.1 * s.Y
-	local mouthY = -0.21 * s.Y
+	local mouthY = -0.215 * s.Y
 	local L = {
-		s = s, front = front, eyeX = eyeX, eyeY = eyeY, mouthY = mouthY,
+		s = s, front = front, surf = surf, normal = normal, shellCF = shellCF, eyeX = eyeX, eyeY = eyeY, mouthY = mouthY,
 		eyeSize = 1 + 0.25 * (face.eyeSize or 0),
 		eyeH = 1 - 0.45 * (face.eyeShape or 0.5),
 		browY = eyeY + (0.13 + 0.025 * (face.forehead or 0) + 0.03 * (face.browHeight or 0)) * s.Y,
@@ -13662,12 +13877,12 @@ function Head.FaceLayout(head, face)
 		noseW = (0.11 + 0.05 * (face.noseWidth or 0)) * s.X,
 		noseB = (0.085 + 0.05 * (face.noseBridge or 0)) * s.Z,
 	}
-	L.surf = function(x, y)
-		return front(x) * vround(y)
-	end
+	-- the visible eye opening (round .. almond)
+	L.eyeW = 0.132 * L.eyeSize * s.X
+	L.eyeHt = L.eyeW * (0.9 - 0.46 * clamp(face.eyeShape or 0.5, 0, 1))
 	L.noseTopY = eyeY - 0.02 * s.Y
 	L.noseBottomY = L.noseTopY - L.noseLen
-	L.mouthW = (0.26 + 0.02 * (face.lips or 0) + 0.05 * (face.mouthWidth or 0)) * s.X
+	L.mouthW = (0.235 + 0.02 * (face.lips or 0) + 0.045 * (face.mouthWidth or 0)) * s.X
 	L.eyeTilt = clamp(face.eyeTilt or 0, -1, 1) * rad(8)
 	-- asymmetry: its own random stream so the skin-detail stream never shifts
 	local asym = clamp(face.asym or 0, 0, 1)
@@ -13845,9 +14060,14 @@ local function faceGrime(model, app)
 	folder:SetAttribute("Key", key)
 	local s, hcf = L.s, head.CFrame
 	local dirt = Color3.fromRGB(110, 90, 70)
-	mk(folder, head, "Grime", V3(0.26 * s.X, 0.1 * s.Y, 0.03 * s.Z), hcf * surfCF(L, -0.1 * s.X, L.browY + 0.08 * s.Y, 0.003), dirt, "Ellipsoid", SMOOTH, 0.88 - 0.22 * g)
+	-- (flat translucent patches lying on the skin)
+	local function patch(x, y, w, h, t)
+		local cf, size = lens(L, x, y, w, h, 0.0018, 0.85)
+		mk(folder, head, "Grime", size, hcf * cf, dirt, "Ellipsoid", SMOOTH, t)
+	end
+	patch(-0.1 * s.X, L.browY + 0.08 * s.Y, 0.26 * s.X, 0.1 * s.Y, 0.88 - 0.22 * g)
 	if g > 0.5 then
-		mk(folder, head, "Grime", V3(0.16 * s.X, 0.12 * s.Y, 0.03 * s.Z), hcf * surfCF(L, 0.3 * s.X, -0.15 * s.Y, 0.003), dirt, "Ellipsoid", SMOOTH, 0.9 - 0.22 * g)
+		patch(0.3 * s.X, -0.15 * s.Y, 0.16 * s.X, 0.12 * s.Y, 0.9 - 0.22 * g)
 	end
 end
 
@@ -13942,9 +14162,6 @@ local function faceBuild(model, app, opts, build)
 	local function at(x, y, z)
 		return hcf * CF(x, y, z)
 	end
-	local function on(x, y, out)
-		return hcf * surfCF(L, x, y, out or 0)
-	end
 	local function add(name, size, cf, color, shape, material, transparency)
 		return mk(folder, head, name, size, cf, color, shape or "Ellipsoid", material, transparency)
 	end
@@ -13961,8 +14178,19 @@ local function faceBuild(model, app, opts, build)
 		CollectionService:AddTag(m, "FaceRig")
 		return p
 	end
-	local function line(name, x0, y0, x1, y1, width, color, transparency, out)
-		return surfaceLine(folder, head, head, L, name, x0, y0, x1, y1, width, 0.012 * s.Z, color, transparency, out)
+	-- a thin mark lying on the skin, rising `rise` (default 0.0015) above it (Kit.mk's 0.02 floor is its thickness)
+	local function line(name, x0, y0, x1, y1, width, color, transparency, rise)
+		return surfaceLine(folder, head, head, L, name, x0, y0, x1, y1, width, 0.02, color, transparency, (rise or 0.0015) - 0.01)
+	end
+	-- a lens on the skin (see lens above); o = { roll, base, mat, t (transparency), anchor, role, side }
+	local function lp(name, x, y, w, h, rise, dk, color, o)
+		o = o or {}
+		local cf, size = lens(L, x, y, w, h, rise, dk, o.roll, o.base)
+		cf = hcf * cf
+		if o.role then
+			return rig(o.role, o.side, name, size, cf, color, "Ellipsoid", o.mat, o.t)
+		end
+		return mk(folder, o.anchor or head, name, size, cf, color, "Ellipsoid", o.mat, o.t)
 	end
 	-- skin finish: a pore-heavy or rough skin uses Plastic (a fine grain), smooth skin SmoothPlastic
 	head.Material = ((face.smooth or 0.5) >= 0.5 and (face.pores or 0) < 0.5) and SMOOTH or PLASTIC
@@ -14037,51 +14265,60 @@ local function faceBuild(model, app, opts, build)
 		entry[#entry + 1] = fn
 	end
 
-	-- ears: shell + helix rim; cauliflower lumps fill the upper rim
+	-- Every feature is a lens on the classic head (lens / lp above: an ellipsoid sunk into the skin so only a low
+	-- dome of the size asked shows, its rim on the skin): nothing stands off the face or sinks into it. Heights
+	-- (rise) are fractions of s.Z: skin sculpt 0.005 .. 0.02, the eye 0.006 .. 0.012, lids and brows ~0.01 .. 0.02,
+	-- the nose tip ~0.05 (the one feature that stands out).
+
+	-- ears: a low shell flush on the side wall, inside the arc the hair keeps clear (Kit.CLASSIC_HAIR.ear: centre y
+	-- 0.035, z 0.06 nominal), its back edge turned out a little, the darker bowl of the concha in it; cauliflower
+	-- lumps fill the upper rim
 	local earS = 1 + 0.2 * (face.earSize or 0)
+	local earW, earH = 0.13 * s.Z * earS, 0.26 * s.Y * earS
+	local earRise = (0.026 + 0.012 * cauli) * s.X
 	for side = -1, 1, 2 do
-		local ecf = at(side * 0.5 * s.X, 0.02 * s.Y, 0.04 * s.Z) * ANG(0, side * rad(6 + 10 * cauli), 0)
-		add("Ear", V3(0.08 * s.X, 0.25 * s.Y * earS, 0.17 * s.Z * earS), ecf, skin, "Ellipsoid")
+		-- (shellCF's local +X is the back on the right side, the front on the left)
+		local ecf = hcf * L.shellCF(side * rad(96), 0.03 * s.Y, 0) * ANG(0, side * rad(10 + 12 * cauli), 0)
+		local D = earRise / 0.55
+		local f = math.sqrt(1 - 0.45 * 0.45)
+		add("Ear", V3(earW / f, earH / f, 2 * D), ecf * CF(0, 0, D - earRise), skin, "Ellipsoid")
 		if full then
-			add("EarHelix", V3(0.045 * s.X, 0.26 * s.Y * earS, 0.06 * s.Z * earS), ecf * CF(side * 0.03 * s.X, 0.015 * s.Y, 0.055 * s.Z * earS), darken(skin, 0.96), "Ellipsoid")
+			-- the concha: a darker hollow toward the front of the ear, just above its surface
+			add("EarHelix", V3(earW * 0.5, earH * 0.5, 0.02), ecf * CF(-side * 0.12 * earW, -0.06 * earH, 0.01 - earRise * 0.92 - 0.0015),
+				darken(skin, 0.86), "Ellipsoid")
 		end
 		if cauli > 0.15 and not low then
 			local lumps = full and math.min(2, 1 + math.floor(cauli * 2)) or 1
 			side2("cauli", "wear", lumps, function()
 				for i = 1, lumps do
-					local sz = (0.05 + 0.045 * cauli) * s.X * (1 - 0.15 * (i - 1))
-					add("Cauliflower", V3(sz * 0.9, sz, sz), ecf * CF(side * 0.03 * s.X, (0.08 - 0.06 * (i - 1)) * s.Y * earS, (0.02 + 0.02 * i) * s.Z),
+					local sz = (0.045 + 0.04 * cauli) * s.X * (1 - 0.15 * (i - 1))
+					add("Cauliflower", V3(sz, sz * 1.1, sz * 0.8), ecf * CF(side * 0.12 * earW, (0.24 - 0.2 * (i - 1)) * earH, -earRise * 0.7),
 						lerpColor(skin, Color3.fromRGB(150, 100, 100), 0.12 + 0.1 * cauli), "Ellipsoid")
 				end
 			end)
 		end
 	end
-	-- jaw (square / wide jaws stand out from the round head) and the jaw angles that make a jawline
-	if jawW > 0.1 then
-		local w = (0.82 + 0.2 * jawW) * s.X
-		-- always a rounded mass that melts into the head (a box jaw read as a block bolted on); a defined
-		-- jaw is a slightly flatter, lower ellipsoid instead
-		add("Jaw", V3(w, (0.3 - 0.04 * math.max(jawDef - 0.5, 0)) * s.Y, 0.84 * s.Z), at(0, -0.35 * s.Y, 0.03 * s.Z), skin, "Ellipsoid")
-	end
-	if full then
-		local ja = (female and 0.75 or 1) * (0.8 + 0.4 * jawDef)
+	-- jaw angles: low swells at the corners of the jaw (wider jaws further out, defined jaws higher)
+	-- (only on defined or wide jaws: on the round classic head a soft jaw is the head itself)
+	local jw = clamp(jawW, -1, 1.6)
+	local ja = (female and 0.7 or 1) * (clamp((jawDef - 0.45) / 0.55, 0, 1) + 0.5 * clamp(jw - 0.3, 0, 1))
+	if full and ja > 0.2 then
 		for side = -1, 1, 2 do
-			add("JawAngle", V3(0.16 * s.X * ja, 0.2 * s.Y, 0.3 * s.Z), at(side * (0.41 + 0.05 * math.max(jawW, -0.5)) * s.X, -0.32 * s.Y, 0.1 * s.Z) * ANG(0, 0, rad(side * 10)), skin, "Ellipsoid")
+			lp("JawAngle", side * (0.39 + 0.03 * jw) * s.X, -0.33 * s.Y, 0.24 * s.Y, (0.075 + 0.015 * jw) * s.X, (0.002 + 0.008 * ja) * s.Z, 0.6, skin,
+				{ roll = side * rad(-48) })
 		end
 	end
-	-- chin
-	-- sits on the front of the lower face (lower down it hangs under the head like a second chin)
-	local chinSize = 0.2 + 0.07 * chin
+	-- chin: a soft swell on the rounded bottom edge of the head
 	local chinY = (-0.385 - 0.025 * chin - chinDrop * 0.5) * s.Y
-	-- (a long face's drop lengthens the chin only half as much: the full drop hung it under the head)
-	add("Chin", V3(chinSize * 1.1 * (1 - chinNarrow) * s.X, (0.14 + 0.04 * chin + chinDrop * 0.5) * s.Y, 0.18 * s.Z), at(0, chinY + chinDrop * 0.15 * s.Y + 0.01 * s.Y, L.front(0) * 0.9 + 0.045), skin, "Ellipsoid")
+	local chinRise = (0.0065 + 0.0055 * chin + 0.003 * jawDef) * s.Z
+	lp("Chin", 0, chinY + 0.005 * s.Y, (0.24 + 0.07 * chin) * (1 - chinNarrow) * s.X, (0.11 + 0.03 * chin + chinDrop * 0.3) * s.Y, math.max(chinRise, 0.0015), 0.72, skin)
 	if chinDrop > 0 then -- long face: extend the lower face
 		add("LowerFace", V3(0.7 * s.X, chinDrop * 2 * s.Y, 0.7 * s.Z), at(0, -0.5 * s.Y, 0), skin, "Ellipsoid")
 	end
 	if (face.chinCleft or 0) > 0.15 and full then
 		opt("skin", 1, function()
 			local c = face.chinCleft
-			add("ChinCleft", V3(0.012 * s.X, (0.05 + 0.05 * c) * s.Y, 0.03 * s.Z), at(0, chinY + 0.005 * s.Y, L.front(0) * 0.9 - 0.062 * s.Z), darken(skin, 0.8), "Ellipsoid", SMOOTH, 0.75 - 0.35 * c)
+			lp("ChinCleft", 0, chinY + 0.005 * s.Y, 0.014 * s.X, (0.05 + 0.05 * c) * s.Y, 0.0015, 0.85, darken(skin, 0.8), { base = chinRise * 0.85, t = 0.75 - 0.35 * c })
 		end)
 	end
 	if jowl > 0.05 and full then
@@ -14096,102 +14333,145 @@ local function faceBuild(model, app, opts, build)
 			add("DoubleChin", V3((0.42 + 0.12 * jowl) * s.X, (0.1 + 0.06 * jowl) * s.Y, 0.45 * s.Z), at(0, -0.5 * s.Y, -0.18 * s.Z), skin, "Ellipsoid")
 		end)
 	end
-	-- cheekbones and cheeks (lean faces show more bone); below full detail full cheeks replace the bone
+	-- cheekbones and cheeks (lean faces show more bone); below full detail full cheeks replace the bone. The
+	-- slider and the Diamond preset reach cheek = 1.7: clamped, so high cheekbones stay a swell
+	-- (flat cheeks shade in under the bone; high cheekbones stand out as a long swell up to the ear)
+	hollow = math.max(hollow, clamp((-cheek - 0.2) / 0.8, 0, 1) * 0.6)
 	local fullCheeks = cheekFat > 0.05 and hollow <= 0.1
-	if cheek > -0.5 and (full or not fullCheeks) then
-		local bone = 1 + 0.25 * hollow
+	local ck = clamp(cheek, -0.5, 1)
+	local boneRise = 0.0075 * clamp((ck - 0.05) / 0.95, 0, 1) + 0.003 * hollow
+	if boneRise > 0.0015 and (full or not fullCheeks) then
 		for side = -1, 1, 2 do
-			-- a low cap of an ellipsoid sunk into the cheek, kept inside the head's outline (further out it stood
-			-- off the side of the face as a ball): a gentle swell, no disc edge. The slider and the Diamond
-			-- preset reach cheek = 1.7: clamped, so high cheekbones stay a swell
-			local x = side * 0.26 * s.X
-			local ck = clamp(cheek, -0.5, 1)
-			add("Cheekbone", V3(0.2 * s.X * bone, (0.12 + 0.025 * ck) * s.Y, 0.13 * s.Z),
-				at(x, -0.02 * s.Y, L.front(x) + 0.078 - 0.01 * ck - 0.006 * hollow), skin, "Ellipsoid")
+			lp("Cheekbone", side * 0.33 * s.X, -0.03 * s.Y, (0.26 + 0.03 * ck) * s.X, (0.085 + 0.015 * ck) * s.Y, boneRise * s.Z, 0.78, skin, { roll = side * rad(20) })
 		end
 	end
 	if fullCheeks then
 		for side = -1, 1, 2 do
-			local x = side * 0.33 * s.X
-			add("Cheek", V3(0.28 * s.X, 0.26 * s.Y, 0.22 * s.Z), at(x, -0.2 * s.Y, L.front(x) + 0.08 + 0.03 * (1 - math.min(cheekFat, 1))), skin, "Ellipsoid")
+			lp("Cheek", side * 0.37 * s.X, -0.17 * s.Y, 0.26 * s.X, 0.28 * s.Y, (0.005 + 0.008 * math.min(cheekFat, 1)) * s.Z, 0.82, skin)
 		end
 	end
 	if hollow > 0.1 and full then
 		for side = -1, 1, 2 do
-			local x = side * 0.3 * s.X
-			add("Hollow", V3(0.16 * s.X, 0.14 * s.Y, 0.03 * s.Z), on(x, -0.13 * s.Y, 0.002), darken(skin, 0.8), "Ellipsoid", SMOOTH, 0.82 - 0.3 * hollow)
+			lp("Hollow", side * 0.3 * s.X, -0.13 * s.Y, 0.16 * s.X, 0.14 * s.Y, 0.0015, 0.88, darken(skin, 0.8), { t = 0.82 - 0.3 * hollow })
 		end
 	end
-	-- brow ridge: two halves that follow the forehead curve (scar tissue thickens it on veterans)
+	-- brow ridge: two low swells over the eyes the brows lie on (scar tissue thickens it on veterans); its height
+	-- under any point is kept so the brows sit on it, never floating off it or sinking in
 	local ridge = math.max(browRidge, (face.forehead or 0) * 0.6, female and 0 or 0.25, math.min(scarCount, 3) * 0.15)
-	if full then
-		for side = -1, 1, 2 do
-			local x = side * 0.16 * s.X
-			add("BrowRidge", V3((0.3 + 0.05 * ridge) * s.X, (0.05 + 0.03 * ridge) * s.Y, (0.035 + 0.025 * ridge) * s.Z),
-				on(x, L.browY + 0.012 * s.Y, -0.004 + 0.006 * ridge), skin, "Ellipsoid")
+	local ridges = {}
+	local function ridgeAt(x, y)
+		local best = 0
+		for _, r in ipairs(ridges) do
+			local q = 1 - ((x - r.x) / r.a) ^ 2 - ((y - r.y) / r.b) ^ 2
+			if q > 0 then
+				best = math.max(best, r.D * math.sqrt(q) - r.c)
+			end
 		end
-	elseif detail == "medium" and math.max(browRidge, (face.forehead or 0) * 0.6) > 0.2 then
-		-- one bar across both brows (a heavy forehead / heart face reads from a distance)
-		add("BrowRidge", V3((0.62 + 0.12 * ridge) * s.X, 0.06 * s.Y, 0.06 * s.Z), on(0, L.browY + 0.012 * s.Y, 0.002), skin, "Ellipsoid")
+		return best
+	end
+	local function ridgeLens(x, y, w, h, rise, roll)
+		local p = lp("BrowRidge", x, y, w, h, rise, 0.6, skin, { roll = roll })
+		local _, size, D, c = lens(L, x, y, w, h, rise, 0.6, roll)
+		table.insert(ridges, { x = x, y = y, a = size.X / 2, b = size.Y / 2, D = D, c = c })
+		return p
+	end
+	-- (a heavy brow only: a heart face, a big forehead, scar tissue; an ordinary brow lies on the flat front. Full detail
+	-- only: across both brows at a distance it read as a band over the forehead)
+	if full and ridge > 0.3 then
+		for side = -1, 1, 2 do
+			-- (no taller than the brow on it, which hides its rim: a taller one drew a second line over the brow)
+			local rb = (0.03 + 0.018 * ((face.browThick or 0) + 1)) * s.Y * (BROWS[face.browStyle or "Natural"] or BROWS.Natural).thick
+			ridgeLens(side * 0.18 * s.X, L.browY - 0.006 * s.Y, (0.26 + 0.04 * ridge) * s.X, rb * 1.05, (0.002 + 0.01 * (ridge - 0.25)) * s.Z, side * rad(-4))
+		end
 	end
 
-	-- eyes
+	-- eyes: set into the head. A shallow white, the iris (limbal ring) and pupil just proud of it, the upper lid a
+	-- fold that covers the top of the iris (its edge the lash line), a low lower lid; nothing stands far off the face.
 	local eyeColors = {
 		[-1] = Looks.Color(Looks.EyeColors[face.eyeColor or 2]),
 		[1] = Looks.Color(Looks.EyeColors[(face.eyeColor2 or 0) > 0 and face.eyeColor2 or (face.eyeColor or 2)]),
 	}
 	local lidColor = darken(skin, 0.92)
 	-- whites of the eye are never pure white; they yellow slightly with age
-	local scleraColor = lerpColor(Color3.fromRGB(238, 234, 226), Color3.fromRGB(230, 220, 200), clamp((age - 25) / 30, 0, 1))
+	local scleraColor = lerpColor(Color3.fromRGB(236, 232, 224), Color3.fromRGB(230, 220, 200), clamp((age - 25) / 30, 0, 1))
 	local heavy = clamp(face.lidHeavy or 0, 0, 1)
 	local brow = BROWS[face.browStyle or "Natural"] or BROWS.Natural
 	local browColor = darken(hairColor, 0.88)
-	local bt = (0.028 + 0.02 * ((face.browThick or 0) + 1)) * s.Y * brow.thick
+	local bt = (0.03 + 0.018 * ((face.browThick or 0) + 1)) * s.Y * brow.thick
 	local lashT = 1 - (0.35 + 0.6 * clamp(face.lashes or 0, 0, 1))
 	local underEye = full and (wr > 0.3 or heavy > 0.6)
+	local w, h = L.eyeW, L.eyeHt
+	local rWhite, rLimb, rIris, rPupil, rGlint = 0.006 * s.Z, 0.0088 * s.Z, 0.0095 * s.Z, 0.0104 * s.Z, 0.0116 * s.Z
+	local browInfo = {}
 	for side = -1, 1, 2 do
 		local roleSide = side == -1 and "L" or "R"
-		local x = side * L.eyeX
-		local y = L.eyeYS[side]
-		local z = L.front(x)
-		local w = 0.15 * L.eyeSize * s.X
-		local h = 0.15 * L.eyeSize * L.eyeH * s.Y
+		local x0, y0 = side * L.eyeX, L.eyeYS[side]
 		-- eye frame: canthal tilt raises the outer corner
-		local ecf = at(x, y, z) * ANG(0, 0, side * L.eyeTilt)
-		local function e(dx, dy, dz)
-			return ecf * CF(dx, dy, dz)
+		local roll = side * L.eyeTilt
+		local cr, sr = math.cos(roll), math.sin(roll)
+		local function ep(dx, dy)
+			return x0 + dx * cr - dy * sr, y0 + dx * sr + dy * cr
 		end
+		local ef = surfCF(L, x0, y0, 0) * ANG(0, 0, roll)
 		local eyeColor = eyeColors[side]
-		local sclera = add("Sclera", V3(w, h, 0.05 * s.Z), e(0, 0, -0.004), scleraColor, "Ellipsoid")
+		local scf, ssz, sD, sc = lens(L, x0, y0, w, h, rWhite, 0.72, roll)
+		local sclera = add("Sclera", ssz, hcf * scf, scleraColor, "Ellipsoid")
 		sclera:SetAttribute("BaseColor", scleraColor)
 		sclera:SetAttribute("Side", side)
-		-- iris, limbal ring, collarette and pupil ride on an invisible EyeBall pivot behind the eye so
-		-- the client can turn the gaze; the catchlights stay fixed to the head like real reflections
-		local iris = 0.085 * L.eyeSize * s.X
+		sclera:SetAttribute("VisW", w)
+		sclera:SetAttribute("VisH", h)
+		local sa, sb = ssz.X / 2, ssz.Y / 2
+		local function hWhite(u, v)
+			local q = 1 - (u / sa) ^ 2 - (v / sb) ^ 2
+			return q > 0 and sD * math.sqrt(q) - sc or 0
+		end
+		-- iris, limbal ring and pupil ride on an invisible EyeBall pivot behind the eye so the client can turn the
+		-- gaze; the catchlight stays fixed to the head like a real reflection. Each is shaped (across and up apart)
+		-- so its rim meets the white in a circle.
+		local rho = 0.5 * math.min(0.58 * w, 0.98 * h)
 		local holder = head
 		if rigOn(detail, "Eye" .. roleSide) then
-			holder = rig("Eye" .. roleSide, side, "EyeBall", V3(0.04, 0.04, 0.04), e(0, 0, 0.03), scleraColor, "Ball", SMOOTH, 1)
+			holder = rig("Eye" .. roleSide, side, "EyeBall", V3(0.04, 0.04, 0.04), hcf * ef * CF(0, 0, 0.03), scleraColor, "Ball", SMOOTH, 1)
 			holder:SetAttribute("Side", side)
 		end
-		if full then
-			mk(folder, holder, "Limbal", V3(iris * 1.12, math.min(iris * 1.12, h * 0.98), 0.026 * s.Z), e(0, 0, -0.019), darken(eyeColor, 0.42), "Ellipsoid")
+		local iD = rIris + 0.004 * s.Z
+		local iax = capOn(rIris, rho, hWhite(rho, 0), iD)
+		local iay, _, ic = capOn(rIris, rho, hWhite(0, rho), iD)
+		local function hIris(u, v)
+			local q = 1 - (u / iax) ^ 2 - (v / iay) ^ 2
+			return q > 0 and iD * math.sqrt(q) - ic or 0
 		end
-		mk(folder, holder, "Iris", V3(iris, math.min(iris, h * 0.95), 0.03 * s.Z), e(0, 0, -0.022), eyeColor, "Ellipsoid")
 		if full then
-			mk(folder, holder, "IrisInner", V3(iris * 0.62, math.min(iris * 0.62, h * 0.66), 0.02 * s.Z), e(0, 0, -0.027),
-				lerpColor(lerpColor(eyeColor, Color3.fromRGB(196, 150, 80), 0.32), WHITE, 0.08), "Ellipsoid", SMOOTH, 0.35)
+			local lD = rLimb + 0.004 * s.Z
+			local lax = capOn(rLimb, rho * 1.13, hWhite(rho * 1.13, 0), lD)
+			local lay, _, lc = capOn(rLimb, rho * 1.13, hWhite(0, rho * 1.13), lD)
+			mk(folder, holder, "Limbal", V3(2 * lax, 2 * lay, 2 * lD), hcf * ef * CF(0, 0, lc), darken(eyeColor, 0.45), "Ellipsoid")
 		end
-		mk(folder, holder, "Pupil", V3(iris * 0.46, math.min(iris * 0.46, h * 0.6), 0.02 * s.Z), e(0, 0, -0.032), Color3.fromRGB(8, 8, 10), "Ellipsoid")
-		local glint = add("Glint", V3(iris * 0.18, iris * 0.18, 0.01), at(x + iris * 0.15, y + iris * 0.15, z - 0.04), WHITE, "Ellipsoid")
+		local iris = mk(folder, holder, "Iris", V3(2 * iax, 2 * iay, 2 * iD), hcf * ef * CF(0, 0, ic), eyeColor, "Ellipsoid")
+		iris:SetAttribute("VisW", 2 * rho)
+		local pr = rho * 0.44
+		local pD = rPupil + 0.003 * s.Z
+		local pax = capOn(rPupil, pr, hIris(pr, 0), pD)
+		local pay, _, pc = capOn(rPupil, pr, hIris(0, pr), pD)
+		mk(folder, holder, "Pupil", V3(2 * pax, 2 * pay, 2 * pD), hcf * ef * CF(0, 0, pc), Color3.fromRGB(10, 9, 10), "Ellipsoid")
+		local gx, gy = side * rho * 0.28, rho * 0.3
+		local ga, gD, gc = capOn(rGlint, rho * 0.15, hIris(gx, gy) + 0.0006, 0.01)
+		local glint = add("Glint", V3(2 * ga, 2 * ga, 2 * gD), hcf * ef * CF(gx, gy, gc), WHITE, "Ellipsoid")
 		glint:SetAttribute("Side", side) -- (SetDamage hides it while a swollen lid has the eye shut)
-		-- upper lid: shapes the eye (hooded lids cover more of it); damage swelling hides it
-		local lidH = h * (0.32 + 0.22 * heavy)
-		local lid = rig("Lid" .. roleSide, side, "Lid", V3(w * 1.08, lidH, 0.045 * s.Z), e(0, h * (0.42 - 0.08 * heavy), -0.012), lidColor, "Ellipsoid")
+		-- upper lid: a fold over the top of the eye; its lower edge (where it meets the eye) is the lid line, at 0.3 of
+		-- the eye's height above its middle (hooded lids come lower). CloseY: how far that edge travels to shut the eye
+		-- (FaceFX); damage swelling hides it
+		local lidLine = h * (0.36 - 0.2 * heavy)
+		local lb = (h * 0.98 - lidLine) / 1.75
+		local lx, ly = ep(0, lidLine + 0.8 * lb)
+		local lid = lp("Lid", lx, ly, w * 1.16, 1.9 * lb, (0.0128 + 0.005 * heavy) * s.Z, 0.3, lidColor, { roll = roll, role = "Lid" .. roleSide, side = side })
 		lid:SetAttribute("Side", side)
+		lid:SetAttribute("CloseY", lidLine + h * 0.5)
 		if not low then
-			-- lash line (always: it defines the eye) welded to the lid so it follows a blink or squint
-			local lashes = mk(folder, lid, "Lashes", V3(w * 1.04, 0.014 * s.Y, 0.03 * s.Z), e(0, h * (0.42 - 0.08 * heavy) - lidH * 0.42, -0.03) * ANG(0, 0, rad(side * -4)),
-				Color3.fromRGB(15, 12, 10), "Ellipsoid", SMOOTH, math.max(0.08, lashT))
+			-- the lash line along the lid's edge, welded to the lid so it follows a blink or squint
+			local ax, ay = ep(0, lidLine)
+			local lashes = lp("Lashes", ax, ay, w * 1.05, (0.011 + 0.008 * clamp(face.lashes or 0, 0, 1)) * s.Y, 0.0122 * s.Z, 0.5,
+				Color3.fromRGB(18, 13, 11), { roll = roll, anchor = lid, t = math.max(0.08, lashT) })
 			lashes:SetAttribute("BaseT", lashes.Transparency)
 			lashes:SetAttribute("Side", side)
 		end
@@ -14199,100 +14479,158 @@ local function faceBuild(model, app, opts, build)
 			-- the lid crease shows on hooded and ageing lids
 			if heavy > 0.3 or wr > 0.4 then
 				side2("crease", "skin", 1, function()
-					add("Crease", V3(w * 0.98, 0.008 * s.Y, 0.02 * s.Z), e(0, h * 0.42 + lidH * 0.52, -0.006), darken(skin, 0.74), "Ellipsoid", SMOOTH, 0.45 + 0.45 * heavy)
+					local cx, cy = ep(0, h * 1.0)
+					lp("Crease", cx, cy, w * 0.95, 0.01 * s.Y, 0.0015, 0.8, darken(skin, 0.74), { roll = roll, t = 0.45 + 0.4 * heavy })
 				end)
 			end
-			-- lower lid with the wet rim (tear line) in its colour: one part, rigged for squints
-			local lower = rig("LowerLid" .. roleSide, side, "LowerLid", V3(w * 1.02, h * 0.24, 0.04 * s.Z), e(0, -h * 0.5, -0.01),
-				lerpColor(lerpColor(lidColor, skin, 0.5), Color3.fromRGB(226, 160, 158), 0.18), "Ellipsoid")
+			-- lower lid: a low rim under the eye with the wet line in its colour, rigged for squints
+			local ux, uy = ep(0, -h * 0.56)
+			local lower = lp("LowerLid", ux, uy, w * 1.0, h * 0.28, 0.008 * s.Z, 0.45,
+				lerpColor(lerpColor(lidColor, skin, 0.5), Color3.fromRGB(226, 160, 158), 0.12), { roll = roll, role = "LowerLid" .. roleSide, side = side })
 			lower:SetAttribute("Side", side)
 		end
 		if not low then
-			-- the client shows this for a blink (never the Lid, which SetDamage hides)
-			local blink = add("BlinkLid", V3(w * 1.12, h * 1.05, 0.05 * s.Z), e(0, 0, -0.03), lerpColor(lidColor, skin, 0.4), "Ellipsoid", SMOOTH, 1)
+			-- the closed lid the client shows for a blink (never the Lid, which SetDamage hides)
+			local kx, ky = ep(0, h * 0.04)
+			local blink = lp("BlinkLid", kx, ky, w * 1.14, h * 1.18, 0.0165 * s.Z, 0.5, lerpColor(lidColor, skin, 0.4), { roll = roll, t = 1 })
 			blink:SetAttribute("Side", side)
 		end
 		if underEye then
-			-- under-eye shadow (also the socket depth the eye loses without a socket part)
 			side2("underEye", "skin", 1, function()
-				add("UnderEye", V3(w * 1.1, h * 0.5, 0.03 * s.Z), e(0, -h * 0.9, 0.004), darken(skin, 0.82), "Ellipsoid", SMOOTH, 0.82 - 0.3 * wr)
+				local ux, uy = ep(0, -h * 0.92)
+				lp("UnderEye", ux, uy, w * 1.1, h * 0.5, 0.0015, 0.86, darken(skin, 0.82), { roll = roll, t = 0.82 - 0.3 * wr })
 			end)
 		end
-		-- eyebrow: inner head, body and tail; the body is the rigged part, the others are welded to it
+		-- eyebrow: a solid strip on the brow ridge in three overlapping pieces along the style's arch (inner head,
+		-- body, tapering tail); the body is the rigged part, the others are welded to it. Below full detail the body
+		-- alone spans the brow.
 		local bx = side * L.eyeX * 1.02
 		local by = L.browY + (L.eyeYS[side] - L.eyeY)
 		local tilt = side * ((face.browAngle or 0) * rad(9)) + L.browTiltS[side]
 		local blen = 0.21 * s.X * brow.len
-		local bcf = hcf * CF(bx, by, L.front(bx) - 0.012) * ANG(0, 0, tilt)
-		local browPart = rig("Brow" .. roleSide, side, "Brow", V3(blen * 0.46, bt, 0.035 * s.Z), bcf * ANG(0, -side * rad(8), 0), browColor, "Ellipsoid", FABRIC)
-		browPart:SetAttribute("Side", side)
-		if full then
-			local ix = bx - side * blen * 0.36
-			mk(folder, browPart, "BrowInner", V3(blen * 0.36, bt * 1.12, 0.035 * s.Z),
-				hcf * CF(ix, by - bt * 0.25 * brow.arch, L.front(ix) - 0.01) * ANG(0, 0, tilt + side * rad(4 + 8 * brow.arch)) * ANG(0, -side * rad(4), 0), browColor, "Ellipsoid", FABRIC)
-			local ox = bx + side * blen * 0.36
-			mk(folder, browPart, "BrowOuter", V3(blen * 0.38, bt * brow.taper, 0.03 * s.Z),
-				hcf * CF(ox, by - bt * 0.45 * brow.arch, L.front(ox) - 0.01) * ANG(0, 0, tilt - side * rad(6 + 14 * brow.arch)) * ANG(0, -side * rad(16), 0), browColor, "Ellipsoid", FABRIC)
+		local ar = brow.arch
+		local ct, st = math.cos(tilt), math.sin(tilt)
+		-- a point along the brow: t -0.5 (inner end) .. 0.5 (tail), its height on the arch
+		local function bpt(t)
+			local dy
+			-- (the arch's peak on the brow line: the hair's front edge keeps clear of it, ref/classic browTop)
+			if t <= 0.1 then
+				dy = bt * (-0.5 * ar * ((t - 0.1) / 0.6) ^ 2)
+			else
+				dy = bt * (-(0.25 + 1.15 * ar) * ((t - 0.1) / 0.4) ^ 2)
+			end
+			local dx = side * t * blen
+			return bx + dx * ct - dy * st, by + dx * st + dy * ct
 		end
+		local browRise = (0.0055 + 0.003 * brow.thick) * s.Z
+		local function seg(name, t0, t1, thick, anchorPart)
+			local xa, ya = bpt(t0)
+			local xb, yb = bpt(t1)
+			local xm, ym = bpt((t0 + t1) / 2)
+			local cx, cy = (xa + xb) / 2 * 0.5 + xm * 0.5, (ya + yb) / 2 * 0.5 + ym * 0.5
+			local dx, dy = xb - xa, yb - ya
+			local len = math.sqrt(dx * dx + dy * dy)
+			local base = 0.5 * (math.min(ridgeAt(xa, ya), ridgeAt(xb, yb)) + ridgeAt(cx, cy))
+			local sg = dx < 0 and -1 or 1
+			local o = { roll = math.atan2(dy * sg, dx * sg), base = base, mat = FABRIC }
+			if anchorPart then
+				o.anchor = anchorPart
+			else
+				o.role, o.side = "Brow" .. roleSide, side
+			end
+			return lp(name, cx, cy, len * 1.1, thick, browRise, 0.4, browColor, o), base
+		end
+		local browPart, bBase
+		if full then
+			browPart, bBase = seg("Brow", -0.3, 0.32, bt * 0.94)
+			seg("BrowInner", -0.5, 0.0, bt * (1 + 0.08 * brow.thick), browPart)
+			seg("BrowOuter", 0.15, 0.5, bt * brow.taper * 0.8, browPart)
+		else
+			browPart, bBase = seg("Brow", -0.5, 0.5, bt * 0.9)
+		end
+		browPart:SetAttribute("Side", side)
+		browInfo[side] = { part = browPart, base = bBase, rise = browRise, y = by }
 	end
 
-	-- nose: bridge, tip, alar wings and nostrils; a broken nose sits flatter, wider and bent
+	-- nose: a bridge running down from between the eyes into a rounded tip, the alar wings either side of it and the
+	-- nostrils under it; a broken nose sits flatter, wider and bent
 	local bend = (Random.new((face.seed or 7) + 303):NextNumber() < 0.5) and -1 or 1
 	local nW = L.noseW * (1 + 0.2 * noseBreak)
-	local nB = L.noseB * (1 - 0.25 * noseBreak)
+	local proj = L.noseB * (0.56 - 0.14 * noseBreak) -- how far the tip stands off the face
 	local dev = L.noseDev + 0.03 * noseBreak * bend * s.X
 	local noseCol = darken(skin, 0.97)
-	-- the bridge: a narrow rounded ridge that runs into the forehead (a wedge part read as a block on the
-	-- face); it leans out toward the tip, which the NoseTip mass below carries
-	local nose = add("Nose", V3(nW * 0.62, L.noseLen * 1.08, nB * 0.78),
-		at(dev * 0.4, (L.noseTopY + L.noseBottomY) / 2 + L.noseLen * 0.04, L.front(0) - nB * 0.3 + 0.012) * ANG(rad(-10), 0, rad(-7 * noseBreak * bend)), noseCol, "Ellipsoid")
+	local nroll = rad(-7 * noseBreak * bend)
+	local tipY = L.noseBottomY + nW * 0.3
+	-- the bridge: a narrow ridge pitched out of the face, sunk into the forehead at the top, meeting the tip below
+	local bTop, bBot = L.noseTopY + 0.03 * s.Y, tipY + nW * 0.05
+	local ay = (bTop - bBot) * 0.56
+	local pitch = math.atan2(0.4 * proj, ay)
+	local bD = 0.5 * proj
+	local nose = add("Nose", V3(nW * (0.62 + 0.1 * noseBreak), 2 * ay, 2 * bD),
+		hcf * surfCF(L, dev * 0.5, (bTop + bBot) / 2, 0) * ANG(0, 0, nroll) * ANG(pitch, 0, 0) * CF(0, 0, 0.1 * proj), noseCol, "Ellipsoid")
 	nose:SetAttribute("Base", true)
-	-- at full the tip also spans the alar wings (one wide, flatter part instead of three)
-	add("NoseTip", V3(nW * (full and 1.12 or 0.9), nW * 0.7, nB * (full and 0.66 or 0.7)), at(dev, L.noseBottomY + nW * 0.25, L.front(0) - nB * 0.75), noseCol, "Ellipsoid")
+	-- the tip: a rounded ball whose back sinks into the face (the overhang under it is the columella's shadow)
+	local tD = proj * 0.55
+	add("NoseTip", V3(nW * (full and 0.76 or 0.88), nW * 0.52, 2 * tD), hcf * surfCF(L, dev, tipY, proj - tD) * ANG(0, 0, nroll), noseCol, "Ellipsoid")
 	if full then
 		for side = -1, 1, 2 do
-			add("Nostril", V3(0.03 * s.X, 0.02 * s.Y, 0.03 * s.Z), at(dev + side * nW * 0.28, L.noseBottomY + 0.006, L.front(0) - nB * 0.6), darken(skin, 0.45), "Ellipsoid")
+			add("NoseWing", V3(nW * 0.44, nW * 0.4, 0.64 * proj), hcf * surfCF(L, dev + side * nW * 0.38, L.noseBottomY + nW * 0.2, 0.08 * proj) * ANG(0, 0, side * rad(-20)),
+				darken(skin, 0.95), "Ellipsoid")
+			add("Nostril", V3(nW * 0.26, nW * 0.11, 0.24 * proj), hcf * surfCF(L, dev + side * nW * 0.18, L.noseBottomY + 0.012 * s.Y, 0.24 * proj) * ANG(0, 0, side * rad(-15)),
+				darken(skin, 0.42), "Ellipsoid")
 		end
 	end
 	if noseBreak > 0.3 and full then
 		opt("wear", 1, function()
-			add("NoseBump", V3(nW * 0.55, L.noseLen * 0.22, nB * 0.5), at(dev * 0.3, L.noseTopY - L.noseLen * 0.3, L.front(0) - nB * 0.62), noseCol, "Ellipsoid")
+			add("NoseBump", V3(nW * 0.5, L.noseLen * 0.2, 0.25 * proj), hcf * surfCF(L, dev * 0.3, L.noseTopY - L.noseLen * 0.32, 0.12 * proj), noseCol, "Ellipsoid")
 		end)
 	end
 	-- nasolabial folds: deepen with age, fat and a big smile line
 	if full then
 		local fold = clamp(0.3 + 0.5 * wr + 0.25 * faceFat, 0, 1)
 		for side = -1, 1, 2 do
-			line("Nasolabial", dev + side * nW * 0.62, L.noseBottomY + nW * 0.15, side * L.mouthW * 0.6, L.mouthY - 0.015 * s.Y,
-				(0.012 + 0.008 * fold) * s.X, darken(skin, 0.78), 0.86 - 0.35 * fold, 0.002)
+			line("Nasolabial", dev + side * nW * 0.6, L.noseBottomY + nW * 0.12, side * L.mouthW * 0.6, L.mouthY - 0.02 * s.Y,
+				(0.012 + 0.008 * fold) * s.X, darken(skin, 0.78), 0.86 - 0.35 * fold, 0.0012)
 		end
 	end
 
-	-- mouth: lips (rigged), corners, interior and teeth; a mouthguard parts the lips at teeth depth
+	-- mouth: two low lips that overlap at the seam (so nothing behind them shows until they part), the dark seam line
+	-- riding on the upper lip, corner pieces of that line (rigged: they curl up in a smile), and behind them the
+	-- interior and teeth (full). A mouthguard parts the lips.
 	local guard = opts.mouthguard and true or false
 	local lt = face.lips or 0
 	local mw = L.mouthW
-	local upperH = (0.036 + 0.02 * lt + (female and 0.006 or 0)) * s.Y
-	local lowerH = (0.046 + 0.026 * lt + (female and 0.006 or 0)) * s.Y
-	local mz = L.front(0)
-	local mcf = at(0, L.mouthY, 0) * ANG(0, 0, L.mouthTilt)
-	local function m(dx, dy, dz)
-		return mcf * CF(dx, dy, mz + dz)
+	local upperH = (0.032 + 0.016 * lt + (female and 0.006 or 0)) * s.Y
+	local lowerH = (0.042 + 0.02 * lt + (female and 0.008 or 0)) * s.Y
+	local gap = guard and 0.03 * s.Y or 0
+	local bulge = guard and 0.004 * s.Z or 0
+	local mroll = L.mouthTilt
+	local mcr, msr = math.cos(mroll), math.sin(mroll)
+	local function mp(dx, dy)
+		return dx * mcr - dy * msr, L.mouthY + dx * msr + dy * mcr
 	end
-	local gap = guard and 0.016 * s.Y or 0
-	local bulge = guard and 0.008 or 0
-	-- pigmented lips: darker on deep skin tones, rosier on light ones
-	local lipColor = lerpColor(darken(skin, 0.84 + 0.1 * skinL), under, 0.16 + 0.3 * skinL + (female and 0.06 or 0))
+	-- pigmented lips: a shade of the skin, darker on deep skin tones, a little rosier on light ones
+	local lipColor = lerpColor(darken(skin, 0.86 + 0.08 * skinL), under, 0.1 + 0.22 * skinL + (female and 0.08 or 0))
+	local seamRise = (0.0085 + 0.003 * lt) * s.Z + bulge
 	if full then
-		local inside = rig("MouthInside", nil, "MouthInside", V3(mw * 0.8, upperH + lowerH * 0.9, 0.012 * s.Z), m(0, -gap * 0.5, -0.008), Color3.fromRGB(62, 20, 24), "Ellipsoid")
-		add("TeethUpper", V3(mw * 0.6, upperH * 0.6, 0.012 * s.Z), m(0, upperH * 0.05, -0.017), Color3.fromRGB(232, 226, 208), "Ellipsoid")
-		mk(folder, inside, "TeethLower", V3(mw * 0.55, lowerH * 0.4, 0.012 * s.Z), m(0, -gap - lowerH * 0.12, -0.016), Color3.fromRGB(222, 214, 194), "Ellipsoid")
+		local ix, iy = mp(0, -gap * 0.5)
+		local inside = lp("MouthInside", ix, iy, mw * 0.8, (upperH + lowerH) * 0.55 + gap, 0.003 * s.Z, 0.6, Color3.fromRGB(62, 20, 24),
+			{ roll = mroll, role = "MouthInside" })
+		local tx, ty = mp(0, upperH * 0.05 - gap * 0.3)
+		lp("TeethUpper", tx, ty, mw * 0.56, upperH * 0.75, 0.0045 * s.Z, 0.6, Color3.fromRGB(232, 226, 208), { roll = mroll })
+		local qx, qy = mp(0, -gap - lowerH * 0.22)
+		lp("TeethLower", qx, qy, mw * 0.5, lowerH * 0.5, 0.0042 * s.Z, 0.6, Color3.fromRGB(222, 214, 194), { roll = mroll, anchor = inside })
 	end
-	local upper = rig("UpperLip", nil, "UpperLip", V3(mw, upperH, 0.05 * s.Z), m(0, upperH * 0.55, -0.006 - bulge), lipColor, "Ellipsoid")
-	local lower = rig("LowerLip", nil, "LowerLip", V3(mw * 0.92, lowerH, 0.055 * s.Z), m(0, -lowerH * 0.5 - gap, -0.004 - bulge), lerpColor(lipColor, WHITE, 0.03), "Ellipsoid")
+	local ux, uy = mp(0, upperH * 0.32 + gap * 0.5)
+	local upper = lp("UpperLip", ux, uy, mw, upperH * 1.3, (0.0095 + 0.004 * lt) * s.Z + bulge, 0.55, lipColor, { roll = mroll, role = "UpperLip" })
+	local lx, ly = mp(0, -lowerH * 0.38 - gap * 0.5)
+	local lower = lp("LowerLip", lx, ly, mw * 0.84, lowerH * 1.2, (0.012 + 0.005 * lt) * s.Z + bulge, 0.55, lerpColor(lipColor, WHITE, 0.04),
+		{ roll = mroll, role = "LowerLip" })
 	upper:SetAttribute("BaseSize", upper.Size)
+	upper:SetAttribute("VisW", mw)
 	lower:SetAttribute("BaseSize", lower.Size)
-	local mline = add("MouthLine", V3(mw * 0.85, 0.008 * s.Y, 0.03 * s.Z), m(0, -gap * 0.5, -0.022), darken(lipColor, 0.45), "Ellipsoid", SMOOTH, guard and 0.7 or 0)
+	local sx, sy = mp(0, -gap * 0.5)
+	local mline = lp("MouthLine", sx, sy, mw * 0.88, 0.008 * s.Y, seamRise, 0.5, darken(lipColor, 0.45), { roll = mroll, anchor = upper, t = guard and 0.7 or 0 })
 	mline:SetAttribute("BaseSize", mline.Size)
 	-- a beard covering the mouth pushes the lips out so they show through it. The face does this itself
 	-- (the same rule beardBuild applies from BaseSize) so a face-only rebuild, e.g. after a body fat
@@ -14304,36 +14642,35 @@ local function faceBuild(model, app, opts, build)
 		end
 	end
 	if full then
-		-- vermilion border: the pale rim that outlines the upper lip; a soft sheen on the lower lip
-		mk(folder, upper, "LipBorder", V3(mw * 1.02, 0.01 * s.Y, 0.03 * s.Z), m(0, upperH * 1.02, -0.02), lerpColor(skin, WHITE, 0.16), "Ellipsoid", SMOOTH, 0.45)
 		for side = -1, 1, 2 do
-			local cx = side * mw * 0.5
-			local corner = rig("MouthCorner" .. (side == -1 and "L" or "R"), side, "MouthCorner", V3(0.03 * s.X, 0.03 * s.Y, 0.03 * s.Z),
-				m(cx, -gap * 0.5 - 0.002, L.front(cx) - mz - 0.008), darken(lipColor, 0.7), "Ellipsoid")
+			local cx, cy = mp(side * mw * 0.4, -gap * 0.5)
+			local corner = lp("MouthCorner", cx, cy, mw * 0.26, 0.01 * s.Y, seamRise + 0.0008, 0.5, darken(lipColor, 0.42),
+				{ roll = mroll, role = "MouthCorner" .. (side == -1 and "L" or "R"), side = side })
 			corner:SetAttribute("Side", side)
 		end
 		-- philtrum groove and the fold under the lower lip
 		local py0 = L.noseBottomY - 0.004 * s.Y
-		local py1 = L.mouthY + upperH * 1.05
+		local py1 = L.mouthY + upperH * 1.0
 		if py0 > py1 then
 			opt("skin", 1, function()
-				add("Philtrum", V3(0.055 * s.X, py0 - py1, 0.02 * s.Z), at(dev * 0.5, (py0 + py1) / 2, mz - 0.004), darken(skin, 0.88), "Ellipsoid", SMOOTH, 0.6)
+				lp("Philtrum", dev * 0.5, (py0 + py1) / 2, 0.05 * s.X, py0 - py1, 0.0015, 0.88, darken(skin, 0.88), { t = 0.6 })
 			end)
 		end
 		opt("skin", 1, function()
-			line("LipFold", -mw * 0.28, L.mouthY - lowerH * 1.2 - gap, mw * 0.28, L.mouthY - lowerH * 1.2 - gap, 0.012 * s.Y, darken(skin, 0.8), 0.6, 0.002)
+			line("LipFold", -mw * 0.26, L.mouthY - lowerH * 1.25 - gap, mw * 0.26, L.mouthY - lowerH * 1.25 - gap, 0.012 * s.Y, darken(skin, 0.8), 0.6, 0.0012)
 		end)
 	end
 
 	-- skin details (deterministic from the face seed; draw order is load-bearing, keep it)
 	local rng = Random.new(face.seed or 7)
-	local function spot(name, size, color, xMin, xMax, yMin, yMax, transparency, skip)
+	-- a mark on the skin: flat (rise ~0.001) unless it is a raised spot
+	local function spot(name, size, color, xMin, xMax, yMin, yMax, transparency, skip, rise)
 		local x = rng:NextNumber(xMin, xMax) * s.X * (rng:NextNumber() < 0.5 and -1 or 1)
 		local y = rng:NextNumber(yMin, yMax) * s.Y
 		if skip then
 			return nil
 		end
-		return add(name, size, at(x, y, L.front(x) - 0.004), color, "Ellipsoid", SMOOTH, transparency)
+		return lp(name, x, y, size.X, size.Y, rise or 0.001, rise and 0.5 or 0.85, color, { t = transparency })
 	end
 	local freck = math.floor((face.freckles or 0) * 26)
 	for i = 1, freck do
@@ -14341,13 +14678,13 @@ local function faceBuild(model, app, opts, build)
 		spot("Freckle", V3(sz, sz, 0.01), darken(skin, 0.72), 0.06, 0.34, -0.1, 0.06, 0.25, i > (D.freckles or 26))
 	end
 	for _ = 1, math.floor(face.moles or 0) do
-		spot("Mole", V3(0.035, 0.035, 0.015), darken(skin, 0.35), 0.1, 0.36, -0.32, 0.25)
+		spot("Mole", V3(0.032, 0.032, 0.015), darken(skin, 0.35), 0.1, 0.36, -0.32, 0.25, nil, nil, 0.004)
 	end
 	for _ = 1, math.floor(face.scars or 0) do
 		local x = rng:NextNumber(0.08, 0.32) * s.X * (rng:NextNumber() < 0.5 and -1 or 1)
 		local y = rng:NextNumber(-0.12, 0.3) * s.Y
 		local a = math.rad(rng:NextNumber(-40, 40))
-		add("Scar", V3(0.016, rng:NextNumber(0.1, 0.2) * s.Y, 0.012), at(x, y, L.front(x) - 0.006) * ANG(0, 0, a), lerpColor(skin, Color3.fromRGB(235, 190, 190), 0.55), "Ellipsoid")
+		lp("Scar", x, y, 0.016, rng:NextNumber(0.1, 0.2) * s.Y, 0.0015, 0.8, lerpColor(skin, Color3.fromRGB(235, 190, 190), 0.55), { roll = a })
 	end
 	-- acne: inflamed spots on a young face; from the mid twenties (or with heavy acne) what is left are
 	-- pitted scars, slightly darker shallow dents rather than red bumps. Same rng draws either way. An
@@ -14357,7 +14694,7 @@ local function faceBuild(model, app, opts, build)
 		if acneScars and i % 3 ~= 0 then
 			spot("AcneScar", V3(0.03, 0.026, 0.008), darken(skin, 0.86), 0.05, 0.36, -0.32, 0.32, 0.55, low)
 		else
-			spot("Acne", V3(0.024, 0.024, 0.012), lerpColor(skin, Color3.fromRGB(190, 60, 60), 0.5), 0.05, 0.36, -0.32, 0.32, nil, low)
+			spot("Acne", V3(0.024, 0.024, 0.012), lerpColor(skin, Color3.fromRGB(190, 60, 60), 0.5), 0.05, 0.36, -0.32, 0.32, nil, low, 0.003)
 		end
 	end
 	if (face.marks or 0) > 0.05 then
@@ -14389,16 +14726,11 @@ local function faceBuild(model, app, opts, build)
 						x, y, ang = side * 0.09 * t * s.X, chinY + 0.02 * s.Y, rad(15 * side)
 					end
 					local dx, dy = math.cos(ang) * len * 0.5, math.sin(ang) * len * 0.5
-					line("BattleScar", x - dx, y - dy, x + dx, y + dy, (0.012 + 0.01 * size) * s.X, scarColor, 0.1, 0.004)
+					line("BattleScar", x - dx, y - dy, x + dx, y + dy, (0.012 + 0.01 * size) * s.X, scarColor, 0.1, 0.002 + ((kind == "brow" or kind == nil) and ridgeAt(x, y) or 0))
 					if (kind == "brow" or kind == nil) and spend("wear", 1) then
-						-- the hair never grows back through a brow scar
-						local bp
-						for _, c in ipairs(folder:GetChildren()) do
-							if c.Name == "Brow" and c:GetAttribute("Side") == side then
-								bp = c
-							end
-						end
-						mk(folder, bp or head, "BrowGap", V3(0.018 * s.X, bt * 1.4, 0.04 * s.Z), hcf * CF(x, L.browY + (L.eyeYS[side] - L.eyeY), L.front(x) - 0.014), skin, "Ellipsoid")
+						-- the hair never grows back through a brow scar: a skin-coloured notch over the brow
+						local bi = browInfo[side]
+						lp("BrowGap", x, bi.y, 0.02 * s.X, bt * 1.5, bi.base + bi.rise + 0.002, 0.5, skin, { anchor = bi.part })
 					end
 				end)
 			end
@@ -14414,13 +14746,13 @@ local function faceBuild(model, app, opts, build)
 		local y0 = L.browY + r3:NextNumber(0.03, 0.05) * s.Y
 		local y1 = y0 + r3:NextNumber(-0.03, 0.02) * s.Y
 		opt("skin", 4, function()
-			line("SurgicalScar", x0, y0, x1, y1, 0.011 * s.X, scarColor, 0.05, 0.004)
+			line("SurgicalScar", x0, y0, x1, y1, 0.011 * s.X, scarColor, 0.05, 0.002 + ridgeAt((x0 + x1) / 2, (y0 + y1) / 2))
 			local dx, dy = x1 - x0, y1 - y0
 			local len = math.sqrt(dx * dx + dy * dy)
 			local nx, ny = -dy / len * 0.016 * s.Y, dx / len * 0.016 * s.Y
 			for k = 1, 3 do
 				local px, py = x0 + dx * k / 4, y0 + dy * k / 4
-				line("Suture", px - nx, py - ny, px + nx, py + ny, 0.006 * s.X, lerpColor(scarColor, WHITE, 0.15), 0.15, 0.005)
+				line("Suture", px - nx, py - ny, px + nx, py + ny, 0.006 * s.X, lerpColor(scarColor, WHITE, 0.15), 0.15, 0.003 + ridgeAt(px, py))
 			end
 		end)
 	end
@@ -14454,15 +14786,7 @@ local function faceBuild(model, app, opts, build)
 				end
 				local x = r2:NextNumber(-0.28, 0.28) * s.X
 				local y = r2:NextNumber(-0.14, 0.02) * s.Y
-				add("Pore", V3(0.014, 0.014, 0.008), on(x, y, 0.002), darken(skin, 0.8), "Ellipsoid", SMOOTH, 0.6)
-			end
-		end)
-	end
-	-- a living flush on the cheeks (reads on light and mid skin tones)
-	if full and skinL > 0.35 and wr < 0.3 then
-		opt("skin", 2, function()
-			for side = -1, 1, 2 do
-				add("Blush", V3(0.2 * s.X, 0.12 * s.Y, 0.03 * s.Z), on(side * 0.27 * s.X, -0.06 * s.Y, 0.002), under, "Ellipsoid", SMOOTH, 0.9 - (female and 0.04 or 0))
+				lp("Pore", x, y, 0.014, 0.014, 0.001, 0.85, darken(skin, 0.8), { t = 0.6 })
 			end
 		end)
 	end
@@ -14473,8 +14797,8 @@ local function faceBuild(model, app, opts, build)
 		-- one temple (seeded side) and the classic diagonal forehead vein on the other
 		local vs = (Random.new((face.seed or 7) + 203):NextNumber() < 0.5) and -1 or 1
 		local veins = {
-			line("TempleVein", vs * 0.36 * s.X, L.browY + 0.02 * s.Y, vs * 0.33 * s.X, L.browY + 0.14 * s.Y, 0.014 * s.X, veinColor, 1, 0.006),
-			line("ForeheadVein", -vs * 0.07 * s.X, L.browY + 0.05 * s.Y, -vs * 0.1 * s.X, L.browY + 0.19 * s.Y, 0.014 * s.X, veinColor, 1, 0.006),
+			line("TempleVein", vs * 0.36 * s.X, L.browY + 0.02 * s.Y, vs * 0.33 * s.X, L.browY + 0.14 * s.Y, 0.014 * s.X, veinColor, 1, 0.0028),
+			line("ForeheadVein", -vs * 0.07 * s.X, L.browY + 0.05 * s.Y, -vs * 0.1 * s.X, L.browY + 0.19 * s.Y, 0.014 * s.X, veinColor, 1, 0.0028),
 		}
 		for _, v in ipairs(veins) do
 			v:SetAttribute("BaseTransparency", vis)
@@ -14484,7 +14808,8 @@ local function faceBuild(model, app, opts, build)
 	-- split lip (from BaseColor), so in-fight damage shows without a face rebuild.
 	if guard then
 		local mg = Looks.Color(app.attire and app.attire.mouthguard, Color3.fromRGB(40, 80, 200))
-		local mgPart = add("Mouthguard", V3(mw * 0.92, (0.05 + 0.01 * lt) * s.Y, 0.03 * s.Z), m(0, -gap * 0.5, -0.02), mg, "Ellipsoid")
+		local gx, gy = mp(0, -gap * 0.5)
+		local mgPart = lp("Mouthguard", gx, gy, mw * 0.86, gap * 1.4 + (0.012 + 0.004 * lt) * s.Y, 0.0062 * s.Z, 0.6, mg, { roll = mroll })
 		mgPart:SetAttribute("BaseColor", mg)
 	end
 
@@ -14494,6 +14819,11 @@ local function faceBuild(model, app, opts, build)
 			q[3]()
 		end
 	end
+	-- what the damage marks lie on (Head.SetDamage: a bruise over a full cheek, a split in the lower lip)
+	folder:SetAttribute("CheekRise", math.max(boneRise, fullCheeks and (0.005 + 0.008 * math.min(cheekFat, 1)) or 0) * s.Z * 0.6)
+	folder:SetAttribute("RidgeRise", ridgeAt(L.eyeX, L.browY + 0.03 * s.Y))
+	folder:SetAttribute("LowerLipRise", (0.012 + 0.005 * lt) * s.Z + bulge)
+	folder:SetAttribute("LipColor", lipColor)
 	-- parts over the old face (the hair and beard steps read this to share A's budget)
 	folder:SetAttribute("Extra", countParts(folder) - oldParts)
 	-- grime lives in its own folder (Head.SetSweat refreshes it); a grime opt rides on the face folder
@@ -14648,7 +14978,9 @@ local function beardBuild(model, app, opts)
 	-- sideburns joining the beard to the hair, then the neck line (full detail only)
 	if wantSideburns and full and fits(2) then
 		for side = -1, 1, 2 do
-			add("Sideburn", V3(0.05 * s.X, 0.26 * s.Y, 0.14 * s.Z), at(side * 0.5 * s.X, -0.02 * s.Y, -0.06 * s.Z), color, "Ellipsoid", mat)
+			-- lying on the side wall just in front of the ear (a low shell, its rim on the skin)
+			local rise = 0.012 * s.X
+			add("Sideburn", V3(0.065 * s.Z, 0.27 * s.Y, 2 * rise / 0.5), hcf * L.shellCF(side * rad(76), -0.01 * s.Y, 0) * CF(0, 0, rise / 0.5 - rise), color, "Ellipsoid", mat)
 		end
 	end
 	if wantNeck and full and fits(1) then
@@ -14743,7 +15075,7 @@ end
 -- dmg = the CONTRACTS section 8 table (every field optional): leftEye, rightEye, cut, cutSide, cut2,
 -- cutSide2, noseBleed, nose (broken), bruise, lip, cheekL, cheekR, forehead, earL, earR, redness, age.
 -- folderName (optional) lets the Creator preview into its own folder. Sets attribute FaceDmgTier.
--- At most 20 parts; blood runs as Beams from one invisible DamageAnchor.
+-- About 20 parts at the worst, every one a lens lying on the skin (no Beams: blood is a thin trickle part).
 function Head.SetDamage(model, app, dmg, folderName)
 	app = app or {}
 	dmg = type(dmg) == "table" and dmg or {}
@@ -14766,74 +15098,75 @@ function Head.SetDamage(model, app, dmg, folderName)
 	-- old bruises fade toward the skin over about a week
 	local fade = clamp(1 - age / 8, 0.15, 1)
 	local bruise = bruiseColor(skin, age)
-	local blood = Color3.fromRGB(128, 4, 8)
+	local blood = Color3.fromRGB(122, 6, 10)
 	local fresh = age < 0.5 -- blood only on fresh damage
-	local function at(x, y, z)
-		return hcf * CF(x, y, z)
+	local faceFolder = model:FindFirstChild("BoxerLook") and model.BoxerLook:FindFirstChild("Face")
+	local function fattr(k, d)
+		local v = faceFolder and faceFolder:GetAttribute(k)
+		return v ~= nil and v or d
 	end
-	local function add(name, size, cf, color, shape, transparency)
-		return mk(folder, head, name, size, cf, color, shape or "Ellipsoid", SMOOTH, transparency)
+	-- every mark is a lens on the skin (or on the feature it lies on: base = that feature's height); t = transparency
+	local function mark(name, x, y, w, h, rise, dk, color, t, roll, base)
+		local cf, size = lens(L, x, y, w, h, rise, dk, roll, base)
+		return mk(folder, head, name, size, hcf * cf, color, "Ellipsoid", SMOOTH, t)
 	end
-	local anchor
-	local function bloodStreak(p0, p1, width)
+	-- blood: a thin trickle lying on the skin from (x0, y0) to (x1, y1)
+	local function trickle(x0, y0, x1, y1, width, base)
 		if not fresh then
 			return
 		end
-		if not anchor then
-			anchor = add("DamageAnchor", V3(0.05, 0.05, 0.05), hcf, blood, "Block", 1)
+		local dx, dy = x1 - x0, y1 - y0
+		local len = math.sqrt(dx * dx + dy * dy)
+		if len < 1e-3 then
+			return
 		end
-		local a0 = Instance.new("Attachment")
-		a0.CFrame = axisCF(p0, V3(0, -1, -0.15))
-		a0.Parent = anchor
-		local a1 = Instance.new("Attachment")
-		a1.CFrame = axisCF(p1, V3(0, -1, 0.1))
-		a1.Parent = anchor
-		local b = Instance.new("Beam")
-		b.Name = "Blood"
-		b.Attachment0 = a0
-		b.Attachment1 = a1
-		b.Width0 = width
-		b.Width1 = width * 0.5
-		b.CurveSize0 = (p1 - p0).Magnitude * 0.2
-		b.CurveSize1 = (p1 - p0).Magnitude * 0.1
-		b.Segments = 6
-		b.FaceCamera = true
-		b.LightInfluence = 1
-		b.Color = ColorSequence.new(blood, Color3.fromRGB(96, 0, 6))
-		b.Transparency = NumberSequence.new(0.05, 0.3)
-		b.Parent = anchor
+		local sg = dx < 0 and -1 or 1
+		local roll = math.atan2(dy * sg, dx * sg)
+		-- two pieces: a fuller drop where it starts, a thinner run below
+		mark("Blood", x0 + dx * 0.22, y0 + dy * 0.22, len * 0.5, width, 0.0024 + (base or 0), 0.7, blood, 0.05, roll)
+		return mark("Blood", x0 + dx * 0.62, y0 + dy * 0.62, len * 0.62, width * 0.62, 0.0022 + (base or 0), 0.7, darken(blood, 0.9), 0.12, roll)
 	end
 	-- face parts the damage changes: restore first so a lighter state heals visually
-	local faceFolder = model:FindFirstChild("BoxerLook") and model.BoxerLook:FindFirstChild("Face")
 	local eyeV = { [-1] = n("leftEye"), [1] = n("rightEye") }
 	local severe = stage >= 4
+	local brokenNose = dmg.nose == true
 	if faceFolder then
 		for _, c in ipairs(faceFolder:GetDescendants()) do
 			if c:IsA("BasePart") then
 				local side = c:GetAttribute("Side")
-				if c.Name == "Lid" then
-					c.Transparency = (side and math.clamp((eyeV[side] - 0.3) / 0.7, 0, 1) > 0) and 1 or 0
-					-- a black eye darkens the lid too (from its build colour: a lighter state heals it)
+				local nm = c.Name
+				local shut = side and clamp((eyeV[side] - 0.3) / 0.7, 0, 1) > 0
+				if nm == "Lid" or nm == "LowerLid" or nm == "BlinkLid" or nm == "Nose" or nm == "NoseTip" or nm == "NoseWing" then
+					-- a black eye darkens the lids, a broken nose the nose (from the build colour: a lighter state heals it)
 					local baseC = c:GetAttribute("BaseColor")
 					if typeof(baseC) ~= "Color3" then
 						baseC = c.Color
 						c:SetAttribute("BaseColor", baseC)
 					end
-					local v = side and eyeV[side] or 0
-					c.Color = v > 0.15 and lerpColor(baseC, bruiseColor(skinOf(app), math.max(0, tonumber(dmg.age) or 0)), clamp(v, 0, 1) * 0.45) or baseC
-				elseif c.Name == "Glint" then
-					c.Transparency = (side and math.clamp((eyeV[side] - 0.3) / 0.7, 0, 1) > 0) and 1 or 0
-				elseif c.Name == "Lashes" then
+					local k = 0
+					if nm == "Lid" or nm == "BlinkLid" then
+						k = (side and eyeV[side] or 0) > 0.12 and clamp(eyeV[side], 0, 1) * 0.6 * fade or 0
+					elseif nm == "LowerLid" then
+						k = (side and eyeV[side] or 0) > 0.12 and clamp(eyeV[side], 0, 1) * 0.5 * fade or 0
+					elseif brokenNose then
+						k = 0.35 * fade
+					end
+					c.Color = k > 0 and lerpColor(baseC, bruise, k) or baseC
+					if nm == "Lid" then
+						c.Transparency = shut and 1 or 0
+					end
+				elseif nm == "Glint" then
+					c.Transparency = shut and 1 or 0
+				elseif nm == "Lashes" then
 					-- the lash line rides on its lid: hidden while the swollen lid replaces it
-					local closed = side and eyeV[side] > 0.3
-					c.Transparency = closed and 1 or (c:GetAttribute("BaseT") or c.Transparency)
-				elseif c.Name == "Sclera" then
+					c.Transparency = shut and 1 or (c:GetAttribute("BaseT") or c.Transparency)
+				elseif nm == "Sclera" then
 					local baseC = c:GetAttribute("BaseColor")
 					if typeof(baseC) == "Color3" then
 						local red = clamp((side and eyeV[side] or 0) * 0.5 + (severe and 0.35 or 0) + n("redness") * 0.15, 0, 0.8)
 						c.Color = lerpColor(baseC, Color3.fromRGB(228, 150, 140), red)
 					end
-				elseif c.Name == "Mouthguard" then
+				elseif nm == "Mouthguard" then
 					-- bloodied after a split lip; SetDamage(model, app, {}) cleans it again
 					local baseC = c:GetAttribute("BaseColor")
 					if typeof(baseC) == "Color3" then
@@ -14843,105 +15176,132 @@ function Head.SetDamage(model, app, dmg, folderName)
 			end
 		end
 	end
-	-- swollen eyes: a puffy lid closes over the eye as swelling grows; a black eye around it
+	local w, h = L.eyeW, L.eyeHt
+	local lidColor = darken(skin, 0.92)
+	-- the eyes: a black eye is the socket going dark (a translucent tint that lies under the eye's own parts, so the
+	-- eye stays open and readable inside it) with the darker, puffy crescent under the eye where the blood pools; the
+	-- lids take the bruise (above). Past 0.3 the upper lid swells: a puffy dome that grows down over the eye until it
+	-- shuts it.
 	for side = -1, 1, 2 do
 		local v = eyeV[side]
-		local w = 0.15 * L.eyeSize * s.X
-		local h = 0.15 * L.eyeSize * L.eyeH * s.Y
 		local x, y = side * L.eyeX, L.eyeYS[side]
 		local closing = clamp((v - 0.3) / 0.7, 0, 1)
+		local k = clamp(v, 0, 1) * fade
 		if closing > 0 then
-			local cover = 0.32 + 0.75 * closing
-			add("SwollenLid", V3(w * (1.14 + 0.1 * closing), h * cover, (0.055 + 0.02 * closing) * s.Z),
-				at(x, y + h * (0.5 - cover / 2), L.front(x) - 0.016), lerpColor(darken(skin, 0.92), bruise, v * 0.6 * fade), "Ellipsoid")
-		end
-		if v > 0.15 then
-			-- the black eye: a translucent bruise lying ON the skin round the socket (thin, oriented on the head
-			-- surface, its front behind the eye's own parts: the eye stays open and readable inside it), darker
-			-- under the eye where the blood pools. (A ball in front of the eye read as a black blob on the face.)
-			local k = clamp(v, 0, 1) * fade
-			local bw, bh = (0.21 + 0.07 * v) * s.X, (0.17 + 0.05 * v) * s.Y
-			add("BlackEye", V3(bw, bh, 0.016 * s.Z), hcf * surfCF(L, x, y + 0.008 * s.Y, 0.001), bruise, "Ellipsoid", clamp(0.7 - 0.38 * k, 0.32, 0.8))
-			add("BlackEyeLow", V3(bw * 0.72, bh * 0.36, 0.018 * s.Z), hcf * surfCF(L, x + side * 0.01 * s.X, y - h * 0.62, 0.002), darken(bruise, 0.82), "Ellipsoid",
-				clamp(0.75 - 0.4 * k, 0.35, 0.85))
-		end
-		-- swelling under the eye on the cheekbone: a low dome hugging the cheek, skin going bruise-coloured
-		local ck = n(side == -1 and "cheekL" or "cheekR")
-		if ck > 0.15 then
-			local cx = side * 0.28 * s.X
-			local k = clamp(ck, 0, 1)
-			add("CheekSwell", V3((0.17 + 0.07 * k) * s.X, (0.12 + 0.05 * k) * s.Y, (0.045 + 0.035 * k) * s.Z), hcf * surfCF(L, cx, -0.035 * s.Y, -0.008 + 0.008 * k),
-				lerpColor(skin, bruise, 0.2 + 0.3 * k * fade), "Ellipsoid")
-		end
-		-- swollen ear (the hematoma that becomes a cauliflower ear)
-		local ear = n(side == -1 and "earL" or "earR")
-		if ear > 0.25 then
-			add("EarSwell", V3(0.08 * s.X, (0.12 + 0.08 * ear) * s.Y, (0.1 + 0.06 * ear) * s.Z), at(side * 0.54 * s.X, 0.08 * s.Y, 0.04 * s.Z), lerpColor(skin, bruise, 0.4 * fade + 0.2), "Ellipsoid")
-		end
-	end
-	-- cuts above the eyes (the second cut opens on the other side by default)
-	local cuts = { { n("cut"), tonumber(dmg.cutSide) or 1 }, { n("cut2"), tonumber(dmg.cutSide2) or -(tonumber(dmg.cutSide) or 1) } }
-	for i, c in ipairs(cuts) do
-		local v, side = c[1], c[2] < 0 and -1 or 1
-		if v > 0.05 then
-			local x = side * L.eyeX * (i == 1 and 1 or 0.7)
-			local y = L.browY + (i == 1 and 0.025 or 0.05) * s.Y
-			add("Cut", V3((0.1 + 0.12 * math.min(v, 1)) * s.X, 0.025 * s.Y, 0.02), at(x, y, L.front(x) - 0.02) * ANG(0, 0, math.rad(-side * 15)), Color3.fromRGB(120, 0, 0), "Ellipsoid")
-			if v > 0.35 then
-				local p0 = surfPoint(L, x + side * 0.04, y - 0.01 * s.Y, 0.012)
-				local p1 = surfPoint(L, x + side * 0.06, L.browY - (0.08 + 0.2 * math.min(v, 1)) * s.Y, 0.012)
-				bloodStreak(p0, p1, 0.03)
+			-- (a wide, low swelling: the lid puffs out sideways more than it stands off the face)
+			local top, bottom = y + h * 0.95, y + h * (0.5 - (0.4 + 0.66 * closing))
+			local rise = (0.0115 + 0.005 * closing) * s.Z
+			mark("SwollenLid", x + side * 0.006 * s.X, (top + bottom) / 2, w * (1.42 + 0.12 * closing), top - bottom, rise, 0.62,
+				lerpColor(lidColor, bruise, 0.1 + 0.18 * k), nil, side * L.eyeTilt)
+			if closing > 0.6 then
+				-- shut: the lash line pressed into a slit at the swelling's lower edge
+				mark("SwollenSlit", x, bottom + h * 0.2, w * 0.95, 0.009 * s.Y, rise * 0.62, 0.5, Color3.fromRGB(62, 36, 34), 0.15, side * L.eyeTilt)
 			end
 		end
+		if v > 0.15 then
+			mark("BlackEye", x, y + h * 0.25, w * (1.32 + 0.16 * k), h * (2.1 + 0.3 * k), 0.0022, 0.75, bruise, clamp(0.8 - 0.32 * k, 0.45, 0.85), side * L.eyeTilt)
+			mark("BlackEyeLow", x + side * 0.008 * s.X, y - h * (0.8 + 0.06 * k), w * (1.0 + 0.18 * k), h * (0.5 + 0.22 * k), (0.003 + 0.005 * k) * s.Z, 0.62,
+				lerpColor(skin, darken(bruise, 0.85), 0.45 + 0.4 * k), clamp(0.55 - 0.25 * k, 0.3, 0.7), side * rad(-6))
+		end
+		-- a swelling on the cheekbone (a "mouse"): a low smooth dome, the skin going bruise-coloured
+		local ck = n(side == -1 and "cheekL" or "cheekR")
+		if ck > 0.15 then
+			local kk = clamp(ck, 0, 1)
+			mark("CheekSwell", side * 0.29 * s.X, -0.05 * s.Y, (0.22 + 0.06 * kk) * s.X, (0.15 + 0.04 * kk) * s.Y, (0.003 + 0.007 * kk) * s.Z + fattr("CheekRise", 0), 0.75,
+				lerpColor(skin, bruise, 0.06 + 0.15 * kk * fade), nil, side * rad(14))
+		end
+		-- swollen ear (the hematoma that becomes a cauliflower ear): a swelling on the upper ear
+		local ear = n(side == -1 and "earL" or "earR")
+		if ear > 0.25 then
+			local earS = 1 + 0.2 * (face.earSize or 0)
+			local ecf = hcf * L.shellCF(side * rad(96), 0.03 * s.Y, 0) * ANG(0, side * rad(10), 0)
+			local r = (0.026 + 0.016 * ear) * s.X
+			mk(folder, head, "EarSwell", V3(0.1 * s.Z * earS, (0.12 + 0.05 * ear) * s.Y * earS, 2 * r), ecf * CF(side * 0.01 * s.Z, 0.06 * s.Y * earS, 0.2 * r),
+				lerpColor(skin, bruise, 0.25 + 0.35 * fade), "Ellipsoid", SMOOTH)
+		end
 	end
-	-- nose
-	if dmg.nose == true then
-		add("NoseBruise", V3(L.noseW * 1.5, L.noseLen * 0.95, 0.05), at(0.01, (L.noseTopY + L.noseBottomY) / 2, L.front(0) - L.noseB * 0.55) * ANG(0, 0, math.rad(10)), bruise, "Ellipsoid", 0.35 + 0.3 * (1 - fade))
+	-- cuts: a thin split lying flat on the skin with a little blood. The first opens over the outer end of the brow
+	-- (the blood runs down past the outside of the eye), the second on the other cheekbone
+	local ridgeRise = fattr("RidgeRise", 0)
+	local cutColor = Color3.fromRGB(110, 8, 12)
+	local c1, side1 = n("cut"), (tonumber(dmg.cutSide) or 1) < 0 and -1 or 1
+	if c1 > 0.05 then
+		local v = math.min(c1, 1)
+		-- across the tail of the brow (over the brow hairs: the brow lens is ~0.008 high)
+		local x, y = side1 * 0.27 * s.X, L.browY + 0.004 * s.Y
+		local len = (0.05 + 0.06 * v) * s.X
+		mark("Cut", x, y, len, (0.01 + 0.006 * v) * s.Y, 0.0026 + (0.0055 + 0.003) * s.Z + ridgeRise, 0.7, cutColor, nil, side1 * rad(28))
+		if v > 0.35 then
+			-- the blood runs down past the outside of the eye
+			local x0 = side1 * 0.325 * s.X
+			trickle(x0, y - 0.015 * s.Y, x0 + side1 * 0.012 * s.X, L.eyeY - (0.0 + 0.04 * v) * s.Y, (0.016 + 0.006 * v) * s.X)
+		end
 	end
+	local c2 = n("cut2")
+	if c2 > 0.05 then
+		local side2 = tonumber(dmg.cutSide2) and ((tonumber(dmg.cutSide2) < 0) and -1 or 1) or -side1
+		local v = math.min(c2, 1)
+		mark("Cut", side2 * 0.3 * s.X, -0.01 * s.Y, (0.04 + 0.05 * v) * s.X, (0.009 + 0.005 * v) * s.Y, 0.0026 + fattr("CheekRise", 0), 0.7, cutColor, nil,
+			side2 * rad(30))
+	end
+	-- nose: a broken nose takes the bruise (above); a bleed runs from the nostrils down to the upper lip
 	local bleed = n("noseBleed")
 	if bleed > 0.2 then
 		for side = -1, 1, 2 do
-			local x = side * L.noseW * 0.28
-			bloodStreak(V3(x, L.noseBottomY, L.front(0) - L.noseB * 0.6), surfPoint(L, x * 1.2, L.mouthY + (0.06 - 0.06 * bleed) * s.Y, 0.014), 0.025 + 0.01 * bleed)
+			local x = side * L.noseW * 0.2
+			trickle(x, L.noseBottomY - 0.004 * s.Y, x * 1.15, L.mouthY + (0.06 - 0.03 * math.min(bleed, 1)) * s.Y, (0.016 + 0.008 * bleed) * s.X)
 		end
 	end
-	-- bruised face (or a red flush when only lightly marked)
+	-- bruised face (or a red flush when only lightly marked): a soft translucent tint over the cheek
 	local br = n("bruise")
+	local cheekBase = fattr("CheekRise", 0)
 	if br > 0.2 then
 		for side = -1, 1, 2 do
-			local x = side * 0.3 * s.X
-			add("Bruise", V3(0.22 * s.X, 0.16 * s.Y, 0.02 * s.Z), hcf * surfCF(L, x, -0.07 * s.Y, 0.002), bruise, "Ellipsoid", math.clamp(0.85 - br * 0.5 * fade, 0.38, 0.88))
+			-- an uneven patch: a wide pale one and a darker core off its middle
+			mark("Bruise", side * 0.29 * s.X, -0.06 * s.Y, 0.18 * s.X, 0.12 * s.Y, 0.0022 + cheekBase, 0.7, bruise, math.clamp(0.88 - br * 0.3 * fade, 0.62, 0.9), side * rad(14))
+			if br > 0.45 then
+				mark("Bruise", side * 0.31 * s.X, -0.045 * s.Y, 0.09 * s.X, 0.065 * s.Y, 0.0032 + cheekBase, 0.7, darken(bruise, 0.9),
+					math.clamp(0.86 - br * 0.3 * fade, 0.6, 0.88), side * rad(30))
+			end
 		end
 	elseif stage >= 1 or n("redness") > 0.1 then
 		local r = math.max(n("redness"), 0.3)
 		for side = -1, 1, 2 do
-			add("Flush", V3(0.24 * s.X, 0.16 * s.Y, 0.03 * s.Z), hcf * surfCF(L, side * 0.28 * s.X, -0.05 * s.Y, 0.003), Color3.fromRGB(200, 60, 60), "Ellipsoid", 0.92 - 0.2 * r)
+			mark("Flush", side * 0.28 * s.X, -0.05 * s.Y, 0.18 * s.X, 0.12 * s.Y, 0.002 + cheekBase, 0.7, Color3.fromRGB(196, 70, 66), 0.91 - 0.12 * r, side * rad(14))
 		end
 	end
-	-- forehead lump
+	-- a lump over the brow (a "mouse" from a clash of heads or a hook): a low swelling just above the brow
 	local lump = n("forehead")
 	if lump > 0.2 then
-		local x = 0.12 * s.X * (tonumber(dmg.cutSide) or 1)
-		add("Lump", V3((0.12 + 0.08 * lump) * s.X, (0.1 + 0.06 * lump) * s.Y, (0.06 + 0.06 * lump) * s.Z), hcf * surfCF(L, x, L.browY + 0.1 * s.Y, -0.01), lerpColor(skin, bruise, 0.3 * fade), "Ellipsoid")
+		local side = (tonumber(dmg.cutSide) or 1) < 0 and -1 or 1
+		local kk = clamp(lump, 0, 1)
+		mark("Lump", side * 0.17 * s.X, L.browY + 0.075 * s.Y, (0.18 + 0.05 * kk) * s.X, (0.1 + 0.03 * kk) * s.Y, (0.003 + 0.006 * kk) * s.Z + ridgeRise * 0.5, 0.75,
+			lerpColor(skin, bruise, 0.1 + 0.25 * kk * fade))
 	end
-	-- split and swollen lip
+	-- busted lip: the lower lip swells on one side, a dark split in it, a little blood running down from it
 	local lip = n("lip")
 	if lip > 0.25 then
-		add("SplitLip", V3(0.06 * s.X, 0.05 * s.Y, 0.03), at(0.05 * s.X, L.mouthY - 0.035 * s.Y, L.front(0) - 0.035), Color3.fromRGB(130, 0, 10), "Ellipsoid")
+		local lipBase = fattr("LowerLipRise", 0.012 * s.Z)
+		local lipC = fattr("LipColor", darken(skin, 0.86))
+		local ly = L.mouthY - (0.042 + 0.02 * (face.lips or 0)) * s.Y * 0.38
+		local top = lipBase
 		if lip > 0.45 then
-			local lipColor = lerpColor(darken(skin, 0.86), Color3.fromRGB(150, 60, 70), 0.3)
-			add("SwollenLip", V3(L.mouthW * (0.9 + 0.2 * lip), (0.05 + 0.04 * lip) * s.Y, 0.07 * s.Z), at(0.02 * s.X, L.mouthY - 0.03 * s.Y, L.front(0) - 0.012), lerpColor(lipColor, bruise, 0.3 * fade), "Ellipsoid")
+			local kk = clamp(lip, 0, 1)
+			top = lipBase + (0.004 + 0.007 * kk) * s.Z
+			mark("SwollenLip", 0.045 * s.X, ly, L.mouthW * (0.42 + 0.18 * kk), (0.05 + 0.02 * kk) * s.Y, top, 0.5, lerpColor(lipC, bruise, 0.3 * fade + 0.1))
 		end
+		mark("SplitLip", 0.05 * s.X, ly + 0.004 * s.Y, 0.028 * s.X, 0.012 * s.Y, top + 0.0012, 0.6, Color3.fromRGB(120, 4, 12))
 		if lip > 0.6 then
-			bloodStreak(V3(0.05 * s.X, L.mouthY - 0.05 * s.Y, L.front(0) - 0.035), surfPoint(L, 0.06 * s.X, -0.4 * s.Y, 0.014), 0.025)
+			trickle(0.055 * s.X, ly - 0.02 * s.Y, 0.06 * s.X, (-0.33 - 0.05 * (severe and 1 or 0)) * s.Y, 0.018 * s.X)
 		end
 	end
-	-- severe: blood smeared over the chin and dripping on the chest
+	-- severe: blood on the chest, a mark on the skin over the upper chest (BuilderBody's torso surface)
 	if severe and fresh and (n("cut") > 0.3 or bleed > 0.3 or lip > 0.5) then
-		add("BloodSmear", V3(0.2 * s.X, 0.1 * s.Y, 0.04 * s.Z), hcf * surfCF(L, 0.02 * s.X, -0.36 * s.Y, 0.006), Color3.fromRGB(110, 6, 10), "Ellipsoid", 0.35)
 		local torso = part(model, "UpperTorso")
-		if torso then
-			mk(folder, torso, "BloodChest", V3(0.18, 0.3, 0.02), torso.CFrame * CF(0.1, 0.25, -torso.Size.Z * 0.5 - 0.005), Color3.fromRGB(110, 6, 10), "Ellipsoid", SMOOTH, 0.4)
+		-- (required here, never at load: BuilderBody requires this module lazily too)
+		local Body = require(script.Parent:WaitForChild("BuilderBody"))
+		if torso and Body and Body.SurfaceMark then
+			Body.SurfaceMark(folder, torso, "BloodChest", 0.12, 0.3, 0.18, 0.3, Color3.fromRGB(110, 6, 10), 0.35)
 		end
 	end
 end
@@ -14987,14 +15347,17 @@ local function faceSweat(model, app, q)
 	local hcf = head.CFrame
 	local anchor = mk(folder, head, "SweatAnchor", V3(0.05, 0.05, 0.05), hcf, WHITE, "Block", SMOOTH, 1)
 	-- specular highlights where a wet face catches the light (transparent parts, not Reflectance)
+	local cheekRise = (faceF and faceF:GetAttribute("CheekRise")) or 0
 	local spots = {
-		{ 0, L.browY + 0.08 * s.Y, 0.24, 0.1 }, { 0, L.noseTopY - L.noseLen * 0.4, 0.06, 0.12 },
-		{ -0.28 * s.X, -0.02 * s.Y, 0.12, 0.07 }, { 0.28 * s.X, -0.02 * s.Y, 0.12, 0.07 }, { 0, -0.36 * s.Y, 0.12, 0.06 },
+		-- (x, y, w, h, base: what it lies on, the nose bridge or a full cheek)
+		{ 0, L.browY + 0.08 * s.Y, 0.24, 0.1 }, { 0, L.noseTopY - L.noseLen * 0.45, 0.05, 0.1, L.noseB * 0.2 },
+		{ -0.28 * s.X, -0.02 * s.Y, 0.12, 0.07, cheekRise }, { 0.28 * s.X, -0.02 * s.Y, 0.12, 0.07, cheekRise }, { 0, -0.36 * s.Y, 0.12, 0.06 },
 	}
 	for i, sp in ipairs(spots) do
 		if detail == "full" or i <= 3 then
 			-- (faint: a wet face catches the light, it does not wear white patches)
-			mk(folder, head, "Sheen", V3(sp[3] * s.X * 0.85, sp[4] * s.Y * 0.85, 0.012 * s.Z), hcf * surfCF(L, sp[1], sp[2], 0.002), WHITE, "Ellipsoid", SMOOTH, 0.96 - 0.1 * q)
+			local cf, size = lens(L, sp[1], sp[2], sp[3] * s.X * 0.85, sp[4] * s.Y * 0.85, 0.0016, 0.85, nil, sp[5])
+			mk(folder, head, "Sheen", size, hcf * cf, WHITE, "Ellipsoid", SMOOTH, 0.985 - 0.04 * q)
 		end
 	end
 	if detail ~= "full" then
@@ -15006,7 +15369,8 @@ local function faceSweat(model, app, q)
 			local x = rng:NextNumber(-0.3, 0.3) * s.X
 			local y = L.browY + rng:NextNumber(-0.02, 0.18) * s.Y
 			local sz = rng:NextNumber(0.018, 0.03)
-			local bead = mk(folder, head, "SweatBead", V3(sz, sz * 1.3, sz * 0.7), hcf * surfCF(L, x, y, 0.004), lerpColor(skinOf(app), WHITE, 0.55), "Ellipsoid", SMOOTH, 0.4)
+			local cf, size = lens(L, x, y, sz, sz * 1.3, 0.006, 0.4)
+			local bead = mk(folder, head, "SweatBead", size, hcf * cf, lerpColor(skinOf(app), WHITE, 0.32), "Ellipsoid", SMOOTH, 0.5)
 			bead.Reflectance = 0.08
 		end
 	end
@@ -25470,7 +25834,8 @@ return {
 --   Gen.Resolve), nil for Bald, an unknown look or an entry with an id still missing (Usable)
 -- * CapTile / NeedsCapImage / TexturesOf: the painted cap image (the HairCap's, and every tex "cap" piece's: the
 --   fades' shells and fur) and the tile it is painted from (entry.capTile, else short / shortcoil by hair type)
--- * Fit(S, fit0): the per-boxer skull fit (W, T, Fz, Bz from the skull field, against the default male's)
+-- * Fit(S, fit0): the per-boxer skull fit (W, T, Fz, Bz from the skull field, against the reference the meshes
+--   were modelled on: data.fit0; v9 the classic head itself, shape "classic": the identity on a classic head)
 -- * LengthFactor / VolumeFactor(look): the per-style length / volume stretch
 -- * Place(data, entry, look, S): every piece's affine map nominal -> Head space (diagonal scale + offset),
 --   its MeshPart size and weld centre, its HairFX pivot / tip and point cloud, and the cap's
@@ -25497,7 +25862,8 @@ local function stepNow()
 end
 local readu8, writeu8, writeu32 = buffer.readu8, buffer.writeu8, buffer.writeu32
 
--- the default male skull's extents (skull.json fit0): the meshes are modelled on it
+-- the default male skull's extents (the organic skull.json fit0): the v7 meshes are modelled on it (the v9 meshes
+-- on the classic head: data.fit0 = HK.FIT0_CLASSIC, tools/hair/ref/classic)
 HK.FIT0 = { W = 0.383, T = 0.591, Fz = -0.460, Bz = 0.520 }
 -- textures drawn as one flat colour (tileable: no root or tip along v) even when the data does not say so
 local FLAT = { short = true, shortcoil = true, waves = true, braid = true, cornrow = true }
@@ -25744,7 +26110,12 @@ end
 -- the fit takes CLASSIC_FIT on top (per-axis x 1.06 / 1.20 / 1.20 and 0.06 down: the best per-axis map found
 -- for the cap, 2 % of its points at most 0.01 under the surface, worst 0.055 at the top corners, its middle
 -- 0.066 above the head)
+-- That was the v7 meshes' stopgap. The v9 meshes are modelled on the classic head itself (tools/hair/ref/classic,
+-- CONTRACT.md): their data.fit0 is the classic head's own extents with shape = "classic", the fit on a classic
+-- head is then the identity and CLASSIC_FIT stays off (it applies only to a manifest without the shape).
 HK.CLASSIC_FIT = { kx = 1.06, ky = 1.2, kz = 1.2, dy = -0.06 }
+-- the classic head's extents (Kit.CLASSIC: W, T, Fz, Bz of the rounded cylinder, centre y 0.05, z 0)
+HK.FIT0_CLASSIC = { W = 0.6, T = 0.6, Fz = -0.6, Bz = 0.6, shape = "classic" }
 
 function HK.Fit(S, fit0)
 	fit0 = type(fit0) == "table" and fit0 or HK.FIT0
@@ -25755,7 +26126,8 @@ function HK.Fit(S, fit0)
 		W = W, T = T, Fz = Fz, Bz = Bz,
 		ax = W / W0, ay = T / T0, az = (Bz - Fz) / (B0 - F0), dz = (Bz + Fz) / 2 - (B0 + F0) / 2, dy = 0,
 	}
-	if S.classic then
+	fit.shape = fit0.shape
+	if S.classic and fit0.shape ~= "classic" then
 		local C = HK.CLASSIC_FIT
 		fit.ax, fit.ay, fit.az, fit.dy = fit.ax * C.kx, fit.ay * C.ky, fit.az * C.kz, C.dy
 	end
@@ -26012,13 +26384,18 @@ end
 local CAP_OFF = 0.02
 local refScalp
 local refGrids = {}
-local function refGrid(thetaMax, gw, gh)
-	local key = table.concat({ thetaMax, gw, gh }, "|")
+local function refGrid(thetaMax, gw, gh, shape)
+	local classic = shape == "classic"
+	local key = table.concat({ thetaMax, gw, gh, classic and "classic" or "skull" }, "|")
 	local g = refGrids[key]
 	if g then
 		return g
 	end
-	refScalp = refScalp or Kit.Scalp({})
+	-- the head the cap mesh was modelled on (its polar UV's rays): the classic head for a classic fit0
+	refScalp = refScalp or {}
+	local rs = classic and "classic" or "skull"
+	refScalp[rs] = refScalp[rs] or Kit.Scalp(classic and { headShape = "classic" } or {})
+	local scalp = refScalp[rs]
 	local n = gw * gh
 	local X, Y, Z = table.create(n, 0), table.create(n, 0), table.create(n, 0)
 	local t0 = 0.5
@@ -26028,7 +26405,7 @@ local function refGrid(thetaMax, gw, gh)
 		for i = 0, gw - 1 do
 			local az = (i + 0.5) / gw * TAU
 			local dx, dy, dz = st * sin(az), ct, st * cos(az)
-			local x, y, z, t = refScalp.ray(dx, dy, dz, 0, t0)
+			local x, y, z, t = scalp.ray(dx, dy, dz, 0, t0)
 			t0 = t
 			local k = i + j * gw + 1
 			X[k], Y[k], Z[k] = x + dx * CAP_OFF, y + dy * CAP_OFF, z + dz * CAP_OFF
@@ -26046,7 +26423,7 @@ end
 -- (Place's map for the cap), onto this boxer's scalp. fit = HK.Fit(S) when not given
 function HK.CapGrid(S, cov, pal, thetaMax, gw, gh, fit)
 	fit = fit or HK.Fit(S)
-	local ref = refGrid(thetaMax, gw, gh)
+	local ref = refGrid(thetaMax, gw, gh, fit.shape)
 	local ax, ay, az, dz, dy = fit.ax, fit.ay, fit.az, fit.dz, num(fit.dy, 0)
 	local n = gw * gh
 	local R, G, B, C = table.create(n, 0), table.create(n, 0), table.create(n, 0), table.create(n, 0)
@@ -26969,7 +27346,7 @@ LookData.DEFAULT_REPLACES = {
 		{ r15 = "Head" },
 		{ folder = "Face", names = {
 			"Ear", "EarHelix", "Cauliflower", "Jaw", "JawAngle", "Chin", "LowerFace", "ChinCleft", "Jowl", "DoubleChin",
-			"Cheekbone", "Cheek", "Hollow", "BrowRidge", "Nose", "NoseTip", "Nostril", "NoseBump", "Nasolabial", "Philtrum",
+			"Cheekbone", "Cheek", "Hollow", "BrowRidge", "Nose", "NoseTip", "NoseWing", "Nostril", "NoseBump", "Nasolabial", "Philtrum",
 			"LipFold", "Freckle", "Mole", "Scar", "AcneScar", "Acne", "Birthmark", "BattleScar", "BrowGap", "SurgicalScar",
 			"Suture", "ForeheadLine", "CrowFeet", "Pore", "Blush", "Crease", "UnderEye",
 		} },
@@ -31551,6 +31928,336 @@ return Moves
       </Item>
       <Item class="ModuleScript" referent="33">
         <Properties>
+          <string name="Name">Tutorial</string>
+          <string name="Source"><![CDATA[-- Tutorial: the first-time tutorial fight. Shared and pure (no Roblox services), so the server (FightEngine,
+-- Main), the client (the prompt card) and tools/sim load the same rules.
+--   * who is offered it: Tutorial.ShouldOffer(profile) (a new player: no career, no past careers, the
+--     profile flag tutorialDone not set) and Tutorial.Backfill (an existing save counts as done)
+--   * the guided steps (Tutorial.STEPS) and their tracker: FightEngine feeds it what the player does
+--     (Tutorial.Feed) and holds the round clock while a step is being learned (Tutorial.Phase)
+--   * the prompt's key caps for the device in use, from the real control map (Tutorial.Caps)
+-- The bout itself is a real FightEngine fight with a random boxer on both sides (TutorialFight on the
+-- server); the career is never touched: only profile.tutorialDone is ever written.
+local Tutorial = {}
+
+Tutorial.ROUNDS = 2
+Tutorial.ROUND_SECONDS = 60
+Tutorial.REST_SECONDS = 6
+-- the special move the tutorial boxer owns (a plain two-jab burst: no set-up to explain)
+Tutorial.SPECIAL = "doublejab"
+-- round 1 teaches the punches and ends a few seconds after this step; round 2 the defence and the finish
+Tutorial.LAST_ROUND1 = "body"
+Tutorial.BREAK_SECONDS = 3
+Tutorial.MOVE_DIST = 4 -- studs of footwork for "move"
+Tutorial.BLOCK_TIME = 1 -- seconds of guard held for "block"
+Tutorial.STAM_LOW = 0.75 -- "drain": stamina at or under this share of the tank
+Tutorial.STAM_REFILL = 0.12 -- "refill": this much of the tank back from the lowest point
+Tutorial.STAM_TIMEOUT = 30 -- the stamina step moves on by itself after this long
+-- a player who walks away: after this long the clock runs whatever step is up (the bout ends on its own)
+Tutorial.MAX_HOLD = 480
+-- the forgiving fight: what the player's punches and the opponent's do, the knockdown odds on the
+-- opponent once the last step is up, and the opponent's defensive reactions
+Tutorial.DAMAGE_TAKEN = 0.2
+Tutorial.DAMAGE_DEALT = 1.35
+Tutorial.KO_MUL = 2.5
+Tutorial.AI_DEFENSE = 0.3
+
+-- id, title, text, actions = the Keymap actions the card shows, goals = what completes the step (all of
+-- them), aiWork = how busy the opponent is meanwhile (FightAI's punch rate), final = the last step
+Tutorial.STEPS = {
+	{ id = "move", title = "MOVE", text = "Step around the ring: walk in to close the distance, back off to make room.",
+		actions = { "move" }, goals = { "move" }, aiWork = 0.15 },
+	{ id = "jab", title = "THE JAB", text = "Throw a jab. It is fast and cheap: it measures the distance and starts every combination.",
+		actions = { "jab" }, goals = { "jab" }, aiWork = 0.2 },
+	{ id = "cross", title = "THE CROSS", text = "Now the cross: the straight right hand, your power punch behind the jab.",
+		actions = { "cross" }, goals = { "cross" }, aiWork = 0.2 },
+	{ id = "power", title = "HOOKS & UPPERCUTS", text = "Get close and throw a hook and an uppercut. They hit hardest from short range.",
+		actions = { "leadhook", "rearhook", "uppercut" }, goals = { "hook", "uppercut" }, aiWork = 0.25 },
+	{ id = "body", title = "BODY SHOTS", text = "Arm a body shot, then punch: it lands low and drains his stamina.",
+		actions = { "body", "bodyhook" }, goals = { "body" }, aiWork = 0.25 },
+	{ id = "block", title = "BLOCK", text = "He is coming at you now. Raise your guard and hold it: a block eats most of a head shot.",
+		actions = { "block" }, goals = { "block" }, aiWork = 1.1 },
+	{ id = "slip", title = "SLIP & DODGE", text = "Move your head: slip to either side, or roll under his punches.",
+		actions = { "slipL", "slipR", "dodge" }, goals = { "dodge" }, aiWork = 1.1 },
+	{ id = "stamina", title = "STAMINA", text = "Every punch costs stamina: watch the STAMINA bar under your HEAD and BODY bars. Throw a flurry, then ease off and let it refill.",
+		actions = {}, goals = { "drain", "refill" }, aiWork = 0.5 },
+	{ id = "special", title = "SPECIAL MOVE", text = "Throw your special move, the Double jab. Specials have a cooldown: pick your moment.",
+		actions = { "special_doublejab" }, goals = { "special" }, aiWork = 0.5 },
+	{ id = "finish", title = "FINISH IT", text = "Put it all together: knock him down, or see the round out.",
+		actions = { "jab", "cross", "leadhook", "uppercut" }, goals = { "finish" }, aiWork = 0.6, final = true },
+}
+Tutorial.ById = {}
+for i, s in ipairs(Tutorial.STEPS) do
+	s.index = i
+	Tutorial.ById[s.id] = s
+end
+-- the goals' checklist words (shown when a step has more than one)
+Tutorial.GoalText = { hook = "A hook", uppercut = "An uppercut", drain = "Drain it below 75%", refill = "Let it refill" }
+-- the captions beside the key caps
+Tutorial.ActionText = {
+	move = "MOVE", jab = "JAB", cross = "CROSS", leadhook = "LEAD HOOK", rearhook = "REAR HOOK", uppercut = "UPPERCUT",
+	body = "BODY SHOT", bodyhook = "BODY HOOK", block = "BLOCK", slipL = "SLIP LEFT", slipR = "SLIP RIGHT", dodge = "DODGE",
+	special_doublejab = "DOUBLE JAB",
+}
+
+------------------------------------------------------------------------
+-- Who gets it
+------------------------------------------------------------------------
+-- a new player: no boxer, no career behind him, the flag not set (profile = the server's profile)
+function Tutorial.ShouldOffer(profile)
+	if type(profile) ~= "table" then
+		return false
+	end
+	if profile.tutorialDone == true or profile.created == true or profile.retired == true or profile.final ~= nil then
+		return false
+	end
+	if type(profile.pastCareers) == "table" and #profile.pastCareers > 0 then
+		return false
+	end
+	return true
+end
+
+-- DataManager's load: `stored` is what the DataStore held (nil for a first join), `data` the playable profile
+-- made from it. Anyone who already played (a saved career, or a save of an older version of the game) counts
+-- as done; a first join and a blank save stay as they are. Returns data.
+function Tutorial.Backfill(stored, data, version)
+	if type(data) ~= "table" then
+		return data
+	end
+	if type(stored) == "table" and (stored.created == true or stored.tutorialDone == true or (version ~= nil and stored.v ~= version)
+		or (type(stored.pastCareers) == "table" and #stored.pastCareers > 0)) then
+		data.tutorialDone = true
+	end
+	if data.created == true then
+		data.tutorialDone = true
+	end
+	return data
+end
+
+-- the flag, once the tutorial is over (how = "completed" | "skipped" | "crashed"; "left" / "aborted" set
+-- nothing: the player is offered it again). The only field of a profile the tutorial ever writes.
+function Tutorial.MarkDone(profile, how)
+	if type(profile) ~= "table" or how == "left" or how == "aborted" then
+		return false
+	end
+	profile.tutorialDone = true
+	return true
+end
+
+------------------------------------------------------------------------
+-- The steps
+------------------------------------------------------------------------
+function Tutorial.NewTracker()
+	return { step = 1, goals = {}, moved = 0, blockTime = 0, stamLow = nil, stepAt = nil, startedAt = nil, done = false, timedOut = false }
+end
+
+function Tutorial.Current(tr)
+	return Tutorial.STEPS[tr.step]
+end
+
+local function advance(tr)
+	tr.step += 1
+	tr.goals = {}
+	tr.stepAt = nil
+	tr.stamLow = nil
+	tr.timedOut = false
+	if tr.step > #Tutorial.STEPS then
+		tr.step = #Tutorial.STEPS
+		tr.done = true
+	end
+end
+
+-- mark a goal of the current step; returns true when anything changed (the step may have advanced)
+local function reach(tr, goal)
+	local s = Tutorial.STEPS[tr.step]
+	if tr.goals[goal] or not table.find(s.goals, goal) then
+		return false
+	end
+	tr.goals[goal] = true
+	for _, g in ipairs(s.goals) do
+		if not tr.goals[g] then
+			return true
+		end
+	end
+	if s.final then
+		tr.goals = { finish = true }
+		tr.done = true
+	else
+		advance(tr)
+	end
+	return true
+end
+
+-- what the player did (the fight engine's view). ev.k:
+--   move { dist }   punch { p, body }   block { dt }   blocked   slip   roll   special { id }
+--   stamina { pct } (share of the tank)   kd (the opponent went down)   bell   end   tick
+-- ev.now = the fight clock (seconds), on every event. Returns true when the tracker changed.
+function Tutorial.Feed(tr, ev)
+	if tr.done or type(ev) ~= "table" then
+		return false
+	end
+	local now = tonumber(ev.now)
+	if now then
+		tr.startedAt = tr.startedAt or now
+		tr.stepAt = tr.stepAt or now
+	end
+	local s = Tutorial.STEPS[tr.step]
+	local k = ev.k
+	local id = s.id
+	if id == "move" then
+		if k == "move" then
+			tr.moved += math.max(0, tonumber(ev.dist) or 0)
+			if tr.moved >= Tutorial.MOVE_DIST then
+				return reach(tr, "move")
+			end
+		end
+	elseif id == "jab" then
+		if k == "punch" and ev.p == "jab" then
+			return reach(tr, "jab")
+		end
+	elseif id == "cross" then
+		if k == "punch" and ev.p == "cross" then
+			return reach(tr, "cross")
+		end
+	elseif id == "power" then
+		if k == "punch" and (ev.p == "leadhook" or ev.p == "rearhook") then
+			return reach(tr, "hook")
+		elseif k == "punch" and ev.p == "uppercut" then
+			return reach(tr, "uppercut")
+		end
+	elseif id == "body" then
+		if k == "punch" and ev.body == true then
+			return reach(tr, "body")
+		end
+	elseif id == "block" then
+		if k == "blocked" then
+			return reach(tr, "block")
+		elseif k == "block" then
+			tr.blockTime += math.max(0, tonumber(ev.dt) or 0)
+			if tr.blockTime >= Tutorial.BLOCK_TIME then
+				return reach(tr, "block")
+			end
+		end
+	elseif id == "slip" then
+		if k == "slip" or k == "roll" then
+			return reach(tr, "dodge")
+		end
+	elseif id == "stamina" then
+		if k == "stamina" then
+			local pct = tonumber(ev.pct)
+			if pct and pct == pct then
+				if not tr.goals.drain then
+					if pct <= Tutorial.STAM_LOW then
+						tr.stamLow = pct
+						return reach(tr, "drain")
+					end
+				else
+					tr.stamLow = math.min(tr.stamLow or pct, pct)
+					if pct >= tr.stamLow + Tutorial.STAM_REFILL then
+						return reach(tr, "refill")
+					end
+				end
+			end
+		elseif k == "tick" and now and tr.stepAt and now - tr.stepAt >= Tutorial.STAM_TIMEOUT then
+			tr.timedOut = true
+			reach(tr, "drain")
+			return reach(tr, "refill")
+		end
+	elseif id == "special" then
+		if k == "special" then
+			return reach(tr, "special")
+		end
+	elseif s.final then
+		if k == "kd" or k == "bell" or k == "end" then
+			return reach(tr, "finish")
+		end
+	end
+	return false
+end
+
+-- the round clock: "hold" (frozen while a step is being learned), "break" (round 1 is done: end it a few
+-- seconds from now) or "run". now = the fight clock (the MAX_HOLD safety: an idle player's bout ends)
+function Tutorial.Phase(tr, round, now)
+	if tr.done then
+		return "run"
+	end
+	if now and tr.startedAt and now - tr.startedAt >= Tutorial.MAX_HOLD then
+		return "run"
+	end
+	local last = Tutorial.ById[Tutorial.LAST_ROUND1].index
+	if (tonumber(round) or 1) <= 1 then
+		return tr.step > last and "break" or "hold"
+	end
+	return Tutorial.STEPS[tr.step].final and "run" or "hold"
+end
+
+-- may the opponent be knocked down / stopped yet? (only once the last step is up)
+function Tutorial.CanDrop(tr)
+	return tr.done or Tutorial.STEPS[tr.step].final == true
+end
+
+function Tutorial.AiWork(tr)
+	return tr.done and 0.6 or (Tutorial.STEPS[tr.step].aiWork or 0.5)
+end
+
+-- the message the client's prompt card draws (FightRemote t = "tutorial")
+function Tutorial.View(tr)
+	return { t = "tutorial", step = tr.step, total = #Tutorial.STEPS, id = Tutorial.STEPS[tr.step].id, goals = table.clone(tr.goals), done = tr.done, timedOut = tr.timedOut }
+end
+
+------------------------------------------------------------------------
+-- The prompt's key caps (device = "keyboard" | "gamepad" | "touch"; map = the control map in use,
+-- Settings.Keymap() / Keymap.Resolve(saved); Gamepad = the button names module, optional)
+------------------------------------------------------------------------
+local function touchText(a)
+	local t = a.touch
+	if type(t) ~= "string" or t == "" or t == "-" then
+		return "-"
+	end
+	if t == "Thumbstick" then
+		return "LEFT STICK"
+	end
+	-- a pad's own name (JAB, HOOK, 2x JAB) is tapped; a gesture ("Swipe BLOCK left") reads as it is
+	if not t:find("%l%l") then
+		return "TAP " .. t
+	end
+	return string.upper(t)
+end
+
+function Tutorial.KeyText(actionId, device, map, Keymap, Gamepad)
+	local a = Keymap.ById[actionId]
+	if not a then
+		return "-"
+	end
+	if device == "touch" then
+		return touchText(a)
+	end
+	if device == "gamepad" or device == "pad" then
+		return Keymap.ActionText(map, actionId, "pad", Gamepad)
+	end
+	return Keymap.ActionText(map, actionId, "kbd", Gamepad)
+end
+
+-- { { action, key, label } } for a step on a device
+function Tutorial.Caps(step, device, map, Keymap, Gamepad)
+	local s = type(step) == "table" and step or Tutorial.ById[step] or Tutorial.STEPS[tonumber(step) or 0]
+	local out = {}
+	if not s then
+		return out
+	end
+	for _, id in ipairs(s.actions) do
+		local key = Tutorial.KeyText(id, device, map, Keymap, Gamepad)
+		table.insert(out, { action = id, key = key, label = Tutorial.ActionText[id] or string.upper(id) })
+	end
+	return out
+end
+
+return Tutorial
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="34">
+        <Properties>
           <string name="Name">UI</string>
           <string name="Source"><![CDATA[-- UI: the game's design system - "fight night broadcast".
 -- Near-black glass panels, championship gold and fight red accents, a condensed display face
@@ -33866,15 +34573,15 @@ return UI
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="34">
+  <Item class="ServerScriptService" referent="35">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="35">
+    <Item class="Folder" referent="36">
       <Properties>
         <string name="Name">BoxerModules</string>
       </Properties>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">Ambient</string>
           <string name="Source"><![CDATA[-- Ambient: gym members, coaches and staff that bring the training complex to life.
@@ -34185,7 +34892,7 @@ return Ambient
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">Career</string>
           <string name="Source"><![CDATA[-- Career: character creation, fight offers, camps, economy, titles, promotions,
@@ -35525,7 +36232,7 @@ return Career
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">CityMap</string>
           <string name="Source"><![CDATA[-- CityMap: the neighbourhood around the gym, so the world outside feels like a real town.
@@ -37975,7 +38682,7 @@ return CityMap
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">DataManager</string>
           <string name="Source"><![CDATA[-- DataManager: loads/saves each player's career with DataStoreService.
@@ -38018,6 +38725,16 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Training = require(script.Parent:WaitForChild("Training"))
+-- the first-time tutorial's flag rules (optional: an older Shared folder still loads careers)
+local Tutorial
+do
+	local m = ReplicatedStorage.Shared:FindFirstChild("Tutorial")
+	local ok, mod = false, nil
+	if m then
+		ok, mod = pcall(require, m)
+	end
+	Tutorial = (ok and type(mod) == "table") and mod or nil
+end
 
 local DataManager = {}
 DataManager.Profiles = {}
@@ -38093,6 +38810,7 @@ end
 
 -- stored value -> playable profile (blank, old version, migration)
 local function prepare(data)
+	local stored = data
 	if type(data) ~= "table" then
 		data = DataManager.Blank()
 	elseif data.v ~= Config.DataVersion then
@@ -38109,6 +38827,10 @@ local function prepare(data)
 		if not ok then
 			warn("[Boxer] Save migration failed, career loaded unchanged:", err)
 		end
+	end
+	-- the first-time tutorial fight: anyone who already played (a career, an older save) counts as done
+	if Tutorial then
+		pcall(Tutorial.Backfill, stored, data, Config.DataVersion)
 	end
 	return data
 end
@@ -38582,7 +39304,7 @@ return DataManager
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">FightAI</string>
           <string name="Source"><![CDATA[-- FightAI: adaptive opponent brain.
@@ -38708,7 +39430,8 @@ function FightAI:OnOppPunch(ptype, body, windup)
 	if engine:IsStumbling(F) or engine:Now() < self.freezeUntil then
 		return
 	end
-	chance = math.clamp(chance, 0.05, 0.8)
+	-- (engine.aiDefense: the tutorial's opponent reacts far less, so the lesson's punches land)
+	chance = math.clamp(chance, 0.05, 0.8) * (engine.aiDefense or 1)
 	if self.rng:NextNumber() > chance then
 		return
 	end
@@ -38971,7 +39694,7 @@ function FightAI:Think(now)
 			self.queue = self:BuildCombo()
 			local first = table.remove(self.queue, 1)
 			engine:Punch(F, first.p, first.body)
-		elseif self.rng:NextNumber() < (1 - aggr) * 0.3 * (0.6 + self.arch.block) then
+		elseif self.rng:NextNumber() < (1 - aggr) * 0.3 * (0.6 + self.arch.block) * (engine.aiDefense or 1) then
 			engine:SetBlock(F, true)
 			self.blockUntil = now + 0.5
 		end
@@ -39074,7 +39797,7 @@ return FightAI
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">FightEngine</string>
           <string name="Source"><![CDATA[-- FightEngine: server-authoritative real-time boxing.
@@ -39113,6 +39836,15 @@ do
 	if mm then
 		local ok, mod = pcall(require, mm)
 		Moves = ok and mod or nil
+	end
+end
+-- the first-time tutorial fight's steps and rules (Tutorial.lua), nil-safe if missing
+local Tutorial
+do
+	local tm = Shared:FindFirstChild("Tutorial")
+	if tm then
+		local ok, mod = pcall(require, tm)
+		Tutorial = ok and type(mod) == "table" and mod or nil
 	end
 end
 local FightAI = require(script.Parent.FightAI)
@@ -39810,6 +40542,9 @@ function Fight:Punch(F, ptype, body, counter)
 	if O.ai then
 		O.ai:OnOppPunch(ptype, body, windup)
 	end
+	if self.tutorial and F == self.P then
+		self:TutorialNote({ k = "punch", p = ptype, body = body == true })
+	end
 	local fightId = self.id
 	local opts = outOfSlip and { counterPunch = true } or nil
 	task.delay(windup, function()
@@ -39904,6 +40639,9 @@ function Fight:Special(F, id)
 	F.tally.thrown += #hits
 	F.totals.thrown += #hits
 	self:Send({ t = "special", who = self:Who(F), id = sid, name = M.name })
+	if self.tutorial and F == self.P then
+		self:TutorialNote({ k = "special", id = sid })
+	end
 	-- each punch's body flag: Moves.Data bodies[i] (the body-head hook goes low, then high), else the move's
 	local function bodyOf(i)
 		local b = M.bodies and M.bodies[i]
@@ -40150,6 +40888,10 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	dmg *= 0.95 + (F.data.mental.Aggression or 50) / 1000
 	dmg *= self.rng:NextNumber(0.85, 1.15)
 	dmg *= self.damageScale
+	if self.tutorial and Tutorial then
+		-- the tutorial is forgiving: the player's shots land harder, the opponent's barely hurt
+		dmg *= O.isPlayer and Tutorial.DAMAGE_TAKEN or Tutorial.DAMAGE_DEALT
+	end
 	if angled then
 		dmg *= 1.1
 	end
@@ -40199,6 +40941,9 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		O.counterUntil = now + 0.55 * (os_.Countering / 70)
 		O.balance -= (P.stun or 10) * 0.25
 		self:Send({ t = "blocked", who = self:Who(O), punch = ptype })
+		if self.tutorial and O == self.P then
+			self:TutorialNote({ k = "blocked" })
+		end
 		self:SetAct(O, "blockhit")
 		self:CheckTier(O)
 		return
@@ -40272,6 +41017,9 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 				trauma = O.data.trauma, composure = O.data.mental.Composure,
 			})
 			p *= sp.kd or 1
+			if self.tutorial and Tutorial and not O.isPlayer then
+				p *= Tutorial.KO_MUL
+			end
 			if self.rng:NextNumber() < p then
 				kd = true
 				severity = (flash and tierBefore == 0) and "flash" or nil
@@ -40328,6 +41076,14 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		end
 	end
 
+	-- the tutorial: the player never goes down, the opponent only once the last step is up
+	if self.tutorial and Tutorial and (kd or liver) and (O.isPlayer or not Tutorial.CanDrop(self.tutorial)) then
+		kd, liver = false, nil
+		O.health = math.max(O.health, 25)
+		O.body = math.max(O.body, 25)
+		O.balance = math.max(O.balance, 60)
+		self:CheckTier(O)
+	end
 	if liver and not kd then
 		local fightId = self.id
 		task.delay(0.6, function()
@@ -40453,6 +41209,9 @@ function Fight:Slip(F, dir)
 	F.busyUntil = now + 0.42
 	F.slipAt = now -- a counter jab / cross may come straight out of this slip (Punch)
 	self:SetAct(F, "slip|" .. (dir == -1 and "L" or "R"))
+	if self.tutorial and F == self.P then
+		self:TutorialNote({ k = "slip" })
+	end
 end
 
 -- quick = the quick dodge (Shift + Space): a shorter window, a quicker recovery, cheaper
@@ -40464,6 +41223,9 @@ function Fight:Roll(F, quick)
 	F.rollUntil = now + ((quick and 0.2 or 0.3) + F.data.stats.HeadMovement * 0.003) * self:DefenseMul(F)
 	F.busyUntil = now + (quick and 0.36 or 0.55)
 	self:SetAct(F, "roll")
+	if self.tutorial and F == self.P then
+		self:TutorialNote({ k = "roll" })
+	end
 end
 
 function Fight:Parry(F)
@@ -40931,6 +41693,12 @@ function Fight:Knockdown(F, by, severity, fall, cause)
 	if F.state == "down" or self.finished then
 		return
 	end
+	if self.tutorial and Tutorial then
+		if F.isPlayer or not Tutorial.CanDrop(self.tutorial) then
+			return -- (the tutorial: see Resolve; a stray caller is refused here too)
+		end
+		self:TutorialNote({ k = "kd" })
+	end
 	severity = severity or "normal"
 	fall = fall or "back"
 	F.state = "down"
@@ -41221,6 +41989,9 @@ function Fight:CheckStoppage(F)
 	end
 	if n >= 4 then
 		self:Comment(self:Other(F).data.name .. " is unloading a flurry!")
+	end
+	if self.tutorial and Tutorial and (F.isPlayer or not Tutorial.CanDrop(self.tutorial)) then
+		return -- the tutorial: nobody is waved off before the last step
 	end
 	-- time since the fighter last threw, not counting a pause he could not punch through
 	local idle = now - math.max(F.lastPunch, self.resumedAt or 0)
@@ -41613,6 +42384,9 @@ function Fight:Update(dt)
 			F.blockTime = (F.blockTime or 0) + dt
 		end
 	end
+	if self.tutorial then
+		self:TutorialStep(dt, now)
+	end
 	self:UpdateReferee(now)
 	-- model attributes at 5 Hz (quantized, change-only)
 	self.attrAcc = (self.attrAcc or 0) + dt
@@ -41628,6 +42402,56 @@ function Fight:Update(dt)
 		self:SendEach(function(P)
 			return { t = "state", b = self:PackState(P, self:Other(P), time, now) }
 		end)
+	end
+end
+
+------------------------------------------------------------------------
+-- The first-time tutorial (Tutorial.lua): what the player does moves the guided steps on; the client's
+-- prompt card follows the "tutorial" messages
+------------------------------------------------------------------------
+function Fight:TutorialNote(ev)
+	local tr = self.tutorial
+	if not (tr and Tutorial) or tr.done then
+		return
+	end
+	ev.now = self:Now()
+	if Tutorial.Feed(tr, ev) then
+		self.aiWork = Tutorial.AiWork(tr)
+		self:SendTo(self.P, Tutorial.View(tr))
+		if tr.done and not self.tutorialEndAt then
+			-- (a knockdown: the count plays out first; Update ends the bout once both men are up, or the
+			-- count ends it as a KO)
+			self.tutorialEndAt = ev.now + 1.5
+		end
+	end
+end
+
+-- every frame of a live round: footwork, the guard held, the stamina tank, the step timeouts, the end
+function Fight:TutorialStep(dt, now)
+	local P = self.P
+	if self.live and not self.paused and not self.menuHold and P.state ~= "down" then
+		local root = P.root
+		if root then
+			local pos = root.Position
+			local last = self.tutorialPos
+			self.tutorialPos = pos
+			if last then
+				local d = flat(pos - last).Magnitude
+				if d > 0.01 and d < 3 then -- (a teleport back to the corner is not footwork)
+					self:TutorialNote({ k = "move", dist = d })
+				end
+			end
+		end
+		if P.blocking then
+			self:TutorialNote({ k = "block", dt = dt })
+		end
+		self:TutorialNote({ k = "stamina", pct = P.stamina / math.max(1, P.maxStam) })
+		self:TutorialNote({ k = "tick" })
+	else
+		self.tutorialPos = nil
+	end
+	if self.tutorialEndAt and now >= self.tutorialEndAt and not self.finished and P.state ~= "down" and self.O.state ~= "down" then
+		self:End(P, "Tutorial", "Tutorial complete")
 	end
 end
 
@@ -42045,13 +42869,18 @@ function Fight:Run()
 			talk = V == P and offer.talk or "", myLine = V == P and offer.myLine or "",
 			-- the special moves this viewer may throw (ids) and the aim-assist level the server will honour
 			moves = movesList(V), assist = V.assist,
+			-- the first-time tutorial: the client puts its step card up
+			tutorial = self.tutorial and Tutorial and { total = #Tutorial.STEPS, special = Tutorial.SPECIAL } or nil,
 		}
 	end)
+	if self.tutorial and Tutorial then
+		self:SendTo(P, Tutorial.View(self.tutorial))
+	end
 	-- the Animator only drives tagged models: tag now so the ring walk / warm-up (Guard "walkout") is animated
 	-- (E's integration request; the later AddTag calls are harmless no-ops)
 	CollectionService:AddTag(P.model, "Fighter")
 	CollectionService:AddTag(O.model, "Fighter")
-	if self.spar then
+	if self.spar or self.tutorial then
 		self:Place(O, self.anchors.BlueCorner.Position)
 		self:Place(P, self.anchors.RedCorner.Position)
 		task.wait(1.5)
@@ -42065,7 +42894,7 @@ function Fight:Run()
 	self:SetupFacing(O)
 	CollectionService:AddTag(P.model, "Fighter")
 	CollectionService:AddTag(O.model, "Fighter")
-	if not self.spar then
+	if not self.spar and not self.tutorial then
 		self:Send({ t = "tape" })
 		self:Wait(5)
 	end
@@ -42089,7 +42918,7 @@ function Fight:Run()
 		P.sprintOn, O.sprintOn = false, false
 		self:Send({ t = "round", n = r, total = self.rounds })
 		if r == 1 then
-			self:Comment(self.spar and "Sparring session starts. Work on your craft." or "Here we go! Round one!", true)
+			self:Comment(self.spar and "Sparring session starts. Work on your craft." or (self.tutorial and "Your first fight. Follow the steps on screen." or "Here we go! Round one!"), true)
 		elseif r == self.rounds then
 			self:Comment("Final round! Everything on the line!", true)
 		end
@@ -42108,12 +42937,23 @@ function Fight:Run()
 		while remaining > 0 and not self.finished and not self.aborted do
 			local dt = RunService.Heartbeat:Wait()
 			self:UpdateMenuHold(self:Now())
-			if self.paused then
+			-- the tutorial holds the clock while a step is being learned; round 1 ends soon after its last step
+			local tphase = self.tutorial and Tutorial and Tutorial.Phase(self.tutorial, r, self:Now()) or nil
+			if tphase == "break" and self.tutorialBreak ~= r then
+				self.tutorialBreak = r
+				remaining = math.min(remaining, Tutorial.BREAK_SECONDS)
+				self.roundEnd = self:Now() + remaining
+			end
+			if self.paused or tphase == "hold" then
 				self.roundEnd += dt
 			else
 				remaining -= dt
 			end
 			self:Update(dt)
+			if self.tutorial and not (self.player and self.player.Parent) then
+				-- (the player left: nothing would ever move a held clock on)
+				self.aborted, self.finished = true, true
+			end
 		end
 		self.live = false
 		if self.menuHold then
@@ -42126,9 +42966,18 @@ function Fight:Run()
 		end
 		local rc = self:ScoreRound()
 		self:Send({ t = "bell", n = r })
+		if self.tutorial then
+			self:TutorialNote({ k = "bell" })
+			if self.tutorial.done and not self.finished then
+				self:End(P, "Tutorial", "Tutorial complete")
+				break
+			end
+		end
 		if r < self.rounds then
 			self:Rest()
-			self:DoctorCheck()
+			if not self.tutorial then
+				self:DoctorCheck()
+			end
 			if self.finished then
 				break
 			end
@@ -42148,7 +42997,7 @@ function Fight:Run()
 					seconds = Config.RestSeconds, cond = self:ConditionReport(V),
 				}
 			end)
-			self:Wait(self.spar and 4 or Config.RestSeconds)
+			self:Wait(self.spar and 4 or (self.tutorial and Tutorial and Tutorial.REST_SECONDS) or Config.RestSeconds)
 		end
 	end
 	if self.aborted then
@@ -42161,7 +43010,7 @@ function Fight:Run()
 	else
 		res = Career.DecideCards(self.cards)
 		res.round = self.rounds
-		res.reason = self.spar and "Session complete" or "Decision"
+		res.reason = self.spar and "Session complete" or (self.tutorial and "Tutorial complete" or "Decision")
 	end
 	-- the winner celebrates, the loser slumps (the Animator reads Guard / Expr)
 	for _, F in ipairs({ P, O }) do
@@ -42318,6 +43167,15 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 	self.allowKD = (not sp) or sp.allowKD
 	self.aiWork = sp and sp.work or 1
 	self.aiRange = sp and sp.range or 1
+	-- the first-time tutorial (opts.tutorial): short rounds on a held clock, guided steps, a forgiving
+	-- opponent (FightAI reads aiWork / aiDefense), knockdowns only for the opponent and only at the end
+	if opts.tutorial and Tutorial and not oppPlayer and not sp then
+		self.tutorial = Tutorial.NewTracker()
+		self.rounds = Tutorial.ROUNDS
+		self.roundSeconds = Tutorial.ROUND_SECONDS
+		self.aiWork = Tutorial.AiWork(self.tutorial)
+		self.aiDefense = Tutorial.AI_DEFENSE
+	end
 	self.venue = opts.spar and "Gym" or (offer.venue or "Arena")
 	self.round = 0
 	self.rng = Random.new()
@@ -42561,7 +43419,7 @@ return FightEngine
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">GymDecor</string>
           <string name="Source"><![CDATA[-- GymDecor: everything that turns the training complex from a box into a real boxing gym.
@@ -44079,7 +44937,7 @@ return GymDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">MapBuilder</string>
           <string name="Source"><![CDATA[-- MapBuilder: builds the training complex entirely from parts.
@@ -45094,7 +45952,7 @@ return MapBuilder
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="44">
+      <Item class="ModuleScript" referent="45">
         <Properties>
           <string name="Name">Poser</string>
           <string name="Source"><![CDATA[-- Poser: puts a character (player or NPC) at a training spot in the right posture
@@ -45288,7 +46146,7 @@ return Poser
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="45">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">PvP</string>
           <string name="Source"><![CDATA[-- PvP: player vs player boxing in the same server.
@@ -45845,7 +46703,7 @@ return PvP
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="46">
+      <Item class="ModuleScript" referent="47">
         <Properties>
           <string name="Name">Training</string>
           <string name="Source"><![CDATA[-- Training: the advanced training system.
@@ -48391,7 +49249,94 @@ return Training
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="47">
+      <Item class="ModuleScript" referent="48">
+        <Properties>
+          <string name="Name">TutorialFight</string>
+          <string name="Source"><![CDATA[-- TutorialFight: the first-time tutorial bout's cast and night (Shared.Tutorial has the steps and the rules).
+-- The player does NOT fight as his own boxer: both corners are random boxers made by the world's generator
+-- (World.RandomBoxer: name, nick, style, archetype, stats; World.Look through Career.FighterFromBoxer: the
+-- Looks.Random face and hair, the build, the kit), the venue is a random fight venue with a modest crowd
+-- (Venues.Importance / CrowdFill). Build never reads or writes the profile: the career, its record, money,
+-- rankings, injuries, move unlocks (Moves counts the career's records) and the saved character stay as
+-- they are. Only Tutorial.MarkDone writes, and only profile.tutorialDone.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Tutorial = require(Shared:WaitForChild("Tutorial"))
+local World = require(script.Parent.World)
+local Career = require(script.Parent.Career)
+
+local TutorialFight = {}
+
+-- the fight venues (not the stadium: a world-title bowl for a first lesson, and not the gym: a real fight night)
+TutorialFight.Venues = { "CommunityCenter", "ClubArena", "Arena" }
+-- the crowd: an undercard's importance and a little-known boxer (Venues.CrowdFill ~0.3 .. 0.5 of the house)
+TutorialFight.Importance = { 0.15, 0.32 }
+TutorialFight.Popularity = { 5, 25 }
+-- the boxers: the player's a decent prospect, the opponent clearly weaker (and not a defensive or counter
+-- puncher: the AI that slips and counters everything is no first opponent)
+TutorialFight.PlayerLevel = { 52, 62 }
+TutorialFight.OppLevel = { 30, 38 }
+local HARD_ARCHETYPES = { Defensive = true, Counter = true }
+
+-- opts = { assist = 0..2 (the player's saved aim-assist level) }. Returns
+-- { pData, oData, venue, venueName, venueOpts, offer } for FightEngine.Run (opts.tutorial = true).
+function TutorialFight.Build(rng, opts)
+	opts = type(opts) == "table" and opts or {}
+	rng = rng or Random.new()
+	local ci = rng:NextInteger(2, math.min(#Config.WeightClasses, 10))
+	local me = World.RandomBoxer(rng, ci, rng:NextNumber(TutorialFight.PlayerLevel[1], TutorialFight.PlayerLevel[2]))
+	local opp
+	for _ = 1, 12 do
+		opp = World.RandomBoxer(rng, ci, rng:NextNumber(TutorialFight.OppLevel[1], TutorialFight.OppLevel[2]), { female = me.gender == 2 })
+		if not HARD_ARCHETYPES[opp.archetype] and opp.name ~= me.name then
+			break
+		end
+	end
+	local pData = Career.FighterFromBoxer(me)
+	pData.isPlayer = true
+	pData.id = nil
+	pData.learned, pData.h2h, pData.personality = nil, nil, nil
+	-- one special move to learn (the career's unlocks are not consulted: Moves.Info reads the career)
+	pData.moves = { [Tutorial.SPECIAL] = true }
+	pData.assist = math.clamp(math.floor(tonumber(opts.assist) or 0), 0, 2)
+	pData.lookOpts.robe = "None"
+	local oData = Career.FighterFromBoxer(opp)
+	oData.lookOpts.robe = "None"
+	oData.learned = {} -- a stranger: he has not studied the player's habits
+	oData.moves = {} -- and he throws no special moves at a beginner
+	local list = TutorialFight.Venues
+	local venue = list[rng:NextInteger(1, #list)]
+	local venueName = (Config.Venues and Config.Venues[venue] and Config.Venues[venue].name) or venue
+	local venueOpts = {
+		kind = "Tutorial Fight", careerTier = 1, supporters = 0.25, nick = me.nick,
+		importance = rng:NextNumber(TutorialFight.Importance[1], TutorialFight.Importance[2]),
+		popularity = rng:NextInteger(TutorialFight.Popularity[1], TutorialFight.Popularity[2]),
+	}
+	local offer = {
+		kind = "Tutorial Fight", rounds = Tutorial.ROUNDS, venue = venue, venueName = venueName, talk = "", myLine = "",
+		stakes = {}, playerStakes = {}, tutorial = true,
+	}
+	return { pData = pData, oData = oData, venue = venue, venueName = venueName, venueOpts = venueOpts, offer = offer }
+end
+
+-- the look options for dressing the player's own rig as the tutorial boxer before the bout (Builder.Apply:
+-- his height and frame, face, hair and kit; the player's look comes back with Main's applyLook after it)
+function TutorialFight.LookOpts(pData)
+	local o = table.clone(pData.lookOpts or {})
+	o.hands = "gloves"
+	o.detail = "full"
+	return o
+end
+
+-- the end of a tutorial (how = "completed" | "skipped" | "crashed" | "aborted" | "left"): the flag, nothing else
+TutorialFight.Finish = Tutorial.MarkDone
+
+return TutorialFight
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="49">
         <Properties>
           <string name="Name">Venues</string>
           <string name="Source"><![CDATA[-- Venues: fight-night ring system. Builds one template per venue in ServerStorage at boot and
@@ -50717,7 +51662,7 @@ return Venues
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="48">
+      <Item class="ModuleScript" referent="50">
         <Properties>
           <string name="Name">World</string>
           <string name="Source"><![CDATA[-- World: generates and maintains the AI boxing world (270 boxers), rankings for
@@ -50801,6 +51746,32 @@ local function newBoxer(world, rng, ci, target, usedNames, ageLo, ageHi)
 		lookSeed = rng:NextInteger(1, 2 ^ 30), height = math.clamp(60 + ci * 1.6 + rng:NextInteger(-3, 3), 60, 84),
 		h2h = { w = 0, l = 0, d = 0 }, heat = 0, learned = {}, belts = {},
 	}
+end
+
+-- a one-off boxer outside any saved world (the tutorial fight): the same generator as the world's boxers
+-- (name, nick, nationality, style, archetype, stats, look seed), a short record, an id of its own. Nothing
+-- is stored anywhere. opts = { female = bool (forces the gender), ageLo, ageHi }
+function World.RandomBoxer(rng, ci, target, opts)
+	opts = type(opts) == "table" and opts or {}
+	local scratch = { nextId = rng:NextInteger(1, 999999) }
+	local b
+	for _ = 1, 30 do
+		b = newBoxer(scratch, rng, ci, target, nil, opts.ageLo or 21, opts.ageHi or 32)
+		if opts.female == nil or (b.gender == 2) == (opts.female == true) then
+			break
+		end
+	end
+	if opts.female ~= nil and (b.gender == 2) ~= (opts.female == true) then
+		-- (30 draws of the 15% coin all missed: name the boxer for the gender asked)
+		b.gender = opts.female and 2 or 1
+		local first = opts.female and Config.FirstNamesF[rng:NextInteger(1, #Config.FirstNamesF)] or Config.FirstNames[rng:NextInteger(1, #Config.FirstNames)]
+		b.name = first .. " " .. Config.LastNames[rng:NextInteger(1, #Config.LastNames)]
+	end
+	b.id = "tut" .. b.id
+	local fights = rng:NextInteger(2, 12)
+	local w = math.floor(fights * rng:NextNumber(0.4, 0.8) + 0.5)
+	b.record = { w = w, l = fights - w, d = 0, ko = math.floor(w * rng:NextNumber(0.2, 0.6)) }
+	return b
 end
 
 -- full look + build + gear for an AI boxer (deterministic: the same boxer always looks the same).
@@ -51196,7 +52167,7 @@ return World
         </Properties>
       </Item>
     </Item>
-    <Item class="Script" referent="49">
+    <Item class="Script" referent="51">
       <Properties>
         <string name="Name">Main</string>
         <token name="RunContext">0</token>
@@ -51233,6 +52204,8 @@ local Poser = require(Modules.Poser)
 local Ambient = require(Modules.Ambient)
 local CityMap = require(Modules.CityMap) -- same instance MapBuilder built the city with (travel targets, home interiors)
 local PvP = require(Modules.PvP)
+local TutorialFight = require(Modules.TutorialFight)
+local Tutorial = require(Shared.Tutorial)
 -- controls job: special moves (unlocks per style / tier / training) and the control map's sanitizer; both
 -- optional (nil-safe) so an older Shared folder still boots
 local Moves, Keymap
@@ -51401,6 +52374,8 @@ local function summary(player)
 	local s = Career.Summary(profile, DataManager.CanSave(player))
 	s.busy = busy[player]
 	s.studio = RunService:IsStudio()
+	-- the first-time tutorial fight: offered to a new player (no career behind him, not done or skipped yet)
+	s.tutorial = { offer = Tutorial.ShouldOffer(profile), done = profile.tutorialDone == true or profile.created == true }
 	-- PvP record / rating (read-only view; profile.pvp is created lazily by the first PvP bout)
 	s.pvp = PvP.View(profile)
 	-- R-ui: always a table (Settings.Supported() checks it); ui = the saved values, or nil before the first save
@@ -52593,6 +53568,95 @@ local function pvpOnLeave(player)
 end
 
 ------------------------------------------------------------------------
+-- The first-time tutorial fight (TutorialFight / Shared.Tutorial): a real FightEngine bout with guided steps,
+-- the player in the red corner as a RANDOM boxer (his own rig dressed as that boxer for the night) against a
+-- random, weaker opponent in a random venue. Nothing of the career is read or written: no fightWatch (so no
+-- result, forfeit or record), no Career / Training call, no face damage carried home; the only write is
+-- profile.tutorialDone (completed or skipped). The arena (the opponent and the referee live in it) goes with
+-- the engine's Cleanup; leaving or resetting aborts the bout.
+------------------------------------------------------------------------
+local tutorialWatch = {} -- player -> { profile, skipped, left }
+
+local function tutorialAssist(profile)
+	local ui = type(profile.settings) == "table" and type(profile.settings.ui) == "table" and profile.settings.ui or {}
+	return ASSIST_LEVEL[ui.aimAssist] or 0
+end
+
+local function runTutorial(player, profile, w)
+	endSession(player)
+	setBusy(player, "fight")
+	push(player)
+	local okBuild, built = pcall(TutorialFight.Build, rng, { assist = tutorialAssist(profile) })
+	if not okBuild then
+		warn("[Boxer] tutorial setup:", built)
+		built = nil
+	end
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local res, crashed, arena, diedConn = nil, built == nil, nil, nil
+	-- (a look build still running, the join's starter look: let it land first, so it cannot overwrite this one)
+	local t0 = os.clock()
+	while lookState[player] and lookState[player].running and os.clock() - t0 < 6 and player.Parent do
+		task.wait(0.1)
+	end
+	if built and char and hum and hum.Health > 0 and player.Parent and not w.skipped then
+		-- the tutorial boxer's height, frame, face, hair and kit on the player's own rig for the night
+		local okLook, errLook = pcall(Builder.Apply, char, built.pData.app, built.pData.build, built.pData.gear, TutorialFight.LookOpts(built.pData))
+		if not okLook then
+			warn("[Boxer] tutorial look:", errLook)
+		end
+		diedConn = hum.Died:Connect(function()
+			FightEngine.Abort(player)
+		end)
+		if player.Parent and not w.skipped and not w.left then
+			arena = Venues.New(built.venue, built.venueOpts)
+			local okRun, r = pcall(FightEngine.Run, player, FightRemote, built.offer, built.pData, built.oData, arena, { tutorial = true })
+			if okRun then
+				res = r
+			else
+				warn("[Boxer] tutorial fight crashed:", r)
+				crashed = true
+			end
+		end
+	end
+	if diedConn then
+		diedConn:Disconnect()
+	end
+	if arena and arena.Parent then
+		arena:Destroy()
+	end
+	if tutorialWatch[player] == w then
+		tutorialWatch[player] = nil
+	end
+	if busy[player] == "fight" then
+		setBusy(player, nil)
+	end
+	if not player.Parent or w.left then
+		return -- (left mid-tutorial: the engine cleaned the bout up; nothing is recorded)
+	end
+	if player.Character then
+		placeChar(player.Character, gymSpawnCFrame(), 4, true)
+	end
+	local how = w.skipped and "skipped" or (res and "completed") or (crashed and "crashed") or "aborted"
+	if DataManager.Get(player) == profile and TutorialFight.Finish(profile, how) then
+		task.spawn(DataManager.Save, player)
+	end
+	FightRemote:FireClient(player, {
+		t = "tutorialEnd", how = how, created = profile.created == true and not profile.retired,
+		you = built and built.pData.name or nil, opp = built and built.oData.name or nil, venue = built and built.venueName or nil,
+		result = res and { outcome = res.outcome, method = res.method, round = res.round, landed = res.landed, thrown = res.thrown, kdFor = res.kdFor } or nil,
+	})
+	-- the player's own look back (a new player: the creator's starter look, as at join)
+	local current = DataManager.Get(player)
+	if current and current.created and not current.retired then
+		applyLook(player)
+	elseif current then
+		applyLook(player, Looks.Defaults(1))
+	end
+	push(player)
+end
+
+------------------------------------------------------------------------
 -- Look customization (barber / locker room)
 ------------------------------------------------------------------------
 local GLOVE_FIELDS = { color = "color", trim = "trim", finish = "finish", logo = "logo", stitching = "stitching", embName = "embroidery", embNick = "embroidery", brand = "brand" }
@@ -52661,6 +53725,8 @@ function handlers.CreateBoxer(player, profile, data)
 	if type(profile.settings) == "table" and type(profile.settings.ui) == "table" then
 		newProfile.settings = { ui = profile.settings.ui }
 	end
+	-- a boxer of his own: the first-time tutorial is behind him (done, skipped or never needed)
+	newProfile.tutorialDone = true
 	DataManager.Set(player, newProfile)
 	customizing[player] = nil
 	applyLook(player)
@@ -53255,7 +54321,37 @@ function handlers.NewCareer(player, profile)
 	if type(profile.settings) == "table" and type(profile.settings.ui) == "table" then
 		blank.settings = { ui = profile.settings.ui }
 	end
+	blank.tutorialDone = true -- (a player, not a career, learns the controls)
 	DataManager.Set(player, blank)
+	return { ok = true }
+end
+
+-- the first-time tutorial fight: start it (a new player from the offer, anyone from the menus to replay it),
+-- or skip it (the offer's SKIP TUTORIAL; a skip during the bout is the Fight remote's "tutorialSkip")
+function handlers.StartTutorial(player, profile)
+	if profile.retired then
+		return { ok = false, err = "Start a new career first." }
+	end
+	if busy[player] or customizing[player] or pvpWatch[player] or tutorialWatch[player] or FightEngine.Active[player] or player:GetAttribute("InFight") == true then
+		return { ok = false, err = "Finish what you're doing first." }
+	end
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not (char and char:FindFirstChild("HumanoidRootPart") and hum and hum.Health > 0) then
+		return { ok = false, err = "Your character isn't ready." }
+	end
+	PvP.LeaveQueue(player)
+	local w = { profile = profile }
+	tutorialWatch[player] = w
+	setBusy(player, "fight")
+	task.spawn(runTutorial, player, profile, w)
+	return { ok = true }
+end
+
+function handlers.SkipTutorial(player, profile)
+	if TutorialFight.Finish(profile, "skipped") then
+		task.spawn(DataManager.Save, player)
+	end
 	return { ok = true }
 end
 
@@ -53332,7 +54428,8 @@ function handlers.GetMuscleHistory(player, profile)
 	return { ok = true, history = ok and hist or {}, xp = xp, level = okLv and level or nil, day = profile.day }
 end
 
-local PRE_CREATE = { GetProfile = true, CreateBoxer = true, NewCareer = true, PreviewLook = true, GetLegacy = true, SaveSettings = true }
+local PRE_CREATE = { GetProfile = true, CreateBoxer = true, NewCareer = true, PreviewLook = true, GetLegacy = true, SaveSettings = true,
+	StartTutorial = true, SkipTutorial = true }
 local READ_ONLY = { GetProfile = true, GetRankings = true, GetBoxer = true, PreviewLook = true, GetOffers = true, GetRivals = true, GetLegacy = true, GetPvP = true, GetMuscleHistory = true }
 -- (PvPQueue / PvPCancel / PvPRespond may be sent mid-drill: leaving the queue, cancelling, declining)
 local DURING_ACTIVITY = { FinishActivity = true, CancelActivity = true, Eat = true, SaveSettings = true, PvPQueue = true, PvPCancel = true, PvPRespond = true }
@@ -53398,6 +54495,15 @@ Request.OnServerInvoke = function(player, action, ...)
 end
 
 FightRemote.OnServerEvent:Connect(function(player, msg)
+	if type(msg) == "table" and msg.t == "tutorialSkip" then
+		-- SKIP TUTORIAL during the tutorial bout: call it off (runTutorial sets the flag); ignored otherwise
+		local w = tutorialWatch[player]
+		if w then
+			w.skipped = true
+			FightEngine.Abort(player)
+		end
+		return
+	end
 	FightEngine.Input(player, msg)
 end)
 
@@ -53496,6 +54602,13 @@ Players.PlayerRemoving:Connect(function(player)
 	if not okPvP then
 		warn("[Boxer] PvP leave:", errPvP)
 	end
+	-- leaving mid-tutorial: the bout is aborted (the engine's Cleanup takes the arena, the opponent and the
+	-- referee with it) and runTutorial records nothing
+	local tw = tutorialWatch[player]
+	if tw then
+		tw.left = true
+		tutorialWatch[player] = nil
+	end
 	if not inPvP then
 		FightEngine.Abort(player)
 	end
@@ -53553,17 +54666,17 @@ print("[Boxer] " .. Config.GameName .. " server ready")
       </Properties>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="50">
+  <Item class="StarterPlayer" referent="52">
     <Properties>
       <string name="Name">StarterPlayer</string>
       <float name="CharacterWalkSpeed">6.5</float>
       <bool name="EnableMouseLockOption">false</bool>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="51">
+    <Item class="StarterPlayerScripts" referent="53">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="52">
+      <Item class="LocalScript" referent="54">
         <Properties>
           <string name="Name">Animator</string>
           <string name="Source"><![CDATA[-- Animator: motion-capture-feeling procedural animation for everyone in the game, no animation
@@ -54866,11 +55979,11 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="53">
+      <Item class="Folder" referent="55">
         <Properties>
           <string name="Name">BoxerClient</string>
         </Properties>
-        <Item class="ModuleScript" referent="54">
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">Activities</string>
             <string name="Source"><![CDATA[-- Activities: every training session and its minigame.
@@ -59408,7 +60521,7 @@ return Activities
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="55">
+        <Item class="ModuleScript" referent="57">
           <Properties>
             <string name="Name">Ambience</string>
             <string name="Source"><![CDATA[-- Ambience: brings the gym and the town to life on the client.
@@ -60612,7 +61725,7 @@ return Ambience
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="56">
+        <Item class="ModuleScript" referent="58">
           <Properties>
             <string name="Name">AnatomyClient</string>
             <string name="Source"><![CDATA[-- AnatomyClient: the client-built meshes on every character: today only the HAIR (the uploaded hair cards,
@@ -63404,7 +64517,7 @@ return AnatomyClient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="57">
+        <Item class="ModuleScript" referent="59">
           <Properties>
             <string name="Name">AnatomyStatus</string>
             <string name="Source"><![CDATA[-- AnatomyStatus: tells the player (and the Output) whether the organic mesh characters are on.
@@ -63648,7 +64761,7 @@ return AnatomyStatus
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="58">
+        <Item class="ModuleScript" referent="60">
           <Properties>
             <string name="Name">AnimDown</string>
             <string name="Source"><![CDATA[-- AnimDown: knockdowns, knockouts, the count and the get-up.
@@ -65093,7 +66206,7 @@ return AnimDown
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="59">
+        <Item class="ModuleScript" referent="61">
           <Properties>
             <string name="Name">AnimFight</string>
             <string name="Source"><![CDATA[-- AnimFight: everything a boxer does on his feet in the ring.
@@ -68097,7 +69210,7 @@ return AnimFight
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="60">
+        <Item class="ModuleScript" referent="62">
           <Properties>
             <string name="Name">AnimGym</string>
             <string name="Source"><![CDATA[-- AnimGym: training poses that work the right muscles, flex poses, gym life and the people who
@@ -69303,7 +70416,7 @@ return AnimGym
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="61">
+        <Item class="ModuleScript" referent="63">
           <Properties>
             <string name="Name">AnimKit</string>
             <string name="Source"><![CDATA[-- AnimKit: the pure math behind the procedural animation (no Instances, no Roblox services), so it
@@ -69735,7 +70848,7 @@ return AnimKit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="62">
+        <Item class="ModuleScript" referent="64">
           <Properties>
             <string name="Name">AnimLoco</string>
             <string name="Source"><![CDATA[-- AnimLoco: locomotion and feet for the procedural Animator.
@@ -71898,7 +73011,7 @@ return AnimLoco
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="63">
+        <Item class="ModuleScript" referent="65">
           <Properties>
             <string name="Name">AnimRig</string>
             <string name="Source"><![CDATA[-- AnimRig: rig geometry, inverse kinematics and the pose building blocks shared by the Animator
@@ -72909,7 +74022,7 @@ return AnimRig
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="64">
+        <Item class="ModuleScript" referent="66">
           <Properties>
             <string name="Name">BodyMap</string>
             <string name="Source"><![CDATA[-- BodyMap: an anatomical body map (front + back views), one region per Config.MuscleParts id.
@@ -73766,7 +74879,7 @@ return BodyMap
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="65">
+        <Item class="ModuleScript" referent="67">
           <Properties>
             <string name="Name">CharacterLight</string>
             <string name="Source"><![CDATA[-- CharacterLight: a camera-aware fill and rim light for the boxers on screen (client only).
@@ -73990,7 +75103,7 @@ return CharacterLight
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="66">
+        <Item class="ModuleScript" referent="68">
           <Properties>
             <string name="Name">CityStores</string>
             <string name="Source"><![CDATA[-- CityStores: the counters of the city's walk-in shops (prompts in CityMap, dispatched through
@@ -74272,7 +75385,7 @@ return CityStores
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="67">
+        <Item class="ModuleScript" referent="69">
           <Properties>
             <string name="Name">CityVisuals</string>
             <string name="Source"><![CDATA[-- CityVisuals: the city reflects YOUR career. Everything here is client-side (workspace.LocalCity
@@ -76109,7 +77222,7 @@ return CityVisuals
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="68">
+        <Item class="ModuleScript" referent="70">
           <Properties>
             <string name="Name">ControlsMenu</string>
             <string name="Source"><![CDATA[-- ControlsMenu: the Moves & Controls window. Opened from the main menu (CONTROLS, or Settings > Controls),
@@ -76817,7 +77930,7 @@ return ControlsMenu
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="69">
+        <Item class="ModuleScript" referent="71">
           <Properties>
             <string name="Name">Creator</string>
             <string name="Source"><![CDATA[-- Creator: the character creator, as seven steps with Back / Next and a step bar (jump to any step).
@@ -78575,7 +79688,7 @@ return Creator
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="70">
+        <Item class="ModuleScript" referent="72">
           <Properties>
             <string name="Name">FaceFX</string>
             <string name="Source"><![CDATA[-- FaceFX: a face that is alive. Client-only, driven by the Animator every frame (FaceFX.Update; Hit / Effort /
@@ -78646,7 +79759,7 @@ end
 local NCH = 12
 local EXPR = {
 	neutral = { 0, 0, 0, 0.05, 0, 0, 0.05, 0, 0, 0, 0, 0 },
-	confident = { 0.1, 0, 0, 0.12, 0.15, 0, 0.2, 0.35, 0, 0.05, 0.8, 0 },
+	confident = { 0.15, 0, 0, 0.14, 0.3, 0.03, 0.15, 0.65, 0, 0.12, 0.85, 0 },
 	determined = { -0.1, -0.5, 0.55, 0.15, 0.3, 0, 0.6, -0.1, 0, 0.05, 0, 0.05 },
 	anger = { -0.3, -1.0, 1.0, -0.18, 0.45, 0.08, 0.65, -0.35, 0.6, 0.3, 0.15, 0.15 },
 	fear = { 0.95, 1.0, 0.35, -0.5, 0, 0.32, 0, -0.35, 0.1, 0.85, 0, 0.3 },
@@ -78654,7 +79767,7 @@ local EXPR = {
 	pain = { 0.1, 0.55, 0.85, 0.55, 0.85, 0.3, 0, -0.6, 0.45, 0.6, 0.2, 0.2 },
 	dazed = { 0.2, 0.3, 0, 0.45, 0, 0.22, 0, -0.15, 0, 0, 0.3, 0.1 },
 	effort = { -0.1, -0.5, 0.7, 0.2, 0.6, 0.1, 0.3, -0.25, 0.5, 0.55, 0, 0.12 },
-	happy = { 0.2, 0.1, 0, 0.12, 0.55, 0.12, 0, 1.0, 0.1, 0.2, 0.1, 0.05 },
+	happy = { 0.25, 0.15, 0, 0.1, 0.65, 0.18, 0, 1.0, 0.15, 0.3, 0.1, 0.05 },
 	ko = { 0, 0.15, 0, 0.62, 0, 0.42, 0, -0.1, 0, 0, 0.4, 0.35 },
 	shout = { 0.15, -0.5, 0.6, 0.05, 0.35, 0.85, 0, -0.1, 0.5, 0.5, 0, 0.1 },
 }
@@ -78738,6 +79851,8 @@ local function roleRec(m)
 	return {
 		m = m, part = part, mesh = mesh, base = mesh and mesh.Scale or V3(1, 1, 1), off = mesh and mesh.Offset or Vector3.zero,
 		side = sideOf(part) or (m:GetAttribute("Side") and (m:GetAttribute("Side") < 0 and -1 or 1)) or 0, last = nil,
+		-- a lid's travel to shut the eye (BuilderHead: its edge to the bottom of the eye)
+		closeY = part and part:GetAttribute("CloseY"), sizeY = part and part.Size.Y,
 	}
 end
 
@@ -78787,13 +79902,15 @@ local function scan(rec)
 			elseif n == "TempleVein" or n == "ForeheadVein" then
 				local base = d:GetAttribute("BaseTransparency")
 				table.insert(rec.veins, { part = d, base = type(base) == "number" and base or 0.5 })
+			-- (the built parts are sunk into the head: VisW / VisH are the sizes that show, the Size is bigger)
 			elseif n == "Sclera" then
-				rec.h = d.Size.Y
-				rec.ew = d.Size.X
+				rec.h = d:GetAttribute("VisH") or d.Size.Y
+				rec.ew = d:GetAttribute("VisW") or d.Size.X
 			elseif n == "Iris" then
-				rec.iw, rec.ih = d.Size.X, d.Size.Y
+				local vw = d:GetAttribute("VisW")
+				rec.iw, rec.ih = vw or d.Size.X, vw or d.Size.Y
 			elseif n == "UpperLip" then
-				rec.mw = d.Size.X
+				rec.mw = d:GetAttribute("VisW") or d.Size.X
 			elseif n == "Brow" then
 				rec.bt = d.Size.Y
 			end
@@ -79161,16 +80278,21 @@ function FaceFX.Update(dt, t, camPos, rigs, budget)
 			if r and lidPart and lidPart.Transparency < 1 then
 				local c = clamp(lidBase + (daze >= 2 and 0.1 * s or 0) + ch[11] * 0.04 * s, -0.35, 1)
 				c = max(c, blinkC * 0.9)
-				if c >= 0 then
-					setT(r, CF(0, -c * h * 0.3, -c * 0.006))
-				else
+				local cy = r.closeY
+				if c < 0 then
 					setT(r, CF(0, -c * h * 0.16, 0))
+				elseif cy then
+					-- the lid grows down over the eye (mesh only, never Size) with its top edge kept: its edge
+					-- travels c x CloseY, and it stands a touch further out to clear the eye
+					setT(r, CF(0, -c * cy * 0.5, -c * 0.007))
+				else
+					setT(r, CF(0, -c * h * 0.3, -c * 0.006))
 				end
-				-- a closing lid also grows downwards over the eye (mesh only, never Size)
 				local q = math.floor(max(c, 0) * 50 + 0.5) / 50
 				if r.mesh and q ~= r.lc then
 					r.lc = q
-					r.mesh.Scale = V3(r.base.X, r.base.Y * (1 + 0.9 * q), r.base.Z)
+					local grow = (cy and r.sizeY and r.sizeY > 0) and cy / r.sizeY or 0.9
+					r.mesh.Scale = V3(r.base.X, r.base.Y * (1 + grow * q), r.base.Z)
 				end
 			end
 			local lr = roles[s < 0 and "LowerLidL" or "LowerLidR"]
@@ -79180,13 +80302,16 @@ function FaceFX.Update(dt, t, camPos, rigs, budget)
 		end
 		-- mouth
 		local open, press, smile, snarl, wide = clamp(ch[6], 0, 1), ch[7], ch[8], clamp(ch[9], 0, 1), ch[10]
-		setT(roles.UpperLip, CF(0, (snarl * 0.3 + open * 0.1 - press * 0.03) * mw * 0.25, 0))
-		setT(roles.LowerLip, CF(0, (-open * 0.34 + press * 0.04) * mw, -press * 0.004))
+		-- a smile parts the lips a little (a grin shows the teeth)
+		local grin = max(smile, 0)
+		setT(roles.UpperLip, CF(0, (snarl * 0.3 + open * 0.1 - press * 0.03 + grin * 0.16) * mw * 0.25, 0))
+		setT(roles.LowerLip, CF(0, (-open * 0.34 - grin * 0.05 + press * 0.04) * mw, -press * 0.004))
 		for s = -1, 1, 2 do
 			local r = roles[s < 0 and "MouthCornerL" or "MouthCornerR"]
 			if r then
 				local sm = smile * (1 + ch[11] * 0.8 * s)
-				setT(r, CF(s * wide * mw * 0.07, sm * mw * 0.085 - open * mw * 0.14, 0))
+				-- the corner pieces of the mouth line rise and curl (up in a smile, down in a frown)
+				setT(r, CF(s * (wide * 0.07 + max(sm, 0) * 0.03) * mw, sm * mw * 0.13 - open * mw * 0.14, 0) * A(0, 0, s * clamp(sm, -1, 1.4) * 0.75))
 			end
 		end
 		local inside = roles.MouthInside
@@ -79274,7 +80399,7 @@ return FaceFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="71">
+        <Item class="ModuleScript" referent="73">
           <Properties>
             <string name="Name">FighterCard</string>
             <string name="Source"><![CDATA[-- FighterCard: the professional fighter card / tale of the tape for the local boxer.
@@ -80133,7 +81258,7 @@ return FighterCard
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="72">
+        <Item class="ModuleScript" referent="74">
           <Properties>
             <string name="Name">Flags</string>
             <string name="Source"><![CDATA[-- Flags: simplified national flags drawn from frames (no image assets) for every Config.Nationalities
@@ -80468,7 +81593,7 @@ return Flags
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="73">
+        <Item class="ModuleScript" referent="75">
           <Properties>
             <string name="Name">GymFacility</string>
             <string name="Source"><![CDATA[-- GymFacility: what YOUR gym looks like as a whole, drawn on your client only (everyone shares
@@ -82596,7 +83721,7 @@ return GymFacility
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="74">
+        <Item class="ModuleScript" referent="76">
           <Properties>
             <string name="Name">GymMirror</string>
             <string name="Source"><![CDATA[-- GymMirror: a live mirror at the shadow-boxing station. While you are within a few strides of
@@ -82978,7 +84103,7 @@ return GymMirror
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="75">
+        <Item class="ModuleScript" referent="77">
           <Properties>
             <string name="Name">GymSound</string>
             <string name="Source"><![CDATA[-- GymSound: every gym sound effect on the client, played from ONE pool of positional sounds
@@ -83223,7 +84348,7 @@ return GymSound
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="76">
+        <Item class="ModuleScript" referent="78">
           <Properties>
             <string name="Name">GymVisuals</string>
             <string name="Source"><![CDATA[-- GymVisuals: draws YOUR gym's equipment (client side) at every station, matched to
@@ -86738,7 +87863,7 @@ return GymVisuals
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="77">
+        <Item class="ModuleScript" referent="79">
           <Properties>
             <string name="Name">HairAssets</string>
             <string name="Source"><![CDATA[-- HairAssets: the asset hair (tools/hair/CONTRACT.md): hair-card meshes modelled in Blender and uploaded as
@@ -87437,7 +88562,7 @@ return HairAssets
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="78">
+        <Item class="ModuleScript" referent="80">
           <Properties>
             <string name="Name">HairFX</string>
             <string name="Source"><![CDATA[-- HairFX: hair that moves like hair. Client-only, driven by the Animator every frame (HairFX.Update) and on
@@ -89413,7 +90538,7 @@ return HairFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="79">
+        <Item class="ModuleScript" referent="81">
           <Properties>
             <string name="Name">Hub</string>
             <string name="Source"><![CDATA[-- Hub: the Career Hub window.
@@ -91323,7 +92448,7 @@ return Hub
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="80">
+        <Item class="ModuleScript" referent="82">
           <Properties>
             <string name="Name">LightLevels</string>
             <string name="Source"><![CDATA[-- LightLevels: the game's exposure targets in one place, plus the player's brightness preference.
@@ -91516,7 +92641,7 @@ return LightLevels
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="81">
+        <Item class="ModuleScript" referent="83">
           <Properties>
             <string name="Name">LookKit</string>
             <string name="Source"><![CDATA[-- LookKit: the look editors' shared parts (Creator, barber): plain-word readouts, short labels and
@@ -91932,7 +93057,7 @@ return LookKit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="82">
+        <Item class="ModuleScript" referent="84">
           <Properties>
             <string name="Name">MainMenu</string>
             <string name="Source"><![CDATA[-- MainMenu: the title screen. Your boxer stands in his corner of a ring in a gym at night (MenuStage: a
@@ -93122,6 +94247,21 @@ local function screenSettings(layer)
 		Settings.Set("controlHints", on)
 	end)
 	add(hintsRow, nudge(hintsRow, true))
+	-- the first-time tutorial fight, again: a short practice bout as a random boxer (never the career)
+	local function replayTutorial()
+		if State.open.Tutorial then
+			MainMenu.Close(function()
+				State.open.Tutorial()
+			end)
+		end
+	end
+	local tutBtn = UI.Button(body, "REPLAY THE TUTORIAL FIGHT", { Name = "ReplayTutorial", Size = UDim2.fromOffset(320, math.max(40, UI.MinHit(body))) }, replayTutorial)
+	add(tutBtn, function(dir)
+		if dir == 0 then
+			replayTutorial()
+		end
+	end)
+	add(UI.Text(body, "A short guided fight as a random boxer: moving, punching, defending, stamina and a special move. Your career is not touched.", { TextSize = 13, TextColor3 = T.sub }))
 	-- the boxer's hair & face from the player's Roblox avatar (saved with the boxer: appearance.avatar)
 	local P = State.P
 	if P and P.created and type(P.appearance) == "table" then
@@ -93560,7 +94700,7 @@ return MainMenu
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="83">
+        <Item class="ModuleScript" referent="85">
           <Properties>
             <string name="Name">MenuStage</string>
             <string name="Source"><![CDATA[-- MenuStage: the main menu's set. A closed boxing-gym corner built on this client, far above the map,
@@ -94182,7 +95322,7 @@ return MenuStage
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="84">
+        <Item class="ModuleScript" referent="86">
           <Properties>
             <string name="Name">MuscleScreen</string>
             <string name="Source"><![CDATA[-- MuscleScreen: the Muscle Progression screen (Hub Body tab "3D MUSCLE VIEW", training result "MUSCLES").
@@ -95204,7 +96344,7 @@ return MuscleScreen
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="85">
+        <Item class="ModuleScript" referent="87">
           <Properties>
             <string name="Name">Perf</string>
             <string name="Source"><![CDATA[-- Perf: the one performance level every client system reads (optimization pass).
@@ -95532,7 +96672,7 @@ return Perf
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="86">
+        <Item class="ModuleScript" referent="88">
           <Properties>
             <string name="Name">PvP</string>
             <string name="Source"><![CDATA[-- PvP (client): challenge other players, answer challenges, Find Match, the PvP record.
@@ -96298,7 +97438,7 @@ return PvP
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="87">
+        <Item class="ModuleScript" referent="89">
           <Properties>
             <string name="Name">Services</string>
             <string name="Source"><![CDATA[-- Services: the gym's service windows.
@@ -97103,7 +98243,7 @@ return Services
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="88">
+        <Item class="ModuleScript" referent="90">
           <Properties>
             <string name="Name">Settings</string>
             <string name="Source"><![CDATA[-- Settings: the player's options, applied on this client straight away.
@@ -97391,7 +98531,7 @@ return Settings
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="89">
+        <Item class="ModuleScript" referent="91">
           <Properties>
             <string name="Name">State</string>
             <string name="Source"><![CDATA[-- State: shared client state and helpers (latest profile, server requests, toasts,
@@ -97553,7 +98693,580 @@ return State
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="90">
+        <Item class="ModuleScript" referent="92">
+          <Properties>
+            <string name="Name">Tutorial</string>
+            <string name="Source"><![CDATA[-- Tutorial (client): the first-time tutorial fight around the real fight HUD (FightClient).
+--   Offer(after)   the "YOUR FIRST FIGHT" card a new player meets before the title screen: START / SKIP
+--   Begin()        asks the server for the bout (StartTutorial; State.open.Tutorial, the Settings screen's
+--                  REPLAY THE TUTORIAL FIGHT)
+--   the step card  during the bout: the step, what to do and the key / button / touch pad for it on the device
+--                  in use (Shared.Tutorial.Caps over the player's own control map), placed under the scoreboard
+--                  and clear of the touch pads; SKIP TUTORIAL calls the bout off
+--   the wrap-up    "YOU'RE READY": then the creator (a new player) or the main menu (a replay)
+-- The server runs the bout (Main: runTutorial, FightEngine opts.tutorial) and sends "tutorial" (the step
+-- tracker's view) and "tutorialEnd" on the Fight remote.
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local UI = require(Shared:WaitForChild("UI"))
+local Keymap = require(Shared:WaitForChild("Keymap"))
+local Steps = require(Shared:WaitForChild("Tutorial"))
+local Modules = script.Parent
+local State = require(Modules:WaitForChild("State"))
+local T = UI.Theme
+local Gamepad = UI.Gamepad
+
+local Tutorial = {}
+local player = Players.LocalPlayer
+
+local gui, root
+local card -- the step card (built per bout)
+local card_key = "" -- the HUD pieces' places it was placed for
+local view = nil -- the last "tutorial" message
+local inBout = false -- a tutorial bout is on the screen
+local hidden = false -- the card is down for the rest between rounds / a knockdown / the end
+local busy = false -- from Begin until the wrap-up is closed (ClientMain keeps the creator / menu away meanwhile)
+local started = false
+local conns = {}
+
+local function ensureGui()
+	if gui and gui.Parent then
+		return
+	end
+	-- below the top bar like the fight HUD (same coordinates as FightUI), above it and the title screen,
+	-- under the toasts
+	gui = UI.New("ScreenGui", { Name = "TutorialUI", ResetOnSpawn = false, IgnoreGuiInset = false, DisplayOrder = 32,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Parent = player:WaitForChild("PlayerGui") })
+	root = UI.MountRoot(gui, "Root")
+end
+
+local function mode()
+	local m = UI.InputMode()
+	if m == "keyboard" and UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
+		return "touch"
+	end
+	return m
+end
+
+local function keymapNow()
+	local ok, Settings = pcall(require, Modules:WaitForChild("Settings"))
+	if ok and type(Settings) == "table" and type(Settings.Keymap) == "function" then
+		local okMap, m = pcall(Settings.Keymap)
+		if okMap and type(m) == "table" then
+			return m
+		end
+	end
+	return Keymap.Resolve(nil)
+end
+
+------------------------------------------------------------------------
+-- The step card
+------------------------------------------------------------------------
+local PAD = 10
+local GAP = 6
+local CAP_H = 26
+local SKIP_W = 104
+
+local function compact()
+	return UI.CanvasSize(root).Y < 600
+end
+
+-- the size a label really draws at under this root (UI's readability floor)
+local function eff(size)
+	return math.max(size, UI.TextFloor(UI.ScaleOf(root)))
+end
+
+local function sizes()
+	local small = compact()
+	return { kicker = 12, title = small and 20 or 24, body = small and 13 or 15, cap = 13, caption = 12 }
+end
+
+-- the caps (or, for the stamina step, the goal chips) of the current step, measured: { key, label, w, done }
+local function capList(step)
+	local out = {}
+	local sz = sizes()
+	local goals = view and view.goals or {}
+	if #step.actions == 0 then
+		for _, g in ipairs(step.goals) do
+			local text = Steps.GoalText[g] or g
+			table.insert(out, { label = string.upper(text), w = math.ceil(UI.TextWidth(string.upper(text), eff(sz.caption), T.semi) * 1.15) + 20, done = goals[g] == true, chip = true })
+		end
+		return out
+	end
+	for _, c in ipairs(Steps.Caps(step, mode(), keymapNow(), Keymap, Gamepad)) do
+		local done = (c.action == "leadhook" or c.action == "rearhook") and goals.hook or (c.action == "uppercut" and step.id == "power" and goals.uppercut)
+		-- (bold capitals run wide: a little slack so no caption is cut on a device whose metrics differ)
+		local kw = math.ceil(UI.TextWidth(c.key, eff(sz.cap), T.semi) * 1.1) + 14
+		local lw = math.ceil(UI.TextWidth(c.label, eff(sz.caption), T.semi) * 1.15) + 4
+		table.insert(out, { key = c.key, label = c.label, kw = kw, w = kw + 6 + lw, done = done == true })
+	end
+	return out
+end
+
+-- caps into rows of `inner` width: { rows, height }
+local function packCaps(list, inner)
+	local rows, row, used = {}, {}, 0
+	for _, c in ipairs(list) do
+		local w = math.min(c.w, inner)
+		if #row > 0 and used + 10 + w > inner then
+			table.insert(rows, row)
+			row, used = {}, 0
+		end
+		table.insert(row, c)
+		used += (#row > 1 and 10 or 0) + w
+	end
+	if #row > 0 then
+		table.insert(rows, row)
+	end
+	return rows, #rows * CAP_H + math.max(0, #rows - 1) * 4
+end
+
+local function lines(text, size, width)
+	local w = UI.TextWidth(text, size, T.font)
+	return math.max(1, math.ceil(w * 1.05 / math.max(40, width)))
+end
+
+-- the card's height at width w (design px), from the same measures the build uses (tight: no body text,
+-- for a short screen with the key strip up)
+local function estimate(step, w, tight)
+	local sz = sizes()
+	local inner = w - 2 * PAD
+	local headH = math.max(eff(sz.kicker) + 2 + eff(sz.title) + 4, math.max(30, UI.MinHit(root)))
+	local bodyH = tight and 0 or (GAP + lines(step.text, eff(sz.body), inner) * math.ceil(eff(sz.body) * 1.25))
+	local _, capsH = packCaps(capList(step), inner)
+	return PAD * 2 + headH + bodyH + (capsH > 0 and (GAP + capsH) or 0)
+end
+
+-- the fight HUD's pieces the card keeps clear of, as design-px rects in this root's space
+local OBSTACLES = { "Scoreboard", "TouchPad", "DefencePad", "MovesPad", "SprintPad", "StanceChips", "Controls", "Ticker" }
+local function rectOf(obj, s, origin)
+	local p, z = obj.AbsolutePosition, obj.AbsoluteSize
+	return { x0 = (p.X - origin.X) / s, y0 = (p.Y - origin.Y) / s, x1 = (p.X + z.X - origin.X) / s, y1 = (p.Y + z.Y - origin.Y) / s }
+end
+local function shown(obj)
+	local o = obj
+	while o and o:IsA("GuiObject") do
+		if not o.Visible then
+			return false
+		end
+		o = o.Parent
+	end
+	return true
+end
+local function obstacles()
+	local out, board = {}, nil
+	local fg = player:FindFirstChild("PlayerGui") and player.PlayerGui:FindFirstChild("FightUI")
+	local hud = fg and fg:FindFirstChild("HUDRoot")
+	if not (hud and fg.Enabled) then
+		return out, nil
+	end
+	local s = UI.ScaleOf(root)
+	local origin = root.AbsolutePosition
+	for _, name in ipairs(OBSTACLES) do
+		local o = hud:FindFirstChild(name)
+		if o and o:IsA("GuiObject") and shown(o) then
+			-- the piece and what it draws (a pad cluster's buttons reach past its own frame)
+			local r
+			for _, d in ipairs({ o, table.unpack(o:GetDescendants()) }) do
+				if d:IsA("GuiObject") and d.AbsoluteSize.X > 1 and d.AbsoluteSize.Y > 1 and shown(d)
+					and (d == o or d.BackgroundTransparency < 0.99 or d:IsA("GuiButton") or d:IsA("TextLabel")) then
+					local q = rectOf(d, s, origin)
+					if r then
+						r.x0, r.y0, r.x1, r.y1 = math.min(r.x0, q.x0), math.min(r.y0, q.y0), math.max(r.x1, q.x1), math.max(r.y1, q.y1)
+					else
+						r = q
+					end
+				end
+			end
+			if r and r.x1 - r.x0 > 1 and r.y1 - r.y0 > 1 then
+				r.name = name
+				table.insert(out, r)
+				if name == "Scoreboard" then
+					board = r
+				end
+			end
+		end
+	end
+	return out, board
+end
+
+local function overlaps(a, b, m)
+	return a.x0 < b.x1 + m and b.x0 < a.x1 + m and a.y0 < b.y1 + m and b.y0 < a.y1 + m
+end
+
+-- where the card goes: under the scoreboard, as wide as fits, clear of every HUD piece and on the screen.
+-- Returns x, y, w, h (design px) and tight (no room for the body text: only the title and the keys)
+local function place(step, tight)
+	local canvas = UI.CanvasSize(root)
+	local cw, ch = canvas.X, canvas.Y
+	local obs, board = obstacles()
+	local margin = 12
+	local top0 = (board and board.y1 or 52) + 8
+	local small = compact()
+	local widths = small and { 480, 420, 360, 320, 280 } or { 620, 540, 460, 400, 340 }
+	local ys = { top0 }
+	for _, o in ipairs(obs) do
+		if o.y1 + 8 > top0 then
+			table.insert(ys, o.y1 + 8)
+		end
+	end
+	table.sort(ys)
+	for _, w in ipairs(widths) do
+		if w <= cw - 2 * margin then
+			local h = estimate(step, w, tight)
+			for _, y in ipairs(ys) do
+				-- the room left and right of the pieces beside this band
+				local L, R = margin, cw - margin
+				for _, o in ipairs(obs) do
+					if o.y0 < y + h and o.y1 > y then
+						if (o.x0 + o.x1) / 2 < cw / 2 then
+							L = math.max(L, o.x1 + 8)
+						else
+							R = math.min(R, o.x0 - 8)
+						end
+					end
+				end
+				for _, x in ipairs({ cw / 2 - w / 2, (L + R) / 2 - w / 2, L }) do
+					local r = { x0 = x, y0 = y, x1 = x + w, y1 = y + h }
+					local ok = r.x0 >= margin - 0.5 and r.x1 <= cw - margin + 0.5 and r.y1 <= ch - margin
+					if ok then
+						for _, o in ipairs(obs) do
+							if overlaps(r, o, 2) then
+								ok = false
+								break
+							end
+						end
+					end
+					if ok then
+						return x, y, w, h
+					end
+				end
+			end
+		end
+	end
+	return nil
+end
+function Tutorial.Place(step)
+	for _, tight in ipairs({ false, true }) do
+		local x, y, w, h = place(step, tight)
+		if x then
+			return x, y, w, h, tight
+		end
+	end
+	local canvas = UI.CanvasSize(root)
+	local _, board = obstacles()
+	local w = math.min(340, canvas.X - 24)
+	return canvas.X / 2 - w / 2, (board and board.y1 or 52) + 8, w, estimate(step, w, true), true
+end
+
+-- the HUD pieces' places, rounded (the card is placed again when they move: the key strip shown / hidden)
+local function obstacleKey()
+	local parts = {}
+	for _, o in ipairs((obstacles())) do
+		table.insert(parts, string.format("%s%d,%d,%d,%d", o.name, o.x0 // 4, o.y0 // 4, o.x1 // 4, o.y1 // 4))
+	end
+	return table.concat(parts, ";")
+end
+
+local function skipBout()
+	State.FightRemote:FireServer({ t = "tutorialSkip" })
+	if card then
+		card.Visible = false
+	end
+end
+
+local function buildCard()
+	if not (inBout and view) then
+		return
+	end
+	ensureGui()
+	if card then
+		card:Destroy()
+		card = nil
+	end
+	local step = Steps.STEPS[view.step] or Steps.STEPS[1]
+	local sz = sizes()
+	local x, y, w, _, tight = Tutorial.Place(step)
+	card_key = obstacleKey()
+	local inner = w - 2 * PAD
+	card = UI.Frame(root, { Name = "Prompt", Position = UDim2.fromOffset(math.floor(x), math.floor(y)), Size = UDim2.fromOffset(w, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		Visible = not hidden })
+	UI.Glass(card, { transparency = 0.12, stroke = T.gold, strokeT = 0.55 })
+	UI.New("UIPadding", { PaddingTop = UDim.new(0, PAD), PaddingBottom = UDim.new(0, PAD), PaddingLeft = UDim.new(0, PAD), PaddingRight = UDim.new(0, PAD), Parent = card })
+	UI.List(card, GAP)
+	-- head: the step and its title on the left, SKIP TUTORIAL on the right
+	local hit = math.max(30, UI.MinHit(root))
+	local headH = math.max(eff(sz.kicker) + 2 + eff(sz.title) + 4, hit)
+	local head = UI.Frame(card, { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, headH), LayoutOrder = 1 })
+	local skipW = math.max(SKIP_W, UI.TextWidth("SKIP TUTORIAL", eff(12), T.semi) + 16)
+	UI.Text(head, string.format("TUTORIAL  ·  STEP %d OF %d", view.step, view.total or #Steps.STEPS), { Name = "Step", Font = T.semi, TextSize = sz.kicker, TextColor3 = T.gold,
+		Size = UDim2.new(1, -(skipW + 8), 0, eff(sz.kicker) + 2), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	UI.Title(head, view.done and "NICE WORK!" or step.title, { Name = "Title", TextSize = sz.title, Position = UDim2.fromOffset(0, eff(sz.kicker) + 2),
+		Size = UDim2.new(1, -(skipW + 8), 0, eff(sz.title) + 4), AutomaticSize = Enum.AutomaticSize.None, TextTruncate = Enum.TextTruncate.AtEnd })
+	local skip = UI.Button(head, "SKIP TUTORIAL", { Name = "Skip", Font = T.semi, TextSize = 12, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0),
+		Size = UDim2.fromOffset(skipW, hit), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.2 }, skipBout)
+	skip.Selectable = false -- (a pad's buttons are the fight's: the pad skips at the offer)
+	-- what to do (a short screen with the key strip up keeps the title and the keys)
+	if not tight or view.done then
+		UI.Text(card, view.done and "That's the tutorial. You're ready for a real fight." or step.text, { Name = "Body", TextSize = sz.body, TextColor3 = T.text, Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 })
+	end
+	-- the keys (or the stamina step's checklist)
+	local list = view.done and {} or capList(step)
+	if #list > 0 then
+		local rows, capsH = packCaps(list, inner)
+		local keys = UI.Frame(card, { Name = "Keys", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, capsH), LayoutOrder = 3 })
+		for r, row in ipairs(rows) do
+			local cx = 0
+			for _, c in ipairs(row) do
+				local cy = (r - 1) * (CAP_H + 4)
+				local wc = math.min(c.w, inner)
+				local item = UI.Frame(keys, { Name = "Cap", BackgroundTransparency = 1, Position = UDim2.fromOffset(cx, cy), Size = UDim2.fromOffset(wc, CAP_H) })
+				if c.chip then
+					item.BackgroundTransparency = 0
+					item.BackgroundColor3 = c.done and T.green or T.panel2
+					UI.Corner(item, UI.R.md)
+					UI.Text(item, c.label, { Font = T.semi, TextSize = sz.caption, TextColor3 = c.done and T.ink or T.text, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None,
+						TextWrapped = false, TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd })
+				else
+					local kw = math.min(c.kw, wc)
+					local key = UI.Frame(item, { Name = "Key", Size = UDim2.fromOffset(kw, CAP_H - 2), Position = UDim2.fromOffset(0, 1), BackgroundColor3 = c.done and T.green or T.panel2 })
+					UI.Corner(key, 4)
+					UI.Stroke(key, c.done and T.green or T.gold, 1, 0.35)
+					UI.Text(key, c.key, { Font = T.semi, TextSize = sz.cap, TextColor3 = c.done and T.ink or T.white, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None,
+						TextWrapped = false, TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd })
+					UI.Text(item, c.label, { Font = T.semi, TextSize = sz.caption, TextColor3 = c.done and T.green or T.sub, Position = UDim2.fromOffset(kw + 6, 0),
+						Size = UDim2.new(1, -(kw + 6), 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+				end
+				cx += wc + 10
+			end
+		end
+	end
+end
+
+local function setHidden(on)
+	hidden = on
+	if card then
+		card.Visible = not on
+	end
+end
+
+local function onFight(msg)
+	if type(msg) ~= "table" then
+		return
+	end
+	local t = msg.t
+	if t == "start" then
+		inBout = type(msg.tutorial) == "table"
+		view = nil
+		hidden = false
+		if card then
+			card:Destroy()
+			card = nil
+		end
+	elseif not inBout then
+		if t == "tutorialEnd" then
+			Tutorial.Ended(msg)
+		end
+		return
+	elseif t == "tutorial" then
+		local stepChanged = view ~= nil and (view.step ~= msg.step or view.done ~= msg.done)
+		view = msg
+		buildCard()
+		if stepChanged and card then
+			-- a step done: the card flashes green as the next one comes up
+			local stroke = card:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				stroke.Color, stroke.Transparency = T.green, 0
+				UI.Tween(stroke, { Color = T.gold, Transparency = 0.55 }, TweenInfo.new(0.8))
+			end
+		end
+		if msg.done then
+			task.delay(2.5, function()
+				if view == msg then
+					setHidden(true)
+				end
+			end)
+		end
+	elseif t == "bell" or t == "kd" or t == "final" then
+		setHidden(true)
+	elseif t == "countdown" then
+		if (tonumber(msg.n) or 0) <= 0 and not (view and view.done) then
+			setHidden(false)
+			buildCard() -- (the HUD may have moved between rounds)
+		end
+	elseif t == "getup" then
+		if not (view and view.done) then
+			setHidden(false)
+		end
+	elseif t == "tutorialEnd" then
+		inBout = false
+		Tutorial.Ended(msg)
+	end
+end
+
+------------------------------------------------------------------------
+-- The offer, the start, the wrap-up
+------------------------------------------------------------------------
+local function closeWindow(name)
+	local w = root and root:FindFirstChild(name)
+	if w then
+		w:Destroy()
+	end
+end
+
+local afterOffer -- what follows the offer when it is skipped (the title screen)
+
+-- what follows the tutorial: a new player creates his boxer, a replay goes back to the menu
+local function goOn(created)
+	busy = false
+	if created then
+		if State.open.Menu then
+			State.open.Menu()
+		end
+	elseif State.open.Creator then
+		State.open.Creator()
+	end
+end
+
+local starting = false
+function Tutorial.Begin()
+	if starting or inBout or (root and root:FindFirstChild("TutorialDone")) then
+		return false
+	end
+	starting, busy = true, true
+	closeWindow("TutorialOffer")
+	local r = State.req("StartTutorial")
+	starting = false
+	if not (type(r) == "table" and r.ok) then
+		busy = false
+		State.toast((type(r) == "table" and r.err) or "Couldn't start the tutorial right now.", T.red)
+		local P = State.P
+		if not (P and P.created) and afterOffer then
+			afterOffer()
+		end
+		return false
+	end
+	return true
+end
+
+function Tutorial.Skip()
+	closeWindow("TutorialOffer")
+	busy = false
+	task.spawn(State.req, "SkipTutorial")
+	State.toast("Tutorial skipped. You can replay it any time from Settings.", T.gold, 5)
+	if afterOffer then
+		afterOffer()
+	end
+end
+
+-- the card a new player meets first: after = what SKIP leads to (the title screen)
+function Tutorial.Offer(after)
+	ensureGui()
+	afterOffer = after
+	busy = true
+	local shade, win, body = UI.Window(root, "TutorialOffer", 620, 430, "YOUR FIRST FIGHT", { kicker = "TUTORIAL", footer = 64 })
+	local _ = shade
+	UI.Text(body, "Learn the ropes in a short practice fight before you create your own boxer.", { TextSize = 17, Font = T.semi, LayoutOrder = 1 })
+	UI.Text(body, "You box as a random fighter against a random opponent, one step at a time: moving, the jab and the cross, hooks, uppercuts and body shots, blocking, slipping, stamina and a special move.",
+		{ TextSize = 14, TextColor3 = T.sub, LayoutOrder = 2 })
+	UI.Text(body, "It is only practice: nothing carries over to your career.", { TextSize = 14, TextColor3 = T.sub, LayoutOrder = 3 })
+	local bh = math.max(44, UI.MinHit(win))
+	local start = UI.Button(win, "START TUTORIAL", { Name = "Start", Size = UDim2.new(0.5, -24, 0, bh), Position = UDim2.new(0, 16, 1, -(10 + bh)), BackgroundColor3 = T.gold, TextColor3 = T.ink },
+		function()
+			Tutorial.Begin()
+		end)
+	UI.PadStart(start)
+	UI.Button(win, "SKIP TUTORIAL", { Name = "SkipTutorial", Size = UDim2.new(0.5, -24, 0, bh), Position = UDim2.new(0.5, 8, 1, -(10 + bh)) }, Tutorial.Skip)
+	return win
+end
+
+-- the bout is over (msg = the server's tutorialEnd)
+function Tutorial.Ended(msg)
+	inBout = false
+	view = nil
+	if card then
+		card:Destroy()
+		card = nil
+	end
+	local created = msg.created == true
+	if msg.how ~= "completed" then
+		if msg.how == "skipped" then
+			State.toast("Tutorial skipped. You can replay it any time from Settings.", T.gold, 5)
+		else
+			State.toast("The tutorial was called off.", T.red, 5)
+		end
+		task.delay(0.6, goOn, created)
+		return
+	end
+	busy = true
+	ensureGui()
+	task.wait(0.4)
+	local _, win, body = UI.Window(root, "TutorialDone", 600, 440, "YOU'RE READY", { kicker = "TUTORIAL COMPLETE", footer = 64 })
+	UI.Text(body, created and "That was a practice bout. Your career, record and money are exactly as you left them."
+		or "You've got the basics. Now create your boxer: your own name, look and fighting style.", { TextSize = 17, Font = T.semi, LayoutOrder = 1 })
+	if type(msg.you) == "string" and type(msg.opp) == "string" then
+		UI.Text(body, string.format("You fought as %s against %s%s.", msg.you, msg.opp, type(msg.venue) == "string" and (" at the " .. msg.venue) or ""), { TextSize = 14, TextColor3 = T.sub, LayoutOrder = 2 })
+	end
+	local res = type(msg.result) == "table" and msg.result or nil
+	if res then
+		UI.Text(body, string.format("Punches landed: %d of %d  ·  Knockdowns: %d", tonumber(res.landed) or 0, tonumber(res.thrown) or 0, tonumber(res.kdFor) or 0),
+			{ TextSize = 14, TextColor3 = T.sub, LayoutOrder = 3 })
+	end
+	UI.Text(body, "Every move, key and button is in Moves & Controls (the main menu's CONTROLS).", { TextSize = 14, TextColor3 = T.sub, LayoutOrder = 4 })
+	local bh = math.max(44, UI.MinHit(win))
+	local go = UI.Button(win, created and "BACK TO THE MENU" or "CREATE YOUR BOXER", { Name = "Continue", Size = UDim2.new(0, 280, 0, bh), AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -10), BackgroundColor3 = T.gold, TextColor3 = T.ink }, function()
+		closeWindow("TutorialDone")
+		goOn(created)
+	end)
+	UI.PadStart(go)
+end
+
+-- a tutorial offer, bout or wrap-up is up (ClientMain keeps the title screen / the creator away meanwhile)
+function Tutorial.Busy()
+	return busy or inBout
+end
+
+function Tutorial.Start()
+	if started then
+		return
+	end
+	started = true
+	ensureGui()
+	table.insert(conns, State.FightRemote.OnClientEvent:Connect(onFight))
+	-- a new screen size (rotation, the UI scale setting) or another device: the card is rebuilt in place
+	table.insert(conns, gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		if card then
+			task.defer(buildCard)
+		end
+	end))
+	if Gamepad and Gamepad.Changed then
+		table.insert(conns, Gamepad.Changed:Connect(function()
+			if card then
+				task.defer(buildCard)
+			end
+		end))
+	end
+	State.open.Tutorial = Tutorial.Begin
+	-- the HUD moved under the card (the key strip comes and goes, the pads page): place it again
+	task.spawn(function()
+		while gui and gui.Parent do
+			task.wait(0.5)
+			if inBout and card and not hidden and obstacleKey() ~= card_key then
+				buildCard()
+			end
+		end
+	end)
+end
+
+return Tutorial
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="93">
           <Properties>
             <string name="Name">VenueFX</string>
             <string name="Source"><![CDATA[-- VenueFX: client-only fight-night presentation for the player's own venue (stream G).
@@ -100090,7 +101803,7 @@ return VenueFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="91">
+        <Item class="ModuleScript" referent="94">
           <Properties>
             <string name="Name">WorldLOD</string>
             <string name="Source"><![CDATA[-- WorldLOD: the Graphics level (Perf) applied to the world's own lights, signs, particles and shadow
@@ -100682,7 +102395,7 @@ return WorldLOD
           </Properties>
         </Item>
       </Item>
-      <Item class="LocalScript" referent="92">
+      <Item class="LocalScript" referent="95">
         <Properties>
           <string name="Name">ClientMain</string>
           <string name="Source"><![CDATA[-- ClientMain: wires the client together - main menu at join, the gym HUD (player plate, condition
@@ -100755,6 +102468,19 @@ if okPvP and type(PvPClient) == "table" then
 else
 	warn("[ClientMain] PvP unavailable:", PvPClient)
 	PvPClient = nil
+end
+-- the first-time tutorial fight (its offer, step card and wrap-up): optional like the city
+local okTut, TutorialClient = pcall(function()
+	return require(Modules:WaitForChild("Tutorial", 10))
+end)
+if okTut and type(TutorialClient) == "table" then
+	local okStart, errStart = pcall(TutorialClient.Start)
+	if not okStart then
+		warn("[ClientMain] Tutorial start:", errStart)
+	end
+else
+	warn("[ClientMain] Tutorial unavailable:", TutorialClient)
+	TutorialClient = nil
 end
 local gui = State.gui
 local rec = State.rec
@@ -101178,6 +102904,7 @@ end
 -- Profile updates
 ------------------------------------------------------------------------
 local menuShownOnce = false
+local tutorialOffered = false -- the first-time tutorial's offer was put up this session
 local lastFlag
 local hubShownKey = nil -- the profile / state the open hub was last rebuilt for
 -- the server is retrying a failed DataStore read: say so once (the career is not lost)
@@ -101194,7 +102921,24 @@ local function refresh()
 	local fight = State.inFight()
 	if not P.created then
 		hud.Visible, hudButtons.Visible, hint.Visible = false, false, false
+		-- the tutorial's offer, bout or wrap-up is up: it decides what comes next (the creator, the title)
+		if fight or State.busy() == "fight" or (TutorialClient and TutorialClient.Busy()) then
+			return
+		end
 		if not Creator.IsOpen() and not gui:FindFirstChild("Retired") then
+			-- a brand-new player is offered the tutorial fight first (SKIP leads to the title screen)
+			if TutorialClient and not tutorialOffered and not menuShownOnce and type(P.tutorial) == "table" and P.tutorial.offer == true then
+				tutorialOffered = true
+				menuShownOnce = true
+				TutorialClient.Offer(function()
+					if MainMenu then
+						MainMenu.Open()
+					else
+						Creator.Open()
+					end
+				end)
+				return
+			end
 			-- a new player meets the title screen first (NEW CAREER opens the creator)
 			if MainMenu and not menuShownOnce then
 				menuShownOnce = true
@@ -101499,7 +103243,7 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="LocalScript" referent="93">
+      <Item class="LocalScript" referent="96">
         <Properties>
           <string name="Name">FightClient</string>
           <string name="Source"><![CDATA[-- FightClient: fight-night presentation and controls (also used for gym sparring).
@@ -105840,7 +107584,7 @@ local handlers = {}
 function handlers.start(msg)
 	F = { active = false, mash = 0, target = 10, arena = msg.arena, opp = msg.oppModel, ref = msg.refModel, rounds = msg.rounds, tape = msg.tape, kind = msg.kind,
 		spar = msg.spar, venue = msg.venue, venueName = msg.venueName, weighIn = msg.weighIn, notes = msg.notes, talk = msg.talk, myLine = msg.myLine,
-		moves = {}, moveList = {}, assist = tonumber(msg.assist) or 0 }
+		moves = {}, moveList = {}, assist = tonumber(msg.assist) or 0, tutorial = type(msg.tutorial) == "table" and msg.tutorial or nil }
 	-- the special moves the server will accept from this fighter (Moves.List order)
 	for _, id in ipairs(type(msg.moves) == "table" and msg.moves or {}) do
 		if type(id) == "string" then
@@ -105902,7 +107646,11 @@ function handlers.start(msg)
 	end
 	F.pvp = msg.pvp == true
 	local oppTag = type(msg.tape.opp.player) == "string" and (" (" .. msg.tape.opp.player .. ")") or ""
-	if F.spar then
+	if F.tutorial then
+		-- the first-time tutorial (the step card is BoxerClient.Tutorial's)
+		setBug("TUTORIAL  ·  PRACTICE FIGHT", T.blue, "TUTORIAL")
+		F.stakesText = "TUTORIAL FIGHT vs " .. msg.tape.opp.name
+	elseif F.spar then
 		setBug("SPARRING  ·  " .. string.upper(F.spar), T.blue, "SPAR")
 		F.stakesText = string.format("SPARRING (%s) vs %s%s", string.upper(F.spar), msg.tape.opp.name, oppTag)
 	elseif F.pvp then
@@ -106609,7 +108357,9 @@ function handlers.final(msg)
 	getup.Visible = false
 	local res = msg.result
 	local text
-	if res.method == "KO" or res.method == "TKO" or res.method == "RTD" then
+	if F.tutorial and res.method ~= "KO" then
+		text = "TUTORIAL COMPLETE"
+	elseif res.method == "KO" or res.method == "TKO" or res.method == "RTD" then
 		text = res.method .. "!"
 	elseif F.spar then
 		text = "TIME!"
@@ -106664,6 +108414,8 @@ end
 function handlers.aborted()
 	finish()
 end
+-- the tutorial bout is over (completed, skipped or called off): the wrap-up is BoxerClient.Tutorial's
+handlers.tutorialEnd = handlers.aborted
 
 FightRemote.OnClientEvent:Connect(function(msg)
 	if type(msg) ~= "table" then
@@ -106717,7 +108469,7 @@ end)
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="94">
+  <Item class="Workspace" referent="97">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="NeedsPivotMigration">false</bool>

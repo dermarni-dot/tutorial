@@ -121,7 +121,8 @@ function FightAI:OnOppPunch(ptype, body, windup)
 	if engine:IsStumbling(F) or engine:Now() < self.freezeUntil then
 		return
 	end
-	chance = math.clamp(chance, 0.05, 0.8)
+	-- (engine.aiDefense: the tutorial's opponent reacts far less, so the lesson's punches land)
+	chance = math.clamp(chance, 0.05, 0.8) * (engine.aiDefense or 1)
 	if self.rng:NextNumber() > chance then
 		return
 	end
@@ -384,7 +385,7 @@ function FightAI:Think(now)
 			self.queue = self:BuildCombo()
 			local first = table.remove(self.queue, 1)
 			engine:Punch(F, first.p, first.body)
-		elseif self.rng:NextNumber() < (1 - aggr) * 0.3 * (0.6 + self.arch.block) then
+		elseif self.rng:NextNumber() < (1 - aggr) * 0.3 * (0.6 + self.arch.block) * (engine.aiDefense or 1) then
 			engine:SetBlock(F, true)
 			self.blockUntil = now + 0.5
 		end

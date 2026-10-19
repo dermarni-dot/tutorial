@@ -192,6 +192,60 @@ screen("fight_down", function(dev)
 	S.settle(1.2)
 	return S
 end)
+-- the first-time tutorial bout: the step card (TutorialUI.Root.Prompt) over the real fight HUD, at the step with the
+-- longest text and its checklist (stamina) and at the one with the most key caps (finish, the key strip held up)
+local function tutorialFight(dev, stepId, strip)
+	local S = client(dev, { fightOnly = true })
+	if strip then
+		S.player:SetAttribute("ControlHints", true)
+	end
+	local Steps = S.require("Tutorial")
+	S.require("Client/Tutorial").Start()
+	local fire = S.remotes.FightEvent
+	fire:Fire({ t = "start", rounds = 2, tape = TAPE, kind = "Tutorial Fight", venue = "ClubArena", venueName = "City Club Arena", moves = { Steps.SPECIAL },
+		tutorial = { total = #Steps.STEPS, special = Steps.SPECIAL } })
+	S.settle(0.2)
+	fire:Fire({ t = "round", n = 2, total = 2 })
+	fire:Fire({ t = "countdown", n = 0, round = 2 })
+	fire:Fire({ t = "state", time = 60, me = { hp = 95, cap = 100, body = 90, bodyCap = 100, stam = 70, max = 100, stamCap = 100, conc = 0, tier = 0, bal = 90 },
+		opp = { hp = 60, cap = 90, body = 50, bodyCap = 100, stam = 40, max = 100, stamCap = 100, conc = 0, tier = 1 } })
+	local tr = Steps.NewTracker()
+	tr.step = Steps.ById[stepId].index
+	if stepId == "stamina" then
+		tr.goals.drain = true
+	end
+	fire:Fire(Steps.View(tr))
+	S.settle(1.2)
+	return S
+end
+screen("fight_tutorial", function(dev)
+	return tutorialFight(dev, "stamina")
+end)
+screen("fight_tutorial_keys", function(dev)
+	return tutorialFight(dev, "finish", true)
+end)
+-- the tutorial's offer (a new player, before the title screen) and its wrap-up
+screen("tutorial_offer", function(dev)
+	local S = client(dev)
+	local TC = S.require("Client/Tutorial")
+	TC.Start()
+	TC.Offer(function() end)
+	S.settle(0.8)
+	return S
+end)
+screen("tutorial_done", function(dev)
+	local S = client(dev)
+	local TC = S.require("Client/Tutorial")
+	TC.Start()
+	S.loadScript("client/FightClient.client.lua")
+	S.settle(0.2)
+	S.remotes.FightEvent:Fire({ t = "start", rounds = 2, tape = TAPE, kind = "Tutorial Fight", venue = "Arena", venueName = "Grand Arena", moves = {}, tutorial = { total = 10 } })
+	S.settle(0.2)
+	S.remotes.FightEvent:Fire({ t = "tutorialEnd", how = "completed", created = false, you = "Rafael Ortiz-Delgado", opp = "Tommy Banks", venue = "Grand Arena",
+		result = { outcome = "win", method = "Tutorial", landed = 41, thrown = 77, kdFor = 1 } })
+	S.settle(1.2)
+	return S
+end)
 -- the gym HUD (plate, meters, quick actions)
 screen("gym", function(dev)
 	return client(dev)
@@ -265,9 +319,12 @@ screen("result", function(dev)
 end)
 
 local DEVICES = { "phone", "phone_small", "tablet", "desktop", "console" }
-local PAD_SELECT = { hub = true, hub_training = true, controls = true, result = true, menu_career = true }
+local PAD_SELECT = { hub = true, hub_training = true, controls = true, result = true, menu_career = true, tutorial_offer = true, tutorial_done = true }
+-- (the tutorial's step card is checked with the fight HUD's pieces: on the screen, below the top bar, finger-sized
+-- on touch, apart from the scoreboard, the touch pads, the key strip and the stance chips)
 -- the fight HUD also on a phone with a controller and a short laptop window (the key strip on small canvases)
-local EXTRA = { fight = { "phone_pad", "laptop" }, fight_strip = { "phone_pad", "laptop" }, fight_down = { "phone_pad" }, menu = { "laptop" }, gym = { "laptop" } }
+local EXTRA = { fight = { "phone_pad", "laptop" }, fight_strip = { "phone_pad", "laptop" }, fight_down = { "phone_pad" }, menu = { "laptop" }, gym = { "laptop" },
+	fight_tutorial = { "phone_pad", "laptop" }, fight_tutorial_keys = { "phone_pad", "laptop" }, tutorial_offer = { "phone_pad" } }
 
 ------------------------------------------------------------------------
 -- checks
@@ -334,7 +391,7 @@ local function run(name, dev)
 		local pieces = {
 			"FightUI.HUDRoot.Scoreboard", "FightUI.HUDRoot.TouchPad", "FightUI.HUDRoot.TouchPad.Specials", "FightUI.HUDRoot.DefencePad", "FightUI.HUDRoot.MovesPad", "FightUI.HUDRoot.SprintPad",
 			"FightUI.HUDRoot.Controls", "FightUI.HUDRoot.StanceChips", "FightUI.HUDRoot.Ticker", "FightUI.HUDRoot.Overlay", "FightUI.HUDRoot.Count",
-			"FightUI.HUDRoot.GetUp",
+			"FightUI.HUDRoot.GetUp", "TutorialUI.Root.Prompt",
 		}
 		-- a piece's extent: what it and its descendants draw (or take input with) on the screen
 		local function extent(path)
@@ -371,6 +428,11 @@ local function run(name, dev)
 		local sp = rectOf(S, "FightUI.HUDRoot.TouchPad.Specials")
 		if sp and dev:find("^phone") then
 			check(name .. "@" .. dev .. " special pads at most two rows", sp.h <= 2 * 57 * sp.unit + 6 * sp.unit + 2, describe(sp))
+		end
+		-- the tutorial's step card is up where the screen has one
+		if name:find("^fight_tutorial") then
+			local card = rectOf(S, "TutorialUI.Root.Prompt")
+			check(name .. "@" .. dev .. " the tutorial step card is shown", card ~= nil and card.visibleW > 1, card and describe(card))
 		end
 		local strip = rectOf(S, "FightUI.HUDRoot.Controls")
 		if strip then

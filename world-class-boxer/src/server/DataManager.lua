@@ -38,6 +38,16 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Training = require(script.Parent:WaitForChild("Training"))
+-- the first-time tutorial's flag rules (optional: an older Shared folder still loads careers)
+local Tutorial
+do
+	local m = ReplicatedStorage.Shared:FindFirstChild("Tutorial")
+	local ok, mod = false, nil
+	if m then
+		ok, mod = pcall(require, m)
+	end
+	Tutorial = (ok and type(mod) == "table") and mod or nil
+end
 
 local DataManager = {}
 DataManager.Profiles = {}
@@ -113,6 +123,7 @@ end
 
 -- stored value -> playable profile (blank, old version, migration)
 local function prepare(data)
+	local stored = data
 	if type(data) ~= "table" then
 		data = DataManager.Blank()
 	elseif data.v ~= Config.DataVersion then
@@ -129,6 +140,10 @@ local function prepare(data)
 		if not ok then
 			warn("[Boxer] Save migration failed, career loaded unchanged:", err)
 		end
+	end
+	-- the first-time tutorial fight: anyone who already played (a career, an older save) counts as done
+	if Tutorial then
+		pcall(Tutorial.Backfill, stored, data, Config.DataVersion)
 	end
 	return data
 end
