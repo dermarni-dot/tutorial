@@ -11,10 +11,12 @@ the rounded cylinder r 0.6, half height 0.6, edges rounded 0.24; the built face'
   the scalp cap painted with the game's own taper (cap cut "style"), the front a crisp line on the hairline.
   The other curly fades (fade_low_c, fade_mid_c, fade_high_c, fade_burst_c, crew_c, caesar_c) are the same top with
   their own weight lines and heights.
-* waves360 (360 Waves) - a close scalp shell sculpted with the waves' own ridges (fades_tex.waves_field: the ridge
-  field the painted waves image is made of), rows laid along the ridges (trough, crest, back slope), on the cap's
-  polar UV (tex "cap": the game paints it with the cap's image, so the fade and the hairline follow every look);
-  the sides faded low (capFade "low").
+* waves360 (360 Waves) - a thin shell hugging the scalp (troughs 0.024 over the head, the cap 0.020 under it) with
+  the waves sculpted in its geometry: fades_tex.waves_field's ridges (rings rippling out from a whorl at the back of
+  the crown, snaking up and down round the head, tighter toward the hairline), rows laid along every ridge (trough,
+  rise, crest, back slope) so each crest catches the light; a low dome over the classic head's flat top, a fan at the
+  pole. The relief comes down to the cap's height at the painted coverage's edge (no rim), the front stopping on a
+  crisp line-up, the temples, sides and nape the painted cap's low fade (tex "cap", capFade "low").
 * twists (Twists) - short chunky two-strand twists (a two-lobed section turning along the twist, smooth shaded) rooted
   over the top, standing out and falling a little, capped rounded ends; the front ones stop above the brows; the
   sides tapered (capFade "taper").
@@ -648,56 +650,134 @@ def knob_volume(spec, seed):
 
 
 # ============================================================================== 360 waves
-def waves_shell(seed=71, ncol=60, levels=(0.0, 0.25, 0.45, 0.72), base=0.026, amp=0.025, kind="low"):
-    """the 360 waves: a close shell on the cap's polar UV, its rows along the ridge field's levels (trough, crest,
-    back slope of every ridge), lifted base + amp x the ridge's profile; trimmed to the painted coverage"""
+WAVES_LEVELS = (0.0, 0.2, 0.44, 0.72)  # the rows across every ridge: trough, rise, crest, back slope
+WAVES_TROUGH = 0.024  # the shell's height over the head in the troughs (the cap is at CAP_H 0.020 under it)
+WAVES_DEPTH = 0.026  # crest over trough
+WAVES_DOME = 0.024  # extra at the crown over the flat top of the classic head (the waves round over it)
+
+
+def cov_field(kind, sig_deg=(3.0, 5.0)):
+    """the cap's painted coverage (kind, with the ear line) on a fine (theta, az) grid, blurred by sig_deg (theta,
+    az) degrees; returns a sampler (theta, az) -> (sharp, blurred)"""
     R = ref()
-    vv = np.linspace(0.0, 1.0, 1601)
+    ths = np.radians(np.arange(0.0, math.degrees(THETA_MAX) + 1.01, 1.0))
+    azs = np.radians(np.arange(0.0, 360.0, 2.0))
+    TH, AZ = np.meshgrid(ths, azs, indexing="ij")
+    c = R.cov_at(kind, TH.reshape(-1), AZ.reshape(-1)).reshape(TH.shape)
+    b = c.copy()
+    for ax, sg, step, wrap in ((0, sig_deg[0], 1.0, False), (1, sig_deg[1], 2.0, True)):
+        s = sg / step
+        r = int(math.ceil(3 * s))
+        k = np.exp(-0.5 * (np.arange(-r, r + 1) / s) ** 2)
+        k /= k.sum()
+        if wrap:
+            b = sum(w * np.roll(b, o, axis=1) for o, w in zip(range(-r, r + 1), k))
+        else:
+            pad = np.pad(b, ((r, r), (0, 0)), mode="edge")
+            b = sum(w * pad[i:i + b.shape[0]] for i, w in enumerate(k))
+
+    def at(th, az):
+        th = np.clip(np.asarray(th, np.float64), ths[0], ths[-1])
+        fi = th / np.radians(1.0)
+        i0 = np.clip(np.floor(fi).astype(int), 0, len(ths) - 2)
+        ti = fi - i0
+        fa = (np.asarray(az, np.float64) % TAU) / np.radians(2.0)
+        j0 = np.floor(fa).astype(int) % len(azs)
+        tj = fa - np.floor(fa)
+        j1 = (j0 + 1) % len(azs)
+        out = []
+        for g in (c, b):
+            a = g[i0, j0] * (1 - tj) + g[i0, j1] * tj
+            bb = g[i0 + 1, j0] * (1 - tj) + g[i0 + 1, j1] * tj
+            out.append(a * (1 - ti) + bb * ti)
+        return out
+    return at
+
+
+def waves_shell(seed=71, ncol=58, kind="low", levels=WAVES_LEVELS, trough=WAVES_TROUGH, depth=WAVES_DEPTH,
+                dome=WAVES_DOME, lineup_pull=4.5, lineup_cov=0.2):
+    """the 360 waves: a close shell on the cap's polar UV sculpted with the ridge field (fades_tex.waves_field), its
+    rows laid along every ridge's levels (trough, rise, crest, back slope, fall: the grooves are real geometry, with
+    ncol vertices round every ridge, so each crest catches the light and each trough shades), a fan at the crown's
+    pole (no pinched ring). The ridges' relief rides on the painted coverage (kind): full where the hair is full,
+    coming down to the cap's height over the last ~0.05 studs inside the hairline and through the fade (the shell's
+    edge tapers to nothing: no rim standing off the head; the faded sides are the painted cap's, as the game paints
+    every fade); trimmed where no look paints hair. Vertex colours: the troughs' occlusion."""
+    R = ref()
+    cov = cov_field(kind)
+    vv = np.linspace(0.0, 1.0, 2001)
     cols = []
-    lo_phase, hi_phase = None, None
     for j in range(ncol + 1):
-        u = j / ncol
-        ph, ridge, am, calm = fades_tex.waves_field(np.full_like(vv, u % 1.0), vv, seed)
-        ph = np.maximum.accumulate(ph)
-        cols.append((ph, am * calm))
-        lo_phase = ph[0] if lo_phase is None else max(lo_phase, ph[0])
-        hi_phase = ph[-1] if hi_phase is None else min(hi_phase, ph[-1])
-    # row levels: the crown's whorl rows (uniform v) then every ridge's levels
-    lv = []
-    k0 = int(math.floor(lo_phase))
-    k1 = int(math.ceil(max(c[0][-1] for c in cols)))
-    for k in range(k0, k1 + 1):
-        for f in levels:
-            lv.append(k + f)
-    lv = np.array([x for x in lv if x > lo_phase + 0.05])
-    nr = len(lv) + 4
+        u = (j % ncol) / ncol
+        ph, ridge, am, calm = fades_tex.waves_field(np.full_like(vv, u), vv, seed)
+        cols.append((np.maximum.accumulate(ph), am))
+    lo_phase = max(c[0][0] for c in cols)
+    hi_phase = max(c[0][-1] for c in cols)
+    lv = np.array([k + f for k in range(int(math.floor(lo_phase)), int(math.ceil(hi_phase)) + 1) for f in levels])
+    lv = lv[lv > lo_phase + 0.08]
+    nr = len(lv)
     V = np.zeros((nr, ncol + 1))
     A = np.zeros((nr, ncol + 1))
-    PR = np.zeros((nr, ncol + 1))
     for j, (ph, am) in enumerate(cols):
-        vfirst = float(np.interp(lv[0], ph, vv))
-        V[:4, j] = np.linspace(0.004, vfirst * 0.8, 4)
-        V[4:, j] = np.interp(lv, ph, vv, right=1.0)
-        fr = (lv - np.floor(lv))
-        prof = np.where(fr < 0.4, np.sin(np.clip(fr / 0.4, 0, 1) * math.pi / 2) ** 1.3,
-                        np.cos(np.clip((fr - 0.4) / 0.6, 0, 1) * math.pi / 2) ** 1.3)
-        PR[4:, j] = prof
+        V[:, j] = np.interp(lv, ph, vv, right=1.0)
         A[:, j] = np.interp(V[:, j], vv, am)
-    V = np.maximum.accumulate(V, axis=0)
-    V = np.minimum(V, 1.0)
+    V = np.minimum(np.maximum.accumulate(V, axis=0), 1.0)
+    PR = np.tile(fades_tex.waves_profile(lv - np.floor(lv))[:, None], (1, ncol + 1))
     TH = V * THETA_MAX
     AZ = np.tile(np.arange(ncol + 1) / ncol * TAU, (nr, 1))
-    # radial lift above the skull table (the cap's own space: the cap is CAP_H out along the ray)
-    h = base + amp * PR * np.clip(A, 0, 1)
-    P = R.scalp_points(TH.reshape(-1), AZ.reshape(-1), 0.0).reshape(-1, 3)
-    Nh = head_n(P)
-    P = P + Nh * h.reshape(-1)[:, None]
-    T = grid_tris(nr, ncol + 1)
-    # drop degenerate triangles (rows clamped at the cap's edge) and those where no look paints hair
+    # the shell's edge: the rows stop on the painted coverage's edge line (th_edge, per column). Across the forehead
+    # (wf) that is the line-up (the coverage's lineup_cov line), its edge band sampling the painted image a little
+    # inside it (solid hair to a crisp edge); at the temples, the sides and the nape it is the coverage's 0.01 line
+    # (the painted fade shows through the flattened shell there; nothing of the shell where no look paints hair,
+    # the ears clear)
+    azc = np.arange(ncol + 1) / ncol * TAU
+    da = np.abs((azc % TAU) - math.pi)
+    wf = 1 - sstep(0.75, 1.1, da)
+    tf = np.radians(np.arange(0.0, math.degrees(THETA_MAX) + 0.01, 0.25))
+    th_edge = np.zeros(ncol + 1)
+    for j, a in enumerate(azc):
+        c = cov(tf, np.full_like(tf, a))[0]
+        out = np.nonzero(c < lineup_cov * wf[j] + 0.01 * (1 - wf[j]))[0]
+        th_edge[j] = tf[out[0]] if len(out) else THETA_MAX
+    THc = np.minimum(TH, th_edge[None, :])
+    pull = math.radians(lineup_pull)
+    THuv = THc - wf[None, :] * pull * sstep(0, 1, (THc - (th_edge[None, :] - 2.5 * pull)) / (2.5 * pull))
+    TH = THc
+    V = THuv / THETA_MAX
+    # the pole: one vertex, fanned to the first ring
+    TH = np.concatenate([[0.0], TH.reshape(-1)])
+    AZ = np.concatenate([[0.0], AZ.reshape(-1)])
+    Vf = np.concatenate([[0.0], V.reshape(-1)])
+    PRf = np.concatenate([[PR[0, 0] * 0.5], PR.reshape(-1)])
+    Af = np.concatenate([[0.0], A.reshape(-1)])
+    sharp, blur = cov(TH, AZ)
+    # how much of the relief stands: the blurred coverage from 0.5 (the sharp edge itself) to ~0.95 (2-3 degrees in)
+    e = sstep(0.45, 0.93, blur) * (sharp > 0.0)
+    S = ray_hit(dirs(TH, AZ))  # the exact classic head (the radial table's bilinear chords sag up to ~1 mm)
+    Nh = head_n(S)
+    # the flat top of the classic head rounded over: a low dome, 0 where the top's rounded edge begins
+    rxz = np.hypot(S[:, 0], S[:, 2] - 0.02)
+    top = np.clip(1 - (rxz / 0.42) ** 2, 0, 1) * sstep(0.3, 0.5, S[:, 1])
+    hgt = CAP_H + 0.003 + e * (trough - CAP_H - 0.003 + depth * PRf * np.clip(Af, 0, 1) + dome * top)
+    P = S + Nh * hgt[:, None]
+    # rows with no relief anywhere (the fade's and the nape's, below the weight line) keep only their troughs
+    E = e[1:].reshape(nr, ncol + 1) * (sharp[1:].reshape(nr, ncol + 1) > 0)
+    fr = lv - np.floor(lv)
+    rows = [i for i in range(nr) if fr[i] < 1e-6 or E[i].max() > 0.03 or i == 0 or i == nr - 1]
+    T = [(0, 1 + j + 1, 1 + j) for j in range(ncol)]
+    for i0, i1 in zip(rows[:-1], rows[1:]):
+        for j in range(ncol):
+            a, b = 1 + i0 * (ncol + 1) + j, 1 + i0 * (ncol + 1) + j + 1
+            d, c = 1 + i1 * (ncol + 1) + j, 1 + i1 * (ncol + 1) + j + 1
+            T += [(a, b, c), (a, c, d)]
+    T = np.array(T)
+    # (normals out: the grid runs theta down, az round toward +X; orient by the head's normal)
+    fn = np.cross(P[T[:, 1]] - P[T[:, 0]], P[T[:, 2]] - P[T[:, 0]])
+    if np.einsum("ij,ij->i", fn, Nh[T[:, 0]]).mean() < 0:
+        T = T[:, [0, 2, 1]]
     Pa, Pb, Pc = P[T[:, 0]], P[T[:, 1]], P[T[:, 2]]
     area = np.linalg.norm(np.cross(Pb - Pa, Pc - Pa), axis=1)
-    cov = np.maximum(R.cov_at(kind, TH.reshape(-1), AZ.reshape(-1)), R.cov_at("none", TH.reshape(-1), AZ.reshape(-1)))
-    keep = (area > 1e-7) & (cov[T] > 0.0).any(axis=1)
+    keep = (area > 1e-8) & (sharp[T] > 0.0).any(axis=1)
     brow = (P[:, 2] < -0.35) & (np.abs(P[:, 0]) < 0.38) & (P[:, 1] < 0.345)
     keep &= ~brow[T].any(axis=1)
     T = T[keep]
@@ -705,11 +785,13 @@ def waves_shell(seed=71, ncol=60, levels=(0.0, 0.25, 0.45, 0.72), base=0.026, am
     remap = -np.ones(len(P), np.int64)
     remap[used] = np.arange(len(used))
     Pu = push_clear(P[used])
-    UV = np.stack([AZ.reshape(-1)[used] / TAU, V.reshape(-1)[used]], -1)
-    occ = 0.6 + 0.4 * PR.reshape(-1)[used]
+    UV = np.stack([AZ[used] / TAU, Vf[used]], -1)
+    UV[used == 0, 0] = 0.5
+    # occlusion: dark in the troughs (where the relief stands), lit on the crests
+    occ = 1.0 - 0.55 * e[used] * np.clip(Af[used] * 1.4, 0, 1) * (1 - PRf[used]) ** 1.6
     COL = np.stack([occ, occ, occ, np.ones_like(occ)], -1)
     pc = Piece("HairFur", "cap", material="Plastic", castShadow=False, hideUnder=dict(HIDE))
-    emit(pc, Pu, remap[T], UV, COL, np.broadcast_to(C, Pu.shape), flat=False)
+    emit(pc, Pu, remap[T], UV, COL, Pu - head_n(Pu), flat=False)
     return [pc]
 
 

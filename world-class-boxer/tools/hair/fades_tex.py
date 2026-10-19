@@ -2,7 +2,7 @@
 
 * short      128 x 256 tile (tileable): 1-4 mm hairs lying along +v (away from the crown on the cap's polar UV)
 * shortcoil  128 x 256 tile (tileable): tiny tight coils, randomly turned, evenly packed (no dark clumps)
-* waves      1024 x 1024 whole-cap image (capTileRepeat {1, 1}): 360 waves, ~23 ridges crown -> nape, tighter toward the hairline, in shallow chevrons, a calm whorl
+* waves      1024 x 1024 whole-cap image (capTileRepeat {1, 1}): 360 waves, 17 ridges crown -> nape, tighter toward the hairline, snaking ripples, a small whorl
              at the crown, every ridge its own phase / amplitude (no u-periodic star)
 * crop       512 x 512, 4 tuft strips, root (v 0) to tip (v 1), alpha fading in at the root
 
@@ -256,120 +256,96 @@ def tex_shortcoil(seed=61):
 
 # ---------------------------------------------------------------------------------------- 360 waves
 WAVES_SIZE = 1024
-WAVES_N = 19  # ridges from the calm crown to the cap's edge (the nape)
-WAVES_TIGHT = 1.4  # how much tighter the pitch is at the hairline than next to the crown (1 + this)
-WAVES_CALM = 0.12  # v below this: the crown's whorl (no ridges)
+WAVES_N = 28  # ridges from the crown's whorl to the cap's edge (the nape)
+WAVES_TIGHT = 0.6  # how much tighter the pitch is at the hairline than next to the crown (1 + this)
+WAVES_CALM = 0.035  # v below this: the crown's whorl (the first ring starts here)
+WAVES_UND = 9  # the ripple's undulations round the head (each ridge snakes up and down this many times a turn)
+
+
+def _harmonics(u, n, amp, seed2):
+    r = np.random.default_rng(seed2)
+    out = np.zeros_like(u)
+    for k in range(1, n + 1):
+        out += amp / k ** 0.9 * r.uniform(0.3, 1.0) * np.cos(TAU * k * u + r.uniform(0, TAU))
+    return out
 
 
 def waves_field(u, v, seed=71):
     """the 360 waves' ridge field at polar-UV points (u = az / 2pi, v = theta / thetaMax; arrays of one shape): the
-    ridge phase (its integer part the ridge, the fraction 0..1 across it: crest at ~0.4), the per-ridge amplitude
-    and the crown's calm (0 in the whorl). tex_waves shades it; build_stylised.py sculpts the waves360 shell
-    from the same field, so the grooves and the painted ridges agree"""
+    ridge phase (its integer part the ridge, the fraction 0..1 across it: the trough at 0, the crest at ~0.42), the
+    per-ridge amplitude and the crown's calm (0 at the whorl's centre). build_stylised.py sculpts the waves360 shell
+    from this field (its rows laid along the ridges' levels) and tex_waves shades the painted image from it, so the
+    grooves and the painted ridges agree.
+
+    Rings of v round the crown whose pitch tightens toward the hairline (the brush lays the waves closer at the
+    sides and the nape), the whorl's centre pulled toward the back of the crown, every ridge snaking up and down
+    WAVES_UND times a turn (the ripple: neighbouring ridges' snakes in step, drifting slowly from ridge to ridge, so
+    the waves stack like ripples round a stone), slow drifts round the head (low harmonics: nothing repeats), and a
+    small per-ridge jitter."""
     u = np.asarray(u, np.float64)
     v = np.asarray(v, np.float64)
-    calm = np.clip((v - WAVES_CALM * 0.6) / (WAVES_CALM * 0.8), 0, 1) ** 1.5
-
-    def harmonics(n, amp, seed2):
-        r = np.random.default_rng(seed2)
-        out = np.zeros_like(u)
-        for k in range(1, n + 1):
-            out += amp / k ** 0.9 * r.uniform(0.3, 1.0) * np.cos(TAU * k * u + r.uniform(0, TAU))
-        return out
-    # ridge phase: rings of v whose pitch tightens away from the crown (broad ripples near the crown, tight ones at
-    # the sides and the nape: the brush lays the hair flatter and the waves closer there), WAVES_N ridges in all;
-    # drifting round the head (low harmonics) and bent into shallow chevrons (a triangle wave in u whose phase
-    # drifts with v and differs side to side), a little per-ridge noise
+    calm = np.clip((v - WAVES_CALM * 0.3) / (WAVES_CALM * 2.2), 0, 1) ** 1.2
     vv = np.linspace(0, 1, 2049)
     pitch = 1.0 / (1.0 + WAVES_TIGHT * np.clip((vv - WAVES_CALM) / (1 - WAVES_CALM), 0, 1) ** 1.2)
     F = np.concatenate([[0], np.cumsum(np.diff(vv) / pitch[1:])])
     F = (F - np.interp(WAVES_CALM, vv, F))
     F = F / np.interp(1.0, vv, F) * WAVES_N
-    drift = harmonics(4, 0.45, seed + 1) + harmonics(9, 0.12, seed + 2)
-    cph = 13.0 * u + 1.7 * v + 0.6 * harmonics(3, 1.0, seed + 5)
-    chev = 0.32 * (2 * np.abs(cph - np.floor(cph) - 0.5) - 0.5) * np.clip((v - WAVES_CALM) / 0.25, 0, 1)
-    phase = np.interp(v, vv, F) + (drift + chev) * calm
-    # uneven, broken crests: the head split into irregular azimuth sectors (5-7 a turn, 1/7..1/4 turn each), each
-    # ridge shifted by its own +-0.3 period per sector, blended over a short width at the sector borders (the
-    # crests jog there: broken lines, not continuous corduroy rings)
-    rs = np.random.default_rng(seed + 11)
-    nsec = 6
-    cuts = np.sort(rs.uniform(0, 1, nsec))
+    # the whorl toward the back (az 0): the ridges there sit nearer the crown
+    back = 0.55 * np.cos(TAU * u)
+    drift = _harmonics(u, 3, 0.28, seed + 1) + _harmonics(u, 7, 0.05, seed + 2)
+    grow = np.clip((v - WAVES_CALM) / 0.3, 0, 1)
+    und = 0.27 * grow * np.sin(TAU * (WAVES_UND * u + 1.1 * v + 0.35 * _harmonics(u, 2, 1.0, seed + 5)))
+    phase = np.interp(v, vv, F) + (back + drift) * calm + und
+    # a small per-ridge jitter (each ridge its own slow wobble round the head)
     ridge0 = np.floor(phase)
     fr0 = phase - ridge0
-    sec_off = {}
-
-    def off_of(r0, uu):
-        """ridge r0's sector offset at u (sector borders blended over 0.024 turn: the crest jogs there)"""
-        if r0 not in sec_off:
-            rr = np.random.default_rng(seed * 1000 + 31 * r0 + 5)
-            cr = np.sort((cuts + rr.normal(0, 0.03, nsec)) % 1.0)
-            sec_off[r0] = (cr, rr.uniform(-0.3, 0.3, nsec))
-        cr, offs = sec_off[r0]
-        k = np.searchsorted(cr, uu) % nsec
-        kp = (k - 1) % nsec
-        d_next = (cr[k] - uu) % 1.0
-        d_prev = (uu - cr[kp]) % 1.0
-        w1 = np.clip(0.5 - d_next / 0.024, 0, 0.5)
-        w0 = np.clip(0.5 - d_prev / 0.024, 0, 0.5)
-        return offs[kp] * (1 - w1 - w0) + offs[k] * w1 + offs[(kp - 1) % nsec] * w0
     jit = np.zeros_like(u)
     for r0 in range(-4, 40):
         m = ridge0 == r0
         if not m.any():
             continue
-        # continuous in v: ridge r0's offset blended into r0 + 1's across the ridge (no seams between ridges)
         t = fr0[m] * fr0[m] * (3 - 2 * fr0[m])
-        jit[m] = off_of(r0, u[m]) * (1 - t) + off_of(r0 + 1, u[m]) * t
-    phase = phase + jit * calm
+        a = _harmonics(u[m], 3, 0.06, seed * 1000 + 31 * r0)
+        b = _harmonics(u[m], 3, 0.06, seed * 1000 + 31 * (r0 + 1))
+        jit[m] = a * (1 - t) + b * t
+    phase = phase + jit * grow
     ridge = np.floor(phase)
-    # per-ridge amplitude and extra phase (by ridge index, varying round the head)
     amp = np.ones_like(u)
     for r0 in range(-4, 40):
         m = ridge == r0
         if not m.any():
             continue
         rr = np.random.default_rng(seed * 100 + r0 + 7)
-        a = 0.75 + 0.25 * np.cos(TAU * rr.integers(1, 4) * u + rr.uniform(0, TAU)) + rr.normal(0, 0.05)
-        amp = np.where(m, a, amp)
+        a = 0.88 + 0.12 * np.cos(TAU * rr.integers(1, 4) * u[m] + rr.uniform(0, TAU))
+        amp[m] = a
     amp = amp * calm
     return phase, ridge, amp, calm
 
 
+def waves_profile(f):
+    """a ridge's height across it (f = the phase's fraction): a narrow trough at 0, a full rounded crest at ~0.42"""
+    f = np.asarray(f, np.float64) % 1.0
+    return np.where(f < 0.42, np.sin(np.clip(f / 0.42, 0, 1) * math.pi / 2) ** 0.7,
+                    np.cos(np.clip((f - 0.42) / 0.58, 0, 1) * math.pi / 2) ** 0.7)
+
+
 def tex_waves(theta_max, seed=71, size=WAVES_SIZE):
-    """360 waves as one whole-cap image on the polar UV (u = az / 2pi, v = theta / thetaMax; repeated 1 x 1):
-    hair brushed out from the crown lying in ripples that ring the head. Every ridge has its own phase drift and
-    amplitude round the head (random low harmonics in u over the WHOLE circle: nothing repeats), the ripples
-    fade out toward the crown into a calm whorl (the hair turns round the crown there), and each ridge is shaded
-    as a crest: a highlight on its crown-facing slope, a soft shadow in the trough below it.
-    Built with line-integral convolution: white noise smeared along the hair's direction (snaking with the
-    ripple), so the strands are continuous and the image is fast to make."""
+    """360 waves as one whole-cap image on the polar UV (u = az / 2pi, v = theta / thetaMax; repeated 1 x 1), the
+    albedo of the sculpted waves360 shell (build_stylised.py, the same field): the relief itself is in the shell's
+    geometry, so the image only carries what the light does not: the fine strands (white noise smeared along the
+    hair's direction, brushed out from the crown and snaking with the ripple), a narrow darker groove in every
+    trough and a faint sheen on the crests. Even in tone across the crown (no pale ring); at the pole the strands
+    fade to a soft mottle (no star where the polar rows meet)."""
     rng = np.random.default_rng(seed)
     H = W = size
     j, i = np.mgrid[0:H, 0:W].astype(np.float64)
     u = (i + 0.5) / W
     v = (j + 0.5) / H
     th = v * theta_max
-    # texel aspect: a u texel is 2 pi sin(theta) / (theta_max) times a v texel on the scalp
     asp = np.maximum(0.06, TAU * np.sin(th) / theta_max)
     phase, ridge, amp, calm = waves_field(u, v, seed)
-
-    def harmonics(n, amp_, seed2):
-        r = np.random.default_rng(seed2)
-        out = np.zeros_like(u)
-        for k in range(1, n + 1):
-            out += amp_ / k ** 0.9 * r.uniform(0.3, 1.0) * np.cos(TAU * k * u + r.uniform(0, TAU))
-        return out
-    f = phase - ridge  # 0..1 inside a ridge: crest at ~0.4
-    # height profile: a rounded crest, a long trough (asymmetric, like brushed waves)
-    h = np.where(f < 0.4, np.clip(np.sin(f / 0.4 * math.pi / 2), 0, 1) ** 1.3,
-                 np.clip(np.cos((f - 0.4) / 0.6 * math.pi / 2), 0, 1) ** 1.3)
-    dh = np.gradient(h, axis=0)  # along v (rows)
-    lit = np.clip(-dh * 14, -1, 1)  # crown-facing slope lit (rows grow away from the crown)
-    # hair direction: +v, snaking with the ripple (lateral u offset ~ the slope); round the crown a swirl
-    swirl = (1 - calm) * 0.9
-    ang = np.pi / 2 + amp * 0.38 * np.cos(TAU * f) + swirl
-    # line integral convolution of white noise along the direction field (in texel units, aspect corrected)
+    f = phase - ridge
+    ang = np.pi / 2 + amp * 0.35 * np.cos(TAU * f)  # brushed out from the crown, snaking over every ridge
     noise = rng.random((H, W))
     acc = np.zeros((H, W))
     wsum = 0.0
@@ -383,20 +359,20 @@ def tex_waves(theta_max, seed=71, size=WAVES_SIZE):
             acc += noise[yi, xi] * wgt
             wsum += wgt
             a = ang[yi, xi]
-            x = x + sgn * np.cos(a) / asp[yi, xi] * 1.0
-            y = y + sgn * np.sin(a) * 1.0
+            x = x + sgn * np.cos(a) / asp[yi, xi]
+            y = y + sgn * np.sin(a)
     lic = acc / wsum
     lic = (lic - lic.mean()) / (lic.std() + 1e-9)
-    strands = np.clip(0.5 + 0.22 * lic, 0, 1)
-    # the ridge's sheen carried in the albedo (a light crest band), the trough only a little darker and its
-    # depth varying along the ridge (breaks), alpha nearly flat (no dark see-through grooves)
-    brk = 0.55 + 0.45 * (0.5 + 0.5 * np.cos(TAU * 4 * u + ridge * 2.39 + harmonics(5, 1.5, seed + 13)))
-    crest = np.clip(1 - np.abs(f - 0.38) / 0.16, 0, 1) ** 1.5
-    lum = 0.7 + 0.16 * crest * amp + 0.07 * lit * amp + 0.18 * (strands - 0.5)
-    lum = lum - 0.035 * amp * brk * np.clip(-lit, 0, 1)  # the trough's soft shadow
-    A = np.clip(0.91 + 0.14 * (strands - 0.5) - 0.02 * np.clip(-lit, 0, 1) * amp * brk, 0, 0.98)
+    # near the pole the strands become a soft mottle (the polar texels are tiny there)
+    pole = np.clip((v - 0.015) / 0.05, 0, 1)
+    mott = rng.random((H, W))
+    mott = (mott - 0.5) * 2
+    s = lic * pole + 0.4 * mott * (1 - pole)
+    groove = np.clip(1 - np.minimum(f, 1 - f) / 0.12, 0, 1) ** 1.5  # the narrow trough
+    crest = np.clip(1 - np.abs(f - 0.42) / 0.2, 0, 1) ** 2
+    lum = 0.66 + 0.055 * s - 0.2 * groove * amp + 0.05 * crest * amp
+    A = np.clip(0.95 + 0.05 * s, 0, 0.98)
     return lum, A
-
 
 # ---------------------------------------------------------------------------------------- crop tufts
 CROP_STRIPS = 4

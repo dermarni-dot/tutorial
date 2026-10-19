@@ -2231,6 +2231,14 @@
   "name": "WCB Hair long HairClump04",
   "type": "Mesh"
  },
+ "cc0f88966177beb9ed2098be2ca5f525bb0738e288000046fe8790537332808e": {
+  "at": "2026-10-19T16:56:16Z",
+  "file": "textures/hair_waves.png",
+  "id": 78667622898364,
+  "moderation": "Approved",
+  "name": "WCB Hair waves",
+  "type": "Image"
+ },
  "ce22741ab7f6470e329738c2c743eba0484e1ce71784b1449236c34e075e9b5b": {
   "at": "2026-10-17T17:26:04Z",
   "file": "out/box_braids/HairBraid07.mesh",
@@ -2461,6 +2469,14 @@
   "id": 73777810901302,
   "moderation": "Approved",
   "name": "WCB Hair afro_curly HairAfro01",
+  "type": "Mesh"
+ },
+ "e69e31228f875a9ddcc2bf8713958a5531d5591dfd29d763f99ff61fe6e2a45b": {
+  "at": "2026-10-19T16:56:19Z",
+  "file": "out/waves360/HairFur.mesh",
+  "id": 96561878224877,
+  "moderation": "Approved",
+  "name": "WCB Hair waves360 HairFur",
   "type": "Mesh"
  },
  "e82a4ede5bf50b4728f81b54284378cd7cb3ca94eb18842ff0248814ee8dcd43": {
