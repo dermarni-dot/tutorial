@@ -7,6 +7,14 @@
   "name": "WCB Hair fade_low_c HairTop7",
   "type": "Mesh"
  },
+ "0182d698dba834c9fce61a0427979442f3fa7c5d692cffb7f622747155e68464": {
+  "at": "2026-10-19T15:27:50Z",
+  "file": "textures/hair_clump.png",
+  "id": 117402796584395,
+  "moderation": "Approved",
+  "name": "WCB Hair clump",
+  "type": "Image"
+ },
  "0189034480de189a419742e7aa9fb42c1047cc5bd93e6cf5160b48ea8f328494": {
   "at": "2026-10-17T17:34:03Z",
   "file": "out/long_wavy/HairClump04b.mesh",
@@ -29,6 +37,30 @@
   "id": 89771076902414,
   "moderation": "Approved",
   "name": "WCB Hair long_wavy HairClump01b",
+  "type": "Mesh"
+ },
+ "028d3e681654814f338264c55d0894b110c27911372b9423de7ea9cadf592aa9": {
+  "at": "2026-10-19T15:33:41Z",
+  "file": "out/long/HairClump03b.mesh",
+  "id": 134173847435607,
+  "moderation": "Approved",
+  "name": "WCB Hair long HairClump03b",
+  "type": "Mesh"
+ },
+ "02e8c5ab71acdab67e562ce86db725576cd65ee6dc2b409f805b3ef25ef28e69": {
+  "at": "2026-10-19T15:30:59Z",
+  "file": "out/crew/HairTop3.mesh",
+  "id": 74237349311485,
+  "moderation": "Approved",
+  "name": "WCB Hair crew HairTop3",
+  "type": "Mesh"
+ },
+ "0320fbd1f92965bf59564cabaacbd14705208e649a6f14ca2d847157242f7390": {
+  "at": "2026-10-19T15:31:17Z",
+  "file": "out/dreadlocks/HairLoc02b.mesh",
+  "id": 71669429049685,
+  "moderation": "Approved",
+  "name": "WCB Hair dreadlocks HairLoc02b",
   "type": "Mesh"
  },
  "032f2d6156ac1071d4e363963c7db3bc0dc32a4f3dd08cebc9a19ce0f041e763": {
@@ -71,12 +103,28 @@
   "name": "WCB Hair caesar_c HairTop1",
   "type": "Mesh"
  },
+ "05bb704975b312e92445b5d2bcb3dfc375318b17be8fe942c63e413a4b90caa4": {
+  "at": "2026-10-19T15:32:05Z",
+  "file": "out/dreadlocks/HairTop.mesh",
+  "id": 136718086292950,
+  "moderation": "Approved",
+  "name": "WCB Hair dreadlocks HairTop",
+  "type": "Mesh"
+ },
  "05f5ddb5b1ef52a40dce7028610981b34599c0d672a53eb3568d5635da89bb68": {
   "at": "2026-10-17T17:26:20Z",
   "file": "out/braids/HairBraid01.mesh",
   "id": 120719648033090,
   "moderation": "Approved",
   "name": "WCB Hair braids HairBraid01",
+  "type": "Mesh"
+ },
+ "067d472e9f4b2828d7cf8249c1f69d438cc323b1d74164b2a181373768302881": {
+  "at": "2026-10-19T15:30:26Z",
+  "file": "out/caesar/HairTop2.mesh",
+  "id": 100065546653098,
+  "moderation": "Approved",
+  "name": "WCB Hair caesar HairTop2",
   "type": "Mesh"
  },
  "06ef8100895fb98cefb23b53cd516d748f879d0428abbb38d56672065d121be4": {
@@ -87,12 +135,44 @@
   "name": "WCB Hair box_braids HairBraid01",
   "type": "Mesh"
  },
+ "08acedeead3df9f6e7f035cddd163381e16ce976e76a5d5182798acfe4a563ab": {
+  "at": "2026-10-19T15:35:01Z",
+  "file": "out/short_dreads/HairLoc03.mesh",
+  "id": 117141387709599,
+  "moderation": "Approved",
+  "name": "WCB Hair short_dreads HairLoc03",
+  "type": "Mesh"
+ },
+ "0a230b56cca710b1ffae8859b0d0c1e3321e457c38b9cd4372d5bab273b0fdee": {
+  "at": "2026-10-19T15:33:46Z",
+  "file": "out/long/HairClump04b.mesh",
+  "id": 99037949470131,
+  "moderation": "Approved",
+  "name": "WCB Hair long HairClump04b",
+  "type": "Mesh"
+ },
  "0b8e91ab60791805b547519dcc500a536a5e6648c89c5127ea2eea6efaed1797": {
   "at": "2026-10-17T17:24:58Z",
   "file": "out/afro/HairClump03.mesh",
   "id": 83422656767457,
   "moderation": "Approved",
   "name": "WCB Hair afro HairClump03",
+  "type": "Mesh"
+ },
+ "0c52606c8c95f3c346dd9a2c9abe3a5cca056aac60cecddabc7b6a2f0efe780d": {
+  "at": "2026-10-19T15:35:10Z",
+  "file": "out/short_dreads/HairLoc04.mesh",
+  "id": 106182019345993,
+  "moderation": "Approved",
+  "name": "WCB Hair short_dreads HairLoc04",
+  "type": "Mesh"
+ },
+ "0cd8e413eec08157df19657695a70c59ad2a4745d103388ba21fcecc1b533989": {
+  "at": "2026-10-19T15:33:02Z",
+  "file": "out/fade_mid/HairTop1.mesh",
+  "id": 79458962541683,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_mid HairTop1",
   "type": "Mesh"
  },
  "0d6713615d01fb72e1909dea35b470d3e3a4a6e32f293f34976c7c1143c449bc": {
@@ -127,12 +207,60 @@
   "name": "WCB Hair crew_c HairTop3",
   "type": "Mesh"
  },
+ "1033e27ee37a7ad1c38bec24a40e1654b6d8783032bd28c25f5cbb47653b3554": {
+  "at": "2026-10-19T15:34:24Z",
+  "file": "out/long_wavy/HairClump04.mesh",
+  "id": 120207401718319,
+  "moderation": "Approved",
+  "name": "WCB Hair long_wavy HairClump04",
+  "type": "Mesh"
+ },
+ "10710788ec1e99c64592139a18053f7a24d5d326269a8d40b5629ecaa6d21520": {
+  "at": "2026-10-19T15:34:42Z",
+  "file": "out/long_wavy/HairClump06b.mesh",
+  "id": 114551421250049,
+  "moderation": "Approved",
+  "name": "WCB Hair long_wavy HairClump06b",
+  "type": "Mesh"
+ },
+ "1114870e360bcb28e51ca31433c4fe8732e5b9c7b2afc194014f83e7a9ed0782": {
+  "at": "2026-10-19T15:33:26Z",
+  "file": "out/hightop/HairAfro01.mesh",
+  "id": 103725350650265,
+  "moderation": "Approved",
+  "name": "WCB Hair hightop HairAfro01",
+  "type": "Mesh"
+ },
  "112641ab53b7ecb76d38b1b38bc4e608eae5339c927ae96594d7cb95c10f99a8": {
   "at": "2026-10-17T17:28:37Z",
   "file": "out/dreadlocks/HairLoc02.mesh",
   "id": 110014476539379,
   "moderation": "Approved",
   "name": "WCB Hair dreadlocks HairLoc02",
+  "type": "Mesh"
+ },
+ "12ef8bdc1cfde295019884698706950debdbac058536addad5a10cdadcbbc456": {
+  "at": "2026-10-19T15:29:09Z",
+  "file": "out/braids/HairBraid02.mesh",
+  "id": 120958366127819,
+  "moderation": "Approved",
+  "name": "WCB Hair braids HairBraid02",
+  "type": "Mesh"
+ },
+ "13e6ff992095568a3481311d0e20716ddff817ed5e892eecee14b700ae965c6a": {
+  "at": "2026-10-19T15:28:49Z",
+  "file": "out/box_braids/HairBraid07b.mesh",
+  "id": 114329589584535,
+  "moderation": "Approved",
+  "name": "WCB Hair box_braids HairBraid07b",
+  "type": "Mesh"
+ },
+ "1423191468e9b1052c33612e77f857eade898b6ef0b50c3460caf336d649a6e7": {
+  "at": "2026-10-19T15:35:31Z",
+  "file": "out/twists/HairTwist02.mesh",
+  "id": 127067378793111,
+  "moderation": "Approved",
+  "name": "WCB Hair twists HairTwist02",
   "type": "Mesh"
  },
  "14bd4d6fff7401208ab992e5a9e8201bb781ef4ac2d6cd6f589a2ed110fc9672": {
@@ -143,12 +271,84 @@
   "name": "WCB Hair fade_taper_c HairTop7",
   "type": "Mesh"
  },
+ "15323dececd49329d1995dfded3e4e1ae242eff6b5abe283788e94f16151931b": {
+  "at": "2026-10-19T15:34:09Z",
+  "file": "out/long_wavy/HairClump01b.mesh",
+  "id": 83854824197624,
+  "moderation": "Approved",
+  "name": "WCB Hair long_wavy HairClump01b",
+  "type": "Mesh"
+ },
+ "1894d245680d63431630e2a3aca72e6fff74bd92a4641b89af2eac00a2c62493": {
+  "at": "2026-10-19T15:27:53Z",
+  "file": "textures/hair_waves.png",
+  "id": 139270622101433,
+  "moderation": "Approved",
+  "name": "WCB Hair waves",
+  "type": "Image"
+ },
+ "18fc631b6bd8332d12aa6705b2e740726d499a476284e229cee61a0569e179f0": {
+  "at": "2026-10-19T15:31:48Z",
+  "file": "out/dreadlocks/HairLoc06.mesh",
+  "id": 124380980185207,
+  "moderation": "Approved",
+  "name": "WCB Hair dreadlocks HairLoc06",
+  "type": "Mesh"
+ },
+ "194a9204dbcd1f077e3b997911cbb0d80cc206773f4186d48b3005c8a4d1c162": {
+  "at": "2026-10-19T15:32:23Z",
+  "file": "out/fade_burst/HairTop3.mesh",
+  "id": 84731072067679,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_burst HairTop3",
+  "type": "Mesh"
+ },
  "19c4115dd0b89d28fd30ce5c46acaf25d6c0b4a2ae6af7ce5ac5a237af3f6dbe": {
   "at": "2026-10-17T17:30:23Z",
   "file": "out/fade_high_c/HairTop2.mesh",
   "id": 127899902924909,
   "moderation": "Approved",
   "name": "WCB Hair fade_high_c HairTop2",
+  "type": "Mesh"
+ },
+ "1a9e9f88b0245681ad56b97eb56d26a5144013f54f26593df0a729a07960e318": {
+  "at": "2026-10-19T15:33:17Z",
+  "file": "out/fade_taper/HairTop2.mesh",
+  "id": 83904952234270,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_taper HairTop2",
+  "type": "Mesh"
+ },
+ "1abdba8e75348460b12084ecff0c80a97dd658b669f60ae3debf178b433261d5": {
+  "at": "2026-10-19T15:30:49Z",
+  "file": "out/crew/HairCrop.mesh",
+  "id": 105161805461777,
+  "moderation": "Approved",
+  "name": "WCB Hair crew HairCrop",
+  "type": "Mesh"
+ },
+ "1b747010f1f727cda4604e5a63147f58412697beb7e49a4ef80276df1c1ffd2f": {
+  "at": "2026-10-19T15:28:41Z",
+  "file": "out/box_braids/HairBraid07.mesh",
+  "id": 113786861177633,
+  "moderation": "Approved",
+  "name": "WCB Hair box_braids HairBraid07",
+  "type": "Mesh"
+ },
+ "1ba8e7b633918e62bcd9179835d0e5e0f4b090ff09e5eb4e08476887bd018473": {
+  "at": "2026-10-19T15:29:06Z",
+  "file": "out/braids/HairBraid01.mesh",
+  "id": 89738551792777,
+  "moderation": "Approved",
+  "name": "WCB Hair braids HairBraid01",
+  "type": "Mesh"
+ },
+ "1e4277c8dce341d909798a9640847071a480bd9bdcdee251e66ff0c8cce50038": {
+  "at": "2026-10-19T15:31:43Z",
+  "file": "out/dreadlocks/HairLoc05b.mesh",
+  "id": 90215400012286,
+  "moderation": "Approved",
+  "name": "WCB Hair dreadlocks HairLoc05b",
   "type": "Mesh"
  },
  "1fdc359a57a30c688dd1b4b8ba797f2b01a4d42fcd61f2d7cd1b3604fb3450df": {
@@ -165,6 +365,30 @@
   "id": 94227316578354,
   "moderation": "Approved",
   "name": "WCB Hair long HairClump01",
+  "type": "Mesh"
+ },
+ "2045d80037878b3cc5b098a4857a5dd1d8a82f899f4ca3759d0ac76c2c147953": {
+  "at": "2026-10-19T15:31:09Z",
+  "file": "out/dreadlocks/HairLoc01.mesh",
+  "id": 133407844056834,
+  "moderation": "Approved",
+  "name": "WCB Hair dreadlocks HairLoc01",
+  "type": "Mesh"
+ },
+ "206c6945850f941c30fb9b6bc623ba4c6b80ecf63ec184f441bd38223f985568": {
+  "at": "2026-10-19T15:32:48Z",
+  "file": "out/fade_low/HairTop1.mesh",
+  "id": 119906335054347,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_low HairTop1",
+  "type": "Mesh"
+ },
+ "2120f38837acb2d4180206fc814e079cd20c918d258cbb17330b80a953b5e40f": {
+  "at": "2026-10-19T15:30:07Z",
+  "file": "out/braids/HairBraid08b.mesh",
+  "id": 111962684140744,
+  "moderation": "Approved",
+  "name": "WCB Hair braids HairBraid08b",
   "type": "Mesh"
  },
  "22c378c703234a004c4b1410f321e7ae838360de183f23e32c8ab780ca513521": {
@@ -199,6 +423,22 @@
   "name": "WCB Hair crew_c HairTop7",
   "type": "Mesh"
  },
+ "2507cb3c4026573cb9696959393d90490c1e7e3fe852f130cf85f754b92908c0": {
+  "at": "2026-10-19T15:45:13Z",
+  "file": "out/hightop/HairTop03.mesh",
+  "id": 83639320233309,
+  "moderation": "Approved",
+  "name": "WCB Hair hightop HairTop03",
+  "type": "Mesh"
+ },
+ "2526f9743270c8e0845b78ebab7d0afed5222445f843ce2946010d4111c7ac61": {
+  "at": "2026-10-19T15:45:19Z",
+  "file": "out/hightop/HairTop05.mesh",
+  "id": 125240699645245,
+  "moderation": "Approved",
+  "name": "WCB Hair hightop HairTop05",
+  "type": "Mesh"
+ },
  "25360177439797a18a38307eb7d43fb08a059847ad1126baaca85545a10aec66": {
   "at": "2026-10-17T17:26:40Z",
   "file": "out/braids/HairBraid05b.mesh",
@@ -207,12 +447,36 @@
   "name": "WCB Hair braids HairBraid05b",
   "type": "Mesh"
  },
+ "25742dceabe5865eab8dce3d0296e59d7c45b1c1b756df722c79ba8c22f8efde": {
+  "at": "2026-10-19T15:30:56Z",
+  "file": "out/crew/HairTop2.mesh",
+  "id": 83196503467270,
+  "moderation": "Approved",
+  "name": "WCB Hair crew HairTop2",
+  "type": "Mesh"
+ },
+ "26a96601e105fa6e0664ea3c0b703f81d2387584846a222a2e612bde1cd152e1": {
+  "at": "2026-10-19T15:29:48Z",
+  "file": "out/braids/HairBraid06b.mesh",
+  "id": 114642315972115,
+  "moderation": "Approved",
+  "name": "WCB Hair braids HairBraid06b",
+  "type": "Mesh"
+ },
  "26e8ea7e99ad3b737ba7a14d68ace52488d03105c74330c721c7c8ef97b27263": {
   "at": "2026-10-17T17:27:46Z",
   "file": "out/cornrows/HairTop.mesh",
   "id": 108142285950145,
   "moderation": "Approved",
   "name": "WCB Hair cornrows HairTop",
+  "type": "Mesh"
+ },
+ "2718a24330c6d4b81bdffc50b5e19a87c6c9944b55748ad3b51018cebe419e29": {
+  "at": "2026-10-19T15:34:39Z",
+  "file": "out/long_wavy/HairClump06.mesh",
+  "id": 109410560423800,
+  "moderation": "Approved",
+  "name": "WCB Hair long_wavy HairClump06",
   "type": "Mesh"
  },
  "281b4ff286c2d7e3a086261c9763437c4053687b49d785d63135fea2b3b2f9dd": {
@@ -229,6 +493,14 @@
   "id": 132948731649457,
   "moderation": "Approved",
   "name": "WCB Hair fade_burst HairCrop",
+  "type": "Mesh"
+ },
+ "2ab73abcbcd1c6172ff84d1f99c0b868c615cca6074d6d8dddb962cc32e38daa": {
+  "at": "2026-10-19T15:45:16Z",
+  "file": "out/hightop/HairTop04.mesh",
+  "id": 130186777508980,
+  "moderation": "Approved",
+  "name": "WCB Hair hightop HairTop04",
   "type": "Mesh"
  },
  "2b615f0661f1035f8d0152084af86fe874d9f3dca10bbc700ba0bb2e84c36c5f": {
@@ -263,12 +535,52 @@
   "name": "WCB Hair dreadlocks HairLoc04",
   "type": "Mesh"
  },
+ "30825385a6f50acead8d44e4d2d6c0d2b5a0e9f7ed5ca8f99a54977ed269678b": {
+  "at": "2026-10-19T15:32:56Z",
+  "file": "out/fade_low_c/HairTop.mesh",
+  "id": 75925800853977,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_low_c HairTop",
+  "type": "Mesh"
+ },
+ "30f0ca9aee5189efc1b0a851e11a8ec2caea159a5c16df2b247445ea02c73902": {
+  "at": "2026-10-19T15:30:54Z",
+  "file": "out/crew/HairTop1.mesh",
+  "id": 99344137997626,
+  "moderation": "Approved",
+  "name": "WCB Hair crew HairTop1",
+  "type": "Mesh"
+ },
+ "31eeeffaba5b569f0b4fc6fd5c44e8ea0375881cf28f3a6732d0127c3ec428a3": {
+  "at": "2026-10-19T15:31:04Z",
+  "file": "out/crew_c/HairTop.mesh",
+  "id": 94333113791720,
+  "moderation": "Approved",
+  "name": "WCB Hair crew_c HairTop",
+  "type": "Mesh"
+ },
  "3237625425ec0941da4ca95dbf43115b8a893c1c89da2d65cd51e26bc4646935": {
   "at": "2026-10-17T17:26:27Z",
   "file": "out/braids/HairBraid03b.mesh",
   "id": 88737407183142,
   "moderation": "Approved",
   "name": "WCB Hair braids HairBraid03b",
+  "type": "Mesh"
+ },
+ "337050e9ecd7b64d7c876820d05a33af123ab3f88e07e7b823f3cf2f40337597": {
+  "at": "2026-10-19T15:32:18Z",
+  "file": "out/fade_burst/HairTop2.mesh",
+  "id": 105469788091513,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_burst HairTop2",
+  "type": "Mesh"
+ },
+ "347c52c082655c3b7891b0c3dc2ebaab8e636f65d109d34eb33684fb162efcc2": {
+  "at": "2026-10-19T15:34:34Z",
+  "file": "out/long_wavy/HairClump05.mesh",
+  "id": 119153960084360,
+  "moderation": "Approved",
+  "name": "WCB Hair long_wavy HairClump05",
   "type": "Mesh"
  },
  "348b63c715f17a072ab411e6a88971be54fe329f9db57fd9a8e7aeab2a5bddd5": {
@@ -319,6 +631,14 @@
   "name": "WCB Hair long HairClump05",
   "type": "Mesh"
  },
+ "3a8e283d9e2199b97b39e95cd33b5ff011303cbaaef3e15d1b257bab34c502d6": {
+  "at": "2026-10-19T15:33:04Z",
+  "file": "out/fade_mid/HairTop2.mesh",
+  "id": 130873674003502,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_mid HairTop2",
+  "type": "Mesh"
+ },
  "3b74e2a43266f49b3f4c5df3926ba06dc6e35fdc8cc34ba8932116cc7c5ca756": {
   "at": "2026-10-17T17:31:34Z",
   "file": "out/fade_mid/HairTop3.mesh",
@@ -351,6 +671,14 @@
   "name": "WCB Hair fade_low_c HairTop1",
   "type": "Mesh"
  },
+ "3d70f20613402fdca65ad3c64c99831742b7df14b0c0ce06fc799ae21a24cea6": {
+  "at": "2026-10-19T15:28:28Z",
+  "file": "out/box_braids/HairBraid05.mesh",
+  "id": 131644862190516,
+  "moderation": "Approved",
+  "name": "WCB Hair box_braids HairBraid05",
+  "type": "Mesh"
+ },
  "3eec6eacea8fee220fcb9127da09d855de55080b1177d90957daa0eb04819a0d": {
   "at": "2026-10-17T17:32:45Z",
   "file": "out/hightop/HairTop03.mesh",
@@ -373,6 +701,14 @@
   "id": 139033237978265,
   "moderation": "Approved",
   "name": "WCB Hair afro HairAfro04",
+  "type": "Mesh"
+ },
+ "411989605afb2a7e74c053e45cc79ecc821775052fb6ea3fc67ca101cfe98044": {
+  "at": "2026-10-19T15:34:58Z",
+  "file": "out/short_dreads/HairLoc02.mesh",
+  "id": 84258946069586,
+  "moderation": "Approved",
+  "name": "WCB Hair short_dreads HairLoc02",
   "type": "Mesh"
  },
  "42bf03aff9a32fe70e0081460406200033303322c2dac4d38072cbd01bd4da7a": {
@@ -399,6 +735,22 @@
   "name": "WCB Hair fade_high_c HairTop1",
   "type": "Mesh"
  },
+ "44754f377612e00157a2bb12e959172d5d1a036bd860bea6fd74c685644702ab": {
+  "at": "2026-10-19T15:35:23Z",
+  "file": "out/short_dreads/HairTop.mesh",
+  "id": 117695059396594,
+  "moderation": "Approved",
+  "name": "WCB Hair short_dreads HairTop",
+  "type": "Mesh"
+ },
+ "45a286f40562d33f8bd12cb7871d03dcb47ce89d6c1e75632fbc7b8d0763be75": {
+  "at": "2026-10-19T15:45:21Z",
+  "file": "out/hightop/HairTop06.mesh",
+  "id": 115087813935648,
+  "moderation": "Approved",
+  "name": "WCB Hair hightop HairTop06",
+  "type": "Mesh"
+ },
  "4a02aaab4f4741e15818acfad8309db7d28e8fd971ade2e3b74b515287c3b08d": {
   "at": "2026-10-17T17:25:56Z",
   "file": "out/box_braids/HairBraid05b.mesh",
@@ -413,6 +765,22 @@
   "id": 111116094877655,
   "moderation": "Approved",
   "name": "WCB Hair short_dreads HairClump02",
+  "type": "Mesh"
+ },
+ "4b4d62a112a874efa2ccb4017506534b8b13cc41cda97409674c451fb1158279": {
+  "at": "2026-10-19T15:34:06Z",
+  "file": "out/long_wavy/HairClump01.mesh",
+  "id": 104949499134383,
+  "moderation": "Approved",
+  "name": "WCB Hair long_wavy HairClump01",
+  "type": "Mesh"
+ },
+ "4d2508edb75623ce4ad40bc8ae4c24b719205a525834c0b8f7576b2d54a75404": {
+  "at": "2026-10-19T15:28:25Z",
+  "file": "out/box_braids/HairBraid04b.mesh",
+  "id": 89901897740062,
+  "moderation": "Approved",
+  "name": "WCB Hair box_braids HairBraid04b",
   "type": "Mesh"
  },
  "4e7297a1bbd35db76b189a99ebf03fee4fb88d6bb1790bcb6acf1753c8e5d11d": {
@@ -439,6 +807,14 @@
   "name": "WCB Hair dreadlocks HairLoc04b",
   "type": "Mesh"
  },
+ "5000f25436c17e284607df07dce9f1f511a539aa0bf2ead52ce6be2d43ca45bd": {
+  "at": "2026-10-19T15:29:38Z",
+  "file": "out/braids/HairBraid05b.mesh",
+  "id": 126286180148720,
+  "moderation": "Approved",
+  "name": "WCB Hair braids HairBraid05b",
+  "type": "Mesh"
+ },
  "5018eba3b1a0a218f94f7c6f3b953ca3dc1cb9014a6190582c97549e3b7c43c6": {
   "at": "2026-10-17T17:26:12Z",
   "file": "out/box_braids/HairBraid08b.mesh",
@@ -453,6 +829,14 @@
   "id": 103244557744909,
   "moderation": "Approved",
   "name": "WCB Hair twists HairTwist03",
+  "type": "Mesh"
+ },
+ "5309858ca90aa7d1880d4ee99ddb5e055977687a4babaef97a5d407e1fb2484a": {
+  "at": "2026-10-19T15:35:18Z",
+  "file": "out/short_dreads/HairLoc07.mesh",
+  "id": 109580170181663,
+  "moderation": "Approved",
+  "name": "WCB Hair short_dreads HairLoc07",
   "type": "Mesh"
  },
  "531d6d34b435fd330b57d4ed031d5bfb7868a9fd1558ad8690f85281f7789616": {
@@ -503,6 +887,14 @@
   "name": "WCB Hair box_braids HairBraid06b",
   "type": "Mesh"
  },
+ "576300dd868308860c74c0ec8f38200b213529262aef1a9eec8ef4ae6c921275": {
+  "at": "2026-10-19T15:29:15Z",
+  "file": "out/braids/HairBraid03b.mesh",
+  "id": 75952692664560,
+  "moderation": "Approved",
+  "name": "WCB Hair braids HairBraid03b",
+  "type": "Mesh"
+ },
  "5776845b1aac395ec759e3d9e011b64c87d51eedd6977510477fec4728d92ac7": {
   "at": "2026-10-17T17:29:58Z",
   "file": "out/fade_burst_c/HairTop5.mesh",
@@ -527,12 +919,28 @@
   "name": "WCB Hair crew HairCrop",
   "type": "Mesh"
  },
+ "593610202a4d8f57c7bdc2df50bb514d728d31a62e58da98a208a71bf86edff2": {
+  "at": "2026-10-19T15:30:00Z",
+  "file": "out/braids/HairBraid08.mesh",
+  "id": 109002005046691,
+  "moderation": "Approved",
+  "name": "WCB Hair braids HairBraid08",
+  "type": "Mesh"
+ },
  "59af8d4cca9ce0192a544dbc1aa2934bc1fb1141de31d74ac854520c30cd71f4": {
   "at": "2026-10-17T17:31:37Z",
   "file": "out/fade_mid_c/HairTop1.mesh",
   "id": 112272648970119,
   "moderation": "Approved",
   "name": "WCB Hair fade_mid_c HairTop1",
+  "type": "Mesh"
+ },
+ "5cc2c5c45d8392afb6678579ab5fca0141c09cab660b40662c0798abcf992e2e": {
+  "at": "2026-10-19T15:31:36Z",
+  "file": "out/dreadlocks/HairLoc04b.mesh",
+  "id": 135172114813208,
+  "moderation": "Approved",
+  "name": "WCB Hair dreadlocks HairLoc04b",
   "type": "Mesh"
  },
  "5d311b70207ff9fb6b56485fccbcac9185a8e95328aa98bcd3fce9c7ab82f7e9": {
@@ -551,6 +959,14 @@
   "name": "WCB Hair fade_taper_c HairTop1",
   "type": "Mesh"
  },
+ "5ff14f26e967493f273345c30157bf42b13b2e925cae0799664917f837929a3a": {
+  "at": "2026-10-19T15:45:07Z",
+  "file": "out/hightop/HairTop01.mesh",
+  "id": 119449738821411,
+  "moderation": "Approved",
+  "name": "WCB Hair hightop HairTop01",
+  "type": "Mesh"
+ },
  "6058b41af83740d92f39241f95c8aa849ee6747928b36c141130ee3a16f1aaca": {
   "at": "2026-10-17T17:31:53Z",
   "file": "out/fade_mid_c/HairTop5.mesh",
@@ -559,12 +975,36 @@
   "name": "WCB Hair fade_mid_c HairTop5",
   "type": "Mesh"
  },
+ "60d252aa5cc1ea7c363a16bb53309342a52a4775592584a498d2fa94abf7db63": {
+  "at": "2026-10-19T15:33:38Z",
+  "file": "out/long/HairClump03.mesh",
+  "id": 127952458414480,
+  "moderation": "Approved",
+  "name": "WCB Hair long HairClump03",
+  "type": "Mesh"
+ },
  "62d934e2826c58bc08bf4a88531c7b6e1e29b671acee4fa52f98b3950a76c832": {
   "at": "2026-10-17T17:34:38Z",
   "file": "out/short_dreads/HairClump05.mesh",
   "id": 121733587580556,
   "moderation": "Approved",
   "name": "WCB Hair short_dreads HairClump05",
+  "type": "Mesh"
+ },
+ "640fddaae4258b189bdc1e142b3586905db7fb8e51fb07682d977f5bc8b2365c": {
+  "at": "2026-10-19T15:28:31Z",
+  "file": "out/box_braids/HairBraid05b.mesh",
+  "id": 133058560607411,
+  "moderation": "Approved",
+  "name": "WCB Hair box_braids HairBraid05b",
+  "type": "Mesh"
+ },
+ "64a082af5ff6f69e1c7e977c27aac04278c3a41f22ec9e9942e291dbf938300a": {
+  "at": "2026-10-19T15:29:31Z",
+  "file": "out/braids/HairBraid04b.mesh",
+  "id": 83248876159710,
+  "moderation": "Approved",
+  "name": "WCB Hair braids HairBraid04b",
   "type": "Mesh"
  },
  "658a94fbbdd8a2ef815aa8a37dd88de1fb5646b56c0162e23fe91e8db536bf9a": {
@@ -581,6 +1021,14 @@
   "id": 107564223834485,
   "moderation": "Approved",
   "name": "WCB Hair caesar HairCrop",
+  "type": "Mesh"
+ },
+ "65df825dd7a7fd32e2e31c2624d980b24f56ccca61f579ecd60e50e310c39a8b": {
+  "at": "2026-10-19T15:34:29Z",
+  "file": "out/long_wavy/HairClump04b.mesh",
+  "id": 95552562714558,
+  "moderation": "Approved",
+  "name": "WCB Hair long_wavy HairClump04b",
   "type": "Mesh"
  },
  "66876e329df6501f6d42b879d29174c3bf8cee8251f61070a60086f74548ea49": {
@@ -631,12 +1079,28 @@
   "name": "WCB Hair long HairClump03b",
   "type": "Mesh"
  },
+ "694c8c4594f6772741e39bc5930b6673ddc0b1e6781e7f1d44994bd61fb5de5b": {
+  "at": "2026-10-19T15:29:43Z",
+  "file": "out/braids/HairBraid06.mesh",
+  "id": 138272685234816,
+  "moderation": "Approved",
+  "name": "WCB Hair braids HairBraid06",
+  "type": "Mesh"
+ },
  "699d9cc11aacfcb49a98eee9dcc7c0bdf7cef331a5371be07de20f9b2d968105": {
   "at": "2026-10-17T17:26:30Z",
   "file": "out/braids/HairBraid04.mesh",
   "id": 137921362701585,
   "moderation": "Approved",
   "name": "WCB Hair braids HairBraid04",
+  "type": "Mesh"
+ },
+ "6abdbc35a81bd9f202c7a7f275c2b7115313b5edfca967486a7979de7c52fb78": {
+  "at": "2026-10-19T15:32:36Z",
+  "file": "out/fade_high/HairTop2.mesh",
+  "id": 97805107960598,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_high HairTop2",
   "type": "Mesh"
  },
  "6bc4cf51943ab970ff9dddd1813d790ce8220f91e71c5202089eb94772632255": {
@@ -647,6 +1111,14 @@
   "name": "WCB Hair braids HairBraid08",
   "type": "Mesh"
  },
+ "6c2d4f93a88b38a695cce654c0733ba45f7f72e21d4c8f855307c738f3de0224": {
+  "at": "2026-10-19T15:29:12Z",
+  "file": "out/braids/HairBraid03.mesh",
+  "id": 80109032418668,
+  "moderation": "Approved",
+  "name": "WCB Hair braids HairBraid03",
+  "type": "Mesh"
+ },
  "6d3920b826d5e5a8c19f6c9b4b28ca1070e038246a98c2b3785f14612da45bd0": {
   "at": "2026-10-17T17:24:16Z",
   "file": "textures/hair_crop.png",
@@ -654,6 +1126,22 @@
   "moderation": "Approved",
   "name": "WCB Hair crop",
   "type": "Image"
+ },
+ "6e2bca945eb5836053b1ac9611d1a7cf2cb49a99525dd0e332bd9bd14406095d": {
+  "at": "2026-10-19T15:33:12Z",
+  "file": "out/fade_taper/HairCrop.mesh",
+  "id": 104481617841587,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_taper HairCrop",
+  "type": "Mesh"
+ },
+ "6e7a8b85d4b3091e300574729364e9b61dca57a0903102af5c9cdd92507ba072": {
+  "at": "2026-10-19T15:31:31Z",
+  "file": "out/dreadlocks/HairLoc04.mesh",
+  "id": 95075374844859,
+  "moderation": "Approved",
+  "name": "WCB Hair dreadlocks HairLoc04",
+  "type": "Mesh"
  },
  "708ad43ccf1a8de1401a937485ff73e3aa73a3429c6609064c852f68959fbed1": {
   "at": "2026-10-17T17:33:38Z",
@@ -663,12 +1151,44 @@
   "name": "WCB Hair long HairClump06b",
   "type": "Mesh"
  },
+ "71688865a296341ac8caf72161d07f0258fa60d38df6e60f4cb5665e4151d110": {
+  "at": "2026-10-19T15:32:51Z",
+  "file": "out/fade_low/HairTop2.mesh",
+  "id": 102393067051282,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_low HairTop2",
+  "type": "Mesh"
+ },
+ "71b2af8ba36f0bc98ca9973cacbdeb2f1d2c0544b8e1eb00b55c8b696550438c": {
+  "at": "2026-10-19T15:33:51Z",
+  "file": "out/long/HairClump05b.mesh",
+  "id": 126926860250158,
+  "moderation": "Approved",
+  "name": "WCB Hair long HairClump05b",
+  "type": "Mesh"
+ },
+ "7285c8bcc31f0123af2754c739c8229ab8cfdbf378eba17ca6cf7051fc53d266": {
+  "at": "2026-10-19T15:29:01Z",
+  "file": "out/box_braids/HairTop.mesh",
+  "id": 99885018591396,
+  "moderation": "Approved",
+  "name": "WCB Hair box_braids HairTop",
+  "type": "Mesh"
+ },
  "729b091723703299861f15b360fa94154d0385903f5ea46953f8bde6f443d8cf": {
   "at": "2026-10-17T17:28:02Z",
   "file": "out/crew_c/HairTop2.mesh",
   "id": 91056587199157,
   "moderation": "Approved",
   "name": "WCB Hair crew_c HairTop2",
+  "type": "Mesh"
+ },
+ "731832aa2f9e746eaa8ab69eb7990362c229011b8d335444df093bc07711221a": {
+  "at": "2026-10-19T15:28:55Z",
+  "file": "out/box_braids/HairBraid08b.mesh",
+  "id": 100516975040395,
+  "moderation": "Approved",
+  "name": "WCB Hair box_braids HairBraid08b",
   "type": "Mesh"
  },
  "73d177e9cb4cbeb232231d50011daa343cabc0400cae5b54e256ea2ccc1ccb21": {
@@ -703,6 +1223,14 @@
   "name": "WCB Hair long HairClump04b",
   "type": "Mesh"
  },
+ "7730f8d5ba374ee221eb206ebb0c66c1fd2e748405b4c1fe0489448bd9924846": {
+  "at": "2026-10-19T15:32:31Z",
+  "file": "out/fade_high/HairTop1.mesh",
+  "id": 89923622099403,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_high HairTop1",
+  "type": "Mesh"
+ },
  "777c3cb6598b80d4effe43065d3f29af83edb647951c9969c33830b41cf99294": {
   "at": "2026-10-17T17:24:24Z",
   "file": "textures/hair_shortcoil.png",
@@ -717,6 +1245,38 @@
   "id": 128967590823569,
   "moderation": "Approved",
   "name": "WCB Hair hightop HairTop02",
+  "type": "Mesh"
+ },
+ "78f969c05a43a5119b71c5616f5b174479dff9660f1527dad25f2d61e59e5ccb": {
+  "at": "2026-10-19T15:28:13Z",
+  "file": "out/box_braids/HairBraid03.mesh",
+  "id": 103464357434816,
+  "moderation": "Approved",
+  "name": "WCB Hair box_braids HairBraid03",
+  "type": "Mesh"
+ },
+ "799724795ec0316954d70feaa59dd80f87fd5392022e1181c4658dadc9168ba0": {
+  "at": "2026-10-19T15:33:31Z",
+  "file": "out/long/HairClump01b.mesh",
+  "id": 129376863964064,
+  "moderation": "Approved",
+  "name": "WCB Hair long HairClump01b",
+  "type": "Mesh"
+ },
+ "7a4c42370f34c9842051f840d5fc75e64c603062b978086b4627abacd0a7fd71": {
+  "at": "2026-10-19T15:32:41Z",
+  "file": "out/fade_high_c/HairTop.mesh",
+  "id": 90870927529975,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_high_c HairTop",
+  "type": "Mesh"
+ },
+ "7a8fa8edfe587ec460d84d15eb41f99c80655dd30e50b0d912a5a17b6b206a60": {
+  "at": "2026-10-19T15:30:24Z",
+  "file": "out/caesar/HairTop1.mesh",
+  "id": 79261575760126,
+  "moderation": "Approved",
+  "name": "WCB Hair caesar HairTop1",
   "type": "Mesh"
  },
  "7a95fcccb341d94d8ea75577fcad07814a81deb9ae87e40d23fdb10b6e5d3421": {
@@ -751,12 +1311,36 @@
   "name": "WCB Hair dreadlocks HairLoc06",
   "type": "Mesh"
  },
+ "7c51a0ed5259b5dae62f3d2173924b26641246405eb3cafb7eb5917d89b408c3": {
+  "at": "2026-10-19T15:35:34Z",
+  "file": "out/twists/HairTwist03.mesh",
+  "id": 88228054507566,
+  "moderation": "Approved",
+  "name": "WCB Hair twists HairTwist03",
+  "type": "Mesh"
+ },
+ "7c6af68354eae10b66f72cb85c88247452a81808a3ef811c86fb97460eb206a6": {
+  "at": "2026-10-19T15:32:26Z",
+  "file": "out/fade_burst_c/HairTop.mesh",
+  "id": 88825841675271,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_burst_c HairTop",
+  "type": "Mesh"
+ },
  "7df67ed13f8f2aeed2df10b072bde84f7a7ec5f505de3b4efbf4b30c3cf35fc3": {
   "at": "2026-10-17T17:30:37Z",
   "file": "out/fade_high_c/HairTop7.mesh",
   "id": 95624440173543,
   "moderation": "Approved",
   "name": "WCB Hair fade_high_c HairTop7",
+  "type": "Mesh"
+ },
+ "7e186cfcead56cd14f29823300da08f31e489135acdfb4076c36590e18dbf561": {
+  "at": "2026-10-19T15:34:01Z",
+  "file": "out/long/HairTop.mesh",
+  "id": 72812593759908,
+  "moderation": "Approved",
+  "name": "WCB Hair long HairTop",
   "type": "Mesh"
  },
  "7ed303dc63ce86b3db5b2af80f8f8108902d52ef9419772b51c7d0b13ab8dab1": {
@@ -783,6 +1367,22 @@
   "name": "WCB Hair long_wavy HairTop",
   "type": "Mesh"
  },
+ "7ffbe67c3c97d9e852023646e2fbb2bc385514b00c8b0914361fab8b1d1484ea": {
+  "at": "2026-10-19T15:35:13Z",
+  "file": "out/short_dreads/HairLoc05.mesh",
+  "id": 106138185728971,
+  "moderation": "Approved",
+  "name": "WCB Hair short_dreads HairLoc05",
+  "type": "Mesh"
+ },
+ "8031b100c9e8e2efb3815098e0d3797987052822de92726e2a6861b048628b36": {
+  "at": "2026-10-19T15:28:02Z",
+  "file": "out/box_braids/HairBase.mesh",
+  "id": 135966545391800,
+  "moderation": "Approved",
+  "name": "WCB Hair box_braids HairBase",
+  "type": "Mesh"
+ },
  "812ae86be33dfddae27e4e142b9d5d0d68a80072ac4799e3d67cbe254ddcd794": {
   "at": "2026-10-17T17:27:44Z",
   "file": "out/cap/HairCap.mesh",
@@ -807,6 +1407,30 @@
   "name": "WCB Hair dreadlocks HairLoc03b",
   "type": "Mesh"
  },
+ "82a8f092c997023ad6ab780517a271f3c8a4b050cb448fb814b052a5fb74d093": {
+  "at": "2026-10-19T15:30:17Z",
+  "file": "out/caesar/HairCrop.mesh",
+  "id": 129334318687910,
+  "moderation": "Approved",
+  "name": "WCB Hair caesar HairCrop",
+  "type": "Mesh"
+ },
+ "833e88f7d3515d0cad72c6acfaa7526d06c4d37bd1850751a480705e0d87c485": {
+  "at": "2026-10-19T15:28:05Z",
+  "file": "out/box_braids/HairBraid01.mesh",
+  "id": 104961868891593,
+  "moderation": "Approved",
+  "name": "WCB Hair box_braids HairBraid01",
+  "type": "Mesh"
+ },
+ "84901b2e07b005b7fcf3a4112556a48a0e1933cebdd3a9471692706220af644b": {
+  "at": "2026-10-19T15:30:11Z",
+  "file": "out/braids/HairTop.mesh",
+  "id": 83771935708741,
+  "moderation": "Approved",
+  "name": "WCB Hair braids HairTop",
+  "type": "Mesh"
+ },
  "84abb00bec7f69fb677244ea440039ea0ff16885e5c41ce2f2ee1bc2fe7efa76": {
   "at": "2026-10-17T17:34:31Z",
   "file": "out/short_dreads/HairClump03.mesh",
@@ -823,12 +1447,36 @@
   "name": "WCB Hair fade_burst HairTop3",
   "type": "Mesh"
  },
+ "86e1bd00e9b3c65e0c93d69b2a1d7302b8051ec8fcbbd1a9869a93267f537bbd": {
+  "at": "2026-10-19T15:28:23Z",
+  "file": "out/box_braids/HairBraid04.mesh",
+  "id": 73280573729252,
+  "moderation": "Approved",
+  "name": "WCB Hair box_braids HairBraid04",
+  "type": "Mesh"
+ },
+ "86e915e0b3a5bf2d7676312d63f222fd46bc6732a23b1af1a7a2e92344ecf7cb": {
+  "at": "2026-10-19T15:33:28Z",
+  "file": "out/long/HairClump01.mesh",
+  "id": 125483714479005,
+  "moderation": "Approved",
+  "name": "WCB Hair long HairClump01",
+  "type": "Mesh"
+ },
  "88767bcc8fc2f469d8bd003c6901236864c810c7f8e1c15759330b0b51e484be": {
   "at": "2026-10-17T17:33:52Z",
   "file": "out/long_wavy/HairClump02b.mesh",
   "id": 99606005545849,
   "moderation": "Approved",
   "name": "WCB Hair long_wavy HairClump02b",
+  "type": "Mesh"
+ },
+ "888443352f0c05b64d37a39b35ff7309f52586f9038552ee4ef571be64d152c7": {
+  "at": "2026-10-19T15:33:09Z",
+  "file": "out/fade_mid_c/HairTop.mesh",
+  "id": 99959117473408,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_mid_c HairTop",
   "type": "Mesh"
  },
  "88e71bf8284e3864a1225bd3455ee3a7d5839e2d1e24d0f658c9a31c48afcc58": {
@@ -847,12 +1495,36 @@
   "name": "WCB Hair afro_curly HairAfro06",
   "type": "Mesh"
  },
+ "8a3bf50141936c1b4beebd36a2fdcdcc9bde7036f65ac9c70e18bcf08ac23162": {
+  "at": "2026-10-19T15:32:38Z",
+  "file": "out/fade_high/HairTop3.mesh",
+  "id": 91327726732020,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_high HairTop3",
+  "type": "Mesh"
+ },
+ "8c1a2ccc6ef980d3491c2183ceb5066555967820f865b05967eb3732fbfb5414": {
+  "at": "2026-10-19T15:33:36Z",
+  "file": "out/long/HairClump02b.mesh",
+  "id": 114679297131088,
+  "moderation": "Approved",
+  "name": "WCB Hair long HairClump02b",
+  "type": "Mesh"
+ },
  "8cde8fcf1da82de828202e5e1b4c759a99edcd6e5e9fb3b94028059c42c4db87": {
   "at": "2026-10-17T17:33:41Z",
   "file": "out/long/HairTop.mesh",
   "id": 96632669264244,
   "moderation": "Approved",
   "name": "WCB Hair long HairTop",
+  "type": "Mesh"
+ },
+ "8d70aa649b9bf39df4c5fd473994a4cdd854397aaa07731e1be3855114b704cf": {
+  "at": "2026-10-19T15:28:39Z",
+  "file": "out/box_braids/HairBraid06b.mesh",
+  "id": 75219232974211,
+  "moderation": "Approved",
+  "name": "WCB Hair box_braids HairBraid06b",
   "type": "Mesh"
  },
  "8d9db1fd4e6fd85be8c060b7d55f36d44ddf76d714b65ee8904c08fd134674a2": {
@@ -871,6 +1543,14 @@
   "name": "WCB Hair fade_low_c HairTop5",
   "type": "Mesh"
  },
+ "8e4e64254bce00fe969016b054e9eb2b8f524931f19e61cda717345fdc76661f": {
+  "at": "2026-10-19T15:32:54Z",
+  "file": "out/fade_low/HairTop3.mesh",
+  "id": 111576422351679,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_low HairTop3",
+  "type": "Mesh"
+ },
  "8f0d9d4ba84c134e994bae47777fd2e60d74a709587db75321b2da1fc500914e": {
   "at": "2026-10-17T17:27:01Z",
   "file": "out/braids/HairBraid07b.mesh",
@@ -879,12 +1559,52 @@
   "name": "WCB Hair braids HairBraid07b",
   "type": "Mesh"
  },
+ "8fc9f530b6c36b085156e72b3f13a739966c7fad16933b18910ecc2c1ebefd11": {
+  "at": "2026-10-19T15:34:19Z",
+  "file": "out/long_wavy/HairClump03b.mesh",
+  "id": 133805616793590,
+  "moderation": "Approved",
+  "name": "WCB Hair long_wavy HairClump03b",
+  "type": "Mesh"
+ },
  "9047454b47369dc5aba90d1550ee968fb4e11efb8423d8d8425c185edbb13df4": {
   "at": "2026-10-17T17:34:13Z",
   "file": "out/long_wavy/HairClump06.mesh",
   "id": 94273604109706,
   "moderation": "Approved",
   "name": "WCB Hair long_wavy HairClump06",
+  "type": "Mesh"
+ },
+ "904a277492c678780a87848c26bdca9b49310bac6f58cd2249ea881b04bbca88": {
+  "at": "2026-10-19T15:35:42Z",
+  "file": "out/twists/HairTwist06.mesh",
+  "id": 130733167306999,
+  "moderation": "Approved",
+  "name": "WCB Hair twists HairTwist06",
+  "type": "Mesh"
+ },
+ "904a8369979ea36f1af932590774ed8f73ca637b77c31bbf7532627e10ed6ba2": {
+  "at": "2026-10-19T15:29:35Z",
+  "file": "out/braids/HairBraid05.mesh",
+  "id": 111232727193803,
+  "moderation": "Approved",
+  "name": "WCB Hair braids HairBraid05",
+  "type": "Mesh"
+ },
+ "907072af0e5c875710185255e57f3df5827918e3cd1f71b9a0e4c21ae0437943": {
+  "at": "2026-10-19T15:29:03Z",
+  "file": "out/braids/HairBase.mesh",
+  "id": 85094843180586,
+  "moderation": "Approved",
+  "name": "WCB Hair braids HairBase",
+  "type": "Mesh"
+ },
+ "915b86d18f26180a129a64be22272b6300ac2707fe6901f946e97a4a0658b548": {
+  "at": "2026-10-19T15:33:49Z",
+  "file": "out/long/HairClump05.mesh",
+  "id": 101879251517252,
+  "moderation": "Approved",
+  "name": "WCB Hair long HairClump05",
   "type": "Mesh"
  },
  "927d8edb002220c7787b5144dee5b8560c3121be699fe174d0df3a83caa8d9bc": {
@@ -911,6 +1631,14 @@
   "name": "WCB Hair long HairClump02",
   "type": "Mesh"
  },
+ "94adb045f087b4e253c7dc134961493e108b70b7eaa45564a3baf623ab90e4e0": {
+  "at": "2026-10-19T15:34:36Z",
+  "file": "out/long_wavy/HairClump05b.mesh",
+  "id": 102137510688147,
+  "moderation": "Approved",
+  "name": "WCB Hair long_wavy HairClump05b",
+  "type": "Mesh"
+ },
  "94e85eca75e243964bc2417ab3ef3cdcef7250e946ec7bdb50c73c0ab5afb932": {
   "at": "2026-10-17T17:28:41Z",
   "file": "out/dreadlocks/HairLoc02b.mesh",
@@ -919,12 +1647,36 @@
   "name": "WCB Hair dreadlocks HairLoc02b",
   "type": "Mesh"
  },
+ "9559b181262c97150a908b0719ef6c4109a83d076cf0161c3d1a08ccdea3a1d0": {
+  "at": "2026-10-19T15:35:15Z",
+  "file": "out/short_dreads/HairLoc06.mesh",
+  "id": 125379268755929,
+  "moderation": "Approved",
+  "name": "WCB Hair short_dreads HairLoc06",
+  "type": "Mesh"
+ },
  "95c6aaffbd874ff13d965d3476c091fa0b0eaf7dd50fff54f8809cda4aa6e607": {
   "at": "2026-10-17T17:35:20Z",
   "file": "out/twists/HairTwist05.mesh",
   "id": 101971376866465,
   "moderation": "Approved",
   "name": "WCB Hair twists HairTwist05",
+  "type": "Mesh"
+ },
+ "975e6279f2925e0537f822e30fdb11fd438cc7d73a4c9fe4e959f7267c7004ac": {
+  "at": "2026-10-19T15:30:40Z",
+  "file": "out/cornrows/HairTop.mesh",
+  "id": 129633727801579,
+  "moderation": "Approved",
+  "name": "WCB Hair cornrows HairTop",
+  "type": "Mesh"
+ },
+ "976cdbb193e3abdd29801939d513f783350d842b46f57f6b75e51621aa6ce83f": {
+  "at": "2026-10-19T15:35:47Z",
+  "file": "out/twists/HairTwist08.mesh",
+  "id": 107137847990477,
+  "moderation": "Approved",
+  "name": "WCB Hair twists HairTwist08",
   "type": "Mesh"
  },
  "9775cb7c28eae69e874c8ae78f41b225853c763851ccb34618b32a33081c01bf": {
@@ -999,6 +1751,22 @@
   "name": "WCB Hair fade_mid HairTop1",
   "type": "Mesh"
  },
+ "9b6ccdef7ca8855f5b39b91be8553088d52bf82d6c61de3c4f3183d0b3d99454": {
+  "at": "2026-10-19T15:33:23Z",
+  "file": "out/fade_taper_c/HairTop.mesh",
+  "id": 89227362737226,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_taper_c HairTop",
+  "type": "Mesh"
+ },
+ "9c6cd7e4950991ac799f07c5b0fc4e67e894480d2256f8c145394540d3bff7da": {
+  "at": "2026-10-19T15:34:17Z",
+  "file": "out/long_wavy/HairClump03.mesh",
+  "id": 100800713100160,
+  "moderation": "Approved",
+  "name": "WCB Hair long_wavy HairClump03",
+  "type": "Mesh"
+ },
  "9c882cd8ceff457b36d86b8bb1ecd2dfdfbb12aa60a4891efb8909ef1eecb93d": {
   "at": "2026-10-17T17:29:35Z",
   "file": "out/fade_burst/HairTop2.mesh",
@@ -1023,12 +1791,44 @@
   "name": "WCB Hair box_braids HairBraid05",
   "type": "Mesh"
  },
+ "9f16f9c7ef05775d8070546843714fa17e12674bf0ff02e57cd5a69c43c3873a": {
+  "at": "2026-10-19T15:31:55Z",
+  "file": "out/dreadlocks/HairLoc06b.mesh",
+  "id": 137153539121085,
+  "moderation": "Approved",
+  "name": "WCB Hair dreadlocks HairLoc06b",
+  "type": "Mesh"
+ },
+ "9f34e82d47b04aa856fa9fe3687baae0882ffa83e0b83e57411770b683404d21": {
+  "at": "2026-10-19T15:31:39Z",
+  "file": "out/dreadlocks/HairLoc05.mesh",
+  "id": 92620482017892,
+  "moderation": "Approved",
+  "name": "WCB Hair dreadlocks HairLoc05",
+  "type": "Mesh"
+ },
  "a064c74e1c118ae9cb71d892f93ba2da13d2a83f173f91d71e094e4945853819": {
   "at": "2026-10-17T17:30:14Z",
   "file": "out/fade_high/HairTop2.mesh",
   "id": 139077195880308,
   "moderation": "Approved",
   "name": "WCB Hair fade_high HairTop2",
+  "type": "Mesh"
+ },
+ "a202b20e37d46c6e511b922ba92b46f48340513a5e837dc56103046db9790da0": {
+  "at": "2026-10-19T15:28:18Z",
+  "file": "out/box_braids/HairBraid03b.mesh",
+  "id": 115449713005022,
+  "moderation": "Approved",
+  "name": "WCB Hair box_braids HairBraid03b",
+  "type": "Mesh"
+ },
+ "a2708fc49293d2d9081280010deb501e902df47fa171babf6a9c302c3353996f": {
+  "at": "2026-10-19T15:32:15Z",
+  "file": "out/fade_burst/HairTop1.mesh",
+  "id": 106304168608010,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_burst HairTop1",
   "type": "Mesh"
  },
  "a276436a811c25bb941fe54b4ad3cb36fb42b4fa8b4e81c86c8ad75d044b3fc0": {
@@ -1047,12 +1847,52 @@
   "name": "WCB Hair fade_low_c HairTop2",
   "type": "Mesh"
  },
+ "a3d03ab0c9930ead38d74e54d8674613efcd7eb6de642eb5f6b39c438af76a9c": {
+  "at": "2026-10-19T15:32:59Z",
+  "file": "out/fade_mid/HairCrop.mesh",
+  "id": 92756521769009,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_mid HairCrop",
+  "type": "Mesh"
+ },
+ "a4b4a0ed38665091c0dc995b0c1c9ad5b0b4589a2640ee9c357461da6a7be807": {
+  "at": "2026-10-19T15:31:20Z",
+  "file": "out/dreadlocks/HairLoc03.mesh",
+  "id": 111959444873900,
+  "moderation": "Approved",
+  "name": "WCB Hair dreadlocks HairLoc03",
+  "type": "Mesh"
+ },
+ "a5c430f31a66897bdd276beca2e7f633469db26adc56e3941ff6d1b89f64658d": {
+  "at": "2026-10-19T15:35:26Z",
+  "file": "out/twists/HairTop.mesh",
+  "id": 119824401469725,
+  "moderation": "Approved",
+  "name": "WCB Hair twists HairTop",
+  "type": "Mesh"
+ },
  "a5cabaaec3f4c77a7aec4cf423ca4f8565dfcbab09053cd5a7943ad561b5e486": {
   "at": "2026-10-17T17:34:56Z",
   "file": "out/twists/HairTwist01.mesh",
   "id": 93126207983905,
   "moderation": "Approved",
   "name": "WCB Hair twists HairTwist01",
+  "type": "Mesh"
+ },
+ "a5da2f55a2f9adee44a486062e0a3e390c7e6e0236ce1c7aac35478771513878": {
+  "at": "2026-10-19T15:33:54Z",
+  "file": "out/long/HairClump06.mesh",
+  "id": 106275709862885,
+  "moderation": "Approved",
+  "name": "WCB Hair long HairClump06",
+  "type": "Mesh"
+ },
+ "a66c72c3cc65ca545b56c86a7b85f6ccc30d471a7cbc1b5b802b16fc3c5c47b5": {
+  "at": "2026-10-19T15:29:52Z",
+  "file": "out/braids/HairBraid07.mesh",
+  "id": 84075354596905,
+  "moderation": "Approved",
+  "name": "WCB Hair braids HairBraid07",
   "type": "Mesh"
  },
  "a8002e0a2138af88f04e786f19159685a7b73e26b9c2303c5053303fecef3985": {
@@ -1111,12 +1951,36 @@
   "name": "WCB Hair fade_taper HairCrop",
   "type": "Mesh"
  },
+ "aea641fdcc249dc30aeb256a60ed9ca057b2b4e3464ace205349e9e5fa41ad9f": {
+  "at": "2026-10-19T15:45:10Z",
+  "file": "out/hightop/HairTop02.mesh",
+  "id": 138554435583162,
+  "moderation": "Approved",
+  "name": "WCB Hair hightop HairTop02",
+  "type": "Mesh"
+ },
+ "b316ed9d83ade031c174b9428ab97b227086869e17747efe5bef7e9d0ca0d37c": {
+  "at": "2026-10-19T15:27:56Z",
+  "file": "out/afro/HairAfro01.mesh",
+  "id": 91223657202741,
+  "moderation": "Approved",
+  "name": "WCB Hair afro HairAfro01",
+  "type": "Mesh"
+ },
  "b3f86281327e10d69927a3e2175fcd54715258ef4aa85ca326140bc8288df534": {
   "at": "2026-10-17T17:28:34Z",
   "file": "out/dreadlocks/HairLoc01b.mesh",
   "id": 97388166484911,
   "moderation": "Approved",
   "name": "WCB Hair dreadlocks HairLoc01b",
+  "type": "Mesh"
+ },
+ "b6656237c2b6d045766ba98eb10bad0deef140cf3c9f6400f33c1381b5ff0f43": {
+  "at": "2026-10-19T15:32:08Z",
+  "file": "out/fade_burst/HairCrop.mesh",
+  "id": 103119084188011,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_burst HairCrop",
   "type": "Mesh"
  },
  "b66ad5f140a32e51ef17a02a664d0d63a9e2c310265b6c05b7ee6367e03cf09e": {
@@ -1151,6 +2015,30 @@
   "name": "WCB Hair twists HairTwist02",
   "type": "Mesh"
  },
+ "b8aabd0df563af9417d9c326aad38244dcaaef6b9193558081613088d24f773c": {
+  "at": "2026-10-19T15:34:51Z",
+  "file": "out/short_dreads/HairLoc01.mesh",
+  "id": 122563782164951,
+  "moderation": "Approved",
+  "name": "WCB Hair short_dreads HairLoc01",
+  "type": "Mesh"
+ },
+ "b9441b43501cd653bf684e77bab38f8626025ddecab9b1ec665ec221335bccb9": {
+  "at": "2026-10-19T15:29:19Z",
+  "file": "out/braids/HairBraid04.mesh",
+  "id": 73254672184851,
+  "moderation": "Approved",
+  "name": "WCB Hair braids HairBraid04",
+  "type": "Mesh"
+ },
+ "b9a5547816dc0e4d107cc811e916f358d0a18da1d154a9b627a069f848876e23": {
+  "at": "2026-10-19T15:34:12Z",
+  "file": "out/long_wavy/HairClump02.mesh",
+  "id": 78893609660995,
+  "moderation": "Approved",
+  "name": "WCB Hair long_wavy HairClump02",
+  "type": "Mesh"
+ },
  "b9db619b472211508512d97b9a975c7fe1d9968ef32b76653ce8cf97ba3f2908": {
   "at": "2026-10-17T17:25:00Z",
   "file": "out/afro/HairClump04.mesh",
@@ -1165,6 +2053,14 @@
   "id": 76050235218474,
   "moderation": "Approved",
   "name": "WCB Hair fade_mid HairTop2",
+  "type": "Mesh"
+ },
+ "bb9a793f52f0d57380aab3f2d71c30e935e50026bd9c29c88866d18ed601b806": {
+  "at": "2026-10-19T15:30:34Z",
+  "file": "out/caesar_c/HairTop.mesh",
+  "id": 138801785391394,
+  "moderation": "Approved",
+  "name": "WCB Hair caesar_c HairTop",
   "type": "Mesh"
  },
  "bc4f7fd71048197a1e81b469eb259ab66102020e7944855194d2e6c9e5e477ce": {
@@ -1199,6 +2095,30 @@
   "name": "WCB Hair fade_burst_c HairTop3",
   "type": "Mesh"
  },
+ "c027336b53e7696f4e697f80a38814cbecb92ed1fef4a6387c8a121833906c01": {
+  "at": "2026-10-19T15:34:47Z",
+  "file": "out/long_wavy/HairTop.mesh",
+  "id": 112946798154838,
+  "moderation": "Approved",
+  "name": "WCB Hair long_wavy HairTop",
+  "type": "Mesh"
+ },
+ "c0946f516be564259fa9c035ac3923a983d1e2a5a7eac96d406f82dce04d959d": {
+  "at": "2026-10-19T15:35:39Z",
+  "file": "out/twists/HairTwist05.mesh",
+  "id": 71363281567472,
+  "moderation": "Approved",
+  "name": "WCB Hair twists HairTwist05",
+  "type": "Mesh"
+ },
+ "c1698da64a449c5934548cbe0948ce103a12f4bd71f2650991406de2050f1468": {
+  "at": "2026-10-19T15:33:15Z",
+  "file": "out/fade_taper/HairTop1.mesh",
+  "id": 117306410708208,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_taper HairTop1",
+  "type": "Mesh"
+ },
  "c1982d5ad39604728e2efb7f175c2534a94ab63ffa1b98536eca6d94dd588a2b": {
   "at": "2026-10-17T17:34:05Z",
   "file": "out/long_wavy/HairClump05.mesh",
@@ -1221,6 +2141,22 @@
   "id": 92822425199597,
   "moderation": "Approved",
   "name": "WCB Hair afro_curly HairAfro03",
+  "type": "Mesh"
+ },
+ "c27859b3e74c027af2c21af0213573c106fb2a56c264c2d6641cade47a93f6af": {
+  "at": "2026-10-19T15:35:37Z",
+  "file": "out/twists/HairTwist04.mesh",
+  "id": 138848866202338,
+  "moderation": "Approved",
+  "name": "WCB Hair twists HairTwist04",
+  "type": "Mesh"
+ },
+ "c2ec9caeff2e1a47622cc2b4bcd1894873db696b0fba76d618704137ae70011d": {
+  "at": "2026-10-19T15:28:08Z",
+  "file": "out/box_braids/HairBraid02.mesh",
+  "id": 99587740878880,
+  "moderation": "Approved",
+  "name": "WCB Hair box_braids HairBraid02",
   "type": "Mesh"
  },
  "c3c8b99ea6b7882aafd486286e8c5a610b691da7cd42bfc1b21abcb33ea5227c": {
@@ -1271,6 +2207,30 @@
   "name": "WCB Hair crew HairTop3",
   "type": "Mesh"
  },
+ "c8f0a2898c22a56e58a1de9982df87253fb5dda86fe728bb0c7f68677d7ba268": {
+  "at": "2026-10-19T15:33:07Z",
+  "file": "out/fade_mid/HairTop3.mesh",
+  "id": 139997906834072,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_mid HairTop3",
+  "type": "Mesh"
+ },
+ "c925cd93d1899e2bfb86b2f20ce9af5c3a58c5612013cbeb21ead7383dc6f0bf": {
+  "at": "2026-10-19T15:31:14Z",
+  "file": "out/dreadlocks/HairLoc02.mesh",
+  "id": 85892570468404,
+  "moderation": "Approved",
+  "name": "WCB Hair dreadlocks HairLoc02",
+  "type": "Mesh"
+ },
+ "ca19f7f462991bae19b1fe9920e9ceba98ab3cf9f235a3b77e718fb7c9208ac7": {
+  "at": "2026-10-19T15:33:44Z",
+  "file": "out/long/HairClump04.mesh",
+  "id": 120099654638924,
+  "moderation": "Approved",
+  "name": "WCB Hair long HairClump04",
+  "type": "Mesh"
+ },
  "ce22741ab7f6470e329738c2c743eba0484e1ce71784b1449236c34e075e9b5b": {
   "at": "2026-10-17T17:26:04Z",
   "file": "out/box_braids/HairBraid07.mesh",
@@ -1287,12 +2247,28 @@
   "name": "WCB Hair caesar HairTop1",
   "type": "Mesh"
  },
+ "d0daa2774bf57cef14491acc84ae43e1ec91e82254c409540fe7d54a6d309c94": {
+  "at": "2026-10-19T15:34:14Z",
+  "file": "out/long_wavy/HairClump02b.mesh",
+  "id": 90949212931776,
+  "moderation": "Approved",
+  "name": "WCB Hair long_wavy HairClump02b",
+  "type": "Mesh"
+ },
  "d1dbb54d22e5101fde71eb636a99d18bebc318073be80431a97ea6c8453c19e2": {
   "at": "2026-10-17T17:30:05Z",
   "file": "out/fade_burst_c/HairTop7.mesh",
   "id": 90001098254492,
   "moderation": "Approved",
   "name": "WCB Hair fade_burst_c HairTop7",
+  "type": "Mesh"
+ },
+ "d349a46551b0683215d69ae732f1e0f0771fe28a4e8d3358451e7aa143e5ae4b": {
+  "at": "2026-10-19T15:33:57Z",
+  "file": "out/long/HairClump06b.mesh",
+  "id": 77668544302426,
+  "moderation": "Approved",
+  "name": "WCB Hair long HairClump06b",
   "type": "Mesh"
  },
  "d40eabd33dc39c423e27f1beb70a5a6e3c18c0a5a1a0f44efe39ecfdb7319933": {
@@ -1343,12 +2319,28 @@
   "name": "WCB Hair long_wavy HairClump04",
   "type": "Mesh"
  },
+ "d716b5381282afacfb856f5e5a4bce017075afd990bab09881c0edd96f796a5a": {
+  "at": "2026-10-19T15:29:55Z",
+  "file": "out/braids/HairBraid07b.mesh",
+  "id": 82472058411163,
+  "moderation": "Approved",
+  "name": "WCB Hair braids HairBraid07b",
+  "type": "Mesh"
+ },
  "d804f81475a929fdb4b7cf7c501812b037fb7807e774391440c91c4740d8d1e5": {
   "at": "2026-10-17T17:30:01Z",
   "file": "out/fade_burst_c/HairTop6.mesh",
   "id": 135641783898003,
   "moderation": "Approved",
   "name": "WCB Hair fade_burst_c HairTop6",
+  "type": "Mesh"
+ },
+ "d9ebc5be70c81da006dfab2305fadba32d0c26b4488a0da4e250e8b891431e0c": {
+  "at": "2026-10-19T15:28:36Z",
+  "file": "out/box_braids/HairBraid06.mesh",
+  "id": 126210975561965,
+  "moderation": "Approved",
+  "name": "WCB Hair box_braids HairBraid06",
   "type": "Mesh"
  },
  "de5cfe511b03b4c3e4c79adf007913ba555272a02a6be545a68b7496d377b9d5": {
@@ -1373,6 +2365,14 @@
   "id": 126979616769575,
   "moderation": "Approved",
   "name": "WCB Hair afro_curly HairClump01",
+  "type": "Mesh"
+ },
+ "def916eb32f42d047911ac5682c7b2a2bf487173b7bc72b1fa09538d78167c8f": {
+  "at": "2026-10-19T15:33:33Z",
+  "file": "out/long/HairClump02.mesh",
+  "id": 123287851213215,
+  "moderation": "Approved",
+  "name": "WCB Hair long HairClump02",
   "type": "Mesh"
  },
  "df229ed23162b44ed7cae8f3a19474c397ebc61705164310d1bb35db47c9973d": {
@@ -1407,6 +2407,14 @@
   "name": "WCB Hair dreadlocks HairLoc05b",
   "type": "Mesh"
  },
+ "e209765e928371023094ab6951707d8a54564c98a73c6c09c384d731e6d0c622": {
+  "at": "2026-10-19T15:28:51Z",
+  "file": "out/box_braids/HairBraid08.mesh",
+  "id": 117986955006257,
+  "moderation": "Approved",
+  "name": "WCB Hair box_braids HairBraid08",
+  "type": "Mesh"
+ },
  "e278268b1d91764492a342d4d6a3cbca19d027081614352951fd6f05be26fd21": {
   "at": "2026-10-17T17:27:16Z",
   "file": "out/buzz/HairFur.mesh",
@@ -1415,12 +2423,28 @@
   "name": "WCB Hair buzz HairFur",
   "type": "Mesh"
  },
+ "e2939435e883daf64efb1d10017c52fc709441df0128ffa8f47d589ca9075497": {
+  "at": "2026-10-19T15:32:03Z",
+  "file": "out/dreadlocks/HairLoc07b.mesh",
+  "id": 133841382998549,
+  "moderation": "Approved",
+  "name": "WCB Hair dreadlocks HairLoc07b",
+  "type": "Mesh"
+ },
  "e2c266d08c46b66e1d31edead57956a96a1c8f739fe8250c84d112844a1fb72b": {
   "at": "2026-10-17T17:31:50Z",
   "file": "out/fade_mid_c/HairTop4.mesh",
   "id": 74602375530494,
   "moderation": "Approved",
   "name": "WCB Hair fade_mid_c HairTop4",
+  "type": "Mesh"
+ },
+ "e47aaf801e43f43d02dbf1639e91e8131ce0125ad32b3f48b1008a8a8173d7f7": {
+  "at": "2026-10-19T15:35:29Z",
+  "file": "out/twists/HairTwist01.mesh",
+  "id": 139458442270048,
+  "moderation": "Approved",
+  "name": "WCB Hair twists HairTwist01",
   "type": "Mesh"
  },
  "e51df62c4be1d342c33bb019008e286477dab60ce8926813830db7496de64ef7": {
@@ -1447,6 +2471,14 @@
   "name": "WCB Hair coily",
   "type": "Image"
  },
+ "e8704c7f67ca145bd0da4f0a45789531b12fcdd97c88a1c1cfb53a3cb6dade1f": {
+  "at": "2026-10-19T15:30:31Z",
+  "file": "out/caesar/HairTop3.mesh",
+  "id": 118235747661709,
+  "moderation": "Approved",
+  "name": "WCB Hair caesar HairTop3",
+  "type": "Mesh"
+ },
  "e8cc1a86ff717e4c0756784b82d886bd41db7824e215a6a5d741d8edf9a3d267": {
   "at": "2026-10-17T17:32:54Z",
   "file": "out/hightop/HairTop06.mesh",
@@ -1469,6 +2501,22 @@
   "id": 122305529141589,
   "moderation": "Approved",
   "name": "WCB Hair long_wavy HairClump01",
+  "type": "Mesh"
+ },
+ "ecb0218aff4dc0164e89108aa545c2f5d3c40a4953595cd939e1d811f92aba6a": {
+  "at": "2026-10-19T15:35:21Z",
+  "file": "out/short_dreads/HairLoc08.mesh",
+  "id": 84663626408148,
+  "moderation": "Approved",
+  "name": "WCB Hair short_dreads HairLoc08",
+  "type": "Mesh"
+ },
+ "edd40f180cce6b775d6f5d721538c9b1b44d37ee58c8c0ae94da326a07fb5f7a": {
+  "at": "2026-10-19T15:32:00Z",
+  "file": "out/dreadlocks/HairLoc07.mesh",
+  "id": 134958720755928,
+  "moderation": "Approved",
+  "name": "WCB Hair dreadlocks HairLoc07",
   "type": "Mesh"
  },
  "ee53591aa0a2c1699246ef2f26a7cbfe469fd43dba9132119b487af7181ca4d2": {
@@ -1503,6 +2551,14 @@
   "name": "WCB Hair fade_mid_c HairTop3",
   "type": "Mesh"
  },
+ "f13599131f235dbdcac7c1e2eae0d96226a7623c08c33f4f7a25c7aa68264f95": {
+  "at": "2026-10-19T15:30:14Z",
+  "file": "out/buzz/HairFur.mesh",
+  "id": 131167861368348,
+  "moderation": "Approved",
+  "name": "WCB Hair buzz HairFur",
+  "type": "Mesh"
+ },
  "f261057fb0a3402e1982d09fb32e72e7299e2b72edaffe875053dd9d71e9b16e": {
   "at": "2026-10-17T17:25:42Z",
   "file": "out/box_braids/HairBraid03.mesh",
@@ -1517,6 +2573,14 @@
   "id": 100923581257171,
   "moderation": "Approved",
   "name": "WCB Hair fade_taper_c HairTop5",
+  "type": "Mesh"
+ },
+ "f40b1a99c2dfd7eaaaf47b400cf5a99ab44ead193bcf6613de2aabeb27876fba": {
+  "at": "2026-10-19T15:32:46Z",
+  "file": "out/fade_low/HairCrop.mesh",
+  "id": 121662930420929,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_low HairCrop",
   "type": "Mesh"
  },
  "f4b2a4139edbf1094a974c01b4e9ceeb97110f5231320be78d8ead09540883f5": {
@@ -1535,12 +2599,36 @@
   "name": "WCB Hair afro HairAfro03",
   "type": "Mesh"
  },
+ "f5baf901ed519ba52762dfe58c12be6a0da1291e2c628f78bfbcf8bc1b0cf076": {
+  "at": "2026-10-19T15:27:59Z",
+  "file": "out/afro_curly/HairAfro01.mesh",
+  "id": 89429110664853,
+  "moderation": "Approved",
+  "name": "WCB Hair afro_curly HairAfro01",
+  "type": "Mesh"
+ },
+ "f61f851475000a8be31f33cba6e1a6c73eda4335579df9e09732dadfa76263ce": {
+  "at": "2026-10-19T15:31:24Z",
+  "file": "out/dreadlocks/HairLoc03b.mesh",
+  "id": 125238691066298,
+  "moderation": "Approved",
+  "name": "WCB Hair dreadlocks HairLoc03b",
+  "type": "Mesh"
+ },
  "f61fe4d65860f08f7a1aa598da62b75e24ae06de2954cebf1115355844b9d04f": {
   "at": "2026-10-17T17:30:34Z",
   "file": "out/fade_high_c/HairTop6.mesh",
   "id": 101825845028497,
   "moderation": "Approved",
   "name": "WCB Hair fade_high_c HairTop6",
+  "type": "Mesh"
+ },
+ "f64a6c7ac4b392f4dfd41613cb057a5287065a6ad416ab5bec3ffdaa9f780aa1": {
+  "at": "2026-10-19T15:33:20Z",
+  "file": "out/fade_taper/HairTop3.mesh",
+  "id": 126750871090591,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_taper HairTop3",
   "type": "Mesh"
  },
  "f6792a889b6352e39cb84c96a280f983fd6b5a28793971d11a6ebf7e421ae742": {
@@ -1559,12 +2647,44 @@
   "name": "WCB Hair braids HairBraid05",
   "type": "Mesh"
  },
+ "f6f2e8bb4c4e7f004164bf97ca750035c235e683c7dc85bb16509c456e34616e": {
+  "at": "2026-10-19T15:31:11Z",
+  "file": "out/dreadlocks/HairLoc01b.mesh",
+  "id": 115301556463885,
+  "moderation": "Approved",
+  "name": "WCB Hair dreadlocks HairLoc01b",
+  "type": "Mesh"
+ },
+ "f6f67209138b153c38348677cb5266f5f734e6bb4b5e296c590206a1f87995af": {
+  "at": "2026-10-19T15:35:45Z",
+  "file": "out/twists/HairTwist07.mesh",
+  "id": 140358966283180,
+  "moderation": "Approved",
+  "name": "WCB Hair twists HairTwist07",
+  "type": "Mesh"
+ },
+ "f71052f539ed4a2bb31a5bc9ef7085e08c14466f945cd5aeebbd3115f0454dcc": {
+  "at": "2026-10-19T15:30:37Z",
+  "file": "out/cap/HairCap.mesh",
+  "id": 112588822077135,
+  "moderation": "Approved",
+  "name": "WCB Hair cap HairCap",
+  "type": "Mesh"
+ },
  "f7fc8c6f8af85ac5409abaf1b75fcc42c83d75a06ca1c7eb2d1094054210ed83": {
   "at": "2026-10-17T17:33:57Z",
   "file": "out/long_wavy/HairClump03b.mesh",
   "id": 71837355491593,
   "moderation": "Approved",
   "name": "WCB Hair long_wavy HairClump03b",
+  "type": "Mesh"
+ },
+ "f9d3872ae66c62681f58e7196329d0e923e491bf6837b46ef5c02a0423635cbb": {
+  "at": "2026-10-19T15:35:50Z",
+  "file": "out/waves360/HairFur.mesh",
+  "id": 99758742037453,
+  "moderation": "Approved",
+  "name": "WCB Hair waves360 HairFur",
   "type": "Mesh"
  },
  "faeda6e1038b2ed254050abd573eda8f82bb6350b486eba9a0f72abd13aa24e8": {
@@ -1597,6 +2717,14 @@
   "id": 80698170005662,
   "moderation": "Approved",
   "name": "WCB Hair dreadlocks HairLoc06b",
+  "type": "Mesh"
+ },
+ "fcb76c85e44d870b93ebc9bce0c6213373436a508d38069194049e3c34cf5137": {
+  "at": "2026-10-19T15:32:28Z",
+  "file": "out/fade_high/HairCrop.mesh",
+  "id": 130990420764000,
+  "moderation": "Approved",
+  "name": "WCB Hair fade_high HairCrop",
   "type": "Mesh"
  },
  "fda4470eaf823e1912aab84c5d4bf6a3997a88804491067911b2c14e02fa5534": {

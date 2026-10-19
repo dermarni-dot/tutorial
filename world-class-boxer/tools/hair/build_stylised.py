@@ -1109,6 +1109,9 @@ def entries():
     return E
 
 
+OPT_IN = {"hightop"}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="")
@@ -1117,7 +1120,9 @@ def main():
     if args.texture or not os.path.exists(TEX_PATH):
         print("texture", build_texture())
     E = entries()
-    keys = [k for k in E if not args.only or k in args.only.split(",")]
+    # hightop: the knob surface does not make a convincing flat-topped high top yet; the v9 mesh (build_afro.py)
+    # stays unless it is asked for by name
+    keys = [k for k in E if (k in args.only.split(",")) if args.only] or [k for k in E if k not in OPT_IN]
     for k in keys:
         entry, pieces = E[k]()
         assert len(pieces) <= 16, (k, len(pieces))

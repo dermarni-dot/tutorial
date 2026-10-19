@@ -82,7 +82,8 @@ end
 AC.Settings.profileWait = 0
 AC.Settings.frameBudget = 0.02
 AC.Settings.debug = false
-AC.Settings.generatedHair = "all" -- (the NPCs' generated fallback is tested too; the game's default is "focus")
+local DEFAULT_GEN = AC.Settings.generatedHair -- the game's default: "off" (the asset hair is uploaded)
+AC.Settings.generatedHair = "all" -- (the NPCs' generated fallback is tested too)
 local EMPTY = function()
 	return { pieces = {}, landmarks = {} }
 end
@@ -293,7 +294,25 @@ end
 print(string.format("initial builds: %.1f s wall", os.clock() - t0))
 if noEntry then
 	check("no entry -> generated pieces", isAsset(hair(models.NoEntry)) == false)
-	-- the game's default (generatedHair "focus"): an NPC with no asset hair keeps its round-1 hair, no EditableMesh
+	check("the game's default generatedHair is off", DEFAULT_GEN == "off", tostring(DEFAULT_GEN))
+	-- generatedHair "off" (the default): no look without asset hair builds generated hair, not even a preview
+	AC.Settings.generatedHair = "off"
+	do
+		local meshes0 = sim.made.meshes
+		local npc = boxer("NoEntryOff", noEntry, -44)
+		local pv = boxer("NoEntryOffPreview", noEntry, -46, "Preview")
+		local builtN = waitBuilt(npc, nil, 15)
+		local builtP = waitBuilt(pv, nil, 15)
+		check("off: an NPC without asset hair builds no generated hair", not builtN)
+		check("off: a preview without asset hair builds no generated hair", not builtP)
+		check("off: no EditableMesh made", sim.made.meshes == meshes0, sim.made.meshes - meshes0)
+		for _, m in ipairs({ npc, pv }) do
+			models[m.Name] = nil
+			m:Destroy()
+		end
+		E.step(5)
+	end
+	-- generatedHair "focus": an NPC with no asset hair keeps its round-1 hair, no EditableMesh
 	AC.Settings.generatedHair = "focus"
 	local meshes0 = sim.made.meshes
 	local npc = boxer("NoEntryFocus", noEntry, -40)
@@ -355,9 +374,11 @@ E.step(30)
 -- 2) a look change mid-build cancels the job: nothing kept, the new look built
 ------------------------------------------------------------------------
 do
-	local m, look = boxer("Cancel", { g = 1, hair = { style = "Afro", type = "Kinky", color = 4 } }, -30)
+	-- (a style of many pieces, so the third mesh load is mid-build: the stylised Twists has 9 + the cap; the afro is
+	-- one piece now)
+	local m, look = boxer("Cancel", { g = 1, hair = { style = "Twists", type = "Kinky", color = 4 } }, -30)
 	local calls, fired = 0, false
-	local newLook = H.Look({ g = 1, hair = { style = "Afro", type = "Kinky", color = 6 } })
+	local newLook = H.Look({ g = 1, hair = { style = "Twists", type = "Kinky", color = 6 } })
 	sim.onCall = function(kind)
 		if kind == "mesh" then
 			calls += 1

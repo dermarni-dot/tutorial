@@ -55,6 +55,7 @@ the classic head's rays from (0, 0.05, 0), else the organic skull's), through th
 | `shortcoil` | tile (tileable) | the scalp cap for curly / kinky / coiled hair |
 | `waves` | one whole-cap image on the polar UV (not tileable) | the scalp cap for 360 Waves (`capTile = "waves"`, `capTileRepeat = {1, 1}`) |
 | `crop` | 4 tuft strips, root to tip | crop tops on straight / wavy fades |
+| `clump` | one tileable fibre mottle, v root (0) to tip (1) across a piece (not a strip atlas) | the v10 stylised clumps (build_stylised.py): curly fade tops, afros, twists, locs, cornrow plaits |
 | `cap` | (not uploaded) | the boxer's painted cap image: pieces in the cap's polar UV (fur shells) |
 
 UVs: (0,0) is the top-left texel, v grows down. Card strips: roots at v = 0, tips at v = 1.
