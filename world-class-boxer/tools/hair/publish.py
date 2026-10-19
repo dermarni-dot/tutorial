@@ -216,6 +216,40 @@ def read_style(sj):
     return st
 
 
+def used_files():
+    files = set(glob.glob(os.path.join(HERE, "textures", "hair_*.png")))
+    for sj in glob.glob(os.path.join(OUT, "*", "style.json")):
+        st = read_style(sj)
+        if st:
+            files |= {os.path.join(os.path.dirname(sj), r["mesh_file"]) for r in st["pieces"].values()}
+    return files
+
+
+def moderation():
+    cache = load_cache()
+    counts = {}
+    bad = []
+    for path in sorted(used_files()):
+        hit = cache.get(sha(path))
+        if not hit:
+            bad.append((path, "not uploaded"))
+            continue
+        try:
+            r = _request("GET", f"{API}/assets/{hit['id']}?readMask=moderationResult")
+            state = (r.get("moderationResult") or {}).get("moderationState") or "?"
+        except Exception as e:  # noqa: BLE001
+            state = f"error {e}"
+        hit["moderation"] = state
+        counts[state] = counts.get(state, 0) + 1
+        if state != "Approved":
+            bad.append((path, state))
+    save_cache(cache)
+    print("moderation:", ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
+    for p, s_ in bad:
+        print("  ", os.path.relpath(p, HERE), s_)
+    return 1 if bad else 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -225,7 +259,12 @@ def main():
     ap.add_argument("--local", nargs="?", const=LOCAL_DEFAULT, default=None, metavar="OUT.lua",
                     help=f"write the manifest with fake ids to OUT.lua (default {LOCAL_DEFAULT}) and an id -> file "
                          "sidecar (OUT.ids.json); uploads nothing, touches neither the cache nor the game's manifest")
+    ap.add_argument("--moderation", action="store_true",
+                    help="re-read the moderation state of every cached upload the current out/ uses (Open Cloud "
+                         "GET assets/{id}), update uploaded.json and list any that are not Approved")
     args = ap.parse_args()
+    if args.moderation:
+        return moderation()
     local = LocalIds() if args.local else None
     cache = {} if local else load_cache()
     only = set(filter(None, args.only.split(",")))

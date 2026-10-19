@@ -261,22 +261,13 @@ WAVES_TIGHT = 1.4  # how much tighter the pitch is at the hairline than next to 
 WAVES_CALM = 0.12  # v below this: the crown's whorl (no ridges)
 
 
-def tex_waves(theta_max, seed=71, size=WAVES_SIZE):
-    """360 waves as one whole-cap image on the polar UV (u = az / 2pi, v = theta / thetaMax; repeated 1 x 1):
-    hair brushed out from the crown lying in ripples that ring the head. Every ridge has its own phase drift and
-    amplitude round the head (random low harmonics in u over the WHOLE circle: nothing repeats), the ripples
-    fade out toward the crown into a calm whorl (the hair turns round the crown there), and each ridge is shaded
-    as a crest: a highlight on its crown-facing slope, a soft shadow in the trough below it.
-    Built with line-integral convolution: white noise smeared along the hair's direction (snaking with the
-    ripple), so the strands are continuous and the image is fast to make."""
-    rng = np.random.default_rng(seed)
-    H = W = size
-    j, i = np.mgrid[0:H, 0:W].astype(np.float64)
-    u = (i + 0.5) / W
-    v = (j + 0.5) / H
-    th = v * theta_max
-    # texel aspect: a u texel is 2 pi sin(theta) / (theta_max) times a v texel on the scalp
-    asp = np.maximum(0.06, TAU * np.sin(th) / theta_max)
+def waves_field(u, v, seed=71):
+    """the 360 waves' ridge field at polar-UV points (u = az / 2pi, v = theta / thetaMax; arrays of one shape): the
+    ridge phase (its integer part the ridge, the fraction 0..1 across it: crest at ~0.4), the per-ridge amplitude
+    and the crown's calm (0 in the whorl). tex_waves shades it; build_stylised.py sculpts the waves360 shell
+    from the same field, so the grooves and the painted ridges agree"""
+    u = np.asarray(u, np.float64)
+    v = np.asarray(v, np.float64)
     calm = np.clip((v - WAVES_CALM * 0.6) / (WAVES_CALM * 0.8), 0, 1) ** 1.5
 
     def harmonics(n, amp, seed2):
@@ -342,6 +333,33 @@ def tex_waves(theta_max, seed=71, size=WAVES_SIZE):
         a = 0.75 + 0.25 * np.cos(TAU * rr.integers(1, 4) * u + rr.uniform(0, TAU)) + rr.normal(0, 0.05)
         amp = np.where(m, a, amp)
     amp = amp * calm
+    return phase, ridge, amp, calm
+
+
+def tex_waves(theta_max, seed=71, size=WAVES_SIZE):
+    """360 waves as one whole-cap image on the polar UV (u = az / 2pi, v = theta / thetaMax; repeated 1 x 1):
+    hair brushed out from the crown lying in ripples that ring the head. Every ridge has its own phase drift and
+    amplitude round the head (random low harmonics in u over the WHOLE circle: nothing repeats), the ripples
+    fade out toward the crown into a calm whorl (the hair turns round the crown there), and each ridge is shaded
+    as a crest: a highlight on its crown-facing slope, a soft shadow in the trough below it.
+    Built with line-integral convolution: white noise smeared along the hair's direction (snaking with the
+    ripple), so the strands are continuous and the image is fast to make."""
+    rng = np.random.default_rng(seed)
+    H = W = size
+    j, i = np.mgrid[0:H, 0:W].astype(np.float64)
+    u = (i + 0.5) / W
+    v = (j + 0.5) / H
+    th = v * theta_max
+    # texel aspect: a u texel is 2 pi sin(theta) / (theta_max) times a v texel on the scalp
+    asp = np.maximum(0.06, TAU * np.sin(th) / theta_max)
+    phase, ridge, amp, calm = waves_field(u, v, seed)
+
+    def harmonics(n, amp_, seed2):
+        r = np.random.default_rng(seed2)
+        out = np.zeros_like(u)
+        for k in range(1, n + 1):
+            out += amp_ / k ** 0.9 * r.uniform(0.3, 1.0) * np.cos(TAU * k * u + r.uniform(0, TAU))
+        return out
     f = phase - ridge  # 0..1 inside a ridge: crest at ~0.4
     # height profile: a rounded crest, a long trough (asymmetric, like brushed waves)
     h = np.where(f < 0.4, np.clip(np.sin(f / 0.4 * math.pi / 2), 0, 1) ** 1.3,

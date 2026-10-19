@@ -66,8 +66,10 @@ AnatomyClient.Settings = {
 	profileWait = 20, -- seconds NPC meshes wait at most for the player's profile (see npcsAllowed)
 	-- the GENERATED hair (AnatomyHair: one EditableMesh per piece, alive as long as the piece) where the asset hair
 	-- does not draw a look: "all" | "focus" (you, your opponent, previews; NPCs keep their round-1 hair: dozens of
-	-- gym members' generated hair is what exhausts the device's Editable memory) | "off"
-	generatedHair = "focus",
+	-- gym members' generated hair is what exhausts the device's Editable memory) | "off" (default now that the asset
+	-- hair is uploaded: a look whose asset hair is missing or fails to load keeps its cheap round-1 part hair, no
+	-- EditableMesh is built for anyone; the generator stays for "focus" / "all")
+	generatedHair = "off",
 	debug = false,
 }
 

@@ -1256,7 +1256,7 @@ Config.HairAssets = {
 -- and is not tried again for maxRetry seconds.
 Config.AvatarLook = {
 	enabled = true,
-	hair = false, -- off for now (BaldMode); was: the avatar's hair accessories (an avatar without hair = a bald boxer)
+	hair = false, -- off: every boxer wears the game's own asset hair (was: the avatar's hair accessories; an avatar without hair = a bald boxer)
 	face = false, -- off: every boxer uses the game's classic faces (was: the avatar's face / Dynamic Head (an avatar with neither keeps the chosen classic face)
 	maxHair = 8, -- accessory ids copied at most
 	retry = 20,
@@ -1267,7 +1267,7 @@ Config.AvatarLook = {
 Config.Expressions = { "neutral", "confident", "determined", "anger", "fear", "fatigue", "pain", "dazed", "effort", "happy", "ko" }
 
 -- true = draw no hair at all (the old hard-coded BALD MODE); kept as a one-line debug toggle
-Config.BaldMode = true -- on for now: every boxer bald until the hair pass
+Config.BaldMode = false -- off: the asset hair (HairAssetData) is uploaded and drawn; true = every boxer bald
 
 -- daily growth of hair / beard (0..1.5 / 0..1) used by Training.dayTick
 Config.HairGrowthPerDay = 0.02
