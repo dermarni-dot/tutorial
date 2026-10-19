@@ -488,6 +488,13 @@ Looks.PhysiqueForArchetype = {
 -- opts: { class = weight class index, age, veteran = bool, height, archetype = Config.Archetypes id,
 --         champion = bool, fights = career bouts }. New traits come from Random(seed + 101)
 -- so faces generated before the overhaul stay the same.
+-- an NPC's resting drawn face: { key, share } (the shares add up to 1)
+local NPC_FACES = {
+	{ "wcb_neutral", 0.34 }, { "wcb_focused", 0.14 }, { "wcb_stern", 0.11 }, { "wcb_determined", 0.11 },
+	{ "wcb_smirk", 0.07 }, { "wcb_confident", 0.07 }, { "wcb_grit", 0.05 }, { "wcb_cool", 0.04 },
+	{ "wcb_scarred", 0.03 }, { "wcb_grin", 0.02 }, { "wcb_toothy", 0.01 }, { "wcb_wink", 0.01 },
+}
+
 function Looks.Random(seed, gender, opts)
 	opts = opts or {}
 	local rng = Random.new(seed)
@@ -518,12 +525,19 @@ function Looks.Random(seed, gender, opts)
 	f.shine = rng:NextNumber() * 0.4
 	f.smooth = rng:NextNumber()
 	f.seed = rng:NextInteger(1, 1000000)
-	-- the drawn face an NPC rests on, from its own stream (no other draw shifts): mostly neutral, some focused,
-	-- a few smirks and grits (FaceFX still swaps it by mood)
+	-- the drawn face an NPC rests on, from its own stream (no other draw shifts): mostly neutral, then the
+	-- serious faces, a few cocky and friendly ones (FaceFX still swaps it by mood)
 	do
 		local srng = Random.new(seed + 9311)
 		local r = srng:NextNumber()
-		local st = r < 0.5 and "wcb_neutral" or r < 0.75 and "wcb_focused" or r < 0.9 and "wcb_smirk" or "wcb_grit"
+		local st = "wcb_neutral"
+		for _, w in ipairs(NPC_FACES) do
+			if r < w[2] then
+				st = w[1]
+				break
+			end
+			r -= w[2]
+		end
 		f.style = BodyTiers.IsDrawnStyle(st) and st or BodyTiers.DefaultStyle()
 	end
 	-- a classic face from its own stream (no other draw shifts): the smile most often, then any creator face

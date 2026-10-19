@@ -254,14 +254,27 @@ BodyTiers.DEFAULT_FACE = "smile" -- (BodyAssetData.defaultFace)
 BodyTiers.DEFAULT_TEXTURE = "rbxasset://textures/face.png"
 
 -- Face styles (look.face.style): one of the drawn Boxer faces (the user's pack, tools/body/faces.py PACK): the head
--- wears that drawn face as its front Decal, and FaceFX swaps among the four by mood (STYLE_MOODS). Every boxer
+-- wears that drawn face as its front Decal, and FaceFX swaps it for a mood face by mood (STYLE_MOODS). Every boxer
 -- has one (DefaultStyle). "built" = the face BuilderHead builds from parts: no longer a player option, only the
 -- emergency fallback while no drawn face is uploaded (old "built" saves read as the default drawn face)
 BodyTiers.BUILT_STYLE = "built"
-BodyTiers.STYLE_KEYS = { "wcb_neutral", "wcb_focused", "wcb_smirk", "wcb_grit" }
+-- the resting faces a boxer can wear (the Creator offers them, in this order): the user's four, then the faces
+-- drawn after them in the same style (tools/body/wcb_faces_draw.py)
+BodyTiers.STYLE_KEYS = {
+	"wcb_neutral", "wcb_focused", "wcb_smirk", "wcb_grit",
+	"wcb_confident", "wcb_grin", "wcb_cool", "wcb_wink", "wcb_stern", "wcb_determined", "wcb_toothy", "wcb_scarred",
+}
+-- faces only a mood shows (FaceFX, STYLE_MOODS): never a boxer's chosen face
+BodyTiers.STYLE_MOOD_KEYS = { "wcb_shout", "wcb_hurt", "wcb_dazed", "wcb_ko", "wcb_tired", "wcb_surprised" }
+-- every drawn face key (resting first); RESTING marks the ones a look may keep
 BodyTiers.STYLE_INDEX = {}
+BodyTiers.STYLE_RESTING = {}
 for i, k in ipairs(BodyTiers.STYLE_KEYS) do
 	BodyTiers.STYLE_INDEX[k] = i
+	BodyTiers.STYLE_RESTING[k] = true
+end
+for i, k in ipairs(BodyTiers.STYLE_MOOD_KEYS) do
+	BodyTiers.STYLE_INDEX[k] = #BodyTiers.STYLE_KEYS + i
 end
 
 -- the face list (always starts with the smile, even when the data has none)
@@ -376,13 +389,18 @@ end
 ------------------------------------------------------------------------
 -- Face styles (look.face.style; the keys are above)
 ------------------------------------------------------------------------
--- a drawn style key that is uploaded (an id 0 = not offered)
-function BodyTiers.IsDrawnStyle(style, d)
-	if type(style) ~= "string" or not BodyTiers.STYLE_INDEX[style] then
+-- a drawn face key (resting or mood) that is uploaded (an id 0 = not offered)
+function BodyTiers.IsDrawnFace(key, d)
+	if type(key) ~= "string" or not BodyTiers.STYLE_INDEX[key] then
 		return false
 	end
-	local f = BodyTiers.Face(style, d)
+	local f = BodyTiers.Face(key, d)
 	return f ~= nil and f.id ~= nil
+end
+
+-- a drawn style a look may wear (a resting face, uploaded): mood-only faces are never anyone's chosen face
+function BodyTiers.IsDrawnStyle(style, d)
+	return BodyTiers.STYLE_RESTING[style] == true and BodyTiers.IsDrawnFace(style, d)
 end
 
 -- the face style every boxer gets when none was chosen (new boxers, old saves, a "built" save, NPCs without
@@ -458,23 +476,30 @@ function BodyTiers.FaceControlShown(key, d)
 	return not (BodyTiers.BUILT_ONLY[key] and BodyTiers.DrawnFaces(d))
 end
 
--- the moods (BodyAssetData.expressions' names, MoodOf, plus FaceFX's "guard" / "train") -> one of the drawn set;
--- nil = the boxer's own chosen face. Neutral is the set's baseline and the chosen face the resting face; a KO,
--- a daze or a spent boxer go blank (neutral, the closest of the four)
+-- the moods (BodyAssetData.expressions' names, MoodOf, plus FaceFX's "guard" / "train") -> a drawn face; nil = the
+-- boxer's own chosen (resting) face. A mood whose face is not uploaded keeps the chosen face
 BodyTiers.STYLE_MOODS = {
 	neutral = nil, rest = nil,
-	guard = "wcb_focused", attack = "wcb_focused", block = "wcb_focused", train = "wcb_focused",
-	effort = "wcb_grit", hurt = "wcb_grit", angry = "wcb_grit",
-	taunt = "wcb_smirk", happy = "wcb_smirk", confident = "wcb_smirk", celebrate = "wcb_smirk",
-	ko = "wcb_neutral", stunned = "wcb_neutral", dazed = "wcb_neutral", tired = "wcb_neutral", lose = "wcb_neutral",
-	surprised = "wcb_neutral",
+	guard = "wcb_focused", block = "wcb_focused",
+	attack = "wcb_determined", train = "wcb_determined",
+	effort = "wcb_grit",
+	hurt = "wcb_hurt",
+	angry = "wcb_shout",
+	taunt = "wcb_smirk",
+	confident = "wcb_confident",
+	happy = "wcb_grin",
+	celebrate = "wcb_toothy",
+	ko = "wcb_ko",
+	stunned = "wcb_dazed", dazed = "wcb_dazed",
+	tired = "wcb_tired", lose = "wcb_tired",
+	surprised = "wcb_surprised",
 }
 
 -- the drawn face a mood shows on a boxer whose chosen style is `chosen` (the chosen face when the mood keeps it or
 -- its face is not uploaded)
 function BodyTiers.StyleMoodFace(mood, chosen, d)
 	local k = type(mood) == "string" and BodyTiers.STYLE_MOODS[mood] or nil
-	if k and BodyTiers.IsDrawnStyle(k, d) then
+	if k and BodyTiers.IsDrawnFace(k, d) then
 		return k
 	end
 	return chosen
