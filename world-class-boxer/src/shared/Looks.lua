@@ -201,8 +201,8 @@ function Looks.Defaults(gender)
 		face = {
 			-- the classic face (BodyAssetData.faces, BodyTiers): old saves get the smile through Fill
 			key = BodyTiers.DEFAULT_FACE,
-			-- the face style: "built" (the part-built face) or a drawn Boxer face (BodyTiers.STYLE_KEYS: the head's
-			-- front Decal, swapped by mood); new boxers, old saves and NPCs get the drawn Boxer Neutral
+			-- the face style: a drawn Boxer face (BodyTiers.STYLE_KEYS: the head's front Decal, swapped by mood); new
+			-- boxers, old saves and "built" saves get the drawn Boxer Neutral (BodyTiers.DefaultStyle)
 			style = BodyTiers.DefaultStyle(),
 			shape = "Oval", jawWidth = 0, jawDef = 0.5, chin = 0, cheek = 0, forehead = 0,
 			noseWidth = 0, noseLength = 0, noseBridge = 0, lips = female and 0.2 or 0, browThick = female and -0.4 or 0,
@@ -266,6 +266,10 @@ function Looks.Fill(app)
 	end
 	app.battle.ears = tonumber(app.battle.ears) or 0
 	app.battle.nose = tonumber(app.battle.nose) or 0
+	-- the face style: a save from before the drawn faces ("built", or none) gets the default drawn face
+	if type(app.face) == "table" then
+		app.face.style = BodyTiers.SanitizeFaceStyle(app.face.style, nil)
+	end
 	return app
 end
 

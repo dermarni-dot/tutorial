@@ -15,6 +15,9 @@
 --    the baseline and the chosen face the resting face, focused on guard / attack / training, grit on effort / hurt /
 --    anger, smirk on a taunt / happy / confident, neutral when KO'd, dazed or spent), written to the decal's Texture
 --    on this client only (the server's Texture stays the chosen face, put back out of range)
+--  * the built-rig animation (blinks, gaze, expressions on the FaceJoint roles above) is dormant while drawn faces
+--    exist: every boxer wears one (BodyTiers.DrawnStyleOf), so no head carries a FaceRig and only the decal swap
+--    runs. The rig code stays in place, unused (the emergency fallback with no drawn face uploaded)
 -- Writes only Motor6D.Transform, SpecialMesh.Scale of the rigged parts and the Transparency of BlinkLid and the
 -- face veins (client-toggled parts, CONTRACTS section 5), and a drawn face's Decal.Texture. (The v7 anatomy mesh head path is retired with the
 -- EditableMesh heads; the retired classic decal faces' texture swap with it.)

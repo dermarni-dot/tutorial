@@ -2,7 +2,7 @@
 --  Barber Shop  - grouped styles as cards with a little head wearing each, hair types, hairline / line-up,
 --                 part, recolour / dye / highlights, beards + beard colour; a fresh cut resets growth
 --                 (previewed live); prices from Looks.BarberPrice (the same function the server charges with)
---  Locker Room  - kits, trunks, socks, shoes, laces, wraps + wrap pattern, mouthguard, robe and glove
+--  Locker Room  - kits, trunks, socks, shoes, laces, wraps + wrap pattern, mouthguard (only with the built face), robe and glove
 --                 customization (glove options unlock with better gloves: trim, stitching, finishes,
 --                 metallic, logos, name & nickname embroidery, brand on custom gloves)
 --  Nutrition Bar, water coolers, and Sleep (ends the day with a day transition)
@@ -13,6 +13,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
 local Looks = require(Shared:WaitForChild("Looks"))
+-- whether the drawn Boxer faces are in (the locker then hides the mouthguard colour)
+local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
 local UI = require(Shared:WaitForChild("UI"))
 local State = require(script.Parent:WaitForChild("State"))
 local LookKit = require(script.Parent:WaitForChild("LookKit"))
@@ -590,11 +592,15 @@ function Services.Locker()
 			a.wrapPattern = v
 			s.preview()
 		end)
-		colorField(s, body, "Mouthguard", function()
-			return a.mouthguard
-		end, function(c)
-			a.mouthguard = c
-		end, pal)
+		-- the mouthguard shows only between the built face's lips (a drawn mouth wears no guard lens): its colour is
+		-- hidden while drawn faces are in
+		if not BodyTiers.DrawnFaces() then
+			colorField(s, body, "Mouthguard", function()
+				return a.mouthguard
+			end, function(c)
+				a.mouthguard = c
+			end, pal)
+		end
 	end, function(s)
 		UI.Button(s.footer, "SAVE", { Size = UDim2.new(0.62, 0, 1, 0), BackgroundColor3 = T.gold, TextColor3 = T.bg }, function()
 			local r = State.req("CustomizeLook", "locker", s.look, {})

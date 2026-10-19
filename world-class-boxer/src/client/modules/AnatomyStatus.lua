@@ -18,7 +18,8 @@ local gui = nil
 local offSince = nil -- meshes OFF continuously since (a start-up budget hiccup recovers within seconds)
 local onSince = nil
 local stageReported = nil
-local NOTICE_DELAY = 6 -- seconds OFF before the notice shows
+-- seconds OFF before the notice shows (a field: tools/sim/test_ui_layout shows the notice at once)
+AnatomyStatus.NOTICE_DELAY = 6
 
 local SETTING_HINT = "Turn on Game Settings > Security > Allow Mesh / Image APIs"
 
@@ -127,22 +128,33 @@ local function showNotice(reason, memory)
 		end
 		body.Parent = frame
 
+		-- the close button: a finger-sized (44 px) hit area, invisible, centred on the drawn 28 px "X" key (the key
+		-- sits 8 px in from the notice's top-right corner as before)
 		local close = Instance.new("TextButton")
 		close.Name = "Close"
-		close.AnchorPoint = Vector2.new(1, 0)
-		close.Position = UDim2.new(1, -8, 0, 8)
-		close.Size = UDim2.new(0, 28, 0, 28)
-		close.BackgroundColor3 = Color3.fromRGB(60, 56, 50)
+		close.AnchorPoint = Vector2.new(0.5, 0.5)
+		close.Position = UDim2.new(1, -22, 0, 22)
+		close.Size = UDim2.new(0, 44, 0, 44)
+		close.BackgroundTransparency = 1
 		close.BorderSizePixel = 0
-		close.Font = Enum.Font.GothamBold
-		close.TextSize = 14
-		close.TextColor3 = Color3.fromRGB(240, 236, 228)
-		close.Text = "X"
+		close.Text = ""
 		close.Selectable = true
 		close.Parent = frame
+		local key = Instance.new("TextLabel")
+		key.Name = "Key"
+		key.AnchorPoint = Vector2.new(0.5, 0.5)
+		key.Position = UDim2.fromScale(0.5, 0.5)
+		key.Size = UDim2.new(0, 28, 0, 28)
+		key.BackgroundColor3 = Color3.fromRGB(60, 56, 50)
+		key.BorderSizePixel = 0
+		key.Font = Enum.Font.GothamBold
+		key.TextSize = 14
+		key.TextColor3 = Color3.fromRGB(240, 236, 228)
+		key.Text = "X"
+		key.Parent = close
 		local cc = Instance.new("UICorner")
 		cc.CornerRadius = UDim.new(0, 6)
-		cc.Parent = close
+		cc.Parent = key
 		close.Activated:Connect(hideNotice)
 
 		sg.Parent = pg
@@ -188,7 +200,7 @@ local function poll()
 	else
 		onSince = nil
 		offSince = offSince or now
-		if (kind == "api" or kind == "generators") and now - offSince >= NOTICE_DELAY then
+		if (kind == "api" or kind == "generators") and now - offSince >= AnatomyStatus.NOTICE_DELAY then
 			showNotice(nice, kind == "api" and nice:find("memory") ~= nil)
 		end
 	end

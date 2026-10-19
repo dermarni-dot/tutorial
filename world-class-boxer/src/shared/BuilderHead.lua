@@ -14,6 +14,9 @@
 --   (full cheeks, jowls) and weight-cut hollows, grime (own folder, refreshed by SetSweat)
 -- * part budget: A's share of Config.Detail partBudget (+60 / +10 / 0 over the old face, hair and beard);
 --   optional face details and hair decorations are drawn in priority order while it lasts
+-- * the built face above is dormant: every boxer wears a drawn face (BodyTiers.DrawnStyleOf never returns nil while
+--   one is uploaded), so its parts and rig are only built in the emergency fallback with no drawn face uploaded
+--   (and by the lune tests through BodyTiers.SetData). The code stays in place, unused
 -- * drawn face styles (look.face.style = a BodyTiers.STYLE_KEYS key, the user's Boxer faces): the head wears the
 --   drawn face as its front Decal "face" (white, opaque, the whole square canvas) instead of the built eyes, brows,
 --   nose and lips (none of those parts, no face rig; the ears, head shape and skin details stay). Damage, sweat, grime
@@ -637,7 +640,8 @@ local function faceBuild(model, app, opts, build)
 	if model:GetAttribute("FaceKey") ~= nil then
 		model:SetAttribute("FaceKey", nil) -- (the retired classic decal face's key)
 	end
-	-- a drawn face style: its decal on the head front instead of the built eyes, brows, nose and mouth
+	-- a drawn face style: its decal on the head front instead of the built eyes, brows, nose and mouth (every boxer:
+	-- DrawnStyleOf falls back to the default drawn face; nil only with no drawn face uploaded)
 	local drawn = BodyTiers.DrawnStyleOf(app)
 	if drawn then
 		putFaceDecal(head, drawn)

@@ -4,8 +4,9 @@
 -- readouts and one-line hints; an Advanced expander holds every other slider. The title row has UNDO
 -- (also Ctrl+Z / Y on a gamepad; the last 20 changes), RESET (this step back to the defaults) and RANDOM
 -- (this step randomised). Steps: Name (names, age, gender, nationality; voice and walkout song under
--- Advanced), Face (the built face: presets, shape, features, boxer wear; the expression and fight-damage
--- previews), Skin & Eyes, Hair (style, colour, beard), Body (type, height, division, weight, reach; training
+-- Advanced), Face (the drawn Boxer face: style, presets, shape, jaw / chin / cheeks, boxer wear; the expression
+-- and fight-damage previews; the built-face-only eye / brow / nose / lip controls are hidden, LookKit.BUILT_ONLY),
+-- Skin & Eyes (skin tone and skin details), Hair (style, colour, beard), Body (type, height, division, weight, reach; training
 -- sets the muscle tiers), Gear and Fight Style. Every change previews live on your character (server-built,
 -- sent at most four times a second while a slider moves and once when it is let go); the camera frames
 -- the face on the head steps and the whole body on the others, and turns (drag the 3D view, the dock's
@@ -17,7 +18,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Looks = require(Shared:WaitForChild("Looks"))
--- the face styles (built / the drawn Boxer faces) the face page offers
+-- the face styles (the drawn Boxer faces) the face page offers
 local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
 local UI = require(Shared:WaitForChild("UI"))
@@ -52,10 +53,14 @@ local page = "Identity"
 local PAGES = { "Identity", "Face", "Skin & Eyes", "Hair", "Body", "Gear", "Fight Style" }
 local SHORT = { Identity = "NAME", Face = "FACE", ["Skin & Eyes"] = "SKIN", Hair = "HAIR", Body = "BODY", Gear = "GEAR", ["Fight Style"] = "STYLE" }
 local TITLES = { Identity = "Your boxer" }
+if BodyTiers.DrawnFaces() then
+	-- (a drawn face has no eye controls: the step is the skin's)
+	TITLES["Skin & Eyes"] = "Skin"
+end
 local PAGE_HINTS = {
 	Identity = "Name your boxer - the rest can stay as it is. RANDOM on this step rolls a whole new look.",
 	Face = "Start from a face, then tune the main features. Advanced holds every detail.",
-	["Skin & Eyes"] = "Pick a skin tone and eye colour, then adjust the eyes and skin.",
+	["Skin & Eyes"] = "Pick a skin tone, then add freckles, scars and other skin detail.",
 	Hair = "Tap a style, then a colour. Length, volume and the beard are below.",
 	Body = "Pick a body type and your size. Training builds every muscle group up through five tiers.",
 	Gear = "Pick a kit, or set the main colours yourself.",
@@ -350,7 +355,7 @@ end
 -- the Advanced expander; returns true when it is open (the caller then builds the section)
 local function advancedToggle(count)
 	local open = advanced[page] == true
-	local b = UI.Button(body, (open and "HIDE ADVANCED" or "ADVANCED") .. string.format("   (%d more)", count), { Name = "AdvancedToggle", Size = UDim2.new(1, 0, 0, 40), TextSize = 15,
+	local b = UI.Button(body, (open and "HIDE ADVANCED" or "ADVANCED") .. string.format("   (%d more)", count), { Name = "AdvancedToggle", Size = UDim2.new(1, 0, 0, math.max(40, UI.MinHit(body))), TextSize = 15,
 		BackgroundColor3 = T.panel2, TextColor3 = open and T.gold or T.text }, function()
 		advanced[page] = not open
 		render()
@@ -362,7 +367,8 @@ end
 -- chips: a grid of text buttons, the picked one in gold
 local function chips(list, picked, cols, onPick, display)
 	local grid = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
-	UI.Grid(grid, UDim2.new(1 / cols, -6, 0, 36), nil, 6)
+	-- (touch: a fingertip high, UI.MinHit; the desktop keeps 36)
+	UI.Grid(grid, UDim2.new(1 / cols, -6, 0, math.max(36, UI.MinHit(body))), nil, 6)
 	for i, v in ipairs(list) do
 		local on = v == picked
 		UI.Button(grid, display and display(v) or tostring(v), { Name = "Chip_" .. tostring(v), LayoutOrder = i, TextSize = 14, BackgroundColor3 = on and T.gold or T.panel2, TextColor3 = on and T.bg or T.text }, function()
@@ -566,7 +572,9 @@ local function avatarToggle()
 	return on
 end
 
+-- (the built-face-only keys among them are hidden while drawn faces are in: LookKit.FaceShown)
 local FACE_MAIN = { "jawWidth", "chin", "cheek", "noseWidth", "noseLength", "lips" }
+local FACE_MAIN_DRAWN = { "jawWidth", "jawDef", "chin", "cheek" }
 
 local function applyFacePreset(p)
 	local f = C.look.face
@@ -598,9 +606,9 @@ local function pageFace()
 	if avatarToggle() then
 		UI.Line(body, "The face below is used when your avatar has no face of its own.", { TextColor3 = T.sub, TextSize = 13 })
 	end
-	-- the face style: a drawn Boxer face (the default) or the built face (BodyTiers.FaceStyles: only the uploaded ones)
+	-- the face style: one of the drawn Boxer faces (BodyTiers.FaceStyles: only the uploaded ones; no Built option)
 	local styles = BodyTiers.FaceStyles()
-	if #styles > 1 then
+	if #styles > 0 then
 		UI.Header(body, "FACE STYLE")
 		local names, keys = {}, {}
 		for _, st in ipairs(styles) do
@@ -619,9 +627,7 @@ local function pageFace()
 		end, function(k)
 			return names[k] or k
 		end)
-		if cur ~= BodyTiers.BUILT_STYLE then
-			UI.Line(body, "A drawn face: its expression changes with the fight (focused, grit, smirk). The shape and skin below still apply; the eye, brow, nose and lip sliders only shape the Built face.", { TextColor3 = T.sub, TextSize = 13 })
-		end
+		UI.Line(body, "Your face's expression changes with the fight: focused, grit, smirk.", { TextColor3 = T.sub, TextSize = 13 })
 	end
 	UI.Header(body, "START FROM A FACE")
 	local items = {}
@@ -637,11 +643,13 @@ local function pageFace()
 		render()
 	end)
 	UI.Header(body, "MAIN FEATURES")
-	for _, k in ipairs(FACE_MAIN) do
+	local main = BodyTiers.DrawnFaces() and FACE_MAIN_DRAWN or FACE_MAIN
+	for _, k in ipairs(main) do
 		lookSlider(f, k, def, true, true)
 	end
-	local skip = setOf(FACE_MAIN)
-	local more = #Looks.FaceSliders - #FACE_MAIN + #Looks.WearSliders + 3
+	local skip = setOf(main)
+	local faceList, wearList = LookKit.Shown(Looks.FaceSliders), LookKit.Shown(Looks.WearSliders)
+	local more = #faceList - #main + #wearList + 3
 	if advancedToggle(more) then
 		UI.Header(body, "FACE SHAPE")
 		chips(Looks.FaceShapes, f.shape, 3, function(sh)
@@ -651,10 +659,10 @@ local function pageFace()
 			render()
 		end)
 		UI.Header(body, "MORE FEATURES")
-		sliderList(Looks.FaceSliders, f, def, skip)
+		sliderList(faceList, f, def, skip)
 		UI.Header(body, "BOXER WEAR")
-		sliderList(Looks.WearSliders, f, def)
-		UI.Line(body, "Fights add their own wear: deep cuts scar, broken noses bend and swollen ears can turn into cauliflower ears.", { TextColor3 = T.sub, TextSize = 13 })
+		sliderList(wearList, f, def)
+		UI.Line(body, "Fights add their own wear: deep cuts scar and swollen ears can turn into cauliflower ears.", { TextColor3 = T.sub, TextSize = 13 })
 		UI.Header(body, "PREVIEW")
 		UI.Cycler(body, "Expression", Config.Expressions, view.expr, function(v)
 			setExpression(v)
@@ -683,39 +691,47 @@ local function pageEyesSkin()
 		C.look.skin = i
 		preview()
 	end, { names = LookKit.SkinNames, size = 40 })
-	UI.Cycler(body, "Skin undertone", Looks.Undertones, f.undertone or "Neutral", edit(nil, function(v)
-		f.undertone = v
-		previewHead()
-	end))
-	UI.Swatches(body, "Eye colour", Looks.EyeColors, f.eyeColor, function(_, i)
-		pushUndo(nil)
-		f.eyeColor = i
-		previewHead()
-	end, { names = Looks.EyeColorNames, size = 40 })
-	UI.Cycler(body, "Eyebrow style", Looks.BrowStyles, f.browStyle or "Natural", edit(nil, function(v)
-		f.browStyle = v
-		previewHead()
-	end))
+	-- (the undertone, eye colour, brows and eye sliders only shape the built face: hidden while drawn faces are in)
+	local eyes = not BodyTiers.DrawnFaces()
+	if eyes then
+		UI.Cycler(body, "Skin undertone", Looks.Undertones, f.undertone or "Neutral", edit(nil, function(v)
+			f.undertone = v
+			previewHead()
+		end))
+		UI.Swatches(body, "Eye colour", Looks.EyeColors, f.eyeColor, function(_, i)
+			pushUndo(nil)
+			f.eyeColor = i
+			previewHead()
+		end, { names = Looks.EyeColorNames, size = 40 })
+		UI.Cycler(body, "Eyebrow style", Looks.BrowStyles, f.browStyle or "Natural", edit(nil, function(v)
+			f.browStyle = v
+			previewHead()
+		end))
+	end
 	UI.Header(body, "MAIN FEATURES")
-	for _, k in ipairs(EYE_MAIN) do
-		lookSlider(f, k, def, true, true)
+	if eyes then
+		for _, k in ipairs(EYE_MAIN) do
+			lookSlider(f, k, def, true, true)
+		end
 	end
 	for _, k in ipairs(SKIN_MAIN) do
 		lookSlider(f, k, def, true, true)
 	end
-	local more = #Looks.EyeSliders - #EYE_MAIN + #Looks.SkinSliders - #SKIN_MAIN + 2
+	local more = #Looks.SkinSliders - #SKIN_MAIN + 1 + (eyes and (#Looks.EyeSliders - #EYE_MAIN + 1) or 0)
 	if advancedToggle(more) then
-		local second = { 0 }
-		for i = 1, #Looks.EyeColors do
-			table.insert(second, i)
+		if eyes then
+			local second = { 0 }
+			for i = 1, #Looks.EyeColors do
+				table.insert(second, i)
+			end
+			UI.Cycler(body, "Right eye (heterochromia)", second, f.eyeColor2 or 0, edit(nil, function(v)
+				f.eyeColor2 = v
+				previewHead()
+			end), function(v)
+				return v == 0 and "Same as left" or (Looks.EyeColorNames[v] or tostring(v))
+			end)
+			sliderList(Looks.EyeSliders, f, def, setOf(EYE_MAIN))
 		end
-		UI.Cycler(body, "Right eye (heterochromia)", second, f.eyeColor2 or 0, edit(nil, function(v)
-			f.eyeColor2 = v
-			previewHead()
-		end), function(v)
-			return v == 0 and "Same as left" or (Looks.EyeColorNames[v] or tostring(v))
-		end)
-		sliderList(Looks.EyeSliders, f, def, setOf(EYE_MAIN))
 		UI.Header(body, "SKIN DETAILS")
 		sliderList(Looks.SkinSliders, f, def, setOf(SKIN_MAIN))
 		UI.Line(body, "Skin texture is suggested with a fine-grain finish and scattered pores up close; wrinkles also deepen with age.", { TextColor3 = T.sub, TextSize = 13 })
@@ -1073,6 +1089,8 @@ local RANDOMIZE = {
 		end
 		f.shape = r.face.shape
 		f.noseType = Looks.NoseTypes[R:NextInteger(1, #Looks.NoseTypes)]
+		-- one of the drawn Boxer faces (Looks.Random's per-seed draw)
+		f.style = BodyTiers.SanitizeFaceStyle(r.face.style, f.style)
 		chosen.face = nil
 		return true
 	end,

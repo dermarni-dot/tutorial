@@ -3,7 +3,8 @@
 -- small phone, tablet, desktop and console sizes (the fight also on a phone with a controller and a short laptop
 -- window): the fight HUD in a round (all 14 special moves), with the key strip and stance chips up, between rounds
 -- and knocked down; the gym HUD; the title screen, its settings and career screens; the Career Hub; Moves &
--- Controls; the creator; barber, locker, nutrition, sleep, store; a fight result; every training drill's own screen
+-- Controls; the creator (its Face and Skin steps with Advanced open: the drawn face chips, no Built chip, no
+-- built-face-only control, RESET back to Boxer Neutral); the "detailed characters are off" notice; barber, locker, nutrition, sleep, store; a fight result; every training drill's own screen
 -- mid-session (drill_*: the weight room, the cardio machines, the recovery stations, the numbered heavy bag
 -- combos, the double-end rebounds, the shadow footwork). Their layout is checked:
 --   * nothing that draws or takes input runs off the screen
@@ -252,6 +253,21 @@ end)
 screen("gym", function(dev)
 	return client(dev)
 end)
+-- the gym with the "Detailed characters are off" notice up (AnatomyStatus: the sim has no Editable APIs; shown at
+-- once here instead of after its 6 s, which on a slow run lands on whatever screen is being built then)
+screen("anatomy_notice", function(dev)
+	local S = client(dev)
+	local Status = S.require("Client/AnatomyStatus")
+	Status.NOTICE_DELAY = 0
+	for _ = 1, 8 do
+		S.settle(0.6)
+		if find(S, "AnatomyStatusNotice.Notice.Close") then
+			break
+		end
+	end
+	assert(find(S, "AnatomyStatusNotice.Notice.Close"), "the AnatomyStatus notice did not show: " .. tostring((Status.Last())))
+	return S
+end)
 -- the title screen (main menu home) and its sub screens
 screen("menu", function(dev)
 	local S = client(dev)
@@ -296,6 +312,76 @@ screen("creator", function(dev)
 	local S = client(dev)
 	S.require("Client/Creator").Open()
 	S.settle(0.8)
+	return S
+end)
+-- the creator's Face and Skin steps with Advanced open (the drawn Boxer faces: the style chips, no Built chip, no
+-- built-face-only control)
+local function named(S, name)
+	for _, d in ipairs(S.playerGui:GetDescendants()) do
+		if d.Name == name and d.Visible ~= false then
+			return d
+		end
+	end
+	return nil
+end
+local function press(S, name)
+	local b = assert(named(S, name), "no button " .. name)
+	S.signal(b, "MouseButton1Click"):Fire()
+	S.settle(0.4)
+end
+local function creatorStep(dev, step)
+	local S = client(dev)
+	S.require("Client/Creator").Open()
+	S.settle(0.8)
+	press(S, "Step" .. step)
+	press(S, "AdvancedToggle")
+	return S
+end
+screen("creator_face", function(dev)
+	local S = creatorStep(dev, 2)
+	local Creator = S.require("Client/Creator")
+	local chipsOk = named(S, "Chip_built") == nil
+	for _, k in ipairs({ "wcb_neutral", "wcb_focused", "wcb_smirk", "wcb_grit" }) do
+		chipsOk = chipsOk and named(S, "Chip_" .. k) ~= nil
+	end
+	check("creator_face@" .. dev .. ": the 4 Boxer face chips, no Built chip", chipsOk)
+	local T = S.require("UI").Theme
+	local function picked()
+		for _, k in ipairs({ "wcb_neutral", "wcb_focused", "wcb_smirk", "wcb_grit" }) do
+			local c = named(S, "Chip_" .. k)
+			if c and c.BackgroundColor3 == T.gold then
+				return k
+			end
+		end
+		return nil
+	end
+	check("creator_face@" .. dev .. ": a new boxer starts on Boxer Neutral", picked() == "wcb_neutral", picked())
+	press(S, "Chip_wcb_grit")
+	check("creator_face@" .. dev .. ": a chip picks the face", picked() == "wcb_grit", picked())
+	press(S, "ResetStep")
+	check("creator_face@" .. dev .. ": RESET goes back to Boxer Neutral", picked() == "wcb_neutral", picked())
+	local hidden = true
+	for _, n in ipairs({ "Nose Width", "Lip Thickness", "Eyebrow Thickness", "Mouth Width", "Broken Nose" }) do
+		for _, d in ipairs(S.playerGui:GetDescendants()) do
+			if d:IsA("TextLabel") and d.Text == n then
+				hidden = false
+			end
+		end
+	end
+	check("creator_face@" .. dev .. ": no built-face-only slider", hidden)
+	assert(Creator.IsOpen(), "the creator closed")
+	return S
+end)
+screen("creator_skin", function(dev)
+	local S = creatorStep(dev, 3)
+	local hidden = true
+	for _, d in ipairs(S.playerGui:GetDescendants()) do
+		if (d:IsA("TextLabel") or d:IsA("TextButton")) and (d.Text == "Eye colour" or d.Text == "Eyebrow style" or d.Text == "Skin undertone"
+			or d.Text == "Right eye (heterochromia)" or d.Text == "Eye Size") then
+			hidden = false
+		end
+	end
+	check("creator_skin@" .. dev .. ": no eye / brow / undertone control", hidden)
 	return S
 end)
 for _, svc in ipairs({ "Barber", "Locker", "Nutrition", "Sleep", "Store" }) do

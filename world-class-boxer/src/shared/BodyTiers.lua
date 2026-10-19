@@ -253,9 +253,10 @@ BodyTiers.DEFAULT_FACE = "smile" -- (BodyAssetData.defaultFace)
 -- the engine's own classic smile (what an id 0 draws)
 BodyTiers.DEFAULT_TEXTURE = "rbxasset://textures/face.png"
 
--- Face styles (look.face.style): "built" = the face BuilderHead builds from parts (the default, every old save),
--- or one of the drawn Boxer faces (the user's pack, tools/body/faces.py PACK): the head then wears that drawn face
--- as its front Decal, and FaceFX swaps among the four by mood (STYLE_MOODS)
+-- Face styles (look.face.style): one of the drawn Boxer faces (the user's pack, tools/body/faces.py PACK): the head
+-- wears that drawn face as its front Decal, and FaceFX swaps among the four by mood (STYLE_MOODS). Every boxer
+-- has one (DefaultStyle). "built" = the face BuilderHead builds from parts: no longer a player option, only the
+-- emergency fallback while no drawn face is uploaded (old "built" saves read as the default drawn face)
 BodyTiers.BUILT_STYLE = "built"
 BodyTiers.STYLE_KEYS = { "wcb_neutral", "wcb_focused", "wcb_smirk", "wcb_grit" }
 BodyTiers.STYLE_INDEX = {}
@@ -375,7 +376,7 @@ end
 ------------------------------------------------------------------------
 -- Face styles (look.face.style; the keys are above)
 ------------------------------------------------------------------------
--- a drawn style key that is uploaded (an id 0 = not offered: the boxer keeps the built face)
+-- a drawn style key that is uploaded (an id 0 = not offered)
 function BodyTiers.IsDrawnStyle(style, d)
 	if type(style) ~= "string" or not BodyTiers.STYLE_INDEX[style] then
 		return false
@@ -384,14 +385,30 @@ function BodyTiers.IsDrawnStyle(style, d)
 	return f ~= nil and f.id ~= nil
 end
 
--- the face style a boxer gets when none was chosen (new boxers, old saves, NPCs): the drawn Boxer Neutral once
--- it is uploaded, else the built face
+-- the face style every boxer gets when none was chosen (new boxers, old saves, a "built" save, NPCs without
+-- one): the drawn Boxer Neutral, else the first uploaded drawn face, else (no drawn face uploaded at all, an
+-- emergency fallback only) the built face
 BodyTiers.DEFAULT_STYLE = "wcb_neutral"
 function BodyTiers.DefaultStyle(d)
-	return BodyTiers.IsDrawnStyle(BodyTiers.DEFAULT_STYLE, d) and BodyTiers.DEFAULT_STYLE or BodyTiers.BUILT_STYLE
+	if BodyTiers.IsDrawnStyle(BodyTiers.DEFAULT_STYLE, d) then
+		return BodyTiers.DEFAULT_STYLE
+	end
+	for _, k in ipairs(BodyTiers.STYLE_KEYS) do
+		if BodyTiers.IsDrawnStyle(k, d) then
+			return k
+		end
+	end
+	return BodyTiers.BUILT_STYLE
 end
 
--- the Creator's choices: every uploaded drawn face in STYLE_KEYS order, then Built ({ key, name })
+-- true while any drawn face is uploaded: every boxer wears one, and the built face (its parts, its rig and the
+-- Creator controls that only shape it) is out of the game
+function BodyTiers.DrawnFaces(d)
+	return BodyTiers.DefaultStyle(d) ~= BodyTiers.BUILT_STYLE
+end
+
+-- the Creator's choices: every uploaded drawn face in STYLE_KEYS order ({ key, name }). The built face is no
+-- player option (empty when nothing is uploaded: the emergency built fallback has no UI)
 function BodyTiers.FaceStyles(d)
 	local out = {}
 	for _, k in ipairs(BodyTiers.STYLE_KEYS) do
@@ -399,31 +416,46 @@ function BodyTiers.FaceStyles(d)
 			table.insert(out, { key = k, name = BodyTiers.Face(k, d).name })
 		end
 	end
-	table.insert(out, { key = BodyTiers.BUILT_STYLE, name = "Built" })
 	return out
 end
 
--- look.face.style from untrusted input: an offered style, else the old (saved) one when it is still offered,
--- else the default style (old saves have none: they get the drawn Boxer Neutral)
+-- look.face.style from untrusted input: an uploaded drawn style, else the old (saved) one when it is still one,
+-- else the default (old saves with no style and "built" saves get the drawn Boxer Neutral)
 function BodyTiers.SanitizeFaceStyle(style, old, d)
-	if style == BodyTiers.BUILT_STYLE or BodyTiers.IsDrawnStyle(style, d) then
+	if BodyTiers.IsDrawnStyle(style, d) then
 		return style
-	elseif old == BodyTiers.BUILT_STYLE or BodyTiers.IsDrawnStyle(old, d) then
+	elseif BodyTiers.IsDrawnStyle(old, d) then
 		return old
 	end
 	return BodyTiers.DefaultStyle(d)
 end
 
--- the style a boxer's head shows (nil = the built face): app.face.style when it is drawn and uploaded (a missing
--- style = the default)
+-- the drawn style a boxer's head shows: app.face.style when it is drawn and uploaded, else the default drawn face
+-- (a missing or "built" style, any look at all). nil only when no drawn face is uploaded (the built fallback)
 function BodyTiers.DrawnStyleOf(app, d)
 	local face = type(app) == "table" and type(app.face) == "table" and app.face or nil
 	local st = face and face.style
-	if face and st == nil then
-		-- a look from before face styles (an unsanitized NPC table): the default style
-		st = BodyTiers.DefaultStyle(d)
+	if BodyTiers.IsDrawnStyle(st, d) then
+		return st
 	end
-	return BodyTiers.IsDrawnStyle(st, d) and st or nil
+	local def = BodyTiers.DefaultStyle(d)
+	return def ~= BodyTiers.BUILT_STYLE and def or nil
+end
+
+-- the look's face keys and options that only shape the part-built face (its eyes, brows, nose and lips, the lip
+-- tint the undertone gives): a drawn face draws its own features, so the look editors (LookKit.FaceShown) hide them
+-- while drawn faces are in. (tools/sim/test_bodytiers checks each one changes nothing on the drawn face, and every
+-- face control left shown changes it)
+BodyTiers.BUILT_ONLY = {
+	noseWidth = true, noseLength = true, noseBridge = true, lips = true, browThick = true, browHeight = true,
+	browAngle = true, mouthWidth = true, asym = true, eyeShape = true, eyeSize = true, eyeDist = true, lashes = true,
+	eyeTilt = true, lidHeavy = true, noseBreak = true,
+	-- (the birthmark: on a drawn face it always lands on the padded ink, so it is never drawn)
+	marks = true,
+	browStyle = true, eyeColor = true, eyeColor2 = true, undertone = true, noseType = true,
+}
+function BodyTiers.FaceControlShown(key, d)
+	return not (BodyTiers.BUILT_ONLY[key] and BodyTiers.DrawnFaces(d))
 end
 
 -- the moods (BodyAssetData.expressions' names, MoodOf, plus FaceFX's "guard" / "train") -> one of the drawn set;

@@ -5,6 +5,8 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Looks = require(Shared:WaitForChild("Looks"))
+-- whether the drawn Boxer faces are in (the built-face-only controls are then hidden)
+local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
 local UI = require(Shared:WaitForChild("UI"))
 local T = UI.Theme
 
@@ -138,18 +140,39 @@ function LookKit.Entry(key)
 end
 
 ------------------------------------------------------------------------
+-- Built-face-only controls
+------------------------------------------------------------------------
+-- (BodyTiers.BUILT_ONLY: the face keys and options that only shape the part-built face; hidden while drawn faces
+-- are in. Face shape, jaw, chin, cheeks, forehead, ears, skin details and wear still show)
+LookKit.BUILT_ONLY = BodyTiers.BUILT_ONLY
+-- true when the editors show this face key / option (false: built-face only, while drawn faces are in)
+function LookKit.FaceShown(key)
+	return BodyTiers.FaceControlShown(key)
+end
+-- a slider list without the hidden built-face-only keys
+function LookKit.Shown(list)
+	local out = {}
+	for _, e in ipairs(list) do
+		if LookKit.FaceShown(e.key) then
+			table.insert(out, e)
+		end
+	end
+	return out
+end
+
+------------------------------------------------------------------------
 -- Presets
 ------------------------------------------------------------------------
 -- face presets: a shape, a nose type and the face / sculpt keys that differ from the gender default
 LookKit.FacePresets = {
 	{ id = "Classic", shape = "Oval", desc = "Even features", set = {} },
 	{ id = "Chiselled", shape = "Square", desc = "Strong jaw", set = { jawWidth = 0.5, jawDef = 0.9, cheek = 0.5, chin = 0.3, jawAngle = 0.85, cheekHeight = 0.4 } },
-	{ id = "Rugged", shape = "Square", nose = "Boxer", desc = "Heavy brow", set = { jawWidth = 0.6, browRidge = 0.85, noseWidth = 0.4, noseBridge = 0.3, chin = 0.4, eyeDepth = 0.7, browThick = 0.4 } },
+	{ id = "Rugged", shape = "Square", nose = "Boxer", desc = "Wide jaw", set = { jawWidth = 0.6, browRidge = 0.85, noseWidth = 0.4, noseBridge = 0.3, chin = 0.4, eyeDepth = 0.7, browThick = 0.4 } },
 	{ id = "Baby Face", shape = "Round", nose = "Button", desc = "Soft and young", set = { jawWidth = -0.4, jawDef = 0.2, cheekFull = 0.6, chin = -0.3, eyeSize = 0.3, noseLength = -0.3, lips = 0.2, browRidge = 0.1, jawAngle = 0.2 } },
 	{ id = "Sharp", shape = "Diamond", nose = "Greek", desc = "High cheekbones", set = { cheek = 0.7, cheekHeight = 0.6, cheekFull = -0.5, jawWidth = -0.2, chin = 0.3, noseLength = 0.2, noseWidth = -0.3, jawAngle = 0.75 } },
 	{ id = "Long", shape = "Long", desc = "Long and lean", set = { forehead = 0.3, chin = 0.4, noseLength = 0.4, jawWidth = -0.2, skullLength = 0.3 } },
 	{ id = "Heart", shape = "Heart", desc = "Narrow chin", set = { forehead = 0.3, chin = -0.3, jawWidth = -0.4, cheek = 0.4, lips = 0.3 } },
-	{ id = "Brawler", shape = "Round", nose = "Flat", desc = "Flat nose", set = { noseWidth = 0.6, noseBridge = -0.4, lips = 0.4, jawWidth = 0.5, browThick = 0.5, browRidge = 0.95, noseBreak = 0.35 } },
+	{ id = "Brawler", shape = "Round", nose = "Flat", desc = "Broad and round", set = { noseWidth = 0.6, noseBridge = -0.4, lips = 0.4, jawWidth = 0.5, browThick = 0.5, browRidge = 0.95, noseBreak = 0.35 } },
 }
 
 -- gear kits: trunks, trim, socks, shoes, laces, gloves (+ cuff), robe (+ trim), wraps

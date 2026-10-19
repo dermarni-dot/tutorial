@@ -229,7 +229,8 @@ local function headSig(model, app, build, opts, name)
 			guard = opts.mouthguard and (at.mouthguard or true) or false,
 			guardBlood = opts.mouthguard and dmg ~= nil and (tonumber(dmg.lip) or 0) > 0.6 or false,
 			avatar = avFace,
-			-- the face style (look.face.style): the built face or a drawn Boxer face decal (an id 0 reads as built)
+			-- the face style (look.face.style): the drawn Boxer face decal every boxer wears (built only in the
+			-- emergency fallback with no drawn face uploaded)
 			style = BodyTiers.DrawnStyleOf(app) or BodyTiers.BUILT_STYLE,
 		}
 		if type(Head.FaceSigParts) == "function" then

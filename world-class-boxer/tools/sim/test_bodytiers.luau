@@ -8,11 +8,14 @@
 --     moved, HipHeight, the BodyTiers attribute, change-only), a failed load (the default part kept, the failure
 --     cached), every id 0 (nothing loaded, nothing swapped)
 --   * Looks: the face key sanitised (creator faces only), old saves migrated to the smile, NPC faces
---   * face styles (look.face.style): the drawn Boxer faces offered / sanitised / kept off face.key, old saves built,
+--   * face styles (look.face.style): the drawn Boxer faces offered (no Built option) / sanitised / kept off face.key,
+--     every boxer on a drawn face (new boxers, old and "built" saves -> Boxer Neutral, NPCs one of the four by seed),
 --     the mood set; decal mode on the classic head (one white opaque front decal, no built eyes / brows / nose / lips
 --     or rig, ears kept, damage / sweat / grime at the drawn features, the decal restored when served from cache),
---     FaceFX swapping the four by mood, back to the built face unchanged
---   * the built face on the classic head (BuilderHead, the v7 face): no decal, the FaceFX rig, the part budget per
+--     FaceFX swapping the four by mood, a "built" look still on the drawn face, workouts / tier rebuilds keeping one
+--     decal; no built face part on any player / NPC look; every face control the Creator shows changes the drawn face
+--   * the built face on the classic head (BuilderHead, the v7 face; only the emergency fallback with no drawn face
+--     uploaded, reached here through BodyTiers.SetData(NODRAWN)): no decal, the FaceFX rig, the part budget per
 --     detail level; FaceFX animates it (expressions, blinks on a hit); the post-workout flow (Grime, a tier-up rebuild,
 --     SetSweat) and the damage presets never darken the face (no near-black part over the skin but the features)
 --   * the asset hair on the classic head (HK.Fit with CLASSIC_FIT): cards clear the head, the cap's worst point
@@ -45,6 +48,17 @@ local H = Host.new({ globals = { Instance = E.Instance, workspace = E.workspace,
 E.install(H)
 local BodyTiers = H.require("BodyTiers")
 local REAL = BodyTiers.Data()
+-- the real data with the drawn Boxer faces not uploaded (ids 0): the emergency fallback where the built face is
+-- still built. The test-only path to the dormant built face (the game never has it while the pack is uploaded)
+local NODRAWN = table.clone(REAL)
+NODRAWN.faces = {}
+for _, f in ipairs(REAL.faces or {}) do
+	local c = table.clone(f)
+	if BodyTiers.STYLE_INDEX[c.key] then
+		c.id = 0
+	end
+	table.insert(NODRAWN.faces, c)
+end
 
 local function build(v)
 	local b = { fat = 14 }
@@ -199,21 +213,28 @@ do
 	for _, st in ipairs(styles) do
 		table.insert(sk, st.key .. "=" .. st.name)
 	end
-	check("styles: Built + the 4 Boxer faces (uploaded)", table.concat(sk, ",")
-		== "built=Built,wcb_neutral=Boxer Neutral,wcb_focused=Boxer Focused,wcb_smirk=Boxer Smirk,wcb_grit=Boxer Grit", table.concat(sk, ","))
+	check("styles: the 4 Boxer faces, no Built option (uploaded)", table.concat(sk, ",")
+		== "wcb_neutral=Boxer Neutral,wcb_focused=Boxer Focused,wcb_smirk=Boxer Smirk,wcb_grit=Boxer Grit", table.concat(sk, ","))
 	local allIds = true
 	for _, k in ipairs(BodyTiers.STYLE_KEYS) do
 		local f = BodyTiers.Face(k, REAL)
 		allIds = allIds and f ~= nil and f.id ~= nil and f.creator and BodyTiers.FaceTexture(k, REAL) == "rbxassetid://" .. f.id
 	end
 	check("styles: every Boxer face has a real id and texture", allIds)
-	check("styles: ids 0 -> only Built offered", #BodyTiers.FaceStyles({ faces = { { key = "wcb_grit", name = "G", id = 0 } } }) == 1)
+	check("styles: ids 0 -> nothing offered (the built fallback has no UI)", #BodyTiers.FaceStyles({ faces = { { key = "wcb_grit", name = "G", id = 0 } } }) == 0
+		and #BodyTiers.FaceStyles(NODRAWN) == 0)
+	check("default style: Boxer Neutral", BodyTiers.DefaultStyle(REAL) == "wcb_neutral" and BodyTiers.DrawnFaces(REAL))
+	check("default style: neutral not uploaded -> the first uploaded drawn face",
+		BodyTiers.DefaultStyle({ faces = { { key = "wcb_neutral", name = "N", id = 0 }, { key = "wcb_smirk", name = "S", id = 5 } } }) == "wcb_smirk")
+	check("default style: none uploaded -> the built fallback", BodyTiers.DefaultStyle(NODRAWN) == "built" and not BodyTiers.DrawnFaces(NODRAWN))
 	check("styles: never a classic face key", BodyTiers.SanitizeFace("wcb_smirk", nil, REAL) == "smile" and BodyTiers.SanitizeFace({}, "wcb_grit", REAL) == "smile")
 	check("styles: kept off the classic picker", not table.find(picks, "wcb_neutral") and not table.find(picks, "wcb_grit"))
 	check("style sanitise: a drawn face kept", BodyTiers.SanitizeFaceStyle("wcb_grit", nil, REAL) == "wcb_grit")
-	check("style sanitise: built kept", BodyTiers.SanitizeFaceStyle("built", "wcb_grit", REAL) == "built")
+	check("style sanitise: built refused, the saved drawn face kept", BodyTiers.SanitizeFaceStyle("built", "wcb_grit", REAL) == "wcb_grit")
+	check("style sanitise: a built save -> Boxer Neutral", BodyTiers.SanitizeFaceStyle("built", nil, REAL) == "wcb_neutral"
+		and BodyTiers.SanitizeFaceStyle("built", "built", REAL) == "wcb_neutral" and BodyTiers.SanitizeFaceStyle(nil, "built", REAL) == "wcb_neutral")
 	check("style sanitise: junk keeps the saved style", BodyTiers.SanitizeFaceStyle("cool", "wcb_focused", REAL) == "wcb_focused")
-	check("style sanitise: nothing -> built", BodyTiers.SanitizeFaceStyle(nil, nil, REAL) == "built" and BodyTiers.SanitizeFaceStyle(5, "x", REAL) == "built")
+	check("style sanitise: nothing -> Boxer Neutral", BodyTiers.SanitizeFaceStyle(nil, nil, REAL) == "wcb_neutral" and BodyTiers.SanitizeFaceStyle(5, "x", REAL) == "wcb_neutral")
 	check("style sanitise: not uploaded -> built", BodyTiers.SanitizeFaceStyle("wcb_grit", nil, ZERO) == "built")
 	local moodWant = { guard = "wcb_focused", attack = "wcb_focused", train = "wcb_focused", effort = "wcb_grit", hurt = "wcb_grit",
 		angry = "wcb_grit", taunt = "wcb_smirk", happy = "wcb_smirk", confident = "wcb_smirk", ko = "wcb_neutral", dazed = "wcb_neutral",
@@ -227,8 +248,12 @@ do
 	end
 	check("style moods: the set by mood, the chosen face at rest", #moodBad == 0, table.concat(moodBad, ", "))
 	check("style moods: not uploaded -> the chosen face", BodyTiers.StyleMoodFace("guard", "wcb_grit", ZERO) == "wcb_grit")
-	check("drawn style of a look", BodyTiers.DrawnStyleOf({ face = { style = "wcb_focused" } }, REAL) == "wcb_focused"
-		and BodyTiers.DrawnStyleOf({ face = { style = "built" } }, REAL) == nil and BodyTiers.DrawnStyleOf({ face = {} }, REAL) == nil)
+	check("drawn style of a look", BodyTiers.DrawnStyleOf({ face = { style = "wcb_focused" } }, REAL) == "wcb_focused")
+	check("drawn style: never nil while drawn faces are uploaded (built / missing / junk / no face -> Boxer Neutral)",
+		BodyTiers.DrawnStyleOf({ face = { style = "built" } }, REAL) == "wcb_neutral" and BodyTiers.DrawnStyleOf({ face = {} }, REAL) == "wcb_neutral"
+		and BodyTiers.DrawnStyleOf({ face = { style = "ko" } }, REAL) == "wcb_neutral" and BodyTiers.DrawnStyleOf({}, REAL) == "wcb_neutral"
+		and BodyTiers.DrawnStyleOf(nil, REAL) == "wcb_neutral")
+	check("drawn style: none uploaded -> nil (the built fallback)", BodyTiers.DrawnStyleOf({ face = { style = "wcb_grit" } }, NODRAWN) == nil)
 end
 
 ------------------------------------------------------------------------
@@ -260,24 +285,45 @@ do
 	check("NPC faces: creator faces only, varied", valid and n >= 5, n)
 	check("NPC face is deterministic", Looks.Random(42, 1).face.key == Looks.Random(42, 1).face.key)
 	-- the face style
-	check("defaults: built face style", Looks.Defaults(1).face.style == "built" and Looks.Defaults(2).face.style == "built")
+	check("defaults: Boxer Neutral face style", Looks.Defaults(1).face.style == "wcb_neutral" and Looks.Defaults(2).face.style == "wcb_neutral")
 	local oldS = Looks.Defaults(1)
 	oldS.face.style = nil
 	Looks.Fill(oldS)
-	check("old save -> built (Fill)", oldS.face.style == "built")
-	check("old save -> built (Sanitize)", Looks.Sanitize({ face = {} }, { gender = 1, face = { key = "cool" } }).face.style == "built")
+	check("old save -> Boxer Neutral (Fill)", oldS.face.style == "wcb_neutral")
+	local builtS = Looks.Defaults(2)
+	builtS.face.style = "built"
+	Looks.Fill(builtS)
+	check("built save -> Boxer Neutral (Fill)", builtS.face.style == "wcb_neutral")
+	local keptS = Looks.Defaults(1)
+	keptS.face.style = "wcb_grit"
+	check("Fill keeps a drawn style", Looks.Fill(keptS).face.style == "wcb_grit")
+	check("old save -> Boxer Neutral (Sanitize)", Looks.Sanitize({ face = {} }, { gender = 1, face = { key = "cool" } }).face.style == "wcb_neutral")
+	check("built save -> Boxer Neutral (Sanitize)", Looks.Sanitize({ face = {} }, { gender = 1, face = { key = "cool", style = "built" } }).face.style == "wcb_neutral"
+		and Looks.Sanitize({ face = { style = "built" } }).face.style == "wcb_neutral")
 	check("Sanitize keeps a drawn style", Looks.Sanitize({ face = { style = "wcb_smirk" } }, saved).face.style == "wcb_smirk")
 	local savedS = Looks.Defaults(1)
 	savedS.face.style = "wcb_grit"
 	check("Sanitize: no style in the input keeps the saved one", Looks.Sanitize({ face = { key = "wink" } }, savedS).face.style == "wcb_grit")
 	check("Sanitize: junk style keeps the saved one", Looks.Sanitize({ face = { style = "ko" } }, savedS).face.style == "wcb_grit")
-	check("Sanitize: built chosen again", Looks.Sanitize({ face = { style = "built" } }, savedS).face.style == "built")
+	check("Sanitize: built refused, the saved drawn face kept", Looks.Sanitize({ face = { style = "built" } }, savedS).face.style == "wcb_grit")
 	check("Sanitize round trip", Looks.Sanitize(Looks.Sanitize({ face = { style = "wcb_focused" } })).face.style == "wcb_focused")
-	local npcBuilt = true
-	for seed = 1, 30 do
-		npcBuilt = npcBuilt and Looks.Random(seed * 131, 1).face.style == "built"
+	-- NPCs: a resting face among the four from their own stream (about 50 / 25 / 15 / 10 %), the same per seed
+	local npcCount, npcOk, npcSame = { wcb_neutral = 0, wcb_focused = 0, wcb_smirk = 0, wcb_grit = 0 }, true, true
+	local N = 400
+	for seed = 1, N do
+		local g = seed % 2 + 1
+		local st = Looks.Random(seed * 131, g).face.style
+		npcOk = npcOk and npcCount[st] ~= nil
+		if npcCount[st] then
+			npcCount[st] += 1
+		end
+		npcSame = npcSame and Looks.Random(seed * 131, g).face.style == st
 	end
-	check("NPCs keep the built face", npcBuilt)
+	local mix = string.format("%d %d %d %d", npcCount.wcb_neutral, npcCount.wcb_focused, npcCount.wcb_smirk, npcCount.wcb_grit)
+	check("NPCs: always one of the four drawn faces", npcOk, mix)
+	check("NPCs: the face is deterministic per seed", npcSame)
+	check("NPCs: mostly neutral, then focused, smirk, grit (all four seen)", npcCount.wcb_neutral > npcCount.wcb_focused and npcCount.wcb_focused > npcCount.wcb_grit
+		and npcCount.wcb_smirk > npcCount.wcb_grit and npcCount.wcb_grit > 0 and math.abs(npcCount.wcb_neutral / N - 0.5) < 0.08, mix)
 end
 
 ------------------------------------------------------------------------
@@ -649,7 +695,16 @@ do
 	local h = model:FindFirstChild("Head")
 	local decal = h and h:FindFirstChild("face")
 	check("classic head swapped in", h and h.ClassName == "Part" and h:FindFirstChildOfClass("SpecialMesh") ~= nil)
-	check("no decal face: the built face", decal == nil and h and h:FindFirstChildOfClass("Decal") == nil)
+	-- the default look wears the drawn Boxer Neutral (a classic face.key is no decal of its own); two builds (gloves,
+	-- then wraps) leave exactly the one decal
+	local nDecals = 0
+	for _, d in ipairs(h and h:GetChildren() or {}) do
+		if d:IsA("Decal") then
+			nDecals += 1
+		end
+	end
+	check("default look: the drawn Boxer Neutral, one decal after a rebuild", decal ~= nil and nDecals == 1
+		and decal.Texture == "rbxassetid://" .. BodyTiers.Face("wcb_neutral", REAL).id, nDecals .. " " .. tostring(decal and decal.Texture))
 	check("no FaceKey attribute", model:GetAttribute("FaceKey") == nil)
 	check("head seated on the neck pivot", h and near(h:FindFirstChild("NeckRigAttachment").Position.Y, -0.5 * h.Size.Y, 1e-4))
 	check("tier 4 body (60)", model:GetAttribute("BodyTiers") == string.rep("4", 14), model:GetAttribute("BodyTiers"))
@@ -675,12 +730,13 @@ end
 
 
 ------------------------------------------------------------------------
--- The built face: rig, budget, FaceFX, workouts and damage
+-- The built face: rig, budget, FaceFX, workouts and damage. Dormant in the game (every boxer wears a drawn face);
+-- built here only through the test-only path: the data with no drawn face uploaded (NODRAWN, the emergency fallback)
 ------------------------------------------------------------------------
 do
 	local Builder = H.require("Builder")
 	local Looks = H.require("Looks")
-	BodyTiers.SetData(REAL)
+	BodyTiers.SetData(NODRAWN)
 	local function rigWithHead()
 		BuilderTiers.Reset()
 		BuilderTiers.Services = { AssetService = fakeAssets(), Content = Content }
@@ -890,59 +946,75 @@ do
 	check("dry: no face sweat folder", look:FindFirstChild("FaceSweat") == nil)
 	model:Destroy()
 
-	-- every creator slider and option still changes the built face (its min against its max; every option value
-	-- against the default): a signature of every face part (name, place, size, colour, transparency) and the skin
+	-- the face controls on the drawn face (the game's): every one the Creator still shows changes the drawn head (its
+	-- min against its max, every option value against the default, on any of a few skin-detail seeds), and every one
+	-- it hides (BodyTiers.BUILT_ONLY) does not. A signature of the head (size, colour, material) and every BoxerLook
+	-- part (name, place, size, colour, transparency)
+	BodyTiers.SetData(REAL)
+	local LookKit = { FaceShown = BodyTiers.FaceControlShown } -- (LookKit.FaceShown forwards here; LookKit needs the GUI)
 	local function sig(a)
 		local m = rigWithHead()
 		pcall(Builder.Cosmetics, m, a, build(30), nil, { hands = "gloves", detail = "full" })
 		local hd = m:FindFirstChild("Head")
-		local f = m:FindFirstChild("BoxerLook") and m.BoxerLook:FindFirstChild("Face")
-		local out = { tostring(hd.Material), string.format("%.4f", hd.Reflectance) }
-		for _, p in ipairs(f and f:GetDescendants() or {}) do
+		local out = { tostring(hd.Material), string.format("%.4f %.3f %.3f %.3f %.4f %.4f %.4f", hd.Reflectance, hd.Color.R, hd.Color.G, hd.Color.B,
+			hd.Size.X, hd.Size.Y, hd.Size.Z) }
+		for _, p in ipairs(m:FindFirstChild("BoxerLook") and m.BoxerLook:GetDescendants() or {}) do
 			if p:IsA("BasePart") then
 				local lp = hd.CFrame:PointToObjectSpace(p.Position)
 				table.insert(out, string.format("%s %.4f %.4f %.4f %.4f %.4f %.4f %.3f %.3f %.3f %.2f", p.Name, lp.X, lp.Y, lp.Z, p.Size.X, p.Size.Y, p.Size.Z,
 					p.Color.R, p.Color.G, p.Color.B, p.Transparency))
 			end
 		end
+		for _, d in ipairs(hd:GetChildren()) do
+			if d:IsA("Decal") then
+				table.insert(out, "Decal " .. tostring(d.Texture))
+			end
+		end
 		m:Destroy()
 		table.sort(out)
 		return table.concat(out, "|")
 	end
+	local function changes(key, v0, v1)
+		for _, seed in ipairs({ 7, 4242, 90001 }) do
+			local lo, hi = Looks.Defaults(1), Looks.Defaults(1)
+			lo.face.seed, hi.face.seed = seed, seed
+			lo.face[key], hi.face[key] = v0, v1
+			if sig(lo) ~= sig(hi) then
+				return true
+			end
+		end
+		return false
+	end
 	local base = Looks.Defaults(1)
-	local dead = {}
+	local deadShown, liveHidden = {}, {}
+	local function judge(key, label, live)
+		if LookKit.FaceShown(key) and not live then
+			table.insert(deadShown, label)
+		elseif not LookKit.FaceShown(key) and live then
+			table.insert(liveHidden, label)
+		end
+	end
 	for _, list in ipairs({ Looks.FaceSliders, Looks.EyeSliders, Looks.SkinSliders, Looks.WearSliders }) do
 		for _, sl in ipairs(list) do
-			local lo, hi = table.clone(base), table.clone(base)
-			lo.face, hi.face = table.clone(base.face), table.clone(base.face)
-			lo.face[sl.key], hi.face[sl.key] = sl.min, sl.max
-			if sig(lo) == sig(hi) then
-				table.insert(dead, sl.key)
-			end
+			judge(sl.key, sl.key, changes(sl.key, sl.min, sl.max))
 		end
 	end
-	local d0 = sig(base)
-	for _, opt in ipairs({ { "shape", Looks.FaceShapes }, { "browStyle", Looks.BrowStyles }, { "undertone", Looks.Undertones } }) do
+	for _, opt in ipairs({ { "shape", Looks.FaceShapes }, { "browStyle", Looks.BrowStyles }, { "undertone", Looks.Undertones }, { "noseType", Looks.NoseTypes } }) do
 		for _, v in ipairs(opt[2]) do
 			if v ~= base.face[opt[1]] then
-				local a = table.clone(base)
-				a.face = table.clone(base.face)
-				a.face[opt[1]] = v
-				if sig(a) == d0 then
-					table.insert(dead, opt[1] .. "=" .. v)
-				end
+				judge(opt[1], opt[1] .. "=" .. v, changes(opt[1], base.face[opt[1]], v))
 			end
 		end
 	end
-	for _, ec in ipairs({ { "eyeColor", 5 }, { "eyeColor2", 4 } }) do
-		local a = table.clone(base)
-		a.face = table.clone(base.face)
-		a.face[ec[1]] = ec[2]
-		if sig(a) == d0 then
-			table.insert(dead, ec[1])
-		end
-	end
-	check("every face slider / option changes the built face", #dead == 0, table.concat(dead, ", "))
+	judge("eyeColor", "eyeColor", changes("eyeColor", base.face.eyeColor, 5))
+	judge("eyeColor2", "eyeColor2", changes("eyeColor2", 0, 4))
+	check("drawn face: every face control the Creator shows changes it", #deadShown == 0, table.concat(deadShown, ", "))
+	check("drawn face: every control the Creator hides (built-face only) changes nothing on it", #liveHidden == 0, table.concat(liveHidden, ", "))
+	check("drawn face: the built-only controls are hidden", not LookKit.FaceShown("eyeSize") and not LookKit.FaceShown("browStyle")
+		and not LookKit.FaceShown("eyeColor") and LookKit.FaceShown("jawWidth") and LookKit.FaceShown("freckles") and LookKit.FaceShown("shape"))
+	BodyTiers.SetData(NODRAWN)
+	check("built fallback (no drawn face uploaded): the controls show again", LookKit.FaceShown("eyeSize") and LookKit.FaceShown("browStyle"))
+	BodyTiers.SetData(REAL)
 
 	------------------------------------------------------------------------
 	-- face styles: a drawn Boxer face (decal mode)
@@ -1104,21 +1176,83 @@ do
 	FaceFX.Update(1 / 30, tclock, dcam, nil, 99)
 	check("FaceFX decal: a hit flashes grit at once", FaceFX.Debug(dm).decal.texture == tex("wcb_grit"))
 	check("FaceFX decal: the server's texture is the chosen face", BodyTiers.FaceTexture(Head.FaceStyle(dm)) == tex("wcb_smirk"))
-	-- back to the built face: the decal goes, the rig is back
+	-- after a workout on the drawn face: road grime, a tier-up rebuild (applyLook: the 14 body parts swapped, the
+	-- face built again), the session's sweat, then a tier-down rebuild: exactly one face decal, no built part or rig
+	local DRAWN_TEX0 = {}
+	for _, k in ipairs(BodyTiers.STYLE_KEYS) do
+		DRAWN_TEX0[tex(k)] = true
+	end
+	dm:SetAttribute("Grime", 0.8)
+	local tiers0 = dm:GetAttribute("BodyTiers")
+	pcall(Builder.Cosmetics, dm, dapp, build(95), nil, { hands = "wraps", detail = "full" })
+	local tiers1 = dm:GetAttribute("BodyTiers")
+	Builder.SetSweat(dm, dapp, 0.85)
+	local wl = builtLeft(dm)
+	local wd = decals(dm:FindFirstChild("Head"))
+	check("drawn workout: the tier rebuild happened", tiers1 ~= nil and tiers1 ~= tiers0, tostring(tiers0) .. " -> " .. tostring(tiers1))
+	-- (the decal's Texture is FaceFX's mood swap on this client, the grit of the hit above: the decal's FaceStyle is
+	-- the chosen face the server put on)
+	check("drawn workout: exactly one face decal (the chosen face), no built parts or rig", #wd == 1 and wd[1]:GetAttribute("FaceStyle") == "wcb_smirk"
+		and DRAWN_TEX0[wd[1].Texture] and #wl == 0, #wd .. " " .. tostring(wd[1] and wd[1].Texture) .. " " .. table.concat(wl, ","))
+	pcall(Builder.Cosmetics, dm, dapp, build(8), nil, { hands = "gloves", detail = "medium" })
+	Builder.SetSweat(dm, dapp, 0)
+	wl, wd = builtLeft(dm), decals(dm:FindFirstChild("Head"))
+	check("drawn tier-down + detail change: one decal, no built parts", #wd == 1 and wd[1]:GetAttribute("FaceStyle") == "wcb_smirk"
+		and DRAWN_TEX0[wd[1].Texture] and #wl == 0, #wd .. " " .. table.concat(wl, ","))
+	-- a "built" look (an old save that skipped Sanitize) still wears the drawn face: the default Boxer Neutral
 	local bapp = table.clone(dapp)
 	bapp.face = table.clone(dapp.face)
 	bapp.face.style = "built"
 	pcall(Builder.Cosmetics, dm, bapp, build(30), nil, { hands = "gloves", detail = "full" })
-	local _, broles = faceParts(dm)
-	check("built again: no decal, the built rig back", #decals(dm:FindFirstChild("Head")) == 0 and broles.EyeL ~= nil and broles.UpperLip ~= nil
-		and Head.FaceStyle(dm) == nil)
+	local bl, bd = builtLeft(dm), decals(dm:FindFirstChild("Head"))
+	check("a built look: the drawn Boxer Neutral, no built rig", #bd == 1 and bd[1].Texture == tex("wcb_neutral") and #bl == 0
+		and Head.FaceStyle(dm) == "wcb_neutral", #bd .. " " .. table.concat(bl, ","))
 	dm:Destroy()
-	-- built mode is unchanged by the face style code: the same parts as a look with no style at all (an old save)
+	-- a look with no style (an old save) and a "built" look build the same face as Boxer Neutral
 	local plain = Looks.Defaults(1)
 	local nostyle = table.clone(plain)
 	nostyle.face = table.clone(plain.face)
 	nostyle.face.style = nil
-	check("built mode: an old save (no style) builds the same face", sig(plain) == sig(nostyle))
+	local builtOne = table.clone(plain)
+	builtOne.face = table.clone(plain.face)
+	builtOne.face.style = "built"
+	local sNeutral = sig(plain)
+	check("an old save (no style) and a built save build the Boxer Neutral face", plain.face.style == "wcb_neutral" and sig(nostyle) == sNeutral
+		and sig(builtOne) == sNeutral)
+
+	-- no built face part on any boxer: the player's looks (new, old save, built save, a woman), NPC looks
+	-- (Looks.Random, both genders: the gym crowd, opponents, the tutorial boxer) at every detail level, the Creator's
+	-- RANDOM look; every one wears exactly one drawn face decal of the four
+	local looks = {}
+	local function add(name, a)
+		table.insert(looks, { name, a })
+	end
+	add("new", Looks.Defaults(1))
+	add("new woman", Looks.Defaults(2))
+	local old1 = Looks.Defaults(1)
+	old1.face.style = nil
+	add("old save", Looks.Fill(old1))
+	add("built save (sanitized)", Looks.Sanitize({ face = { style = "built" } }, { gender = 2, face = { style = "built" } }))
+	for seed = 1, 10 do
+		add("NPC " .. seed, Looks.Random(seed * 977, seed % 2 + 1, { age = 20 + seed, class = 5 }))
+	end
+	local DRAWN_TEX = {}
+	for _, k in ipairs(BodyTiers.STYLE_KEYS) do
+		DRAWN_TEX[tex(k)] = true
+	end
+	local bad = {}
+	for i, e in ipairs(looks) do
+		local detail = ({ "full", "medium", "low" })[i % 3 + 1]
+		local m = rigWithHead()
+		local okB, errB = pcall(Builder.Cosmetics, m, e[2], build(20 + i * 4), nil, { hands = "gloves", detail = detail, mouthguard = true })
+		local left = builtLeft(m)
+		local ds = decals(m:FindFirstChild("Head"))
+		if not okB or #left > 0 or #ds ~= 1 or not DRAWN_TEX[ds[1].Texture] or Head.FaceStyle(m) == nil then
+			table.insert(bad, string.format("%s/%s: %s %d decals %s", e[1], detail, tostring(errB), #ds, table.concat(left, ",")))
+		end
+		m:Destroy()
+	end
+	check("no built face part on any player / NPC boxer: one drawn face each", #bad == 0, table.concat(bad, "; "))
 end
 
 print(string.format("test_bodytiers: %d passed, %d failed", pass, fail))
