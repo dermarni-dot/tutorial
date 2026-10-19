@@ -177,6 +177,11 @@ Node.__index = function(self, k)
 	if svc and svc[k] ~= nil then
 		return svc[k]
 	end
+	-- (a node may answer any other member itself, nil included: guisim's GuiService.SelectedObject)
+	local any = rawget(self, "_any")
+	if any then
+		return any(k)
+	end
 	error(string.format("%s is not a valid member of %s %q", tostring(k), rawget(self, "ClassName"), rawget(self, "Name")), 2)
 end
 Node.__tostring = function(self)

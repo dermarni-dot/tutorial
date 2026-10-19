@@ -23,7 +23,19 @@ local SUPER = {
 	Model = { "PVInstance" }, Folder = {}, Weld = { "JointInstance" }, Motor6D = { "JointInstance" },
 	Humanoid = {}, Decal = {}, SurfaceGui = { "LayerCollector" }, BillboardGui = { "LayerCollector" },
 	Workspace = { "Model", "PVInstance" }, Camera = {},
+	-- 2D GUI (guisim lays these out)
+	ScreenGui = { "LayerCollector", "GuiBase2d" }, LayerCollector = { "GuiBase2d" },
+	GuiObject = { "GuiBase2d" }, GuiButton = { "GuiObject", "GuiBase2d" },
+	Frame = { "GuiObject", "GuiBase2d" }, ScrollingFrame = { "GuiObject", "GuiBase2d" }, CanvasGroup = { "GuiObject", "GuiBase2d" },
+	ViewportFrame = { "GuiObject", "GuiBase2d" }, VideoFrame = { "GuiObject", "GuiBase2d" },
+	TextLabel = { "GuiObject", "GuiBase2d" }, ImageLabel = { "GuiObject", "GuiBase2d" }, TextBox = { "GuiObject", "GuiBase2d" },
+	TextButton = { "GuiButton", "GuiObject", "GuiBase2d" }, ImageButton = { "GuiButton", "GuiObject", "GuiBase2d" },
+	UIListLayout = { "UIGridStyleLayout", "UILayout", "UIComponent" }, UIGridLayout = { "UIGridStyleLayout", "UILayout", "UIComponent" },
+	UIPadding = { "UIComponent" }, UIScale = { "UIComponent" }, UICorner = { "UIComponent" }, UIStroke = { "UIComponent" },
+	UIGradient = { "UIComponent" }, UISizeConstraint = { "UIConstraint", "UIComponent" }, UITextSizeConstraint = { "UIConstraint", "UIComponent" },
+	UIAspectRatioConstraint = { "UIConstraint", "UIComponent" }, PlayerGui = { "BasePlayerGui" },
 }
+FE.SUPER = SUPER
 
 function FE.Signal()
 	local handlers = {}
@@ -169,7 +181,8 @@ function FE.new()
 			return rawget(o, "_class")
 		elseif k == "Position" then
 			local cf = rawget(o, "_props").CFrame
-			return cf and cf.Position or nil
+			-- (a GUI object's Position is its own UDim2)
+			return cf and cf.Position or rawget(o, "_props").Position
 		end
 		local v = rawget(o, "_props")[k]
 		if v ~= nil then
@@ -180,6 +193,11 @@ function FE.new()
 			if rawget(c, "_name") == k then
 				return c
 			end
+		end
+		-- (optional) computed members: E.lazyGet(o, k) (guisim: events, AbsoluteSize, TextBounds)
+		local lazy = E.lazyGet
+		if lazy then
+			return lazy(o, k)
 		end
 		return nil
 	end
@@ -194,6 +212,11 @@ function FE.new()
 			rawget(o, "_props").CFrame = cf and (CFrame.new(v) * cf.Rotation) or CFrame.new(v)
 		else
 			rawget(o, "_props")[k] = v
+		end
+		-- (optional) E.onSet(o, k, v): a property was written (guisim: the layout goes stale)
+		local hook = E.onSet
+		if hook then
+			hook(o, k, v)
 		end
 	end
 	Inst.__tostring = function(o)

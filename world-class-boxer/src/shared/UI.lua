@@ -1367,20 +1367,33 @@ function UI.Window(gui, name, w, h, title, opts)
 	end
 	-- short screens (phones in landscape) get a compact header and a window up to the screen's edges
 	local short = UI.CanvasSize(gui).Y < 560
-	local hy = short and UDim.new(1, -16) or UDim.new(0.92, 0)
+	-- a ScreenGui that ignores the top bar's inset (a full-screen layer: the shade covers the bar too) keeps
+	-- the window itself under the bar, where the engine's menu / chat buttons cannot sit on its title
+	local inset = 0
+	local layer = gui:IsA("LayerCollector") and gui or gui:FindFirstAncestorWhichIsA("LayerCollector")
+	if layer and layer:IsA("ScreenGui") and layer.IgnoreGuiInset then
+		local ok, top = pcall(function()
+			return (GuiService:GetGuiInset())
+		end)
+		if ok and typeof(top) == "Vector2" then
+			inset = math.ceil(top.Y / math.max(UI.ScaleOf(gui), 0.1))
+		end
+	end
+	local hy = short and UDim.new(1, -16 - inset) or UDim.new(0.92, -inset)
 	-- holder = the window's geometry; shadow layers and the panel live inside it
 	local holder = UI.Frame(shade, { Name = "Holder", BackgroundTransparency = 1, Size = UDim2.new(UDim.new(0.96, 0), hy), ZIndex = z })
+	local midY = UDim.new(0.5, math.floor(inset / 2))
 	if opts.side == "left" then
 		holder.AnchorPoint = Vector2.new(0, 0.5)
-		holder.Position = UDim2.new(0, 24, 0.5, 0)
+		holder.Position = UDim2.new(UDim.new(0, 24), midY)
 		holder.Size = UDim2.new(UDim.new(0.46, 0), hy)
 	elseif opts.side == "right" then
 		holder.AnchorPoint = Vector2.new(1, 0.5)
-		holder.Position = UDim2.new(1, -24, 0.5, 0)
+		holder.Position = UDim2.new(UDim.new(1, -24), midY)
 		holder.Size = UDim2.new(UDim.new(0.42, 0), hy)
 	else
 		holder.AnchorPoint = Vector2.new(0.5, 0.5)
-		holder.Position = UDim2.fromScale(0.5, 0.5)
+		holder.Position = UDim2.new(UDim.new(0.5, 0), midY)
 	end
 	UI.New("UISizeConstraint", { MaxSize = Vector2.new(w, h), MinSize = Vector2.new(math.min(w, 300), math.min(h, 220)), Parent = holder })
 	UI.Shadow(holder, UI.R.xl, 1)

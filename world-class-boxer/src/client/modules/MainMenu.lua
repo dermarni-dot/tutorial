@@ -46,6 +46,11 @@ local itemFrames = {}
 local indicator
 local scene
 local canvasW, canvasH = 1600, 900
+local topPad = 0 -- design px the engine's top bar takes (this ScreenGui ignores the inset): measure()
+-- how far a piece designed at y = base moves down to clear the top bar (0 where the design already does)
+local function topShift(base)
+	return math.max(0, topPad - base)
+end
 local intro = true -- the logo / menu entrance plays once per open (not on a rebuild)
 
 local function track(c)
@@ -55,6 +60,12 @@ end
 
 local function compact()
 	return canvasH < 680
+end
+
+-- how far the sub screens' layer sits below its design place to clear the engine's top bar (show() moves
+-- it; the screens leave that much more room at the bottom)
+local function screenShift()
+	return math.max(0, topPad - (compact() and 66 or 76))
 end
 
 ------------------------------------------------------------------------
@@ -350,7 +361,14 @@ local function buildBackdrop(layer)
 	showMotes()
 	track(Perf.Changed:Connect(showMotes))
 	local t0 = os.clock()
+	-- (30 updates a second: the motes drift a few px a second, the light leak slower still)
+	local acc = 0
 	track(RunService.RenderStepped:Connect(function(dt)
+		acc += dt
+		if acc < 1 / 30 then
+			return
+		end
+		dt, acc = acc, 0
 		local t = os.clock() - t0
 		for i = 1, shown do
 			local mo = motes[i]
@@ -371,7 +389,8 @@ end
 local function buildLogo(layer)
 	local small = compact()
 	-- on short screens the logo sits below the engine's top bar buttons (no kicker line)
-	local logo = UI.Frame(layer, { Name = "Logo", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 52 or 84, small and 60 or 74), Size = UDim2.fromOffset(640, small and 120 or 250) })
+	local logoY = small and 60 or 74
+	local logo = UI.Frame(layer, { Name = "Logo", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 52 or 84, logoY + topShift(logoY)), Size = UDim2.fromOffset(640, small and 120 or 250) })
 	local kicker = UI.Text(logo, "THE ROAD TO UNDISPUTED", { Name = "Kicker", Font = T.semi, TextSize = 15, TextColor3 = T.gold, Size = UDim2.new(1, 0, 0, 18),
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTransparency = 1, Visible = not small })
 	local world = UI.Title(logo, "WORLD CLASS", { Name = "World", TextSize = small and 32 or 64, Position = UDim2.fromOffset(small and -2 or -16, small and 0 or 22), Size = UDim2.new(1, 0, 0, small and 36 or 70),
@@ -469,18 +488,53 @@ local show -- forward
 local openScout -- forward
 
 local MENU_TOP_SMALL = 192 -- design y of the item list on a compact canvas (under the logo and tagline)
+local function menuTop()
+	local small = compact()
+	return (small and MENU_TOP_SMALL or 372) + topShift(small and 60 or 74)
+end
+-- a phone held in landscape has no room for eight fingertip-tall rows under the logo: on a short touch
+-- canvas the items go in two columns of rows a fingertip tall (UI.MinHit), and the profile card beside them
+-- narrows to keep clear of the second column
+local TWO_COL_W, TWO_COL_GAP = 220, 8
+local function twoColumns()
+	return compact() and UserInputService.TouchEnabled
+end
+-- (the profile / welcome card on the home screen: width and right margin)
+local function cardMetrics(w)
+	if twoColumns() then
+		local menuRight = 52 + 2 * TWO_COL_W + TWO_COL_GAP
+		return math.clamp(canvasW - menuRight - 24 - 24, 300, w), 24
+	end
+	return w, 48
+end
+-- row height, gap, title size, rows per column
 local function itemMetrics()
 	local small = compact()
 	local h, pad = small and 36 or 54, small and 2 or 4
+	if twoColumns() and #items > 0 then
+		local perCol = math.ceil(#items / 2)
+		local avail = canvasH - menuTop() - 8
+		h = math.max(h, UI.MinHit(layers.home))
+		if perCol * (h + pad) > avail then
+			h = math.max(28, math.floor(avail / perCol) - pad)
+		end
+		return h, pad, 24, perCol
+	end
 	if small and #items > 0 then
 		-- the shortest phones (667 x 375: a 481 design px canvas) fit every row above the bottom edge: the
 		-- rows give up a few px rather than push the last item (SETTINGS) off the screen
-		local avail = canvasH - MENU_TOP_SMALL - 8
+		local avail = canvasH - menuTop() - 8
 		if #items * (h + pad) > avail then
 			h = math.max(28, math.floor(avail / #items) - pad)
 		end
 	end
-	return h, pad, small and 24 or 36
+	return h, pad, small and 24 or 36, math.max(1, #items)
+end
+-- an item's place in the menu (design px): column-major, so W / S still walk the list in order
+local function itemPos(i)
+	local h, pad, _, perCol = itemMetrics()
+	local col, row = math.floor((i - 1) / perCol), (i - 1) % perCol
+	return col * (TWO_COL_W + TWO_COL_GAP), row * (h + pad)
 end
 
 local function selectItem(i, instant)
@@ -488,7 +542,7 @@ local function selectItem(i, instant)
 		return
 	end
 	sel = math.clamp(i, 1, #items)
-	local h, pad = itemMetrics()
+	local h = itemMetrics()
 	for j, fr in ipairs(itemFrames) do
 		local on = j == sel
 		local it = items[j]
@@ -497,10 +551,11 @@ local function selectItem(i, instant)
 		fr.title.TextColor3 = on and T.white or T.text
 		fr.index.TextColor3 = on and T.gold or T.dim
 		UI.Tween(fr.glow, { BackgroundTransparency = on and 0 or 1 }, instant and 0 or UI.Motion.base)
-		fr.desc.Visible = on
+		fr.desc.Visible = on and not fr.desc:GetAttribute("Off")
 	end
 	if indicator then
-		local goal = UDim2.fromOffset(0, (sel - 1) * (h + pad) + math.floor(h * 0.18))
+		local ix, iy = itemPos(sel)
+		local goal = UDim2.fromOffset(ix, iy + math.floor(h * 0.18))
 		if instant then
 			indicator.Position = goal
 		else
@@ -524,24 +579,38 @@ local function buildMenu(layer)
 			table.insert(items, copy)
 		end
 	end
-	local h, pad, size = itemMetrics() -- (after the list: a phone fits the rows to the canvas)
-	local top = small and MENU_TOP_SMALL or 372
-	local menu = UI.Frame(layer, { Name = "Menu", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 52 or 68, top), Size = UDim2.fromOffset(520, #items * (h + pad)) })
+	local h, pad, size, perCol = itemMetrics() -- (after the list: a phone fits the rows to the canvas)
+	local two = twoColumns()
+	local top = menuTop()
+	local rowW = two and TWO_COL_W or 520
+	local menu = UI.Frame(layer, { Name = "Menu", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 52 or 68, top),
+		Size = UDim2.fromOffset(two and (2 * TWO_COL_W + TWO_COL_GAP) or 520, perCol * (h + pad)) })
 	local list = UI.Frame(menu, { Name = "Items", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
-	UI.List(list, pad)
+	if not two then
+		UI.List(list, pad)
+	end
 	indicator = UI.Frame(menu, { Name = "Indicator", Size = UDim2.fromOffset(5, math.floor(h * 0.64)), BackgroundColor3 = T.gold, ZIndex = 3 })
 	UI.Gradient(indicator, { Color3.new(1, 1, 1), Color3.fromRGB(255, 160, 80) }, 90)
 	itemFrames = {}
 	for i, it in ipairs(items) do
-		local b = UI.New("TextButton", { Name = "Item_" .. it.id, Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, h), LayoutOrder = i, Parent = list })
-		local glow = UI.Frame(b, { Name = "Glow", Position = UDim2.fromOffset(14, 0), Size = UDim2.new(0.85, 0, 1, 0), BackgroundColor3 = T.gold, BackgroundTransparency = 1 })
+		local b = UI.New("TextButton", { Name = "Item_" .. it.id, Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0,
+			Size = UDim2.new(0, rowW, 0, h), LayoutOrder = i, Parent = list })
+		if two then
+			local x, y = itemPos(i)
+			b.Position = UDim2.fromOffset(x, y)
+		end
+		local glow = UI.Frame(b, { Name = "Glow", Position = UDim2.fromOffset(14, 0), Size = UDim2.new(two and 1 or 0.85, two and -14 or 0, 1, 0), BackgroundColor3 = T.gold, BackgroundTransparency = 1 })
 		UI.Gradient(glow, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.82), NumberSequenceKeypoint.new(0.6, 0.96), NumberSequenceKeypoint.new(1, 1) }))
 		local index = UI.Text(b, string.format("%02d", i), { Name = "Index", Face = "number", TextSize = small and 13 or 15, TextColor3 = T.dim, Position = UDim2.fromOffset(18, 0), Size = UDim2.fromOffset(26, h),
 			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
-		local title = UI.Title(b, it.label, { Name = "Title", TextSize = size, Position = UDim2.fromOffset(48, 0), Size = UDim2.fromOffset(300, h), TextYAlignment = Enum.TextYAlignment.Center,
-			TextTransparency = 1 })
+		local title = UI.Title(b, it.label, { Name = "Title", TextSize = size, Position = UDim2.fromOffset(48, 0), Size = UDim2.fromOffset(two and (rowW - 62) or 300, h),
+			TextYAlignment = Enum.TextYAlignment.Center, TextTransparency = 1 })
+		-- (two columns: no room for the line beside the item; a tap opens it straight away anyway)
 		local desc = UI.Text(b, it.locked and "Create your boxer first" or it.desc, { Name = "Desc", Font = T.font, TextSize = small and 11 or 13, TextColor3 = T.sub, Position = UDim2.fromOffset(small and 210 or 270, 0),
 			Size = UDim2.fromOffset(240, h), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, Visible = false })
+		if two then
+			desc:SetAttribute("Off", true)
+		end
 		if it.locked then
 			-- the lock rides on the title: a selected title slides 14 px right (keys, pad or hover select
 			-- locked items too), and a lock fixed to the row landed on its last letters (CHARACTER's R)
@@ -610,7 +679,8 @@ local function buildProfile(layer)
 	if not created() then
 		-- a new player: the call to action
 		local small = compact()
-		local card = UI.Frame(layer, { Name = "Welcome", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -48, 1, small and -48 or -64), Size = UDim2.fromOffset(440, 146), BackgroundColor3 = T.bg })
+		local cw, cr = cardMetrics(440)
+		local card = UI.Frame(layer, { Name = "Welcome", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -cr, 1, small and -24 or -64), Size = UDim2.fromOffset(cw, 146), BackgroundColor3 = T.bg })
 		UI.Glass(card, { transparency = 0.2 })
 		UI.Frame(card, { Name = "Stripe", Size = UDim2.new(0, 5, 1, -24), Position = UDim2.fromOffset(0, 12), BackgroundColor3 = T.gold })
 		UI.Kicker(card, "A NEW CAREER", T.gold, { Position = UDim2.fromOffset(22, 16), Size = UDim2.new(1, -44, 0, 18) })
@@ -621,8 +691,9 @@ local function buildProfile(layer)
 	end
 	local small = compact()
 	local id = P.identity or {}
-	local w, h = small and 400 or 470, small and 116 or 150
-	local card = UI.Frame(layer, { Name = "Profile", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -48, 1, small and -48 or -64), Size = UDim2.fromOffset(w, h), BackgroundColor3 = T.bg })
+	local w, cr = cardMetrics(small and 400 or 470)
+	local h = small and 116 or 150
+	local card = UI.Frame(layer, { Name = "Profile", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -cr, 1, small and -24 or -64), Size = UDim2.fromOffset(w, h), BackgroundColor3 = T.bg })
 	UI.Glass(card, { transparency = 0.18 })
 	local stripe = UI.Frame(card, { Name = "Stripe", Size = UDim2.new(0, 5, 1, -24), Position = UDim2.fromOffset(0, 12), BackgroundColor3 = T.red })
 	UI.Corner(stripe, 2)
@@ -685,14 +756,18 @@ end
 local function screenHeader(layer, kicker, title)
 	local small = compact()
 	-- below the engine's top bar buttons on phones
-	local head = UI.Frame(layer, { Name = "Header", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 52 or 72, small and 52 or 56), Size = UDim2.new(1, -150, 0, small and 64 or 86) })
-	local back = UI.Button(head, "", { Name = "Back", Size = UDim2.fromOffset(small and 40 or 46, small and 40 or 46), Position = UDim2.fromOffset(0, small and 14 or 20), BackgroundColor3 = T.panel2,
+	local headY = small and 52 or 56
+	-- (the back button a fingertip on touch: UI.MinHit)
+	local bs = math.max(small and 40 or 46, UI.MinHit(layer))
+	local head = UI.Frame(layer, { Name = "Header", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 52 or 72, headY), Size = UDim2.new(1, -150, 0, small and 64 or 86) })
+	local back = UI.Button(head, "", { Name = "Back", Size = UDim2.fromOffset(bs, bs), Position = UDim2.fromOffset(0, small and 14 or 20), BackgroundColor3 = T.panel2,
 		BackgroundTransparency = 0.25 }, function()
 		show("home")
 	end)
 	UI.Icon(back, "left", 14, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
-	UI.Kicker(head, kicker, T.gold, { Position = UDim2.fromOffset(small and 56 or 66, small and 6 or 12), Size = UDim2.fromOffset(600, 18) })
-	UI.Title(head, title, { TextSize = small and 38 or 52, Position = UDim2.fromOffset(small and 54 or 64, small and 22 or 30), Size = UDim2.new(1, -70, 0, small and 42 or 58) })
+	local dx = bs - (small and 40 or 46)
+	UI.Kicker(head, kicker, T.gold, { Position = UDim2.fromOffset((small and 56 or 66) + dx, small and 6 or 12), Size = UDim2.fromOffset(600, 18) })
+	UI.Title(head, title, { TextSize = small and 38 or 52, Position = UDim2.fromOffset((small and 54 or 64) + dx, small and 22 or 30), Size = UDim2.new(1, -70 - dx, 0, small and 42 or 58) })
 	return head
 end
 
@@ -703,7 +778,7 @@ local function screenCareer(layer)
 	screenHeader(layer, "MY CAREER", "FIGHTER CARD")
 	local w = math.min(1260, canvasW - (small and 104 or 144))
 	local top = small and 124 or 158
-	local h = math.min(640, canvasH - top - (small and 14 or 78))
+	local h = math.min(640, canvasH - top - (small and 14 or 78) - screenShift())
 	-- the photo is a posed portrait (FighterCard: gloves at the chest, chin level), not the live pose
 	local card = FighterCard.Full(layer, P, { Size = UDim2.fromOffset(w, h), Position = UDim2.fromOffset(small and 52 or 72, top), compact = small })
 	card.Name = "Card"
@@ -711,7 +786,8 @@ local function screenCareer(layer)
 	local actions = UI.Frame(layer, { Name = "Actions", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, small and 0 or 1),
 		Position = small and UDim2.new(1, -40, 0, 66) or UDim2.new(1, -72, 1, -28), Size = UDim2.fromOffset(760, small and 40 or 46) })
 	UI.List(actions, 10, true, Enum.HorizontalAlignment.Right)
-	local bh = small and 38 or 44
+	local bh = math.max(small and 38 or 44, UI.MinHit(layer))
+	actions.Size = UDim2.fromOffset(760, bh)
 	UI.PadStart(UI.Button(actions, "CAREER HUB", { Size = UDim2.fromOffset(small and 150 or 200, bh), BackgroundColor3 = T.gold, LayoutOrder = 3 }, function()
 		MainMenu.Close(function()
 			State.open.Hub("Career")
@@ -898,7 +974,7 @@ local function screenRankings(layer)
 	end
 	local listW = small and (canvasW - 104) or math.floor((canvasW - 144) * 0.6)
 	local listTop = top + 52
-	local panel = UI.Frame(layer, { Name = "Table", Position = UDim2.fromOffset(small and 52 or 72, listTop), Size = UDim2.fromOffset(listW, canvasH - listTop - (small and 20 or 70)) })
+	local panel = UI.Frame(layer, { Name = "Table", Position = UDim2.fromOffset(small and 52 or 72, listTop), Size = UDim2.fromOffset(listW, canvasH - listTop - (small and 20 or 70) - screenShift()) })
 	UI.Glass(panel, { transparency = 0.12 })
 	-- column captions
 	local cap = UI.Frame(panel, { BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 8), Size = UDim2.new(1, -32, 0, 18) })
@@ -910,7 +986,7 @@ local function screenRankings(layer)
 	UI.List(list, 4)
 	local scout
 	if not small then
-		scout = UI.Frame(layer, { Name = "Scout", Position = UDim2.fromOffset(72 + listW + 20, listTop), Size = UDim2.fromOffset(canvasW - 144 - listW - 20, canvasH - listTop - 70) })
+		scout = UI.Frame(layer, { Name = "Scout", Position = UDim2.fromOffset(72 + listW + 20, listTop), Size = UDim2.fromOffset(canvasW - 144 - listW - 20, canvasH - listTop - 70 - screenShift()) })
 		UI.Glass(scout, { transparency = 0.12 })
 		UI.Text(scout, "Select a fighter to see the scouting report.", { TextColor3 = T.sub, TextSize = 14, Position = UDim2.fromOffset(22, 22), Size = UDim2.new(1, -44, 0, 40), AutomaticSize = Enum.AutomaticSize.None })
 	end
@@ -990,7 +1066,7 @@ local function screenSettings(layer)
 	screenHeader(layer, "OPTIONS", "SETTINGS")
 	local top = small and 122 or 160
 	local w = math.min(1100, canvasW - (small and 104 or 144))
-	local panel = UI.Frame(layer, { Name = "Panel", Position = UDim2.fromOffset(small and 52 or 72, top), Size = UDim2.fromOffset(w, canvasH - top - (small and 20 or 80)) })
+	local panel = UI.Frame(layer, { Name = "Panel", Position = UDim2.fromOffset(small and 52 or 72, top), Size = UDim2.fromOffset(w, canvasH - top - (small and 20 or 80) - screenShift()) })
 	UI.Glass(panel, { transparency = 0.1 })
 	local body = UI.Scroll(panel, { Position = UDim2.fromOffset(24, 18), Size = UDim2.new(1, -48, 1, -36) })
 	settingsBody = body
@@ -1184,6 +1260,11 @@ local function measure()
 		abs = cam and cam.ViewportSize or Vector2.new(1600, 900)
 	end
 	canvasW, canvasH = abs.X / s, abs.Y / s
+	-- the top bar's buttons (the menu, chat): the logo and the screen headers start under them
+	local ok, inset = pcall(function()
+		return (GuiService:GetGuiInset())
+	end)
+	topPad = (ok and typeof(inset) == "Vector2") and math.ceil((inset.Y + 6) / math.max(s, 0.1)) or 0
 end
 
 -- a fast diagonal swoosh (red with a gold edge) across the screen between two views
@@ -1252,6 +1333,9 @@ function show(name, instant)
 		end
 		layers.home.Visible = false
 		UI.Clear(layers.screen)
+		-- the screens' headers (back button, title) start under the engine's top bar: the layer moves down
+		-- as far as it needs (their bottom margins take it)
+		layers.screen.Position = UDim2.fromOffset(0, screenShift())
 		layers.screen.Visible = true
 		local fn = SCREENS[name]
 		if fn then
@@ -1335,6 +1419,13 @@ local function onInput(input, gp)
 			selectItem(sel % #items + 1)
 		elseif k == K.Up or k == K.W or k == K.DPadUp then
 			selectItem((sel - 2) % #items + 1)
+		elseif twoColumns() and (LEFT[k] or RIGHT[k]) then
+			-- two columns (a phone with a pad or keys): left / right go across
+			local _, _, _, perCol = itemMetrics()
+			local j = sel + (RIGHT[k] and perCol or -perCol)
+			if j >= 1 and j <= #items then
+				selectItem(j)
+			end
 		elseif k == K.Return or k == K.Space or k == K.ButtonA then
 			local it = items[sel]
 			if it and it.id == "settings" then

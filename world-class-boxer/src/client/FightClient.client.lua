@@ -947,6 +947,24 @@ do
 				KM.specialPads[id] = e
 			end
 		end
+		-- the specials that do not fit their rows (fourteen on a phone-sized canvas): one "+N MORE" cap at
+		-- the end, with the Moves & Controls key that lists them all
+		local more = UI.Frame(ctlRows[3], { Name = "StripMore", BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 24), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 999,
+			Visible = false })
+		UI.List(more, 5, true)
+		local mcap = UI.Frame(more, { Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.panel2, BackgroundTransparency = 0, LayoutOrder = 1 })
+		UI.Corner(mcap, 4)
+		UI.Stroke(mcap, Color3.new(1, 1, 1), 1, 0.85)
+		local mt = UI.Text(mcap, "", { Font = T.semi, TextSize = 12, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Center,
+			TextWrapped = false })
+		UI.Pad(mt, 0, 6)
+		UI.BindHint(mt, function(m)
+			return capText({ "moveslist" }, m)
+		end)
+		table.insert(KM.specialCaps, { label = mt, ids = { "moveslist" } })
+		local mname = UI.Text(more, "", { Font = T.semi, TextSize = 12, TextColor3 = T.gold, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false,
+			LayoutOrder = 2 })
+		KM.stripMore = { frame = more, name = mname }
 		KM.packStrip()
 	end
 
@@ -961,22 +979,54 @@ do
 		local est = (#cap + #caption) * stripSize * 0.7
 		return math.max(est, UI.TextWidth(cap, stripSize, T.semi) + UI.TextWidth(caption, stripSize, T.semi)) + 17
 	end
-	local function pack(rows, entries, avail)
-		local row, used = 1, 0
-		for _, e in ipairs(entries) do
-			local w = e.w
-			if used > 0 and used + 12 + w > avail and row < #rows then
-				row += 1
-				used = 0
+	-- entries into up to maxRows rows (all of them when maxRows is nil: the last row takes the rest); with
+	-- maxRows, what does not fit is hidden (the strip's order kept) and the count returned, the last row
+	-- keeping lastRoom free for the "+N" cap once anything is left over
+	local function pack(rows, entries, avail, maxRows, lastRoom)
+		local function assign(room)
+			local out, row, used = {}, 1, 0
+			local limit = maxRows and math.min(maxRows, #rows) or #rows
+			for i, e in ipairs(entries) do
+				local cap = (maxRows and row == limit) and room or avail
+				if used > 0 and used + 12 + e.w > cap then
+					if row < limit then
+						row += 1
+						used = 0
+						cap = (maxRows and row == limit) and room or avail
+					end
+				end
+				if maxRows and used > 0 and used + 12 + e.w > cap then
+					for j = i, #entries do
+						out[j] = false
+					end
+					return out, row, #entries - i + 1
+				end
+				used += (used > 0 and 12 or 0) + e.w
+				out[i] = row
 			end
-			used += (used > 0 and 12 or 0) + w
-			if e.frame.Parent ~= rows[row] then
-				e.frame.Parent = rows[row]
+			return out, row, 0
+		end
+		local where, row, hidden = assign(avail)
+		if hidden > 0 and lastRoom then
+			where, row, hidden = assign(avail - lastRoom - 12)
+		end
+		for i, e in ipairs(entries) do
+			local r = where[i]
+			if r then
+				if e.frame.Parent ~= rows[r] then
+					e.frame.Parent = rows[r]
+				end
+				if not e.frame.Visible then
+					e.frame.Visible = true
+				end
+			elseif e.frame.Visible then
+				e.frame.Visible = false
 			end
 		end
 		for r, f in ipairs(rows) do
 			f.Visible = #entries > 0 and r <= row
 		end
+		return hidden, rows[row]
 	end
 	-- the HUD's scale from its canvas (on a resize the root's UIScale may not have caught up yet)
 	local function freshScale(canvas)
@@ -999,7 +1049,20 @@ do
 				table.insert(entries, { frame = e[1], w = stripW(capText({ e[2] }, mode), e[3]) })
 			end
 		end
-		pack(specRows, entries, avail)
+		-- the special moves: two rows at most, one on a short (phone-sized) canvas, the rest behind "+N MORE"
+		local more = KM.stripMore
+		local moreW = more and stripW(capText({ "moveslist" }, mode), "+14 MORE") or 0
+		local hidden, lastRow = pack(specRows, entries, avail, canvas.Y < 640 and 1 or 2, more and moreW or nil)
+		if more then
+			local on = hidden > 0
+			if on then
+				more.name.Text = string.format("+%d MORE", hidden)
+				if more.frame.Parent ~= lastRow then
+					more.frame.Parent = lastRow
+				end
+			end
+			more.frame.Visible = on
+		end
 	end
 	-- the reminder once the strip has faded
 	local controlsHint, controlsHintText = UI.Chip(hud, "H  ·  CONTROLS", T.sub, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 24, 1, -62), h = 24, TextSize = 13 })
@@ -1128,9 +1191,16 @@ do
 	local overlayFit = UI.New("UIScale", { Name = "Fit", Parent = overlay })
 	local OV = { order = 0, h = 0 }
 
+	-- between rounds on a touch screen the MOVES pad (the Moves & Controls menu) stands beside the scorecard,
+	-- at the left edge, and the card narrows to leave it the room
+	local OV_BESIDE = 2 * (16 + 96 + 12)
+	function KM.movesBeside()
+		local mp = KM.movesPad
+		return F.resting == true and mp ~= nil and mp.Visible
+	end
 	local function overlayWidth()
 		local canvas = UI.CanvasSize(hud)
-		return math.min(OVERLAY_W, canvas.X - 80) - 56
+		return math.min(OVERLAY_W, canvas.X - (KM.movesBeside() and OV_BESIDE or 80)) - 56
 	end
 
 	local function ovAdd(h)
@@ -1152,11 +1222,16 @@ do
 	local function fitOverlay()
 		local canvas = UI.CanvasSize(hud)
 		local top = L.frame.Visible and (10 + board.AbsoluteSize.Y / math.max(0.01, UI.ScaleOf(hud)) + 8) or math.floor(canvas.Y * 0.08) + 10
+		local w = KM.movesBeside() and -OV_BESIDE or -80
+		if overlay.Size.X.Offset ~= w then
+			overlay.Size = UDim2.new(1, w, 0, 0)
+		end
 		local bottom = (ticker.Visible and 66) or 14
 		local avail = math.max(140, canvas.Y - top - bottom)
 		overlayFit.Scale = math.clamp(avail / math.max(1, OV.h), canvas.Y < 640 and 0.94 or 0.7, 1)
 		overlay.Position = UDim2.new(0.5, 0, 0, math.floor(top + avail / 2))
 	end
+	KM.fitOverlay = fitOverlay
 	function overlayShow()
 		fitOverlay()
 		overlay.Visible = true
@@ -1418,8 +1493,11 @@ do
 		crowdLabel.Visible = not compact
 		local below = (compact and 6 or 10) + bh
 		hudTop = below
-		-- the key strip: its rows fit the width
+		-- the key strip: its rows fit the width; the touch specials page on a phone (re-placed on a change)
 		KM.packStrip()
+		if KM.placeSpecials and KM.specialsCompact ~= compact then
+			KM.placeSpecials()
+		end
 		-- the ticker's red tag fits its word at the size it really draws (the readability floor on a small
 		-- screen makes it wider than the design's 140; bold capitals run about 0.75 em)
 		local tagSize = math.max(13, UI.TextFloor(freshScale(canvas)))
@@ -1553,30 +1631,89 @@ do
 	end
 
 	-- the unlocked special moves (setTouchSpecials, from the fight's start message): a grid of gold pads left
-	-- of the punch cluster, up to three a row (four past nine moves), filled from the bottom right so a short list hugs the punches.
+	-- of the punch cluster, filled from the bottom right so a short list hugs the punches. A tablet takes up to
+	-- three a row (four past nine moves, so all fourteen stay four rows high); a phone (the compact HUD) keeps
+	-- them to two rows of four beside the punches, and past eight moves the last cell is a MORE pad that pages
+	-- through them (seven a page), so the full set never climbs over the middle of a small screen.
+	-- The pads are made once per list and only moved / shown when the page or the layout changes.
 	-- KM.paintSpecials dims a pad while the shared cooldown runs or the gas is not there for it
 	local touchSpecials
 	KM.specialPads = {}
+	KM.specialPage = 1
+	local specialList, specialMore = {}, nil
+	local function placeSpecials()
+		if not touchSpecials then
+			return
+		end
+		local list = specialList
+		local cell = math.max(50, UI.MinHit(touchPad))
+		local gap = 6
+		local compact = compactHud == true
+		KM.specialsCompact = compact
+		local perPage = #list
+		local paged = compact and #list > 8
+		if paged then
+			perPage = 7
+		end
+		local pages = math.max(1, math.ceil(#list / math.max(1, perPage)))
+		KM.specialPage = math.clamp(KM.specialPage, 1, pages)
+		local first = (KM.specialPage - 1) * perPage + 1
+		local last = math.min(#list, first + perPage - 1)
+		local cells = (last - first + 1) + (paged and 1 or 0)
+		local cols = compact and math.min(4, cells) or math.min(#list > 9 and 4 or 3, cells)
+		local rows = math.ceil(cells / math.max(1, cols))
+		touchSpecials.Size = UDim2.fromOffset(cols * cell + math.max(0, cols - 1) * gap, rows * cell + math.max(0, rows - 1) * gap)
+		-- rows from the bottom up; inside a row the moves read left to right, the row hugging the punches
+		local function at(i)
+			local row = math.floor((i - 1) / cols)
+			local inRow = math.min(cols, cells - row * cols)
+			local col = inRow - 1 - (i - 1) % cols
+			return UDim2.new(1, -col * (cell + gap), 1, -row * (cell + gap))
+		end
+		for i, id in ipairs(list) do
+			local e = KM.specialPads[id]
+			local b = e and e.pad
+			if b then
+				local on = i >= first and i <= last
+				if on then
+					b.Position = at(i - first + 1)
+					if b.Size.X.Offset ~= cell then
+						b.Size = UDim2.fromOffset(cell, cell)
+						local corner = b:FindFirstChildOfClass("UICorner")
+						if corner then
+							corner.CornerRadius = UDim.new(0, math.floor(cell / 2))
+						end
+					end
+				end
+				b.Visible = on
+			end
+		end
+		if specialMore then
+			specialMore.Visible = paged
+			if paged then
+				specialMore.Position = at(cells)
+				specialMore.Size = UDim2.fromOffset(cell, cell)
+				local lbl = specialMore:FindFirstChildOfClass("TextLabel")
+				if lbl then
+					lbl.Text = string.format("MORE\n%d/%d", KM.specialPage, pages)
+				end
+			end
+		end
+	end
+	KM.placeSpecials = placeSpecials
 	function setTouchSpecials(list)
 		table.clear(KM.specialPads)
 		if not touchSpecials then
 			return
 		end
 		UI.Clear(touchSpecials)
-		list = list or {}
+		specialMore = nil
+		specialList = list or {}
+		KM.specialPage = 1
 		local cell = math.max(50, UI.MinHit(touchPad))
-		local gap = 6
-		-- (more than nine: four a row, so the full set of fourteen stays four rows high)
-		local cols = math.min(#list > 9 and 4 or 3, #list)
-		local rows = math.ceil(#list / math.max(1, cols))
-		touchSpecials.Size = UDim2.fromOffset(cols * cell + math.max(0, cols - 1) * gap, rows * cell + math.max(0, rows - 1) * gap)
-		for i, id in ipairs(list) do
+		for i, id in ipairs(specialList) do
 			local a = Keymap.ById["special_" .. id]
-			-- rows from the bottom up; inside a row the moves read left to right, the row hugging the punches
-			local row = math.floor((i - 1) / cols)
-			local inRow = math.min(cols, #list - row * cols)
-			local col = inRow - 1 - (i - 1) % cols
-			local b = roundPad(touchSpecials, "Special_" .. id, a and a.touch or id:upper(), T.gold, cell, UDim2.new(1, -col * (cell + gap), 1, -row * (cell + gap)), Vector2.new(1, 1))
+			local b = roundPad(touchSpecials, "Special_" .. id, a and a.touch or id:upper(), T.gold, cell, UDim2.new(1, 0, 1, 0), Vector2.new(1, 1))
 			b.LayoutOrder = i
 			local lbl = b:FindFirstChildOfClass("TextLabel")
 			if lbl then
@@ -1589,6 +1726,22 @@ do
 			end)
 			KM.specialPads[id] = { pad = b, label = lbl, stroke = b:FindFirstChildOfClass("UIStroke") }
 		end
+		-- the page turner (a phone with more than eight moves)
+		specialMore = roundPad(touchSpecials, "SpecialsMore", "MORE", T.sub, cell, UDim2.new(1, 0, 1, 0), Vector2.new(1, 1))
+		local ml = specialMore:FindFirstChildOfClass("TextLabel")
+		if ml then
+			UI.SetTextSize(ml, 13)
+		end
+		specialMore.Visible = false
+		specialMore.MouseButton1Down:Connect(function()
+			KM.specialPage += 1
+			local pages = math.max(1, math.ceil(#specialList / 7))
+			if KM.specialPage > pages then
+				KM.specialPage = 1
+			end
+			placeSpecials()
+		end)
+		placeSpecials()
 		KM.paintSpecials()
 	end
 
@@ -1719,6 +1872,7 @@ do
 		movesPad = UI.Button(hud, "MOVES", { Name = "MovesPad", Size = UDim2.fromOffset(96, math.max(40, UI.MinHit(hud))), Position = UDim2.fromOffset(132, hudTop + 8),
 			BackgroundColor3 = T.bg, BackgroundTransparency = 0.35, TextSize = 15, Visible = false })
 		movesPad.Selectable = false
+		KM.movesPad = movesPad
 		UI.Stroke(movesPad, T.gold, 2, 0.2)
 		movesPad.MouseButton1Down:Connect(function()
 			openMoves()
@@ -1773,6 +1927,32 @@ do
 		if controlsHint.Visible ~= hint then
 			controlsHint.Visible = hint
 		end
+		-- the stance chips (GUARD UP / BODY SHOT ARMED): bottom centre, above the key strip while it is up; with
+		-- the touch pads a column in the free corner right of the defence pads (the bottom centre is the
+		-- special moves' and the punches')
+		local chips = KM.stanceChips
+		if chips then
+			local pos, column
+			if touchPad and touchPad.Visible then
+				pos, column = UDim2.new(0, 140, 1, -16), true
+			else
+				local y = -110
+				if show then
+					y = -(62 + math.ceil(controls.AbsoluteSize.Y / math.max(UI.ScaleOf(hud), 0.01)) + 8)
+				end
+				pos, column = UDim2.new(0.5, 0, 1, y), false
+			end
+			if chips.Position ~= pos then
+				chips.Position = pos
+				chips.AnchorPoint = column and Vector2.new(0, 1) or Vector2.new(0.5, 1)
+				local list = chips:FindFirstChildOfClass("UIListLayout")
+				if list then
+					list.FillDirection = column and Enum.FillDirection.Vertical or Enum.FillDirection.Horizontal
+					list.HorizontalAlignment = column and Enum.HorizontalAlignment.Left or Enum.HorizontalAlignment.Center
+				end
+				chips.AutomaticSize = column and Enum.AutomaticSize.XY or Enum.AutomaticSize.X
+			end
+		end
 		if touchPad then
 			local pads = live and touchUI
 			if touchPad.Visible ~= pads then
@@ -1784,11 +1964,18 @@ do
 			if movesPad.Visible ~= mp then
 				movesPad.Visible = mp
 			end
-			-- (this runs every frame on a touch screen: the pads move only when the HUD's top does)
-			if KM.padsTop ~= hudTop then
-				KM.padsTop = hudTop
-				movesPad.Position = UDim2.fromOffset(132, hudTop + 8)
+			-- (this runs every frame on a touch screen: the pads move only when the HUD's top does). Between
+			-- rounds MOVES stands beside the scorecard (fitOverlay narrows the card for it)
+			local beside = F.resting == true and overlay.Visible and movesPad.Visible
+			local key = beside and -1 or hudTop
+			if KM.padsTop ~= key then
+				KM.padsTop = key
+				movesPad.AnchorPoint = beside and Vector2.new(0, 0.5) or Vector2.zero
+				movesPad.Position = beside and UDim2.new(0, 16, 0.5, 0) or UDim2.fromOffset(132, hudTop + 8)
 				KM.sprintPad.Position = UDim2.fromOffset(236, hudTop + 8)
+				if overlay.Visible and KM.fitOverlay then
+					KM.fitOverlay()
+				end
 			end
 			-- the sprint toggle with the pads (live rounds only); the pads leaving the picture (a knockdown, the
 			-- bell, a key pressed on a tablet) let a sprint the toggle started go, as a released key would
@@ -1877,6 +2064,7 @@ do
 	local chips = UI.Frame(hud, { Name = "StanceChips", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -110), Size = UDim2.fromOffset(0, 30),
 		AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 1, ZIndex = 12 })
 	UI.List(chips, 8, true, Enum.HorizontalAlignment.Center)
+	KM.stanceChips = chips
 	local guardChip = UI.Chip(chips, "GUARD UP", T.blue, { order = 1, h = 30, TextSize = 15 })
 	local bodyChip = UI.Chip(chips, "BODY SHOT ARMED", T.orange, { order = 2, h = 30, TextSize = 15 })
 	guardChip.Name, bodyChip.Name = "GuardChip", "BodyChip"

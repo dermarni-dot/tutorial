@@ -140,10 +140,15 @@ local hudWarn = UI.Text(hud, "", { Font = T.semi, TextSize = 12, TextColor3 = T.
 -- quick actions under the plate
 local hudButtons = UI.Frame(gui, { Name = "HudButtons", BackgroundTransparency = 1, Size = UDim2.fromOffset(360, 40), Position = UDim2.fromOffset(20, 16), Visible = false })
 UI.List(hudButtons, 6, true)
+-- the quick actions are a fingertip tall on touch (UI.MinHit: 57 design px on a phone), 40 with a mouse
+local function hudBtnH()
+	return math.max(40, UI.MinHit(gui))
+end
 -- key: the keyboard key's cap; padKey: the gamepad button shown on the cap instead while a pad is in use
 -- (the button widens to fit the longer name, "D-DOWN")
 local function hudButton(text, key, w, color, fn, order, padKey)
-	local b = UI.Button(hudButtons, "", { Name = text, Size = UDim2.fromOffset(w, 40), BackgroundColor3 = color or T.panel2, BackgroundTransparency = color and 0 or 0.15, LayoutOrder = order }, fn)
+	local b = UI.Button(hudButtons, "", { Name = text, Size = UDim2.fromOffset(w, hudBtnH()), BackgroundColor3 = color or T.panel2, BackgroundTransparency = color and 0 or 0.15, LayoutOrder = order }, fn)
+	b:SetAttribute("BaseW", w)
 	local dark = color == T.gold
 	local label = UI.Text(b, text, { Face = "displayMed", TextSize = 17, TextColor3 = dark and T.ink or T.text, Size = UDim2.new(1, key and -26 or 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
 		TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
@@ -157,10 +162,15 @@ local function hudButton(text, key, w, color, fn, order, padKey)
 				if mode == "gamepad" and UI.Gamepad then
 					t = UI.Gamepad.Short(padKey)
 				end
-				local capW = math.max(20, 8 + 7 * #t)
-				cap.Size = UDim2.fromOffset(capW, 20)
-				label.Size = UDim2.new(1, -(capW + 6), 1, 0)
-				b.Size = UDim2.fromOffset(w + capW - 20, 40)
+				-- a touch screen has no key to name: the cap goes and the label takes the button
+				local touch = mode == "touch"
+				cap.Visible = not touch
+				local capW = touch and 0 or math.max(20, 8 + 7 * #t)
+				cap.Size = UDim2.fromOffset(math.max(capW, 20), 20)
+				label.Size = UDim2.new(1, touch and 0 or -(capW + 6), 1, 0)
+				local bw = touch and math.max(w - 20, UI.MinHit(gui)) or (w + capW - 20)
+				b:SetAttribute("BaseW", bw)
+				b.Size = UDim2.fromOffset(bw, hudBtnH())
 				return t
 			end)
 		end
@@ -200,8 +210,10 @@ local hudCompact = nil
 local function gymHint(mode)
 	if mode == "gamepad" and UI.Gamepad then
 		return string.format("Walk up to any gym station and press %s to train.  %s: Career Hub", UI.Gamepad.Label(Enum.KeyCode.ButtonX), UI.Gamepad.Short(Enum.KeyCode.DPadUp))
-	elseif mode == "touch" or hudCompact then
-		return "Walk up to a gym station and tap (or press E) to train."
+	elseif mode == "touch" then
+		return "Walk up to a gym station and tap its prompt to train."
+	elseif hudCompact then
+		return "Walk up to a gym station and press E (or tap) to train."
 	end
 	return "Walk up to any gym station and press E (or tap) to train."
 end
@@ -222,6 +234,16 @@ local function layoutHud()
 		condStrip.Visible = compact
 		UI.BindHint(hintText, gymHint)
 	end
+	-- (a rotation or the UI scale setting can change what a fingertip is in design px)
+	local bh = hudBtnH()
+	if hudButtons.Size.Y.Offset ~= bh then
+		hudButtons.Size = UDim2.fromOffset(360, bh)
+		for _, b in ipairs(hudButtons:GetChildren()) do
+			if b:IsA("GuiButton") then
+				b.Size = UDim2.fromOffset(b:GetAttribute("BaseW") or b.Size.X.Offset, bh)
+			end
+		end
+	end
 	if compact then
 		local bottom = 8
 		local ok, _, br = pcall(function()
@@ -233,7 +255,7 @@ local function layoutHud()
 		hudButtons.AnchorPoint = Vector2.new(0, 1)
 		hudButtons.Position = UDim2.new(0, 16, 1, -bottom)
 		hint.AnchorPoint = Vector2.new(0, 1)
-		hint.Position = UDim2.new(0, 16, 1, -(bottom + 40 + 8))
+		hint.Position = UDim2.new(0, 16, 1, -(bottom + bh + 8))
 	else
 		hudButtons.AnchorPoint = Vector2.new(0, 0)
 		hudButtons.Position = UDim2.new(0, 20, 0, 16 + hud.AbsoluteSize.Y / s + 10)
@@ -304,10 +326,14 @@ local function showResult(data)
 	end)
 	local col = res.outcome == "win" and T.gold or (res.outcome == "loss" and T.red or T.text)
 	local title = res.outcome == "win" and "VICTORY" or (res.outcome == "loss" and "DEFEAT" or "DRAW")
-	body.Position = UDim2.fromOffset(28, 150)
-	body.Size = UDim2.new(1, -56, 1, -222)
-	UI.Kicker(win, (data.venue and data.venue ~= "") and ("FIGHT NIGHT  ·  " .. data.venue) or "FIGHT NIGHT", T.sub, { Position = UDim2.fromOffset(28, 22), Size = UDim2.new(1, -56, 0, 18) })
-	local big = UI.Title(win, title, { TextSize = 84, TextColor3 = col, Position = UDim2.fromOffset(24, 38), Size = UDim2.new(1, -48, 0, 88), TextTransparency = 1 })
+	-- a phone's window is short: a smaller headline leaves the scorecards and stats the room
+	local short = UI.CanvasSize(gui).Y < 560
+	local bodyTop = short and 108 or 150
+	body.Position = UDim2.fromOffset(28, bodyTop)
+	body.Size = UDim2.new(1, -56, 1, -(bodyTop + 72))
+	UI.Kicker(win, (data.venue and data.venue ~= "") and ("FIGHT NIGHT  ·  " .. data.venue) or "FIGHT NIGHT", T.sub, { Position = UDim2.fromOffset(28, short and 16 or 22), Size = UDim2.new(1, -120, 0, 18) })
+	local big = UI.Title(win, title, { TextSize = short and 54 or 84, TextColor3 = col, Position = UDim2.fromOffset(24, short and 30 or 38), Size = UDim2.new(1, -48, 0, short and 58 or 88),
+		TextTransparency = 1 })
 	UI.Tween(big, { TextTransparency = 0 }, UI.Motion.slow)
 	if res.outcome == "win" then
 		-- a gradient multiplies the text colour: white text takes the gold ramp as is
@@ -315,7 +341,7 @@ local function showResult(data)
 		UI.Gradient(big, { Color3.fromRGB(255, 240, 190), T.gold, T.goldDeep }, 90)
 	end
 	UI.Text(win, string.format("%s  ·  ROUND %d  ·  vs %s", string.upper(METHOD[res.method] or tostring(res.method)), res.round or 0, string.upper(data.opp or "?")),
-		{ Font = T.semi, TextSize = 15, TextColor3 = T.text, Position = UDim2.fromOffset(28, 122), Size = UDim2.new(1, -56, 0, 20), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
+		{ Font = T.semi, TextSize = 15, TextColor3 = T.text, Position = UDim2.fromOffset(28, short and 84 or 122), Size = UDim2.new(1, -56, 0, 20), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
 			TextTruncate = Enum.TextTruncate.AtEnd })
 	if res.reason then
 		UI.Line(body, res.reason, { TextColor3 = T.sub, TextSize = 14 })
@@ -360,7 +386,8 @@ local function showResult(data)
 		local bigNote = n:find("CHAMPION") or n:find("PRO") or n:find("LEGEND") or n:find("TOP 10") or n:find("Promoted") or n:find("SPECIAL MOVE")
 		UI.Line(body, n, { TextColor3 = bigNote and T.gold or T.text, Font = bigNote and T.semi or T.font, TextSize = 14 })
 	end
-	UI.PadStart(UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 260, 0, 48), Position = UDim2.new(0.5, -130, 1, -62), BackgroundColor3 = T.gold }, close))
+	local cbh = math.max(48, UI.MinHit(win))
+	UI.PadStart(UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 260, 0, cbh), Position = UDim2.new(0.5, -130, 1, -(14 + cbh)), BackgroundColor3 = T.gold }, close))
 end
 State.open.Result = showResult
 
@@ -407,7 +434,8 @@ local function showSparResult(data)
 	for _, n in ipairs(tr.notes or {}) do
 		UI.Line(body, n, { TextColor3 = n:find("INJURY") and T.red or T.sub, TextSize = 13 })
 	end
-	UI.PadStart(UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 240, 0, 46), Position = UDim2.new(0.5, -120, 1, -58), BackgroundColor3 = T.gold }, close))
+	local cbh = math.max(46, UI.MinHit(win))
+	UI.PadStart(UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 240, 0, cbh), Position = UDim2.new(0.5, -120, 1, -(12 + cbh)), BackgroundColor3 = T.gold }, close))
 end
 
 State.FightRemote.OnClientEvent:Connect(function(msg)
@@ -448,7 +476,8 @@ local function showRetired()
 		UI.Line(c, "The boxing world honors you as one of the all-time greats. Welcome to the Hall of Fame.", { TextColor3 = T.gold, Font = T.semi })
 	end
 	Hub.LegacyBody(body, res.legacy, res.pastCareers)
-	local newCareer = UI.Button(win, "START A NEW CAREER", { Size = UDim2.new(0, 300, 0, 48), Position = UDim2.new(0.5, -150, 1, -62), BackgroundColor3 = T.gold }, function()
+	local nbh = math.max(48, UI.MinHit(win))
+	local newCareer = UI.Button(win, "START A NEW CAREER", { Size = UDim2.new(0, 300, 0, nbh), Position = UDim2.new(0.5, -150, 1, -(14 + nbh)), BackgroundColor3 = T.gold }, function()
 		local r = State.req("NewCareer")
 		if r.ok then
 			shade:Destroy()
@@ -463,6 +492,7 @@ end
 ------------------------------------------------------------------------
 local menuShownOnce = false
 local lastFlag
+local hubShownKey = nil -- the profile / state the open hub was last rebuilt for
 -- the server is retrying a failed DataStore read: say so once (the career is not lost)
 local loadRetryShown = false
 local function refresh()
@@ -563,8 +593,14 @@ local function refresh()
 		end
 	end
 	updateDaylight(P)
+	-- the hub is rebuilt (hundreds of GUI objects) for a new profile or a new busy / fight state, not for a
+	-- refresh that only re-checks the HUD's visibility (a window opening or closing: State.Refresh)
 	if Hub.IsOpen() and not Activities.Busy() then
-		Hub.Render()
+		local key = tostring(P) .. "|" .. tostring(busy) .. "|" .. tostring(fight)
+		if key ~= hubShownKey then
+			hubShownKey = key
+			Hub.Render()
+		end
 	end
 end
 

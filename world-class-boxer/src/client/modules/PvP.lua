@@ -8,6 +8,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
 
 local player = Players.LocalPlayer
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -512,8 +513,8 @@ end
 ------------------------------------------------------------------------
 local panelShade, panelBody
 -- fills `body` (a list container) with the record card, FIND MATCH and the boxers in the server
-function PvP.RenderInto(body, isStale)
-	local data = State.req("GetPvP")
+function PvP.RenderInto(body, isStale, data)
+	data = data or State.req("GetPvP")
 	if not body.Parent or (isStale and isStale()) then
 		return
 	end
@@ -541,7 +542,7 @@ function PvP.RenderInto(body, isStale)
 	UI.Line(card, string.format("PVP RECORD  %d-%d-%d  ·  %d KO", me.w or 0, me.l or 0, me.d or 0, me.ko or 0), { Face = "displayMed", TextSize = 22, Name = "Record" })
 	UI.Line(card, string.format("Rating %d (%s)  ·  peak %d  ·  %d ranked bouts  ·  %d spars", me.rating or 1000, tostring(me.rank or ""), me.peak or me.rating or 1000, me.bouts or 0, me.spars or 0),
 		{ TextColor3 = T.sub, TextSize = 14, Name = "Rating" })
-	local row = UI.Row(body, 48)
+	local row = UI.Row(body, math.max(48, UI.MinHit(body)))
 	local find = UI.Button(row, PvP.state.queued and "LEAVE QUEUE" or "FIND MATCH  (RANKED, 3 RDS)", { Name = "FindMatch", Size = UDim2.new(0, 320, 1, 0), BackgroundColor3 = PvP.state.queued and T.panel2 or T.gold,
 		TextColor3 = PvP.state.queued and T.text or T.ink }, function()
 		local r = State.req("PvPQueue", not PvP.state.queued)
@@ -573,7 +574,7 @@ function PvP.RenderInto(body, isStale)
 		UI.Line(c, string.format("%s  (@%s)  ·  %s", tostring(p.boxer), tostring(p.name), tostring(p.rank or "")), { Font = T.semi, TextSize = 15 })
 		UI.Line(c, string.format("Rating %d  ·  PvP %s%s", p.rating or 1000, tostring(p.record or "0-0-0"), p.available and "" or ("  ·  " .. string.upper(tostring(p.why or "busy")))),
 			{ TextColor3 = p.available and T.sub or T.orange, TextSize = 13 })
-		local btns = UI.Row(c, 40)
+		local btns = UI.Row(c, math.max(40, UI.MinHit(c)))
 		local function btn(name, text, color, mode, rounds)
 			local b = UI.Button(btns, text, { Name = name, Size = UDim2.new(0, 150, 1, 0), BackgroundColor3 = p.available and color or T.panel2 }, function()
 				if p.available then
@@ -622,7 +623,7 @@ function PvP.Open()
 		while panelShade == shade and shade.Parent do
 			task.wait(4)
 			if panelShade == shade and shade.Parent and UI.InputMode() ~= "gamepad" then
-				PvP.Refresh()
+				PvP.Refresh(true)
 			end
 		end
 	end)
@@ -636,21 +637,47 @@ function PvP.Toggle()
 	end
 end
 
+-- the panel's content again from the server's view. The old content stays up while the request is out (no
+-- empty panel for a round trip) and the list keeps its scroll; poll = the panel's own 4 s refresh, which
+-- leaves the panel alone when nothing it shows has changed
 local refreshing = false
-function PvP.Refresh()
+local shownKey = nil
+function PvP.Refresh(poll)
 	if not (panelBody and panelBody.Parent) or refreshing then
 		return
 	end
 	refreshing = true
 	local body = panelBody
+	local data = State.req("GetPvP")
+	if body ~= panelBody or not body.Parent then
+		refreshing = false
+		return
+	end
+	local okKey, key = pcall(function()
+		return HttpService:JSONEncode(data) .. tostring(PvP.state.queued) .. tostring(PvP.state.outgoing ~= nil)
+	end)
+	key = okKey and key or nil
+	if poll and key ~= nil and key == shownKey then
+		refreshing = false
+		return
+	end
+	shownKey = key
+	local scroll = body:IsA("ScrollingFrame") and body.CanvasPosition or nil
 	for _, c in ipairs(body:GetChildren()) do
 		if c:IsA("GuiObject") then
 			c:Destroy()
 		end
 	end
-	local ok, err = pcall(PvP.RenderInto, body)
+	local ok, err = pcall(PvP.RenderInto, body, nil, data)
 	if not ok then
 		warn("[PvP]", err)
+	end
+	if scroll then
+		task.defer(function()
+			if body.Parent then
+				body.CanvasPosition = scroll
+			end
+		end)
 	end
 	refreshing = false
 end

@@ -1838,6 +1838,12 @@ function Hub.Open(which)
 	content = UI.Scroll(body, { Name = "Content", Position = UDim2.new(0, navW + (rail and 14 or 24), 0, 0), Size = UDim2.new(1, -(navW + (rail and 14 or 24)), 1, 0) })
 	-- the screen crosses the phone / desktop line (rotation, a resized window): rebuild for it
 	local sizeConn
+	-- (let go with the window: a closed hub keeps no listener on the root)
+	shade.Destroying:Connect(function()
+		if sizeConn then
+			sizeConn:Disconnect()
+		end
+	end)
 	sizeConn = State.gui:GetAttributeChangedSignal("UIScale"):Connect(function()
 		if not (shade and shade.Parent) then
 			sizeConn:Disconnect()
