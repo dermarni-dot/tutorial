@@ -101,6 +101,30 @@
    "name": "KO",
    "file": "face_ko.png",
    "creator": false
+  },
+  {
+   "key": "wcb_neutral",
+   "name": "Boxer Neutral",
+   "file": "face_wcb_neutral.png",
+   "creator": true
+  },
+  {
+   "key": "wcb_focused",
+   "name": "Boxer Focused",
+   "file": "face_wcb_focused_v2.png",
+   "creator": true
+  },
+  {
+   "key": "wcb_smirk",
+   "name": "Boxer Smirk",
+   "file": "face_wcb_smirk_v2.png",
+   "creator": true
+  },
+  {
+   "key": "wcb_grit",
+   "name": "Boxer Grit",
+   "file": "face_wcb_grit_v2.png",
+   "creator": true
   }
  ],
  "default": "smile",

@@ -17,6 +17,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Looks = require(Shared:WaitForChild("Looks"))
+-- the face styles (built / the drawn Boxer faces) the face page offers
+local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
 local UI = require(Shared:WaitForChild("UI"))
 local State = require(script.Parent:WaitForChild("State"))
@@ -596,6 +598,31 @@ local function pageFace()
 	if avatarToggle() then
 		UI.Line(body, "The face below is used when your avatar has no face of its own.", { TextColor3 = T.sub, TextSize = 13 })
 	end
+	-- the face style: the built face (default) or a drawn Boxer face (BodyTiers.FaceStyles: only the uploaded ones)
+	local styles = BodyTiers.FaceStyles()
+	if #styles > 1 then
+		UI.Header(body, "FACE STYLE")
+		local names, keys = {}, {}
+		for _, st in ipairs(styles) do
+			names[st.key] = st.name
+			table.insert(keys, st.key)
+		end
+		local cur = BodyTiers.SanitizeFaceStyle(f.style, nil)
+		chips(keys, cur, 3, function(k)
+			if k == cur then
+				return
+			end
+			pushUndo(nil)
+			f.style = k
+			previewHead()
+			render()
+		end, function(k)
+			return names[k] or k
+		end)
+		if cur ~= BodyTiers.BUILT_STYLE then
+			UI.Line(body, "A drawn face: its expression changes with the fight (focused, grit, smirk). The shape and skin below still apply; the eye, brow, nose and lip sliders only shape the Built face.", { TextColor3 = T.sub, TextSize = 13 })
+		end
+	end
 	UI.Header(body, "START FROM A FACE")
 	local items = {}
 	for _, p in ipairs(LookKit.FacePresets) do
@@ -1119,6 +1146,7 @@ local RESET = {
 	end,
 	Face = function()
 		applyFacePreset(LookKit.FacePresets[1])
+		C.look.face.style = BodyTiers.BUILT_STYLE
 		return true
 	end,
 	["Skin & Eyes"] = function()

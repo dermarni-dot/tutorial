@@ -229,6 +229,8 @@ local function headSig(model, app, build, opts, name)
 			guard = opts.mouthguard and (at.mouthguard or true) or false,
 			guardBlood = opts.mouthguard and dmg ~= nil and (tonumber(dmg.lip) or 0) > 0.6 or false,
 			avatar = avFace,
+			-- the face style (look.face.style): the built face or a drawn Boxer face decal (an id 0 reads as built)
+			style = BodyTiers.DrawnStyleOf(app) or BodyTiers.BUILT_STYLE,
 		}
 		if type(Head.FaceSigParts) == "function" then
 			local ok, parts = pcall(Head.FaceSigParts, app)
@@ -237,8 +239,10 @@ local function headSig(model, app, build, opts, name)
 			end
 		end
 	end
+	-- (the beard sits its moustache over the mouth of the face style: the drawn style keys it too)
 	return Kit.sig("HD4", name, app.gender, app.skin, app.height, app.face, hair, beard, app.battle, o,
-		math.floor(fat + 0.5), head and head.Size or false, Config.BaldMode, extra, name == "Hair" and avHair or false)
+		math.floor(fat + 0.5), head and head.Size or false, Config.BaldMode, extra, name == "Hair" and avHair or false,
+		name == "Beard" and (BodyTiers.DrawnStyleOf(app) or BodyTiers.BUILT_STYLE) or false)
 end
 
 -- The head is scaled (HeadScale), and BuilderHead swaps the engine's default head (a MeshPart) for the classic
@@ -360,6 +364,9 @@ local function faceStep(model, app, build, opts)
 		headStep(model, app, build, opts, "Face")
 	end
 	pcall(seatHead, model)
+	-- a drawn face style's decal stays on the head when the face is served from cache (an ApplyDescription or a
+	-- head swap since may have replaced it); a built face: nothing
+	step("FaceDecal", Head.EnsureFaceDecal, model)
 	-- avatar hair accessories put on before a head swap hang on the old head: weld them to the new one
 	step("Accessories", Hair.FixAccessories, model)
 end

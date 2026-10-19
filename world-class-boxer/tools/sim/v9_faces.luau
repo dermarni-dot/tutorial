@@ -13,7 +13,11 @@
 -- (shape, CFrame, size, colour, material, reflectance, transparency) with the tier meshes and the classic head (and
 -- its decal on an older src).
 --
---   lune run tools/sim/v9_faces.luau [--out DIR] [--src DIR] [--only id,id] [--detail full|medium|low]
+--   lune run tools/sim/v9_faces.luau [--out DIR] [--src DIR] [--only id,id] [--detail full|medium|low] [--set wcb]
+-- --set wcb: only the drawn Boxer face style entries (look.face.style, the head's front decal; previews/final/v9/wcb_faces):
+-- light / mid / dark skin, the four faces, the smallest / default / largest head (female Lean, male Athletic, male
+-- Heavyweight), the mood swaps through FaceFX (guard, effort, happy, KO), damage, the post-workout sweat and grime,
+-- and the creator's choice (Built and the four on one boxer)
 local fs = require("@lune/fs")
 local task = require("@lune/task")
 local process = require("@lune/process")
@@ -129,6 +133,40 @@ for _, id in ipairs({ "m_classic", "m_chiselled", "f_heart", "m_babyface" }) do
 	entry(byId[id], "workout", { workout = true })
 end
 entry(byId.m_classic, "workoutRoad", { workout = true, grime = 0.7 })
+-- the drawn Boxer face styles (only with --set wcb)
+local WCB = {
+	{ id = "wcb_light", label = "Boxer Neutral, light skin", g = 1, tier = 2, skin = 2, preset = "Classic", style = "wcb_neutral" },
+	{ id = "wcb_mid", label = "Boxer Neutral, mid skin", g = 1, tier = 2, skin = 6, preset = "Classic", style = "wcb_neutral" },
+	{ id = "wcb_dark", label = "Boxer Neutral, dark skin", g = 1, tier = 2, skin = 11, preset = "Classic", style = "wcb_neutral" },
+	{ id = "wcb_focused", label = "Boxer Focused", g = 1, tier = 2, skin = 6, preset = "Classic", style = "wcb_focused" },
+	{ id = "wcb_smirk", label = "Boxer Smirk", g = 1, tier = 2, skin = 6, preset = "Classic", style = "wcb_smirk" },
+	{ id = "wcb_grit", label = "Boxer Grit", g = 1, tier = 2, skin = 6, preset = "Classic", style = "wcb_grit" },
+	{ id = "wcb_minhead", label = "smallest head (female, Lean)", g = 2, tier = 2, skin = 8, preset = "Classic", style = "wcb_neutral", frame = "Lean" },
+	{ id = "wcb_maxhead", label = "largest head (Heavyweight)", g = 1, tier = 4, skin = 4, preset = "Classic", style = "wcb_neutral", frame = "Heavyweight Build" },
+	{ id = "wcb_beard", label = "Boxer Smirk + short boxed beard", g = 1, tier = 3, skin = 9, preset = "Rugged", style = "wcb_smirk", beard = { style = "Short Boxed", growth = 0.6 } },
+	{ id = "wcb_built", label = "Built (the default)", g = 1, tier = 2, skin = 6, preset = "Classic", style = "built" },
+}
+local WCB_ENTRIES = {}
+do
+	local n0 = #ENTRIES
+	for _, l in ipairs(WCB) do
+		byId[l.id] = l
+		entry(l, "rest")
+	end
+	for _, ex in ipairs({ { "guard", { guard = true } }, { "effort", { expr = "effort" } }, { "happy", { expr = "happy" } }, { "anger", { expr = "anger" } }, { "ko", { expr = "ko" } } }) do
+		entry(byId.wcb_mid, ex[1], ex[2])
+	end
+	for _, d in ipairs({ "Moderate", "Heavy", "Severe" }) do
+		entry(byId.wcb_mid, "dmg" .. d, { damage = d })
+	end
+	entry(byId.wcb_dark, "dmgSevere", { damage = "Severe" })
+	entry(byId.wcb_light, "dmgHeavy", { damage = "Heavy" })
+	entry(byId.wcb_mid, "workout", { workout = true, grime = 0.7 })
+	entry(byId.wcb_dark, "workout", { workout = true, grime = 0.7 })
+	for i = n0 + 1, #ENTRIES do
+		WCB_ENTRIES[ENTRIES[i].id] = true
+	end
+end
 -- the walkout robe on every tier, the frames and the heights (body views; clearance metrics in the report)
 local ROBES = {
 	{ id = "robe_t1_lean_62", g = 1, tier = 1, skin = 6, frame = "Lean", height = 62, robe = "Classic" },
@@ -171,10 +209,20 @@ if okGear and type(BuilderGear) == "table" and BuilderGear.SetData then
 end
 local REAL = BodyTiers.Data()
 
+-- each uploaded face's local PNG (faces.json names the file: the drawn Boxer faces are versioned, face_<key>_v2.png)
 local FACE_FILES = {}
+local faceFile = {}
+do
+	local okJ, fj = pcall(function()
+		return require("@lune/serde").decode("json", fs.readFile(root .. "/tools/body/out/faces/faces.json"))
+	end)
+	for _, f in ipairs(okJ and fj.faces or {}) do
+		faceFile[f.key] = f.file
+	end
+end
 for _, f in ipairs(REAL.faces or {}) do
 	if f.id and f.id ~= 0 then
-		FACE_FILES["rbxassetid://" .. f.id] = root .. "/tools/body/out/faces/face_" .. f.key .. ".png"
+		FACE_FILES["rbxassetid://" .. f.id] = root .. "/tools/body/out/faces/" .. (faceFile[f.key] or ("face_" .. f.key .. ".png"))
 	end
 end
 
@@ -424,6 +472,9 @@ local function appFor(L)
 		app.beard = { style = L.beard.style, growth = L.beard.growth }
 	end
 	app.battle = L.battle
+	if L.style then
+		app.face.style = L.style
+	end
 	if L.frame then
 		app.body.frame = L.frame
 	end
@@ -443,6 +494,9 @@ local report = {}
 
 for _, e in ipairs(ENTRIES) do
 	if only and not only[e.id] and not only[e.look.id] then
+		continue
+	end
+	if (args.set == "wcb") ~= (WCB_ENTRIES[e.id] == true) then
 		continue
 	end
 	local L = e.look
@@ -528,6 +582,8 @@ for _, e in ipairs(ENTRIES) do
 		-- the client: FaceFX on the face rig (1.5 s of virtual time at 30 Hz), the camera 3 studs in front
 		if e.expr == "ko" then
 			model:SetAttribute("Guard", "down")
+		elseif e.guard then
+			model:SetAttribute("Guard", "up")
 		end
 		if e.expr then
 			model:SetAttribute("Expr", e.expr)

@@ -10,13 +10,21 @@
 --  * expressions: Config.Expressions from the Expr attribute (ExprPreview wins on the local
 --    character), blended smoothly; transient pain / effort / shout layers from the Animator;
 --    mouth breathing from Stam / Effort; temple / forehead veins on anger, effort and strain
+--  * drawn face styles (look.face.style, BuilderHead: the head's Decal "face", tag FaceDecal, the Face folder's
+--    FaceStyle attribute): no rig, the four drawn Boxer faces swap as one set by mood (BodyTiers.STYLE_MOODS: neutral
+--    the baseline and the chosen face the resting face, focused on guard / attack / training, grit on effort / hurt /
+--    anger, smirk on a taunt / happy / confident, neutral when KO'd, dazed or spent), written to the decal's Texture
+--    on this client only (the server's Texture stays the chosen face, put back out of range)
 -- Writes only Motor6D.Transform, SpecialMesh.Scale of the rigged parts and the Transparency of BlinkLid and the
--- face veins (client-toggled parts, CONTRACTS section 5). (The v7 anatomy mesh head path is retired with the
+-- face veins (client-toggled parts, CONTRACTS section 5), and a drawn face's Decal.Texture. (The v7 anatomy mesh head path is retired with the
 -- EditableMesh heads; the retired classic decal faces' texture swap with it.)
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local K = require(script.Parent:WaitForChild("AnimKit"))
+-- the drawn face styles: mood -> face key -> texture
+local BodyTiers = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("BodyTiers"))
 
 local FaceFX = {}
 
@@ -115,6 +123,8 @@ local function newRec(model)
 		gy = 0, gp = 0, sy = 0, sp = 0, nextSac = 0, glanceY = 0, glanceP = 0, nextGlance = 0,
 		painAmt = 0, painT = -10, effortAmt = 0, effortT = -10, effortDur = 0.4, shoutUntil = 0,
 		breathPhase = 0, veinOn = false, active = false, h = 0.1, mw = 0.3, bt = 0.03,
+		-- a drawn face style: its decal, the chosen style, the key shown and when it may change again
+		decal = nil, style = nil, decalKey = nil, decalHold = 0,
 		gazeOut = { [-1] = { 0, 0 }, [1] = { 0, 0 } },
 	}
 	rec.w[EXPR_INDEX.neutral] = 1
@@ -177,8 +187,14 @@ local function scan(rec)
 	table.clear(rec.pupils)
 	table.clear(rec.veins)
 	rec.closed = false
+	rec.decal, rec.style, rec.decalKey = nil, nil, nil
 	if not folder then
 		return
+	end
+	local style = folder:GetAttribute("FaceStyle")
+	local dec = rec.head and rec.head:FindFirstChild("face")
+	if type(style) == "string" and dec and dec:IsA("Decal") then
+		rec.decal, rec.style = dec, style
 	end
 	local head = rec.head
 	for _, d in ipairs(folder:GetDescendants()) do
@@ -273,6 +289,60 @@ local function reset(rec)
 	rec.veinOn = false
 	rec.closed = false
 	rec.active = false
+	-- a drawn face: back to the chosen face (what the server put on)
+	local dec = rec.decal
+	if dec and dec.Parent and rec.style then
+		local tex = BodyTiers.FaceTexture(rec.style)
+		if dec.Texture ~= tex then
+			dec.Texture = tex
+		end
+	end
+	rec.decalKey = nil
+end
+
+-- the mood a drawn face shows (BodyTiers.STYLE_MOODS names): down / KO first, then the transient layers (a hit, a
+-- shout, a burst of effort), the expression (MoodOf), and while it is neutral the fight's own state (a confident
+-- exchange, hands up) or a training pose
+local function decalMood(rec, expr, a, rig, down, pain, effort, now)
+	if down then
+		return expr == "ko" and "ko" or "stunned"
+	end
+	if pain > 0.3 then
+		return "hurt"
+	elseif now < rec.shoutUntil then
+		return "angry"
+	elseif effort > 0.3 then
+		return "effort"
+	end
+	local mood = BodyTiers.MoodOf(expr)
+	if mood == "neutral" then
+		if a.Guard ~= nil and (rec.confK or 0) > 0.2 then
+			mood = "confident"
+		elseif a.Guard ~= nil then
+			mood = "guard"
+		elseif rig and rig.poseAct then
+			mood = "train"
+		end
+	end
+	return mood
+end
+
+-- swap a drawn face's decal to the mood's face (held 0.25 s so a flicker of mood never strobes; a hit shows at once)
+local function decalStep(rec, mood, now)
+	local dec = rec.decal
+	if not (dec and dec.Parent) then
+		return
+	end
+	local key = BodyTiers.StyleMoodFace(mood, rec.style)
+	if key == rec.decalKey or (now < rec.decalHold and mood ~= "hurt") then
+		return
+	end
+	rec.decalKey = key
+	rec.decalHold = now + 0.25
+	local tex = BodyTiers.FaceTexture(key)
+	if dec.Texture ~= tex then
+		dec.Texture = tex
+	end
 end
 
 ------------------------------------------------------------------------
@@ -399,7 +469,7 @@ function FaceFX.Update(dt, t, camPos, rigs, budget)
 				continue
 			end
 		end
-		if not next(rec.roles) and not next(rec.blink) then
+		if not next(rec.roles) and not next(rec.blink) and not rec.decal then
 			continue
 		end
 		local rig = rigs and rigs[model]
@@ -505,6 +575,10 @@ function FaceFX.Update(dt, t, camPos, rigs, budget)
 		local tier = type(a.FaceDmgTier) == "number" and a.FaceDmgTier or 0
 		ch[4] += 0.08 * daze + 0.03 * tier + (1 - stam) * 0.12
 		local ko = down and expr == "ko"
+		if rec.decal then
+			-- a drawn face style: the set swaps by mood (no rig: the rest below finds no roles, lids or pupils)
+			decalStep(rec, decalMood(rec, expr, a, rig, down, pain, effort, now), now)
+		end
 
 		-- blink timing
 		if rec.blinkT < 0 or now - rec.blinkT > rec.blinkLen + 0.05 then
@@ -670,6 +744,12 @@ CollectionService:GetInstanceRemovedSignal("FaceRig"):Connect(markModel)
 for _, m in ipairs(CollectionService:GetTagged("FaceRig")) do
 	markModel(m)
 end
+-- drawn face styles: the head's face decal (no rig joints to find)
+CollectionService:GetInstanceAddedSignal("FaceDecal"):Connect(markModel)
+CollectionService:GetInstanceRemovedSignal("FaceDecal"):Connect(markModel)
+for _, d in ipairs(CollectionService:GetTagged("FaceDecal")) do
+	markModel(d)
+end
 -- preview clones (the main menu's stage boxer) lose their tags but keep the rig: tracked by the model's
 -- Preview tag (scan finds the FaceJoint motors by name)
 local function markPreview(inst)
@@ -698,7 +778,8 @@ function FaceFX.Debug(model)
 		n += 1
 	end
 	return { roles = n > 0, roleCount = n, active = rec.active, dirty = rec.dirty, closed = rec.closed, veinOn = rec.veinOn,
-		weights = table.clone(rec.w), channels = table.clone(rec.ch) }
+		weights = table.clone(rec.w), channels = table.clone(rec.ch),
+		decal = rec.decal and { style = rec.style, key = rec.decalKey, texture = rec.decal.Texture } or nil }
 end
 
 FaceFX.Expressions = EXPR

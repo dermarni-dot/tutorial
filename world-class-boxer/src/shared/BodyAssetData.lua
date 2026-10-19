@@ -133,6 +133,30 @@ return {
 			key = "ko",
 			name = "KO",
 		},
+		{
+			creator = true,
+			id = 110199740845923,
+			key = "wcb_neutral",
+			name = "Boxer Neutral",
+		},
+		{
+			creator = true,
+			id = 139900343066338,
+			key = "wcb_focused",
+			name = "Boxer Focused",
+		},
+		{
+			creator = true,
+			id = 95612839575468,
+			key = "wcb_smirk",
+			name = "Boxer Smirk",
+		},
+		{
+			creator = true,
+			id = 108846306705062,
+			key = "wcb_grit",
+			name = "Boxer Grit",
+		},
 	},
 	tiers = {
 		{

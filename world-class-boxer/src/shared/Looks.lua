@@ -201,6 +201,9 @@ function Looks.Defaults(gender)
 		face = {
 			-- the classic face (BodyAssetData.faces, BodyTiers): old saves get the smile through Fill
 			key = BodyTiers.DEFAULT_FACE,
+			-- the face style: "built" (the part-built face) or a drawn Boxer face (BodyTiers.STYLE_KEYS: the head's
+			-- front Decal, swapped by mood); old saves read as built
+			style = BodyTiers.BUILT_STYLE,
 			shape = "Oval", jawWidth = 0, jawDef = 0.5, chin = 0, cheek = 0, forehead = 0,
 			noseWidth = 0, noseLength = 0, noseBridge = 0, lips = female and 0.2 or 0, browThick = female and -0.4 or 0,
 			eyeShape = 0.5, eyeSize = 0, eyeDist = 0, lashes = female and 0.8 or 0.2, eyeColor = 2,
@@ -346,6 +349,7 @@ function Looks.Sanitize(input, old)
 	local f = type(input.face) == "table" and input.face or {}
 	local bf = type(base.face) == "table" and base.face or out.face
 	out.face.key = BodyTiers.SanitizeFace(f.key, bf.key)
+	out.face.style = BodyTiers.SanitizeFaceStyle(f.style, bf.style)
 	out.face.shape = pick(f.shape, Looks.FaceShapes, pick(bf.shape, Looks.FaceShapes, "Oval"))
 	for _, list in ipairs({ Looks.FaceSliders, Looks.EyeSliders, Looks.SkinSliders, Looks.WearSliders, Looks.SculptSliders }) do
 		for _, sl in ipairs(list) do

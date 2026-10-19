@@ -53,6 +53,12 @@ return {
 
 An id of 0 means "not uploaded": the game then keeps the default body part / the default smile.
 
+The drawn Boxer face STYLES (`wcb_neutral`, `wcb_focused`, `wcb_smirk`, `wcb_grit`; BodyTiers.STYLE_KEYS) are
+`faces` entries too (the user's 1254 px pack, registered and copied by `faces.py --pack DIR [--pack-only]`, ids
+in `tools/body/wcb_faces_manifest.json`), but never a `face.key`: they are `look.face.style` values (default
+`"built"`), the head's front Decal in place of the built eyes, brows, nose and lips, swapped by mood with
+BodyTiers.STYLE_MOODS. A style whose id is 0 is not offered and reads as built.
+
 As generated, besides the fields above: `tiers[n]` also has `name`, `tris` and `fit` (gear-fit girths /
 widths / depths in unscaled studs at fixed heights: chest, waist, hips, upperArm, forearm, wrist, thigh, knee,
 calf, ankle, plus shoulderSpan and chestDepth); each part has `nt`; each face has `creator` (true = offered in

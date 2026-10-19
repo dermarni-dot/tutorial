@@ -14,6 +14,10 @@
 --   (full cheeks, jowls) and weight-cut hollows, grime (own folder, refreshed by SetSweat)
 -- * part budget: A's share of Config.Detail partBudget (+60 / +10 / 0 over the old face, hair and beard);
 --   optional face details and hair decorations are drawn in priority order while it lasts
+-- * drawn face styles (look.face.style = a BodyTiers.STYLE_KEYS key, the user's Boxer faces): the head wears the
+--   drawn face as its front Decal "face" (white, opaque, the whole square canvas) instead of the built eyes, brows,
+--   nose and lips (none of those parts, no face rig; the ears, head shape and skin details stay). Damage, sweat, grime
+--   and the beard then follow the drawn features (Head.DecalLayout); FaceFX swaps the decal by mood
 -- * face rig the client animates (FaceFX; Motor6D "FaceJoint", tag FaceRig, attribute Role): brows, lids,
 --   lower lids, eyes (invisible EyeBall pivots), lips, mouth corners, mouth interior; BlinkLid parts
 -- * hair: in BuilderHair (split out verbatim; Head.Hair, SetHairHidden and ApplyHairHidden forward
@@ -27,6 +31,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Looks = require(Shared:WaitForChild("Looks"))
+-- the drawn face styles (look.face.style) and their uploaded textures
+local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
 local Kit = require(script.Parent:WaitForChild("BuilderKit"))
 -- hair lives in BuilderHair (it requires this module lazily, on first use: no require cycle)
 local Hair = require(script.Parent:WaitForChild("BuilderHair"))
@@ -270,6 +276,116 @@ function Head.FaceLayout(head, face)
 	return L
 end
 
+-- The drawn Boxer faces (look.face.style): where their features lie on the head. The decal spans the head's front
+-- (Size.X x Size.Y, u = 0 at +X: the image as the viewer sees it), so a canvas point (u, v) is head-local
+-- ((0.5 - u) * Size.X, (0.5 - v) * Size.Y). Measured from the registered 1254 px set (tools/body/faces.py
+-- register_pack: every face's eye centres at x 443 / 807, y 575): eyes +-0.145, y +0.0415, ink 0.057 x 0.101; brows
+-- ~0.15 (0.13 .. 0.155 by face); mouths ~-0.175 (ink -0.12 .. -0.22, 0.14 .. 0.22 wide). eyeW / eyeH: the eye's
+-- socket (what FaceLayout readers see as the eye opening), not the ink; SetDamage draws a drawn eye's marks itself.
+local DECAL = {
+	eyeX = 0.145, eyeY = 0.0415, eyeW = 0.1, eyeH = 0.1, browY = 0.15, mouthY = -0.175, mouthW = 0.2,
+	noseBottomY = -0.085, noseW = 0.1,
+}
+Head.DECAL = DECAL
+-- the drawn ink (fractions of the head size, |x| ranges: both sides), padded: skin spots keep off it
+local DECAL_INK = {
+	{ 0.085, 0.205, -0.05, 0.11 }, -- eyes
+	{ 0.02, 0.285, 0.065, 0.21 }, -- brows
+	{ 0, 0.2, -0.235, -0.105 }, -- mouth
+}
+
+-- a FaceLayout moved onto the drawn features (in place; returns L): the eyes, brows, mouth and a nose line between
+-- them (no nose is drawn: only the bleed and the sweat use it), no asymmetry or tilt
+function Head.DecalLayout(L)
+	local s = L.s
+	L.eyeX, L.eyeY = DECAL.eyeX * s.X, DECAL.eyeY * s.Y
+	L.eyeYS = { [-1] = L.eyeY, [1] = L.eyeY }
+	L.eyeW, L.eyeHt, L.eyeSize, L.eyeTilt = DECAL.eyeW * s.X, DECAL.eyeH * s.Y, 1, 0
+	L.browY = DECAL.browY * s.Y
+	L.browTiltS = { [-1] = 0, [1] = 0 }
+	L.mouthY, L.mouthW, L.mouthTilt = DECAL.mouthY * s.Y, DECAL.mouthW * s.X, 0
+	L.noseTopY = L.eyeY - 0.02 * s.Y
+	L.noseBottomY = DECAL.noseBottomY * s.Y
+	L.noseLen = L.noseTopY - L.noseBottomY
+	L.noseW, L.noseB, L.noseDev = DECAL.noseW * s.X, 0, 0
+	L.decal = true
+	return L
+end
+
+-- true when a mark of size w x h at head-local (x, y) would cover the drawn ink
+function Head.DecalInkHit(L, x, y, w, h)
+	local s = L.s
+	local ax, rx, ry = math.abs(x) / s.X, (w or 0) / 2 / s.X, (h or 0) / 2 / s.Y
+	local yy = y / s.Y
+	for _, b in ipairs(DECAL_INK) do
+		if ax + rx > b[1] and ax - rx < b[2] and yy + ry > b[3] and yy - ry < b[4] then
+			return true
+		end
+	end
+	return false
+end
+
+-- the drawn style the head's face was built with (the Face folder's FaceStyle attribute; nil = the built face)
+function Head.FaceStyle(model)
+	local look = model:FindFirstChild("BoxerLook")
+	local f = look and look:FindFirstChild("Face")
+	local st = f and f:GetAttribute("FaceStyle")
+	return type(st) == "string" and st or nil
+end
+
+-- the head's front Decal "face" for a drawn style: one decal (any other decal on the head goes: an engine face, an
+-- older build's), Front, white, opaque, the uploaded texture of the chosen face; tagged FaceDecal (FaceFX finds it
+-- and swaps its Texture by mood on the client; the server's Texture stays the chosen face)
+local function putFaceDecal(head, style)
+	local keep
+	for _, d in ipairs(head:GetChildren()) do
+		if d:IsA("Decal") then
+			if not keep and d.Name == "face" and d:GetAttribute("FaceStyle") == style then
+				keep = d
+			else
+				d:Destroy()
+			end
+		end
+	end
+	local dec = keep or Instance.new("Decal")
+	dec.Name = "face"
+	dec.Face = Enum.NormalId.Front
+	dec.Color3 = WHITE
+	dec.Transparency = 0
+	local tex = BodyTiers.FaceTexture(style)
+	if dec.Texture ~= tex then
+		dec.Texture = tex
+	end
+	dec:SetAttribute("FaceStyle", style)
+	dec.Parent = head
+	-- (tagged once parented: the tag's added signal finds the model from it)
+	if not CollectionService:HasTag(dec, "FaceDecal") then
+		CollectionService:AddTag(dec, "FaceDecal")
+	end
+	return dec
+end
+
+-- Builder's Face step, also when the face is served from cache: a drawn style's decal is on the head (something
+-- may have replaced or removed it since the face was built: an ApplyDescription, a head swap). Built faces: no-op
+function Head.EnsureFaceDecal(model)
+	local head = model:FindFirstChild("Head")
+	local style = Head.FaceStyle(model)
+	if not (head and style) then
+		return
+	end
+	local cur = head:FindFirstChild("face")
+	local n = 0
+	for _, d in ipairs(head:GetChildren()) do
+		if d:IsA("Decal") then
+			n += 1
+		end
+	end
+	if n == 1 and cur and cur:IsA("Decal") and cur:GetAttribute("FaceStyle") == style and cur.Transparency == 0 then
+		return
+	end
+	putFaceDecal(head, style)
+end
+
 ------------------------------------------------------------------------
 -- Face
 ------------------------------------------------------------------------
@@ -423,6 +539,9 @@ local function faceGrime(model, app)
 		return
 	end
 	local L = Head.FaceLayout(head, (app and app.face) or {})
+	if faceF and faceF:GetAttribute("FaceStyle") then
+		Head.DecalLayout(L)
+	end
 	local key = string.format("%.1f|%.3f|%.3f", g, head.Size.X, L.browY)
 	if old and old:GetAttribute("Key") == key then
 		local p = old:FindFirstChildWhichIsA("BasePart")
@@ -518,11 +637,20 @@ local function faceBuild(model, app, opts, build)
 	if model:GetAttribute("FaceKey") ~= nil then
 		model:SetAttribute("FaceKey", nil) -- (the retired classic decal face's key)
 	end
+	-- a drawn face style: its decal on the head front instead of the built eyes, brows, nose and mouth
+	local drawn = BodyTiers.DrawnStyleOf(app)
+	if drawn then
+		putFaceDecal(head, drawn)
+	end
 	local detail, D = Config.DetailLevel(opts)
 	local full, low = detail == "full", detail == "low"
 	local folder = getFolder(model, "Face")
 	folder:SetAttribute("Detail", detail)
+	folder:SetAttribute("FaceStyle", drawn)
 	local L = Head.FaceLayout(head, face)
+	if drawn then
+		Head.DecalLayout(L)
+	end
 	local s = L.s
 	local hcf = head.CFrame
 	local skin = skinOf(app)
@@ -752,7 +880,7 @@ local function faceBuild(model, app, opts, build)
 	end
 	-- (a heavy brow only: a heart face, a big forehead, scar tissue; an ordinary brow lies on the flat front. Full detail
 	-- only: across both brows at a distance it read as a band over the forehead)
-	if full and ridge > 0.3 then
+	if full and ridge > 0.3 and not drawn then
 		for side = -1, 1, 2 do
 			-- (no taller than the brow on it, which hides its rim: a taller one drew a second line over the brow)
 			local rb = (0.03 + 0.018 * ((face.browThick or 0) + 1)) * s.Y * (BROWS[face.browStyle or "Natural"] or BROWS.Natural).thick
@@ -778,153 +906,156 @@ local function faceBuild(model, app, opts, build)
 	local w, h = L.eyeW, L.eyeHt
 	local rWhite, rLimb, rIris, rPupil, rGlint = 0.006 * s.Z, 0.0088 * s.Z, 0.0095 * s.Z, 0.0104 * s.Z, 0.0116 * s.Z
 	local browInfo = {}
-	for side = -1, 1, 2 do
-		local roleSide = side == -1 and "L" or "R"
-		local x0, y0 = side * L.eyeX, L.eyeYS[side]
-		-- eye frame: canthal tilt raises the outer corner
-		local roll = side * L.eyeTilt
-		local cr, sr = math.cos(roll), math.sin(roll)
-		local function ep(dx, dy)
-			return x0 + dx * cr - dy * sr, y0 + dx * sr + dy * cr
-		end
-		local ef = surfCF(L, x0, y0, 0) * ANG(0, 0, roll)
-		local eyeColor = eyeColors[side]
-		local scf, ssz, sD, sc = lens(L, x0, y0, w, h, rWhite, 0.72, roll)
-		local sclera = add("Sclera", ssz, hcf * scf, scleraColor, "Ellipsoid")
-		sclera:SetAttribute("BaseColor", scleraColor)
-		sclera:SetAttribute("Side", side)
-		sclera:SetAttribute("VisW", w)
-		sclera:SetAttribute("VisH", h)
-		local sa, sb = ssz.X / 2, ssz.Y / 2
-		local function hWhite(u, v)
-			local q = 1 - (u / sa) ^ 2 - (v / sb) ^ 2
-			return q > 0 and sD * math.sqrt(q) - sc or 0
-		end
-		-- iris, limbal ring and pupil ride on an invisible EyeBall pivot behind the eye so the client can turn the
-		-- gaze; the catchlight stays fixed to the head like a real reflection. Each is shaped (across and up apart)
-		-- so its rim meets the white in a circle.
-		local rho = 0.5 * math.min(0.58 * w, 0.98 * h)
-		local holder = head
-		if rigOn(detail, "Eye" .. roleSide) then
-			holder = rig("Eye" .. roleSide, side, "EyeBall", V3(0.04, 0.04, 0.04), hcf * ef * CF(0, 0, 0.03), scleraColor, "Ball", SMOOTH, 1)
-			holder:SetAttribute("Side", side)
-		end
-		local iD = rIris + 0.004 * s.Z
-		local iax = capOn(rIris, rho, hWhite(rho, 0), iD)
-		local iay, _, ic = capOn(rIris, rho, hWhite(0, rho), iD)
-		local function hIris(u, v)
-			local q = 1 - (u / iax) ^ 2 - (v / iay) ^ 2
-			return q > 0 and iD * math.sqrt(q) - ic or 0
-		end
-		if full then
-			local lD = rLimb + 0.004 * s.Z
-			local lax = capOn(rLimb, rho * 1.13, hWhite(rho * 1.13, 0), lD)
-			local lay, _, lc = capOn(rLimb, rho * 1.13, hWhite(0, rho * 1.13), lD)
-			mk(folder, holder, "Limbal", V3(2 * lax, 2 * lay, 2 * lD), hcf * ef * CF(0, 0, lc), darken(eyeColor, 0.45), "Ellipsoid")
-		end
-		local iris = mk(folder, holder, "Iris", V3(2 * iax, 2 * iay, 2 * iD), hcf * ef * CF(0, 0, ic), eyeColor, "Ellipsoid")
-		iris:SetAttribute("VisW", 2 * rho)
-		local pr = rho * 0.44
-		local pD = rPupil + 0.003 * s.Z
-		local pax = capOn(rPupil, pr, hIris(pr, 0), pD)
-		local pay, _, pc = capOn(rPupil, pr, hIris(0, pr), pD)
-		mk(folder, holder, "Pupil", V3(2 * pax, 2 * pay, 2 * pD), hcf * ef * CF(0, 0, pc), Color3.fromRGB(10, 9, 10), "Ellipsoid")
-		local gx, gy = side * rho * 0.28, rho * 0.3
-		local ga, gD, gc = capOn(rGlint, rho * 0.15, hIris(gx, gy) + 0.0006, 0.01)
-		local glint = add("Glint", V3(2 * ga, 2 * ga, 2 * gD), hcf * ef * CF(gx, gy, gc), WHITE, "Ellipsoid")
-		glint:SetAttribute("Side", side) -- (SetDamage hides it while a swollen lid has the eye shut)
-		-- upper lid: a fold over the top of the eye; its lower edge (where it meets the eye) is the lid line, at 0.3 of
-		-- the eye's height above its middle (hooded lids come lower). CloseY: how far that edge travels to shut the eye
-		-- (FaceFX); damage swelling hides it
-		local lidLine = h * (0.36 - 0.2 * heavy)
-		local lb = (h * 0.98 - lidLine) / 1.75
-		local lx, ly = ep(0, lidLine + 0.8 * lb)
-		local lid = lp("Lid", lx, ly, w * 1.16, 1.9 * lb, (0.0128 + 0.005 * heavy) * s.Z, 0.3, lidColor, { roll = roll, role = "Lid" .. roleSide, side = side })
-		lid:SetAttribute("Side", side)
-		lid:SetAttribute("CloseY", lidLine + h * 0.5)
-		if not low then
-			-- the lash line along the lid's edge, welded to the lid so it follows a blink or squint
-			local ax, ay = ep(0, lidLine)
-			local lashes = lp("Lashes", ax, ay, w * 1.05, (0.011 + 0.008 * clamp(face.lashes or 0, 0, 1)) * s.Y, 0.0122 * s.Z, 0.5,
-				Color3.fromRGB(18, 13, 11), { roll = roll, anchor = lid, t = math.max(0.08, lashT) })
-			lashes:SetAttribute("BaseT", lashes.Transparency)
-			lashes:SetAttribute("Side", side)
-		end
-		if full then
-			-- the lid crease shows on hooded and ageing lids
-			if heavy > 0.3 or wr > 0.4 then
-				side2("crease", "skin", 1, function()
-					local cx, cy = ep(0, h * 1.0)
-					lp("Crease", cx, cy, w * 0.95, 0.01 * s.Y, 0.0015, 0.8, darken(skin, 0.74), { roll = roll, t = 0.45 + 0.4 * heavy })
+	-- (a drawn face style: the eyes and brows are its decal; none of these parts or their rig joints)
+	if not drawn then
+		for side = -1, 1, 2 do
+			local roleSide = side == -1 and "L" or "R"
+			local x0, y0 = side * L.eyeX, L.eyeYS[side]
+			-- eye frame: canthal tilt raises the outer corner
+			local roll = side * L.eyeTilt
+			local cr, sr = math.cos(roll), math.sin(roll)
+			local function ep(dx, dy)
+				return x0 + dx * cr - dy * sr, y0 + dx * sr + dy * cr
+			end
+			local ef = surfCF(L, x0, y0, 0) * ANG(0, 0, roll)
+			local eyeColor = eyeColors[side]
+			local scf, ssz, sD, sc = lens(L, x0, y0, w, h, rWhite, 0.72, roll)
+			local sclera = add("Sclera", ssz, hcf * scf, scleraColor, "Ellipsoid")
+			sclera:SetAttribute("BaseColor", scleraColor)
+			sclera:SetAttribute("Side", side)
+			sclera:SetAttribute("VisW", w)
+			sclera:SetAttribute("VisH", h)
+			local sa, sb = ssz.X / 2, ssz.Y / 2
+			local function hWhite(u, v)
+				local q = 1 - (u / sa) ^ 2 - (v / sb) ^ 2
+				return q > 0 and sD * math.sqrt(q) - sc or 0
+			end
+			-- iris, limbal ring and pupil ride on an invisible EyeBall pivot behind the eye so the client can turn the
+			-- gaze; the catchlight stays fixed to the head like a real reflection. Each is shaped (across and up apart)
+			-- so its rim meets the white in a circle.
+			local rho = 0.5 * math.min(0.58 * w, 0.98 * h)
+			local holder = head
+			if rigOn(detail, "Eye" .. roleSide) then
+				holder = rig("Eye" .. roleSide, side, "EyeBall", V3(0.04, 0.04, 0.04), hcf * ef * CF(0, 0, 0.03), scleraColor, "Ball", SMOOTH, 1)
+				holder:SetAttribute("Side", side)
+			end
+			local iD = rIris + 0.004 * s.Z
+			local iax = capOn(rIris, rho, hWhite(rho, 0), iD)
+			local iay, _, ic = capOn(rIris, rho, hWhite(0, rho), iD)
+			local function hIris(u, v)
+				local q = 1 - (u / iax) ^ 2 - (v / iay) ^ 2
+				return q > 0 and iD * math.sqrt(q) - ic or 0
+			end
+			if full then
+				local lD = rLimb + 0.004 * s.Z
+				local lax = capOn(rLimb, rho * 1.13, hWhite(rho * 1.13, 0), lD)
+				local lay, _, lc = capOn(rLimb, rho * 1.13, hWhite(0, rho * 1.13), lD)
+				mk(folder, holder, "Limbal", V3(2 * lax, 2 * lay, 2 * lD), hcf * ef * CF(0, 0, lc), darken(eyeColor, 0.45), "Ellipsoid")
+			end
+			local iris = mk(folder, holder, "Iris", V3(2 * iax, 2 * iay, 2 * iD), hcf * ef * CF(0, 0, ic), eyeColor, "Ellipsoid")
+			iris:SetAttribute("VisW", 2 * rho)
+			local pr = rho * 0.44
+			local pD = rPupil + 0.003 * s.Z
+			local pax = capOn(rPupil, pr, hIris(pr, 0), pD)
+			local pay, _, pc = capOn(rPupil, pr, hIris(0, pr), pD)
+			mk(folder, holder, "Pupil", V3(2 * pax, 2 * pay, 2 * pD), hcf * ef * CF(0, 0, pc), Color3.fromRGB(10, 9, 10), "Ellipsoid")
+			local gx, gy = side * rho * 0.28, rho * 0.3
+			local ga, gD, gc = capOn(rGlint, rho * 0.15, hIris(gx, gy) + 0.0006, 0.01)
+			local glint = add("Glint", V3(2 * ga, 2 * ga, 2 * gD), hcf * ef * CF(gx, gy, gc), WHITE, "Ellipsoid")
+			glint:SetAttribute("Side", side) -- (SetDamage hides it while a swollen lid has the eye shut)
+			-- upper lid: a fold over the top of the eye; its lower edge (where it meets the eye) is the lid line, at 0.3 of
+			-- the eye's height above its middle (hooded lids come lower). CloseY: how far that edge travels to shut the eye
+			-- (FaceFX); damage swelling hides it
+			local lidLine = h * (0.36 - 0.2 * heavy)
+			local lb = (h * 0.98 - lidLine) / 1.75
+			local lx, ly = ep(0, lidLine + 0.8 * lb)
+			local lid = lp("Lid", lx, ly, w * 1.16, 1.9 * lb, (0.0128 + 0.005 * heavy) * s.Z, 0.3, lidColor, { roll = roll, role = "Lid" .. roleSide, side = side })
+			lid:SetAttribute("Side", side)
+			lid:SetAttribute("CloseY", lidLine + h * 0.5)
+			if not low then
+				-- the lash line along the lid's edge, welded to the lid so it follows a blink or squint
+				local ax, ay = ep(0, lidLine)
+				local lashes = lp("Lashes", ax, ay, w * 1.05, (0.011 + 0.008 * clamp(face.lashes or 0, 0, 1)) * s.Y, 0.0122 * s.Z, 0.5,
+					Color3.fromRGB(18, 13, 11), { roll = roll, anchor = lid, t = math.max(0.08, lashT) })
+				lashes:SetAttribute("BaseT", lashes.Transparency)
+				lashes:SetAttribute("Side", side)
+			end
+			if full then
+				-- the lid crease shows on hooded and ageing lids
+				if heavy > 0.3 or wr > 0.4 then
+					side2("crease", "skin", 1, function()
+						local cx, cy = ep(0, h * 1.0)
+						lp("Crease", cx, cy, w * 0.95, 0.01 * s.Y, 0.0015, 0.8, darken(skin, 0.74), { roll = roll, t = 0.45 + 0.4 * heavy })
+					end)
+				end
+				-- lower lid: a low rim under the eye with the wet line in its colour, rigged for squints
+				local ux, uy = ep(0, -h * 0.56)
+				local lower = lp("LowerLid", ux, uy, w * 1.0, h * 0.28, 0.008 * s.Z, 0.45,
+					lerpColor(lerpColor(lidColor, skin, 0.5), Color3.fromRGB(226, 160, 158), 0.12), { roll = roll, role = "LowerLid" .. roleSide, side = side })
+				lower:SetAttribute("Side", side)
+			end
+			if not low then
+				-- the closed lid the client shows for a blink (never the Lid, which SetDamage hides)
+				local kx, ky = ep(0, h * 0.04)
+				local blink = lp("BlinkLid", kx, ky, w * 1.14, h * 1.18, 0.0165 * s.Z, 0.5, lerpColor(lidColor, skin, 0.4), { roll = roll, t = 1 })
+				blink:SetAttribute("Side", side)
+			end
+			if underEye then
+				side2("underEye", "skin", 1, function()
+					local ux, uy = ep(0, -h * 0.92)
+					lp("UnderEye", ux, uy, w * 1.1, h * 0.5, 0.0015, 0.86, darken(skin, 0.82), { roll = roll, t = 0.82 - 0.3 * wr })
 				end)
 			end
-			-- lower lid: a low rim under the eye with the wet line in its colour, rigged for squints
-			local ux, uy = ep(0, -h * 0.56)
-			local lower = lp("LowerLid", ux, uy, w * 1.0, h * 0.28, 0.008 * s.Z, 0.45,
-				lerpColor(lerpColor(lidColor, skin, 0.5), Color3.fromRGB(226, 160, 158), 0.12), { roll = roll, role = "LowerLid" .. roleSide, side = side })
-			lower:SetAttribute("Side", side)
-		end
-		if not low then
-			-- the closed lid the client shows for a blink (never the Lid, which SetDamage hides)
-			local kx, ky = ep(0, h * 0.04)
-			local blink = lp("BlinkLid", kx, ky, w * 1.14, h * 1.18, 0.0165 * s.Z, 0.5, lerpColor(lidColor, skin, 0.4), { roll = roll, t = 1 })
-			blink:SetAttribute("Side", side)
-		end
-		if underEye then
-			side2("underEye", "skin", 1, function()
-				local ux, uy = ep(0, -h * 0.92)
-				lp("UnderEye", ux, uy, w * 1.1, h * 0.5, 0.0015, 0.86, darken(skin, 0.82), { roll = roll, t = 0.82 - 0.3 * wr })
-			end)
-		end
-		-- eyebrow: a solid strip on the brow ridge in three overlapping pieces along the style's arch (inner head,
-		-- body, tapering tail); the body is the rigged part, the others are welded to it. Below full detail the body
-		-- alone spans the brow.
-		local bx = side * L.eyeX * 1.02
-		local by = L.browY + (L.eyeYS[side] - L.eyeY)
-		local tilt = side * ((face.browAngle or 0) * rad(9)) + L.browTiltS[side]
-		local blen = 0.21 * s.X * brow.len
-		local ar = brow.arch
-		local ct, st = math.cos(tilt), math.sin(tilt)
-		-- a point along the brow: t -0.5 (inner end) .. 0.5 (tail), its height on the arch
-		local function bpt(t)
-			local dy
-			-- (the arch's peak on the brow line: the hair's front edge keeps clear of it, ref/classic browTop)
-			if t <= 0.1 then
-				dy = bt * (-0.5 * ar * ((t - 0.1) / 0.6) ^ 2)
-			else
-				dy = bt * (-(0.25 + 1.15 * ar) * ((t - 0.1) / 0.4) ^ 2)
+			-- eyebrow: a solid strip on the brow ridge in three overlapping pieces along the style's arch (inner head,
+			-- body, tapering tail); the body is the rigged part, the others are welded to it. Below full detail the body
+			-- alone spans the brow.
+			local bx = side * L.eyeX * 1.02
+			local by = L.browY + (L.eyeYS[side] - L.eyeY)
+			local tilt = side * ((face.browAngle or 0) * rad(9)) + L.browTiltS[side]
+			local blen = 0.21 * s.X * brow.len
+			local ar = brow.arch
+			local ct, st = math.cos(tilt), math.sin(tilt)
+			-- a point along the brow: t -0.5 (inner end) .. 0.5 (tail), its height on the arch
+			local function bpt(t)
+				local dy
+				-- (the arch's peak on the brow line: the hair's front edge keeps clear of it, ref/classic browTop)
+				if t <= 0.1 then
+					dy = bt * (-0.5 * ar * ((t - 0.1) / 0.6) ^ 2)
+				else
+					dy = bt * (-(0.25 + 1.15 * ar) * ((t - 0.1) / 0.4) ^ 2)
+				end
+				local dx = side * t * blen
+				return bx + dx * ct - dy * st, by + dx * st + dy * ct
 			end
-			local dx = side * t * blen
-			return bx + dx * ct - dy * st, by + dx * st + dy * ct
-		end
-		local browRise = (0.0055 + 0.003 * brow.thick) * s.Z
-		local function seg(name, t0, t1, thick, anchorPart)
-			local xa, ya = bpt(t0)
-			local xb, yb = bpt(t1)
-			local xm, ym = bpt((t0 + t1) / 2)
-			local cx, cy = (xa + xb) / 2 * 0.5 + xm * 0.5, (ya + yb) / 2 * 0.5 + ym * 0.5
-			local dx, dy = xb - xa, yb - ya
-			local len = math.sqrt(dx * dx + dy * dy)
-			local base = 0.5 * (math.min(ridgeAt(xa, ya), ridgeAt(xb, yb)) + ridgeAt(cx, cy))
-			local sg = dx < 0 and -1 or 1
-			local o = { roll = math.atan2(dy * sg, dx * sg), base = base, mat = FABRIC }
-			if anchorPart then
-				o.anchor = anchorPart
-			else
-				o.role, o.side = "Brow" .. roleSide, side
+			local browRise = (0.0055 + 0.003 * brow.thick) * s.Z
+			local function seg(name, t0, t1, thick, anchorPart)
+				local xa, ya = bpt(t0)
+				local xb, yb = bpt(t1)
+				local xm, ym = bpt((t0 + t1) / 2)
+				local cx, cy = (xa + xb) / 2 * 0.5 + xm * 0.5, (ya + yb) / 2 * 0.5 + ym * 0.5
+				local dx, dy = xb - xa, yb - ya
+				local len = math.sqrt(dx * dx + dy * dy)
+				local base = 0.5 * (math.min(ridgeAt(xa, ya), ridgeAt(xb, yb)) + ridgeAt(cx, cy))
+				local sg = dx < 0 and -1 or 1
+				local o = { roll = math.atan2(dy * sg, dx * sg), base = base, mat = FABRIC }
+				if anchorPart then
+					o.anchor = anchorPart
+				else
+					o.role, o.side = "Brow" .. roleSide, side
+				end
+				return lp(name, cx, cy, len * 1.1, thick, browRise, 0.4, browColor, o), base
 			end
-			return lp(name, cx, cy, len * 1.1, thick, browRise, 0.4, browColor, o), base
+			local browPart, bBase
+			if full then
+				browPart, bBase = seg("Brow", -0.3, 0.32, bt * 0.94)
+				seg("BrowInner", -0.5, 0.0, bt * (1 + 0.08 * brow.thick), browPart)
+				seg("BrowOuter", 0.15, 0.5, bt * brow.taper * 0.8, browPart)
+			else
+				browPart, bBase = seg("Brow", -0.5, 0.5, bt * 0.9)
+			end
+			browPart:SetAttribute("Side", side)
+			browInfo[side] = { part = browPart, base = bBase, rise = browRise, y = by }
 		end
-		local browPart, bBase
-		if full then
-			browPart, bBase = seg("Brow", -0.3, 0.32, bt * 0.94)
-			seg("BrowInner", -0.5, 0.0, bt * (1 + 0.08 * brow.thick), browPart)
-			seg("BrowOuter", 0.15, 0.5, bt * brow.taper * 0.8, browPart)
-		else
-			browPart, bBase = seg("Brow", -0.5, 0.5, bt * 0.9)
-		end
-		browPart:SetAttribute("Side", side)
-		browInfo[side] = { part = browPart, base = bBase, rise = browRise, y = by }
 	end
 
 	-- nose: a bridge running down from between the eyes into a rounded tip, the alar wings either side of it and the
@@ -941,27 +1072,29 @@ local function faceBuild(model, app, opts, build)
 	local ay = (bTop - bBot) * 0.56
 	local pitch = math.atan2(0.4 * proj, ay)
 	local bD = 0.5 * proj
-	local nose = add("Nose", V3(nW * (0.62 + 0.1 * noseBreak), 2 * ay, 2 * bD),
-		hcf * surfCF(L, dev * 0.5, (bTop + bBot) / 2, 0) * ANG(0, 0, nroll) * ANG(pitch, 0, 0) * CF(0, 0, 0.1 * proj), noseCol, "Ellipsoid")
-	nose:SetAttribute("Base", true)
-	-- the tip: a rounded ball whose back sinks into the face (the overhang under it is the columella's shadow)
-	local tD = proj * 0.55
-	add("NoseTip", V3(nW * (full and 0.76 or 0.88), nW * 0.52, 2 * tD), hcf * surfCF(L, dev, tipY, proj - tD) * ANG(0, 0, nroll), noseCol, "Ellipsoid")
-	if full then
-		for side = -1, 1, 2 do
-			add("NoseWing", V3(nW * 0.44, nW * 0.4, 0.64 * proj), hcf * surfCF(L, dev + side * nW * 0.38, L.noseBottomY + nW * 0.2, 0.08 * proj) * ANG(0, 0, side * rad(-20)),
-				darken(skin, 0.95), "Ellipsoid")
-			add("Nostril", V3(nW * 0.26, nW * 0.11, 0.24 * proj), hcf * surfCF(L, dev + side * nW * 0.18, L.noseBottomY + 0.012 * s.Y, 0.24 * proj) * ANG(0, 0, side * rad(-15)),
-				darken(skin, 0.42), "Ellipsoid")
+	if not drawn then
+		local nose = add("Nose", V3(nW * (0.62 + 0.1 * noseBreak), 2 * ay, 2 * bD),
+			hcf * surfCF(L, dev * 0.5, (bTop + bBot) / 2, 0) * ANG(0, 0, nroll) * ANG(pitch, 0, 0) * CF(0, 0, 0.1 * proj), noseCol, "Ellipsoid")
+		nose:SetAttribute("Base", true)
+		-- the tip: a rounded ball whose back sinks into the face (the overhang under it is the columella's shadow)
+		local tD = proj * 0.55
+		add("NoseTip", V3(nW * (full and 0.76 or 0.88), nW * 0.52, 2 * tD), hcf * surfCF(L, dev, tipY, proj - tD) * ANG(0, 0, nroll), noseCol, "Ellipsoid")
+		if full then
+			for side = -1, 1, 2 do
+				add("NoseWing", V3(nW * 0.44, nW * 0.4, 0.64 * proj), hcf * surfCF(L, dev + side * nW * 0.38, L.noseBottomY + nW * 0.2, 0.08 * proj) * ANG(0, 0, side * rad(-20)),
+					darken(skin, 0.95), "Ellipsoid")
+				add("Nostril", V3(nW * 0.26, nW * 0.11, 0.24 * proj), hcf * surfCF(L, dev + side * nW * 0.18, L.noseBottomY + 0.012 * s.Y, 0.24 * proj) * ANG(0, 0, side * rad(-15)),
+					darken(skin, 0.42), "Ellipsoid")
+			end
+		end
+		if noseBreak > 0.3 and full then
+			opt("wear", 1, function()
+				add("NoseBump", V3(nW * 0.5, L.noseLen * 0.2, 0.25 * proj), hcf * surfCF(L, dev * 0.3, L.noseTopY - L.noseLen * 0.32, 0.12 * proj), noseCol, "Ellipsoid")
+			end)
 		end
 	end
-	if noseBreak > 0.3 and full then
-		opt("wear", 1, function()
-			add("NoseBump", V3(nW * 0.5, L.noseLen * 0.2, 0.25 * proj), hcf * surfCF(L, dev * 0.3, L.noseTopY - L.noseLen * 0.32, 0.12 * proj), noseCol, "Ellipsoid")
-		end)
-	end
 	-- nasolabial folds: deepen with age, fat and a big smile line
-	if full then
+	if full and not drawn then
 		local fold = clamp(0.3 + 0.5 * wr + 0.25 * faceFat, 0, 1)
 		for side = -1, 1, 2 do
 			line("Nasolabial", dev + side * nW * 0.6, L.noseBottomY + nW * 0.12, side * L.mouthW * 0.6, L.mouthY - 0.02 * s.Y,
@@ -972,7 +1105,7 @@ local function faceBuild(model, app, opts, build)
 	-- mouth: two low lips that overlap at the seam (so nothing behind them shows until they part), the dark seam line
 	-- riding on the upper lip, corner pieces of that line (rigged: they curl up in a smile), and behind them the
 	-- interior and teeth (full). A mouthguard parts the lips.
-	local guard = opts.mouthguard and true or false
+	local guard = (opts.mouthguard and not drawn) and true or false -- (a drawn mouth wears no guard lens)
 	local lt = face.lips or 0
 	local mw = L.mouthW
 	local upperH = (0.032 + 0.016 * lt + (female and 0.006 or 0)) * s.Y
@@ -987,7 +1120,7 @@ local function faceBuild(model, app, opts, build)
 	-- pigmented lips: a shade of the skin, darker on deep skin tones, a little rosier on light ones
 	local lipColor = lerpColor(darken(skin, 0.86 + 0.08 * skinL), under, 0.1 + 0.22 * skinL + (female and 0.08 or 0))
 	local seamRise = (0.0085 + 0.003 * lt) * s.Z + bulge
-	if full then
+	if full and not drawn then
 		local ix, iy = mp(0, -gap * 0.5)
 		local inside = lp("MouthInside", ix, iy, mw * 0.8, (upperH + lowerH) * 0.55 + gap, 0.003 * s.Z, 0.6, Color3.fromRGB(62, 20, 24),
 			{ roll = mroll, role = "MouthInside" })
@@ -996,44 +1129,47 @@ local function faceBuild(model, app, opts, build)
 		local qx, qy = mp(0, -gap - lowerH * 0.22)
 		lp("TeethLower", qx, qy, mw * 0.5, lowerH * 0.5, 0.0042 * s.Z, 0.6, Color3.fromRGB(222, 214, 194), { roll = mroll, anchor = inside })
 	end
-	local ux, uy = mp(0, upperH * 0.32 + gap * 0.5)
-	local upper = lp("UpperLip", ux, uy, mw, upperH * 1.3, (0.0095 + 0.004 * lt) * s.Z + bulge, 0.55, lipColor, { roll = mroll, role = "UpperLip" })
-	local lx, ly = mp(0, -lowerH * 0.38 - gap * 0.5)
-	local lower = lp("LowerLip", lx, ly, mw * 0.84, lowerH * 1.2, (0.012 + 0.005 * lt) * s.Z + bulge, 0.55, lerpColor(lipColor, WHITE, 0.04),
-		{ roll = mroll, role = "LowerLip" })
-	upper:SetAttribute("BaseSize", upper.Size)
-	upper:SetAttribute("VisW", mw)
-	lower:SetAttribute("BaseSize", lower.Size)
-	local sx, sy = mp(0, -gap * 0.5)
-	local mline = lp("MouthLine", sx, sy, mw * 0.88, 0.008 * s.Y, seamRise, 0.5, darken(lipColor, 0.45), { roll = mroll, anchor = upper, t = guard and 0.7 or 0 })
-	mline:SetAttribute("BaseSize", mline.Size)
-	-- a beard covering the mouth pushes the lips out so they show through it. The face does this itself
-	-- (the same rule beardBuild applies from BaseSize) so a face-only rebuild, e.g. after a body fat
-	-- change while the beard is cached, never buries the lips.
-	local bStyle = beardStyle(app)
-	if bStyle and bStyle ~= "Stubble" then
-		for _, p in ipairs({ upper, lower, mline }) do
-			p.Size = p:GetAttribute("BaseSize") + V3(0, 0, 0.03)
+	-- (a drawn face style draws its own mouth: no lips, seam, corners, philtrum or lip fold)
+	if not drawn then
+		local ux, uy = mp(0, upperH * 0.32 + gap * 0.5)
+		local upper = lp("UpperLip", ux, uy, mw, upperH * 1.3, (0.0095 + 0.004 * lt) * s.Z + bulge, 0.55, lipColor, { roll = mroll, role = "UpperLip" })
+		local lx, ly = mp(0, -lowerH * 0.38 - gap * 0.5)
+		local lower = lp("LowerLip", lx, ly, mw * 0.84, lowerH * 1.2, (0.012 + 0.005 * lt) * s.Z + bulge, 0.55, lerpColor(lipColor, WHITE, 0.04),
+			{ roll = mroll, role = "LowerLip" })
+		upper:SetAttribute("BaseSize", upper.Size)
+		upper:SetAttribute("VisW", mw)
+		lower:SetAttribute("BaseSize", lower.Size)
+		local sx, sy = mp(0, -gap * 0.5)
+		local mline = lp("MouthLine", sx, sy, mw * 0.88, 0.008 * s.Y, seamRise, 0.5, darken(lipColor, 0.45), { roll = mroll, anchor = upper, t = guard and 0.7 or 0 })
+		mline:SetAttribute("BaseSize", mline.Size)
+		-- a beard covering the mouth pushes the lips out so they show through it. The face does this itself
+		-- (the same rule beardBuild applies from BaseSize) so a face-only rebuild, e.g. after a body fat
+		-- change while the beard is cached, never buries the lips.
+		local bStyle = beardStyle(app)
+		if bStyle and bStyle ~= "Stubble" then
+			for _, p in ipairs({ upper, lower, mline }) do
+				p.Size = p:GetAttribute("BaseSize") + V3(0, 0, 0.03)
+			end
 		end
-	end
-	if full then
-		for side = -1, 1, 2 do
-			local cx, cy = mp(side * mw * 0.4, -gap * 0.5)
-			local corner = lp("MouthCorner", cx, cy, mw * 0.26, 0.01 * s.Y, seamRise + 0.0008, 0.5, darken(lipColor, 0.42),
-				{ roll = mroll, role = "MouthCorner" .. (side == -1 and "L" or "R"), side = side })
-			corner:SetAttribute("Side", side)
-		end
-		-- philtrum groove and the fold under the lower lip
-		local py0 = L.noseBottomY - 0.004 * s.Y
-		local py1 = L.mouthY + upperH * 1.0
-		if py0 > py1 then
+		if full then
+			for side = -1, 1, 2 do
+				local cx, cy = mp(side * mw * 0.4, -gap * 0.5)
+				local corner = lp("MouthCorner", cx, cy, mw * 0.26, 0.01 * s.Y, seamRise + 0.0008, 0.5, darken(lipColor, 0.42),
+					{ roll = mroll, role = "MouthCorner" .. (side == -1 and "L" or "R"), side = side })
+				corner:SetAttribute("Side", side)
+			end
+			-- philtrum groove and the fold under the lower lip
+			local py0 = L.noseBottomY - 0.004 * s.Y
+			local py1 = L.mouthY + upperH * 1.0
+			if py0 > py1 then
+				opt("skin", 1, function()
+					lp("Philtrum", dev * 0.5, (py0 + py1) / 2, 0.05 * s.X, py0 - py1, 0.0015, 0.88, darken(skin, 0.88), { t = 0.6 })
+				end)
+			end
 			opt("skin", 1, function()
-				lp("Philtrum", dev * 0.5, (py0 + py1) / 2, 0.05 * s.X, py0 - py1, 0.0015, 0.88, darken(skin, 0.88), { t = 0.6 })
+				line("LipFold", -mw * 0.26, L.mouthY - lowerH * 1.25 - gap, mw * 0.26, L.mouthY - lowerH * 1.25 - gap, 0.012 * s.Y, darken(skin, 0.8), 0.6, 0.0012)
 			end)
 		end
-		opt("skin", 1, function()
-			line("LipFold", -mw * 0.26, L.mouthY - lowerH * 1.25 - gap, mw * 0.26, L.mouthY - lowerH * 1.25 - gap, 0.012 * s.Y, darken(skin, 0.8), 0.6, 0.0012)
-		end)
 	end
 
 	-- skin details (deterministic from the face seed; draw order is load-bearing, keep it)
@@ -1042,7 +1178,7 @@ local function faceBuild(model, app, opts, build)
 	local function spot(name, size, color, xMin, xMax, yMin, yMax, transparency, skip, rise)
 		local x = rng:NextNumber(xMin, xMax) * s.X * (rng:NextNumber() < 0.5 and -1 or 1)
 		local y = rng:NextNumber(yMin, yMax) * s.Y
-		if skip then
+		if skip or (drawn and Head.DecalInkHit(L, x, y, size.X, size.Y)) then
 			return nil
 		end
 		return lp(name, x, y, size.X, size.Y, rise or 0.001, rise and 0.5 or 0.85, color, { t = transparency })
@@ -1059,7 +1195,11 @@ local function faceBuild(model, app, opts, build)
 		local x = rng:NextNumber(0.08, 0.32) * s.X * (rng:NextNumber() < 0.5 and -1 or 1)
 		local y = rng:NextNumber(-0.12, 0.3) * s.Y
 		local a = math.rad(rng:NextNumber(-40, 40))
-		lp("Scar", x, y, 0.016, rng:NextNumber(0.1, 0.2) * s.Y, 0.0015, 0.8, lerpColor(skin, Color3.fromRGB(235, 190, 190), 0.55), { roll = a })
+		local len = rng:NextNumber(0.1, 0.2) * s.Y
+		if drawn and Head.DecalInkHit(L, x, y, 0.016, len) then
+			continue
+		end
+		lp("Scar", x, y, 0.016, len, 0.0015, 0.8, lerpColor(skin, Color3.fromRGB(235, 190, 190), 0.55), { roll = a })
 	end
 	-- acne: inflamed spots on a young face; from the mid twenties (or with heavy acne) what is left are
 	-- pitted scars, slightly darker shallow dents rather than red bumps. Same rng draws either way. An
@@ -1102,7 +1242,7 @@ local function faceBuild(model, app, opts, build)
 					end
 					local dx, dy = math.cos(ang) * len * 0.5, math.sin(ang) * len * 0.5
 					line("BattleScar", x - dx, y - dy, x + dx, y + dy, (0.012 + 0.01 * size) * s.X, scarColor, 0.1, 0.002 + ((kind == "brow" or kind == nil) and ridgeAt(x, y) or 0))
-					if (kind == "brow" or kind == nil) and spend("wear", 1) then
+					if (kind == "brow" or kind == nil) and not drawn and spend("wear", 1) then
 						-- the hair never grows back through a brow scar: a skin-coloured notch over the brow
 						local bi = browInfo[side]
 						lp("BrowGap", x, bi.y, 0.02 * s.X, bt * 1.5, bi.base + bi.rise + 0.002, 0.5, skin, { anchor = bi.part })
@@ -1161,7 +1301,9 @@ local function faceBuild(model, app, opts, build)
 				end
 				local x = r2:NextNumber(-0.28, 0.28) * s.X
 				local y = r2:NextNumber(-0.14, 0.02) * s.Y
-				lp("Pore", x, y, 0.014, 0.014, 0.001, 0.85, darken(skin, 0.8), { t = 0.6 })
+				if not (drawn and Head.DecalInkHit(L, x, y, 0.014, 0.014)) then
+					lp("Pore", x, y, 0.014, 0.014, 0.001, 0.85, darken(skin, 0.8), { t = 0.6 })
+				end
 			end
 		end)
 	end
@@ -1197,7 +1339,7 @@ local function faceBuild(model, app, opts, build)
 	-- what the damage marks lie on (Head.SetDamage: a bruise over a full cheek, a split in the lower lip)
 	folder:SetAttribute("CheekRise", math.max(boneRise, fullCheeks and (0.005 + 0.008 * math.min(cheekFat, 1)) or 0) * s.Z * 0.6)
 	folder:SetAttribute("RidgeRise", ridgeAt(L.eyeX, L.browY + 0.03 * s.Y))
-	folder:SetAttribute("LowerLipRise", (0.012 + 0.005 * lt) * s.Z + bulge)
+	folder:SetAttribute("LowerLipRise", drawn and 0 or (0.012 + 0.005 * lt) * s.Z + bulge)
 	folder:SetAttribute("LipColor", lipColor)
 	-- parts over the old face (the hair and beard steps read this to share A's budget)
 	folder:SetAttribute("Extra", countParts(folder) - oldParts)
@@ -1249,6 +1391,9 @@ local function beardBuild(model, app, opts)
 	local s = head.Size
 	local hcf = head.CFrame
 	local L = Head.FaceLayout(head, app.face or {})
+	if Head.FaceStyle(model) then
+		Head.DecalLayout(L) -- (the moustache over the drawn mouth; the beard's cache key holds the style)
+	end
 	local hair = app.hair or {}
 	local color = Looks.Color(beard.color or hair.color, Color3.fromRGB(25, 20, 18))
 	-- salt & pepper: beards grey before the hair does
@@ -1466,6 +1611,12 @@ function Head.SetDamage(model, app, dmg, folderName)
 	end
 	local face = app.face or {}
 	local L = Head.FaceLayout(head, face)
+	-- a drawn face style: the marks lie on the skin at the drawn features (the swollen lid and the black eye are
+	-- surface patches over the drawn eye; no built lid, lashes or white to tint)
+	local drawnFace = Head.FaceStyle(model) ~= nil
+	if drawnFace then
+		Head.DecalLayout(L)
+	end
 	local s = L.s
 	local hcf = head.CFrame
 	local skin = skinOf(app)
@@ -1562,7 +1713,25 @@ function Head.SetDamage(model, app, dmg, folderName)
 		local x, y = side * L.eyeX, L.eyeYS[side]
 		local closing = clamp((v - 0.3) / 0.7, 0, 1)
 		local k = clamp(v, 0, 1) * fade
-		if closing > 0 then
+		if drawnFace then
+			-- a drawn eye (ink ~0.057 x 0.1 of the head, at x, y): the socket darkens round it, a crescent pools under
+			-- it, and past 0.3 a puffy lid grows down over it from above until it hides the drawn eye (a slit when shut)
+			if closing > 0 then
+				local top = y + 0.065 * s.Y
+				local bottom = top - (0.04 + 0.1 * closing) * s.Y
+				local rise = (0.0115 + 0.005 * closing) * s.Z
+				mark("SwollenLid", x + side * 0.004 * s.X, (top + bottom) / 2, (0.105 + 0.02 * closing) * s.X, top - bottom, rise, 0.62,
+					lerpColor(darken(skin, 0.94), bruise, 0.12 + 0.2 * k))
+				if closing > 0.6 then
+					mark("SwollenSlit", x, bottom + 0.012 * s.Y, 0.075 * s.X, 0.009 * s.Y, rise * 0.62, 0.5, Color3.fromRGB(62, 36, 34), 0.15)
+				end
+			end
+			if v > 0.15 then
+				mark("BlackEye", x, y + 0.005 * s.Y, (0.15 + 0.02 * k) * s.X, (0.16 + 0.02 * k) * s.Y, 0.0022, 0.75, bruise, clamp(0.8 - 0.32 * k, 0.45, 0.85))
+				mark("BlackEyeLow", x + side * 0.006 * s.X, y - (0.075 + 0.006 * k) * s.Y, (0.11 + 0.02 * k) * s.X, (0.035 + 0.015 * k) * s.Y, (0.003 + 0.005 * k) * s.Z, 0.62,
+					lerpColor(skin, darken(bruise, 0.85), 0.45 + 0.4 * k), clamp(0.55 - 0.25 * k, 0.3, 0.7), side * rad(-6))
+			end
+		elseif closing > 0 then
 			-- (a wide, low swelling: the lid puffs out sideways more than it stands off the face)
 			local top, bottom = y + h * 0.95, y + h * (0.5 - (0.4 + 0.66 * closing))
 			local rise = (0.0115 + 0.005 * closing) * s.Z
@@ -1573,7 +1742,7 @@ function Head.SetDamage(model, app, dmg, folderName)
 				mark("SwollenSlit", x, bottom + h * 0.2, w * 0.95, 0.009 * s.Y, rise * 0.62, 0.5, Color3.fromRGB(62, 36, 34), 0.15, side * L.eyeTilt)
 			end
 		end
-		if v > 0.15 then
+		if v > 0.15 and not drawnFace then
 			mark("BlackEye", x, y + h * 0.25, w * (1.32 + 0.16 * k), h * (2.1 + 0.3 * k), 0.0022, 0.75, bruise, clamp(0.8 - 0.32 * k, 0.45, 0.85), side * L.eyeTilt)
 			mark("BlackEyeLow", x + side * 0.008 * s.X, y - h * (0.8 + 0.06 * k), w * (1.0 + 0.18 * k), h * (0.5 + 0.22 * k), (0.003 + 0.005 * k) * s.Z, 0.62,
 				lerpColor(skin, darken(bruise, 0.85), 0.45 + 0.4 * k), clamp(0.55 - 0.25 * k, 0.3, 0.7), side * rad(-6))
@@ -1659,6 +1828,9 @@ function Head.SetDamage(model, app, dmg, folderName)
 		local lipBase = fattr("LowerLipRise", 0.012 * s.Z)
 		local lipC = fattr("LipColor", darken(skin, 0.86))
 		local ly = L.mouthY - (0.042 + 0.02 * (face.lips or 0)) * s.Y * 0.38
+		if drawnFace then
+			ly = L.mouthY - 0.045 * s.Y -- (under the drawn mouth line: the lower lip)
+		end
 		local top = lipBase
 		if lip > 0.45 then
 			local kk = clamp(lip, 0, 1)
@@ -1700,8 +1872,12 @@ local function faceSweat(model, app, q)
 	local faceF = look:FindFirstChild("Face")
 	local detail = (faceF and faceF:GetAttribute("Detail")) or model:GetAttribute("Detail") or "full"
 	local L = Head.FaceLayout(head, app.face or {})
-	-- the face sliders move the brow / nose the sheen follows: they are part of the key too
-	local key = string.format("%.2f|%s|%.3f|%.3f|%.3f", q, tostring(detail), head.Size.X, L.browY, L.noseTopY)
+	local drawnStyle = faceF and faceF:GetAttribute("FaceStyle")
+	if drawnStyle then
+		Head.DecalLayout(L)
+	end
+	-- the face sliders move the brow / nose the sheen follows: they are part of the key too (and the face style)
+	local key = string.format("%.2f|%s|%.3f|%.3f|%.3f|%s", q, tostring(detail), head.Size.X, L.browY, L.noseTopY, tostring(drawnStyle or ""))
 	local old = look:FindFirstChild("FaceSweat")
 	if old and old:GetAttribute("Key") == key then
 		local a = old:FindFirstChild("SweatAnchor")
@@ -1742,11 +1918,14 @@ local function faceSweat(model, app, q)
 		local rng = Random.new(((app.face and app.face.seed) or 7) + 505)
 		for _ = 1, math.floor(3 + 7 * q) do
 			local x = rng:NextNumber(-0.3, 0.3) * s.X
-			local y = L.browY + rng:NextNumber(-0.02, 0.18) * s.Y
+			-- (on a drawn face the beads sit on the forehead above the drawn brows, never on their ink)
+			local y = L.browY + rng:NextNumber(-0.02, 0.18) * s.Y + (drawnStyle and 0.07 * s.Y or 0)
 			local sz = rng:NextNumber(0.018, 0.03)
-			local cf, size = lens(L, x, y, sz, sz * 1.3, 0.006, 0.4)
-			local bead = mk(folder, head, "SweatBead", size, hcf * cf, lerpColor(skinOf(app), WHITE, 0.32), "Ellipsoid", SMOOTH, 0.5)
-			bead.Reflectance = 0.08
+			if not (drawnStyle and Head.DecalInkHit(L, x, y, sz, sz * 1.3)) then
+				local cf, size = lens(L, x, y, sz, sz * 1.3, 0.006, 0.4)
+				local bead = mk(folder, head, "SweatBead", size, hcf * cf, lerpColor(skinOf(app), WHITE, 0.32), "Ellipsoid", SMOOTH, 0.5)
+				bead.Reflectance = 0.08
+			end
 		end
 	end
 	if q >= 0.4 then

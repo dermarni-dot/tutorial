@@ -149,7 +149,9 @@ def face_decal(C, size, n=28, lift=0.006):
                 z += max(classic_sdf(C, x, y, z), 0.0005)
             z = min(z, 0.0) - lift
             P.append((x * k[0], y * k[1], z * k[2]))
-            U.append((u, v))
+            # (the image as the viewer facing the head sees it: its left edge on the head's +X, the character's
+            # right; u here runs along +X)
+            U.append((1 - u, v))
     for j in range(n):
         for i in range(n):
             a = j * (n + 1) + i

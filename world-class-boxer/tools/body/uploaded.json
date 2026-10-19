@@ -1025,6 +1025,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "58810260aa5d256f064a51445278282e17020bdcbfee4a8aca9068ed4d73ad84": {
+  "at": "2026-10-19T14:54:26Z",
+  "file": "out/faces/face_wcb_smirk_v2.png",
+  "id": 95612839575468,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer Smirk",
+  "state": "Active",
+  "type": "Image"
+ },
  "58ac084e22863df30d462d3e630bb25df5345c3fff98aac1d48636ec67c3095a": {
   "at": "2026-10-18T18:51:17Z",
   "file": "out/gear/shared/Wrap_L.mesh",
@@ -1682,6 +1691,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "8b8151dbe8b33a9c9499124a61e45ca7367d651994d762e8983fe578f2fbef89": {
+  "at": "2026-10-19T14:54:24Z",
+  "file": "out/faces/face_wcb_focused_v2.png",
+  "id": 139900343066338,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer Focused",
+  "state": "Active",
+  "type": "Image"
+ },
  "8c523cd3446f22bd1fbc4ada1f0cf357f965a91d308ab9b070a8984ea5ab65fb": {
   "at": "2026-10-18T03:33:02Z",
   "file": "out/gear/tier2/TrunkStripe_L.mesh",
@@ -1807,6 +1825,15 @@
   "name": "WCB Body T4 LeftUpperArm",
   "state": "Active",
   "type": "Mesh"
+ },
+ "954eac9a0c01628895c5860c72997fed92e26bacde69dc49bf6d41f7fd080faf": {
+  "at": "2026-10-19T14:54:21Z",
+  "file": "out/faces/face_wcb_neutral.png",
+  "id": 110199740845923,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer Neutral",
+  "state": "Active",
+  "type": "Image"
  },
  "957a15745a179b0a41a5a2b7fcff8593534c06b39f42113ae21e67dc870965f0": {
   "at": "2026-10-18T18:49:37Z",
@@ -2372,6 +2399,15 @@
   "id": 91406902077948,
   "moderation": "Approved",
   "name": "WCB Face Stern",
+  "state": "Active",
+  "type": "Image"
+ },
+ "ba3abf1cf66c65ce09305bf8bd39f4fd29cb6c7104ecfeb92664a18d22c54bea": {
+  "at": "2026-10-19T14:54:29Z",
+  "file": "out/faces/face_wcb_grit_v2.png",
+  "id": 108846306705062,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer Grit",
   "state": "Active",
   "type": "Image"
  },

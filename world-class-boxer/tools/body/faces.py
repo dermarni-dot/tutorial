@@ -8,6 +8,13 @@ Outputs
                                           the whole image spans the head's front face, like the classic face)
     tools/body/out/faces/faces.json       keys / names / expressions (read by publish_body.py)
     tools/body/out/faces/contact_sheet.png  every face on a skin-tone head front, labelled
+    tools/body/out/faces/face_wcb_<k>[_v2].png  the user's "Boxer" face pack (PACK below): 1254 x 1254 RGBA, the
+                                          full square canvas kept, only re-registered (see register_pack)
+
+The Boxer pack is not drawn here: it is the user's own art (faces/<k>.png of their faces + hair hand-off), added
+with `--pack DIR` (DIR = that faces/ folder). Its entries stay in faces.json on every later run (from the files
+already in out/faces), so a plain re-run never drops them. `--pack-only` registers the pack and rewrites
+faces.json without redrawing the classic faces (their PNGs, and so their uploaded ids, stay byte-identical).
 
 FACES (order = the creator's order; "smile" is the default) and EXPRESSIONS (fight / gym mood -> face key,
 None = the boxer's own chosen face) are the data publish_body.py writes into src/shared/BodyAssetData.lua.
@@ -31,6 +38,12 @@ FACES = [
 ]
 # the faces a player can pick in the creator (the rest are mood faces the game swaps in)
 CREATOR = ["smile", "grin", "smirk", "confident", "cool", "happy", "wink", "determined", "focused", "stern"]
+
+# the user's Boxer face pack (key, name, source file): the drawn face STYLE set (look.face.style; BodyTiers.STYLE_KEYS),
+# offered in the creator as a whole-face alternative to the built face, and swapped among by mood (FaceFX)
+PACK = [("wcb_neutral", "Boxer Neutral", "neutral.png"), ("wcb_focused", "Boxer Focused", "focused.png"),
+        ("wcb_smirk", "Boxer Smirk", "smirk.png"), ("wcb_grit", "Boxer Grit", "grit.png")]
+PACK_REF = "wcb_neutral"  # the registration reference (its file is kept as it came)
 
 # fight / gym moods -> face key; None = keep the boxer's own chosen face
 EXPRESSIONS = {
@@ -368,21 +381,131 @@ def contact_sheet(paths, out, cols=6, cell=200, skin=(201, 146, 104)):
     return out
 
 
+# ---------------------------------------------------------------------------------------------- the Boxer pack
+def _features(a, x0, x1, y0, y1):
+    """the brow and the eye in one upper quarter of a face (alpha array, the box x0..x1, y0..y1): rows with ink
+    split at the empty band between them; returns (brow rows, eye rows, alpha-weighted eye centre x, y)"""
+    import numpy as np
+    sub = a[y0:y1, x0:x1]
+    rows = np.nonzero(sub.max(axis=1) > 128)[0]
+    runs, start = [], rows[0]
+    for r0, r1 in zip(rows[:-1], rows[1:]):
+        if r1 - r0 > 1:
+            runs.append((start, r0 + 1))
+            start = r1
+    runs.append((start, rows[-1] + 1))
+    if len(runs) < 2:
+        raise SystemExit("register_pack: brow and eye not separable in box %s" % ((x0, x1, y0, y1),))
+    brow, eye = runs[0], runs[-1]
+    e0, e1 = max(eye[0] - 2, 0), min(eye[1] + 2, sub.shape[0])  # (the antialiased rim)
+    e = sub[e0:e1].astype(float)
+    e[e < 5] = 0
+    ys, xs = np.mgrid[e0:e1, 0:sub.shape[1]]
+    w = e.sum()
+    return brow, eye, x0 + (xs * e).sum() / w, y0 + (ys * e).sum() / w
+
+
+def register_pack(src):
+    """The pack's eyes sit at different heights and spacings (generated art: up to 42 px apart in a 1254 canvas),
+    so swapping the four by mood would make the eyes jump. Each face's two upper quarters (brow + eye of a side,
+    above the mouth) are moved by whole pixels so that side's eye centre lands on the reference face's; the mouth,
+    the canvas, the alpha and every pixel's value are kept (a moved face is written as face_<key>_v2.png).
+    Returns [(key, name, file, (dxL, dyL, dxR, dyR))]."""
+    import numpy as np
+    ims = {k: np.asarray(Image.open(os.path.join(src, f)).convert("RGBA")) for k, _, f in PACK}
+    n = ims[PACK_REF].shape[0]
+    for k, im in ims.items():
+        if im.shape[:2] != (n, n):
+            raise SystemExit("register_pack: %s is %s, the pack is square %d" % (k, im.shape, n))
+    mid = n // 2
+
+    def upper(a):
+        # the upper face of one image: the rows above its mouth (the lowest run of ink rows, across the whole width)
+        rows = np.nonzero(a.max(axis=1) > 128)[0]
+        gaps = np.nonzero(np.diff(rows) > 1)[0]
+        return int(rows[gaps[-1] + 1]) - 4
+
+    boxes = {"L": (0, mid), "R": (mid, n)}
+    rs = upper(ims[PACK_REF][..., 3])
+    ref = {sd: _features(ims[PACK_REF][..., 3], bx[0], bx[1], 0, rs)[2:] for sd, bx in boxes.items()}
+    out = []
+    for k, name, f in PACK:
+        im = ims[k]
+        split = upper(im[..., 3])
+        shift = []
+        moved = im.copy()
+        for sd, (x0, x1) in boxes.items():
+            _, _, cx, cy = _features(im[..., 3], x0, x1, 0, split)
+            dx, dy = int(round(ref[sd][0] - cx)), int(round(ref[sd][1] - cy))
+            shift += [dx, dy]
+            if dx or dy:
+                # the brow + eye box (ink alpha >= 5, padded): the generator's stray alpha 1..4 specks elsewhere
+                # in the canvas stay where they are
+                q = im[0:split, x0:x1, 3]
+                iy, ix = np.nonzero(q >= 5)
+                bx0, bx1 = max(ix.min() - 6, 0), min(ix.max() + 7, x1 - x0)
+                by0, by1 = max(iy.min() - 6, 0), min(iy.max() + 7, split)
+                if bx0 + dx < 0 or bx1 + dx > x1 - x0 or by0 + dy < 0 or by1 + dy > split:
+                    raise SystemExit("register_pack: %s %s would leave its quarter" % (k, sd))
+                box = im[by0:by1, x0 + bx0:x0 + bx1].copy()
+                moved[by0:by1, x0 + bx0:x0 + bx1] = 0
+                dst_ = moved[by0 + dy:by1 + dy, x0 + bx0 + dx:x0 + bx1 + dx]
+                keep = box[..., 3] > 0
+                dst_[keep] = box[keep]
+        fn = "face_%s%s.png" % (k, "_v2" if any(shift) else "")
+        dst = os.path.join(OUTDIR, fn)
+        if any(shift):
+            Image.fromarray(moved, "RGBA").save(dst, optimize=True)
+        else:
+            import shutil
+            shutil.copyfile(os.path.join(src, f), dst)  # the reference: the user's file, byte for byte
+        # an older version of the same key is retired (its id stays in tools/body/uploaded.json)
+        for old in ("face_%s.png" % k, "face_%s_v2.png" % k):
+            if old != fn and os.path.isfile(os.path.join(OUTDIR, old)):
+                os.remove(os.path.join(OUTDIR, old))
+        out.append((k, name, fn, tuple(shift)))
+    return out
+
+
+def pack_entries():
+    """the pack's faces.json entries from the files in out/faces (newest version of each key)"""
+    out = []
+    for k, name, _ in PACK:
+        for fn in ("face_%s_v2.png" % k, "face_%s.png" % k):
+            if os.path.isfile(os.path.join(OUTDIR, fn)):
+                out.append({"key": k, "name": name, "file": fn, "creator": True})
+                break
+    return out
+
+
+def write_json():
+    with open(os.path.join(OUTDIR, "faces.json"), "w") as fh:
+        json.dump({"faces": [{"key": k, "name": n, "file": "face_%s.png" % k, "creator": k in CREATOR}
+                             for k, n in FACES] + pack_entries(),
+                   "default": "smile", "expressions": EXPRESSIONS}, fh, indent=1)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sheet", default=os.path.join(SCRATCH, "faces_sheet.png"))
+    ap.add_argument("--pack", default=None, metavar="DIR", help="the Boxer face pack's faces/ folder (PACK files)")
+    ap.add_argument("--pack-only", action="store_true", help="only (re)register the pack and rewrite faces.json")
     a = ap.parse_args()
     os.makedirs(OUTDIR, exist_ok=True)
+    if a.pack:
+        for k, _, fn, sh in register_pack(a.pack):
+            print("pack %-12s -> %-22s shift L (%+d, %+d) R (%+d, %+d)" % ((k, fn) + sh))
+    if a.pack_only:
+        write_json()
+        print(len(pack_entries()), "pack faces ->", OUTDIR)
+        return
     paths = {}
     for k, _ in FACES:
         f = Face()
         DRAW[k](f)
         paths[k] = os.path.join(OUTDIR, "face_%s.png" % k)
         f.save(paths[k])
-    with open(os.path.join(OUTDIR, "faces.json"), "w") as fh:
-        json.dump({"faces": [{"key": k, "name": n, "file": "face_%s.png" % k, "creator": k in CREATOR}
-                             for k, n in FACES],
-                   "default": "smile", "expressions": EXPRESSIONS}, fh, indent=1)
+    write_json()
     contact_sheet(paths, os.path.join(OUTDIR, "contact_sheet.png"))
     if a.sheet:
         os.makedirs(os.path.dirname(a.sheet), exist_ok=True)
