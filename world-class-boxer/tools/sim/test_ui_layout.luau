@@ -1,6 +1,9 @@
 --!nocheck
 -- tools/sim/test_ui_layout.luau: the game's main screens built by the real client code (guisim) at phone,
--- small phone, tablet, desktop and console sizes, and their layout checked:
+-- small phone, tablet, desktop and console sizes (the fight also on a phone with a controller and a short laptop
+-- window): the fight HUD in a round (all 14 special moves), with the key strip and stance chips up, between rounds
+-- and knocked down; the gym HUD; the title screen, its settings and career screens; the Career Hub; Moves &
+-- Controls; the creator; barber, locker, nutrition, sleep, store; a fight result. Their layout is checked:
 --   * nothing that draws or takes input runs off the screen
 --   * no text or button under the Roblox top bar's buttons (ScreenGuis that ignore the inset)
 --   * on touch screens every button is at least GS.TOUCH_PX (44) px both ways
@@ -8,7 +11,9 @@
 --   * no text under 10.5 px on the screen
 --   * the fight HUD: the touch pads, the special moves, the key strip, the stance chips and the scoreboard
 --     keep apart, and the key strip with all 14 special moves fits (at most two special rows, one on a
---     short canvas; the rest behind the "+N MORE" cap)
+--     short canvas; the rest behind the "+N MORE" cap), and a phone's special pads stay two rows (paged)
+--   * a controller has a selection on the screens Roblox's selection drives
+-- Objects drawn under a modal shade (a UI.Window's) are skipped. The box dumps land in tools/sim/out/ui/.
 --
 --   lune run tools/sim/test_ui_layout.luau                       # the checks
 --   lune run tools/sim/test_ui_layout.luau --previews DIR        # also rough layout previews (PNG) into DIR
@@ -17,6 +22,7 @@ local Host = require("./host")
 local GS = require("./guisim")
 local fs = require("@lune/fs")
 local process = require("@lune/process")
+local task = require("@lune/task")
 
 local args = process.args
 local previewDir, only, onlyDevices, verbose
@@ -393,7 +399,17 @@ local function run(name, dev)
 	return file
 end
 
-local files = {}
+-- each screen on each device in a process of its own (a client leaves threads and instances behind; a few
+-- dozen in one process run out of memory), four at a time; --child NAME DEVICE is one of them
+local childAt = table.find(args, "--child")
+if childAt then
+	local name, dev = args[childAt + 1], args[childAt + 2]
+	local f = run(name, dev)
+	print(string.format("CHILD %d %d %s", pass, fail, f or ""))
+	process.exit(0)
+end
+
+local jobs = {}
 for _, name in ipairs(ORDER) do
 	if not only or only[name] then
 		local devs = table.clone(DEVICES)
@@ -402,14 +418,57 @@ for _, name in ipairs(ORDER) do
 		end
 		for _, dev in ipairs(devs) do
 			if not onlyDevices or onlyDevices[dev] then
-				local f = run(name, dev)
-				if f then
-					table.insert(files, f)
-				end
+				table.insert(jobs, { name, dev })
 			end
 		end
 	end
 end
+local files = {}
+local self = root .. "/tools/sim/test_ui_layout.luau"
+local nextJob, running = 1, 0
+local function worker()
+	while nextJob <= #jobs do
+		local job = jobs[nextJob]
+		nextJob += 1
+		local r = process.exec("lune", { "run", self, "--child", job[1], job[2] })
+		local out = r.stdout or ""
+		local p, f, file = out:match("CHILD (%d+) (%d+) ([^\n]*)")
+		if not p then
+			fail += 1
+			print(string.format("FAIL %s@%s: the child process did not finish (%s)", job[1], job[2], (r.stderr or ""):sub(-300)))
+		else
+			pass += tonumber(p)
+			fail += tonumber(f)
+			if file ~= "" then
+				table.insert(files, file)
+			end
+			-- its FAIL lines (and their detail lines)
+			local keep = false
+			for line in out:gmatch("[^\n]+") do
+				if line:match("^FAIL ") then
+					keep = true
+				elseif not line:match("^      ") then
+					keep = false
+				end
+				if keep then
+					print(line)
+				end
+			end
+			if verbose then
+				print(string.format("%s@%s: %s passed, %s failed", job[1], job[2], p, f))
+			end
+		end
+	end
+	running -= 1
+end
+for _ = 1, 4 do
+	running += 1
+	task.spawn(worker)
+end
+while running > 0 do
+	task.wait(0.1)
+end
+table.sort(files)
 
 if previewDir then
 	Host.MkDir(previewDir)

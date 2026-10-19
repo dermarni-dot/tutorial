@@ -1444,7 +1444,12 @@ function GS.new(device, opts)
 							table.insert(out.text, { item = it, need = tw, room = room })
 						end
 					end
+					-- (scaled text draws between its UITextSizeConstraint's sizes: the smallest is what counts)
 					local px = it.textSize * it.unit
+					if P(o, "TextScaled") then
+						local tc = comp(o, "UITextSizeConstraint")
+						px = tc and (P(tc, "MinTextSize") or 1) * it.unit or math.huge
+					end
 					if px < (opts2.minText or 10.5) then
 						table.insert(out.small, { item = it, px = px })
 					end

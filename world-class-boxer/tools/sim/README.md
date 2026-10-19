@@ -155,3 +155,23 @@ lune run tools/sim/v9_anim.luau [--out DIR] [--tiers 1,3,5] [--clips rest,walk,j
 `tools/body/check_joints.py` (each joint of the tier bodies through the Animator's ranges: the parent's surface the child
 covers / the parent's end it uncovers) and `tools/body/check_gear.py` (the trunks over the body, the thighs swung) are
 the numeric side of the same checks, numpy only.
+
+## UI layout: guisim and test_ui_layout
+
+`guisim.luau` lays the game's 2D UI out under lune: the real LocalScripts (`S.loadScript("client/FightClient.client.lua")`)
+and modules on fakeengine, with a GUI layout model (UDim2, AnchorPoint, UIScale, UIPadding, UIListLayout,
+UIGridLayout, AutomaticSize, size / aspect constraints, ScrollingFrame clipping, text metrics for Gotham and the
+condensed Oswald), the 58 px top bar and the device's safe insets, `AbsoluteSize` / `AbsolutePosition` /
+`TextBounds` computed on demand, tweens landing on their goal. Devices: `phone` (844 x 390, notch insets),
+`phone_small` (667 x 375), `tablet` (1024 x 768), `desktop` / `console` (1920 x 1080), `phone_pad`, `laptop`
+(1366 x 650). `S.collect()` lists what is on the screen, `S.checks(items)` finds what runs off it, sits under the
+top bar's buttons, is under a fingertip (44 px) on touch, overflows its box or draws under 10.5 px.
+
+```sh
+lune run tools/sim/test_ui_layout.luau [--only fight,menu] [--devices phone,tablet] [--previews DIR] [-v]
+python3 tools/sim/ui_preview.py tools/sim/out/ui/*.json --out DIR    # rough box previews of the dumps
+```
+
+Each screen x device runs in its own lune process (four at a time). The previews draw every object's bounding
+box (buttons blue, flagged ones red, the top bar hatched, the safe insets orange), not a render: the preview's
+font is scaled to the width guisim measured, so text that looks cut there is cut by the layout.
