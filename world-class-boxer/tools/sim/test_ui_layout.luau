@@ -3,7 +3,9 @@
 -- small phone, tablet, desktop and console sizes (the fight also on a phone with a controller and a short laptop
 -- window): the fight HUD in a round (all 14 special moves), with the key strip and stance chips up, between rounds
 -- and knocked down; the gym HUD; the title screen, its settings and career screens; the Career Hub; Moves &
--- Controls; the creator; barber, locker, nutrition, sleep, store; a fight result. Their layout is checked:
+-- Controls; the creator; barber, locker, nutrition, sleep, store; a fight result; every training drill's own screen
+-- mid-session (drill_*: the weight room, the cardio machines, the recovery stations, the numbered heavy bag
+-- combos, the double-end rebounds, the shadow footwork). Their layout is checked:
 --   * nothing that draws or takes input runs off the screen
 --   * no text or button under the Roblox top bar's buttons (ScreenGuis that ignore the inset)
 --   * on touch screens every button is at least GS.TOUCH_PX (44) px both ways
@@ -317,13 +319,64 @@ screen("result", function(dev)
 	S.settle(0.6)
 	return S
 end)
+-- the training drills mid-session (tools/sim/drillsim.luau: the real client drill, the server's real plan, a
+-- virtual clock run up to the moment the drill's own screen is up): the panel, its stage, its buttons and the
+-- metrics strip / muscles card at the drill's widest point
+local DrillSim = require("./drillsim")
+local DRILLS = {
+	-- { screen, activity, the segment judge to stop in, frames into it, extra predicate }
+	{ "drill_combo_numbers", "HeavyBag", "seq", 30, function(seg)
+		return seg.call == "numbers"
+	end, 5 },
+	{ "drill_rebound", "DoubleEnd", "rebound", 30 },
+	{ "drill_footwork", "Shadow", "notes", 150 },
+	{ "drill_bench", "Bench", "bench", 60 },
+	{ "drill_deadlift", "Barbell", "deadlift", 60 },
+	{ "drill_squat", "Squat", "squat", 60 },
+	{ "drill_pullup", "PullUps", "pullup", 60 },
+	{ "drill_curls", "Dumbbells", "tempo", 150 },
+	{ "drill_treadmill", "Treadmill", "treadmill", 200 },
+	{ "drill_bike", "Bike", "bike", 200 },
+	{ "drill_rower", "Rower", "rower", 120 },
+	{ "drill_icebath", "IceBath", "icebath", 120 },
+	{ "drill_stretch", "Stretch", "stretch", 90 },
+	{ "drill_massage", "Massage", "massage", 60 },
+	{ "drill_massage_work", "Massage", "massage", 60 * 9 },
+	{ "drill_chamber", "Chamber", "chamber", 300 },
+	{ "drill_sauna", "Sauna", "sauna", 300 },
+}
+for _, d in ipairs(DRILLS) do
+	screen(d[1], function(dev)
+		local S = client(dev)
+		DrillSim.SeedRandom(S.host)
+		local Config = S.require("Config")
+		local act = Config.FindById(Config.Activities, d[2])
+		local params = { level = d[6] or 3 }
+		if act.minigame == "massage" then
+			params.sore = { back = 0.7, legs = 0.45, shoulders = 0.2, core = 0.3, neck = 0.15 }
+		elseif act.minigame == "stretch" then
+			params.stretchNames = { "HAMSTRINGS", "HIP FLEXORS", "SHOULDERS", "CALVES" }
+		end
+		local D = DrillSim.Attach(S, { act = act, lv = d[6] or 3, params = params, P = S.P })
+		D.start()
+		local reached = D.until_(function(ctx)
+			local seg = ctx.plan.segs[ctx.segI]
+			return seg ~= nil and seg.j == d[3] and ctx.judges[ctx.segI] ~= nil and not ctx.resting and (d[5] == nil or d[5](seg))
+		end, 60 * 240)
+		assert(reached, "the drill never reached its " .. d[3] .. " segment")
+		for _ = 1, d[4] do
+			D.frame()
+		end
+		return S
+	end)
+end
 
 local DEVICES = { "phone", "phone_small", "tablet", "desktop", "console" }
 local PAD_SELECT = { hub = true, hub_training = true, controls = true, result = true, menu_career = true, tutorial_offer = true, tutorial_done = true }
 -- (the tutorial's step card is checked with the fight HUD's pieces: on the screen, below the top bar, finger-sized
 -- on touch, apart from the scoreboard, the touch pads, the key strip and the stance chips)
 -- the fight HUD also on a phone with a controller and a short laptop window (the key strip on small canvases)
-local EXTRA = { fight = { "phone_pad", "laptop" }, fight_strip = { "phone_pad", "laptop" }, fight_down = { "phone_pad" }, menu = { "laptop" }, gym = { "laptop" },
+local EXTRA = { drill_bench = { "laptop" }, drill_massage = { "laptop", "phone_pad" }, drill_bike = { "laptop" }, fight = { "phone_pad", "laptop" }, fight_strip = { "phone_pad", "laptop" }, fight_down = { "phone_pad" }, menu = { "laptop" }, gym = { "laptop" },
 	fight_tutorial = { "phone_pad", "laptop" }, fight_tutorial_keys = { "phone_pad", "laptop" }, tutorial_offer = { "phone_pad" } }
 
 ------------------------------------------------------------------------
@@ -475,7 +528,12 @@ end
 local childAt = table.find(args, "--child")
 if childAt then
 	local name, dev = args[childAt + 1], args[childAt + 2]
-	local f = run(name, dev)
+	-- (an error ends the child too: a drill screen leaves threads running that would keep it alive)
+	local okRun, f = pcall(run, name, dev)
+	if not okRun then
+		check(name .. "@" .. dev .. " lays out", false, f)
+		f = nil
+	end
 	print(string.format("CHILD %d %d %s", pass, fail, f or ""))
 	process.exit(0)
 end

@@ -1576,7 +1576,7 @@ function GS.WriteBoxes(path, S, items, extra)
 			list[#list + 1] = {
 				x = math.floor(it.x * 10 + 0.5) / 10, y = math.floor(it.y * 10 + 0.5) / 10, w = math.floor(it.w * 10 + 0.5) / 10, h = math.floor(it.h * 10 + 0.5) / 10,
 				clip = it.clip, class = it.class, name = it.name, path = it.path, button = it.button, depth = it.depth, z = it.z,
-				order = it.displayOrder, text = it.text and it.text:sub(1, 160) or nil,
+				order = it.displayOrder, text = it.text and it.text:sub(1, (utf8.offset(it.text, 161) or (#it.text + 1)) - 1) or nil,
 				textSize = it.textSize and it.textSize * it.unit or nil,
 				bad = extra and extra.bad and extra.bad[it.obj] or nil, blocked = it.blocked or nil, seq = it.order,
 				bgT = rawget(it.obj, "_props").BackgroundTransparency,
