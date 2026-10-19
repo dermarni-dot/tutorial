@@ -167,6 +167,24 @@ do
 		WCB_ENTRIES[ENTRIES[i].id] = true
 	end
 end
+-- --set wcb2: every drawn Boxer face (the user's four + tools/body/wcb_faces_draw.py's) on light / mid / dark skin
+-- (previews/final/v9/wcb_faces2). Each boxer is built with the style wcb_neutral (so the head carries the style decal
+-- whatever the src's STYLE_KEYS list), then the exported decal file is that face's PNG from faces.json (decalKey).
+local WCB2_ENTRIES = {}
+do
+	local keys = { "wcb_neutral", "wcb_focused", "wcb_smirk", "wcb_grit", "wcb_confident", "wcb_grin", "wcb_cool", "wcb_wink",
+		"wcb_stern", "wcb_determined", "wcb_toothy", "wcb_scarred", "wcb_shout", "wcb_hurt", "wcb_dazed", "wcb_ko", "wcb_tired",
+		"wcb_surprised" }
+	for _, sk in ipairs({ { "light", 2 }, { "mid", 6 }, { "dark", 11 } }) do
+		for _, k in ipairs(keys) do
+			local L = { id = "f2_" .. sk[1] .. "_" .. k:sub(5), label = k .. ", " .. sk[1] .. " skin", g = 1, tier = 2, skin = sk[2], preset = "Classic",
+				style = "wcb_neutral", bald = true }
+			byId[L.id] = L
+			entry(L, "rest", { decalKey = k })
+			WCB2_ENTRIES[ENTRIES[#ENTRIES].id] = true
+		end
+	end
+end
 -- the walkout robe on every tier, the frames and the heights (body views; clearance metrics in the report)
 local ROBES = {
 	{ id = "robe_t1_lean_62", g = 1, tier = 1, skin = 6, frame = "Lean", height = 62, robe = "Classic" },
@@ -475,6 +493,9 @@ local function appFor(L)
 	if L.style then
 		app.face.style = L.style
 	end
+	if L.bald then
+		app.hair.style = "Bald" -- the face previews: nothing over the brows
+	end
 	if L.frame then
 		app.body.frame = L.frame
 	end
@@ -496,7 +517,8 @@ for _, e in ipairs(ENTRIES) do
 	if only and not only[e.id] and not only[e.look.id] then
 		continue
 	end
-	if (args.set == "wcb") ~= (WCB_ENTRIES[e.id] == true) then
+	local inSet = (WCB_ENTRIES[e.id] and "wcb") or (WCB2_ENTRIES[e.id] and "wcb2") or nil
+	if args.set ~= inSet then
 		continue
 	end
 	local L = e.look
@@ -692,6 +714,10 @@ for _, e in ipairs(ENTRIES) do
 				reflectance = p.Reflectance or 0, transparency = p.Transparency or 0 })
 			counts.parts += 1
 		end
+	end
+	if e.decalKey and scene.head and scene.head.decal then
+		scene.head.decal.file = root .. "/tools/body/out/faces/" .. (faceFile[e.decalKey] or ("face_" .. e.decalKey .. ".png"))
+		scene.head.decal.key = e.decalKey
 	end
 	Host.WriteJSON(OUT .. "/" .. e.id .. ".json", scene)
 	table.insert(index.looks, { id = e.id, file = e.id .. ".json", label = scene.label, look = L.id, state = e.state, counts = counts })

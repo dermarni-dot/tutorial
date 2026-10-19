@@ -125,6 +125,90 @@
    "name": "Boxer Grit",
    "file": "face_wcb_grit_v2.png",
    "creator": true
+  },
+  {
+   "key": "wcb_confident",
+   "name": "Boxer Confident",
+   "file": "face_wcb_confident.png",
+   "creator": true
+  },
+  {
+   "key": "wcb_grin",
+   "name": "Boxer Grin",
+   "file": "face_wcb_grin.png",
+   "creator": true
+  },
+  {
+   "key": "wcb_cool",
+   "name": "Boxer Cool",
+   "file": "face_wcb_cool.png",
+   "creator": true
+  },
+  {
+   "key": "wcb_wink",
+   "name": "Boxer Wink",
+   "file": "face_wcb_wink.png",
+   "creator": true
+  },
+  {
+   "key": "wcb_stern",
+   "name": "Boxer Stern",
+   "file": "face_wcb_stern.png",
+   "creator": true
+  },
+  {
+   "key": "wcb_determined",
+   "name": "Boxer Determined",
+   "file": "face_wcb_determined.png",
+   "creator": true
+  },
+  {
+   "key": "wcb_toothy",
+   "name": "Boxer Toothy Grin",
+   "file": "face_wcb_toothy.png",
+   "creator": true
+  },
+  {
+   "key": "wcb_scarred",
+   "name": "Boxer Scarred",
+   "file": "face_wcb_scarred.png",
+   "creator": true
+  },
+  {
+   "key": "wcb_shout",
+   "name": "Boxer Shout",
+   "file": "face_wcb_shout.png",
+   "creator": false
+  },
+  {
+   "key": "wcb_hurt",
+   "name": "Boxer Hurt",
+   "file": "face_wcb_hurt.png",
+   "creator": false
+  },
+  {
+   "key": "wcb_dazed",
+   "name": "Boxer Dazed",
+   "file": "face_wcb_dazed.png",
+   "creator": false
+  },
+  {
+   "key": "wcb_ko",
+   "name": "Boxer KO",
+   "file": "face_wcb_ko.png",
+   "creator": false
+  },
+  {
+   "key": "wcb_tired",
+   "name": "Boxer Tired",
+   "file": "face_wcb_tired.png",
+   "creator": false
+  },
+  {
+   "key": "wcb_surprised",
+   "name": "Boxer Surprised",
+   "file": "face_wcb_surprised.png",
+   "creator": false
   }
  ],
  "default": "smile",

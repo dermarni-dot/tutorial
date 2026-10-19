@@ -80,6 +80,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "057efa0152d0953c891f7fd40b7bcd7d0c3bfe81c9ad40c23672412ad79f34c6": {
+  "at": "2026-10-19T19:53:20Z",
+  "file": "out/faces/face_wcb_scarred.png",
+  "id": 116046602465581,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer Scarred",
+  "state": "Active",
+  "type": "Image"
+ },
  "05ceefbcdd5b9c9fc64f1aa0b99bc2dda8573592db32dfceaecfa563f3d54197": {
   "at": "2026-10-18T03:31:29Z",
   "file": "out/gear/tier1/TrunkLeg_R.mesh",
@@ -223,6 +232,15 @@
   "name": "WCB Gear T5 TrunkHem_R",
   "state": "Active",
   "type": "Mesh"
+ },
+ "134dc58abbc1696b84cf012bfa924b49339cd36468bf7fe28d9daf91dfc5dd2d": {
+  "at": "2026-10-19T19:53:01Z",
+  "file": "out/faces/face_wcb_confident.png",
+  "id": 128064263185676,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer Confident",
+  "state": "Active",
+  "type": "Image"
  },
  "1384a21e82955d67df3c7a52a11423854c7cdb413a67f54866a3ff53560364ef": {
   "at": "2026-10-18T18:50:02Z",
@@ -412,6 +430,15 @@
   "name": "WCB Gear T2 TrunkStripe_R",
   "state": "Active",
   "type": "Mesh"
+ },
+ "23744e1add6cecb1e915453e68ac1ed3da54796a1d3aed5571a215a28ed42d5e": {
+  "at": "2026-10-19T19:53:23Z",
+  "file": "out/faces/face_wcb_shout.png",
+  "id": 93250063512830,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer Shout",
+  "state": "Active",
+  "type": "Image"
  },
  "25222dcbbe5a66f1da43ad29af6ecb6738ba321ba456b17c685ca6aacc922c82": {
   "at": "2026-10-18T01:55:44Z",
@@ -782,6 +809,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "45469ce3edc58ad01ec6f0f6b323526c268ad674462d5133b38a9fc9f854b7c1": {
+  "at": "2026-10-19T19:53:18Z",
+  "file": "out/faces/face_wcb_toothy.png",
+  "id": 139013764083343,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer Toothy Grin",
+  "state": "Active",
+  "type": "Image"
+ },
  "455e5d0067910b5cb35eb3e330089ad993b7178d7bf866460e97cf97c5503cb7": {
   "at": "2026-10-18T03:35:30Z",
   "file": "out/gear/tier4/GloveCuff_R.mesh",
@@ -1025,6 +1061,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "58372710ee2a221ecc0ccfbdb255e1c0a64a903ed40127756af99a94f6736dce": {
+  "at": "2026-10-19T19:53:26Z",
+  "file": "out/faces/face_wcb_hurt.png",
+  "id": 126463125778150,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer Hurt",
+  "state": "Active",
+  "type": "Image"
+ },
  "58810260aa5d256f064a51445278282e17020bdcbfee4a8aca9068ed4d73ad84": {
   "at": "2026-10-19T14:54:26Z",
   "file": "out/faces/face_wcb_smirk_v2.png",
@@ -1133,6 +1178,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "6299ea6b7b3cb0fbb749636eaaad78c676da0708fd0aa05658e70024b7e61c89": {
+  "at": "2026-10-19T19:53:15Z",
+  "file": "out/faces/face_wcb_determined.png",
+  "id": 78331766537954,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer Determined",
+  "state": "Active",
+  "type": "Image"
+ },
  "6317ed4c10bd63d34e340bc169a241c1cd68387b3e7409e8ceba01ffc16a0555": {
   "at": "2026-10-18T03:37:13Z",
   "file": "out/gear/tier5/GloveCuff_R.mesh",
@@ -1214,6 +1268,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "678bb6172ce8aad96d8e857c0373c498946367c3d09a03d62b678ee5559e14ac": {
+  "at": "2026-10-19T19:53:04Z",
+  "file": "out/faces/face_wcb_grin.png",
+  "id": 122901636746556,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer Grin",
+  "state": "Active",
+  "type": "Image"
+ },
  "67a0b46738749e423622ad5b5edcc655288d0e81a1b632b82b4994de3121e69c": {
   "at": "2026-10-18T01:55:33Z",
   "file": "out/tier1/UpperTorso.mesh",
@@ -1286,6 +1349,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "6b5c0b10314810b988d6cf41ce3948d54bda7a79fbe4eb0ca78d556fde8ddc02": {
+  "at": "2026-10-19T19:53:07Z",
+  "file": "out/faces/face_wcb_cool.png",
+  "id": 101616530546336,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer Cool",
+  "state": "Active",
+  "type": "Image"
+ },
  "6da94792b4dba0e8157e6ab53c935355d517aa315246e7014b47f27877f4dda4": {
   "at": "2026-10-18T03:31:43Z",
   "file": "out/gear/tier1/TrunkStripe_R.mesh",
@@ -1339,6 +1411,15 @@
   "name": "WCB Gear BootFoot_L",
   "state": "Active",
   "type": "Mesh"
+ },
+ "70aecaf52f2b11cfee25482fab6dd027145763ca89d0a236d05e4674a2996d07": {
+  "at": "2026-10-19T19:53:12Z",
+  "file": "out/faces/face_wcb_stern.png",
+  "id": 101255929551842,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer Stern",
+  "state": "Active",
+  "type": "Image"
  },
  "715cc09f49d799a58512dfee556b4dbd2c85a509162adfee2c24575727cbef4d": {
   "at": "2026-10-18T18:51:14Z",
@@ -1691,6 +1772,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "8b4661b9bfeb471a1a2fecf951240f532a227df04f0affe262d3ebafbe9b0cb3": {
+  "at": "2026-10-19T19:53:35Z",
+  "file": "out/faces/face_wcb_tired.png",
+  "id": 70932305441688,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer Tired",
+  "state": "Active",
+  "type": "Image"
+ },
  "8b8151dbe8b33a9c9499124a61e45ca7367d651994d762e8983fe578f2fbef89": {
   "at": "2026-10-19T14:54:24Z",
   "file": "out/faces/face_wcb_focused_v2.png",
@@ -1978,6 +2068,15 @@
   "name": "WCB Gear T4 TrunkStripe_R",
   "state": "Active",
   "type": "Mesh"
+ },
+ "9f7d80a4563917c25d4dce24069d35da9bc18f02952e426c7a0cad5e7276241b": {
+  "at": "2026-10-19T19:53:32Z",
+  "file": "out/faces/face_wcb_ko.png",
+  "id": 122518228264182,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer KO",
+  "state": "Active",
+  "type": "Image"
  },
  "9faabea112a7e8acba0cecadf7adada2f9823c2d93885cefcef583c2e12189b2": {
   "at": "2026-10-18T18:53:34Z",
@@ -2546,6 +2645,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "c2c9497e383c2be7ad708bff093373994ea1db98025a86ce525580b7d2872be4": {
+  "at": "2026-10-19T19:53:09Z",
+  "file": "out/faces/face_wcb_wink.png",
+  "id": 90728048091208,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer Wink",
+  "state": "Active",
+  "type": "Image"
+ },
  "c37196998c281be557ec88fbaffe155d6950a71202383ed6c0db64709f938e64": {
   "at": "2026-10-18T03:38:09Z",
   "file": "out/gear/tier5/Waistband.mesh",
@@ -2572,6 +2680,15 @@
   "name": "WCB Body T3 RightLowerArm",
   "state": "Active",
   "type": "Mesh"
+ },
+ "c55bae3478a0f251503840eaa56b796cfc631c64a8c07f628285139bcc47e907": {
+  "at": "2026-10-19T19:53:29Z",
+  "file": "out/faces/face_wcb_dazed.png",
+  "id": 132872399750334,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer Dazed",
+  "state": "Active",
+  "type": "Image"
  },
  "c5ad3c266c4cf49c34674ea521517183f2761c35f05a58b5964ddd42464fac95": {
   "at": "2026-10-18T03:36:08Z",
@@ -3175,6 +3292,15 @@
   "name": "WCB Gear T4 TrunkStripe_L",
   "state": "Active",
   "type": "Mesh"
+ },
+ "e97948734dbc2155b1a9f3de817be3bc40a9bb235eb941fd8a9ad71d1d6c4b51": {
+  "at": "2026-10-19T19:53:38Z",
+  "file": "out/faces/face_wcb_surprised.png",
+  "id": 70510565356748,
+  "moderation": "Approved",
+  "name": "WCB Face Boxer Surprised",
+  "state": "Active",
+  "type": "Image"
  },
  "ea60670ae0da6dfed6d558537df3d5ffc2ffd7eb9ad21108fe273cfd5187e931": {
   "at": "2026-10-18T01:58:06Z",

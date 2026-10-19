@@ -468,13 +468,19 @@ def register_pack(src):
 
 
 def pack_entries():
-    """the pack's faces.json entries from the files in out/faces (newest version of each key)"""
+    """the pack's faces.json entries from the files in out/faces (newest version of each key), then the faces drawn
+    in its style by wcb_faces_draw.py (DRAWN: creator = a resting face, else a mood face only)"""
     out = []
     for k, name, _ in PACK:
         for fn in ("face_%s_v2.png" % k, "face_%s.png" % k):
             if os.path.isfile(os.path.join(OUTDIR, fn)):
                 out.append({"key": k, "name": name, "file": fn, "creator": True})
                 break
+    from wcb_faces_draw import DRAWN
+    for k, name, creator in DRAWN:
+        fn = "face_%s.png" % k
+        if os.path.isfile(os.path.join(OUTDIR, fn)):
+            out.append({"key": k, "name": name, "file": fn, "creator": creator})
     return out
 
 
