@@ -207,3 +207,15 @@ client module on guisim, the offer's and the step card's SKIP TUTORIAL and the w
 `test_ui_layout` lays out the step card over the fight HUD (`fight_tutorial`, `fight_tutorial_keys`), the offer
 (`tutorial_offer`) and the wrap-up (`tutorial_done`) on every device. The bout itself (FightEngine with
 `opts.tutorial`) needs Studio.
+
+## Training drills: test_drills
+
+`lune run tools/sim/test_drills.luau [--judges] [--only Bench,Sauna] [-v]` (~30 s) plays every training drill with
+simulated players (`drillbots.luau`: a perfect, an average and an idle player for every DrillScore / DrillWorkouts
+judge). Part A: the server's plan (`Training.DrillPlan`, levels 1 / 3 / 5) through the judges on a virtual clock;
+the input stream through `DrillScore.Replay` must give the score the judges gave live; perfect >= 0.85, idle <= 0.15
+(the sauna 0.3), average in between, never "too quick", no easier at the top level. Part B (`drillsim.luau`): the real
+client drill (`Activities.Start`) on guisim with a fake server and a virtual clock, played through each device's own
+path (keys, pad buttons / stick flicks, on-screen buttons): the session hands in, client score = server replay,
+every action reachable, the prompts name the device's controls, the stats table is valid, the pose attributes move.
+`test_ui_layout` lays the drills out mid-session (`drill_*` screens) through the same `drillsim.luau`.
