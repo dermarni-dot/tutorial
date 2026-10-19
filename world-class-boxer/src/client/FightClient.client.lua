@@ -1449,7 +1449,14 @@ do
 		end
 		local m = F.markerPos or 0
 		local good = math.abs(m - 0.5) <= (F.zoneW or 0.2) / 2
-		F.mash += good and 3 or 1
+		-- the server counts a green press triple at most every 0.25 s: the bar counts the same, so a full bar
+		-- means he gets up at the next count
+		local now = os.clock()
+		local triple = good and now - (F.goodAt or 0) >= 0.25
+		if triple then
+			F.goodAt = now
+		end
+		F.mash += triple and 3 or 1
 		send({ t = "mash", good = good })
 		zone.BackgroundColor3 = good and Color3.fromRGB(120, 255, 150) or T.red
 		task.delay(0.12, function()
@@ -4963,9 +4970,10 @@ function handlers.getupStart(msg)
 	F.mash = 0
 	F.downAt = os.clock()
 	local ability = math.clamp(tonumber(msg.ability) or 0.5, 0, 1)
-	F.zoneW = 0.12 + ability * 0.25
+	F.zoneW = 0.16 + ability * 0.25
+	F.goodAt = 0
 	local conc = F.me and F.me.conc or 0
-	F.markerSpeed = 3.2 - ability * 1.2 + conc * 1.5
+	F.markerSpeed = 2.6 - ability * 1.0 + conc * 1.0
 	zone.Size = UDim2.fromScale(F.zoneW, 1)
 	setGetup(0)
 	-- the title names the press of the device in use: SPACE, A / CROSS on a pad, taps on touch

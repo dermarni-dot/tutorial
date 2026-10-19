@@ -2023,6 +2023,9 @@ function Fight:Knockdown(F, by, severity, fall, cause)
 	end)
 end
 
+-- seconds between two green-zone presses that count triple (the client mirrors it for its bar)
+local GOOD_GAP = 0.25
+
 function Fight:GetUpAbility(F)
 	local s, m = F.data.stats, F.data.mental
 	local a = (s.Chin * 0.4 + m.Composure * 0.3 + s.Recovery * 0.3) / 100
@@ -2057,11 +2060,13 @@ function Fight:Count(F)
 			end
 		end
 	end
-	local target = 12 + F.kdTotal * 6 + (1 - ability) * 18 + F.conc * 15
+	-- presses needed (a green-zone press counts 3): a first knockdown takes a few seconds of honest work, a
+	-- third one when he's badly hurt still needs good timing on top of the mashing
+	local target = 8 + F.kdTotal * 4 + (1 - ability) * 12 + F.conc * 8
 	if sev == "flash" then
 		target *= 0.35
 	elseif sev == "heavy" then
-		target *= 1.2
+		target *= 1.15
 	end
 	target = math.max(4, math.floor(target))
 	if F.isPlayer then
@@ -3571,7 +3576,7 @@ function FightEngine.Input(player, msg)
 				-- a "good" press = the client's sweeping marker was in the green zone; the marker passes
 				-- the zone at most about three times a second, so faster "good" claims count as plain
 				local worth = 1
-				if msg.good == true and now - (F.goodAt or 0) >= 0.3 then
+				if msg.good == true and now - (F.goodAt or 0) >= GOOD_GAP then
 					F.goodAt = now
 					worth = 3
 				end
