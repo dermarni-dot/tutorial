@@ -778,7 +778,10 @@ local function newContext(info)
 			local room = panelLeft - 10 - colW - 10 - margin
 			side.Visible = room >= SIDE_W
 			if ctx.works then
-				ctx.works.Visible = not side.Visible and not ctx.sizeResult
+				-- (the strip over the panel only where the panel leaves room for it under the top of the screen:
+				-- a drill with two rows of finger-sized buttons on a small phone has none)
+				local panelTop = canvas.Y - margin - (ctx.compactRun and panel.Size.Y.Offset or ctx.panelH or PANEL_H)
+				ctx.works.Visible = not side.Visible and not ctx.sizeResult and panelTop - 50 >= 0
 			end
 			side.AnchorPoint = Vector2.new(1, 1)
 			side.Position = UDim2.new(0, -(10 + colW + 10), 1, 0)
@@ -1177,6 +1180,10 @@ local function newContext(info)
 		-- the instructions may name SPACE: its button can have changed with this map
 		if ctx.infoRaw then
 			UI.BindHint(ctx.info, infoFor)
+		end
+		-- (the panel's height follows the rows of buttons: the strip over it may have to make way)
+		if ctx.layout and not ctx.sizeResult then
+			ctx.layout()
 		end
 	end
 	-- the key a drill's own action is on for this device ("A", the pad button), nil on touch (the
@@ -4856,7 +4863,7 @@ GAMES.sauna = function(ctx)
 	local hyd = meter(ctx.stage, UDim2.fromOffset(x0, 78), UDim2.fromOffset(mw * 0.6, 14))
 	local cutText = label(ctx.stage, "", { Face = "number", TextSize = 13, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(x0 + mw, 78), Size = UDim2.fromOffset(mw * 0.38, 16), TextXAlignment = Enum.TextXAlignment.Right })
 	local wasInside = true
-	local res, seg = timedDrill(ctx, saunaC > 0 and string.format("%d°F", toF(saunaC)) or "SAUNA SUIT", "WEIGHT CUT", function(j, sg, now)
+	local res, seg = timedDrill(ctx, saunaC > 0 and string.format("WEIGHT CUT %d°F", toF(saunaC)) or "WEIGHT CUT: SAUNA SUIT", "SESSION", function(j, sg, now)
 		local forced = now < j.forcedUntil
 		if j.inside then
 			setText(where, saunaC > 0 and string.format("IN THE HEAT - %d°F", toF(saunaC)) or "SAUNA SUIT - SWEATING", j.T > 0.85 and T.red or T.text)
