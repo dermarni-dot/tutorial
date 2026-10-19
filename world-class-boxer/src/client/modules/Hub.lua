@@ -41,13 +41,21 @@ local NAV = {
 	{ "TRAINING", { "Training", "Body", "Stats", "Gym", "Coaches" } },
 	{ "LIFE", { "Gear", "Sponsors", "Life", "Shop" } },
 }
-local tabButtons = {}
--- each tab's icon (the side navigation)
-local TAB_ICONS = {
-	Career = "belt", Rankings = "podium", Rivals = "target", PvP = "versus", Legacy = "laurel", Training = "dumbbell", Body = "muscle",
-	Stats = "chart", Gym = "heavybag", Coaches = "whistle", Gear = "gloves", Sponsors = "contract", Life = "home", Shop = "store",
+local NAV_ICONS = {
+	Career = "glove", Training = "dumbbell", Body = "heart", Stats = "chart", Gym = "home",
+	Gear = "shield", Coaches = "people", Sponsors = "coin", Life = "home", Rankings = "trophy",
+	Rivals = "people", PvP = "glove", Shop = "bag", Legacy = "crown",
 }
-Hub.TabIcons = TAB_ICONS
+local TAB_HINTS = {
+	Career = "Your next step toward a world title.", Training = "Build strength. Sharpen your craft.",
+	Body = "Track your physique and recovery.", Stats = "Know your strengths. Find your edge.",
+	Gym = "Build a gym worthy of a champion.", Gear = "Choose the kit for your next fight.",
+	Coaches = "Build your corner team.", Sponsors = "Turn your reputation into opportunity.",
+	Life = "Your life beyond the ropes.", Rankings = "See where you stand in the world.",
+	Rivals = "Scout the competition.", PvP = "Test yourself against other players.",
+	Shop = "Equip your journey to the top.", Legacy = "Every round becomes part of your story.",
+}
+local tabButtons = {}
 
 local function money(n)
 	return Config.Money(n)
@@ -222,7 +230,7 @@ local function showBoxer(id)
 		Size = UDim2.new(1, -44, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	local strip = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 64) })
 	UI.List(strip, 8, true)
-	UI.Stat(strip, string.format("%d-%d-%d", b.record.w, b.record.l, b.record.d), "RECORD", { Size = UDim2.new(0.36, -8, 1, 0), order = 1, valueSize = 28, scaled = true, icon = "gloves" })
+	UI.Stat(strip, string.format("%d-%d-%d", b.record.w, b.record.l, b.record.d), "RECORD", { Size = UDim2.new(0.36, -8, 1, 0), order = 1, valueSize = 28, scaled = true, icon = "glove" })
 	UI.Stat(strip, tostring(b.record.ko), "KOS", { Size = UDim2.new(0.2, -8, 1, 0), order = 2, valueSize = 28, valueColor = T.red, icon = "ko" })
 	UI.Stat(strip, tostring(b.overall), "OVERALL", { Size = UDim2.new(0.22, -8, 1, 0), order = 3, valueSize = 28, valueColor = T.gold, icon = "star" })
 	UI.Stat(strip, tostring(math.floor(b.heat or 0)), "RIVALRY", { Size = UDim2.new(0.22, -8, 1, 0), order = 4, valueSize = 28, icon = "flame" })
@@ -304,7 +312,7 @@ R.Career = function(body, P)
 	local chips = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26) })
 	UI.List(chips, 8, true)
 	UI.Chip(chips, "Day " .. P.day, T.text, { order = 1, icon = "calendar" })
-	UI.Chip(chips, "Purse " .. money(P.money), T.gold, { order = 2, icon = "money" })
+	UI.Chip(chips, "Purse " .. money(P.money), T.gold, { order = 2, icon = "coin" })
 	UI.Chip(chips, commas(followers(P)) .. " followers", T.cyan, { order = 3, icon = "user" })
 	UI.Chip(chips, "Popularity " .. P.popularity, T.text, { order = 4, icon = "star" })
 	if #deals > 0 then
@@ -345,7 +353,7 @@ R.Career = function(body, P)
 		UI.List(meters, 8, true)
 		UI.Stat(meters, tostring(P.camp.daysLeft), "CAMP DAYS LEFT", { Size = UDim2.new(0.33, -6, 1, 0), order = 1, valueSize = 28, valueColor = P.camp.daysLeft <= 0 and T.gold or T.text, icon = "calendar" })
 		UI.Stat(meters, string.format("%.1f", P.weight), string.format("WEIGHT / %d LBS", P.weightLimit), { Size = UDim2.new(0.33, -6, 1, 0), order = 2, valueSize = 28, valueColor = P.overWeight > 0 and T.red or T.green })
-		UI.Stat(meters, money(o.purse), "PURSE", { Size = UDim2.new(0.34, -6, 1, 0), order = 3, valueSize = 28, valueColor = T.green, scaled = true, icon = "money" })
+		UI.Stat(meters, money(o.purse), "PURSE", { Size = UDim2.new(0.34, -6, 1, 0), order = 3, valueSize = 28, valueColor = T.green, scaled = true, icon = "coin" })
 		if P.overWeight > 0 then
 			UI.Line(c, string.format("You're %.1f lbs over the limit! Burn fat with cardio or cut water in the sauna before fight night - missing weight costs stamina and %s.", P.overWeight, P.overWeight > 2 and "20% of your purse" or "no fine yet"), { TextColor3 = T.red, TextSize = 13 })
 		end
@@ -1723,18 +1731,15 @@ end
 ------------------------------------------------------------------------
 local function styleTab(name, b)
 	local on = name == tab
-	b.BackgroundTransparency = on and 0.1 or 1
+	b.BackgroundTransparency = on and 0 or 1
+	b.BackgroundColor3 = on and T.bg:Lerp(T.gold, 0.16) or T.panel2
 	local label = b:FindFirstChild("Label")
 	if label then
-		label.TextColor3 = on and T.text or T.sub
+		label.TextColor3 = on and T.gold or T.sub
 	end
 	local bar = b:FindFirstChild("Active")
 	if bar then
 		bar.Visible = on
-	end
-	local icon = b:FindFirstChild("TabIcon")
-	if icon then
-		UI.SetIconColor(icon, on and T.gold or T.sub)
 	end
 end
 
@@ -1752,6 +1757,14 @@ function Hub.RenderNow()
 	local y = content.CanvasPosition
 	renderId += 1
 	UI.Clear(content)
+	local summary = UI.Frame(content, { Name = "SectionIntro", BackgroundTransparency = 1,
+		Size = UDim2.new(1, -8, 0, compactHub() and 54 or 70), LayoutOrder = -100 })
+	UI.Icon(summary, NAV_ICONS[tab] or "glove", 28, T.gold, { Position = UDim2.fromOffset(0, 4) })
+	UI.Title(summary, string.upper(tab), { Position = UDim2.fromOffset(42, 0), TextSize = 28,
+		Size = UDim2.new(1, -42, 0, 36), TextTruncate = Enum.TextTruncate.AtEnd })
+	UI.Text(summary, TAB_HINTS[tab] or "", { Position = UDim2.fromOffset(42, 38), TextSize = 13,
+		TextColor3 = T.sub, Size = UDim2.new(1, -42, 0, 24), AutomaticSize = Enum.AutomaticSize.None,
+		TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, Visible = not compactHub() })
 	local ok, err = pcall(R[tab], content, P)
 	if not ok then
 		warn("[Hub]", tab, err)
@@ -1812,7 +1825,7 @@ function Hub.Open(which)
 	-- the side navigation: grouped tabs; on a phone a narrow rail (no group captions, centred labels)
 	-- so the tab's first cards show without scrolling
 	local rail = compactHub()
-	local navW = rail and 76 or 176
+	local navW = rail and 76 or 192
 	local side = UI.Scroll(body, { Name = "Nav", Size = UDim2.new(0, navW, 1, 0), ScrollBarThickness = rail and 0 or nil })
 	UI.List(side, 2)
 	tabButtons = {}
@@ -1829,21 +1842,19 @@ function Hub.Open(which)
 		end
 		for _, name in ipairs(group[2]) do
 			order += 1
-			local b = UI.New("TextButton", { Name = name, Text = "", AutoButtonColor = false, BorderSizePixel = 0, Size = UDim2.new(1, rail and -4 or -8, 0, hit(side, rail and 34 or 36)), LayoutOrder = order,
+			local b = UI.New("TextButton", { Name = name, Text = "", AutoButtonColor = false, BorderSizePixel = 0, Size = UDim2.new(1, rail and -4 or -8, 0, hit(side, rail and 34 or 40)), LayoutOrder = order,
 				BackgroundColor3 = T.panel2, BackgroundTransparency = 1, Parent = side })
 			UI.Corner(b, UI.R.md)
 			UI.Hover(b, { amount = 0.94 })
 			local bar = UI.Frame(b, { Name = "Active", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(3, rail and 18 or 20), BackgroundColor3 = T.gold, Visible = false })
 			UI.Corner(bar, 2)
-			-- the tab's icon before its label (the phone rail keeps the label alone: it needs the width)
-			local lx = rail and 6 or 14
-			if not rail and TAB_ICONS[name] then
-				UI.Icon(b, TAB_ICONS[name], 18, T.sub, { Name = "TabIcon", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0.5, 0) })
-				lx = 42
-			end
-			UI.Text(b, string.upper(name), { Name = "Label", Face = "displayMed", TextSize = rail and 16 or 18, TextColor3 = T.sub, Position = UDim2.fromOffset(lx, 0),
-				Size = UDim2.new(1, -(lx + (rail and 2 or 0)), 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
+			UI.Text(b, string.upper(name), { Name = "Label", Face = "displayMed", TextSize = rail and 16 or 18, TextColor3 = T.sub, Position = UDim2.fromOffset(rail and 6 or 44, 0),
+				Size = UDim2.new(1, rail and -8 or -50, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
 				TextXAlignment = rail and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left })
+			if not rail then
+				UI.Icon(b, NAV_ICONS[name] or "star", 20, T.gold, { Name = "NavIcon",
+					Position = UDim2.new(0, 14, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5) })
+			end
 			b.MouseButton1Click:Connect(function()
 				tab = name
 				content.CanvasPosition = Vector2.zero

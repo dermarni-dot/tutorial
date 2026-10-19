@@ -2707,7 +2707,9 @@ GAMES.reps = function(ctx)
 				return nil
 			end
 			local f = res.f
-			if res.failed then
+			if res.verdict == "none" then
+				ctx.feedback("NO LIFT", T.red)
+			elseif res.failed then
 				fails += 1
 				setFails += 1
 				ctx.feedback("SPOTTER: I got you!", T.orange)
@@ -2817,7 +2819,9 @@ GAMES.medball = function(ctx)
 			return nil
 		end
 		local f = res.f
-		if res.failed then
+		if res.verdict == "none" then
+			ctx.feedback("NO SLAM", T.red)
+		elseif res.failed then
 			ctx.feedback("OVERREACHED - BRACE!", T.orange)
 		elseif res.verdict == "perfect" or res.verdict == "good" then
 			cleanSlams += 1
@@ -4500,11 +4504,11 @@ GAMES.icebath = function(ctx)
 		cold.mark(j.S, j.S < 0.5 and T.green or (j.S < 0.8 and T.orange or T.red))
 		setText(waveText, j.wave(now) and "COLD WAVE!" or "")
 		setText(line1, string.format("WATER %d°F (%d°C)%sTIME IN %s", toF(tempC), tempC, DOT, clock((now - ctx.segAt) * TIME_SCALE)))
-		setText(line2, string.format("Calm breaths %d / %d", j.good, j.breaths), j.S >= 0.8 and T.red or T.sub)
+		setText(line2, string.format("Calm breaths %d / %d", math.floor(j.good + 0.5), j.breaths), j.S >= 0.8 and T.red or T.sub)
 		ctx.drive(j.l)
 		ctx.attrQ("PoseLungs", j.l, 0.05)
 		ctx.attrQ("PoseShiver", j.S, 0.05)
-		ctx.stats(string.format("Cold %s%sbreaths %d", pct(j.S), DOT, j.good))
+		ctx.stats(string.format("Cold %s%sbreaths %d", pct(j.S), DOT, math.floor(j.good + 0.5)))
 	end, function(_, _, hit)
 		if hit.exhale then
 			if hit.good then
@@ -4522,9 +4526,9 @@ GAMES.icebath = function(ctx)
 	local calmPct = math.floor(res.calm / seg.duration * 100 + 0.5)
 	ctx.grade(math.clamp(res.calm / seg.duration / Workouts.TIMED_FULL, 0, 1))
 	ctx.put("sync", calmPct)
-	ctx.put("calmBreaths", res.good)
+	ctx.put("calmBreaths", math.floor(res.good + 0.5))
 	ctx.note(string.format("%s at %d°F", clock(seg.duration * TIME_SCALE), toF(tempC)))
-	ctx.note(string.format("Calm %d%% of the time%s%d calm breaths", calmPct, DOT, res.good))
+	ctx.note(string.format("Calm %d%% of the time%s%d calm breaths", calmPct, DOT, math.floor(res.good + 0.5)))
 	return ctx.score()
 end
 

@@ -134,15 +134,23 @@ POSE.bench = function(p, rig, t, d, w, model, dt)
 	p.Root = A(PI / 2, 0, 0)
 	p.W = A(0.12 + 0.05 * (1 - d), 0, 0)
 	p.Neck = A(-0.12, 0, 0)
-	local sp, el = lerp(0.32, 1.57, d), lerp(1.75, 0.05, d)
-	p.RS = A(sp, 0, lerp(0.55, 0.08, d))
-	p.RE = A(el, 0, 0)
-	p.LS = A(sp, 0, lerp(-0.55, -0.08, d))
-	p.LE = A(el, 0, 0)
+	-- PoseTilt (the bench drill: > 0 the left end dips): the low side's arm is that much less extended,
+	-- the chest rolls with it
+	local tilt = clamp(num(rig.a.PoseTilt, 0), -1, 1)
+	local dR, dL = clamp(d + 0.18 * tilt, 0, 1), clamp(d - 0.18 * tilt, 0, 1)
+	local spR, elR = lerp(0.32, 1.57, dR), lerp(1.75, 0.05, dR)
+	local spL, elL = lerp(0.32, 1.57, dL), lerp(1.75, 0.05, dL)
+	p.RS = A(spR, 0, lerp(0.55, 0.08, dR))
+	p.RE = A(elR, 0, 0)
+	p.LS = A(spL, 0, lerp(-0.55, -0.08, dL))
+	p.LE = A(elL, 0, 0)
+	if tilt ~= 0 then
+		p.W = p.W * A(0, 0, -0.08 * tilt)
+	end
 	-- Poser welds the bar along the right hand's X axis: undo the elbow flare at the wrists so both
 	-- hands' X axes stay on the torso's X and the bar stays level through both palms
-	p.RW = (p.RS * p.RE):Inverse() * A(sp + el, 0, 0)
-	p.LW = (p.LS * p.LE):Inverse() * A(sp + el, 0, 0)
+	p.RW = (p.RS * p.RE):Inverse() * A(spR + elR, 0, 0)
+	p.LW = (p.LS * p.LE):Inverse() * A(spL + elL, 0, 0)
 	p.RH = A(0.05 - 0.08 * drive, 0, 0.22)
 	p.RK = A(-1.75 + 0.12 * drive, 0, 0)
 	p.RA = A(0.4, 0, 0)
@@ -179,9 +187,22 @@ POSE.deadlift = function(p, rig, t, d, w, model, dt)
 	p.RE = A(0.05, 0, 0)
 	p.LE = A(0.05, 0, 0)
 	plant(rig, 0, 0.1, 0.15, -0.15, 0, 0)
+	-- the deadlift drill: PoseSet (1 = a neutral back) rounds the back over the bar when it isn't set;
+	-- PoseGrip (0..1) - a failing grip shakes in the forearms
+	local set = clamp(num(rig.a.PoseSet, 1), 0, 1)
+	if set < 1 then
+		p.W = p.W * A(-0.35 * (1 - set) * h, 0, 0)
+		p.Neck = p.Neck * A(-0.2 * (1 - set) * h, 0, 0)
+	end
+	local grip = clamp(num(rig.a.PoseGrip, 1), 0, 1)
+	if grip < 0.35 then
+		local shake = (0.35 - grip) * 0.12 * sin(t * 47)
+		p.RE = p.RE * A(shake, 0, 0)
+		p.LE = p.LE * A(-shake, 0, 0)
+	end
 	flexAct(rig, "Barbell", 0.3 + 0.7 * sin(PI * d))
 	flex(rig, "traps", d * d * d)
-	flex(rig, "forearms", 0.9)
+	flex(rig, "forearms", 0.9 + 0.1 * (1 - grip))
 	rig.exprHint = (d > 0.15 and d < 0.85) and "effort" or nil
 	return p
 end
@@ -232,6 +253,12 @@ POSE.curl = function(p, rig, t, d, w, model, dt)
 	stand(p, rig, t, dt, 1.2, 0.15)
 	local rep = rig.curlCycle or 0
 	local mode = floor(rep / 3) % 4
+	-- the curl drill names the arm working (CurlSide "L" / "R"): plain alternating curls, that arm
+	local side0 = rig.a.CurlSide
+	if side0 == "L" or side0 == "R" then
+		mode = 0
+		rep = side0 == "R" and 0 or 1
+	end
 	local eff = num(rig.a.Effort, 0)
 	if mode <= 1 then
 		local right = rep % 2 == 0
@@ -291,7 +318,9 @@ POSE.pullup = function(p, rig, t, d, w, model, dt)
 	local scap = smooth(d / 0.15)
 	local pull = clamp((d - 0.1) / 0.9, 0, 1)
 	local s1 = PI - (PI - 0.5) * pull
-	local swing = sin(t * 1.3 + rig.phase) * 0.05 * (1 - pull)
+	-- the pull-up drill's swing (PoseSwing, -1..1) when it runs one; a small idle pendulum otherwise
+	local ps = rig.a.PoseSwing
+	local swing = type(ps) == "number" and clamp(ps, -1, 1) * 0.3 or sin(t * 1.3 + rig.phase) * 0.05 * (1 - pull)
 	p.Root = CF(0, 1.9 * pull + 0.12 * scap, 0) * A(swing - 0.05, 0, 0)
 	p.W = A(0.1 * pull, 0, 0)
 	p.Neck = A(0.15 * pull, 0, 0)
@@ -531,7 +560,9 @@ POSE.run = function(p, rig, t, d, w, model, dt)
 	rig.runPhase = (rig.runPhase or 0) + dt * 10 * w
 	local x = rig.runPhase
 	local s, c = sin(x), cos(x)
-	p.Root = CF(0, 0.12 * abs(c) - 0.06, 0) * A(-0.14, 0.1 * s, 0)
+	-- (the treadmill drill's incline: PoseIncline 0..1 leans the runner into the hill)
+	local incl = clamp(num(rig.a.PoseIncline, 0), 0, 1)
+	p.Root = CF(0, 0.12 * abs(c) - 0.06, 0) * A(-0.14 - 0.16 * incl, 0.1 * s, 0)
 	p.W = A(-0.02, -0.16 * s, 0)
 	p.Neck = A(0.12, 0.06 * s, 0)
 	p.RS = A(-0.65 * s, 0, -0.1)
@@ -564,6 +595,11 @@ POSE.bike = function(p, rig, t, d, w, model, dt)
 	p.LS = A(1.25, 0, 0.1)
 	p.LE = A(0.3, 0, 0)
 	seated(p, 0.45)
+	-- out of the saddle on a steep climb (the bike drill's PoseClimb)
+	local climb = clamp(num(rig.a.PoseClimb, 0), 0, 1)
+	if climb > 0 then
+		p.Root = (p.Root or CF()) * CF(0.08 * sin(x) * climb, 0.3 * climb, -0.12 * climb) * A(-0.25 * climb, 0, 0.06 * sin(x) * climb)
+	end
 	p.RH = A(PI / 2 + 0.1 + 0.35 * sin(x), 0, 0.05)
 	p.LH = A(PI / 2 + 0.1 - 0.35 * sin(x), 0, -0.05)
 	p.RK = A(-1.3 - 0.45 * cos(x), 0, 0)
@@ -648,9 +684,12 @@ end
 -- Recovery & services
 ------------------------------------------------------------------------
 POSE.longsit = function(p, rig, t)
-	local shiver = sin(t * 40) * 0.015
+	-- the ice bath drill: PoseShiver (the cold-shock meter) sets how hard you shake, PoseLungs (0..1) the chest
+	local cold = clamp(num(rig.a.PoseShiver, 0.4), 0, 1)
+	local lungs = clamp(num(rig.a.PoseLungs, 0.5 + 0.5 * sin(t * 1.2)), 0, 1)
+	local shiver = sin(t * 40) * (0.004 + 0.03 * cold)
 	p.Root = A(0, 0, shiver)
-	p.W = A(-0.1 + shiver, 0, 0)
+	p.W = A(-0.1 + shiver - 0.06 * lungs, 0, 0)
 	p.Neck = A(0.1, 0, 0)
 	p.RS = A(0.25, 0, 0.55)
 	p.RE = A(0.5, 0, 0)
@@ -665,9 +704,11 @@ POSE.longsit = function(p, rig, t)
 end
 
 POSE.sit = function(p, rig, t)
-	local b = sin(t * 1.6) * 0.03
-	p.W = A(-0.15 + b, 0, 0)
-	p.Neck = A(0.35, 0, 0)
+	-- the sauna drill's core temperature (PoseHeat 0..1): heavier breathing, slumping, the head dropping
+	local heat = clamp(num(rig.a.PoseHeat, 0), 0, 1)
+	local b = sin(t * (1.6 + 1.4 * heat)) * (0.03 + 0.03 * heat)
+	p.W = A(-0.15 + b + 0.2 * heat, 0, 0)
+	p.Neck = A(0.35 + 0.25 * heat, 0, 0)
 	p.RS = A(0.75, 0, 0.05)
 	p.RE = A(0.55, 0, 0)
 	p.LS = A(0.75, 0, -0.05)
@@ -717,6 +758,12 @@ POSE.stretch = function(p, rig, t, d, w, model, dt)
 	-- plain stance (no snap between them: the quad stretch's lifted foot dropped to the floor in one frame)
 	local x = (t + rig.phase) % 4
 	local k = smooth(x / 0.8) * (1 - smooth((x - 3.2) / 0.8))
+	-- the stretching drill picks the pose (PoseStretch 0..2) and how deep you are in it (the drive)
+	local ps = rig.a.PoseStretch
+	if type(ps) == "number" then
+		phase = floor(ps) % 3
+		k = smooth(clamp(rig.a.PoseDrive ~= nil and d or 0.6, 0, 1))
+	end
 	stand(p, rig, t, dt, 0.5, 0)
 	if phase == 0 then
 		-- arm across the chest

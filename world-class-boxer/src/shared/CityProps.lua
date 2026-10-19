@@ -231,7 +231,25 @@ function CityProps.Star(parent, cf, title, name, gold)
 	st.Color = Color3.fromRGB(200, 160, 60)
 	st.Thickness = 3
 	st.Parent = edge
-	label(sg, "★", { TextColor3 = gold or Color3.fromRGB(255, 200, 60), Size = UDim2.fromScale(0.7, 0.5), Position = UDim2.fromScale(0.15, 0.02), Font = Enum.Font.SourceSansBold })
+	-- the star: the icon set's (Shared.IconData), else a drawn word
+	local ok, IconData = pcall(function()
+		return require(script.Parent:WaitForChild("IconData", 5))
+	end)
+	local e = ok and type(IconData) == "table" and IconData.icons and IconData.icons.star
+	if e and (tonumber(e.id) or 0) > 0 then
+		local img = Instance.new("ImageLabel")
+		img.BackgroundTransparency = 1
+		img.Size = UDim2.fromScale(0.7, 0.5)
+		img.Position = UDim2.fromScale(0.15, 0.02)
+		img.Image = "rbxassetid://" .. tostring(e.id)
+		img.ImageRectOffset = Vector2.new(e.x, e.y)
+		img.ImageRectSize = Vector2.new(IconData.cell or 256, IconData.cell or 256)
+		img.ImageColor3 = gold or Color3.fromRGB(255, 200, 60)
+		img.ScaleType = Enum.ScaleType.Fit
+		img.Parent = sg
+	else
+		label(sg, "STAR", { TextColor3 = gold or Color3.fromRGB(255, 200, 60), Size = UDim2.fromScale(0.7, 0.5), Position = UDim2.fromScale(0.15, 0.02) })
+	end
 	label(sg, name or "", { TextColor3 = Color3.fromRGB(255, 230, 170), Size = UDim2.fromScale(0.9, 0.2), Position = UDim2.fromScale(0.05, 0.54) })
 	label(sg, title or "", { TextColor3 = Color3.fromRGB(230, 210, 200), Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.16), Position = UDim2.fromScale(0.05, 0.78) })
 	return tile

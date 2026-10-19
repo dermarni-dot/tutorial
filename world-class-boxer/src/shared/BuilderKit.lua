@@ -108,6 +108,23 @@ local function mk(folder, anchor, name, size, cf, color, shape, material, transp
 end
 
 -- fontName (optional) = an Enum.Font name; bg (optional Color3) = a filled label (sponsor patches)
+-- the game's icon set (Shared.IconData, tools/ui): a glove logo prints its icon instead of a text glyph
+local IconData
+do
+	local ok, m = pcall(function()
+		return require(script.Parent:WaitForChild("IconData", 5))
+	end)
+	IconData = ok and type(m) == "table" and m or nil
+end
+local function iconEntry(name)
+	local e = name and IconData and IconData.icons and IconData.icons[name]
+	return (e and (tonumber(e.id) or 0) > 0) and e or nil
+end
+-- "icon:<name>" for textPatch when that icon is uploaded (nil otherwise: the caller keeps its text)
+function Kit.IconText(name)
+	return iconEntry(name) and ("icon:" .. name) or nil
+end
+
 local function textPatch(folder, anchor, name, size, cf, text, textColor, face, fontName, bg)
 	local p = mk(folder, anchor, name, size, cf, Color3.new(0, 0, 0), "Block", SMOOTH, 1)
 	local sg = Instance.new("SurfaceGui")
@@ -115,6 +132,21 @@ local function textPatch(folder, anchor, name, size, cf, text, textColor, face, 
 	sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 	sg.PixelsPerStud = 120
 	sg.LightInfluence = 0.6
+	local e = iconEntry(type(text) == "string" and text:match("^icon:(%w+)$"))
+	if e then
+		-- an icon: the white glyph tinted the text colour, fitted to the patch
+		local img = Instance.new("ImageLabel")
+		img.Size = UDim2.fromScale(1, 1)
+		img.BackgroundTransparency = 1
+		img.Image = "rbxassetid://" .. tostring(e.id)
+		img.ImageRectOffset = Vector2.new(e.x, e.y)
+		img.ImageRectSize = Vector2.new(IconData.cell or 256, IconData.cell or 256)
+		img.ImageColor3 = textColor
+		img.ScaleType = Enum.ScaleType.Fit
+		img.Parent = sg
+		sg.Parent = p
+		return p
+	end
 	local t = Instance.new("TextLabel")
 	t.Size = UDim2.fromScale(1, 1)
 	t.BackgroundTransparency = bg and 0 or 1

@@ -728,7 +728,8 @@ do
 	UI.Corner(bug, 4)
 	local bugText = UI.Text(bug, "LIVE  ·  WCB SPORTS", { Font = T.semi, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(0, 0, 1, 0),
 		AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false })
-	UI.Pad(bugText, 0, 10)
+	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 34), PaddingRight = UDim.new(0, 10), Parent = bugText })
+	UI.Brand(bug, 20, { Position = UDim2.fromOffset(3, 2), ZIndex = bug.ZIndex + 1 })
 	function setBug(text, color, short)
 		bugText.Text = text
 		bug.BackgroundColor3 = color
@@ -1429,6 +1430,10 @@ do
 	------------------------------------------------------------------------
 	getup = UI.Frame(hud, { Name = "GetUp", Size = UDim2.fromOffset(560, 160), Position = UDim2.new(0.5, 0, 0.64, 0), AnchorPoint = Vector2.new(0.5, 0), Visible = false, ZIndex = 24 })
 	UI.Glass(getup, { transparency = 0.05, radius = UI.R.xl, stroke = T.red, strokeT = 0.3 })
+	-- the broadcast's red alert band behind the title (restyle only: the panel's logic is unchanged)
+	local getupBand = UI.Frame(getup, { Name = "AlertBand", Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = T.red, ZIndex = 24 })
+	UI.Corner(getupBand, UI.R.xl)
+	UI.Gradient(getupBand, Color3.new(1, 1, 1), 90, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.72), NumberSequenceKeypoint.new(1, 1) }))
 	getupTitle = UI.Text(getup, "YOU'RE DOWN!  MASH SPACE / TAP - HIT THE GREEN ZONE", { Face = "displayMed", TextSize = 22, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(12, 12),
 		Size = UDim2.new(1, -24, 0, 26), TextColor3 = T.red, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextScaled = true, ZIndex = 25 })
 	UI.New("UITextSizeConstraint", { MaxTextSize = 22, MinTextSize = 16, Parent = getupTitle })

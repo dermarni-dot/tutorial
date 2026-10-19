@@ -92,6 +92,12 @@ local hud = UI.Frame(gui, { Name = "HUD", Size = UDim2.new(0, 360, 0, 0), Automa
 UI.Glass(hud, { transparency = 0.16 })
 UI.New("UIPadding", { PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 14), PaddingLeft = UDim.new(0, 18), PaddingRight = UDim.new(0, 18), Parent = hud })
 UI.List(hud, 6)
+local brandRow = UI.Frame(hud, { Name = "BrandRow", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = -1 })
+UI.Brand(brandRow, 24, { Position = UDim2.fromOffset(0, 0) })
+UI.Text(brandRow, "WORLD CLASS BOXER", { Face = "displayMed", TextSize = 15, TextColor3 = T.sub,
+	Position = UDim2.fromOffset(34, 0), Size = UDim2.new(1, -34, 0, 24), AutomaticSize = Enum.AutomaticSize.None,
+	TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+
 local stripe = UI.Frame(hud, { Name = "Stripe", Size = UDim2.new(1, 0, 0, 3), BackgroundColor3 = T.gold, LayoutOrder = 0 })
 UI.Gradient(stripe, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0.2), NumberSequenceKeypoint.new(1, 1) }))
 local head = UI.Frame(hud, { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 1 })
@@ -108,8 +114,8 @@ UI.Text(ovrBox, "OVR", { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Size 
 local hudTier = UI.Text(hud, "", { Name = "Tier", Font = T.semi, TextSize = 12, TextColor3 = T.gold, LayoutOrder = 2, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 local nums = UI.Frame(hud, { Name = "Numbers", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52), LayoutOrder = 3 })
 UI.List(nums, 8, true)
-local _, recVal, recCap = UI.Stat(nums, "0-0-0", "RECORD", { Size = UDim2.new(0.5, -4, 1, 0), valueSize = 24, order = 1, scaled = true, icon = "gloves", iconSize = 14 })
-local _, moneyVal = UI.Stat(nums, "$0", "PURSE", { Size = UDim2.new(0.5, -4, 1, 0), valueSize = 24, order = 2, valueColor = T.gold, scaled = true, icon = "money", iconSize = 14, iconColor = T.goldDeep })
+local _, recVal, recCap = UI.Stat(nums, "0-0-0", "RECORD", { Size = UDim2.new(0.5, -4, 1, 0), valueSize = 24, order = 1, scaled = true, icon = "glove", iconSize = 14 })
+local _, moneyVal = UI.Stat(nums, "$0", "PURSE", { Size = UDim2.new(0.5, -4, 1, 0), valueSize = 24, order = 2, valueColor = T.gold, scaled = true, icon = "coin", iconSize = 14, iconColor = T.goldDeep })
 local bars = UI.Frame(hud, { Name = "Meters", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 })
 UI.List(bars, 5)
 local function miniBar(label, color, order, icon)
@@ -352,7 +358,7 @@ local function showResult(data)
 	-- the outcome's emblem (a trophy for a win, the KO burst for a stoppage, gloves for a decision / loss) beside the
 	-- headline, left of the close button
 	local stoppage = res.method == "KO" or res.method == "TKO" or res.method == "RTD"
-	local emblem = res.outcome == "win" and (stoppage and "ko" or "trophy") or (res.outcome == "loss" and (stoppage and "ko" or "gloves") or "versus")
+	local emblem = res.outcome == "win" and (stoppage and "ko" or "trophy") or (res.outcome == "loss" and (stoppage and "ko" or "glove") or "versus")
 	local es = short and 52 or 76
 	local tile = UI.IconTile(win, emblem, es, col, { Name = "Emblem", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -84, 0, short and 30 or 40), iconScale = 0.62 })
 	local tileScale = UI.New("UIScale", { Scale = 0.6, Parent = tile })
@@ -405,7 +411,7 @@ local function showResult(data)
 		UI.Line(body, "Simulated fight", { TextColor3 = T.sub, TextSize = 13 })
 	end
 	local purse = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 58) })
-	UI.Kicker(purse, "EARNINGS", T.green, { Size = UDim2.new(1, 0, 0, 18), icon = "money" })
+	UI.Kicker(purse, "EARNINGS", T.green, { Size = UDim2.new(1, 0, 0, 18), icon = "coin" })
 	UI.Title(purse, Config.Money(data.earnings or 0), { TextSize = 38, TextColor3 = T.green, Position = UDim2.fromOffset(0, 16), Size = UDim2.new(1, 0, 0, 42) })
 	for _, n in ipairs(data.notes or {}) do
 		local bigNote = n:find("CHAMPION") or n:find("PRO") or n:find("LEGEND") or n:find("TOP 10") or n:find("Promoted") or n:find("SPECIAL MOVE")

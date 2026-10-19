@@ -148,7 +148,7 @@ J.bench = function(seg, M, TapHold)
 		local q = 0
 		local avg = s.sum / math.max(1, s.n)
 		if v == "lockout" then
-			q = clamp(1 - math.max(0, avg - 0.12) / 0.45, 0.45, 1)
+			q = clamp(1 - math.max(0, avg - 0.08) / 0.3, 0.4, 1)
 			if s.maxX > 0.8 * seg.tiltMax then
 				q *= 0.85
 			end
@@ -194,7 +194,7 @@ J.deadlift = function(seg, M, TapHold)
 			s.p = math.max(0, s.p - seg.drop * TICK)
 		end
 		if s.p > 0 then
-			s.g -= seg.drain * (stick and 1.6 or 1) * TICK
+			s.g -= seg.drain * (stick and 1.4 or 1) * TICK
 			s.minG = math.min(s.minG, s.g)
 			if s.g <= 0 then
 				s.g = 0
@@ -249,7 +249,7 @@ J.deadlift = function(seg, M, TapHold)
 			local band = seg.stickHi - seg.stickLo
 			local ideal = band / (seg.speed * seg.stickMult) + (1 - band) / seg.speed
 			local tq = clamp(ideal / math.max(0.01, s.endT - s.setT), 0.6, 1)
-			local gq = clamp(0.55 + s.minG * 1.8, 0.55, 1)
+			local gq = clamp(0.4 + s.minG * 1.5, 0.4, 1)
 			q = 0.4 * setQ + 0.35 * gq + 0.25 * tq
 		elseif v == "grip" then
 			q = 0.15
@@ -489,7 +489,7 @@ J.tempo = function(seg, M)
 				eq = 0.3 * clamp((at - n.ts) / math.max(0.01, n.te - n.ts), 0, 1)
 				n.endText = "early"
 			else
-				eq = 1 - 0.3 * math.abs(e) / seg.relW
+				eq = 1 - 0.6 * math.abs(e) / seg.relW
 				n.endText = "good"
 			end
 		elseif how == "held" then
@@ -626,7 +626,7 @@ J.treadmill = function(seg, M)
 		local tg = stepAt(seg.program, T - M)
 		local okS = math.abs(s.mph - tg.mph) <= seg.tolMph + 1e-6
 		local okI = math.abs(s.incl - tg.incl) <= seg.tolIncl + 1e-6
-		s.acc += (okS and okI) and 1 or ((okS or okI) and 0.5 or 0)
+		s.acc += (okS and okI) and 1 or (okS and 0.5 or 0)
 		if okS and okI then
 			s.onBoth += 1
 		end
@@ -741,9 +741,9 @@ J.rower = function(seg, M, TapHold)
 	local function stroke(t, x)
 		local fq
 		if x >= seg.finishLo then
-			fq = 1 - math.min(0.4, math.max(0, s.hang - 0.3) * 0.8)
+			fq = 1 - math.min(0.5, math.max(0, s.hang - 0.3) * 1.0)
 		else
-			fq = 0.3 + 0.5 * x / seg.finishLo
+			fq = 0.2 + 0.5 * x / seg.finishLo
 		end
 		local q = 0.5 * s.cq + 0.5 * fq
 		s.sum += q
@@ -785,12 +785,12 @@ J.rower = function(seg, M, TapHold)
 		if flip == "on" and (s.phase == "catch" or s.phase == "recover") then
 			if s.phase == "catch" then
 				local w = t - s.reachedAt
-				s.cq = w <= 0.3 and 1 or math.max(0.4, 1 - (w - 0.3) * 0.8)
+				s.cq = w <= 0.3 and 1 or math.max(0.3, 1 - (w - 0.3) * 1.2)
 				s.catchText = w <= 0.3 and "clean" or "pause"
 			elseif s.x <= seg.catchW then
 				s.cq, s.catchText = 1, "clean"
 			else
-				s.cq, s.catchText = math.max(0.3, 1 - s.x * 1.2), "rushed"
+				s.cq, s.catchText = math.max(0.2, 1 - s.x * 2.5), "rushed"
 			end
 			s.phase, s.hang = "drive", 0
 			return { catch = s.catchText }
@@ -847,7 +847,7 @@ J.icebath = function(seg, M, TapHold)
 		end
 		local dS = seg.cold * (s.wave(T) and seg.waveMult or 1)
 		if not on and s.calm and s.l > 0.05 then
-			dS -= seg.calmRate
+			dS -= seg.calmRate * s.calm
 		end
 		if not on and s.l <= 0 and T - s.emptyAt > 2.5 then
 			dS += 0.03
@@ -877,13 +877,13 @@ J.icebath = function(seg, M, TapHold)
 			s.startL, s.fullAt = s.l, nil
 			return { inhale = true, from = s.l }
 		elseif flip == "off" then
-			local full, fromEmpty = s.l >= 0.8, (s.startL or 1) <= 0.2
-			local good = full and fromEmpty
+			-- how calming the breath was: how full (0.4 .. 0.9) times how empty it started (0.6 .. 0.15)
+			local full, fromEmpty = s.l >= 0.8, (s.startL or 1) <= 0.25
+			local q = clamp((s.l - 0.4) / 0.5, 0, 1) * clamp((0.6 - (s.startL or 1)) / 0.45, 0, 1)
+			local good = q >= 0.75
 			s.breaths += 1
-			s.calm = good
-			if good then
-				s.good += 1
-			end
+			s.calm = q > 0 and q or nil
+			s.good += q
 			return { exhale = true, good = good, full = full, fromEmpty = fromEmpty }
 		end
 		return nil
@@ -1115,7 +1115,7 @@ J.chamber = function(seg, M)
 		end
 		if not pain then
 			local d = math.abs(s.P - s.target(T))
-			s.acc += d <= seg.tol and 1 or (d <= 2.5 * seg.tol and 0.5 or 0)
+			s.acc += d <= seg.tol and 1 or (d <= 1.5 * seg.tol and 0.5 or 0)
 		end
 		if T - M >= seg.duration - 1e-6 then
 			s.closed = true
@@ -1299,12 +1299,14 @@ local function accShare(plan, res)
 	return r and clamp(r.acc / seg.duration / W.TIMED_FULL, 0, 1) or 0
 end
 AGG.treadmill, AGG.bike, AGG.chamber = accShare, accShare, accShare
+-- the strokes' mean grade, times the share of the pieces' strokes rowed (rushing the slide for extra
+-- strokes earns nothing: their grade drops)
 AGG.rower = function(plan, res)
 	local r = res[1]
-	if not r then
+	if not r or r.strokes == 0 then
 		return 0
 	end
-	return clamp(r.sum / math.max(1, 0.92 * r.expected), 0, 1)
+	return clamp(r.sum / r.strokes, 0, 1) * clamp(r.strokes / math.max(1, 0.9 * r.expected), 0, 1)
 end
 AGG.icebath = function(plan, res)
 	local r = res[1]
@@ -1375,7 +1377,7 @@ PLAN.bench = function(segs, lv, r, Wt)
 	for set = 1, 2 do
 		local weak = r:NextNumber() < 0.5 and -1 or 1
 		for rep = 1, 4 do
-			local amp = 0.22 + 0.12 * f + rep * 0.02 + (set - 1) * 0.05
+			local amp = 0.3 + 0.14 * f + rep * 0.02 + (set - 1) * 0.05
 			table.insert(segs, { j = "bench", set = set, rep = rep, speed = 0.36 - 0.02 * f, sink = 0.15,
 				drift = { amp, 1.6 + r:NextNumber() * 1.2, r:NextNumber() * 6.28, amp * 0.6, 3.1 + r:NextNumber() * 1.5, r:NextNumber() * 6.28 },
 				bias = weak * (0.06 + 0.04 * rep + 0.06 * (set - 1)), corr = 0.95, tiltMax = 1,
@@ -1389,7 +1391,7 @@ PLAN.deadlift = function(segs, lv, r, Wt)
 		for rep = 1, 3 do
 			table.insert(segs, { j = "deadlift", set = set, rep = rep, sweep = 0.55 + 0.25 * f + 0.05 * rep, c = 0.5, w = 0.1 - 0.03 * f,
 				speed = 0.42, stickLo = 0.32, stickHi = 0.58, stickMult = 0.45 - 0.04 * (set - 1), drop = 0.5,
-				drain = 0.32 + 0.12 * f + 0.03 * rep + 0.04 * (set - 1), gripTap = 0.24, wait = 7, limit = 9, gap = repGap(Wt, set, rep) })
+				drain = 0.25 + 0.1 * f + 0.02 * rep + 0.04 * (set - 1), gripTap = 0.3, wait = 7, limit = 9, gap = repGap(Wt, set, rep) })
 		end
 	end
 end
@@ -1409,7 +1411,7 @@ PLAN.pullup = function(segs, lv, r, Wt)
 	for set = 1, 2 do
 		for rep = 1, 3 do
 			table.insert(segs, { j = "pullup", set = set, rep = rep, omega = 3.0 + 0.6 * f, ph = r:NextNumber() * 6.28, a0 = 0.2 + 0.05 * rep,
-				amax = 1, gain = 0.24 - 0.02 * f - 0.01 * (set - 1), sink = 0.04, swingAdd = 0.3 + 0.1 * f, damp = 0.06, hollowDamp = 0.55,
+				amax = 1, gain = 0.24 - 0.03 * f - 0.01 * (set - 1), sink = 0.04 + 0.02 * f, swingAdd = 0.3 + 0.18 * f, damp = 0.06, hollowDamp = 0.55 - 0.15 * f,
 				wait = 6, limit = 9, gap = repGap(Wt, set, rep) })
 		end
 	end
@@ -1423,7 +1425,7 @@ PLAN.curls = function(segs, lv, r, Wt)
 		table.insert(notes1, { lane, k * 2, k * 2 + 1 })
 		lane = lane == "L" and "R" or "L"
 	end
-	table.insert(segs, { j = "tempo", name = "ALTERNATING CURLS", bpm = bpm1, beat = 60 / bpm1, lead = 1.5, notes = notes1, hitW = 0.25, perfW = 0.09, relW = 0.25, gap = Wt.intro })
+	table.insert(segs, { j = "tempo", name = "ALTERNATING CURLS", bpm = bpm1, beat = 60 / bpm1, lead = 1.5, notes = notes1, hitW = 0.25, perfW = 0.09 - 0.03 * f, relW = 0.25 - 0.05 * f, gap = Wt.intro })
 	local bpm2 = math.floor(64 + 16 * f)
 	local notes2 = {}
 	local at = 0
@@ -1433,7 +1435,7 @@ PLAN.curls = function(segs, lv, r, Wt)
 		lane = lane == "L" and "R" or "L"
 		at += hold + 1
 	end
-	table.insert(segs, { j = "tempo", name = "TEMPO CURLS", bpm = bpm2, beat = 60 / bpm2, lead = 1.5, notes = notes2, hitW = 0.22, perfW = 0.08, relW = 0.2, gap = Wt.rest + Wt.round })
+	table.insert(segs, { j = "tempo", name = "TEMPO CURLS", bpm = bpm2, beat = 60 / bpm2, lead = 1.5, notes = notes2, hitW = 0.22, perfW = 0.08 - 0.03 * f, relW = 0.22 - 0.05 * f, gap = Wt.rest + Wt.round })
 end
 PLAN.treadmill = function(segs, lv, r, Wt)
 	local f = lvf(lv)
@@ -1477,12 +1479,12 @@ end
 PLAN.rower = function(segs, lv, r, Wt)
 	local f = lvf(lv)
 	local pieces = { { t = 0, spm = 20, name = "STEADY STATE" }, { t = 10, spm = 24 + math.floor(2 * f), name = "RATE UP" }, { t = 20, spm = 28 + math.floor(4 * f), name = "SPRINT FINISH" } }
-	table.insert(segs, { j = "rower", duration = 30, pieces = pieces, drive = 0.8 - 0.1 * f, finishLo = 0.86, catchW = 0.1, gap = Wt.intro })
+	table.insert(segs, { j = "rower", duration = 30, pieces = pieces, drive = 0.8 - 0.1 * f, finishLo = 0.86 + 0.06 * f, catchW = 0.1, gap = Wt.intro })
 end
 PLAN.icebath = function(segs, lv, r, Wt)
 	local f = lvf(lv)
 	local w1 = 7 + math.floor(r:NextNumber() * 4)
-	table.insert(segs, { j = "icebath", duration = 36, inhale = 3, exhale = 5, s0 = 0.35, cold = 0.045 + 0.025 * f, calmRate = 0.13, waveMult = 2.4,
+	table.insert(segs, { j = "icebath", duration = 36, inhale = 3, exhale = 5, s0 = 0.35, cold = 0.05 + 0.02 * f, calmRate = 0.16, waveMult = 2.4,
 		waves = { { w1, 3 }, { w1 + 13 + math.floor(r:NextNumber() * 4), 3 } }, gap = Wt.intro })
 end
 PLAN.stretch = function(segs, lv, r, Wt, params)
@@ -1522,7 +1524,7 @@ PLAN.chamber = function(segs, lv, r, Wt)
 	local f = lvf(lv)
 	local depth = 1.3 + 0.1 * f
 	table.insert(segs, { j = "chamber", duration = 34, profile = { { 0, 1 }, { 9, depth }, { 24, depth }, { 34, 1 } }, rise = 0.07, vent = 0.07, leak = 0.012,
-		earRate = 2.2 + 0.6 * f, tol = 0.04, maxP = 1.6, gap = Wt.intro })
+		earRate = 2.2 + 0.6 * f, tol = 0.045 - 0.015 * f, maxP = 1.6, gap = Wt.intro })
 end
 PLAN.sauna = function(segs, lv, r, Wt)
 	local f = lvf(lv)

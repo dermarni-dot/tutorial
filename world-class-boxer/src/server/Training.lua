@@ -2170,7 +2170,7 @@ function Training.DrillPlan(act, lv, params)
 			end
 		end
 		local bpm = 72 + math.min(lv, 4) * 8
-		table.insert(segs, { j = "notes", name = table.concat(names, " + "), bpm = bpm, lanes = lanes, interval = 60 / bpm, lead = 1.4, hitW = 0.24, perfectW = 0.08, goodW = 0.16,
+		table.insert(segs, { j = "notes", name = table.concat(names, " + "), bpm = bpm, lanes = lanes, interval = 60 / bpm, lead = 1.4, hitW = 0.24, perfectW = 0.07, goodW = 0.14,
 			gap = W.move + W.rest + W.round })
 		for fi, flow in ipairs(shuffled(Config.ShadowFlows, 3)) do
 			local len = lv <= 1 and 3 or (lv == 2 and (r:NextNumber() < 0.5 and 3 or 4) or 4)
@@ -2186,7 +2186,7 @@ function Training.DrillPlan(act, lv, params)
 				local width = math.max(0.08, (0.24 - rep * 0.012 + lv * 0.01) * (set == 2 and 0.78 or 1))
 				local lo = math.clamp(0.58 + r:NextNumber() * 0.2, 0.5, 0.95 - width)
 				local gap = rep > 1 and (W.lower + W.rerack) or (set == 1 and W.intro or (W.lower + W.rerack + W.rest + W.round))
-				table.insert(segs, { j = "lift", mode = "rep", set = set, rep = rep, lo = lo, width = width, speed = (0.55 + rep * 0.03) * (set == 2 and 1.08 or 1), gap = gap })
+				table.insert(segs, { j = "lift", mode = "rep", set = set, rep = rep, lo = lo, width = width, speed = (0.55 + rep * 0.03) * (set == 2 and 1.08 or 1), wait = 8, gap = gap })
 			end
 		end
 	elseif kind == "medball" then
@@ -2194,7 +2194,7 @@ function Training.DrillPlan(act, lv, params)
 		for rep = 1, slams do
 			local width = math.max(0.1, 0.22 - rep * 0.008 + lv * 0.012)
 			local lo = math.clamp(0.62 + r:NextNumber() * 0.16, 0.5, 0.96 - width)
-			table.insert(segs, { j = "lift", mode = "slam", rep = rep, lo = lo, width = width, speed = 0.85 + rep * 0.03 + lv * 0.05, gap = rep == 1 and W.intro or (W.slam + W.catch) })
+			table.insert(segs, { j = "lift", mode = "slam", rep = rep, lo = lo, width = width, speed = 0.85 + rep * 0.03 + lv * 0.05, wait = 8, gap = rep == 1 and W.intro or (W.slam + W.catch) })
 		end
 		local bpm = ({ 64, 76, 88, 100 })[math.clamp(lv, 1, 4)]
 		local lanes = {}

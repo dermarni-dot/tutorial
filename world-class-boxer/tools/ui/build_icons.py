@@ -214,7 +214,7 @@ def _():
             + circle(128, 128, 52, K) + circle(128, 128, 32) + circle(116, 116, 9, K))
 
 
-@icon("settings")
+@icon("gear")  # settings
 def _():
     teeth, ro, ri = 8, 116, 88
     p = []
@@ -231,6 +231,11 @@ GLOVE = ("M100 186 C74 170 60 132 64 96 C68 48 102 20 148 20 C196 20 226 56 224 
 
 
 def glove(fill=W, ko=K, detail=True):
+    """the WCB glove: thumb on the right (as UI.Icon's Frame-drawn glove and the emblem), mirrored from _glove."""
+    return g(_glove(fill, ko, detail), "translate(256 0) scale(-1 1)")
+
+
+def _glove(fill=W, ko=K, detail=True):
     """a boxing glove, fist up: the big padded fist, the thumb bulging out on its left side (the notch in the
     silhouette is what reads as a glove at 16 px), the laced cuff under a gap."""
     s = path(GLOVE, fill=fill)
@@ -244,7 +249,7 @@ def glove(fill=W, ko=K, detail=True):
     return s
 
 
-@icon("gloves")
+@icon("glove")
 def _():
     return glove()
 
@@ -305,11 +310,10 @@ def _():
     return poly(p, stroke=W, sw=6) + text(130, 154, "KO", 78, italic=True)
 
 
-@icon("shield")
+@icon("shield")  # gear: the WCB shield with its slot
 def _():
-    outer = "M128 22 L214 54 V122 C214 182 178 216 128 238 C78 216 42 182 42 122 V54 Z"
-    inner = "M128 50 L188 72 V122 C188 166 162 192 128 208 C94 192 68 166 68 122 V72 Z"
-    return path(outer) + path(inner, fill=K) + path("M128 70 L170 86 V122 C170 156 152 176 128 188 Z")
+    return (path("M128 22 L214 54 V122 C214 182 178 216 128 238 C78 216 42 182 42 122 V54 Z")
+            + rect(114, 62, 28, 104, 8, fill=K))
 
 
 @icon("target")
@@ -410,7 +414,7 @@ HEART = ("M128 222 C46 166 20 120 20 84 C20 48 48 26 80 26 C104 26 120 40 128 58
 
 @icon("heart")
 def _():
-    return path(HEART) + stroke("M64 80 C64 66 74 58 86 58", sw=12, color=K)
+    return path(HEART)
 
 
 @icon("bolt")
@@ -540,8 +544,6 @@ def _():
     s += path("M60 30 H196 V92 C196 140 166 168 128 168 C90 168 60 140 60 92 Z")
     s += rect(114, 160, 28, 36)
     s += rect(70, 194, 116, 38, 10)
-    s += line([(96, 212), (160, 212)], sw=8, color=K)
-    s += star(128, 92, 36, 16, fill=K, round_=4)
     return s
 
 
@@ -621,7 +623,7 @@ def _():
             + circle(128, 98, 36, K))
 
 
-@icon("store")  # a shopping bag
+@icon("bag")  # the shop: a shopping bag
 def _():
     s = stroke("M88 104 V74 C88 46 106 32 128 32 C150 32 168 46 168 74 V104", sw=18)
     s += path("M48 86 H208 L222 226 C222 234 216 240 208 240 H48 C40 240 34 234 34 226 Z")
@@ -711,27 +713,40 @@ def _():
     return s
 
 
-@icon("emblem")  # the game's mark: a glove on a championship plate
+@icon("emblem")  # the WCB badge: rounded frame, tilted glove, the ribbon with WCB knocked out
 def _():
-    oc = [(128 + 116 * math.cos(math.radians(22.5 + i * 45)), 128 + 116 * math.sin(math.radians(22.5 + i * 45))) for i in range(8)]
-    s = poly(oc, stroke=W, sw=16)
-    oc2 = [(128 + 94 * math.cos(math.radians(22.5 + i * 45)), 128 + 94 * math.sin(math.radians(22.5 + i * 45))) for i in range(8)]
-    s += poly(oc2, fill=K, stroke=K, sw=8)
-    s += g(glove(fill=W, ko=K, detail=True), "translate(128 132) scale(0.62) translate(-132 -128)")
+    s = rect(14, 14, 228, 228, 52, fill="none", stroke=W, sw=16)
+    s += g(glove(), "translate(128 104) rotate(-12) scale(0.62) translate(-128 -128)")
+    s += rect(30, 170, 196, 54, 10)
+    s += text(128, 213, "WCB", 50, fill=K, weight=900)
+    return s
+
+
+@icon("coin")  # money, the WCB coin: a ring with a plus-shaped mark
+def _():
+    return (circle(128, 128, 104) + circle(128, 128, 80, K)
+            + rect(113, 72, 30, 112, 10) + rect(80, 113, 96, 30, 10))
+
+
+@icon("people")  # the corner team: two figures
+def _():
+    s = circle(100, 76, 42) + path("M28 232 C28 166 58 136 100 136 C142 136 172 166 172 232 Z")
+    s += circle(190, 92, 30) + path("M182 232 C182 196 176 168 160 150 C170 144 180 142 190 142 C220 142 240 170 240 212 V232 Z")
+    s += circle(100, 76, 54, fill="none", stroke=K, sw=10)
     return s
 
 
 ORDER = [
     # interface
-    "close", "chevron", "check", "plus", "minus", "play", "menu", "reset", "lock", "info", "warning", "star", "eye", "settings",
+    "close", "chevron", "check", "plus", "minus", "play", "menu", "reset", "lock", "info", "warning", "star", "eye", "gear",
     # boxing
-    "gloves", "belt", "heavybag", "bell", "ring", "ko", "shield", "target", "fist", "trunks", "robe", "wraps", "jumprope",
+    "glove", "belt", "heavybag", "bell", "ring", "ko", "shield", "target", "fist", "trunks", "robe", "wraps", "jumprope",
     "stopwatch", "versus", "laurel",
     # body and condition
     "heart", "bolt", "brain", "jaw", "speed", "muscle", "pulse", "water", "food", "sleep", "injury", "energy",
     # career and life
-    "money", "calendar", "trophy", "podium", "medal", "chart", "trend", "whistle", "contract", "home", "car", "pin", "store",
-    "scissors", "user", "gamepad", "crown", "flame", "skull", "dumbbell", "shoe", "emblem",
+    "money", "calendar", "trophy", "podium", "medal", "chart", "trend", "whistle", "contract", "home", "car", "pin", "bag",
+    "scissors", "user", "gamepad", "crown", "flame", "skull", "dumbbell", "shoe", "emblem", "coin", "people",
 ]
 
 
@@ -769,7 +784,7 @@ FONT_FILE = "/usr/share/fonts/opentype/inter/InterDisplay-Black.otf"
 CAP = 0.727  # Inter's cap height (em)
 
 
-def fit_text(s, x, baseline, width, cap_h, fill, spacing_em=0.0, skew=-9, sx_max=1.0, weight=900, extra=""):
+def fit_text(s, x, baseline, width, cap_h, fill, spacing_em=0.0, skew=-9, sx_max=1.0, weight=900, extra="", align="center"):
     """s set in Inter Display Black with its caps cap_h tall, squeezed (or letter-spaced) to exactly `width`
     from x: a condensed broadcast face from a regular one. Returns the SVG and the horizontal scale used."""
     size = cap_h / CAP
@@ -778,74 +793,58 @@ def fit_text(s, x, baseline, width, cap_h, fill, spacing_em=0.0, skew=-9, sx_max
     sx = min(sx_max, width / natural)
     sp = f' letter-spacing="{f(spacing_em * size)}"' if spacing_em else ""
     t = (f'<text x="0" y="0" font-family="{FONT}" font-weight="{weight}" font-size="{f(size)}" fill="{fill}"{sp} {extra}>{s}</text>')
-    off = (width - natural * sx) / 2
+    off = (width - natural * sx) / 2 if align == "center" else 0
     return f'<g transform="translate({f(x + off)} {f(baseline)}) skewX({skew}) scale({f(sx)} 1)">{t}</g>', sx
 
 
-def plate(cx, cy, r, gold, dark, glove_fill, silhouette):
-    def oct_(rad):
-        return [(cx + rad * math.cos(math.radians(22.5 + i * 45)), cy + rad * math.sin(math.radians(22.5 + i * 45))) for i in range(8)]
-    s = poly(oct_(r), fill=gold, stroke=gold, sw=16)
-    s += poly(oct_(r * 0.8), fill=dark, stroke=dark, sw=8)
+def badge(x, y, size, silhouette):
+    """UI.Brand as an image: the ink tile with its gold keyline, the gold glove tilted -12 degrees, the red WCB ribbon."""
+    k = size / 256.0
+    ink = W if silhouette else "#05060a"
+    gold = W if silhouette else "url(#gold)"
+    red = W if silhouette else "#f3414c"
+    s = f'<g transform="translate({f(x)} {f(y)}) scale({f(k)})">'
+    s += rect(4, 4, 248, 248, 56, fill=ink, stroke=gold, sw=8)
     if not silhouette:
-        s += poly(oct_(r * 0.86), fill="none", stroke="#ffe7a0", sw=3)
-        # rivets on the plate's corners
-        for x, y in oct_(r * 0.9):
-            s += circle(x, y, r * 0.035, fill="#8a5a10")
-        s += g(glove(fill=glove_fill, ko="#0a0c11"), f"translate({f(cx + 4)} {f(cy + 8)}) scale({f(r / 168)}) translate(-150 -112)")
-        s += star(cx, cy - r * 0.62, r * 0.13, r * 0.055, fill="#ffd76a", round_=3)
-    return s
+        s += rect(4, 4, 248, 248, 56, fill="url(#inkSheen)")
+    s += g(glove(fill=gold, ko=ink), "translate(128 100) rotate(-12) scale(0.62) translate(-128 -128)")
+    s += rect(18, 180, 220, 56, 10, fill=red)
+    s += text(128, 226, "WCB", 50, fill=ink if silhouette else "#ffffff", weight=900)
+    return s + "</g>"
 
 
 def logo_svg(silhouette=False):
-    """The 1024 x 512 lockup: a championship plate with a glove, then BECOME A / WORLD CLASS / BOXER."""
+    """The 1024 x 512 lockup, as the title screen draws it: the WCB badge, THE ROAD TO UNDISPUTED, WORLD CLASS
+    (white) over BOXER (gold), a red rule and the tagline."""
     if silhouette:
-        gold = white = red = dark = gold_b = W
+        gold = white = red = gold_b = W
         defs = ""
     else:
-        gold, white, red, dark, gold_b = "url(#gold)", "#ffffff", "url(#red)", "#0b0d13", "url(#goldText)"
+        gold, white, red, gold_b = "#ffcd53", "#ffffff", "#f3414c", "url(#goldText)"
         defs = """<defs>
         <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#fff3c8"/><stop offset="0.45" stop-color="#f7c442"/>
-          <stop offset="0.7" stop-color="#cf8e1c"/><stop offset="1" stop-color="#ffd970"/></linearGradient>
-        <linearGradient id="goldText" gradientUnits="userSpaceOnUse" x1="0" y1="-200" x2="0" y2="0">
-          <stop offset="0" stop-color="#fff6d2"/><stop offset="0.42" stop-color="#ffd458"/>
-          <stop offset="0.58" stop-color="#e7a527"/><stop offset="1" stop-color="#b5730f"/></linearGradient>
-        <linearGradient id="red" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#ff5a60"/><stop offset="1" stop-color="#b01622"/></linearGradient>
-        <linearGradient id="bar" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" stop-color="#ff3b44"/><stop offset="0.75" stop-color="#c4121e"/>
-          <stop offset="1" stop-color="#c4121e" stop-opacity="0"/></linearGradient>
+          <stop offset="0" stop-color="#ffedb8"/><stop offset="0.5" stop-color="#ffcd53"/><stop offset="1" stop-color="#d0942b"/></linearGradient>
+        <linearGradient id="goldText" gradientUnits="userSpaceOnUse" x1="0" y1="-190" x2="0" y2="0">
+          <stop offset="0" stop-color="#ffedb8"/><stop offset="0.5" stop-color="#ffcd53"/><stop offset="1" stop-color="#d0942b"/></linearGradient>
+        <linearGradient id="inkSheen" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#ffffff" stop-opacity="0.10"/><stop offset="1" stop-color="#99a6be" stop-opacity="0"/></linearGradient>
       </defs>"""
-    X0, X1 = 300, 1004
-    width = X1 - X0
-    out = []
-    # the plate (left)
-    out.append(plate(150, 256, 136, gold, dark, red, silhouette))
-    # BECOME A between two gold rules
-    become, _ = fit_text("BECOME A", X0 + 150, 112, width - 300, 34, gold if not silhouette else W, spacing_em=0.32, skew=0, sx_max=1.0, weight=800)
-    out.append(rect(X0 + 6, 92, 128, 5, 2, fill=gold if not silhouette else W))
-    out.append(rect(X1 - 134, 92, 128, 5, 2, fill=gold if not silhouette else W))
-    out.append(become)
-    # WORLD CLASS
-    world, _ = fit_text("WORLD CLASS", X0, 248, width, 108, white)
-    # BOXER: a dark keyline and a drop shadow under the gold
-    bx, by, bh = X0, 448, 180
+    out = [badge(24, 120, 272, silhouette)]
+    x0, x1 = 336, 1000
+    k, _ = fit_text("THE ROAD TO UNDISPUTED", x0 + 16, 104, 420, 22, gold, spacing_em=0.12, skew=0, weight=800, align="left")
+    out.append(rect(x0, 82, 6, 24, 1, fill=gold))
+    out.append(k)
+    world, _ = fit_text("WORLD CLASS", x0, 214, x1 - x0, 92, white, skew=0, sx_max=0.86, align="left")
+    boxer, _ = fit_text("BOXER", x0 - 4, 410, x1 - x0, 180, gold_b, skew=0, sx_max=0.86, align="left")
     if not silhouette:
-        shadow, _ = fit_text("BOXER", bx + 8, by + 12, width, bh, "#000", extra='opacity="0.55"')
-        key, _ = fit_text("BOXER", bx, by, width, bh, dark, extra=f'stroke="{dark}" stroke-width="16" stroke-linejoin="round"')
-        out.append(shadow)
-        out.append(key)
-        wk, _ = fit_text("WORLD CLASS", X0, 248, width, 108, dark, extra=f'stroke="{dark}" stroke-width="12" stroke-linejoin="round"')
-        out.append(wk)
-    out.append(world)
-    boxer, _ = fit_text("BOXER", bx, by, width, bh, gold_b)
-    out.append(boxer)
-    # the red bar under BOXER, fading out to the right
-    out.append(f'<polygon points="{X0 + 4},470 {X1 - 60},470 {X1 - 70},490 {X0 - 6},490" fill="{red if silhouette else "url(#bar)"}"/>')
-    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="512" viewBox="0 0 1024 512">{defs}'
-           + "".join(out) + "</svg>")
-    return svg
+        sh, _ = fit_text("BOXER", x0 + 2, 418, x1 - x0, 180, "#000", skew=0, sx_max=0.86, extra='opacity="0.45"', align="left")
+        out.append(sh)
+    out += [world, boxer]
+    out.append(rect(24, 448, 272, 8, 2, fill=red))
+    tag, _ = fit_text("TRAIN. FIGHT. BECOME UNDISPUTED.", x0, 462, 520, 24, "#b2bccd" if not silhouette else W, skew=0, weight=600, sx_max=1.0, align="left")
+    out.append(tag)
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="512" viewBox="0 0 1024 512">{defs}'
+            + "".join(out) + "</svg>")
 
 
 def build_logo():
@@ -884,7 +883,7 @@ def preview(names, meta, sheets, path_out):
         m = meta[name]
         tile = sheets[m["sheet"] - 1].crop((m["x"], m["y"], m["x"] + m["w"], m["y"] + m["h"])).resize((72, 72), Image.LANCZOS)
         tint = tints[(i // 1) % len(tints)] if name in ("heart", "bolt", "money", "trophy", "belt", "crown", "flame", "water", "injury", "warning") else tints[0]
-        if name in ("money", "trophy", "belt", "crown", "star", "medal", "laurel", "emblem"):
+        if name in ("money", "coin", "trophy", "belt", "crown", "star", "medal", "laurel", "emblem", "glove"):
             tint = tints[1]
         elif name in ("heart", "injury", "flame", "ko", "fist", "warning"):
             tint = tints[2]

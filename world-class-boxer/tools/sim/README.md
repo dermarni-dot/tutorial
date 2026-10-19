@@ -176,6 +176,23 @@ Each screen x device runs in its own lune process (four at a time). The previews
 box (buttons blue, flagged ones red, the top bar hatched, the safe insets orange), not a render: the preview's
 font is scaled to the width guisim measured, so text that looks cut there is cut by the layout.
 
+### Mock screenshots: tools/ui/render_mock.py
+
+`GS.WriteBoxes` also writes each object's look (`style`: paint order key, colours, corner radius, stroke, gradient,
+font, image asset id and rect). `tools/ui/render_mock.py` draws those dumps as approximate screenshots (Inter standing
+in for Gotham / Oswald, the icon sheets and logo from `tools/ui/out` by their uploaded ids, a dark arena for the 3D
+world):
+
+```sh
+lune run tools/sim/test_ui_layout.luau --only menu,hub
+python3 tools/ui/render_mock.py --all tools/sim/out/ui --only menu,hub --devices desktop,phone --out DIR
+```
+
+The icon set and the logo: `python3 tools/ui/build_icons.py` (SVG through cairosvg -> `tools/ui/out`), then
+`python3 tools/ui/publish_icons.py` (Open Cloud upload, hash cache `tools/ui/uploaded.json`, moderation check, writes
+`src/shared/IconData.lua`). `test_ui_layout` fails a screen that shows an icon name neither the sheets nor UI.Icon's
+Frame drawing know.
+
 ## The first-time tutorial fight: test_tutorial
 
 `lune run tools/sim/test_tutorial.luau` (a few seconds) checks `src/shared/Tutorial.lua`, `src/server/TutorialFight.lua`

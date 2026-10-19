@@ -178,7 +178,10 @@ Catalog.Gloves = {
 }
 Catalog.GloveFinishes = { "Leather", "Matte", "Patent", "Metallic" }
 Catalog.GloveLogos = { "None", "Star", "Crown", "Lightning", "Flame", "Skull", "Initials", "Flag" }
-Catalog.LogoGlyphs = { Star = "★", Crown = "♛", Lightning = "⚡", Flame = "🔥", Skull = "☠" }
+-- the glove logos are drawn from the game's icon set (Shared.IconData via BuilderKit.textPatch "icon:<name>");
+-- LogoGlyphs is the plain-text stand-in while an icon sheet is not uploaded
+Catalog.LogoIcons = { Star = "star", Crown = "crown", Lightning = "bolt", Flame = "flame", Skull = "skull" }
+Catalog.LogoGlyphs = { Star = "STAR", Crown = "KING", Lightning = "BOLT", Flame = "FIRE", Skull = "SKULL" }
 Catalog.GloveStitching = { "Classic", "Double", "Contrast", "Gold" }
 
 -- style = shoe build (trainer | boot | proBoot | eliteBoot); sole overrides the brand's sole type

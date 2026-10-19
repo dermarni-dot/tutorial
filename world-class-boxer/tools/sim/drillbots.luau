@@ -1,0 +1,542 @@
+--!nocheck
+-- drillbots.luau: simulated players for every DrillScore / DrillWorkouts judge (test_drills.luau).
+-- A bot sees what the player sees (the judge's live state the stage draws) and answers with inputs:
+--   Bots.Act(seg, j, t, M, mem, skill, rng) -> { { id, down }, ... } to send at drill time t
+-- skill: Bots.SKILLS.perfect / average / idle. `mem` is the bot's own memory for this segment.
+local Bots = {}
+
+local TWO_PI = 2 * math.pi
+
+Bots.SKILLS = {
+	perfect = { name = "perfect" },
+	average = { name = "average" },
+	idle = { name = "idle", idle = true },
+}
+
+local function tap(out, id)
+	table.insert(out, { id, true })
+	table.insert(out, { id, false })
+end
+local function hold(out, mem, id, want)
+	mem.held = mem.held or {}
+	if (mem.held[id] == true) ~= want then
+		mem.held[id] = want
+		table.insert(out, { id, want })
+	end
+end
+-- a tap-or-hold control: tap to toggle until it is in the wanted state (once per gap seconds)
+local function toggle(out, mem, id, isOn, want, t, gap)
+	mem.tg = mem.tg or {}
+	if isOn ~= want and t - (mem.tg[id] or -1) >= (gap or 0.05) then
+		mem.tg[id] = t
+		tap(out, id)
+	end
+end
+local function every(mem, key, t, period)
+	mem.ev = mem.ev or {}
+	if t - (mem.ev[key] or -math.huge) >= period then
+		mem.ev[key] = t
+		return true
+	end
+	return false
+end
+local function needle(el, sweep)
+	local u = (math.max(0, el) * sweep) % 2
+	return u < 1 and u or 2 - u
+end
+
+local A = {}
+
+-- sequences: the next id after a beat (average: slower, a wrong press now and then)
+A.seq = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	local gap = sk.name == "perfect" and 0.1 or (0.34 + rng:NextNumber() * 0.2)
+	mem.at = mem.at or (M + (sk.name == "perfect" and 0.12 or 0.5))
+	if t >= mem.at and j.idx <= #seg.ids then
+		mem.at = t + gap
+		local id = seg.ids[j.idx]
+		if sk.name == "average" and rng:NextNumber() < 0.2 then
+			-- a wrong press: another move of the same sequence (if it has one)
+			for _, other in ipairs(seg.ids) do
+				if other ~= id then
+					id = other
+					break
+				end
+			end
+		end
+		tap(out, id)
+	end
+	return out
+end
+A.cue = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	mem.rt = mem.rt or (sk.name == "perfect" and 0.18 or (0.35 + rng:NextNumber() * 0.5))
+	if not mem.done and t - M >= mem.rt then
+		mem.done = true
+		local id = seg.want
+		if sk.name == "average" and rng:NextNumber() < 0.2 then
+			-- a wrong answer the drill has a button for
+			local WRONG = { punch = "slipL", slipL = "slipR", slipR = "slipL", roll = "slipL", F = "B", B = "F", L = "R", R = "L", jab = "cross", cross = "jab", leadhook = "jab" }
+			id = WRONG[id] or id
+		end
+		tap(out, id)
+	end
+	return out
+end
+A.counter = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	local rt = sk.name == "perfect" and 0.16 or 0.42
+	if j.step == 1 and not mem.d1 and t - M >= rt then
+		mem.d1 = true
+		tap(out, (sk.name == "average" and rng:NextNumber() < 0.15) and (seg.want == "slipL" and "slipR" or "slipL") or seg.want)
+	elseif j.step == 2 and not mem.d2 and t - j.shown2 >= rt then
+		mem.d2 = true
+		tap(out, "punch")
+	end
+	return out
+end
+A.rebound = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	if j.step == 1 and not mem.d1 and t - M >= (sk.name == "perfect" and 0.15 or 0.35) then
+		mem.d1 = true
+		tap(out, "punch")
+	elseif j.step == 2 and not mem.d2 then
+		mem.err = mem.err or (sk.name == "perfect" and 0 or (rng:NextNumber() * 0.36 - 0.16))
+		if t >= j.punchT + seg.ret + mem.err - 0.005 then
+			mem.d2 = true
+			tap(out, seg.want)
+		end
+	end
+	return out
+end
+A.needle = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	mem.off = mem.off or (sk.name == "perfect" and 0 or ((rng:NextNumber() * 2 - 1) * 2.2 * seg.w))
+	if not mem.done and t - M > 0.2 then
+		local pos = needle(t - M, seg.sweep)
+		if math.abs(pos - (seg.c + mem.off)) < (sk.name == "perfect" and 0.012 or 0.03) then
+			mem.done = true
+			tap(out, "power")
+		end
+	end
+	return out
+end
+A.burst = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	if every(mem, "p", t, sk.name == "perfect" and 1 / 7.5 or 1 / 3.6) then
+		mem.side = mem.side == "L" and "R" or "L"
+		tap(out, mem.side)
+	end
+	return out
+end
+-- beats: each note at its time (average: early / late by up to ~0.12 s, a few missed)
+A.notes = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	mem.plan = mem.plan or {}
+	for i, n in ipairs(j.notes) do
+		if not n.judged then
+			local p = mem.plan[i]
+			if not p then
+				p = { off = sk.name == "perfect" and 0 or (rng:NextNumber() * 0.28 - 0.12), skip = sk.name == "average" and rng:NextNumber() < 0.12 }
+				mem.plan[i] = p
+			end
+			if not p.done and not p.skip and t >= n.t + p.off - 0.004 then
+				p.done = true
+				tap(out, n.lane)
+			end
+		end
+	end
+	return out
+end
+A.lift = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	if not mem.down and t - M >= 0.2 then
+		mem.down = t
+		table.insert(out, { "lift", true })
+	end
+	if mem.down and not mem.up then
+		mem.target = mem.target or (sk.name == "perfect" and (seg.lo + seg.width / 2) or (seg.lo + seg.width * (rng:NextNumber() * 2.2 - 0.6)))
+		local f = seg.speed * (t - mem.down)
+		if f >= mem.target - seg.speed / 120 then
+			mem.up = true
+			table.insert(out, { "lift", false })
+		end
+	end
+	return out
+end
+A.pace = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	local ph = seg.phases[j.phaseOf(t)]
+	if sk.name == "perfect" then
+		if j.v < ph[1] + (ph[2] - ph[1]) * 0.35 and every(mem, "p", t, 0.06) then
+			tap(out, "push")
+		end
+	elseif every(mem, "p", t, 0.45) and j.v < (ph[1] + ph[2]) / 2 + (rng:NextNumber() - 0.5) * 0.35 then
+		tap(out, "push")
+	end
+	return out
+end
+A.breath = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	local lag = sk.name == "perfect" and 0 or 0.45
+	hold(out, mem, "breathe", j.inPhase(t - lag))
+	return out
+end
+A.rope = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	if t < j.tripped or not j.w then
+		return out
+	end
+	local a = j.angle(t)
+	local k = math.floor(a / TWO_PI) + 1
+	local toPass = (TWO_PI * k - a) / j.w
+	mem.done = mem.done or {}
+	local key = j.done .. ":" .. k
+	local lead = sk.name == "perfect" and 0.05 or (rng:NextNumber() * 0.42)
+	if toPass <= lead and not mem.done[key] then
+		mem.done[key] = true
+		if sk.name == "average" and rng:NextNumber() < 0.12 then
+			return out
+		end
+		local cue = j.cue
+		local id = (cue == "footL" or cue == "footR") and cue or "jump"
+		tap(out, id)
+		if cue == "double" then
+			mem.second = { id = id, t = t + 0.06 }
+		end
+	end
+	if mem.second and t >= mem.second.t then
+		tap(out, mem.second.id)
+		mem.second = nil
+	end
+	return out
+end
+A.lights = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	if j.lit then
+		mem.litAt = mem.litAt or t
+		if t - mem.litAt >= (sk.name == "perfect" and 0.15 or 0.45) then
+			mem.litAt = nil
+			tap(out, seg.ids[j.idx])
+		end
+	else
+		mem.litAt = nil
+	end
+	return out
+end
+
+-- the weight room ------------------------------------------------------
+A.bench = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	if t - M < 0.2 then
+		return out
+	end
+	toggle(out, mem, "press", j.press.on == true, true, t, 0.5)
+	if sk.name == "perfect" then
+		hold(out, mem, "L", j.x > 0.03)
+		hold(out, mem, "R", j.x < -0.03)
+	elseif every(mem, "look", t, 0.4) then
+		hold(out, mem, "L", j.x > 0.3)
+		hold(out, mem, "R", j.x < -0.3)
+	end
+	return out
+end
+A.deadlift = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	if j.phase == "set" then
+		mem.tol = mem.tol or (sk.name == "perfect" and seg.w * 0.25 or (seg.w * (0.5 + rng:NextNumber() * 2)))
+		if t - M > 0.2 and math.abs(j.needleAt(t) - seg.c) <= mem.tol then
+			tap(out, "lift")
+		end
+		return out
+	end
+	if sk.name == "perfect" then
+		if j.g < 0.45 and every(mem, "g", t, 0.12) then
+			tap(out, "grip")
+		end
+	elseif every(mem, "g", t, 0.35) and j.g < 0.3 then
+		tap(out, "grip")
+	end
+	return out
+end
+A.squat = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	local ph = j.phase
+	if ph == "ready" and t - M >= 0.2 then
+		table.insert(out, { "sit", true })
+		mem.down = true
+	elseif ph == "descend" and mem.down then
+		mem.target = mem.target or (sk.name == "perfect" and (seg.lo + seg.hi) / 2 or (seg.lo + (seg.hi - seg.lo) * (rng:NextNumber() * 2.4 - 0.7)))
+		local v = seg.v0 + seg.acc * (t - j.descT)
+		if j.z + v / 120 >= mem.target then
+			mem.down = false
+			table.insert(out, { "sit", false })
+		end
+	elseif ph == "bottom" then
+		mem.wait = mem.wait or (sk.name == "perfect" and 0.25 or (0.05 + rng:NextNumber() * 0.9))
+		if t - j.bottomT >= mem.wait and not mem.drive then
+			mem.drive = true
+			table.insert(out, { "sit", true })
+		end
+	end
+	return out
+end
+A.pullup = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	if t - M < 0.2 then
+		return out
+	end
+	local off = math.abs(math.sin(j.phaseAt(t)))
+	if sk.name == "perfect" then
+		local wantHollow = j.A > 0.5 or (j.hollow.on and j.A > 0.2)
+		toggle(out, mem, "hollow", j.hollow.on == true, wantHollow, t, 0.1)
+		if not j.hollow.on and off < 0.2 and every(mem, "p", t, 0.25) then
+			mem.side = mem.side == "L" and "R" or "L"
+			tap(out, mem.side)
+		end
+	else
+		toggle(out, mem, "hollow", j.hollow.on == true, j.A > 0.6 or (j.hollow.on and j.A > 0.35), t, 0.4)
+		if not j.hollow.on and off < 0.55 and every(mem, "p", t, 0.4) then
+			mem.side = (mem.side == "L" and rng:NextNumber() < 0.9) and "R" or "L"
+			tap(out, mem.side)
+		end
+	end
+	return out
+end
+A.tempo = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	mem.plan = mem.plan or {}
+	for i, n in ipairs(j.notes) do
+		local p = mem.plan[i]
+		if not p then
+			p = sk.name == "perfect" and { a = 0, b = 0 } or { a = rng:NextNumber() * 0.26 - 0.12, b = rng:NextNumber() < 0.15 and -((n.te - n.ts) * 0.5) or (rng:NextNumber() * 0.3 - 0.12) }
+			mem.plan[i] = p
+		end
+		if not p.down and not n.judged and t >= n.ts + p.a - 0.004 then
+			p.down = true
+			table.insert(out, { n.lane, true })
+		elseif p.down and not p.up and t >= n.te + p.b - 0.004 then
+			p.up = true
+			table.insert(out, { n.lane, false })
+		end
+	end
+	return out
+end
+-- cardio -----------------------------------------------------------------
+A.treadmill = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	local lag = sk.name == "perfect" and 0 or 1.1
+	local tg = j.target(t - lag)
+	local period = sk.name == "perfect" and 0.06 or 0.35
+	if every(mem, "s", t, period) then
+		if j.mph < tg.mph - 0.01 then
+			tap(out, "spdUp")
+		elseif j.mph > tg.mph + 0.01 then
+			tap(out, "spdDn")
+		end
+		if j.incl < tg.incl then
+			tap(out, "incUp")
+		elseif j.incl > tg.incl then
+			tap(out, "incDn")
+		end
+	end
+	return out
+end
+A.bike = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	local h = j.hill(t)
+	local ideal = math.max(1, math.min(seg.gears, math.floor(4.5 - 0.45 * h.grade + 0.5)))
+	if sk.name == "perfect" then
+		if every(mem, "g", t, 0.1) and j.gear ~= ideal then
+			tap(out, j.gear < ideal and "gearUp" or "gearDn")
+		end
+		local k = math.max(0.45, math.min(1.7, 1 + 0.13 * (ideal - j.gear)))
+		local iv = 30 * k / ((seg.lo + seg.hi) / 2)
+		if every(mem, "p", t, iv) then
+			mem.side = mem.side == "L" and "R" or "L"
+			tap(out, mem.side)
+		end
+	else
+		if every(mem, "g", t, 1.2) and math.abs(j.gear - ideal) >= 2 then
+			tap(out, j.gear < ideal and "gearUp" or "gearDn")
+		end
+		if every(mem, "p", t, 0.36 + rng:NextNumber() * 0.12) then
+			mem.side = mem.side == "L" and "R" or "L"
+			tap(out, mem.side)
+		end
+	end
+	return out
+end
+A.rower = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	if sk.name == "perfect" then
+		if j.phase == "catch" then
+			hold(out, mem, "row", true)
+		elseif j.phase == "drive" and j.x >= 0.97 then
+			hold(out, mem, "row", false)
+		elseif j.phase == "recover" then
+			hold(out, mem, "row", false)
+		end
+	else
+		if j.phase == "drive" then
+			mem.fin = mem.fin or (0.7 + rng:NextNumber() * 0.35)
+			if j.x >= math.min(1, mem.fin) and (j.x < 1 or j.hang > 0.25) then
+				mem.fin = nil
+				hold(out, mem, "row", false)
+			end
+		else
+			-- a rushed catch (at x <= 0.25 on the way back) or a pause at the catch
+			mem.cx = mem.cx or (rng:NextNumber() < 0.4 and 0.25 or -(0.2 + rng:NextNumber() * 0.5))
+			local ready = (mem.cx > 0 and (j.phase == "catch" or j.x <= mem.cx)) or (mem.cx < 0 and j.phase == "catch" and t - j.reachedAt >= -mem.cx)
+			if ready then
+				mem.cx = nil
+				-- (the hold flag may already read up from the last stroke)
+				if mem.held and mem.held.row then
+					mem.held.row = false
+				end
+				hold(out, mem, "row", true)
+			end
+		end
+	end
+	return out
+end
+-- recovery ---------------------------------------------------------------
+A.icebath = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	local on = j.br.on == true
+	if sk.name == "perfect" then
+		if not on and j.l <= 0.01 then
+			toggle(out, mem, "breathe", on, true, t, 0.1)
+		elseif on and j.l >= 0.99 then
+			toggle(out, mem, "breathe", on, false, t, 0.1)
+		end
+	else
+		if not on and j.l <= 0.3 + (mem.jit or 0) then
+			mem.jit = rng:NextNumber() * 0.3
+			toggle(out, mem, "breathe", on, true, t, 0.6)
+		elseif on and j.l >= 0.75 + (mem.jit or 0) * 0.5 then
+			toggle(out, mem, "breathe", on, false, t, 0.6)
+		end
+	end
+	return out
+end
+A.stretch = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	local lo, hi = j.band(t)
+	local on = j.sink.on == true
+	if sk.name == "perfect" then
+		local mid = (lo + hi) / 2
+		toggle(out, mem, "sink", on, j.z < mid, t, 0.03)
+	elseif every(mem, "s", t, 0.3) then
+		-- a hand on the dial: in once it's clearly short, out once it's clearly deep (late both ways)
+		if j.z < lo then
+			toggle(out, mem, "sink", on, true, t, 0.3)
+		elseif j.z > hi - 0.02 then
+			toggle(out, mem, "sink", on, false, t, 0.3)
+		end
+	end
+	return out
+end
+A.massage = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	if j.phase == "choose" then
+		local want
+		if sk.name == "perfect" then
+			local best = -1
+			for i, g in ipairs(seg.groups) do
+				if not j.worked[g] and j.sore[g] > best then
+					best, want = j.sore[g], i
+				end
+			end
+		else
+			mem.pick = mem.pick or {}
+			if not mem.pick[j.round] then
+				local free = {}
+				for i, g in ipairs(seg.groups) do
+					if not j.worked[g] then
+						table.insert(free, i)
+					end
+				end
+				mem.pick[j.round] = free[rng:NextInteger(1, #free)]
+			end
+			want = mem.pick[j.round]
+			if t - j.chooseAt < 1.5 then
+				return out
+			end
+		end
+		if want and every(mem, "c", t, sk.name == "perfect" and 0.08 or 0.25) then
+			if j.cursor == want then
+				tap(out, "ok")
+			else
+				tap(out, "next")
+			end
+		end
+		return out
+	end
+	mem.st = mem.st or {}
+	for k, st in ipairs(j.strokes or {}) do
+		local key = j.round .. ":" .. k
+		local p = mem.st[key]
+		if not p then
+			p = sk.name == "perfect" and { off = 0 } or { off = rng:NextNumber() * 0.5 - 0.22, skip = rng:NextNumber() < 0.2 }
+			mem.st[key] = p
+		end
+		if not st.judged and not p.done and not p.skip and t >= st.t + p.off - 0.004 then
+			p.done = true
+			tap(out, "ok")
+		end
+	end
+	return out
+end
+A.chamber = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	if sk.name == "perfect" then
+		local tg = j.target(t + 0.15)
+		hold(out, mem, "up", j.P < tg - 0.008)
+		hold(out, mem, "down", j.P > tg + 0.008)
+		if j.ear > 0.5 and every(mem, "e", t, 0.3) then
+			tap(out, "eq")
+		end
+	elseif every(mem, "look", t, 0.7) then
+		local tg = j.target(t)
+		hold(out, mem, "up", j.P < tg - 0.07)
+		hold(out, mem, "down", j.P > tg + 0.07)
+		if j.ear > 0.9 then
+			tap(out, "eq")
+		end
+	end
+	return out
+end
+A.sauna = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	local outT, inT = 0.8, 0.45
+	if sk.name == "average" then
+		outT, inT = 0.95, 0.6
+	end
+	if t < j.forcedUntil then
+		return out
+	end
+	if j.inside and j.T > outT and every(mem, "d", t, 0.3) then
+		tap(out, "door")
+	elseif not j.inside and j.T < inT and every(mem, "d", t, 0.3) then
+		tap(out, "door")
+	end
+	if sk.name == "perfect" and j.inside and j.T > 0.68 and t - j.lastSip >= 2.05 then
+		tap(out, "sip")
+	end
+	return out
+end
+Bots.Policies = A
+
+function Bots.Act(seg, j, t, M, mem, skill, rng)
+	if skill.idle then
+		return {}
+	end
+	local p = A[seg.j]
+	if not p then
+		return {}
+	end
+	return p(seg, j, t, M, mem, skill, rng)
+end
+
+return Bots

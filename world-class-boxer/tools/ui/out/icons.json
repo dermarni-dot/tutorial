@@ -4,7 +4,8 @@
   "icons_1.png",
   "icons_2.png",
   "icons_3.png",
-  "icons_4.png"
+  "icons_4.png",
+  "icons_5.png"
  ],
  "icons": {
   "close": {
@@ -98,14 +99,14 @@
    "w": 256,
    "h": 256
   },
-  "settings": {
+  "gear": {
    "sheet": 1,
    "x": 256,
    "y": 768,
    "w": 256,
    "h": 256
   },
-  "gloves": {
+  "glove": {
    "sheet": 1,
    "x": 512,
    "y": 768,
@@ -385,7 +386,7 @@
    "w": 256,
    "h": 256
   },
-  "store": {
+  "bag": {
    "sheet": 4,
    "x": 512,
    "y": 256,
@@ -454,6 +455,20 @@
    "y": 768,
    "w": 256,
    "h": 256
+  },
+  "coin": {
+   "sheet": 5,
+   "x": 0,
+   "y": 0,
+   "w": 256,
+   "h": 256
+  },
+  "people": {
+   "sheet": 5,
+   "x": 256,
+   "y": 0,
+   "w": 256,
+   "h": 256
   }
  },
  "order": [
@@ -470,8 +485,8 @@
   "warning",
   "star",
   "eye",
-  "settings",
-  "gloves",
+  "gear",
+  "glove",
   "belt",
   "heavybag",
   "bell",
@@ -511,7 +526,7 @@
   "home",
   "car",
   "pin",
-  "store",
+  "bag",
   "scissors",
   "user",
   "gamepad",
@@ -520,7 +535,9 @@
   "skull",
   "dumbbell",
   "shoe",
-  "emblem"
+  "emblem",
+  "coin",
+  "people"
  ],
  "logo": {
   "file": "logo.png",

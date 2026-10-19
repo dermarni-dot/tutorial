@@ -386,142 +386,48 @@ end
 ------------------------------------------------------------------------
 -- Logo
 ------------------------------------------------------------------------
--- the game's logo image (tools/ui: BECOME A / WORLD CLASS / BOXER beside a championship plate): it slides
--- in, a shine sweeps across it every few seconds (a band of the logo's white silhouette), and the tagline
--- fades in under it. Before the image is uploaded the text lockup below stands in.
-local function buildImageLogo(layer)
-	local small = compact()
-	local logoY = small and 56 or 70
-	local lw, lh = small and 252 or 540, small and 126 or 270
-	local logo = UI.Frame(layer, { Name = "Logo", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 46 or 72, logoY + topShift(logoY)), Size = UDim2.fromOffset(lw, lh + (small and 0 or 24)) })
-	local img = UI.Logo(logo, { Size = UDim2.fromOffset(lw, lh), ImageTransparency = 1 })
-	if not img then
-		logo:Destroy()
-		return nil
-	end
-	local shine = UI.Logo(logo, { Size = img.Size, ImageTransparency = 1, ZIndex = 2 }, true)
-	local shineGrad = UI.Gradient(shine, Color3.new(1, 1, 1), 20, NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.44, 1), NumberSequenceKeypoint.new(0.5, 0.35), NumberSequenceKeypoint.new(0.56, 1), NumberSequenceKeypoint.new(1, 1),
-	}), { offset = Vector2.new(-1, 0) })
-	local tag
-	if not small then
-		tag = UI.Text(logo, "FROM UNKNOWN AMATEUR TO BOXING LEGEND", { Name = "Tagline", Font = T.semi, TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromOffset(math.floor(lw * 0.29), lh + 2),
-			Size = UDim2.fromOffset(420, 16), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTransparency = 1 })
-	end
-	if intro then
-		local goal = img.Position
-		img.Position = goal + UDim2.fromOffset(-40, 0)
-		task.delay(0.2, function()
-			if img.Parent then
-				UI.Tween(img, { Position = goal, ImageTransparency = 0 }, UI.Motion.slow)
-			end
-		end)
-	else
-		img.ImageTransparency = 0
-	end
-	task.delay(intro and 0.75 or 0, function()
-		if tag and tag.Parent then
-			UI.Tween(tag, { TextTransparency = 0 }, UI.Motion.slow)
-		end
-		if shine.Parent then
-			shine.ImageTransparency = 0
-		end
-	end)
-	task.spawn(function()
-		task.wait(1.1)
-		while shine.Parent do
-			shineGrad.Offset = Vector2.new(-1, 0)
-			UI.Tween(shineGrad, { Offset = Vector2.new(1, 0) }, TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut))
-			task.wait(5.5)
-		end
-	end)
-	return logo
-end
-
 local function buildLogo(layer)
-	local imageLogo = buildImageLogo(layer)
-	if imageLogo then
-		return imageLogo
-	end
 	local small = compact()
-	-- on short screens the logo sits below the engine's top bar buttons (no kicker line)
 	local logoY = small and 60 or 74
-	local logo = UI.Frame(layer, { Name = "Logo", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 52 or 84, logoY + topShift(logoY)), Size = UDim2.fromOffset(640, small and 120 or 250) })
-	local kicker = UI.Text(logo, "THE ROAD TO UNDISPUTED", { Name = "Kicker", Font = T.semi, TextSize = 15, TextColor3 = T.gold, Size = UDim2.new(1, 0, 0, 18),
-		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTransparency = 1, Visible = not small })
-	local world = UI.Title(logo, "WORLD CLASS", { Name = "World", TextSize = small and 32 or 64, Position = UDim2.fromOffset(small and -2 or -16, small and 0 or 22), Size = UDim2.new(1, 0, 0, small and 36 or 70),
-		TextTransparency = 1 })
-	local boxerY = small and 26 or 80
-	local boxerSize = small and 78 or 156
-	local boxer = UI.Title(logo, "BOXER", { Name = "Boxer", TextSize = boxerSize, TextColor3 = Color3.new(1, 1, 1), Position = UDim2.fromOffset(-16, boxerY), Size = UDim2.new(1, 0, 0, boxerSize + 6),
-		TextTransparency = 1 })
-	UI.Gradient(boxer, { Color3.fromRGB(255, 236, 170), T.gold, T.goldDeep }, 90)
-	-- the shine: a white copy masked to a narrow moving band
-	local shine = UI.Title(logo, "BOXER", { Name = "Shine", TextSize = boxerSize, TextColor3 = Color3.new(1, 1, 1), Position = boxer.Position, Size = boxer.Size, TextTransparency = 1, ZIndex = 2 })
-	local shineGrad = UI.Gradient(shine, Color3.new(1, 1, 1), 20, NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.44, 1), NumberSequenceKeypoint.new(0.5, 0.15), NumberSequenceKeypoint.new(0.56, 1), NumberSequenceKeypoint.new(1, 1),
-	}), { offset = Vector2.new(-1, 0) })
-	local barY = boxerY + boxerSize + (small and 0 or 6)
-	local bar = UI.Frame(logo, { Name = "Bar", Position = UDim2.fromOffset(0, barY), Size = UDim2.fromOffset(0, small and 4 or 6), BackgroundColor3 = T.red })
-	UI.Gradient(bar, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.7, 0), NumberSequenceKeypoint.new(1, 1) }))
-	local tag = UI.Text(logo, "FROM UNKNOWN AMATEUR TO BOXING LEGEND", { Name = "Tagline", Font = T.semi, TextSize = small and 11 or 13, TextColor3 = T.sub, Position = UDim2.fromOffset(small and 128 or 200, barY - (small and 6 or 4)),
-		Size = UDim2.fromOffset(420, 16), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTransparency = 1 })
-	-- reveal: kicker, WORLD CLASS slides in, BOXER punches up, the bar wipes, the shine sweeps
-	local function slide(obj, dx, delay, extra)
-		local goal = obj.Position
-		if not intro then
-			obj.TextTransparency = 0
-			return
-		end
-		obj.Position = goal + UDim2.fromOffset(dx, 0)
-		task.delay(delay, function()
-			if obj.Parent then
-				local props = { Position = goal, TextTransparency = 0 }
-				for k, v in pairs(extra or {}) do
-					props[k] = v
-				end
-				UI.Tween(obj, props, UI.Motion.slow)
-			end
-		end)
+	local logo = UI.Frame(layer, { Name = "Logo", BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(small and 52 or 84, logoY + topShift(logoY)),
+		Size = UDim2.fromOffset(620, small and 122 or 250) })
+	local emblem = UI.Brand(logo, small and 62 or 98, { Position = UDim2.fromOffset(0, small and 10 or 48) })
+	local x = small and 78 or 120
+	UI.Kicker(logo, "THE ROAD TO UNDISPUTED", T.gold, { Name = "Kicker", Visible = not small,
+		Position = UDim2.fromOffset(x, 10), Size = UDim2.fromOffset(440, 20) })
+	UI.Title(logo, "WORLD CLASS", { Name = "World", TextSize = small and 27 or 48,
+		Position = UDim2.fromOffset(x, small and 0 or 36), Size = UDim2.fromOffset(460, small and 34 or 58) })
+	local title = UI.Title(logo, "BOXER", { Name = "Boxer", TextSize = small and 66 or 112, TextColor3 = T.gold,
+		Position = UDim2.fromOffset(x - 3, small and 24 or 80), Size = UDim2.fromOffset(470, small and 78 or 126) })
+	UI.Gradient(title, { Color3.fromRGB(255, 237, 184), T.gold, T.goldDeep }, 90)
+	local y = small and 104 or 216
+	UI.Frame(logo, { Name = "Bar", BackgroundColor3 = T.red, Position = UDim2.fromOffset(0, y), Size = UDim2.fromOffset(small and 62 or 98, 3) })
+	UI.Text(logo, small and "BUILD YOUR LEGACY" or "TRAIN. FIGHT. BECOME UNDISPUTED.", { Name = "Tagline", TextSize = small and 12 or 14,
+		TextColor3 = T.sub, Position = UDim2.fromOffset(x, y - 6), Size = UDim2.fromOffset(420, 22),
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	if intro then
+		local pop = UI.New("UIScale", { Scale = 0.92, Parent = emblem })
+		UI.Tween(pop, { Scale = 1 }, UI.Motion.spring)
 	end
-	slide(kicker, -20, 0.1)
-	slide(world, -40, 0.25)
-	slide(boxer, -60, 0.42)
-	task.delay(intro and 0.42 or 0, function()
-		if shine.Parent then
-			shine.TextTransparency = 0
-		end
-	end)
-	task.delay(intro and 0.75 or 0, function()
-		if bar.Parent then
-			UI.Tween(bar, { Size = UDim2.fromOffset(small and 110 or 180, bar.Size.Y.Offset) }, UI.Motion.slow)
-			UI.Tween(tag, { TextTransparency = 0 }, UI.Motion.slow)
-		end
-	end)
-	task.spawn(function()
-		task.wait(1.1)
-		while shine.Parent do
-			shineGrad.Offset = Vector2.new(-1, 0)
-			UI.Tween(shineGrad, { Offset = Vector2.new(1, 0) }, TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut))
-			task.wait(5.5)
-		end
-	end)
 	return logo
 end
 
 ------------------------------------------------------------------------
 -- Menu
 ------------------------------------------------------------------------
+local MENU_ICONS = { continue = "play", new = "star", career = "glove", character = "people",
+	gym = "dumbbell", rankings = "trophy", store = "bag", controls = "menu", settings = "gear" }
 local ITEMS = {
-	{ id = "continue", label = "CONTINUE", icon = "play", desc = "Back to the gym floor", need = "created" },
-	{ id = "new", label = "NEW CAREER", icon = "gloves", desc = "Create your boxer and start as an amateur", only = "new" },
-	{ id = "career", label = "CAREER", icon = "belt", desc = "Fighter card, record, belts and rankings", need = "created" },
-	{ id = "character", label = "CHARACTER", icon = "user", desc = "Barber, locker room, physique and stats", need = "created" },
-	{ id = "gym", label = "GYM", icon = "dumbbell", desc = "Walk into the gym and train", need = "created" },
-	{ id = "rankings", label = "RANKINGS", icon = "podium", desc = "World rankings by division and sanctioning body", need = "created" },
-	{ id = "store", label = "STORE", icon = "store", desc = "Gear, homes, cars and upgrades", need = "created" },
-	{ id = "controls", label = "CONTROLS", icon = "gamepad", desc = "Every move with its keys and buttons, remapping, console options" },
-	{ id = "settings", label = "SETTINGS", icon = "settings", desc = "Display, effects, audio, graphics and controls" },
+	{ id = "continue", label = "CONTINUE", desc = "Back to the gym floor", need = "created" },
+	{ id = "new", label = "NEW CAREER", desc = "Create your boxer and start as an amateur", only = "new" },
+	{ id = "career", label = "CAREER", desc = "Fighter card, record, belts and rankings", need = "created" },
+	{ id = "character", label = "CHARACTER", desc = "Barber, locker room, physique and stats", need = "created" },
+	{ id = "gym", label = "GYM", desc = "Walk into the gym and train", need = "created" },
+	{ id = "rankings", label = "RANKINGS", desc = "World rankings by division and sanctioning body", need = "created" },
+	{ id = "store", label = "STORE", desc = "Gear, homes, cars and upgrades", need = "created" },
+	{ id = "controls", label = "CONTROLS", desc = "Every move with its keys and buttons, remapping, console options" },
+	{ id = "settings", label = "SETTINGS", desc = "Display, effects, audio, graphics and controls" },
 }
 
 -- the Moves & Controls window over the menu: the menu's own pad navigation steps aside while it is open
@@ -603,13 +509,9 @@ local function selectItem(i, instant)
 		local on = j == sel
 		local it = items[j]
 		local locked = it.locked
-		UI.Tween(fr.title, { TextTransparency = on and 0 or (locked and 0.72 or 0.32), Position = UDim2.fromOffset(on and 62 or 48, 0) }, instant and 0 or UI.Motion.base)
-		fr.title.TextColor3 = on and T.white or T.text
-		if fr.icon then
-			UI.SetIconColor(fr.icon, on and T.gold or (locked and T.dim or T.sub))
-		else
-			fr.index.TextColor3 = on and T.gold or T.dim
-		end
+		UI.Tween(fr.title, { TextTransparency = on and 0 or (locked and 0.52 or 0.16), Position = UDim2.fromOffset(on and 62 or 48, 0) }, instant and 0 or UI.Motion.base)
+		fr.button.BackgroundTransparency = on and 0.10 or 0.45
+		fr.title.TextColor3 = on and T.gold or T.text
 		UI.Tween(fr.glow, { BackgroundTransparency = on and 0 or 1 }, instant and 0 or UI.Motion.base)
 		fr.desc.Visible = on and not fr.desc:GetAttribute("Off")
 	end
@@ -654,27 +556,23 @@ local function buildMenu(layer)
 	itemFrames = {}
 	for i, it in ipairs(items) do
 		local b = UI.New("TextButton", { Name = "Item_" .. it.id, Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0,
-			Size = UDim2.new(0, rowW, 0, h), LayoutOrder = i, Parent = list })
+			Size = UDim2.new(0, rowW, 0, h), BackgroundColor3 = T.bg, LayoutOrder = i, Parent = list })
 		if two then
 			local x, y = itemPos(i)
 			b.Position = UDim2.fromOffset(x, y)
 		end
+		UI.Corner(b, UI.R.md)
+		UI.Stroke(b, T.line, 1, 0.70)
+		UI.Hover(b, { amount = 0.96, press = 0.985 })
 		local glow = UI.Frame(b, { Name = "Glow", Position = UDim2.fromOffset(14, 0), Size = UDim2.new(two and 1 or 0.85, two and -14 or 0, 1, 0), BackgroundColor3 = T.gold, BackgroundTransparency = 1 })
 		UI.Gradient(glow, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.82), NumberSequenceKeypoint.new(0.6, 0.96), NumberSequenceKeypoint.new(1, 1) }))
-		-- the item's icon in the index column (the number where the icon set is not uploaded)
-		local index, icon
-		if UI.HasIcon(it.icon) and UI.IconEntry(it.icon) then
-			local is = small and 18 or 24
-			icon = UI.Icon(b, it.icon, is, T.sub, { Name = "ItemIcon", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, small and 20 or 18, 0.5, 0) })
-		else
-			index = UI.Text(b, string.format("%02d", i), { Name = "Index", Face = "number", TextSize = small and 13 or 15, TextColor3 = T.dim, Position = UDim2.fromOffset(18, 0), Size = UDim2.fromOffset(26, h),
-				AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
-		end
-		local title = UI.Title(b, it.label, { Name = "Title", TextSize = size, Position = UDim2.fromOffset(48, 0), Size = UDim2.fromOffset(two and (rowW - 62) or 300, h),
+		UI.Icon(b, MENU_ICONS[it.id] or "star", small and 18 or 22, it.locked and T.dim or T.gold,
+			{ Name = "MenuIcon", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 18, 0.5, 0) })
+		local title = UI.Title(b, it.label, { Name = "Title", TextSize = size, Position = UDim2.fromOffset(48, 0), Size = UDim2.fromOffset(two and (rowW - 62) or (small and 148 or 220), h),
 			TextYAlignment = Enum.TextYAlignment.Center, TextTransparency = 1 })
 		-- (two columns: no room for the line beside the item; a tap opens it straight away anyway)
-		local desc = UI.Text(b, it.locked and "Create your boxer first" or it.desc, { Name = "Desc", Font = T.font, TextSize = small and 11 or 13, TextColor3 = T.sub, Position = UDim2.fromOffset(small and 210 or 270, 0),
-			Size = UDim2.fromOffset(240, h), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, Visible = false })
+		local desc = UI.Text(b, it.locked and "Create your boxer first" or it.desc, { Name = "Desc", Font = T.font, TextSize = small and 11 or 13, TextColor3 = T.sub, Position = UDim2.fromOffset(small and 210 or 292, 0),
+			Size = UDim2.fromOffset(small and 220 or 218, h), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, Visible = false })
 		if two then
 			desc:SetAttribute("Off", true)
 		end
@@ -683,7 +581,7 @@ local function buildMenu(layer)
 			-- locked items too), and a lock fixed to the row landed on its last letters (CHARACTER's R)
 			UI.Icon(title, "lock", small and 12 or 14, T.dim, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, small and 128 or 184, 0.5, 0) })
 		end
-		itemFrames[i] = { button = b, title = title, index = index, icon = icon, glow = glow, desc = desc }
+		itemFrames[i] = { button = b, title = title, glow = glow, desc = desc }
 		b.MouseEnter:Connect(function()
 			if sel ~= i then
 				selectItem(i)
@@ -705,7 +603,7 @@ local function buildMenu(layer)
 			fr.title.Position = goal + UDim2.fromOffset(-30, 0)
 			task.delay(0.55 + i * 0.05, function()
 				if fr.title.Parent then
-					UI.Tween(fr.title, { TextTransparency = (i == sel) and 0 or (it.locked and 0.72 or 0.32), Position = goal }, UI.Motion.slow)
+					UI.Tween(fr.title, { TextTransparency = (i == sel) and 0 or (it.locked and 0.52 or 0.16), Position = goal }, UI.Motion.slow)
 				end
 			end)
 		end
@@ -740,7 +638,7 @@ local function buildStatus(layer)
 	local bar = UI.Frame(layer, { Name = "StatusBar", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, small and -32 or -48, 0, small and 62 or 64), Size = UDim2.fromOffset(600, 40) })
 	UI.List(bar, 8, true, Enum.HorizontalAlignment.Right)
 	chip(bar, "DAY", tostring(P.day or 1), T.text, 1, "calendar")
-	chip(bar, "PURSE", Config.Money(P.money or 0), T.gold, 2, "money")
+	chip(bar, "PURSE", Config.Money(P.money or 0), T.gold, 2, "coin")
 	local c = P.condition or {}
 	chip(bar, "ENERGY", tostring(c.energy or 0), (c.energy or 100) < 25 and T.red or T.green, 3, "energy")
 end
@@ -755,7 +653,7 @@ local function buildProfile(layer)
 		UI.Glass(card, { transparency = 0.2 })
 		UI.Frame(card, { Name = "Stripe", Size = UDim2.new(0, 5, 1, -24), Position = UDim2.fromOffset(0, 12), BackgroundColor3 = T.gold })
 		UI.Kicker(card, "A NEW CAREER", T.gold, { Position = UDim2.fromOffset(22, 16), Size = UDim2.new(1, -44, 0, 18) })
-		UI.Title(card, "FROM NOBODY TO UNDISPUTED", { TextSize = 28, Position = UDim2.fromOffset(22, 36), Size = UDim2.new(1, -44, 0, 34) })
+		UI.Title(card, "YOUR LEGACY STARTS HERE", { TextSize = small and 23 or 28, Position = UDim2.fromOffset(22, 36), Size = UDim2.new(1, -44, 0, 34) })
 		UI.Text(card, "Create your boxer and start in a beginner gym. Train, fight, climb the rankings and become undisputed.", { TextSize = 14, TextColor3 = T.sub,
 			Position = UDim2.fromOffset(22, 76), Size = UDim2.new(1, -44, 0, 54), AutomaticSize = Enum.AutomaticSize.None, TextYAlignment = Enum.TextYAlignment.Top })
 		return

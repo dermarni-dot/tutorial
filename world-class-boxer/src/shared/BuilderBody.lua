@@ -1020,7 +1020,7 @@ local function glovesBuild(folder, model, app, gear, opts, sp)
 			-- middle of the back, so it lies on the leather)
 			local glyph
 			if custom.logo and g.logo and g.logo ~= "None" then
-				glyph = Catalog.LogoGlyphs[g.logo]
+				glyph = Kit.IconText(Catalog.LogoIcons[g.logo]) or Catalog.LogoGlyphs[g.logo]
 				if g.logo == "Initials" then
 					glyph = initials(opts.name)
 				elseif g.logo == "Flag" then
@@ -1193,7 +1193,7 @@ local function glovesMesh(folder, model, app, gear, opts, sp, pieces)
 	local g = app.gloves or {}
 	local glyph
 	if st.custom.logo and g.logo and g.logo ~= "None" then
-		glyph = Catalog.LogoGlyphs[g.logo]
+		glyph = Kit.IconText(Catalog.LogoIcons[g.logo]) or Catalog.LogoGlyphs[g.logo]
 		if g.logo == "Initials" then
 			glyph = initials(opts.name)
 		elseif g.logo == "Flag" then

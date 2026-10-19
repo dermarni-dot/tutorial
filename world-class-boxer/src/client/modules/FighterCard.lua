@@ -742,7 +742,7 @@ function FighterCard.Full(parent, P, opts)
 	local info = UI.Scroll(card, { Name = "Info", Position = UDim2.new(0, photoW + (small and 20 or 36), 0, 0), Size = UDim2.new(1, -(photoW + (small and 20 or 36)), 1, 0) })
 	UI.List(info, small and 8 or 10)
 	UI.Pad(info, 0, 2)
-	UI.Kicker(info, ri.pro and ("PROFESSIONAL BOXER  ·  " .. string.upper(P.className or "") .. " DIVISION") or ("AMATEUR BOXER  ·  " .. string.upper(P.className or "")), T.gold, { order = 1, icon = "gloves" })
+	UI.Kicker(info, ri.pro and ("PROFESSIONAL BOXER  ·  " .. string.upper(P.className or "") .. " DIVISION") or ("AMATEUR BOXER  ·  " .. string.upper(P.className or "")), T.gold, { order = 1, icon = "glove" })
 	nameBlock(info, P, small and 48 or 68, 2)
 	-- the headline numbers: record, knockouts, KO ratio, ranking (a dash / UNRANKED until they mean something)
 	local cardW = (opts.Size and opts.Size.X.Offset > 0) and opts.Size.X.Offset or 1240
@@ -777,7 +777,7 @@ function FighterCard.Full(parent, P, opts)
 	for i, n in ipairs(numbers) do
 		local row = rows[(tight and i == 4) and 2 or 1]
 		UI.Stat(row, n[1], n[2], { Size = UDim2.new(n[4], n[4] < 1 and -8 or -2, 1, 0), valueColor = n[3], valueSize = small and 28 or 38, order = i, scaled = true,
-			icon = ({ "gloves", "ko", "fist", "podium" })[i], iconSize = small and 14 or 18 })
+			icon = ({ "glove", "ko", "fist", "podium" })[i], iconSize = small and 14 or 18 })
 	end
 	-- tale of the tape
 	UI.Kicker(info, "TALE OF THE TAPE", T.sub, { order = 4, icon = "user" })
@@ -849,7 +849,7 @@ function FighterCard.Compact(parent, P, opts)
 	local rankText, champ = FighterCard.BestRank(P)
 	-- (the line above the name already says amateur / pro: "RECORD" fits the narrow tile on a phone)
 	local widths = { 0.27, 0.16, 0.17, 0.34 } -- the record tile holds its caption at the phone's text floor
-	local statIcons = { "gloves", "ko", "star", "podium" }
+	local statIcons = { "glove", "ko", "star", "podium" }
 	for i, n in ipairs({ { ri.text, "RECORD" }, { tostring(ri.ko), "KOS" }, { tostring(P.overall or 0), "OVR" }, { rankText, "RANKING" } }) do
 		UI.Stat(strip, n[1], n[2], { Size = UDim2.new(widths[i], -8, 1, 0), valueSize = 26, order = i, scaled = true, icon = statIcons[i], iconSize = 14,
 			valueColor = (i == 4 and champ) and T.gold or ((i == 2 and ri.ko > 0) and T.red or ((i == 4 and rankText == "UNRANKED") and T.sub or T.text)) })

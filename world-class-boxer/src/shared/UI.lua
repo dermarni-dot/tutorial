@@ -38,20 +38,20 @@ end
 ------------------------------------------------------------------------
 UI.Theme = {
 	-- surfaces
-	bg = rgb(10, 12, 17), -- window base (deep ink with a cold tint)
-	panel = rgb(20, 23, 31), -- cards
-	panel2 = rgb(32, 37, 49), -- raised: inactive buttons, tracks, rows
-	line = rgb(58, 65, 82), -- dividers and quiet strokes
+	bg = rgb(11, 15, 23), -- window base (deep ink with a cold tint)
+	panel = rgb(22, 28, 39), -- cards
+	panel2 = rgb(35, 43, 57), -- raised: inactive buttons, tracks, rows
+	line = rgb(72, 83, 103), -- dividers and quiet strokes
 	ink = rgb(5, 6, 9),
 	-- type
 	text = rgb(242, 244, 248),
-	sub = rgb(150, 158, 176),
-	dim = rgb(98, 106, 124),
+	sub = rgb(178, 188, 205),
+	dim = rgb(137, 151, 172),
 	white = rgb(255, 255, 255),
 	-- accents
-	gold = rgb(247, 196, 66), -- championship gold: primary actions, titles, the player
-	goldDeep = rgb(205, 140, 30),
-	red = rgb(234, 48, 56), -- fight red: danger, the opponent, live
+	gold = rgb(255, 205, 83), -- championship gold: primary actions, titles, the player
+	goldDeep = rgb(208, 148, 43),
+	red = rgb(243, 65, 76), -- fight red: danger, the opponent, live
 	redDeep = rgb(150, 18, 30),
 	blue = rgb(58, 142, 255), -- info, stamina, the blue corner
 	blueDeep = rgb(24, 80, 190),
@@ -73,7 +73,7 @@ local T = UI.Theme
 
 -- spacing grid (4 px) and corner radii
 UI.S = { xs = 4, sm = 8, md = 12, lg = 16, xl = 24, xxl = 32, xxxl = 48 }
-UI.R = { sm = 4, md = 6, lg = 10, xl = 14, pill = 999 }
+UI.R = { sm = 4, md = 8, lg = 12, xl = 16, pill = 999 }
 -- hairline strokes: [transparency] of a white stroke on glass, by strength
 UI.Hair = { faint = 0.93, soft = 0.88, strong = 0.75 }
 
@@ -435,14 +435,91 @@ local function bar(parent, w, h, x, y, rot, color, z)
 	return f
 end
 
--- the frame-drawn glyphs the kit used before the icon sheets (and still draws while a sheet is not uploaded):
+-- the Frame-drawn glyphs (no image asset needed; drawn whenever the icon sheets have no image for a kind):
+-- the WCB sports marks glove, trophy, dumbbell, chart, crown, coin, bag, people, home, shield, gear, heart;
 -- close, left, right, up, down, check, plus, minus, play, menu, lock, dot, star, bolt, reset / undo
 local VECTOR_KINDS = { close = true, left = true, right = true, up = true, down = true, check = true, plus = true, minus = true, play = true, menu = true,
-	lock = true, dot = true, star = true, bolt = true, reset = true, undo = true }
+	lock = true, dot = true, star = true, bolt = true, reset = true, undo = true, glove = true, trophy = true, dumbbell = true, chart = true, crown = true,
+	coin = true, bag = true, people = true, home = true, shield = true, gear = true, heart = true }
 local function vectorIcon(f, kind, size, color)
 	local th = math.max(2, math.floor(size / 7 + 0.5))
 	local z = f.ZIndex
-	if kind == "close" then
+	-- Semantic sports marks use Roblox Frames; no image asset uploads or loading delays.
+	local function shape(x, y, w, h, radius, tint, rot)
+		local part = UI.New("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(x, y),
+			Size = UDim2.fromScale(w, h), BackgroundColor3 = tint or color, BorderSizePixel = 0,
+			Rotation = rot or 0, ZIndex = z, Parent = f })
+		if radius then
+			UI.New("UICorner", { CornerRadius = UDim.new(radius, 0), Parent = part })
+		end
+		return part
+	end
+	if kind == "glove" then
+		shape(0.49, 0.36, 0.64, 0.59, 0.36)
+		shape(0.80, 0.51, 0.23, 0.31, 0.48, nil, 22)
+		shape(0.46, 0.78, 0.48, 0.24, 0.16)
+		shape(0.46, 0.73, 0.32, 0.035, nil, T.ink)
+		shape(0.37, 0.19, 0.25, 0.035, nil, T.ink)
+	elseif kind == "trophy" then
+		shape(0.50, 0.32, 0.52, 0.48, 0.22)
+		for _, x in ipairs({ 0.20, 0.80 }) do
+			local handle = shape(x, 0.30, 0.26, 0.32, 0.45)
+			handle.BackgroundTransparency = 1
+			UI.Stroke(handle, color, math.max(1.5, size / 12))
+		end
+		shape(0.50, 0.67, 0.13, 0.25)
+		shape(0.50, 0.87, 0.57, 0.13, 0.15)
+	elseif kind == "dumbbell" then
+		shape(0.50, 0.50, 0.74, 0.13, 0.15)
+		for _, x in ipairs({ 0.22, 0.78 }) do
+			shape(x, 0.50, 0.16, 0.60, 0.15)
+		end
+	elseif kind == "chart" then
+		for i, h in ipairs({ 0.30, 0.52, 0.76 }) do
+			shape(0.18 + (i - 1) * 0.30, 0.88 - h / 2, 0.18, h, 0.10)
+		end
+	elseif kind == "crown" then
+		shape(0.50, 0.76, 0.76, 0.19, 0.12)
+		shape(0.22, 0.50, 0.18, 0.48, 0.12, nil, -18)
+		shape(0.50, 0.46, 0.18, 0.55, 0.12)
+		shape(0.78, 0.50, 0.18, 0.48, 0.12, nil, 18)
+		shape(0.50, 0.66, 0.60, 0.20)
+	elseif kind == "coin" then
+		local ring = shape(0.50, 0.50, 0.78, 0.78, 0.50)
+		ring.BackgroundTransparency = 1
+		UI.Stroke(ring, color, math.max(2, size / 9))
+		shape(0.50, 0.50, 0.12, 0.43, 0.12)
+		shape(0.50, 0.50, 0.37, 0.12, 0.12)
+	elseif kind == "bag" then
+		shape(0.50, 0.61, 0.72, 0.60, 0.14)
+		local handle = shape(0.50, 0.28, 0.35, 0.30, 0.40)
+		handle.BackgroundTransparency = 1
+		UI.Stroke(handle, color, math.max(2, size / 10))
+	elseif kind == "people" then
+		shape(0.39, 0.28, 0.32, 0.32, 0.50)
+		shape(0.39, 0.72, 0.62, 0.40, 0.40)
+		shape(0.78, 0.34, 0.22, 0.22, 0.50)
+		shape(0.83, 0.73, 0.16, 0.34, 0.30)
+	elseif kind == "home" then
+		bar(f, 0.58, th, 0.29, 0.32, -42, color, z)
+		bar(f, 0.58, th, 0.71, 0.32, 42, color, z)
+		shape(0.50, 0.66, 0.66, 0.50, 0.08)
+		shape(0.50, 0.79, 0.18, 0.24, nil, T.ink)
+	elseif kind == "shield" then
+		shape(0.50, 0.41, 0.70, 0.60, 0.14)
+		shape(0.50, 0.70, 0.40, 0.40, 0.08, nil, 45)
+		shape(0.50, 0.46, 0.11, 0.42, nil, T.ink)
+	elseif kind == "gear" then
+		for i = 0, 3 do
+			bar(f, 0.91, math.max(3, size / 5), 0.5, 0.5, i * 45, color, z)
+		end
+		shape(0.50, 0.50, 0.66, 0.66, 0.50)
+		shape(0.50, 0.50, 0.27, 0.27, 0.50, T.ink)
+	elseif kind == "heart" then
+		shape(0.34, 0.34, 0.43, 0.43, 0.50)
+		shape(0.66, 0.34, 0.43, 0.43, 0.50)
+		shape(0.50, 0.53, 0.52, 0.52, 0.12, nil, 45)
+	elseif kind == "close" then
 		bar(f, 1.1, th, 0.5, 0.5, 45, color, z)
 		bar(f, 1.1, th, 0.5, 0.5, -45, color, z)
 	elseif kind == "left" or kind == "right" or kind == "up" or kind == "down" then
@@ -504,12 +581,12 @@ end
 ------------------------------------------------------------------------
 -- Icons: the game's icon set (tools/ui: white glyphs on 1024 px sheets, Shared.IconData)
 ------------------------------------------------------------------------
--- UI.Icon(parent, name, size, color, props) or UI.Icon(parent, name, { size =, color =, ...props }).
+-- UI.Icon(parent, kind, size, color, props) (or a props table with size / color in place of size).
 -- Returns a transparent holder Frame (Name "Icon", props applied to it: AnchorPoint, Position, ZIndex,
--- Rotation ...) with the glyph inside; recolour it with UI.SetIconColor. Names: IconData's (gloves, belt,
--- heart, money, ...) plus the kit's arrows left / right / up / down (the chevron turned) and undo (reset).
--- Before a sheet is uploaded (id 0) the arrows and the kit's old marks draw from frames and any other name
--- as a small text label, so nothing breaks.
+-- Rotation ...) with the glyph inside; recolour it with UI.SetIconColor. A kind with an uploaded image
+-- (IconData: the WCB kinds glove, trophy, dumbbell, chart, crown, coin, bag, people, home, shield, gear, heart,
+-- and the wider set belt, heavybag, bell, money, calendar, water, food, sleep, ...) draws that image, tinted;
+-- otherwise the Frame-drawn version above, and any other unknown kind its first letter in a ring.
 local IconData
 do
 	local ok, m = pcall(function()
@@ -518,7 +595,8 @@ do
 	IconData = ok and type(m) == "table" and m or nil
 end
 UI.IconData = IconData
-local ICON_ALIAS = { right = { "chevron", 0 }, down = { "chevron", 90 }, left = { "chevron", 180 }, up = { "chevron", 270 }, undo = { "reset", 0 } }
+local ICON_ALIAS = { right = { "chevron", 0 }, down = { "chevron", 90 }, left = { "chevron", 180 }, up = { "chevron", 270 }, undo = { "reset", 0 },
+	gloves = { "glove", 0 }, store = { "bag", 0 }, settings = { "gear", 0 } }
 
 -- the uploaded entry for an icon name (nil while its sheet has no id)
 function UI.IconEntry(name)
@@ -549,9 +627,14 @@ function UI.Icon(parent, kind, size, color, props)
 	local e, rot = UI.IconEntry(kind)
 	if e then
 		local cell = IconData.cell or 256
-		UI.New("ImageLabel", { Name = "Glyph", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), AnchorPoint = Vector2.new(0.5, 0.5),
+		local glyph = UI.New("ImageLabel", { Name = "Glyph", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5), Image = "rbxassetid://" .. tostring(e.id), ImageRectOffset = Vector2.new(e.x, e.y), ImageRectSize = Vector2.new(cell, cell),
-			ImageColor3 = color, ScaleType = Enum.ScaleType.Fit, Rotation = rot, ZIndex = f.ZIndex, Parent = f })
+			ImageColor3 = color, ScaleType = Enum.ScaleType.Fit, Rotation = rot + f.Rotation, ZIndex = f.ZIndex, Parent = f })
+		-- (a GuiObject's Rotation does not turn its children: the holder's is carried onto the image, so a
+		-- caller turning the icon - the brand's tilted glove, a chevron flipping open - turns the glyph)
+		f:GetPropertyChangedSignal("Rotation"):Connect(function()
+			glyph.Rotation = rot + f.Rotation
+		end)
 	elseif VECTOR_KINDS[kind] then
 		vectorIcon(f, kind, size, color)
 	else
@@ -603,22 +686,32 @@ function UI.IconTile(parent, name, size, color, props)
 	return tile
 end
 
--- the title logo (IconData.logo): an ImageLabel with the full-colour lockup, or nil before it is uploaded.
--- mask = true gives its white silhouette (the shine)
-function UI.Logo(parent, props, mask)
-	local lg = IconData and IconData.logo
-	if not (lg and (tonumber(lg.id) or 0) > 0) then
-		return nil
+-- Championship emblem shared by the menu, career hub, HUD and fight broadcast.
+-- All geometry is normalized, so this stays sharp at every UI scale.
+function UI.Brand(parent, size, props)
+	props = props or {}
+	size = size or 64
+	local badge = UI.Frame(parent, { Name = "WCBBrand", Size = UDim2.fromOffset(size, size),
+		BackgroundColor3 = T.ink })
+	for key, value in pairs(props) do
+		badge[key] = value
 	end
-	local r = mask and lg.mask or lg.colour
-	local img = UI.New("ImageLabel", { Name = mask and "LogoMask" or "LogoImage", BackgroundTransparency = 1, BorderSizePixel = 0, Image = "rbxassetid://" .. tostring(lg.id),
-		ImageRectOffset = Vector2.new(r.x, r.y), ImageRectSize = Vector2.new(r.w, r.h), ScaleType = Enum.ScaleType.Fit, Parent = parent })
-	for k, v in pairs(props or {}) do
-		img[k] = v
-	end
-	return img
+	UI.Corner(badge, size * 0.22)
+	UI.Stroke(badge, T.gold, math.max(1, size / 48), 0.12)
+	UI.Gradient(badge, { Color3.new(1, 1, 1), Color3.fromRGB(153, 166, 190) }, 55)
+	UI.Icon(badge, "glove", size * 0.62, T.gold, { Name = "Glove", ZIndex = badge.ZIndex + 1,
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.50, 0.39), Rotation = -12 })
+	local ribbon = UI.Frame(badge, { Name = "Ribbon", BackgroundColor3 = T.red,
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.50, 0.81),
+		Size = UDim2.fromScale(0.86, 0.22), ZIndex = badge.ZIndex + 2 })
+	UI.Corner(ribbon, math.max(2, size * 0.04))
+	-- Explicit scaling keeps this decorative wordmark out of the body's readability-floor system.
+	local mark = UI.New("TextLabel", { Name = "Wordmark", Text = "WCB", TextColor3 = T.white,
+		BackgroundTransparency = 1, Font = T.bold, TextScaled = true, TextWrapped = false,
+		Size = UDim2.fromScale(1, 1), ZIndex = badge.ZIndex + 3, Parent = ribbon })
+	UI.SetFace(mark, "display")
+	return badge
 end
-
 
 ------------------------------------------------------------------------
 -- Interaction: hover / press feedback for any GuiButton
@@ -648,8 +741,13 @@ function UI.Hover(btn, opts)
 	local function off()
 		return btn:GetAttribute("Disabled") == true
 	end
+	-- a controller's selection lifts the button more than a hover (0.80), a disabled one never lifts
 	local function settle()
-		UI.Tween(overlay, { BackgroundTransparency = (hovering or selected) and not off() and hoverT or 1 }, UI.Motion.fast)
+		local t = 1
+		if not off() then
+			t = selected and 0.80 or (hovering and hoverT or 1)
+		end
+		UI.Tween(overlay, { BackgroundTransparency = t }, UI.Motion.fast)
 	end
 	btn.MouseEnter:Connect(function()
 		hovering = true
@@ -669,7 +767,7 @@ function UI.Hover(btn, opts)
 		UI.Tween(scale, { Scale = 1 }, UI.Motion.spring)
 		settle()
 	end)
-	-- gamepad: the selected button lifts like a hovered one and wears the kit's gold ring
+	-- gamepad: the selected button lifts (above) and wears the kit's gold ring in place of the engine's
 	UI.FocusRing(btn)
 	btn.SelectionGained:Connect(function()
 		selected = true
@@ -779,16 +877,11 @@ function UI.Button(parent, text, props, onClick)
 	UI.Corner(b, UI.R.md)
 	if b.BackgroundTransparency < 0.98 then
 		if variant == "secondary" then
-			UI.New("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.9, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = b })
+			UI.New("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.78, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = b })
 			UI.Gradient(b, { Color3.new(1, 1, 1), Color3.fromRGB(205, 208, 216) }, 90)
-		elseif variant == "primary" then
-			-- the championship gold: a metallic ramp with a bright top edge and a deep gold keyline
-			UI.Gradient(b, { Color3.new(1, 1, 1), Color3.fromRGB(236, 226, 206), Color3.fromRGB(214, 190, 150) }, 90)
-			UI.New("UIStroke", { Color = T.goldLight, Transparency = 0.35, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = b })
 		else
 			-- a lit top edge on the solid colours
-			UI.Gradient(b, { Color3.new(1, 1, 1), Color3.fromRGB(196, 196, 196) }, 90)
-			UI.New("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.8, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = b })
+			UI.Gradient(b, { Color3.new(1, 1, 1), Color3.fromRGB(224, 224, 224) }, 90)
 		end
 		UI.Hover(b)
 	else
@@ -1057,9 +1150,12 @@ end
 -- an eyebrow label: gold tick + small uppercase caption (section kickers)
 function UI.Kicker(parent, text, color, props)
 	props = props or {}
-	local f = UI.Frame(parent, { Name = "Kicker", BackgroundTransparency = 1, Size = props.Size or UDim2.new(1, 0, 0, 18), LayoutOrder = props.order or 0 })
+	local f = UI.Frame(parent, { Name = props.Name or "Kicker", BackgroundTransparency = 1, Size = props.Size or UDim2.new(1, 0, 0, 18), LayoutOrder = props.order or 0 })
 	if props.Position then
 		f.Position = props.Position
+	end
+	if props.Visible ~= nil then
+		f.Visible = props.Visible
 	end
 	local x = 10
 	if props.icon then
@@ -1606,22 +1702,11 @@ end
 ------------------------------------------------------------------------
 -- Windows & cards
 ------------------------------------------------------------------------
--- the header icon of each window by its name (opts.icon overrides; false = none)
-UI.WindowIcons = {
-	Hub = "belt", BoxerCard = "user", Muscle = "muscle", Store = "store", Creator = "user", ControlsMenu = "gamepad", Nutrition = "food",
-	Sleep = "sleep", Spar = "gloves", SparResult = "gloves", PvP = "versus", PvPChoose = "versus", PvPChallenge = "versus", PvPMatch = "versus",
-	PvPResult = "versus", TutorialOffer = "whistle", TutorialDone = "trophy", Retired = "laurel", Settings = "settings",
-}
-
 -- returns shade, win, body (scrolling list area) ; opts = { side = "left"|"right", noShade, onClose,
 -- onBack (gamepad B when it is not onClose), scroll = false, footer = px, z,
--- kicker = "SMALL CAPTION ABOVE THE TITLE", icon = an icon name before the title (default UI.WindowIcons[name]) }
+-- kicker = "SMALL CAPTION ABOVE THE TITLE" }; a titled window carries the WCB emblem (UI.Brand) before its title
 function UI.Window(gui, name, w, h, title, opts)
 	opts = opts or {}
-	local icon = opts.icon
-	if icon == nil then
-		icon = UI.WindowIcons[name]
-	end
 	local old = gui:FindFirstChild(name)
 	if old then
 		old:Destroy()
@@ -1673,13 +1758,9 @@ function UI.Window(gui, name, w, h, title, opts)
 	local win = UI.Frame(holder, { Name = "Win", BackgroundColor3 = T.bg, Size = UDim2.fromScale(1, 1), ZIndex = z })
 	win.Active = true
 	UI.Glass(win, { transparency = opts.noShade and 0.06 or 0.03, radius = UI.R.xl })
-	-- broadcast accent: a thin gold line glowing along the top edge, and under it a soft wash of the accent
-	-- (the stage light the header sits in)
+	-- broadcast accent: a thin gold line glowing along the top edge
 	local accent = UI.Frame(win, { Name = "Accent", Position = UDim2.new(0, 28, 0, 0), Size = UDim2.new(1, -56, 0, 2), BackgroundColor3 = opts.accent or T.gold, ZIndex = z })
 	UI.Gradient(accent, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0.15), NumberSequenceKeypoint.new(0.8, 0.15), NumberSequenceKeypoint.new(1, 1) }))
-	local wash = UI.Frame(win, { Name = "HeaderWash", Size = UDim2.new(1, 0, 0, 120), BackgroundColor3 = opts.accent or T.gold, BackgroundTransparency = 0, ZIndex = z })
-	UI.Corner(wash, UI.R.xl)
-	UI.Gradient(wash, Color3.new(1, 1, 1), 90, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.9), NumberSequenceKeypoint.new(0.45, 0.965), NumberSequenceKeypoint.new(1, 1) }))
 	local top = 16
 	-- the close button: finger-sized on touch (then it sits nearer the top edge and the header grows
 	-- around it)
@@ -1695,21 +1776,12 @@ function UI.Window(gui, name, w, h, title, opts)
 	if title then
 		local kick = opts.kicker and not short
 		if kick then
-			local kx = icon and (22 + math.floor((short and 26 or 32) * 0.95) + 12) or 40
-			UI.Text(win, string.upper(opts.kicker), { Name = "Kicker", Font = T.semi, TextSize = 12, TextColor3 = opts.accent or T.gold, Position = UDim2.fromOffset(kx, 14), Size = UDim2.new(1, -(kx + 80), 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+			UI.Text(win, string.upper(opts.kicker), { Name = "Kicker", Font = T.semi, TextSize = 12, TextColor3 = opts.accent or T.gold, Position = UDim2.fromOffset(40, 14), Size = UDim2.new(1, -120, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 		end
 		local ty = kick and 26 or (short and 8 or 14)
 		local ts = short and 26 or 32
-		local tx = 40
-		if icon then
-			-- the window's icon on a tinted tile, in place of the tick
-			local is = math.floor(ts * 0.95)
-			UI.IconTile(win, icon, is, opts.accent or T.gold, { Name = "TitleIcon", Position = UDim2.fromOffset(22, ty + math.floor((ts + 6 - is) / 2)), ZIndex = z })
-			tx = 22 + is + 12
-		else
-			UI.Frame(win, { Name = "TitleTick", Position = UDim2.fromOffset(24, ty + math.floor(ts * 0.22)), Size = UDim2.fromOffset(4, math.floor(ts * 0.75)), BackgroundColor3 = opts.accent or T.gold })
-		end
-		UI.Text(win, string.upper(title), { Name = "Title", Face = "display", TextSize = ts, TextColor3 = T.text, Position = UDim2.fromOffset(tx, ty), Size = UDim2.new(1, -math.max(110, tx + (cs or 0) + 24), 0, ts + 6),
+		UI.Brand(win, short and 28 or 34, { Position = UDim2.fromOffset(20, ty + 2), ZIndex = z + 1 })
+		UI.Text(win, string.upper(title), { Name = "Title", Face = "display", TextSize = ts, TextColor3 = T.text, Position = UDim2.fromOffset(64, ty), Size = UDim2.new(1, -math.max(134, 64 + (cs or 0) + 24), 0, ts + 6),
 			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		top = ty + ts + (short and 14 or 20)
 		if cs then
@@ -1772,9 +1844,10 @@ function UI.Card(parent, props)
 		-- highlighted card: tinted stroke plus a glow of the accent fading from the left edge
 		UI.Stroke(f, props.stroke, 1.5, 0.3)
 		f.BackgroundColor3 = (props.color or T.panel):Lerp(props.stroke, 0.16)
-		UI.Gradient(f, { Color3.new(1, 1, 1), Color3.fromRGB(150, 150, 150) }, 0)
+		UI.Gradient(f, { Color3.new(1, 1, 1), Color3.fromRGB(212, 216, 226) }, 0)
 	else
-		UI.New("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.93, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = f })
+		UI.New("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.86, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = f })
+		UI.Gradient(f, { Color3.new(1, 1, 1), Color3.fromRGB(222, 228, 240) }, 90)
 	end
 	return f
 end
@@ -1790,11 +1863,11 @@ end
 -- (icon: an icon name in place of the tick, tinted the accent; nil = picked from the title's words by
 -- UI.HeaderIcons when one clearly fits, false = the tick)
 UI.HeaderIcons = {
-	{ "FIGHT CAMP", "calendar" }, { "OFFERS", "contract" }, { "SPONSOR", "contract" }, { "RECENT FIGHTS", "chart" }, { "FIGHT", "gloves" },
-	{ "GLOVES", "gloves" }, { "TRUNKS", "trunks" }, { "ROBE", "robe" }, { "KITS", "robe" }, { "FEET", "shoe" }, { "FOOTWEAR", "shoe" },
+	{ "FIGHT CAMP", "calendar" }, { "OFFERS", "contract" }, { "SPONSOR", "contract" }, { "RECENT FIGHTS", "chart" }, { "FIGHT", "glove" },
+	{ "GLOVES", "glove" }, { "TRUNKS", "trunks" }, { "ROBE", "robe" }, { "KITS", "robe" }, { "FEET", "shoe" }, { "FOOTWEAR", "shoe" },
 	{ "HANDS", "wraps" }, { "BEARD", "scissors" }, { "CUT", "scissors" }, { "STATS", "chart" }, { "BODY", "muscle" }, { "PREVIEW", "eye" },
 	{ "LEGENDS", "laurel" }, { "CAMERA", "eye" }, { "VIBRATION", "gamepad" }, { "AIM", "target" }, { "BOXERS", "user" }, { "AVATAR", "user" },
-	{ "FACE", "user" }, { "INJUR", "injury" }, { "MEAL", "food" }, { "FOOD", "food" }, { "SLEEP", "sleep" }, { "MONEY", "money" }, { "PURSE", "money" },
+	{ "FACE", "user" }, { "INJUR", "injury" }, { "MEAL", "food" }, { "FOOD", "food" }, { "SLEEP", "sleep" }, { "MONEY", "coin" }, { "PURSE", "coin" },
 	{ "RANK", "podium" }, { "BELT", "belt" }, { "TITLE", "belt" }, { "COACH", "whistle" }, { "TRAIN", "dumbbell" }, { "EQUIPMENT", "heavybag" },
 	{ "HOME", "home" }, { "CAR", "car" }, { "TRAVEL", "pin" }, { "AUDIO", "bell" }, { "SOUND", "bell" }, { "DISPLAY", "eye" }, { "GRAPHICS", "eye" },
 	{ "CONTROLS", "gamepad" }, { "SPECIAL", "star" }, { "PUNCH", "fist" }, { "DEFEN", "shield" }, { "GUARD", "shield" }, { "MOVEMENT", "speed" },

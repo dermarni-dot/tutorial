@@ -422,6 +422,11 @@ J.lift = function(seg, M)
 	end
 	-- the bar's height now (display) and the failure at the top
 	function s.advance(t)
+		-- (a rep nobody starts closes after seg.wait: an idle player still reaches the end of the set)
+		if not s.closed and not s.holdStart and seg.wait and t - M >= seg.wait then
+			s.closed = true
+			s.endT = M + seg.wait
+		end
 		if s.closed or not s.holdStart then
 			return s.f
 		end
@@ -460,7 +465,7 @@ J.lift = function(seg, M)
 	end
 	-- (a rep waits for its press: nobody knows its end before that)
 	function s.endsAt()
-		return s.endT or (s.holdStart and s.holdStart + 1 / seg.speed) or nil
+		return s.endT or (s.holdStart and s.holdStart + 1 / seg.speed) or (seg.wait and M + seg.wait) or nil
 	end
 	return s
 end
@@ -863,7 +868,7 @@ AGG.shadow = function(plan, res)
 		if seg.j == "notes" then
 			n3 += 1
 			if r then
-				s3 += math.max(0, r.perfect + r.good * 0.7 - 0.5 * (r.stray or 0)) / math.max(1, #seg.lanes)
+				s3 += math.max(0, r.perfect + r.good * 0.6 - 0.5 * (r.stray or 0)) / math.max(1, #seg.lanes)
 			end
 		elseif seg.j == "cue" then
 			n1 += 1

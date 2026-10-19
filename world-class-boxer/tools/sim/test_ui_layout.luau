@@ -386,6 +386,15 @@ local function run(name, dev)
 	report("text under 10.5 px", c.small, function(e)
 		return string.format(" %.1f px", e.px)
 	end)
+	-- every icon on the screen is one the icon set (or the kit's Frame drawing) knows: an unknown name draws
+	-- UI.Icon's first-letter stand-in ("Letter")
+	local unknown = {}
+	for _, it in ipairs(items) do
+		if it.name == "Letter" and it.path:find("%.Glyph%.Letter$") then
+			table.insert(unknown, { item = it })
+		end
+	end
+	report("unknown icon name", unknown)
 	-- the fight HUD's pieces keep apart
 	if name:find("^fight") then
 		local pieces = {

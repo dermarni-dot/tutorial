@@ -678,7 +678,7 @@ B.heavybag = function(m, O, lv, cond, rng)
 		{ color = rgb(110, 60, 35), mat = M.Leather, cap = rgb(72, 40, 24), rim = rgb(60, 32, 18), seam = rgb(58, 30, 16), chain = STEEL, d = 2.35, band = rgb(72, 40, 24), patch = "WCB\nPRO", patchC = rgb(60, 32, 18), patchT = GOLD },
 		{ color = rgb(150, 20, 25), mat = M.Leather, cap = rgb(20, 20, 24), rim = GOLD, seam = rgb(95, 10, 14), chain = CHROME, d = 2.4, band = GOLD, patch = "WCB\nELITE", patchC = rgb(20, 20, 24), patchT = GOLD },
 		{ color = rgb(18, 18, 22), mat = M.SmoothPlastic, cap = rgb(30, 30, 36), rim = NEONBLUE, rimMat = M.Neon, seam = rgb(52, 52, 60), chain = CHROME, d = 2.4, patch = "SMART\nIMPACT", patchC = rgb(10, 12, 16), patchT = NEONBLUE },
-		{ color = WHITE, mat = M.Leather, cap = GOLD, capMat = M.Metal, rim = GOLD, rimMat = M.Metal, seam = rgb(205, 205, 210), chain = GOLD, d = 2.5, band = GOLD, patch = "♛\nCHAMPION", patchC = rgb(20, 20, 24), patchT = GOLD },
+		{ color = WHITE, mat = M.Leather, cap = GOLD, capMat = M.Metal, rim = GOLD, rimMat = M.Metal, seam = rgb(205, 205, 210), chain = GOLD, d = 2.5, band = GOLD, patch = "WCB\nCHAMPION", patchC = rgb(20, 20, 24), patchT = GOLD },
 	}
 	local st = styles[math.clamp(lv, 1, #styles)]
 	local frame = ({ RUST, BLACK, BLACK, BLACK, rgb(40, 42, 48), CHAMP })[lv] or BLACK
