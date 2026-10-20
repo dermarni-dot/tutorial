@@ -168,6 +168,33 @@ lune run tools/sim/v9_anim.luau [--out DIR] [--tiers 1,3,5] [--clips rest,walk,j
   frame of a walking / scripted clip on its own, the camera following the root over world-fixed floor marks (a sliding
   foot shows against them), as an animated GIF (`--ms` = frame time; default the clip's own spacing)
 
+### Fight scenarios: --clips fight
+
+```sh
+lune run tools/sim/v9_anim.luau --tiers 3 --clips fight [--only jab,combo123,ko_body] [--every 3] [--no-mesh] [--dbgfoot]
+/opt/bpyenv/bin/python tools/sim/v9_render.py DIR OUT --tag after --views side,34 [--strip 8] [--gif 1]
+python3 tools/sim/v9_fight_plot.py OUT.png BEFORE/fightseries_<id>_t3.json AFTER/fightseries_<id>_t3.json
+```
+
+- Two Fighters 4 studs apart in an "Arena" model (a CornerStool behind A for `rest_stool`), a third boxer tagged
+  Referee off to the side for the knockdowns. Each scenario is a list of the server's own events: act strings (Act +
+  ActId, as FightEngine / Evasion / Combos send them, "cross|R|head|0.21||2" for a chained punch), attributes (Guard,
+  DownPose, DownDir, KOKind, Count, Daze, Stam, Style) and root glides (footwork, the side-step's 1.6 stud lunge, the
+  referee walking in to catch). About 80 of them: the guard per style and tired, footwork, the pivot, the clinch, every
+  punch head and body, combos, all 14 specials, slips / roll / weave / duck / pull / side-step / shoulder roll / parry /
+  block and counters out of them, hits by severity and zone, the stagger, hurt and dazed legs, knockdowns with the
+  count and the get-up, every KO kind (with the referee's wave-off and the winner's celebration), the stool, win / lose.
+- Printed per scenario: the planted feet's slide while he stands (pelvis within 0.6 of the stance's height), per joint
+  group (arms, trunk, neck, legs) the largest one-frame turn of a Motor6D Transform and the largest one-frame change of
+  its turning speed (deg / frame^2: a snap) with the count of frames over 4, the root's translation jerk, at each punch's
+  contact (act start + windup, when the server lands it) the glove's distance and height to the target, and for a KO the
+  wall time until the client-local KOLanded (against FightMotion.KOFallWall). `fight_metrics_t<tier>.json` holds it all,
+  `fightseries_<id>_t<tier>.json` the per-frame curves (joint angles, the hands and head in the root's frame, every
+  joint's per-frame turn `w<key>`, the feet's slip).
+- With meshes, `fight_<id>_t<tier>.json` keeps every `--every`-th frame (both fighters and the referee) and its action
+  window (`focus`): v9_render draws filmstrips over the window (side: from A's right; 34: behind A's rear shoulder) and,
+  with `--gif 1`, a GIF of the window (`V9_WINDOW=0`: every frame) with world-fixed floor marks.
+
 `tools/body/check_joints.py` (each joint of the tier bodies through the Animator's ranges: the parent's surface the child
 covers / the parent's end it uncovers) and `tools/body/check_gear.py` (the trunks over the body, the thighs swung) are
 the numeric side of the same checks, numpy only.
@@ -264,5 +291,32 @@ lune run tools/sim/test_worlddetail.luau [--keep]      # ~1 min: builds the worl
   the venue rings inside the ropes, the walkway lanes, the stool corners, the floor cameras); the detail builds without
   a warning; the part counts rise Low < Medium < High and stay under their caps. Overlaps of detail with solid props
   are printed (not failures).
+- The gym's detail is two modules on one streamer: `GymDetail` (first pass) registers `GymDetail2` (second pass: print
+  walls, wall kit, the weigh-in corner, the locker-room TV, wear). Close-up gym views for the second pass: `gym_corner`,
+  `gym_kitwall`, `gym_bagwall`, `gym_weights2`, `gym_whiteboard`, `gym_cardio`, `gym_weighin`, `gym_desk`, `gym_lockers`,
+  `gym_walls_n`, `gym_walls_w`, `gym_ceiling`. The keep-outs include each station camera's sight lines (the three
+  `Activities.stationCamera` spots to the athlete), the ring apron, the zone doorways and the walkways.
 - The textures the detail layer uses: `tools/world/build_textures.py` (PIL + numpy -> `tools/world/out`) and
   `tools/world/publish_world.py` (Open Cloud upload, hash cache, moderation, writes `src/shared/WorldAssetData.lua`).
+
+## The ring officials: v9_referee, v9_referee_render, test_referee
+
+```sh
+lune run tools/sim/v9_referee.luau [--out DIR] [--src DIR] [--gear PATH] [--seeds 1,3] [--only stand,count]
+/opt/bpyenv/bin/python tools/sim/v9_referee_render.py SCENE_DIR OUT_DIR [--tag after] [--only id,id] [--samples N]
+         [--views front,34,side,back] [--ring 0] [--closeups 0]
+lune run tools/sim/test_referee.luau          # a few seconds
+```
+
+- `v9_referee.luau`: the referee as FightEngine builds him (`Officials.Look` when the src has it, else the old inline
+  SpawnReferee look) through `Builder.Cosmetics` on v9_anim's fake rig, with two boxers for scale, posed by the REAL
+  client Animator (tag `Referee`, Loop `referee`): his stance, the catch / separate (`catch|t`), the count (`refcount|n`,
+  arm up and the chop), the wave-off, two walking frames at his WalkSpeed 11; forced tier 1 and tier 5 referees
+  (stance, count) and the spar coach (outfit `cornerman`). Prints each official's audit: tiers, face style, decals,
+  headgear, the mesh / part-built outfit pieces and any boxing gear found on him. Shots in the v9_anim frame format.
+- `v9_referee_render.py`: per shot front / 3/4 / side / back framed on the official in a simple ring (half 12), plus a
+  close-up sheet (chest, shoulder, back, waist, shoes) of the stance shots: `previews/final/v9/referee`.
+- `test_referee.luau`: Officials.Look / Colors (bare hands, a neutral / stern drawn face, the venue's shirt, white for a
+  title fight), the referee's whole `official.Referee` set as welded mesh pieces painted from those colours, no boxing
+  gear, one face decal, every tier / mixed tiers / the lite set, the coach's `Coach` set, `Config.HeadgearOfficials`
+  either way, ids 0 -> the part-built outfit, FightEngine building through Officials.

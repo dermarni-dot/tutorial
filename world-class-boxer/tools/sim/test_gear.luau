@@ -77,7 +77,10 @@ end
 -- the manifest
 ------------------------------------------------------------------------
 local SLOTS = { trunks = true, trim = true, gloves = true, gloveTrim = true, wraps = true, wraps2 = true, shoes = true, soles = true,
-	laces = true, socks = true, top = true, topTrim = true }
+	laces = true, socks = true, top = true, topTrim = true,
+	-- the ring officials' clothes (tools/body/build_official.py)
+	shirt = true, shirtTrim = true, buttons = true, badge = true, bowtie = true, trousers = true, belt = true, buckle = true,
+	dressShoes = true, dressSoles = true, dressLaces = true, towel = true }
 do
 	check("manifest: 5 tiers", type(GEAR.tiers) == "table" and #GEAR.tiers == 5, GEAR.tiers and #GEAR.tiers)
 	local names = {}
@@ -92,7 +95,14 @@ do
 			check("piece " .. name .. ": on its side", p.part:sub(1, #(side == "L" and "Left" or "Right")) == (side == "L" and "Left" or "Right"), p.part)
 		end
 	end
-	check("manifest: 40 pieces", #names == 40, #names)
+	local official = 0
+	for _, n in ipairs(names) do
+		if GEAR.pieces[n].group == "official" then
+			official += 1
+		end
+	end
+	check("manifest: 40 boxing pieces", #names - official == 40, #names - official)
+	check("manifest: 34 official pieces", official == 34, official)
 	local missing, zero = {}, 0
 	for tier = 1, 5 do
 		for _, name in ipairs(names) do
@@ -561,8 +571,10 @@ do
 	check("no trunk style (old save) -> Classic", meshes(folder(model, "Attire")).TrunkLeg_R ~= nil and meshes(folder(model, "Attire")).TrunkStripe_R == nil)
 	-- officials: their outfit, no trunks
 	model = dress(Looks.Defaults(1), build(30), { hands = "gloves", outfit = "referee" })
-	check("referee: no mesh gear, the outfit parts", count(meshes(folder(model, "Attire"))) == 0 and folder(model, "Attire"):FindFirstChild("Belt") ~= nil
-		and count(meshes(folder(model, "Hands"))) == 0)
+	local att = meshes(folder(model, "Attire"))
+	check("referee: the mesh outfit (shirt, bow tie, belt, trousers, shoes), bare hands",
+		att.OffShirt and att.OffBowTie and att.OffBelt and att.OffThigh_L and att.OffShin_R and att.OffShoe_L and not att.Waistband
+		and not att.TrunkSeat and count(meshes(folder(model, "Hands"))) == 0, count(att))
 end
 
 ------------------------------------------------------------------------
@@ -611,6 +623,9 @@ do
 	check("ids 0: no mesh gear at all", count(meshes(folder(model, "Attire"))) + count(meshes(folder(model, "Hands"))) == 0)
 	check("ids 0: the woman's torso is the top colour", cnear(model.UpperTorso.Color, Looks.Color(app.attire.trim)))
 	check("Available: false", BuilderGear.Available(model, "top", "Top") == false)
+	local ref = dress(Looks.Defaults(1), build(30), { hands = "bare", outfit = "referee" })
+	check("ids 0: the referee's part-built outfit", folder(ref, "Attire"):FindFirstChild("Belt") ~= nil and folder(ref, "Attire"):FindFirstChild("BowTie") ~= nil
+		and count(meshes(folder(ref, "Attire"))) == 0)
 end
 do
 	-- every gear load fails: the part-built gear, the failures cached (no retry storm), the top colour restored

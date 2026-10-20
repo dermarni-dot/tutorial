@@ -3089,7 +3089,12 @@ local function startCamera()
 				local side = head.CFrame.RightVector
 				local flatSide = Vector3.new(side.X, 0, side.Z)
 				flatSide = flatSide.Magnitude > 0.05 and flatSide.Unit or Vector3.xAxis
-				F.broadcastCF = CFrame.lookAt(hp + flatSide * 7 + Vector3.new(0, 1.2, 0), hp)
+				-- (the camera beat: it pushes in through the Animator's slow-motion moment - KOMoment, the os.clock
+				-- both fighters slow down from - and holds close as he lands)
+				local mom = koModel:GetAttribute("KOMoment")
+				local push = type(mom) == "number" and math.clamp((now - mom) / 0.9, 0, 1) or 0
+				push = push * push * (3 - 2 * push)
+				F.broadcastCF = CFrame.lookAt(hp + flatSide * (7 - 1.8 * push) + Vector3.new(0, 1.2 - 0.35 * push, 0), hp)
 				F.broadcastUntil = now + 0.1
 			end
 		end

@@ -760,6 +760,9 @@ local SHOUT_ARMS = { idle = true, walk = true, coachwatch = true, ringside = tru
 	mittidle = true }
 local PUBLISH_POSE = { heavybag = "heavybag", guard = "shadow", speedbag = "speedbag" }
 
+-- the guards a fighter settles into slowly (AnimFight.guardPose; the base filter eases in after the change)
+local SLOW_GUARD = { rest = true, win = true, lose = true, walkout = true, clinch = true }
+
 local function updateRig(rig, model, t, dt, lod, rdt)
 	-- joints get replaced (head swap, rescale, respawn): re-resolve dead motors
 	if t >= rig.nextResolve then
@@ -914,7 +917,18 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 		end
 	end
 	-- base filter: poses glide, dazed guards lag
-	local ab = p.snap and 1 or (1 - exp(-dt * (p.rate or 20)))
+	local rate = p.rate or 20
+	if rig.isFighter and guard ~= "down" and rig.guardT then
+		-- (a new guard - to the stool, the win, the loss, the clinch - is eased into: the filter starts slow and
+		-- comes up to speed, so the body sets off from rest instead of at full speed on the first frame)
+		-- (the fighting guards - the block, the shell, the stance - come up quicker: a beat, not a glide)
+		local ge = t - rig.guardT
+		local gd = SLOW_GUARD[a.Guard] and 0.45 or 0.16
+		if ge < gd then
+			rate *= 0.12 + 0.88 * smooth(ge / gd)
+		end
+	end
+	local ab = p.snap and 1 or (1 - exp(-dt * rate))
 	local joints = rig.joints
 	if rig.wasPlant and not rig.plant then
 		-- leaving planted feet: the keyed legs start from where the IK left them
@@ -1072,8 +1086,9 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 		-- blend into the IK legs when planting starts (get-up, leaving a seat)
 		local pb = rig.plantBlend or 0.25
 		local bl = min(1, (t - (rig.plantT or 0)) / pb)
-		local l0 = pb > 0.3 and 0.1 or 0.25
-		local la = bl < 1 and (l0 + (1 - l0) * bl) or 1
+		-- (from rest: a hand-over that started a quarter of the way over popped the knees on its first frame)
+		local l0 = pb > 0.3 and 0.03 or 0.06
+		local la = bl < 1 and (l0 + (1 - l0) * smooth(bl)) or 1
 		for k in pairs(LEG_KEYS) do
 			local j = joints[k]
 			if j then

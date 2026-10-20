@@ -59,7 +59,8 @@ end
 
 -- the drawn face an official rests on, from his own stream
 local function faceOf(seed, list)
-	local r = Random.new(seed + 7717)
+	local r = Random.new(seed * 7 + 7717)
+	r:NextNumber() -- (a warm-up draw: a fresh stream's first number from a small seed is not well mixed everywhere)
 	local k = list[r:NextInteger(1, #list)]
 	return BodyTiers.IsDrawnStyle(k) and k or BodyTiers.DefaultStyle()
 end

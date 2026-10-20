@@ -287,7 +287,7 @@ def collar(B, n, fn, c, nseg):
     # the collar points: flat tabs from the stand's front down and out over the chest (either side of the bow tie)
     tabs = []
     for sx in (-1, 1):
-        a0 = math.radians(sx * 9)
+        a0 = math.radians(sx * 13)
         pts, rad = [], []
         for t in np.linspace(0, 1, 5):
             a = a0 + math.radians(sx * 16) * t
@@ -311,10 +311,10 @@ def placket(Gd, ys, ph, y_from, w_deg=4.6, lift=0.007):
     return bg.strip_patch(S, Ns, piping=0.003)
 
 
-def buttons(shirt_lp, c, yset, lift=0.016, r=0.03):
+def buttons(shirt_lp, c, yset, lift=0.010, r=0.028):
     out = []
     for y in yset:
-        p = hit(shirt_lp, (c[0], y, -2.0), (0, 0, 1), -lift)
+        p = hit(shirt_lp, (c[0], y, -2.0), (0, 0, 1), lift)
         if p is None:
             continue
         out.append(disc(p, (0, 0.15, -1), r, 0.013, nside=10))
@@ -349,7 +349,7 @@ def badge(shirt_lp, c):
     a = math.radians(27)
     d = np.array([math.sin(a), 0.0, -math.cos(a)])
     o = np.array([c[0], 4.47, c[1]])
-    p = hit(shirt_lp, o + d * 2.0, -d, -0.006)
+    p = hit(shirt_lp, o + d * 2.0, -d, 0.018)
     if p is None:
         return None
     face = disc(p, d, 0.075, 0.014, nside=16)
@@ -359,34 +359,58 @@ def badge(shirt_lp, c):
 
 def bow_tie(collar_lp, c):
     """two puffed wings and the knot, at the collar's front under the chin"""
-    y = 5.14
+    y = 5.17
     p = hit(collar_lp, (c[0], y, -2.0), (0, 0, 1), 0.0)
     if p is None:
         p = np.array([0.0, y, -0.4])
-    zc = p[2] - 0.035
+    zc = p[2] - 0.05
     wings = []
     for sx in (-1, 1):
-        pts = [(sx * 0.03, y, zc), (sx * 0.085, y, zc + 0.004), (sx * 0.15, y, zc + 0.012)]
-        w = bb.tube(pts, [0.03, 0.05, 0.048], nside=10, kcap=3)
-        wings.append(squash(w, np.array([0, y, zc]), (0, 0, 1), 0.42))
+        pts = [(sx * 0.035, y, zc), (sx * 0.095, y, zc + 0.004), (sx * 0.165, y, zc + 0.012)]
+        w = bb.tube(pts, [0.036, 0.062, 0.058], nside=10, kcap=3)
+        wings.append(squash(w, np.array([0, y, zc]), (0, 0, 1), 0.5))
     knot = squash(bb.tube([(0, y, zc - 0.004), (0, y, zc + 0.004)], [0.034, 0.034], nside=10, kcap=2),
                   np.array([0, y, zc]), (0, 1, 0), 1.15)
     return bg.merge(wings + [knot])
 
 
-def towel(shirt_lp, c):
-    """the coach's towel over the right shoulder, front chest to the shoulder blade"""
+def towel(body_lp, shirt_lp, c):
+    """the coach's towel folded over the right shoulder, hanging down the chest and the back: a thick terry band"""
     path = []
-    for t in np.linspace(0, 1, 15):
+    for t in np.linspace(0, 1, 17):
         a = math.pi * t
-        x = 0.36 + 0.06 * math.sin(a)
-        o = np.array([x, 4.55, c[1]])
+        x = 0.46 + 0.05 * math.sin(a)
+        o = np.array([x, 4.60, c[1]])
         dv = np.array([0.0, math.sin(a), -math.cos(a)])
-        h = hit(shirt_lp, o, -dv, 0.035)
-        if h is not None and h[1] > 4.05:
+        # (cast on the closed UpperTorso: the shirt is open at the neck) + the shirt's ease + a little air
+        # (on the shirt, or on the closed UpperTorso + the shirt's ease where the ray passes the shirt's neck opening:
+        # whichever is further out)
+        hs = [q for q in (hit(body_lp, o, -dv, 0.07), hit(shirt_lp, o, -dv, 0.02)) if q is not None]
+        h = max(hs, key=lambda q: float(np.dot(q - o, dv))) if hs else None
+        if h is not None:
             path.append(h)
     path = np.array(path)
-    return bg.ribbon(path, shirt_lp, 0.34)
+    # (the ends hang straight down a little further)
+    path = np.vstack([path[:1] + np.array([0, -0.22, -0.02]), path, path[-1:] + np.array([0, -0.22, 0.02])])
+    n = len(path)
+    Tn = np.gradient(path, axis=0)
+    Tn /= np.linalg.norm(Tn, axis=1, keepdims=True)
+    Nn = path - np.array([0.45, 4.45, c[1]])
+    Nn = Nn - Tn * np.einsum("ij,ij->i", Nn, Tn)[:, None]
+    Nn /= np.linalg.norm(Nn, axis=1, keepdims=True)
+    S = np.cross(Tn, Nn)
+    S /= np.linalg.norm(S, axis=1, keepdims=True)
+    w, th = 0.30, 0.035
+    # a closed band round the towel's section (a rounded rectangle), ends closed on poles
+    ang = 2 * math.pi * np.arange(16) / 16
+    rows = []
+    for i in range(n):
+        ca, sa = np.cos(ang), np.sin(ang)
+        x = (w / 2) * np.sign(ca) * np.minimum(1.0, np.abs(ca) * 1.8)
+        y = (th / 2) * np.sign(sa) * np.minimum(1.0, np.abs(sa) * 1.8)
+        rows.append(path[i] + np.outer(x, S[i]) + np.outer(y + th / 2, Nn[i]))
+    return bg.sheet(np.array(rows), pole_lo=path[0] + Nn[0] * th / 2 - Tn[0] * 0.01,
+                    pole_hi=path[-1] + Nn[-1] * th / 2 + Tn[-1] * 0.01)
 
 
 # ------------------------------------------------------------------------------------------ sleeves
@@ -750,7 +774,7 @@ def build_set(B, lite):
         d["OffPocket"] = (pocket(Gd, ys, ph), "UpperTorso")
         d["OffBadge"] = (badge(sh, c), "UpperTorso")
         d["OffBowTie"] = (bow_tie(col, c), "UpperTorso")
-        d["OffTowel"] = (towel(sh, c), "UpperTorso")
+        d["OffTowel"] = (towel(B.part(n, "UpperTorso"), sh, c), "UpperTorso")
         w, wfn = waists[n]
         d["OffWaist"] = (w, "LowerTorso")
         band, buckle = belt(wfn, wc, ns)

@@ -29,6 +29,28 @@ def stack(a, b, out, la, lb):
     print("wrote", out)
 
 
+def stack_gif(a, b, out, la, lb):
+    """two GIFs side by side, frame for frame (the shorter one holds its last frame)"""
+    from PIL import ImageSequence
+    A = [f.convert("RGB") for f in ImageSequence.Iterator(Image.open(a))]
+    B = [f.convert("RGB") for f in ImageSequence.Iterator(Image.open(b))]
+    ms = Image.open(b).info.get("duration", 50)
+    n = max(len(A), len(B))
+    w, h = A[0].size
+    f = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 15)
+    frames = []
+    for i in range(n):
+        W = Image.new("RGB", (w + B[0].size[0], max(h, B[0].size[1]) + 24), (18, 18, 20))
+        W.paste(A[min(i, len(A) - 1)], (0, 24))
+        W.paste(B[min(i, len(B) - 1)], (w, 24))
+        d = ImageDraw.Draw(W)
+        d.text((8, 4), la, fill=(240, 150, 120), font=f)
+        d.text((w + 8, 4), lb, fill=(140, 230, 150), font=f)
+        frames.append(W.quantize(colors=160, method=Image.Quantize.MEDIANCUT))
+    frames[0].save(out, save_all=True, append_images=frames[1:], duration=ms, loop=0, optimize=True)
+    print("wrote", out)
+
+
 def main():
     d = sys.argv[1]
     names = sys.argv[2:]
@@ -44,9 +66,13 @@ def main():
                 if not names or key in names:
                     pairs.append((key, os.path.join(d, f), os.path.join(d, post + rest)))
                 break
+    la = os.environ.get("V9_LA", "BEFORE (v8 body, gear and animation)")
+    lb = os.environ.get("V9_LB", "AFTER (v9: ball joints, fitted trunks, walk sway / track, straight punches' line)")
     for key, a, b in pairs:
-        stack(a, b, os.path.join(d, "compare_" + key + ".jpg"), "BEFORE (v8 body, gear and animation)",
-              "AFTER (v9: ball joints, fitted trunks, walk sway / track, straight punches' line)")
+        if a.endswith(".gif"):
+            stack_gif(a, b, os.path.join(d, "compare_" + key + ".gif"), la.split(" (")[0], lb.split(" (")[0])
+        else:
+            stack(a, b, os.path.join(d, "compare_" + key + ".jpg"), la, lb)
 
 
 if __name__ == "__main__":

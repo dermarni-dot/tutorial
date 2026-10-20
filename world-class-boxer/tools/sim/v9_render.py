@@ -323,11 +323,11 @@ def render_fight(scene_dir, out_dir, clip, samples, views, tag, gif=False, ms=No
             # (the GIF plays the action window, a little either side: --window 0 = every frame)
             fo = data.get("focus")
             if fo and os.environ.get("V9_WINDOW", "1") == "1":
-                gframes = [fr for fr in frames if fo[0] - 0.25 <= fr.get("t", 0) <= fo[1] + 0.35] or frames
+                gframes = [fr for fr in frames if fo[0] - 0.15 <= fr.get("t", 0) <= fo[1] + 0.2] or frames
             else:
                 gframes = frames
             for i, fr in enumerate(gframes):
-                sc, vw = fight_scene(scene_dir, fr, samples, view, (400, 333))
+                sc, vw = fight_scene(scene_dir, fr, samples, view, (380, 316))
                 p = os.path.join(out_dir, f"_{tag}_{clip['id']}_{view}_{i}.png")
                 sc.render(p, view=vw["view"], dist=vw["dist"], focus=vw["focus"])
                 im = Image.open(p).convert("RGB")

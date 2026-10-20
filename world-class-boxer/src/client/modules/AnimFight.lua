@@ -3,12 +3,16 @@
 --    Boxer-puncher) has its own posture, bounce, guard, hand and head life, weight shifts and feet;
 --    layered seeded noise (breathing, weight shifts, glove fidgets, head bob) plus a per-boxer
 --    persona (tempo, sizes, quirks, guard height) so two boxers of one style never move alike
+--  * combinations: a chained punch (the act's sixth field, or thrown while the last is still out) flows out of
+--    the last one - no fresh wind-up, the fist turned round from its way home, the hips carrying on
 --  * kinetic-chain punches: anticipation -> legs / hips -> shoulders -> fist (accelerating into the
 --    target) -> contact snap -> recovery, per punch type, with variants picked from the boxer's seed
 --    and the combination position; one layer per hand so combinations overlap like real ones, the
 --    body schedule continues from wherever the last punch left it; fists aim at the opponent's
 --    head or torso (body shots change level with the knees, not the waist)
---  * defence: slips, rolls, parries, pivots, the shell, blocked shots
+--  * defence: slips, the bob and weave, the duck, the pull, the side step, the shoulder roll (one spring-eased
+--    evade layer: they chain into each other and hand their load to a counter), parries, pivots, the shell,
+--    blocked shots
 --  * hit reactions scaled by severity (light snap / medium stumble step / heavy legs shake and
 --    catch steps / critical buckle), directional by punch and hand, body-shot folds, liver shots
 --  * daze levels, stumbles, the clinch, walkout, rest (on the stool when it is there), win, lose
@@ -924,6 +928,14 @@ function AnimFight.startPunch(rig, act, t)
 		act.prm.mirror = 1
 	end
 	act.from = prev and prev.lastPos or nil
+	-- (and keeps the way it was going for a moment: a fist on its way home is turned round, not stopped dead)
+	act.fromVel = prev and prev.lastVel or nil
+	-- (the forearm's turn and the elbow's line too: the corkscrew unwinds from where it is, and the elbow
+	-- swivels on from its last line at the swivel's own rate - no flick of the wrist or the shoulder)
+	if prev then
+		act.wrist0 = prev.wristNow
+		act.swivN, act.swivT = prev.swivN, prev.swivT
+	end
 	local bc = rig.bodyCur
 	act.bodyFrom = { hip = bc.hip, sho = bc.sho, lean = bc.lean, roll = bc.roll, fwd = bc.fwd, side = bc.side, dip = bc.dip }
 	rig.pun[hand] = act
@@ -1643,6 +1655,7 @@ local function followBump(x)
 	return 6.75 * x * y * y
 end
 
+local FROM_TAU = 0.035
 local function evalPunch(p, rig, act, t, near, driveBody)
 	local prm = act.prm
 	local w = act.windup
@@ -2051,6 +2064,16 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 				kp = 1
 			end
 		end
+		-- the hand's last motion carries on through the first frames of a chained punch, dying away (velocity
+		-- continuous at the hand-over, back to the punch's own path within ~0.12 s)
+		local fv = act.fromVel
+		if fv and el < 0.25 then
+			pos += fv * (el * exp(-el / FROM_TAU))
+		end
+		if act.lastPos and act.lastT and t > act.lastT then
+			act.lastVel = (pos - act.lastPos) / (t - act.lastT)
+		end
+		act.lastT = t
 		act.lastPos = pos
 		-- the elbow rises into the punch (a hook's elbow comes up late) and settles back on the way home
 		local zb = lerp(-0.1, pole[3], kp)
@@ -2136,7 +2159,12 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 	-- (the corkscrew turns over with the forearm through the drive, not all in the last frames on the fist's
 	-- accelerating curve: the wrist flicked 23 degrees a frame into contact)
 	local wk = retK > 0 and (1 - smooth(retK / 0.7)) or smooth(clamp((u - 0.1) / 0.9, 0, 1))
-	p[Wr] = p[Wr] * A(0, inward * (prm.wrist or 0) * wk, 0)
+	local wa = inward * (prm.wrist or 0) * wk
+	if act.wrist0 and el < 0.12 then
+		wa = lerp(act.wrist0, wa, smooth(el / 0.12))
+	end
+	act.wristNow = wa
+	p[Wr] = p[Wr] * A(0, wa, 0)
 	-- muscles: the punching side fires, the core turns, the pivot calf pushes
 	local side = L_ and -1 or 1
 	local imp = ac * ac
@@ -2729,6 +2757,8 @@ AnimFight.EVADE = EVADE
 local EV_N = 12
 -- the spring: quick (about a sixth of a second to arrive), a few percent of overshoot
 local EV_W, EV_Z = 21, 0.74
+-- (unwound by a punch thrown out of it: quicker, so the counter lands from his punching stance)
+local EV_W_PUNCH = 30
 -- (a punch thrown out of a dodge: the dodge lets go over the punch's windup - the body unwinds into it)
 local function evEnv(u, inT, holdT, outT)
 	if u < inT then
@@ -2751,7 +2781,9 @@ function AnimFight.evadeTarget(rig, act, t, el)
 	local cut = 1
 	local pb = rig.bodyAct
 	if pb and pb.start > act.start then
-		cut = 1 - smooth((t - pb.start) / max(0.08, pb.windup * 0.9))
+		cut = 1 - smooth((t - pb.start) / max(0.08, pb.windup * 0.6))
+		-- (and the spring lets go quicker: the counter's legs and hips are driving him up out of it)
+		rig.evFast = true
 	end
 	local f2 = act.f2
 	local sd = (f2 == "L") and -1 or 1
@@ -2879,11 +2911,16 @@ function AnimFight.evade(p, rig, t, dt)
 	end
 	local x, v = ev.x, ev.v
 	local any = false
+	local w0, z0 = EV_W, EV_Z
+	if rig.evFast then
+		w0, z0 = EV_W_PUNCH, 0.9
+		rig.evFast = nil
+	end
 	for i = 1, 9 do
 		local want = tg and tg[i] or 0
 		local xi, vi = x[i], v[i]
 		if want ~= 0 or abs(xi) > 1e-4 or abs(vi) > 1e-3 then
-			xi, vi = K.spring2(xi, vi, want, EV_W, EV_Z, dt)
+			xi, vi = K.spring2(xi, vi, want, w0, z0, dt)
 			x[i], v[i] = xi, vi
 			any = true
 		else
@@ -3242,43 +3279,49 @@ function AnimFight.guardPose(p, rig, t, dt)
 			plant(rig, 0.1, 0.25, 0.25, -0.25, 0, 0)
 		end
 	elseif guard == "win" then
-		-- arms up, a little hop, then a flex for the crowd
-		local cyc = (el % 6)
+		-- the celebration: arms up with a bounce on the toes, then a turn and a flex for the crowd, then the
+		-- gloves up again - the phases blend (no pose ever switches in a frame)
+		local cyc = el % 6.5
 		R.plant(rig, 0.2, 0.12, 0.2, -0.2, 0, 0)
-		if cyc < 3.6 then
-			local pump = abs(sin(t * 3.2))
-			p.Root = CF(0, -0.08 + 0.1 * pump, 0)
-			p.LS = A(2.9 - 0.2 * pump, 0, -0.3)
-			p.RS = A(2.9 - 0.2 * pump, 0, 0.3)
-			p.LE = A(0.25 + 0.3 * pump, 0, 0)
-			p.RE = A(0.25 + 0.3 * pump, 0, 0)
-			p.Neck = A(0.3, 0.3 * sin(t * 0.8), 0)
-			p.W = A(0.12, 0, 0)
-			rig.foot.L.heel, rig.foot.R.heel = 0.2 * pump, 0.2 * pump
-		else
-			p.LS = A(0, 0, -1.5) * A(0, 1.3, 0)
-			p.RS = A(0, 0, 1.5) * A(0, -1.3, 0)
-			p.LE = A(2.2, 0, 0)
-			p.RE = A(2.2, 0, 0)
-			p.Neck = A(0.15, 0, 0)
-			flex(rig, "biceps", 1)
-			flex(rig, "frontDelt", 0.6)
-			flex(rig, "sideDelt", 0.8)
-			flex(rig, "lats", 0.6)
+		local pump = abs(sin(t * 3.2))
+		local hop = K.bump(cyc % 1.6, 0, 0.5) * (cyc < 3.4 and 1 or 0)
+		local flexW = smooth((cyc - 3.3) / 0.45) * (1 - smooth((cyc - 5.9) / 0.5))
+		local turn = 0.35 * sin(el * 0.45)
+		-- arms up
+		local upRoot = CF(0, -0.08 + 0.1 * pump + 0.12 * hop, 0)
+		p.Root = upRoot:Lerp(CF(0, -0.06, 0), flexW) * A(0, turn * flexW, 0)
+		p.LS = A(2.9 - 0.2 * pump, 0, -0.3):Lerp(A(0, 0, -1.5) * A(0, 1.3, 0), flexW)
+		p.RS = A(2.9 - 0.2 * pump, 0, 0.3):Lerp(A(0, 0, 1.5) * A(0, -1.3, 0), flexW)
+		p.LE = A(0.25 + 0.3 * pump, 0, 0):Lerp(A(2.2 + 0.1 * sin(t * 5), 0, 0), flexW)
+		p.RE = A(0.25 + 0.3 * pump, 0, 0):Lerp(A(2.2 + 0.1 * sin(t * 5 + 1), 0, 0), flexW)
+		p.Neck = A(0.3, 0.3 * sin(t * 0.8), 0):Lerp(A(0.15, -turn * 0.6, 0), flexW)
+		p.W = A(0.12 + 0.04 * pump, 0, 0):Lerp(A(-0.04, turn * 0.4, 0), flexW)
+		rig.foot.L.heel, rig.foot.R.heel = 0.2 * pump * (1 - flexW) + 0.3 * hop, 0.2 * pump * (1 - flexW) + 0.3 * hop
+		if flexW > 0.3 then
+			flex(rig, "biceps", flexW)
+			flex(rig, "frontDelt", 0.6 * flexW)
+			flex(rig, "sideDelt", 0.8 * flexW)
+			flex(rig, "lats", 0.6 * flexW)
 		end
 		rig.exprHint = "happy"
 	elseif guard == "lose" then
-		-- head down, hands on the hips, slow heavy breaths
+		-- despair: head down, hands on the hips, slow heavy breaths; now and then he looks up at the lights and
+		-- shakes his head, the weight shifting from foot to foot
 		rig.breathPhase += dt * 0.35
 		local br = K.breath(rig.breathPhase) * 0.05
+		local look = K.bump(el % 7, 3.2, 5.0)
+		local shake = sin(el * 4.2) * K.bump(el % 7, 4.0, 5.2)
+		local sway = 0.04 * sin(el * 0.7)
 		R.plant(rig, 0.15, 0.1, 0.15, -0.2, 0, 0)
-		p.Root = CF(0, -0.05, 0)
-		p.Neck = A(-0.5 - br * 0.5, 0.15 * sin(t * 0.25), 0)
-		p.W = A(-0.1 + br, 0, 0)
+		p.Root = CF(sway, -0.05, 0) * A(0, 0, -sway * 0.6)
+		p.Neck = A(-0.5 - br * 0.5 + 0.75 * look, 0.15 * sin(t * 0.25) + 0.25 * shake, 0)
+		p.W = A(-0.1 + br - 0.08 * look, 0, sway * 0.5)
 		p.LS = A(-0.25, 0, -0.55) * A(0, -0.9, 0)
 		p.RS = A(-0.25, 0, 0.55) * A(0, 0.9, 0)
 		p.LE = A(1.6, 0, 0)
 		p.RE = A(1.6, 0, 0)
+		rig.foot.L.heel = 0.08 * max(0, sin(el * 0.7))
+		rig.foot.R.heel = 0.08 * max(0, -sin(el * 0.7))
 	else
 		AnimFight.stance(p, rig, t, dt)
 		-- (a critical shot leaves him out on his feet for a moment even before the server dazes him)

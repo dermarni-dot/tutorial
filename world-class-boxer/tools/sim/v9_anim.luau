@@ -1287,8 +1287,9 @@ local function P(kind, hand, zone, w, pow, extra)
 end
 -- events: { t, who ("A" / "B" / "ref"), what, value }; what = "act" (Act + ActId), an attribute name, "move" (the
 -- root glides: value = { dx, dz, dur, dyaw }), "hitA" (B's punch lands on A at t: value = the hit act)
-local function punchAt(t, who, kind, hand, zone, w)
-	return { t, who, "act", P(kind, hand, zone, w), punch = { kind = kind, hand = hand, zone = zone or "head", w = w or WIND[kind] } }
+local function punchAt(t, who, kind, hand, zone, w, chain)
+	return { t, who, "act", P(kind, hand, zone, w, nil, chain and ("|" .. chain) or nil),
+		punch = { kind = kind, hand = hand, zone = zone or "head", w = w or WIND[kind] } }
 end
 local SCEN = {}
 local function scen(id, dur, ev, opt)
@@ -1317,11 +1318,13 @@ scen("bodycross", 1.5, { punchAt(0.4, "A", "cross", "R", "body") })
 scen("bodyhook", 1.5, { punchAt(0.4, "A", "leadhook", "L", "body") })
 scen("bodyuppercut", 1.5, { punchAt(0.4, "A", "uppercut", "R", "body") })
 -- combos (the server's 0.88 windup inside 0.7 s)
-scen("combo12", 1.8, { punchAt(0.4, "A", "jab", "L"), punchAt(0.62, "A", "cross", "R", "head", 0.21) })
-scen("combo123", 2.2, { punchAt(0.4, "A", "jab", "L"), punchAt(0.62, "A", "cross", "R", "head", 0.21), punchAt(0.92, "A", "leadhook", "L", "head", 0.23) })
-scen("combo1234", 2.6, { punchAt(0.4, "A", "jab", "L"), punchAt(0.62, "A", "cross", "R", "head", 0.21), punchAt(0.92, "A", "leadhook", "L", "head", 0.23),
-	punchAt(1.25, "A", "rearhook", "R", "head", 0.26) })
-scen("combo_body_head", 2.0, { punchAt(0.4, "A", "leadhook", "L", "body"), punchAt(0.78, "A", "leadhook", "L", "head", 0.23) })
+-- (FightEngine's combination format: the 2nd punch on carries its place, "cross|R|head|0.21||2")
+scen("combo12", 1.8, { punchAt(0.4, "A", "jab", "L"), punchAt(0.62, "A", "cross", "R", "head", 0.21, 2) })
+scen("combo123", 2.2, { punchAt(0.4, "A", "jab", "L"), punchAt(0.62, "A", "cross", "R", "head", 0.21, 2), punchAt(0.92, "A", "leadhook", "L", "head", 0.23, 3) })
+scen("combo1234", 2.6, { punchAt(0.4, "A", "jab", "L"), punchAt(0.62, "A", "cross", "R", "head", 0.21, 2), punchAt(0.92, "A", "leadhook", "L", "head", 0.23, 3),
+	punchAt(1.25, "A", "rearhook", "R", "head", 0.26, 4) })
+scen("combo_body_head", 2.0, { punchAt(0.4, "A", "leadhook", "L", "body"), punchAt(0.78, "A", "leadhook", "L", "head", 0.23, 2) })
+scen("combo_jab_jab_cross", 2.0, { punchAt(0.4, "A", "jab", "L"), punchAt(0.6, "A", "jab", "L", "head", 0.14, 2), punchAt(0.8, "A", "cross", "R", "head", 0.21, 3) })
 -- specials
 for _, id in ipairs({ "checkhook", "phillyshell", "pullcounter", "livershot", "gazelle", "peekaboo", "stepback", "overhand", "leaduppercut",
 	"doublejab", "feintcross", "bodyhead", "onetwothree", "shovelhook" }) do
@@ -1335,7 +1338,20 @@ scen("parry", 1.3, { punchAt(0.3, "B", "jab", "L"), { 0.36, "A", "act", "parry|R
 scen("block", 2.2, { { 0.2, "A", "Guard", "block" }, punchAt(0.5, "B", "cross", "R"), { 0.74, "A", "act", "blockhit" }, punchAt(1.0, "B", "leadhook", "L"),
 	{ 1.26, "A", "act", "blockhit" }, { 1.8, "A", "Guard", "stance" } })
 scen("shoulderroll", 2.0, { { 0, "A", "Style", "CounterPuncher" }, punchAt(0.5, "B", "cross", "R"), { 0.52, "A", "act", "slip|R" } }, { style = "CounterPuncher" })
-scen("pull", 1.6, { punchAt(0.3, "B", "jab", "L"), { 0.28, "A", "act", "special|pullcounter||0.24|1.00", special = "pullcounter" } })
+scen("pull_counter_special", 1.6, { punchAt(0.3, "B", "jab", "L"), { 0.28, "A", "act", "special|pullcounter||0.24|1.00", special = "pullcounter" } })
+-- the dodges as Shared.Evasion sends them (Evasion.Act: the act's length last)
+scen("weaveL", 1.5, { punchAt(0.3, "B", "rearhook", "R"), { 0.33, "A", "act", "weave|L|0.50" } })
+scen("weaveR", 1.5, { punchAt(0.3, "B", "leadhook", "L"), { 0.33, "A", "act", "weave|R|0.50" } })
+scen("duck", 1.4, { punchAt(0.3, "B", "leadhook", "L"), { 0.34, "A", "act", "duck|0.40" } })
+scen("pull", 1.4, { punchAt(0.3, "B", "cross", "R"), { 0.34, "A", "act", "pull|0.45" } })
+scen("sidestepL", 1.6, { punchAt(0.3, "B", "cross", "R"), { 0.33, "A", "act", "sidestep|L|0.55" }, { 0.35, "A", "move", { -1.6, 0, 0.22 } },
+	{ 1.1, "A", "move", { 1.6, 0, 0.4 } } })
+scen("shoulderroll_act", 1.6, { punchAt(0.3, "B", "cross", "R"), { 0.32, "A", "act", "shoulderroll|L|0.60" } })
+scen("weave_counter", 1.9, { punchAt(0.3, "B", "rearhook", "R"), { 0.33, "A", "act", "weave|L|0.50" }, punchAt(0.68, "A", "leadhook", "L", "head", 0.23, 2) })
+scen("duck_uppercut", 1.9, { punchAt(0.3, "B", "leadhook", "L"), { 0.34, "A", "act", "duck|0.40" }, punchAt(0.6, "A", "uppercut", "R", "head", 0.26, 2) })
+scen("slip_counter", 1.7, { punchAt(0.3, "B", "jab", "L"), { 0.32, "A", "act", "slip|R" }, punchAt(0.55, "A", "cross", "R", "head", 0.21, 2) })
+scen("dodge_chain", 2.4, { punchAt(0.3, "B", "jab", "L"), { 0.32, "A", "act", "slip|R" }, punchAt(0.75, "B", "leadhook", "L"), { 0.77, "A", "act", "weave|L|0.50" },
+	punchAt(1.3, "B", "cross", "R"), { 1.32, "A", "act", "pull|0.45" } })
 -- being hit (B's punch lands on A at its contact)
 local function hitScen(id, kind, hand, zone, sev, flag, extra)
 	local w = WIND[kind]
@@ -1364,11 +1380,15 @@ scen("stagger", 2.0, { punchAt(0.3, "B", "rearhook", "R"), { 0.6, "A", "act", "h
 scen("hurt_wobbly", 3.0, { { 0, "A", "Daze", 2 }, { 0, "A", "Guard", "hurt" } })
 scen("dazed3", 3.0, { { 0, "A", "Daze", 3 }, { 0, "A", "Guard", "dazed" } })
 -- knockdowns: the server's order (DownPose & co, then Guard = down), the count, the get-up act, Guard back to stance
-local function kdScen(id, pose, kind, hand, sev, getup, count, ko)
+local function kdScen(id, pose, kind, hand, sev, getup, count, ko, zone)
 	local w = WIND[kind]
 	local tc = 0.3 + w
-	local ev = { punchAt(0.3, "B", kind, hand) }
-	table.insert(ev, { tc, "A", "act", string.format("hit|%s|heavy|%.2f|%s", kind, sev, hand) })
+	local ev = { punchAt(0.3, "B", kind, hand, zone) }
+	if zone == "body" then
+		table.insert(ev, { tc, "A", "act", string.format("hitbody|%s|%s|%.2f", kind, hand == "L" and "R" or "L", sev) })
+	else
+		table.insert(ev, { tc, "A", "act", string.format("hit|%s|heavy|%.2f|%s", kind, sev, hand) })
+	end
 	table.insert(ev, { tc, "A", "DownPose", pose })
 	table.insert(ev, { tc, "A", "DownDir", (pose == "face" or pose == "forward" or pose == "knee") and 0.7 or math.pi })
 	table.insert(ev, { tc, "A", "KOKind", ko or false })
@@ -1379,6 +1399,12 @@ local function kdScen(id, pose, kind, hand, sev, getup, count, ko)
 		local wall = ({ oneshot = 1.75, crumple = 1.75, delayed = 2.6, standing = 0.6 })[ko] or 1.75
 		if ko == "crumple" and pose == "back" then
 			wall += 0.2
+		end
+		if ko == "standing" then
+			-- (the referee catches him: FightEngine RefCatch, CATCH_TIME later the wave-off)
+			table.insert(ev, { tc + 0.1, "ref", "move", { 2.6, 1.2, 0.5 } })
+			table.insert(ev, { tc + 0.55, "ref", "act", "catch|3.6" })
+			wall = 2.2
 		end
 		table.insert(ev, { tc + wall, "B", "Guard", "win" })
 		table.insert(ev, { tc + wall, "ref", "act", "waveoff" })
@@ -1406,7 +1432,10 @@ kdScen("ko_oneshot_face", "face", "rearhook", "R", 1.4, nil, nil, "oneshot")
 kdScen("ko_crumple_side", "side", "leadhook", "L", 1.4, nil, nil, "crumple")
 kdScen("ko_crumple_back", "back", "uppercut", "R", 1.4, nil, nil, "crumple")
 kdScen("ko_delayed_face", "face", "overhand", "R", 1.4, nil, nil, "delayed")
-kdScen("ko_body", "knee", "leadhook", "L", 1.4, nil, nil, "crumple")
+kdScen("ko_body", "knee", "leadhook", "L", 1.4, nil, nil, "crumple", "body")
+kdScen("ko_uppercut", "back", "uppercut", "R", 1.4, nil, nil, "oneshot")
+kdScen("ko_hook_face", "face", "leadhook", "L", 1.4, nil, nil, "oneshot")
+kdScen("ko_standing", "standing", "rearhook", "R", 1.4, nil, nil, "standing")
 -- between rounds and after
 scen("rest_stool", 4, { { 0.2, "A", "Guard", "rest" }, { 0.2, "A", "Stam", 0.4 } }, { stool = true, every = 4 })
 scen("win_lose", 5, { { 0.2, "A", "Guard", "win" }, { 0.2, "B", "Guard", "lose" } }, { every = 4 })
@@ -1426,7 +1455,7 @@ local function fightClip(tier)
 	local yA, yB, yR = ha.CFrame.Y, hb.CFrame.Y, hr.CFrame.Y
 	local homeA = CFrame.new(0, yA, GAP / 2)
 	local homeB = CFrame.new(0, yB, -GAP / 2) * CFrame.Angles(0, math.pi, 0)
-	local homeR = CFrame.new(-4.2, yR, -0.6) * CFrame.Angles(0, -math.pi / 2, 0)
+	local homeR = CFrame.new(-5.5, yR, -2.2) * CFrame.Angles(0, -math.pi / 2, 0)
 	-- the corner stool behind A
 	local stool = E.new("Model", arena)
 	stool.Name = "CornerStool"
@@ -1451,6 +1480,8 @@ local function fightClip(tier)
 			m:SetAttribute("KOKind", nil)
 			m:SetAttribute("DownPose", nil)
 			m:SetAttribute("Count", 0)
+			m:SetAttribute("KOLanded", nil)
+			m:SetAttribute("Chain", nil)
 			if not CS:HasTag(m, "Fighter") then
 				CS:AddTag(m, "Fighter")
 			end
@@ -1550,6 +1581,7 @@ local function fightClip(tier)
 			end
 			step(a, ha)
 			step(b, hb)
+			step(refM, hr)
 			frame({ a, b, refM })
 			-- the Animator's output transforms: the largest one-frame turn and change of turning speed per group
 			local curW = {}
@@ -1692,6 +1724,15 @@ local function fightClip(tier)
 			end
 		end
 		local g = gaitSummary(S)
+		-- the knockout's landing (the client-local KOLanded the Animator stamps) against the server's wait
+		local koLand = a:GetAttribute("KOLanded")
+		local koAt
+		for _, e in ipairs(ev) do
+			if e[3] == "Guard" and e[4] == "down" and e[2] == "A" then
+				koAt = e[1]
+			end
+		end
+		local landWall = (type(koLand) == "number" and koAt) and r4(koLand - t0 - koAt) or nil
 		-- the slide while he is on his feet (the pelvis within 0.6 studs of the stance's height): a body lying or
 		-- kneeling on the canvas drags its feet by design, a standing one must not skate
 		local stand = {}
@@ -1722,7 +1763,7 @@ local function fightClip(tier)
 			end
 		end
 		g.slideL, g.slideR = r4(sL), r4(sR)
-		local rec = { id = sc.id, tier = tier, slideL = g.slideL, slideR = g.slideR, slideMaxSpeed = g.slideMaxSpeed, sinkMin = g.sinkMin, snap = {},
+		local rec = { id = sc.id, tier = tier, koLandWall = landWall, slideL = g.slideL, slideR = g.slideR, slideMaxSpeed = g.slideMaxSpeed, sinkMin = g.sinkMin, snap = {},
 			impacts = impacts, ranges = {} }
 		for k, v in pairs(snap) do
 			rec.snap[k] = { step = r4(v.step), acc = r4(v.acc), pops = v.pops, stepJ = v.stepJ, accJ = v.accJ, accAt = v.accAt and r4(v.accAt) }
@@ -1738,7 +1779,7 @@ local function fightClip(tier)
 			table.insert(index.clips, { id = string.format("fight_%s_t%d", sc.id, tier), file = file, clip = "fight", tier = tier, n = #out.frames,
 				ref = sc.ref or false })
 		end
-		local imp = ""
+		local imp = landWall and string.format(" [KO landed +%.2f s wall]", landWall) or ""
 		for _, im in ipairs(impacts) do
 			imp ..= string.format(" [%s%s %.2f dy%+.2f]", im.kind, im.zone == "body" and "/b" or "", im.toTarget, im.dy)
 		end

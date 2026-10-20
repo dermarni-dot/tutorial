@@ -709,7 +709,7 @@ function AnimDown.start(rig, t)
 			d.lift = 0.14 + 0.06 * rig.rng:NextNumber()
 			if d.timber then
 				-- (the timber fall starts from the lift: slower off the mark, gravity does the rest)
-				d.omega *= 0.35
+				d.omega *= 0.6
 			end
 		end
 	end
@@ -1231,7 +1231,7 @@ local FOOT_DRAG = 0.5
 -- the air - a man going over backwards kicks his feet up, they do not plough along the canvas)
 local FOOT_HOLD_MAX, FOOT_FLY = 0.3, 0.2
 local FOOT_NEAR = 0.07
-local FOOT_REACH = 0.985
+local FOOT_REACH = 0.96
 local CORNERS = {}
 for _, sx in ipairs({ -1, 1 }) do
 	for _, sy in ipairs({ -1, 1 }) do
@@ -1350,17 +1350,15 @@ function AnimDown.footLock(rig, out, dt)
 					-- (no twist of its own: the knee stays in the hip's plane, as the keyed pose has it - a heading
 					-- taken from a foot pointing at the sky flips)
 					local hl = (g.rootC0 * out.Root * leg.rootHip).LookVector
-					R.solveLeg(rig, pTmp, s, out.Root, want, math.atan2(-hl.X, -hl.Z), 0, 0, 0.02)
+					R.solveLeg(rig, pTmp, s, out.Root, want, math.atan2(-hl.X, -hl.Z), 0, 0, 0.07)
 					local w = smooth(st.w)
 					out[kH] = w < 1 and out[kH]:Lerp(pTmp[kH], w) or pTmp[kH]
 					out[kK] = w < 1 and out[kK]:Lerp(pTmp[kK], w) or pTmp[kK]
 					-- (the foot keeps the keyed pose's turn and pitch in the world)
-					local thigh = fk[s == "L" and "LH" or "RH"]
 					local parH = fk.Root
 					local nThigh = parH * g.jc0[kH] * out[kH] * g.jc1i[kH]
 					local nKnee = nThigh * g.jc0[kK] * out[kK] * g.jc1i[kK]
 					out[kA] = (g.jc0[kA]:Inverse() * nKnee:Inverse() * foot * g.jc1i[kA]:Inverse()).Rotation
-					_ = thigh
 				end
 			end
 		end
@@ -1380,11 +1378,19 @@ function AnimDown.flavour(p, rig, d, el)
 	end
 	if d.lift then
 		-- lifted by the uppercut: up onto the toes and arched back, chin up, before the legs give
+		-- (the rise comes and goes; the arch it leaves is held until the fall has him - a timber fall lies out of
+		-- it, a crumple's keys take over from it - never a lean back that straightens up again)
 		local up = d.lift * K.bump(el, 0, 0.34)
-		if up > 1e-3 then
-			p.Root = CF(0, up, 0.15 * up) * p.Root * A(0.7 * up, 0, 0)
-			p.W = p.W * A(0.9 * up, 0, 0)
-			p.Neck = p.Neck * A(1.4 * up, 0, 0)
+		local arch = d.lift * smooth(el / 0.16)
+		if d.timber then
+			arch *= 1 - smooth(abs(d.theta or 0) / 1.2)
+		else
+			arch *= 1 - smooth((el - 0.3) / 0.45)
+		end
+		if up > 1e-3 or arch > 1e-3 then
+			p.Root = CF(0, up, 0.15 * up) * p.Root * A(0.7 * arch, 0, 0)
+			p.W = p.W * A(0.9 * arch, 0, 0)
+			p.Neck = p.Neck * A(1.4 * arch, 0, 0)
 			if rig.plant then
 				rig.foot.L.heel = max(rig.foot.L.heel, up * 2.2)
 				rig.foot.R.heel = max(rig.foot.R.heel, up * 2.6)

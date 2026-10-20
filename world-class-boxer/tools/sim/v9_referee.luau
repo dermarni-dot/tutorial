@@ -589,7 +589,7 @@ for _, m in ipairs({ A, B }) do
 end
 
 local SEEDS = {}
-for s in (args.seeds or "1,2"):gmatch("[^,]+") do
+for s in (args.seeds or "1,3"):gmatch("[^,]+") do
 	table.insert(SEEDS, tonumber(s))
 end
 
@@ -607,8 +607,11 @@ local function shoot(id, label, figs, refRec)
 	print("shot", id)
 end
 
-local function official(seed, kind, champ, at)
+local function official(seed, kind, champ, at, tier)
 	local app, b, gear, opts = officialLook(seed, kind, champ)
+	if tier then
+		b = buildFor(app, tier) -- (a forced muscle tier: the outfit is fitted per tier)
+	end
 	local m = makeFigure(app, b, gear, opts, at)
 	m.Name = kind == "referee" and "Referee" or "Coach"
 	m:SetAttribute("Loop", "referee")
@@ -686,6 +689,21 @@ for si, seed in ipairs(SEEDS) do
 		end)
 		shoot("walk" .. k .. "_" .. tag, "walking (11 studs/s)", { { ref, "referee" } }, rec)
 	end
+	CS:RemoveTag(ref, "Referee")
+	ref:Destroy()
+	run({ A, B }, 0.1)
+end
+-- the lean and the elite tier (every outfit piece is fitted per tier): stance and the count
+for _, tier in ipairs({ 1, 5 }) do
+	local ref, rec = official(5, "referee", false, CFrame.new(0, 0, 0), tier)
+	local all = { A, B, ref }
+	local figs = { { A, "boxer" }, { B, "boxer" }, { ref, "referee" } }
+	run(all, 2.5)
+	shoot("tier" .. tier .. "_stand", "tier " .. tier .. " body, stance", figs, rec)
+	actId += 1
+	act(ref, "refcount|2", actId)
+	run(all, 0.33)
+	shoot("tier" .. tier .. "_count", "tier " .. tier .. " body, the count", figs, rec)
 	CS:RemoveTag(ref, "Referee")
 	ref:Destroy()
 	run({ A, B }, 0.1)

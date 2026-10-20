@@ -120,3 +120,21 @@ triangles, <= 5,960 for an outfit), so a crowd costs what it did. The instances 
   follows the body part it welds to (`BodyLite`), so a lite body always wears the lite gear fitted to it.
 * `tools/body/torso_surf.py --write` regenerates BuilderBody's TORSO_SURF (the marks lying on the torso) from the
   detailed torsos.
+
+## The officials' clothes (v10, group "official")
+
+`tools/body/build_official.py` models the ring officials' clothes in build_gear.py's conventions and record format,
+both detail sets: `out/gear/{tier<N>,shared}/Off*.mesh` + `out/gear/official.json` (on the v10 bodies) and
+`out/lite/gear/...` + `out/lite/gear/official.json` (on the v9 lite bodies). `publish_gear.py` merges official.json
+into GearAssetData (more pieces, slots `shirt shirtTrim buttons badge bowtie trousers belt buckle dressShoes
+dressSoles dressLaces towel`, and `sets.official = { Referee = {...}, Coach = {...} }`).
+
+* Shirt (`OffShirt`, collar, placket + buttons, pocket, badge, bow tie; the coach: `OffPolo` + buttons, `OffTowel`) on
+  the UpperTorso; short sleeves (`OffSleeve`, `OffSleeveHem`) on the UpperArms, their tops a sphere about the shoulder
+  pivot; trousers: `OffWaist` / `OffBelt` / `OffBuckle` on the LowerTorso (tierOf LowerTorso, UpperTorso, both
+  UpperLegs, like the trunks' band), `OffThigh` on the UpperLegs (closed in the seat through the walk, ending in a knee
+  sphere of one radius for every tier), `OffShin` on the LowerLegs (its top a smaller sphere inside it, the hem over the
+  shoe); `OffShoe` / `OffSole` / `OffLaces` on the feet (shared over tiers).
+* BuilderBody builds the set for the official's outfit (`referee` -> Referee, `cornerman` -> Coach) and paints the slots
+  from `opts.officialColors` (`src/shared/Officials.lua`: the venue's shirt, white for a title fight); with any id 0 or a
+  failed load it keeps the old part-built outfit.

@@ -4,7 +4,7 @@
                                                           [--samples N] [--views front,34,side,back] [--ring 1]
 
 Per shot: the official in front / 3/4 / side (and back) views framed on him, the two boxers behind him for scale, in a
-simple ring (canvas, corner posts, three ropes); a sheet <tag>_<shot>.jpg. Then <tag>_closeup.jpg: the stance shots'
+simple ring (canvas, corner posts, three ropes; half 12); a sheet <tag>_<shot>.jpg. Then <tag>_closeup.jpg: the stance shots'
 upper body (shirt, collar, bow tie, badge) and shoes. Geometry, materials, the classic head and its decal: v8_render.py.
 """
 import json
@@ -27,9 +27,10 @@ LABEL = {"front": "front", "34": "3/4", "side": "side", "back": "back", "34back"
 
 
 def ring(sc):
-    """canvas, apron, corner posts and three ropes (ring half 9 studs, centred 2.6 behind the referee's spot)"""
-    cz = 2.6
-    h = 9.0
+    """canvas, corner posts and three ropes (ring half 12 studs, about the game's RingHalf 11, centred on the
+    referee's spot: the cameras, about 10 studs out, stay inside the ropes)"""
+    cz = 0.0
+    h = 12.0
     P = np.array([(-h, 0.005, cz - h), (h, 0.005, cz - h), (h, 0.005, cz + h), (-h, 0.005, cz + h)], float)
     T = np.array([(0, 2, 1), (0, 3, 2)])
     canvas = sc.gear_mat((0.80, 0.82, 0.86), "Fabric", 0)

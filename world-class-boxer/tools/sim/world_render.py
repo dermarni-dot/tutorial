@@ -725,7 +725,7 @@ VIEWS = {
     "gym_weights": {"roots": GYM, "eye": (-55, 9, 16), "target": (-95, 3, -40), "fov": 50, "mode": "interior", "cull": ((-70, 10, -20), 110)},
     "gym_lobby": {"roots": GYM, "eye": (-20, 9, 70), "target": (30, 4, 20), "fov": 50, "mode": "interior", "cull": ((10, 10, 40), 120)},
     "gym_cardio": {"roots": GYM, "eye": (56, 9, 14), "target": (100, 3, -42), "fov": 50, "mode": "interior", "cull": ((80, 10, -30), 110)},
-    "gym_desk": {"roots": GYM, "eye": (8, 7, 50), "target": (36, 4, 75), "fov": 52, "mode": "interior", "cull": ((26, 8, 66), 50)},
+    "gym_desk": {"roots": GYM, "eye": (29, 7.5, 50), "target": (33, 3.5, 77), "fov": 55, "mode": "interior", "cull": ((30, 8, 66), 45)},
     "gym_lockers": {"roots": GYM, "eye": (-56, 8, 62), "target": (-88, 4, 26), "fov": 52, "mode": "interior", "cull": ((-78, 10, 45), 80)},
     "gym_walls_w": {"roots": GYM, "eye": (24, 8, -24), "target": (-50, 6, -46), "fov": 50, "mode": "interior", "cull": ((-10, 10, -40), 110)},
     "gym_walls_n": {"roots": GYM, "eye": (-4, 7, -36), "target": (-26, 6, -79), "fov": 55, "mode": "interior", "cull": ((-20, 10, -60), 70)},
@@ -733,7 +733,7 @@ VIEWS = {
     "gym_corner": {"roots": GYM, "eye": (-29, 6.5, -47), "target": (-15, 2.4, -62), "fov": 50, "mode": "interior", "cull": ((-18, 6, -58), 50)},
     "gym_kitwall": {"roots": GYM, "eye": (35, 6.5, -62), "target": (45, 5.5, -76), "fov": 58, "mode": "interior", "cull": ((40, 8, -70), 40)},
     "gym_bagwall": {"roots": GYM, "eye": (-37, 6.5, -63), "target": (-48, 5, -76), "fov": 58, "mode": "interior", "cull": ((-42, 8, -70), 40)},
-    "gym_weights2": {"roots": GYM, "eye": (-92, 8, 4), "target": (-52, 4, -46), "fov": 52, "mode": "interior", "cull": ((-70, 10, -30), 90)},
+    "gym_weights2": {"roots": GYM, "eye": (-64, 7.5, -12), "target": (-51, 3, -56), "fov": 55, "mode": "interior", "cull": ((-58, 8, -40), 60)},
     "gym_whiteboard": {"roots": GYM, "eye": (-90, 7, -4), "target": (-109, 5, 11), "fov": 55, "mode": "interior", "cull": ((-100, 8, 6), 40)},
     "gym_weighin": {"roots": GYM, "eye": (86, 7, -4), "target": (103, 4.5, 16), "fov": 52, "mode": "interior", "cull": ((98, 8, 8), 50)},
     # the city
