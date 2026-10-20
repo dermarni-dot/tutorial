@@ -369,7 +369,8 @@ function FightAI:PickDefence(kind, body, hand)
 			local trait = (d == "weave" and (1 + weaver)) or ((d == "slip" or d == "pull") and (1 + slick * 0.5)) or 1
 			if F.stamina >= cost * 2.5 then
 				-- layer 3: footwork off the line when he is in a flurry or it is on the ropes
-				local under = (O.chain and not O.chain.closed and O.chain.punches >= 3) or F.onRopes
+				-- (and off the line of a man who lives on the body: the side-step is the one dodge that beats it)
+				local under = (O.chain and not O.chain.closed and O.chain.punches >= 3) or F.onRopes or (body and self.read:BodyShare() > 0.4)
 				local foot = (d == "sidestep" and under) and 2.2 or 1
 				add(d, w * head * self.dodgeMul * fav * trait * foot * 0.55)
 			end
