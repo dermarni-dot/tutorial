@@ -579,7 +579,7 @@ Config.FightDepth = {
 	feint = { stam = 1.5, busy = 0.22, bite = 0.4, open = 0.7, hit = 0.12, spamWin = 6, spamFree = 2, spamStam = 1.5, windup = 0.12 },
 	fatigueAt = 0.4, fatigueHit = 0.2, damageAt = 60, damageHit = 0.12, visionHit = 0.1, blindHit = 0.14, blindDodge = 0.6,
 	windAt = 0.2, windAfter = 2.5, windRegen = 2.4, windTime = 6, windGive = 0.12, breatheAfter = 1.5, breatheRegen = 1.3,
-	momHit = 0.04, momDmg = 0.05, momRegen = 0.1, momDecay = 0.03, momScore = 1.2,
+	momHit = 0.03, momDmg = 0.03, momRegen = 0.06, momDecay = 0.035, momScore = 1.2,
 	pressWin = 4, pressPunches = 5, pressRange = 1.0, pressRegen = 0.8, pressHit = 0.03, ropeDist = 2.2, ropeHit = 0.05, ropeRegen = 0.85,
 	clinchDmg = 0.35, clinchMax = 4, clinchGap = 0.45, clinchSmother = 0.7, clinchMinHold = 0.4, breakBusy = 0.3, breakBalance = 12, breakAngle = 0.7,
 }

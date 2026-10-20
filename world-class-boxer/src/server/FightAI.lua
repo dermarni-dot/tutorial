@@ -71,10 +71,11 @@ local DEFAULT_ARCH = { aggr = 0, block = 0.3, slip = 0.25, roll = 0.2, parry = 0
 local BASE_PLAN = { OutBoxer = "outbox", Swarmer = "swarm", Slugger = "stalk", CounterPuncher = "bait", BoxerPuncher = "plan" }
 -- the alternative plan a thinking boxer switches to when its base plan is losing
 local ALT_PLAN = { outbox = "swarm", swarm = "outbox", stalk = "plan", bait = "swarm", plan = "outbox" }
--- mode -> aggression shift, range (a share of the jab range; nil = the style's), how hard it cuts off the ring
+-- mode -> aggression shift, range (a share of the jab range; nil = the style's), how hard it cuts off the ring,
+-- work = its punch rate (an out-boxer lives on the volume of his jab)
 local MODES = {
 	plan = { aggr = 0 },
-	outbox = { aggr = -0.08, range = 1.0, cut = 0 },
+	outbox = { aggr = 0.1, range = 0.97, cut = 0, work = 1.5 },
 	swarm = { aggr = 0.12, range = 0.7, cut = 0.5 },
 	stalk = { aggr = 0.02, range = 0.8, cut = 0.8 },
 	bait = { aggr = -0.15, range = 0.97, cut = 0 },
@@ -755,7 +756,12 @@ function FightAI:Think(now)
 	-- off the ropes / out of the corner: a pivot (more for a pivoting archetype, a skilled boxer and a Ring General)
 	local rg = engine.Trait and engine:Trait(F, "RingGeneral") or 0
 	local escape = self.arch.pivot * 0.08 + (F.onRopes and (0.05 + 0.1 * self.skill + Traits.Effect("RingGeneral", "escape", rg) * 0.4) or 0)
-	if (self.arch.pivot > 0.15 or F.onRopes) and dist < SPACING.pivot * rk * 1.15 and self.rng:NextNumber() < escape then
+	-- a mover being walked down takes the angle out instead of backing straight up (ring generalship)
+	local mover = (self.mode == "outbox" or self.mode == "bait" or self.mode == "cruise") and (F.pressured or dist < self:Range() * 0.75)
+	if mover then
+		escape += 0.08 + 0.14 * self.skill
+	end
+	if (self.arch.pivot > 0.15 or F.onRopes or mover) and dist < SPACING.pivot * rk * 1.15 and self.rng:NextNumber() < escape then
 		if F.onRopes and rg > 0 then
 			engine:TraitFired(F, "RingGeneral")
 		end
@@ -782,7 +788,7 @@ function FightAI:Think(now)
 	if self:TrySpecial(now, dist) then
 		return
 	end
-	if now < F.counterUntil and self:Fits("jab", dist) and self.rng:NextNumber() < 0.45 + 0.55 * self.skill then
+	if now < F.counterUntil and self:Fits("jab", dist) and self.rng:NextNumber() < 0.35 + 0.45 * self.skill then
 		self:Throw(self:CounterPunch(dist), false)
 		return
 	end
@@ -818,7 +824,7 @@ function FightAI:Think(now)
 	if self:Fits("jab", dist) then
 		-- (engine.aiWork: a gym sparring partner works harder than the fight-night pace)
 		-- (a raw boxer looks for its openings less often: the work rate grows with its skill)
-		if self.rng:NextNumber() < (aggr * 0.13 + self.jabRate * 0.07) * (engine.aiWork or 1) * (0.7 + 0.4 * self.skill) then
+		if self.rng:NextNumber() < (aggr * 0.13 + self.jabRate * 0.07) * (engine.aiWork or 1) * (0.4 + 0.3 * self.skill) * ((MODES[self.mode] and MODES[self.mode].work) or 1) then
 			self.queue = self:BuildCombo()
 			local first = table.remove(self.queue, 1)
 			self:Throw(first.p, first.body)
@@ -1002,7 +1008,7 @@ function FightAI:TrySpecial(now, dist)
 		return false
 	end
 	-- a tentative fighter keeps its specials for the right moment; an aggressive one throws them freely
-	local eager = (0.22 + self:Aggression() * 0.3 + (coming and 0.3 or 0)) * sparMul
+	local eager = (0.18 + self:Aggression() * 0.25 + (coming and 0.3 or 0)) * sparMul
 	if self.rng:NextNumber() > eager then
 		self.nextSpecial = now + 0.6
 		return false
