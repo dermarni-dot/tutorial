@@ -168,9 +168,9 @@ for seed = 1, 40 do
 	check("seed " .. seed .. " not a defensive / counter opponent", o.archetype ~= "Defensive" and o.archetype ~= "Counter", o.archetype)
 	check("seed " .. seed .. " a fight venue", table.find(TF.Venues, b.venue) ~= nil and b.venue ~= "Stadium" and b.venue ~= "Gym")
 	local imp, pop = b.venueOpts.importance, b.venueOpts.popularity
-	-- (Venues.CrowdFill's formula: the house this night fills)
-	local fill = math.clamp(0.16 + 0.84 * imp + 0.2 * pop / 100, 0.15, 1)
-	check("seed " .. seed .. " a modest crowd", fill >= 0.25 and fill <= 0.55, fill)
+	-- (Venues.CrowdFill's formula: the house this night fills; popularity weighs in, sqrt)
+	local fill = math.clamp(0.13 + 0.7 * imp + 0.45 * math.sqrt(math.clamp(pop, 0, 100) / 100), 0.15, 1)
+	check("seed " .. seed .. " a modest crowd", fill >= 0.25 and fill <= 0.62, fill)
 	check("seed " .. seed .. " the tutorial's offer", b.offer.tutorial == true and b.offer.rounds == Tutorial.ROUNDS and #b.offer.stakes == 0)
 	check("seed " .. seed .. " assist from the settings", p.assist == 2)
 	if seed % 2 == 0 then

@@ -1977,16 +1977,16 @@ function Venues.Importance(opts)
 	return math.clamp(imp, 0, 1)
 end
 
--- the share of a full house that turns up: mostly the fight's importance, a little the boxer's own popularity (his
--- fans buy tickets to his undercard fights too). An amateur nobody ~0.2 (a sparse room), a local pro ~0.4, a ranked
--- contender ~0.8, any title fight 1 (sold out)
+-- the share of a full house that turns up: the fight's importance and the boxer's own popularity together (his
+-- fans buy tickets to whatever he fights; the first fans count the most, sqrt). An amateur nobody ~0.2 (a sparse
+-- room), a local pro ~0.4, a popular local pro ~0.7, a fan favourite packs even an undercard, any title fight 1
 function Venues.CrowdFill(importance, popularity)
 	local imp = math.clamp(tonumber(importance) or 0, 0, 1)
 	local pop = math.clamp(tonumber(popularity) or 0, 0, 100) / 100
 	if imp >= 0.9 then
 		return 1
 	end
-	return math.clamp(0.16 + 0.84 * imp + 0.2 * pop, 0.15, 1)
+	return math.clamp(0.13 + 0.7 * imp + 0.45 * math.sqrt(pop), 0.15, 1)
 end
 
 -- the crowd: the fight's share of the full house (Venues.CrowdFill); supporters wear the red corner and hold signs
