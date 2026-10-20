@@ -255,6 +255,26 @@ client module on guisim, the offer's and the step card's SKIP TUTORIAL and the w
 (`tutorial_offer`) and the wrap-up (`tutorial_done`) on every device. The bout itself (FightEngine with
 `opts.tutorial`) needs Studio.
 
+## Whole fights headless: fightsim, balance, test_fightai, test_fightfixes
+
+`tools/sim/fightsim.luau` runs whole bouts with the real `FightEngine` / `FightAI` on stub rigs in a 22-stud ring
+(a fake clock and a coroutine scheduler: `task.delay` / `task.spawn` / `task.wait` run on it, so the knockdown count
+really counts). The red corner is a second FightAI (AI vs AI) or a scripted player (`S.Bot`: spam, onetwo,
+headhunter, body, volume, power, counter, pressure, smart, novice), which only reacts to the AI's punches after a
+human reaction time. `S.Fight({ red = {...}, blue = { style, level, traits = { { id, s } } | noTraits }, rounds,
+seed, onTick })`; `FS.new({ root = DIR })` runs another checkout (a `git archive` of an older commit: the "before").
+
+- `lune run tools/sim/balance.luau [n] [styles|levels|bots|traits|adapt] [--root DIR]`: the balance tables (AI vs AI
+  by style and by level gap, scripted players by level, each trait against the types it resists, the adapting player
+  against each trait). About 0.5 s a fight.
+- `lune run tools/sim/test_fightai.luau [--quick]` (a few minutes): the ring traits (`Shared.Traits`: seed, style,
+  level, caps, scouting, reveal, each effect and its counter), the fighting type, the read (`Shared.FightRead`),
+  FightAI's perception delay / prediction / adaptation / mistakes / feints, the feint, the second wind, accuracy with
+  fatigue / damage / eyes, the blind side, side-aware slips, the clinch's inside work and break, the momentum and the
+  live score, and wide balance bounds.
+- `lune run tools/sim/test_fightfixes.luau`: a dodge that won is over (no CAUGHT MID-DODGE after it), the debut's
+  doctor / corner / protection / final rest, the debut offer kept on a refused start, Shift held + Q = a slip.
+
 ## Training drills: test_drills
 
 `lune run tools/sim/test_drills.luau [--judges] [--only Bench,Sauna] [-v]` (~30 s) plays every training drill with
