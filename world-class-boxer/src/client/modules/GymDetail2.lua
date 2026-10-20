@@ -118,8 +118,8 @@ end)
 -- a knee brace from a wall column to the truss with a gusset plate and its bolts (column at the origin, the truss
 -- running toward local -Z)
 local KNEE = K.Template("KneeBrace", function(t)
-	Rod(t, "KneeBrace", V3(0, 23.6, -0.6), V3(0, 27.9, -4.6), 0.34, rgb(58, 60, 66), M.Metal)
-	Part(t, "Gusset", V3(0.1, 1.8, 2.2), CF(0, 27.2, -1.3), rgb(66, 68, 74), M.Metal, { shadow = false })
+	Rod(t, "KneeBrace", V3(0, 23.6, -0.8), V3(0, 27.9, -4.6), 0.34, rgb(58, 60, 66), M.Metal)
+	Part(t, "Gusset", V3(0.1, 1.8, 2.0), CF(0, 27.2, -1.55), rgb(66, 68, 74), M.Metal, { shadow = false })
 	for _, p in ipairs({ { 26.7, -0.8 }, { 26.7, -1.9 }, { 27.7, -0.8 }, { 27.7, -1.9 } }) do
 		Cyl(t, "Bolt", 0.34, 0.16, CF(0, p[1], p[2]), C.steelLight, M.Metal, { shadow = false })
 	end
