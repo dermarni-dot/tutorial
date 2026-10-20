@@ -992,6 +992,467 @@ function UI.Bar(parent, props, color)
 	return bg, set, fill
 end
 
+------------------------------------------------------------------------
+-- Fight bars (the broadcast scoreboard) and condition meters (the gym)
+------------------------------------------------------------------------
+-- smooth colour ramps for the live bars: health runs green -> gold -> orange -> red with the value (the
+-- same bands as UI.Ramp, blended so a bar never jumps colour between two state packets); stamina is the
+-- broadcast's electric blue while there is gas, amber from a third, red when it is gone
+local function rampAt(stops, v)
+	v = math.clamp(tonumber(v) or 0, 0, 1)
+	for i = 2, #stops do
+		local a, b = stops[i - 1], stops[i]
+		if v <= b[1] then
+			return a[2]:Lerp(b[2], (v - a[1]) / math.max(1e-6, b[1] - a[1]))
+		end
+	end
+	return stops[#stops][2]
+end
+local RAMP_HP = { { 0, T.red }, { 0.16, T.red }, { 0.28, T.orange }, { 0.45, T.gold }, { 0.64, T.green }, { 1, T.green } }
+local RAMP_STAM = { { 0, T.red }, { 0.15, T.red }, { 0.3, UI.Amber }, { 0.48, rgb(64, 168, 255) }, { 1, rgb(72, 190, 255) } }
+function UI.HealthRamp(v)
+	return rampAt(RAMP_HP, v)
+end
+function UI.StamRamp(v)
+	return rampAt(RAMP_STAM, v)
+end
+
+-- one Heartbeat connection drives every animating bar and meter, connected only while one is moving
+-- (a bar at rest costs nothing per frame: it is only touched when its value changes)
+local Live = { set = {}, conn = nil }
+local function liveStep(dt)
+	dt = math.clamp(tonumber(dt) or 0, 0, 0.1)
+	for obj in pairs(Live.set) do
+		local ok, busy = pcall(obj._step, obj, dt)
+		if not ok or not busy then
+			Live.set[obj] = nil
+		end
+	end
+	if next(Live.set) == nil and Live.conn then
+		Live.conn:Disconnect()
+		Live.conn = nil
+	end
+end
+local function liveWake(obj)
+	Live.set[obj] = true
+	if not Live.conn then
+		Live.conn = RunService.Heartbeat:Connect(liveStep)
+	end
+end
+-- exponential approach: the same curve at 30 or 240 fps
+local function approach(cur, goal, rate, dt)
+	local n = cur + (goal - cur) * (1 - math.exp(-rate * dt))
+	if math.abs(goal - n) < 0.0015 then
+		return goal
+	end
+	return n
+end
+
+-- a transparency sequence showing [ta, tb] of a gradient (alpha inside, clear outside), sharp edges
+local EDGE = 0.0025
+local function bandSeq(ta, tb, alpha)
+	ta, tb = math.max(0, ta), math.min(1, tb)
+	if tb - ta < 0.0008 or alpha >= 0.995 then
+		return NumberSequence.new(1)
+	end
+	local k = {}
+	local function add(t, v)
+		k[#k + 1] = NumberSequenceKeypoint.new(t, v)
+	end
+	if ta > EDGE then
+		add(0, 1)
+		add(ta - EDGE, 1)
+		add(ta, alpha)
+	else
+		add(0, alpha)
+	end
+	if tb < 1 - EDGE then
+		add(tb, alpha)
+		add(tb + EDGE, 1)
+		add(1, 1)
+	else
+		add(1, alpha)
+	end
+	return NumberSequence.new(k)
+end
+
+-- UI.FightBar(parent, props, opts): the broadcast health / stamina bar. The inner end is cut on a slant
+-- (mirrored for the blue corner: opts.side "R" fills from the right), every layer is a full-size frame
+-- whose UIGradient shows its stretch of the bar, so the fill, the red damage ghost, the recovery glow,
+-- the permanent-damage cap, the sheen and the segment ticks all share the one slanted edge. Nothing is
+-- re-laid out when the value moves: only gradient keypoints change, and only on a change (or while an
+-- animation runs: the fill easing to its value, the ghost holding then draining, a flash, the recovery
+-- glow, the stamina shimmer, the low-value pulse).
+-- opts: side, color, track, ghost (colour), label (text at the outer end), number (the value at the inner
+-- end), segments (ticks: up to 5 blocks), slant (the cut, in bar heights; 0 = square), low (pulse at or
+-- under this), shimmer (a light runs along the fill while it refills), heal (false: no recovery glow)
+-- Returns a bar: bar:set(frac, capFrac?, color?), bar:stunned(on), bar:flash(strength); fields bg (the
+-- holder: position / size it), fill / ghost / cap (frames), label, value, v (the value), disp (drawn).
+local FightBar = {}
+FightBar.__index = FightBar
+local WHITE = Color3.new(1, 1, 1)
+local function barLayer(bar, name, y0, y1, color, z, colorSeq)
+	local f = UI.Frame(bar.bg, { Name = name, Position = UDim2.fromScale(0, y0), Size = UDim2.fromScale(1, y1 - y0), BackgroundColor3 = color, ZIndex = z })
+	local g = UI.New("UIGradient", { Transparency = NumberSequence.new(1), Parent = f })
+	if colorSeq then
+		g.Color = colorSeq
+	end
+	local l = { f = f, g = g, y0 = y0, h = y1 - y0 }
+	table.insert(bar.layers, l)
+	return l
+end
+
+function UI.FightBar(parent, props, opts)
+	opts = opts or {}
+	local bg = UI.Frame(parent, props)
+	bg.BackgroundTransparency = 1
+	if not (props and props.Name) then
+		bg.Name = "FightBar"
+	end
+	local z = bg.ZIndex
+	local bar = setmetatable({
+		bg = bg, right = opts.side == "R", slant = opts.slant or 0.8, n = math.clamp(opts.segments or 0, 0, 5), low = opts.low,
+		v = 1, disp = 1, ghostV = 1, capV = 1, hold = 0, flashA = 1, healA = 1, healLo = 1, stun = 0, stunOn = false, shimP = -1,
+		riseAt = -1, clock = 0, a = 0.03, absKey = "", heal = opts.heal ~= false, gainA = 1, layers = {},
+		trackColor = opts.track or T.ink, lowOn = false,
+	}, FightBar)
+	bar.track = barLayer(bar, "Track", 0, 1, bar.trackColor, z)
+	bar.ghostL = barLayer(bar, "Ghost", 0, 1, opts.ghost or T.red, z + 1)
+	-- the fill: a touch darker at the corner end, lit toward the leading edge
+	bar.fillL = barLayer(bar, "Fill", 0, 1, opts.color or T.green, z + 2,
+		ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.fromRGB(178, 178, 178)), ColorSequenceKeypoint.new(0.75, Color3.fromRGB(236, 236, 236)), ColorSequenceKeypoint.new(1, WHITE) }))
+	-- the bevel: a lit top band and a shaded bottom edge
+	bar.sheenL = barLayer(bar, "Sheen", 0, 0.42, WHITE, z + 3)
+	bar.shadeL = barLayer(bar, "Shade", 0.72, 1, Color3.new(0, 0, 0), z + 3)
+	bar.healL = barLayer(bar, "Heal", 0, 1, Color3.fromRGB(200, 255, 220), z + 4)
+	if opts.shimmer then
+		bar.shimL = barLayer(bar, "Shimmer", 0, 1, WHITE, z + 4)
+	end
+	if bar.n > 1 then
+		bar.ticksL = barLayer(bar, "Ticks", 0, 1, T.ink, z + 5)
+	end
+	bar.capL = barLayer(bar, "Cap", 0, 1, Color3.fromRGB(64, 10, 18), z + 5)
+	bar.flashL = barLayer(bar, "Flash", 0, 1, WHITE, z + 6)
+	bar.fill, bar.ghost, bar.cap = bar.fillL.f, bar.ghostL.f, bar.capL.f
+	local align = bar.right and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
+	if opts.label then
+		bar.label = UI.Text(bg, opts.label, { Name = "Label", Font = T.semi, TextSize = 13, TextColor3 = WHITE, TextStrokeTransparency = 0.55, ZIndex = z + 7,
+			Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = align, TextWrapped = false })
+		UI.New("UIPadding", { PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 9), Parent = bar.label })
+	end
+	if opts.number then
+		local inner = bar.right and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right
+		bar.value = UI.Text(bg, "", { Name = "Value", Face = "number", TextSize = 16, TextStrokeTransparency = 0.45, ZIndex = z + 7, Size = UDim2.fromScale(1, 1),
+			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = inner, TextWrapped = false })
+		bar.valuePad = UI.New("UIPadding", { Parent = bar.value })
+		-- the recovery between rounds as a number: "+18" beside the value, fading
+		bar.gain = UI.Text(bg, "", { Name = "Gain", Face = "number", TextSize = 14, TextColor3 = Color3.fromRGB(150, 255, 185), TextStrokeTransparency = 0.45, TextTransparency = 1,
+			ZIndex = z + 7, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = inner, TextWrapped = false })
+		bar.gainPad = UI.New("UIPadding", { Parent = bar.gain })
+	end
+	local function reshape()
+		bar:_shape()
+	end
+	bg:GetPropertyChangedSignal("AbsoluteSize"):Connect(reshape)
+	bar:_shape(true)
+	bar:_apply()
+	return bar
+end
+
+-- the slant follows the bar's real aspect (UIGradient rotation is in the frame's own 0..1 space)
+function FightBar:_shape(force)
+	local abs = self.bg.AbsoluteSize
+	local w, h = abs.X, abs.Y
+	if w < 2 or h < 1 then
+		w, h = 400, 20
+	end
+	local key = string.format("%d:%d", w, h)
+	if key == self.absKey and not force then
+		return
+	end
+	self.absKey = key
+	self.a = math.clamp(self.slant * h / w, 0, 0.5)
+	for _, l in ipairs(self.layers) do
+		local rot = math.deg(math.atan(self.a * l.h))
+		l.g.Rotation = self.right and (180 - rot) or rot
+		l.key = nil
+	end
+	-- the number keeps clear of the slanted end
+	if self.valuePad then
+		local s = UDim.new(self.a, 7)
+		self.valuePad.PaddingRight, self.valuePad.PaddingLeft = self.right and UDim.new(0, 0) or s, self.right and s or UDim.new(0, 0)
+		local g = UDim.new(self.a, 36)
+		self.gainPad.PaddingRight, self.gainPad.PaddingLeft = self.right and UDim.new(0, 0) or g, self.right and g or UDim.new(0, 0)
+	end
+	if self.ticksL then
+		local l = self.ticksL
+		local per = 1 / math.max(40, w) / (1 + self.a) -- one screen pixel in gradient t
+		local k = { NumberSequenceKeypoint.new(0, 1) }
+		for i = 1, self.n - 1 do
+			local t = (i / self.n) / (1 + self.a)
+			k[#k + 1] = NumberSequenceKeypoint.new(t - per * 1.5, 1)
+			k[#k + 1] = NumberSequenceKeypoint.new(t - per * 0.75, 0.35)
+			k[#k + 1] = NumberSequenceKeypoint.new(t + per * 0.75, 0.35)
+			k[#k + 1] = NumberSequenceKeypoint.new(t + per * 1.5, 1)
+		end
+		k[#k + 1] = NumberSequenceKeypoint.new(1, 1)
+		l.g.Transparency = NumberSequence.new(k)
+	end
+	if not force then
+		self:_apply()
+	end
+end
+
+-- a layer's gradient t of the bar fraction f along its slanted edge (f <= 0: open at the corner end)
+function FightBar:_t(l, f)
+	if f <= 0 then
+		return -1
+	end
+	return (f - self.a * l.y0) / (1 + self.a * l.h)
+end
+function FightBar:_band(l, fa, fb, alpha)
+	local ta, tb = self:_t(l, fa), self:_t(l, fb)
+	local key = string.format("%.4f %.4f %.3f", ta, tb, alpha)
+	if l.key ~= key then
+		l.key = key
+		l.g.Transparency = bandSeq(ta, tb, alpha)
+	end
+end
+function FightBar:_apply()
+	local d = self.disp
+	self:_band(self.track, 0, 1, 0.12)
+	self:_band(self.ghostL, 0, self.ghostV > d + 0.001 and self.ghostV or 0, 0.05)
+	self:_band(self.fillL, 0, d, 0)
+	self:_band(self.sheenL, 0, d, 0.7)
+	self:_band(self.shadeL, 0, d, 0.72)
+	self:_band(self.healL, math.min(self.healLo, d), d, self.healA)
+	if self.shimL then
+		local p = self.shimP
+		self:_band(self.shimL, p >= 0 and math.max(0, p * d - 0.14) or 0, p >= 0 and p * d or 0, 0.55)
+	end
+	self:_band(self.capL, self.capV, self.capV < 0.999 and 1 or self.capV, 0.08)
+	self:_band(self.flashL, 0, math.max(d, self.ghostV), self.flashA)
+	if self.gain and self.gain.TextTransparency ~= self.gainA then
+		self.gain.TextTransparency = self.gainA
+	end
+end
+
+function FightBar:set(frac, capFrac, color)
+	frac = math.clamp(tonumber(frac) or 0, 0, 1)
+	capFrac = math.clamp(tonumber(capFrac) or 1, 0, 1)
+	if color and self.fill.BackgroundColor3 ~= color then
+		self.fill.BackgroundColor3 = color
+	end
+	if math.abs(frac - self.v) < 1e-4 and math.abs(capFrac - self.capV) < 1e-4 then
+		return
+	end
+	if frac < self.v - 0.002 then
+		-- a hit: the lost chunk stays as a red ghost for a beat, then drains; a big one flashes the bar
+		self.ghostV = math.max(self.ghostV, self.disp)
+		self.hold = 0.42
+		local lost = self.v - frac
+		if lost > 0.02 then
+			self.flashA = math.min(self.flashA, math.max(0.2, 0.62 - lost * 2.4))
+		end
+		self.healA, self.gainA = 1, 1
+	elseif frac > self.v + 0.002 then
+		-- coming back (the corner between rounds, the gas tank refilling): the fill rises, the chunk that
+		-- came back glows, the stamina shimmer runs
+		if self.healA >= 0.999 then
+			self.healLo = self.disp
+		end
+		local gain = frac - self.v
+		if self.heal and gain > 0.03 then
+			self.healA = 0.35
+			if self.gain then
+				self.gain.Text = "+" .. math.floor(gain * 100 + 0.5)
+				self.gainA = 0
+			end
+		end
+		self.riseAt = self.clock
+		if self.shimL and self.shimP < 0 then
+			self.shimP = 0
+		end
+	end
+	self.v, self.capV = frac, capFrac
+	if self.value then
+		self.value.Text = tostring(math.floor(frac * 100 + 0.5))
+	end
+	self:_shape()
+	self:_apply()
+	liveWake(self)
+end
+
+-- rocked / stunned: the bar strobes white while it holds (the server's hurt flag)
+function FightBar:stunned(on)
+	on = on == true
+	if on and not self.stunOn then
+		self.stun = 0.9
+		liveWake(self)
+	end
+	self.stunOn = on
+end
+function FightBar:flash(strength)
+	self.flashA = math.min(self.flashA, 1 - math.clamp(tonumber(strength) or 0.5, 0, 1))
+	self:_apply()
+	liveWake(self)
+end
+
+function FightBar:_step(dt)
+	if not self.bg.Parent then
+		return false
+	end
+	self.clock += dt
+	local busy = false
+	-- the fill eases to its value: quick down (a hit lands now), slower up (recovery reads as recovery)
+	if self.disp ~= self.v then
+		self.disp = approach(self.disp, self.v, self.v > self.disp and 3.2 or 18, dt)
+		busy = true
+	end
+	if self.ghostV > self.disp + 0.0005 then
+		if self.hold > 0 then
+			self.hold -= dt
+		else
+			self.ghostV = math.max(self.disp, approach(self.ghostV, self.disp, 3.6, dt) - dt * 0.04)
+		end
+		busy = true
+	else
+		self.ghostV = self.disp
+	end
+	if self.healA < 1 then
+		if self.disp >= self.v - 0.002 then
+			self.healA = math.min(1, self.healA + dt * 0.55)
+		end
+		busy = true
+	end
+	if self.gainA < 1 then
+		if self.clock - self.riseAt > 1.4 then
+			self.gainA = math.min(1, self.gainA + dt * 1.2)
+		end
+		busy = true
+	end
+	if self.stun > 0 then
+		self.stun -= dt
+		self.flashA = (self.stun > 0 and (self.stun % 0.3) > 0.15) and 0.45 or math.max(self.flashA, 0.9)
+		busy = true
+	elseif self.flashA < 1 then
+		self.flashA = math.min(1, self.flashA + dt * 2.8)
+		busy = true
+	end
+	if self.shimP >= 0 then
+		self.shimP += dt * 1.25
+		if self.shimP > 1.12 then
+			self.shimP = (self.clock - self.riseAt < 0.5) and 0 or -1
+		end
+		busy = true
+	end
+	-- danger: the track throbs red while the value sits at or under `low`
+	if self.low and self.v > 0 and self.v <= self.low then
+		local p = math.sin(self.clock * 7) * 0.5 + 0.5
+		self.track.f.BackgroundColor3 = self.trackColor:Lerp(T.redDeep, 0.35 + 0.5 * p)
+		self.lowOn = true
+		busy = true
+	elseif self.lowOn then
+		self.lowOn = false
+		self.track.f.BackgroundColor3 = self.trackColor
+	end
+	self:_apply()
+	return busy
+end
+
+-- UI.Meter(parent, props, opts): the rounded condition meter (gym HUD, hub tiles) in the same finish as
+-- the fight bars: the sheen, an eased fill, a ghost that holds then drains when the value drops, a soft
+-- glow when it comes back. opts.color, opts.ghost. Returns a meter: meter:set(frac, color?); fields
+-- bg, fill, ghost, v.
+local Meter = {}
+Meter.__index = Meter
+function UI.Meter(parent, props, opts)
+	opts = opts or {}
+	local bg = UI.Frame(parent, props)
+	if not (props and props.Name) then
+		bg.Name = "Meter"
+	end
+	bg.BackgroundColor3 = T.ink
+	bg.BackgroundTransparency = 0.2
+	local h = bg.Size.Y.Offset
+	local r = h > 0 and math.ceil(h / 2) or 4
+	UI.Corner(bg, r)
+	UI.Stroke(bg, WHITE, 1, 0.92)
+	local z = bg.ZIndex
+	local ghost = UI.Frame(bg, { Name = "Ghost", Size = UDim2.fromScale(1, 1), BackgroundColor3 = opts.ghost or T.redLight, BackgroundTransparency = 1, ZIndex = z + 1 })
+	UI.Corner(ghost, r)
+	local fill = UI.Frame(bg, { Name = "Fill", Size = UDim2.fromScale(1, 1), BackgroundColor3 = opts.color or T.green, ZIndex = z + 2 })
+	UI.Corner(fill, r)
+	UI.Gradient(fill, { WHITE, Color3.fromRGB(180, 180, 180) }, 90)
+	if h >= 5 then
+		local sheen = UI.Frame(fill, { Name = "Sheen", Size = UDim2.new(1, 0, 0.45, 0), BackgroundColor3 = WHITE, BackgroundTransparency = 0.7, ZIndex = z + 3 })
+		UI.Corner(sheen, r)
+		UI.Gradient(sheen, WHITE, 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(0.5, 0.2), NumberSequenceKeypoint.new(1, 0.7) }))
+	end
+	local glow = UI.Frame(fill, { Name = "Glow", Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 1, ZIndex = z + 3 })
+	UI.Corner(glow, r)
+	return setmetatable({ bg = bg, fill = fill, ghost = ghost, glow = glow, v = -1, disp = 0, ghostV = 0, hold = 0, glowA = 1 }, Meter)
+end
+function Meter:set(frac, color)
+	frac = math.clamp(tonumber(frac) or 0, 0, 1)
+	if color and self.fill.BackgroundColor3 ~= color then
+		self.fill.BackgroundColor3 = color
+	end
+	if math.abs(frac - self.v) < 1e-4 then
+		return
+	end
+	if self.v < 0 then
+		-- the first value lands as it is
+		self.v, self.disp, self.ghostV = frac, frac, frac
+		self:_apply()
+		return
+	end
+	if frac < self.v then
+		self.ghostV = math.max(self.ghostV, self.disp)
+		self.hold = 0.5
+	elseif frac > self.v + 0.02 then
+		self.glowA = 0.55
+	end
+	self.v = frac
+	liveWake(self)
+end
+function Meter:_apply()
+	self.fill.Size = UDim2.fromScale(self.disp, 1)
+	self.fill.Visible = self.disp > 0.002
+	local g = self.ghostV > self.disp + 0.002
+	self.ghost.BackgroundTransparency = g and 0.25 or 1
+	if g then
+		self.ghost.Size = UDim2.fromScale(self.ghostV, 1)
+	end
+	self.glow.BackgroundTransparency = self.glowA
+end
+function Meter:_step(dt)
+	if not self.bg.Parent then
+		return false
+	end
+	local busy = false
+	if self.disp ~= self.v then
+		self.disp = approach(self.disp, self.v, self.v > self.disp and 3.5 or 14, dt)
+		busy = true
+	end
+	if self.ghostV > self.disp + 0.001 then
+		if self.hold > 0 then
+			self.hold -= dt
+		else
+			self.ghostV = math.max(self.disp, approach(self.ghostV, self.disp, 3.5, dt) - dt * 0.04)
+		end
+		busy = true
+	else
+		self.ghostV = self.disp
+	end
+	if self.glowA < 1 then
+		self.glowA = math.min(1, self.glowA + dt * 0.8)
+		busy = true
+	end
+	self:_apply()
+	return busy
+end
+
 -- segmented meter (n blocks, broadcast style); returns frame and setter(fraction, color?)
 function UI.Segments(parent, n, props, color)
 	local f = UI.Frame(parent, props)

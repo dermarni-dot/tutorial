@@ -18,6 +18,18 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Builder = require(Shared:WaitForChild("Builder"))
 local Officials = require(Shared:WaitForChild("Officials"))
+-- the tournaments' belts and the celebration cutscene's beats (Shared.Tournaments / Shared.BeltModel): optional
+local Tournaments, BeltModel
+do
+	local okT, modT = pcall(function()
+		return require(Shared:WaitForChild("Tournaments", 5))
+	end)
+	Tournaments = okT and type(modT) == "table" and modT or nil
+	local okB, modB = pcall(function()
+		return require(Shared:WaitForChild("BeltModel", 5))
+	end)
+	BeltModel = okB and type(modB) == "table" and modB or nil
+end
 -- R-anim: how fighters go down (DownPose / DownDir / DownDist / KOKind), nil-safe if missing
 local FightMotion
 do
@@ -297,6 +309,13 @@ local function makeFighter(data, model, player)
 	F.noseAtStart = F.dmg.nose == true
 	F.cutAtStart = math.max(F.dmg.cut, F.dmg.cut2)
 	F.dmgStart = table.clone(F.dmg)
+	-- a tournament's later rounds (Career: data.carry = Tourney.Carry): he walks in with what the earlier rounds took
+	-- out of him, as lower head / body health caps (never under 60%)
+	if type(data.carry) == "table" then
+		F.healthCap = 100 * math.clamp(tonumber(data.carry.head) or 1, 0.6, 1)
+		F.bodyCap = 100 * math.clamp(tonumber(data.carry.body) or 1, 0.6, 1)
+		F.health, F.body = F.healthCap, F.bodyCap
+	end
 	return F
 end
 
@@ -696,8 +715,10 @@ function Fight:CheckTier(F)
 			self:Comment(name .. " is OUT ON " .. his(F):upper() .. " FEET! " .. self:Official(true) .. " is watching closely!", true)
 		end
 	end
-	if self.O.ai then
-		self.O.ai:UpdateMode()
+	for _, X in ipairs({ self.P, self.O }) do
+		if X.ai then
+			X.ai:UpdateMode()
+		end
 	end
 end
 
@@ -801,7 +822,8 @@ end
 local MENU_PAUSE = { cap = 60, gap = 3 }
 FightEngine.MENU_PAUSE = MENU_PAUSE
 local CARRY = { "hurtUntil", "stumbleUntil", "clinchUntil", "counterUntil", "angleUntil", "nextClinch", "nextSpecial", "nextPivot", "slipUntil",
-	"rollUntil", "parryUntil", "pivotEvadeUntil", "shellUntil", "lungeUntil", "busyUntil", "dodgeUntil", "dodgeEnd" }
+	"rollUntil", "parryUntil", "pivotEvadeUntil", "shellUntil", "lungeUntil", "busyUntil", "dodgeUntil", "dodgeEnd",
+	"feintOpenUntil", "windUntil", "guardDropUntil", "clinchNext" }
 function Fight:MenuPause(F, on)
 	if self.pvp or not F.isPlayer or self.finished then
 		return
@@ -1564,6 +1586,12 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		dmg *= Evasion.Punish(O.dodgeKind, P.kind) * (caught and Evasion.CAUGHT_DMG or 1)
 	end
 	dmg *= sp.dmg or 1
+	-- the momentum: the man it favours lands a little heavier (Config.FightDepth.momDmg)
+	dmg *= 1 + DEPTH.momDmg * self:Mom(F)
+	-- slipping INTO a hook (toward the hand it comes from) walks onto it
+	if slipping and P.kind == "hook" and O.slipDir == (F.hand == "L" and 1 or -1) then
+		dmg *= 1.15
+	end
 	local counter = false
 	if now < F.counterUntil then
 		counter = true
@@ -1583,6 +1611,12 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	elseif rolling and P.kind == "uppercut" then
 		dmg *= 1.4
 		counter = true
+	end
+	-- a Counter Specialist's counter into a flurry (the 3rd+ punch of a combination, or a busy spell)
+	local cs = self:Trait(F, "CounterSpecialist")
+	if counter and cs > 0 and ((O.chain and not O.chain.closed and O.chain.punches >= 3) or self:RecentThrows(O, 4) >= 7) then
+		dmg *= 1 + Traits.Effect("CounterSpecialist", "counter", cs)
+		self:TraitFired(F, "CounterSpecialist")
 	end
 	-- reference head damage for "how big was that": a solid cross at full strength is about 1
 	local hdRef = 6 * HEAD_SCALE * self.damageScale
@@ -1613,6 +1647,10 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	-- landed
 	F.tally.landed += 1
 	F.totals.landed += 1
+	F.typeStats.landed += 1
+	if counter then
+		F.typeStats.counters += 1
+	end
 	if ptype ~= "jab" then
 		F.tally.power += 1
 		F.totals.power += 1
@@ -1626,9 +1664,15 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		F.tally.body += 1
 		F.totals.body += 1
 		local armor = (type(O.data.mods) == "table" and tonumber(O.data.mods.bodyArmor)) or 1
-		local bd = dmg * 0.8 * (1.2 - os_.Endurance / 200) * (P.body or 1) * armor
+		-- Body Armor (the ring trait): body shots barely bother him, and drain less of his gas
+		local ba = self:Trait(O, "BodyArmor")
+		local baCut = Traits.Effect("BodyArmor", "dmg", ba)
+		local bd = dmg * 0.8 * (1.2 - os_.Endurance / 200) * (P.body or 1) * armor * (1 - baCut)
+		if ba > 0 then
+			self:TraitFired(O, "BodyArmor")
+		end
 		O.body = math.max(0, O.body - bd)
-		O.stamina = math.max(0, O.stamina - dmg * 0.6 * (P.body or 1))
+		O.stamina = math.max(0, O.stamina - dmg * 0.6 * (P.body or 1) * (1 - Traits.Effect("BodyArmor", "drain", ba)))
 		O.health = math.max(0, O.health - dmg * 0.15)
 		O.lastBodyHitAt = now
 		-- rib bruising on the side that was hit (a left hand lands on the right flank)
@@ -1644,7 +1688,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		if O.body <= 0 or (O.body < 25 and bd >= 5 * self.damageScale and self.rng:NextNumber() < 0.22) then
 			kd, severity = true, "normal"
 		elseif ptype == "leadhook" and F.hand == "L" and O.body < (sp.liver and 85 or 60) and self.allowKD
-			and self.rng:NextNumber() < (sp.liver and 0.4 or 0.12) * (1.2 - os_.Endurance / 100) * math.clamp(bd / (5 * self.damageScale), 0.5, 1.5) then
+			and self.rng:NextNumber() < (sp.liver and 0.4 or 0.12) * (1.2 - os_.Endurance / 100) * math.clamp(bd / (5 * self.damageScale), 0.5, 1.5) * (1 - baCut) then
 			-- the liver sits under the right ribs: a left hook there drops people a beat AFTER it lands (the
 			-- liver-shot special is aimed at it and folds a man who is nowhere near done)
 			liver = true
@@ -1653,6 +1697,17 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	else
 		local chinMul = 1.35 - os_.Chin / 100 * 0.7
 		local hd = dmg * HEAD_SCALE * chinMul * (P.head or 1) * (O.dmg.cut > 0.5 and 1.08 or 1) * (1 + KO.tierDamage * O.tier)
+		-- Iron Chin (the ring trait): power shots to the head do less, and drop him less; it cracks as his body
+		-- and his gas go (the counter is the body work)
+		local ic = ptype ~= "jab" and self:Trait(O, "IronChin") or 0
+		local icK = 0
+		if ic > 0 then
+			icK = math.clamp(O.body / 100 + 0.2, 0.3, 1) * (O.stamina < O.maxStam * 0.3 and 0.7 or 1)
+			hd *= 1 - Traits.Effect("IronChin", "dmg", ic) * icK
+			if hd >= hdRef * 0.8 then
+				self:TraitFired(O, "IronChin")
+			end
+		end
 		self:HeadDamage(O, hd)
 		O.lastHitAt = now
 		F.damageDealt += hd
@@ -1679,15 +1734,25 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 			if self.tutorial and Tutorial and not O.isPlayer then
 				p *= Tutorial.KoMul(self.tutorial)
 			end
-			if self.rng:NextNumber() < p then
+			-- the ring traits on the knockdown odds (capped together: Traits.CAP.kd)
+			local full = p
+			local gr = self:Trait(O, "Granite")
+			local kdCut = math.min(Traits.CAP.kd, Traits.Effect("IronChin", "kd", ic) * icK + Traits.Effect("Granite", "kd", gr))
+			p *= 1 - kdCut
+			local kdRoll = self.rng:NextNumber()
+			if kdRoll < p then
 				kd = true
 				severity = (flash and tierBefore == 0) and "flash" or nil
+			elseif kdRoll < full then
+				-- he should have gone down
+				self:TraitFired(O, gr > 0 and "Granite" or "IronChin")
 			end
 		end
 		O.conc = math.min(1, O.conc + hd * CONC.perHeadDamage * (P.ko or 1) * (1.3 - os_.Chin / 150))
 		O.concPeak = math.max(O.concPeak, O.conc)
 		-- balance: hooks and uppercuts take the legs, footwork keeps them
 		local loss = (P.stun or 10) * math.clamp(rel, 0.2, 2.5) * (1.3 - os_.Footwork / 200) * (1 + 0.25 * O.tier) * (counter and 1.3 or 1)
+		loss *= 1 - Traits.Effect("Granite", "balance", self:Trait(O, "Granite"))
 		O.balance -= loss
 		if kd then
 			severity = severity or self:Severity(O, rel)
@@ -1698,6 +1763,8 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	if heavy then
 		O.hurtUntil = now + 1.4 + rel * 0.6
 	end
+	-- the momentum swings with the work: a clean shot, more for a big one and for a counter
+	self:Swing(F, 0.02 + 0.015 * math.min(rel, 2) + (counter and 0.04 or 0) + (heavy and 0.04 or 0))
 	local sev = math.clamp(rel * 0.6 * (counter and 1.15 or 1), 0, 1.5)
 	if body then
 		self:SetAct(O, string.format("hitbody|%s|%s|%.2f", ptype, F.hand == "L" and "R" or "L", sev))
@@ -1736,6 +1803,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 				away = unitOr(away * 0.7 + lateral * 0.6, away)
 			end
 			self:Stumble(O, away, math.clamp(0.4 + rel * 0.35 + O.tier * 0.15, 0.3, 1.5))
+			self:Swing(F, 0.06)
 		end
 	end
 
@@ -2010,6 +2078,10 @@ function Fight:CanClinch(F)
 end
 
 function Fight:Clinch(F)
+	if F.state == "clinch" then
+		-- the clinch key in a clinch: break it with a shove (Fight:BreakClinch)
+		return self:BreakClinch(F)
+	end
 	if not self:CanClinch(F) then
 		return
 	end
@@ -2026,8 +2098,10 @@ function Fight:Clinch(F)
 		X.stumbleUntil = 0
 		X.stumbleVel = nil
 		X.strain = math.max(X.strain, 0.8)
+		X.clinchHits, X.clinchNext, X.clinchAt = 0, now + 0.3, now
 	end
 	-- holding buys a hurt fighter time: a little head HP, the legs come back
+	self.clinchBy = F
 	self:ClearStun(F, 6 + 3 * F.tier)
 	F.balance = math.min(100, F.balance + 25)
 	F.hurtUntil = math.min(F.hurtUntil, now + 0.6)
@@ -2076,6 +2150,79 @@ function Fight:TieUp()
 	if short > 0.1 then
 		self:Glide(still, self:ClampToRing(still.root.Position - away * short), 10)
 	end
+end
+
+-- Inside the clinch (Config.FightDepth): a punch is a short shot to the body - a fraction of a punch, one every
+-- clinchGap seconds, at most clinchMax a clinch (then the referee breaks them). The man who tied up is holding:
+-- his arms smother clinchSmother of what comes at him. It wears the body and the gas, and the judges see a
+-- little of it (tally.inside).
+function Fight:ClinchWork(F, ptype)
+	local O = self:Other(F)
+	local now = self:Now()
+	if O.state ~= "clinch" or now < F.clinchNext or F.stamina < 2 then
+		return
+	end
+	F.clinchNext = now + DEPTH.clinchGap
+	F.clinchHits += 1
+	F.stamina -= 1.5
+	local P = Config.Punches[ptype] or Config.Punches.leadhook
+	local s, os_ = F.data.stats, O.data.stats
+	local dmg = P.dmg * DEPTH.clinchDmg * (0.55 + s.Power / 110) * F.style.fight.inside * F.classScale * self.damageScale
+	if self.clinchBy == O then
+		dmg *= 1 - DEPTH.clinchSmother
+	end
+	dmg *= 1 - Traits.Effect("BodyArmor", "dmg", self:Trait(O, "BodyArmor"))
+	if self.tutorial and Tutorial then
+		dmg *= Tutorial.DamageMul(self.tutorial, O.isPlayer)
+	end
+	local bd = dmg * (1.2 - os_.Endurance / 200)
+	O.body = math.max(1, O.body - bd)
+	O.stamina = math.max(0, O.stamina - dmg * 0.5)
+	O.lastBodyHitAt = now
+	F.tally.inside = (F.tally.inside or 0) + 1
+	F.damageDealt += bd * 0.5
+	O.damageTaken += bd * 0.5
+	F.hand = F.hand == "L" and "R" or "L"
+	self:SetAct(F, string.format("uppercut|%s|body|0.18|0.35", F.hand))
+	self:SetAct(O, string.format("hitbody|%s|%s|%.2f", ptype, F.hand == "L" and "R" or "L", 0.15))
+	self:Send({ t = "inside", who = self:Who(F), dmg = math.floor(bd * 10) / 10 })
+	self:Swing(F, 0.01)
+	if F.clinchHits >= DEPTH.clinchMax then
+		-- holding and hitting: the referee breaks them
+		self:Send({ t = "announce", text = self.spar and "COACH: \"Break!\"" or "BREAK! The referee pulls them apart." })
+		for _, X in ipairs({ F, O }) do
+			X.clinchUntil = math.min(X.clinchUntil, now)
+			X.busyUntil = math.min(X.busyUntil, now + 0.2)
+		end
+	end
+end
+
+-- The clinch key in a clinch: a shove off the break (after clinchMinHold seconds of it). The pair let go, the
+-- other man is pushed back a step and off balance for a moment, the breaker comes off at an angle
+function Fight:BreakClinch(F)
+	local O = self:Other(F)
+	local now = self:Now()
+	if F.state ~= "clinch" or now - F.clinchAt < DEPTH.clinchMinHold or F.stamina < 3 or self.finished then
+		return false
+	end
+	F.stamina -= 3
+	for _, X in ipairs({ F, O }) do
+		X.state = "idle"
+		X.clinchUntil = now
+		X.busyUntil = math.min(X.busyUntil, now + 0.1)
+	end
+	O.busyUntil = now + DEPTH.breakBusy
+	O.balance = math.max(20, O.balance - DEPTH.breakBalance)
+	F.angleUntil = now + DEPTH.breakAngle
+	F.nextClinch = math.max(F.nextClinch, now + 2)
+	if O.root and F.root and not O.isPlayer then
+		local away = unitOr(flat(O.root.Position - F.root.Position), flat(F.root.CFrame.LookVector))
+		self:Glide(O, self:ClampToRing(O.root.Position + away * 1.2), 9)
+	end
+	self:SetAct(F, "pivot|" .. (self.rng:NextNumber() < 0.5 and "L" or "R"))
+	self:Send({ t = "announce", text = "OFF THE BREAK!" })
+	self:Comment(F.data.name .. " shoves off and comes out at an angle!")
+	return true
 end
 
 ------------------------------------------------------------------------
@@ -2462,6 +2609,7 @@ function Fight:Knockdown(F, by, severity, fall, cause)
 	F.conc = math.min(1, F.conc + add)
 	F.concPeak = math.max(F.concPeak, F.conc)
 	by.tally.kd += 1
+	self:Swing(by, severity == "flash" and 0.25 or 0.4)
 	-- how he goes down (R-anim FightMotion: the punch, the severity, where he stands in the ring)
 	local choice = self:ChooseFall(F, by, severity, cause, fall)
 	fall = choice.pose
@@ -2804,7 +2952,9 @@ function Fight:ClinchSep()
 	return sep
 end
 
-function Fight:MoveAI(F, range, circle)
+-- cut (optional, 0..1): ring generalship - stand on the ring-centre side of him rather than wherever he leads,
+-- so his back stays to the ropes (cutting off the ring); 0 = follow him round
+function Fight:MoveAI(F, range, circle, cut)
 	if not F.hum or F.state == "down" or F.state == "clinch" or self:IsStumbling(F) then
 		return
 	end
@@ -2814,6 +2964,12 @@ function Fight:MoveAI(F, range, circle)
 		away = Vector3.new(1, 0, 0)
 	end
 	away = away.Unit
+	if cut and cut > 0 and self.anchors then
+		local toC = flat(self.anchors.RingCenter.Position - O.root.Position)
+		if toC.Magnitude > 1 then
+			away = unitOr(away * (1 - cut) + toC.Unit * cut, away)
+		end
+	end
 	local MIN_SEP = (self.sp or SPACING).minSep
 	range = math.max(range, MIN_SEP)
 	local rot = CFrame.Angles(0, circle, 0):VectorToWorldSpace(away)
@@ -2950,8 +3106,9 @@ function Fight:UpdateMovement(F, dt)
 			if self:Sprinting(F) then
 				speed *= SPRINT.mul
 			end
-			-- dazed legs and a concussion slow every step
+			-- dazed legs and a concussion slow every step (and Granite is slow on his feet)
 			speed *= (1 - CONC.tierSpeed * F.tier) * (1 - CONC.speed * F.conc)
+			speed *= 1 - Traits.Effect("Granite", "slow", self:Trait(F, "Granite"))
 			-- an NPC paces itself to arrive about when the AI next decides: continuous footwork instead
 			-- of dash-and-stop (its full speed is still there for a long way to go)
 			if not F.isPlayer and F.aiStepSpeed then
@@ -3047,6 +3204,122 @@ end
 ------------------------------------------------------------------------
 -- Per-frame update
 ------------------------------------------------------------------------
+-- once a frame per fighter in a live round: being walked down / on the ropes, the second wind, a breather at
+-- range, the momentum's share; returns his stamina regen multiplier (Config.FightDepth)
+function Fight:DepthRegen(F, now, rdt)
+	local O = self:Other(F)
+	local live = self.live and not self.paused and F.state ~= "down"
+	local mul = 1
+	if not live then
+		F.pressured, F.onRopes = false, false
+		return mul
+	end
+	local dist = self:Distance(F, O)
+	local jab = self:PunchRange(O, "jab")
+	F.pressured = O.state ~= "down" and dist <= jab * DEPTH.pressRange and self:RecentThrows(O, DEPTH.pressWin) >= DEPTH.pressPunches
+	F.onRopes = self:OnRopes(F)
+	local st = O.typeStats
+	st.liveT += rdt
+	if F.pressured or (F.onRopes and dist <= jab * 1.1) then
+		st.pressT += rdt
+	end
+	if F.pressured then
+		local proof = self:Trait(F, "PressureProof")
+		if proof > 0 then
+			-- (doesn't wilt; his corner never needs telling, the other man's does now and then)
+			if self.rng:NextNumber() < rdt * 0.2 then
+				self:TraitFired(F, "PressureProof")
+			end
+		else
+			mul *= DEPTH.pressRegen
+		end
+	end
+	if F.onRopes then
+		local rm = self:RopeMul(F)
+		mul *= 1 - (1 - DEPTH.ropeRegen) * rm
+		if rm < 0.999 and self.rng:NextNumber() < rdt * 0.25 then
+			self:TraitFired(F, "RingGeneral")
+		end
+	end
+	-- a breather: no punch for a moment and out at range
+	if now - F.lastPunch > DEPTH.breatheAfter and dist > jab and not F.blocking then
+		mul *= DEPTH.breatheRegen
+	end
+	-- the second wind: gassed for a while and not punching -> a surge, once a fight (twice for the fittest)
+	if F.stamina < F.maxStam * DEPTH.windAt and F.state ~= "punching" and not self.tutorial then
+		F.gassedFor += rdt
+		if F.gassedFor >= DEPTH.windAfter and F.windLeft > 0 and now >= F.windUntil then
+			F.windLeft -= 1
+			F.winds += 1
+			F.windUntil = now + DEPTH.windTime
+			F.gassedFor = 0
+			F.stamina = math.min(F.stamCap, F.stamina + F.maxStam * DEPTH.windGive)
+			self:SendEach(function(V)
+				return { t = "intel", hint = V == F and "SECOND WIND! Breathe and go again." or (F.data.name .. " has found a second wind!"), tone = V == F and "good" or "warn", wind = V == F or nil }
+			end)
+			self:Comment(F.data.name .. " has found a second wind!")
+		end
+	elseif F.stamina > F.maxStam * (DEPTH.windAt + 0.1) then
+		F.gassedFor = 0
+	end
+	if now < F.windUntil then
+		mul *= DEPTH.windRegen
+	end
+	mul *= 1 + DEPTH.momRegen * self:Mom(F)
+	return mul
+end
+
+-- every few frames of a live round: the momentum drifts back to even and the clients get it (and the live score)
+function Fight:UpdateIntel(dt, now)
+	if not self.live or self.paused then
+		return
+	end
+	local m = self.mom or 0
+	local k = DEPTH.momDecay * dt
+	self.mom = m > 0 and math.max(0, m - k) or math.min(0, m + k)
+	self.momSum = (self.momSum or 0) + (self.mom or 0) * dt
+	self.intelAcc = (self.intelAcc or 0) + dt
+	if self.intelAcc < 0.5 then
+		return
+	end
+	self.intelAcc = 0
+	local q = math.floor((self.mom or 0) * 20 + 0.5) / 20
+	local live = self.tutorial == nil and not self.spar
+	local card = nil
+	if live and now >= (self.judgesAt or 0) then
+		self.judgesAt = now + 2
+		card = self:LiveCard()
+	end
+	if q == self.momSent and not card then
+		return
+	end
+	self.momSent = q
+	self:SendEach(function(V)
+		local red = V == self.P
+		local msg = { t = "mom", m = red and q or -q }
+		if card then
+			msg.d = red and card.d or -card.d
+			msg.cards = {}
+			for j, c in ipairs(card.cards) do
+				msg.cards[j] = red and { c[1], c[2] } or { c[2], c[1] }
+			end
+			msg.round = self.round
+		end
+		return msg
+	end)
+end
+
+-- the live score (the judge-scoring visibility option): this round's work so far (the red corner's lead in the
+-- judges' points) and the three cards through the last round
+function Fight:LiveCard()
+	local d = self:RoundPoints(self.P, self.O) - self:RoundPoints(self.O, self.P)
+	local cards = {}
+	for j = 1, 3 do
+		cards[j] = { self.cards[j][1], self.cards[j][2] }
+	end
+	return { d = math.floor(d * 10 + 0.5) / 10, cards = cards }
+end
+
 function Fight:Update(dt)
 	local now = self:Now()
 	-- while the Moves & Controls menu holds the round nobody recovers: no stamina, no clearing head, no legs
@@ -3085,6 +3358,7 @@ function Fight:Update(dt)
 		if F.dmg.nose then
 			regen *= 0.85
 		end
+		regen *= self:DepthRegen(F, now, rdt)
 		-- Shift in the ring: quicker feet cost stamina while he moves (none comes back meanwhile)
 		if self:Sprinting(F) and F.hum.MoveDirection.Magnitude > 0.1 then
 			F.stamina = math.max(0, F.stamina - SPRINT.drain * rdt)
@@ -3129,12 +3403,16 @@ function Fight:Update(dt)
 			F.gassedNoted = false
 		end
 	end
-	if self.O.ai then
-		self.O.ai:Observe(dt)
-		if self.live and not self.paused and not self.menuPending then
-			self.O.ai:Think(now)
+	-- (the AI: the blue corner's; the balance sims give the red corner one too)
+	for _, F in ipairs(self.pair or { self.P, self.O }) do
+		if F.ai then
+			F.ai:Observe(self.menuHold and 0 or dt)
+			if self.live and not self.paused and not self.menuPending then
+				F.ai:Think(now)
+			end
 		end
 	end
+	self:UpdateIntel(self.menuHold and 0 or dt, now)
 	for _, F in ipairs(self.pair or { self.P, self.O }) do
 		if F.blocking then
 			F.blockTime = (F.blockTime or 0) + dt
@@ -3279,13 +3557,22 @@ function FightEngine.MustScore(diff, kdA, kdB)
 	return loser, 10
 end
 
+-- a fighter's work in the round as the judges see it: clean punches, power, body work, activity, inside work in
+-- the clinch, minus the holding, plus the other man's misses, plus a little of the round's momentum (effective
+-- aggression and ring generalship: Config.FightDepth.momScore at a round spent all his way)
+function Fight:RoundPoints(F, other)
+	local t = F.tally
+	local mom = (self.momSum or 0) / math.max(1, self.roundSeconds or 60)
+	if F ~= self.P then
+		mom = -mom
+	end
+	return t.landed * 1 + t.power * 0.8 + t.body * 0.5 + t.thrown * 0.04 - t.clinches * 0.3 + (other.tally.thrown - other.tally.landed) * 0.03
+		+ (t.inside or 0) * 0.3 + DEPTH.momScore * math.clamp(mom, -1, 1)
+end
+
 function Fight:ScoreRound()
 	local P, O = self.P, self.O
-	local function pts(F, other)
-		local t = F.tally
-		return t.landed * 1 + t.power * 0.8 + t.body * 0.5 + t.thrown * 0.04 - t.clinches * 0.3 + (other.tally.thrown - other.tally.landed) * 0.03
-	end
-	local pP, pO = pts(P, O), pts(O, P)
+	local pP, pO = self:RoundPoints(P, O), self:RoundPoints(O, P)
 	local round = {}
 	for j = 1, 3 do
 		local diff = pP - pO + self.rng:NextNumber(-1.6, 1.6) * (j == 3 and 1.4 or 1)
@@ -3336,6 +3623,27 @@ function Fight:CornerAdvice(P)
 		table.insert(tips, "They're HURT! Go get them, but don't get careless.")
 	elseif O.ai and O.ai.mode == "pressure" then
 		table.insert(tips, "They're coming forward now - pivot (Z/X) and make them pay with counters.")
+	end
+	-- the ring traits we know about against what we're doing tonight (Shared.Traits), then his eyes, then his read
+	local myType = self:FightingType(P)
+	for _, t in ipairs(O.traits or {}) do
+		if O.traitSeen[t.id] and Traits.Resists(t.id, myType) then
+			local D = Traits.Data[t.id]
+			table.insert(tips, string.format("%s, and you're fighting like a %s. %s", D.name, Traits.Types[myType].name:lower(), D.counter))
+			break
+		end
+	end
+	for _, side in ipairs({ 1, -1 }) do
+		if self:Blind(O, side) > 0.45 then
+			table.insert(tips, string.format("His %s eye is closing - work the %s hand, he can't see it coming.", side == 1 and "right" or "left", side == 1 and "left" or "right"))
+			break
+		end
+	end
+	if O.ai and O.ai.read then
+		local fav, share = O.ai.read:Favourite()
+		if fav and share > 0.42 and O.ai.read.total > 8 then
+			table.insert(tips, string.format("He's reading your %s. Mix it up, feint it, then throw something else.", (Config.PunchNames[fav] or fav):lower()))
+		end
 	end
 	local lead = self:EstimateLead(P)
 	if lead < 0 then
@@ -3512,6 +3820,8 @@ function Fight:Entrance()
 	local isStadium = self.venue == "Stadium"
 	pcall(Builder.SetRobe, O.model, O.data.app, true, O.data.lookOpts)
 	pcall(Builder.SetRobe, P.model, P.data.app, true, P.data.lookOpts)
+	-- a tournament belt he won, round the waist over the robe for the walk (data.walkBelt: Tourney.WornBelt)
+	self:WalkBelt(P, true)
 	self:Place(O, self.anchors.BlueEntrance.Position, self.anchors.RingCenter.Position)
 	self:Place(P, self.anchors.RedEntrance.Position, self.anchors.RingCenter.Position)
 	for _, F in ipairs({ P, O }) do
@@ -3536,6 +3846,36 @@ function Fight:Entrance()
 	self:Place(P, self.anchors.RedCorner.Position)
 	pcall(Builder.SetRobe, P.model, P.data.app, false)
 	pcall(Builder.SetRobe, O.model, O.data.app, false)
+	self:WalkBelt(P, false)
+end
+
+-- the ring walk's belt (on = true builds it round the LowerTorso, false takes it off): BeltModel's worn loop, welded
+function Fight:WalkBelt(F, on)
+	if F.walkBelt then
+		F.walkBelt:Destroy()
+		F.walkBelt = nil
+	end
+	local key = F.data and F.data.walkBelt
+	if not (on and key and BeltModel and Tournaments and F.model) then
+		return
+	end
+	pcall(function()
+		local lt = F.model:FindFirstChild("LowerTorso")
+		local design = Tournaments.Design(key, Config.Orgs)
+		if not (lt and design) then
+			return
+		end
+		-- over the robe: a little wider than the bare waist
+		local robe = F.model:FindFirstChild("BoxerLook") and F.model.BoxerLook:FindFirstChild("Robe")
+		local pad = robe and 0.28 or 0.04
+		local m = BeltModel.Build(design, { mode = "worn", waist = lt.Size + Vector3.new(pad, 0, pad), anchored = false, cframe = lt.CFrame * CFrame.new(0, 0.05, 0), name = "WalkBelt" })
+		local w = Instance.new("WeldConstraint")
+		w.Part0 = lt
+		w.Part1 = m.PrimaryPart
+		w.Parent = m.PrimaryPart
+		m.Parent = F.model
+		F.walkBelt = m
+	end)
 end
 
 -- Before every round: both fighters stand in their own corners, held there (no steps, no punches - the
@@ -3627,10 +3967,59 @@ local function femaleOf(F)
 	return type(F.data.app) == "table" and F.data.app.gender == 2
 end
 
+-- a round's fresh start (Run, and the balance sims' own loop): the tallies, the round's momentum for the judges,
+-- the AI's game plan
+function Fight:StartRound(r)
+	self.round = r
+	self.momSum = 0
+	for _, F in ipairs({ self.P, self.O }) do
+		F.tally = { landed = 0, power = 0, body = 0, thrown = 0, kd = 0, clinches = 0, inside = 0 }
+		F.guardOverride = nil
+		F.exprOverride = nil
+		self:UpdateGuard(F)
+	end
+	for _, F in ipairs({ self.P, self.O }) do
+		if F.ai then
+			F.ai:UpdateMode()
+		end
+	end
+end
+
+-- the ring traits on tonight: an AI boxer's (Shared.Traits) in a career bout only - never in a spar, the tutorial
+-- or the guided debut, never for a player
+function Fight:EnableTraits()
+	for _, F in ipairs({ self.P, self.O }) do
+		F.traits = {}
+		if not F.isPlayer and not self.spar and not self.tutorial and not self.pvp then
+			F.traits = F.traitsAll or {}
+		end
+	end
+end
+
+-- the scouting of F's traits for the tale of the tape (Traits.Scout: on the tapes, met before, an elite corner)
+function Fight:ScoutTraits(F, viewer)
+	if #F.traits == 0 then
+		return nil
+	end
+	local list = Traits.Scout(F.traits, { fights = F.data.record, h2h = F.data.h2h, elite = viewer and viewer.data.eliteCorner })
+	local out = {}
+	for _, t in ipairs(list) do
+		local D = Traits.Data[t.id]
+		if t.known then
+			F.traitSeen[t.id] = true
+			table.insert(out, { id = t.id, name = D.name, desc = D.desc, counter = D.counter })
+		else
+			table.insert(out, { hidden = true })
+		end
+	end
+	return out
+end
+
 function Fight:Run()
 	local P, O = self.P, self.O
 	local offer = self.offer
 	self.knockdowns = {}
+	self:EnableTraits()
 	for _, F in ipairs({ P, O }) do
 		setAttr(F.model, "Style", F.style.id)
 		self:SyncAttrs(F)
@@ -3645,6 +4034,8 @@ function Fight:Run()
 			t.rating = self.pvp and F.data.pvpRating or nil
 		else
 			t.archetype = (Config.FindById(Config.Archetypes, F.data.archetype) or {}).name
+			-- the scouting report on his ring traits (the hidden ones as "?"; revealed in the fight: `trait`)
+			t.traits = self:ScoutTraits(F, self:Other(F))
 		end
 		return t
 	end
@@ -3695,15 +4086,7 @@ function Fight:Run()
 			break
 		end
 		self.round = r
-		for _, F in ipairs({ P, O }) do
-			F.tally = { landed = 0, power = 0, body = 0, thrown = 0, kd = 0, clinches = 0 }
-			F.guardOverride = nil
-			F.exprOverride = nil
-			self:UpdateGuard(F)
-		end
-		if O.ai then
-			O.ai:UpdateMode()
-		end
+		self:StartRound(r)
 		self:SetSweat(math.min(1, (r - 1) / math.max(1, self.rounds - 1) * 1.1 + 0.1))
 		-- (a Shift held over the bell is let go here and on the client's `round`: a fresh press for the new round)
 		P.sprintOn, O.sprintOn = false, false
@@ -3875,6 +4258,17 @@ function Fight:ResultFor(F, base)
 	res.combos = { chains = cs.chains, landed = cs.landed, best = cs.best, bestName = cs.bestName, named = table.clone(cs.named) }
 	res.oppCombos = { landed = O.comboStats.landed, best = O.comboStats.best, bestName = O.comboStats.bestName }
 	res.dodges, res.evades = F.dodges, F.evades
+	-- the deeper fight: his fighting type tonight (Traits.FightingType), the other man's ring traits he found out,
+	-- feints that drew a bite, second winds
+	res.fightType = (self:FightingType(F))
+	local found = {}
+	for _, t in ipairs(O.traits or {}) do
+		if O.traitSeen[t.id] then
+			table.insert(found, t.id)
+		end
+	end
+	res.oppTraits = found
+	res.feints, res.feintBites, res.secondWinds = F.feints, F.feintBites, F.winds
 	return res
 end
 
@@ -3945,6 +4339,150 @@ function Fight:RestorePlayer(P)
 		end
 		pcall(Builder.SetSweat, P.model, P.data.app, 0)
 	end
+end
+
+------------------------------------------------------------------------
+-- The celebration cutscene (FightEngine.Run opts.ceremony = Tourney.CeremonyFor's spec: belt key, kicker, title,
+-- event, name), after the final bell of a won tournament final or a new title. The server owns it: it stands the
+-- winner in the centre of the ring, brings the referee to his side and an official in with the belt, sets the poses
+-- (Pose on a "Trainee": BoxerClient.AnimCeremony's poses, played by the Animator) on the shared beats
+-- (Shared.Tournaments.Ceremony), and tells the winner's client once (t = "ceremony"). The client
+-- (BoxerClient.Ceremony) runs the camera, confetti, pyro, spotlights, the banner and the belt's visuals, and may
+-- cut it short (t = "ceremonySkip"); "ceremonyEnd" closes it either way. Nothing is awarded here: Career does that.
+------------------------------------------------------------------------
+local function setPose(model, pose)
+	if model and model.Parent then
+		model:SetAttribute("Pose", pose)
+	end
+end
+
+function Fight:Ceremony(spec)
+	local P, O = self.P, self.O
+	local B = Tournaments and Tournaments.Ceremony
+	if not (B and P.model and P.model.Parent and P.root and self.anchors.RingCenter) then
+		return
+	end
+	local center = self.anchors.RingCenter.Position
+	local toRed = flat(self.anchors.RedCorner.Position - center)
+	toRed = toRed.Magnitude > 0.1 and toRed.Unit or Vector3.new(0, 0, -1)
+	-- he faces a ring side (between his corner and the next post), the hard camera's side
+	local face = CFrame.Angles(0, math.rad(45), 0):VectorToWorldSpace(toRed)
+	local right = face:Cross(Vector3.yAxis)
+	self:Place(P, center, center + face * 10)
+	if O.model and O.model.Parent then
+		self:Place(O, self.anchors.BlueCorner.Position, center)
+	end
+	if P.hum then
+		P.hum.WalkSpeed = 0
+		P.hum.AutoRotate = false
+	end
+	-- the winner's poses come from the Animator's Trainee path (a Fighter plays guards only)
+	CollectionService:RemoveTag(P.model, "Fighter")
+	CollectionService:AddTag(P.model, "Trainee")
+	setPose(P.model, "cerProud")
+	local function stand(model, pos, look)
+		local root = model and model:FindFirstChild("HumanoidRootPart")
+		local hum = model and model:FindFirstChildOfClass("Humanoid")
+		if root then
+			local y = center.Y + standHeight(hum, root)
+			model:PivotTo(CFrame.lookAt(Vector3.new(pos.X, y, pos.Z), Vector3.new(look.X, y, look.Z)))
+			root.AssemblyLinearVelocity = Vector3.zero
+		end
+	end
+	-- the referee at his right shoulder, facing the same way (his left hand takes the winner's right)
+	local refModel = self.ref and self.ref.model
+	if refModel and refModel.Parent then
+		local at = center + right * 2.1
+		stand(refModel, at, at + face * 5)
+		if self.ref.hum then
+			self.ref.hum:MoveTo(at)
+		end
+	end
+	-- the official with the belt, waiting by the ropes in front of him
+	local official
+	pcall(function()
+		local app, build, gear, lopts = Officials.Look(self.rng:NextInteger(1, 2 ^ 30), "referee", { venue = self.venue, kind = "World Title" })
+		official = Builder.CreateNPC(app, build, gear, "Official", lopts)
+	end)
+	if official then
+		official.Name = "Official"
+		for _, d in ipairs(official:GetDescendants()) do
+			if d:IsA("BasePart") then
+				d.CanCollide = false
+				d.CanTouch = false
+			end
+		end
+		official.Parent = self.arena
+		stand(official, center + face * 6.5 - right * 1.2, center)
+		local oroot = official:FindFirstChild("HumanoidRootPart")
+		if oroot then
+			pcall(function()
+				oroot:SetNetworkOwner(nil)
+			end)
+		end
+		CollectionService:AddTag(official, "Trainee")
+	end
+	local ohum = official and official:FindFirstChildOfClass("Humanoid")
+	if ohum then
+		ohum.WalkSpeed = 7
+	end
+	self.ceremonySkip = false
+	self:SendTo(P, { t = "ceremony", spec = spec, winner = P.model, ref = refModel, official = official, center = center, face = face, beats = B })
+	-- the beats (the client's camera runs on the same clock from the message's arrival)
+	local plan = {
+		{ B.raise, function()
+			setPose(refModel, "cerRaise")
+			setPose(P.model, "cerHandUp")
+		end },
+		{ B.walkIn, function()
+			setPose(refModel, "cerClap")
+			setPose(P.model, "cerProud")
+			if ohum then
+				ohum:MoveTo(center + face * 1.75)
+			end
+			if refModel and self.ref.hum then
+				self.ref.hum:MoveTo(center + right * 3.4 + face * 0.6)
+			end
+		end },
+		{ B.strap, function()
+			if official then
+				stand(official, center + face * 1.75, center)
+			end
+			setPose(official, "cerStrap")
+			setPose(P.model, "cerStrapped")
+		end },
+		{ B.strap + 1.5, function()
+			setPose(official, "cerClap")
+			if ohum then
+				ohum:MoveTo(center - right * 2.8 + face * 0.8)
+			end
+		end },
+		{ B.lift, function()
+			setPose(P.model, "cerLift")
+		end },
+		{ B.wide, function()
+			setPose(P.model, "cerCelebrate")
+		end },
+	}
+	local t0 = os.clock()
+	local nextBeat = 1
+	while os.clock() - t0 < B.dur and not self.ceremonySkip and not self.aborted and P.model.Parent and (not self.player or self.player.Parent) do
+		local t = os.clock() - t0
+		while plan[nextBeat] and t >= plan[nextBeat][1] do
+			pcall(plan[nextBeat][2])
+			nextBeat += 1
+		end
+		task.wait(0.05)
+	end
+	self:SendTo(P, { t = "ceremonyEnd", skipped = self.ceremonySkip == true })
+	-- hand the rigs back (Cleanup takes the Fighter attributes off and restores the player)
+	setPose(P.model, nil)
+	setPose(refModel, nil)
+	CollectionService:RemoveTag(P.model, "Trainee")
+	if official then
+		official:Destroy()
+	end
+	task.wait(0.2)
 end
 
 ------------------------------------------------------------------------
@@ -4107,6 +4645,13 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 			return { t = "final", result = self.results and self.results[V] or res, oppName = self:Other(V).data.name, spar = self.spar, pvp = self.pvp }
 		end)
 		task.wait(3)
+		-- the celebration cutscene (a won tournament final / a new title: Career's Tourney.CeremonyFor spec)
+		if type(opts.ceremony) == "table" and res.outcome == "win" and not self.aborted and not self.spar and not self.pvp and not self.tutorial then
+			local okC, errC = pcall(self.Ceremony, self, opts.ceremony)
+			if not okC then
+				warn("[Boxer] ceremony:", errC)
+			end
+		end
 	end
 	self:Cleanup()
 	if FightEngine.Active[player] == self then
@@ -4152,6 +4697,10 @@ function FightEngine.Input(player, msg)
 	if t == "device" then
 		fight:SetDevice(F, msg.pad == true)
 		return
+	elseif t == "ceremonySkip" then
+		-- (the celebration cutscene's SKIP: the server ends its timeline)
+		fight.ceremonySkip = true
+		return
 	elseif t == "pause" then
 		-- (not a fight input: the Moves & Controls window opened / closed)
 		fight:MenuPause(F, msg.on == true)
@@ -4184,6 +4733,8 @@ function FightEngine.Input(player, msg)
 		fight:Pivot(F, msg.dir == -1 and -1 or 1)
 	elseif t == "clinch" then
 		fight:Clinch(F)
+	elseif t == "feint" then
+		fight:Feint(F)
 	elseif t == "sprint" then
 		fight:SetSprint(F, msg.on == true)
 	elseif t == "mash" then

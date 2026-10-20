@@ -212,6 +212,8 @@ local function summary(player)
 	s.debut = { offer = Tutorial.ShouldOfferDebut(profile), rounds = Config.Tiers[1].rounds, venue = debutVenue and debutVenue.name or nil }
 	-- PvP record / rating (read-only view; profile.pvp is created lazily by the first PvP bout)
 	s.pvp = PvP.View(profile)
+	-- the training programme: the weekly plan, the camp's phases and readiness, mastery, goals, coach tips
+	s.training = Training.ProgramView(profile)
 	-- R-ui: always a table (Settings.Supported() checks it); ui = the saved values, or nil before the first save
 	s.settings = type(s.settings) == "table" and s.settings or {}
 	if type(profile.settings) == "table" and type(profile.settings.ui) == "table" then
@@ -2372,6 +2374,17 @@ end
 
 -- Muscle Progression screen (client MuscleScreen): the per-day group history and the training XP.
 -- Neither is in the summary (a 90-row list on every push would be waste): fetched when the screen opens
+-- the weekly training plan (Hub Training tab): a template ("none" clears it), or one day's focus block
+function handlers.SetPlan(player, profile, templateId)
+	local ok, info = Training.SetPlan(profile, type(templateId) == "string" and templateId or nil)
+	return { ok = ok, err = not ok and info or nil, name = ok and info or nil }
+end
+
+function handlers.SetPlanDay(player, profile, index, focusId)
+	local ok, err = Training.SetPlanDay(profile, tonumber(index), focusId)
+	return { ok = ok, err = err }
+end
+
 function handlers.GetMuscleHistory(player, profile)
 	local ok, hist = pcall(Training.MuscleHistory, profile)
 	local xp = tonumber(profile.xp) or 0
