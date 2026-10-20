@@ -1445,6 +1445,10 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		if F.ai and F.ai.obs then
 			F.ai.obs.slips += 1
 		end
+		-- the dodge WON: it is over (a punch that follows is not one that "caught him mid-dodge": no catch bonus,
+		-- no Punish multiplier, no announce for the rest of its recovery)
+		O.dodgeKind = nil
+		O.dodgeEnd = math.min(O.dodgeEnd, now)
 		self:Swing(O, 0.025)
 		self:ChainResult(F, O, sp, "miss")
 		self:Miss(F, O, ptype, "evaded")
@@ -2165,7 +2169,7 @@ end
 function Fight:ClinchWork(F, ptype)
 	local O = self:Other(F)
 	local now = self:Now()
-	if O.state ~= "clinch" or now < F.clinchNext or F.stamina < 2 then
+	if O.state ~= "clinch" or now < F.clinchNext or F.stamina < 2 or F.clinchHits >= DEPTH.clinchMax or now >= F.clinchUntil then
 		return
 	end
 	F.clinchNext = now + DEPTH.clinchGap
@@ -3459,6 +3463,11 @@ function Fight:Protected(F)
 	if F.isPlayer then
 		return not Tutorial.PlayerCanDrop(tr, self.round)
 	end
+	-- (the debut's final round is a real fight both ways: once the player can be dropped, so can he, even if
+	-- the guide's hold ran out before its last step)
+	if self.debut and (self.round or 0) >= (self.rounds or math.huge) then
+		return false
+	end
 	return not Tutorial.CanDrop(tr)
 end
 
@@ -3782,15 +3791,34 @@ function Fight:Rest()
 	end
 end
 
+-- the guided debut's last rest: the held rounds can leave the player at ~30 head HP after long lessons, so the
+-- corner gets him back to his cap for the final round (the one where he can be stopped)
+function Fight:DebutFinalRest()
+	local P = self.P
+	if not P.isPlayer then
+		return
+	end
+	P.health = math.max(P.health, P.healthCap)
+	P.stun = 0
+	P.stamina = math.max(P.stamina, P.stamCap)
+	P.conc = math.min(P.conc, 0.2)
+	self:CheckTier(P)
+end
+
 function Fight:DoctorCheck()
 	for _, F in ipairs({ self.P, self.O }) do
 		local d = F.dmg
 		local why
+		if self:Protected(F) then
+			-- (the guided bout: nobody it protects is stopped by the doctor either - the debut's player before
+			-- the final round)
+			d = { cut = 0, cut2 = 0, leftEye = 0, rightEye = 0 }
+		end
 		if d.cut >= 1 or d.cut2 >= 1 then
 			why = "cut"
 		elseif d.leftEye >= 1 and d.rightEye >= 1 then
 			why = "eyes swollen shut"
-		elseif F.conc >= 0.92 and F.kdTotal >= 2 then
+		elseif F.conc >= 0.92 and F.kdTotal >= 2 and not self:Protected(F) then
 			why = "concussion"
 		end
 		if why then
@@ -3800,7 +3828,9 @@ function Fight:DoctorCheck()
 		end
 	end
 	local O = self.O
-	if not self.spar and not O.isPlayer and (O.healthCap < 40 or O.conc > 0.8) and self:EstimateLead(O) < -2 and self.rng:NextNumber() < 0.3 then
+	-- (never in the guided bout before its final round: the lesson is the player's to finish)
+	local guided = self.tutorial ~= nil and (not self.debut or (self.round or 0) + 1 < (self.rounds or 0) or self:Protected(O))
+	if not self.spar and not guided and not O.isPlayer and (O.healthCap < 40 or O.conc > 0.8) and self:EstimateLead(O) < -2 and self.rng:NextNumber() < 0.3 then
 		self:End(self.P, "RTD", "Opponent's corner retires them")
 	end
 end
@@ -4170,6 +4200,9 @@ function Fight:Run()
 		end
 		if r < self.rounds then
 			self:Rest()
+			if self.debut and r + 1 >= self.rounds then
+				self:DebutFinalRest()
+			end
 			if not self.tutorial or (self.debut and r + 1 >= self.rounds) then
 				self:DoctorCheck()
 			end

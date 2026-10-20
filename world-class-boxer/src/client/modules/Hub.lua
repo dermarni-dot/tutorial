@@ -452,6 +452,15 @@ R.Career = function(body, P)
 		}, 44)
 	else
 		UI.Header(body, "FIGHT OFFERS")
+		-- the guided debut, while it is still on offer (a refused or called-off start never loses it)
+		if type(P.debut) == "table" and P.debut.offer == true and State.open.Debut then
+			local dc = UI.Card(body, { stroke = T.gold })
+			UI.Line(dc, "YOUR DEBUT IS WAITING: a guided amateur bout, your coach in your ear.", { TextColor3 = T.gold, Font = T.semi, TextSize = 14 })
+			UI.Button(dc, "FIGHT MY DEBUT", { Name = "OpenDebut", Size = UDim2.fromOffset(220, math.max(40, UI.MinHit(dc))), BackgroundColor3 = T.gold, TextColor3 = T.ink }, function()
+				Hub.Close()
+				State.open.Debut(P.debut)
+			end)
+		end
 		local myId = renderId
 		local res = State.req("GetOffers")
 		if stale(body, myId) then

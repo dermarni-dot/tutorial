@@ -404,7 +404,21 @@ local function onFight(msg)
 				end
 			end)
 		end
-	elseif t == "bell" or t == "kd" or t == "final" then
+	elseif t == "final" or t == "result" or t == "aborted" then
+		-- (the debut is a career bout: it ends like one, the result screen is ClientMain's; a practice round's
+		-- "final" just hides the card, its tutorialEnd wraps up)
+		if view and view.debut then
+			inBout = false
+			view = nil
+			if card then
+				card:Destroy()
+				card = nil
+			end
+			busy = false
+		elseif t == "final" then
+			setHidden(true)
+		end
+	elseif t == "bell" or t == "kd" then
 		setHidden(true)
 	elseif t == "countdown" then
 		if (tonumber(msg.n) or 0) <= 0 and not (view and view.done) then
@@ -418,17 +432,6 @@ local function onFight(msg)
 	elseif t == "tutorialEnd" then
 		inBout = false
 		Tutorial.Ended(msg)
-	elseif t == "final" or t == "result" or t == "aborted" then
-		-- (the debut is a career bout: it ends like one, the result screen is ClientMain's)
-		if view and view.debut then
-			inBout = false
-			view = nil
-			if card then
-				card:Destroy()
-				card = nil
-			end
-			busy = false
-		end
 	end
 end
 
@@ -559,14 +562,17 @@ function Tutorial.BeginDebut()
 		return false
 	end
 	debutStarting, busy = true, true
-	closeWindow("DebutOffer")
 	local r = State.req("StartDebut")
 	debutStarting = false
 	if not (type(r) == "table" and r.ok) then
-		busy = false
+		-- refused (the character isn't ready after a reset, a server hiccup): the offer stays up to try again
+		local open = root and root:FindFirstChild("DebutOffer") ~= nil
+		busy = open
 		State.toast((type(r) == "table" and r.err) or "Couldn't start your debut right now.", T.red)
 		return false
 	end
+	-- (only once the server has taken it: a refusal must not lose the offer for the session)
+	closeWindow("DebutOffer")
 	return true
 end
 

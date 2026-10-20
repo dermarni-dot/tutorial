@@ -231,6 +231,75 @@ screen("fight_down", function(dev)
 	S.settle(1.2)
 	return S
 end)
+-- the knockdown screen (Client/KnockFX: its ScreenGui, KnockBlur / KnockGrade on the camera) and the get-up
+-- panel's own count; the panel is one tap target as big as itself
+local function knockOn(S)
+	local cam = S.host.globals.workspace.CurrentCamera
+	return find(S, "KnockFX") ~= nil, cam and cam:FindFirstChild("KnockBlur") ~= nil
+end
+local function downTo(S, mash, counts)
+	local fire = S.remotes.FightEvent
+	fire:Fire({ t = "kd", who = "you", severity = "heavy" })
+	fire:Fire({ t = "getupStart", who = "you", target = 12, ability = 0.6, severity = "heavy" })
+	for n = 1, counts do
+		fire:Fire({ t = "count", n = n, who = "you", mash = mash, target = 12 })
+	end
+	S.settle(0.6)
+end
+screen("fight_getup", function(dev)
+	local S = client(dev, { fightOnly = true })
+	startFight(S, S.require("Moves").List)
+	downTo(S, 5, 5)
+	local tag = "fight_getup@" .. dev
+	local gui, blur = knockOn(S)
+	check(tag .. ": the knockdown screen is up", gui and blur, tostring(gui) .. " / " .. tostring(blur))
+	local num = find(S, "FightUI.HUDRoot.GetUp.Body.CountBox.Number")
+	check(tag .. ": the panel carries the count", num ~= nil and num.Text == "5", num and num.Text)
+	local box = find(S, "FightUI.HUDRoot.Count")
+	check(tag .. ": the count box stands aside", box ~= nil and box.Visible == false)
+	return S
+end)
+-- the get-up panel's STAND UP! and COUNTED OUT states
+screen("fight_getup_up", function(dev)
+	local S = client(dev, { fightOnly = true })
+	startFight(S, S.require("Moves").List)
+	downTo(S, 12, 6)
+	S.remotes.FightEvent:Fire({ t = "getup", who = "you" })
+	S.settle(0.3)
+	local t = find(S, "FightUI.HUDRoot.GetUp.Body.Main.Callout")
+	check("fight_getup_up@" .. dev .. ": STAND UP!", t ~= nil and t.Text == "STAND UP!", t and t.Text)
+	return S
+end)
+screen("fight_getup_out", function(dev)
+	local S = client(dev, { fightOnly = true })
+	startFight(S, S.require("Moves").List)
+	downTo(S, 3, 10)
+	local t = find(S, "FightUI.HUDRoot.GetUp.Body.Main.Callout")
+	check("fight_getup_out@" .. dev .. ": COUNTED OUT", t ~= nil and t.Text == "COUNTED OUT", t and t.Text)
+	return S
+end)
+-- knocked out cold, then the result: the knockdown screen is all gone afterwards (no lingering blur)
+screen("fight_ko", function(dev)
+	local S = client(dev, { fightOnly = true })
+	startFight(S, S.require("Moves").List)
+	local fire = S.remotes.FightEvent
+	fire:Fire({ t = "kd", who = "you", severity = "out" })
+	S.settle(0.6)
+	local gui, blur = knockOn(S)
+	check("fight_ko@" .. dev .. ": the knockout screen is up", gui and blur)
+	if dev == "desktop" then
+		-- (a second client: the clean-up after the result)
+		local S2 = client(dev, { fightOnly = true })
+		startFight(S2, S2.require("Moves").List)
+		S2.remotes.FightEvent:Fire({ t = "kd", who = "you", severity = "out" })
+		S2.settle(0.3)
+		S2.remotes.FightEvent:Fire({ t = "result", result = { outcome = "loss", method = "KO" } })
+		S2.settle(0.3)
+		local g2, b2 = knockOn(S2)
+		check("fight_ko@" .. dev .. ": nothing lingers after the result", not g2 and not b2, tostring(g2) .. " / " .. tostring(b2))
+	end
+	return S
+end)
 -- the first-time tutorial bout: the step card (TutorialUI.Root.Prompt) over the real fight HUD, at the step with the
 -- longest text and its checklist (stamina) and at the one with the most key caps (finish, the key strip held up)
 local function tutorialFight(dev, stepId, strip)

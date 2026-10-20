@@ -175,7 +175,8 @@ local setFatigue = miniBar("FATIGUE", T.orange, 4, "pulse")
 local condStrip = UI.Frame(hud, { Name = "CondStrip", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 4, Visible = false })
 UI.List(condStrip, 6, true)
 local condChips = {}
--- (each chip: the meter's icon and its number, tinted by how it stands)
+-- (each chip: the meter's icon and its number, tinted by how it stands: four words and four icons do not fit
+-- the phone's plate, the icons say which meter it is)
 local CHIP_ICONS = { ENERGY = "energy", WATER = "water", FOOD = "food", FATIGUE = "pulse" }
 for i, k in ipairs({ "ENERGY", "WATER", "FOOD", "FATIGUE" }) do
 	local f, t = UI.Chip(condStrip, k, T.sub, { order = i, h = 26, TextSize = 13, icon = CHIP_ICONS[k], radius = 13 })
@@ -183,7 +184,7 @@ for i, k in ipairs({ "ENERGY", "WATER", "FOOD", "FATIGUE" }) do
 end
 local function setCond(k, v, color)
 	local c = condChips[k]
-	c.text.Text = string.format("%s %d", k, math.floor(v))
+	c.text.Text = c.icon and tostring(math.floor(v)) or string.format("%s %d", k, math.floor(v))
 	c.text.TextColor3 = color
 	c.frame.BackgroundColor3 = T.bg:Lerp(color, 0.12)
 	local st = c.frame:FindFirstChildOfClass("UIStroke")
@@ -576,6 +577,12 @@ end
 ------------------------------------------------------------------------
 local menuShownOnce = false
 local debutOffered = false -- the guided debut's offer was put up this session (a new boxer, right after the creator)
+-- a debut called off (debutEnd) may be offered again: the once-a-session flag is cleared with it
+State.FightRemote.OnClientEvent:Connect(function(msg)
+	if type(msg) == "table" and msg.t == "debutEnd" then
+		debutOffered = false
+	end
+end)
 local lastFlag
 local hubShownKey = nil -- the profile / state the open hub was last rebuilt for
 -- the server is retrying a failed DataStore read: say so once (the career is not lost)

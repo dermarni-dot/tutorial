@@ -410,6 +410,19 @@ local function officialLook(seed, kind, champ)
 	return app, b, {}, { detail = "medium", outfit = kind, hands = "bare", age = age, name = "", nick = "", waistText = "" }
 end
 
+-- the ring walk's modules, loaded before the Animator's thread starts (it requires AnimEntrance itself: one load)
+local Entrance = H.require("Entrance")
+local AE = H.require("AnimEntrance")
+-- (EntranceFX loads the UI kit for its overlay: the tween types it reads at load time)
+H.globals.TweenInfo = H.globals.TweenInfo or { new = function(...)
+	return { ... }
+end }
+local okFX, FX = pcall(H.require, "EntranceFX")
+if not okFX then
+	error("EntranceFX failed to load: " .. tostring(FX))
+end
+local TOOLS = FX._tools
+
 ------------------------------------------------------------------------
 -- the Animator
 ------------------------------------------------------------------------
@@ -537,3 +550,372 @@ local function exportFigure(model, role)
 	end
 	return fr
 end
+
+------------------------------------------------------------------------
+-- the venue: the Grand Arena's anchors from the world dump (floor moved to y = 0: the renderer moves the venue the
+-- same way), the ring's canvas a surface the feet stand on
+------------------------------------------------------------------------
+assert(args.world, "--world <scene.json of tools/sim/world_scene.luau --only venues>")
+local world = serde.decode("json", fs.readFile(args.world))
+local VROOT = world.roots.venue_Arena
+local ANCH = {}
+for _, p in ipairs(VROOT.parts) do
+	if p.n and (p.n:find("Entrance$") or p.n:find("Steps$") or p.n:find("Corner$") or p.n == "RingCenter") and p.s[1] == 1 then
+		ANCH[p.n] = Vector3.new(p.cf[1], p.cf[2], p.cf[3])
+	end
+end
+local FLOOR_Y = ANCH.RedEntrance.Y
+for k, v in pairs(ANCH) do
+	ANCH[k] = v - Vector3.new(0, FLOOR_Y, 0)
+end
+local CENTRE = ANCH.RingCenter
+local HALF, RH = 12, CENTRE.Y
+local function surfaceY(x, z)
+	if math.abs(x - CENTRE.X) <= HALF + 3.2 and math.abs(z - CENTRE.Z) <= HALF + 3.2 then
+		return RH
+	end
+	return 0
+end
+E.workspace.Raycast = function(_, origin, dir)
+	local y = surfaceY(origin.X, origin.Z)
+	if origin.Y >= y and origin.Y + dir.Y <= y and dir.Y < 0 then
+		local k = (origin.Y - y) / -dir.Y
+		return { Position = origin + dir * k, Normal = Vector3.new(0, 1, 0), Instance = floorPart, Material = roblox.Enum.Material.Plastic, Distance = (dir * k).Magnitude }
+	end
+	return nil
+end
+local function flat(v)
+	return Vector3.new(v.X, 0, v.Z)
+end
+-- RingWalk.Points for the red corner
+local function points(corner)
+	local steps, cornerPos = ANCH[corner .. "Steps"], ANCH[corner .. "Corner"]
+	local dir = flat(steps - CENTRE).Unit
+	local diag = flat(cornerPos - CENTRE)
+	return {
+		centre = CENTRE, entrance = ANCH[corner .. "Entrance"], steps = steps, corner = cornerPos,
+		apron = CENTRE + dir * (HALF + 1.7), inside = CENTRE + dir * (HALF - 1.6), post = CENTRE + diag.Unit * (HALF * math.sqrt(2)), half = HALF,
+	}
+end
+local PTS = points("Red")
+
+local function run(models, seconds)
+	if models[1] then
+		E.camera.CFrame = CFrame.new(models[1]:FindFirstChild("HumanoidRootPart").Position + Vector3.new(0, 4, 9))
+	end
+	for _ = 1, math.floor(seconds / DT + 0.5) do
+		frame(models)
+	end
+end
+
+------------------------------------------------------------------------
+-- the cast
+------------------------------------------------------------------------
+local Builder2 = H.require("Builder")
+local function boxer(tier, at)
+	local app = Looks.Defaults(1)
+	app.skin = 6
+	app.body.frame = "Athletic"
+	app.gloves.color = pal(1)
+	app.attire.trunks = pal(1)
+	app.attire.trim = pal(5)
+	app.attire.robe = pal(1)
+	app.attire.robeTrim = { 240, 240, 240 }
+	local opts = { hands = "gloves", detail = "full", name = "Marcus Reed", nick = "The Hammer", robe = "Classic", fightNight = true }
+	local m = makeFigure(app, buildFor(app, tier), nil, opts, at)
+	m.Name = "Walker"
+	currentModel = m
+	pcall(Builder2.SetRobe, m, app, true, opts)
+	solve(m)
+	recordWelds(m)
+	currentModel = nil
+	m:SetAttribute("Guard", "walkout")
+	m:SetAttribute("Style", "BoxerPuncher")
+	CS:AddTag(m, "Fighter")
+	return m, app, opts
+end
+local function coach(at)
+	local app, b, gear, opts = officialLook(7, "cornerman", false)
+	if Officials and Officials.Look then
+		app, b, gear, opts = Officials.Look(7, "cornerman", { team = { 150, 26, 32 }, venue = "Arena" })
+	end
+	local m = makeFigure(app, b, gear, opts, at)
+	m.Name = "Coach"
+	m:SetAttribute("Loop", "walk")
+	CS:AddTag(m, "Ambient")
+	return m
+end
+
+------------------------------------------------------------------------
+-- moving them as RingWalk and the walker's client do
+------------------------------------------------------------------------
+local function standOf(model)
+	return AE.Geom(model).stand
+end
+local function placeAt(model, pos, lookAt)
+	local hrp = model:FindFirstChild("HumanoidRootPart")
+	local y = pos.Y + standOf(model)
+	local p = Vector3.new(pos.X, y, pos.Z)
+	local l = Vector3.new(lookAt.X, y, lookAt.Z)
+	hrp.CFrame = CFrame.lookAt(p, l)
+	hrp.AssemblyLinearVelocity = Vector3.zero
+	model:FindFirstChildOfClass("Humanoid").MoveDirection = Vector3.zero
+end
+-- one frame of a MoveTo: glide toward the target at the speed, facing the way it goes
+local function walkStep(model, target, speed)
+	local hrp = model:FindFirstChild("HumanoidRootPart")
+	local hum = model:FindFirstChildOfClass("Humanoid")
+	if not target then
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hum.MoveDirection = Vector3.zero
+		return
+	end
+	local pos = hrp.Position
+	local d = flat(target - pos)
+	local m = d.Magnitude
+	local y = surfaceY(pos.X, pos.Z) + standOf(model)
+	if m < 0.08 then
+		hrp.AssemblyLinearVelocity = Vector3.zero
+		hum.MoveDirection = Vector3.zero
+		hrp.CFrame = CFrame.new(pos.X, y, pos.Z) * (hrp.CFrame - hrp.CFrame.Position)
+		return
+	end
+	local u = d / m
+	local step = math.min(m, speed * DT)
+	local np = Vector3.new(pos.X + u.X * step, y, pos.Z + u.Z * step)
+	hrp.CFrame = CFrame.lookAt(np, np + u)
+	hrp.AssemblyLinearVelocity = u * speed
+	hum.MoveDirection = u
+end
+
+local index = { about = "v9 entrance: the ring walk (Shared.Entrance beats, the client Animator + AnimEntrance, EntranceFX's camera / carriers / belt), world space, studs, +Y up",
+	shots = {}, gifs = {}, venue = { root = "venue_Arena", floorY = FLOOR_Y } }
+Host.MkDir(OUT)
+
+local function exportParts(folderName)
+	local out = {}
+	local f = E.workspace:FindFirstChild(folderName)
+	if not f then
+		return out
+	end
+	for _, p in ipairs(f:GetDescendants()) do
+		if p.ClassName == "Part" and (p.Transparency or 0) < 0.99 then
+			table.insert(out, { name = p.Name, folder = folderName, shape = p.Shape and enumName(p.Shape) or "Block", cf = cfList(p.CFrame),
+				size = { r4(p.Size.X), r4(p.Size.Y), r4(p.Size.Z) }, color = color(p.Color), material = enumName(p.Material), reflectance = p.Reflectance or 0, transparency = 0 })
+		end
+	end
+	return out
+end
+
+local function shoot(id, label, figs, cam, focus, extra)
+	local out = { id = id, label = label, figures = {}, camera = { cf = cfList(cam), fov = 70 }, focus = { focus.X, focus.Y, focus.Z } }
+	for _, f in ipairs(figs) do
+		table.insert(out.figures, exportFigure(f[1], f[2]))
+	end
+	local props = { name = "Props", role = "props", meshes = {}, parts = {} }
+	for _, fname in ipairs({ "EntranceCarriers", "EntranceBelt" }) do
+		for _, p in ipairs(exportParts(fname)) do
+			table.insert(props.parts, p)
+		end
+	end
+	if #props.parts > 0 then
+		table.insert(out.figures, props)
+	end
+	for k, v in pairs(extra or {}) do
+		out[k] = v
+	end
+	Host.WriteJSON(OUT .. "/" .. id .. ".json", out)
+	table.insert(index.shots, { id = id, label = label, file = id .. ".json" })
+	print("shot", id, label)
+end
+
+-- one walk, beat by beat: shots = { [beatId] = { { at = s into the beat, id, label } } }; gif = { beat, from, to, every }
+local function runWalk(walker, team, plan, shots, gif)
+	local beats, total = Entrance.Timeline(plan)
+	local t0 = VT
+	local st = AE.Start(walker, plan, t0)
+	local w = { plan = plan, model = walker, you = true, t0 = t0, beats = beats, total = total }
+	local models = { walker }
+	for _, m in ipairs(team) do
+		table.insert(models, m)
+	end
+	local lastBeat
+	local target, speed
+	local gifFrames = {}
+	local nFrames = math.floor((total + 0.2) / DT)
+	for i = 1, nFrames do
+		local now = VT + DT
+		local el = now - t0
+		local beat, _, bt = Entrance.BeatAt(beats, el)
+		local id = beat and beat.id or "end"
+		if id ~= lastBeat then
+			lastBeat = id
+			w.camKey = nil
+			-- the server's Place and the walker's MoveTo on the beat
+			if id == "aisle" then
+				target, speed = plan.pts.steps, plan.speed
+			elseif id == "setdown" then
+				placeAt(walker, plan.pts.steps, CENTRE)
+				target, speed = nil, plan.speed
+			elseif id == "steps" then
+				placeAt(walker, plan.pts.apron, CENTRE)
+				target = nil
+				for k, m in ipairs(team) do
+					local side = flat(plan.pts.steps - CENTRE):Cross(Vector3.yAxis).Unit
+					placeAt(m, plan.pts.steps + side * (k == 1 and -3.2 or 3.2), CENTRE)
+					m:SetAttribute("Loop", "coachwatch")
+				end
+			elseif id == "ropes" then
+				placeAt(walker, plan.pts.inside, CENTRE)
+				target = nil
+			elseif id == "ring" then
+				target, speed = plan.pts.corner, Entrance.SPEED.ring
+			elseif id == "robe" then
+				target = nil
+			end
+		end
+		if id == "robe" and bt >= 0.5 and not w.robeOff then
+			w.robeOff = true
+			currentModel = walker
+			pcall(Builder2.SetRobe, walker, walker:GetAttribute("App") or {}, false)
+			local robe = walker:FindFirstChild("Robe", true)
+			if robe then
+				robe:Destroy()
+			end
+			solve(walker)
+			recordWelds(walker)
+			currentModel = nil
+		end
+		walkStep(walker, target, speed or plan.speed)
+		-- the team behind him through the aisle
+		if id == "tunnel" or id == "aisle" or id == "crowd" or id == "setdown" then
+			local cf = walker:FindFirstChild("HumanoidRootPart").CFrame
+			for k, m in ipairs(team) do
+				local slot = ({ Vector3.new(-2.1, 0, 2.6), Vector3.new(2.1, 0, 2.9) })[k]
+				local goal = cf:PointToWorldSpace(slot)
+				walkStep(m, (flat(goal - m:FindFirstChild("HumanoidRootPart").Position).Magnitude > 0.4) and goal or nil, (speed or plan.speed) * 1.1)
+			end
+		else
+			for _, m in ipairs(team) do
+				walkStep(m, nil, 0)
+			end
+		end
+		-- (the Animator culls by the distance to the camera: the camera rides with the walk, as EntranceFX's shot does)
+		E.camera.CFrame = CFrame.new(walker:FindFirstChild("HumanoidRootPart").Position + Vector3.new(0, 4, 9))
+		frame(models)
+		-- EntranceFX's carriers and belt from the same frame
+		local fr = AE.Frame(st, VT)
+		local r = walker:FindFirstChild("HumanoidRootPart")
+		local geo = AE.Geom(walker)
+		if plan.carry and (fr.mode == "carried" or fr.mode == "setdown") then
+			TOOLS.ensureCarriers(w, geo, 4)
+			local down = fr.mode == "setdown" and AE.smooth(fr.bt / ((fr.dur or 1) * 0.8)) or 0
+			TOOLS.updateCarriers(w, r.CFrame, geo, DT, 1 - down, AE.bump(down, 0, 1) * 0.5, fr.mode == "setdown" and AE.smooth((fr.bt - 0.5) / 0.5) or 0)
+		elseif w.carriers then
+			TOOLS.dropCarriers(w)
+		end
+		local g = fr.gesture
+		TOOLS.updateBelt(w, g ~= nil and g.id == "beltlift" and g.u > 0.15 and g.u < g.dur - 0.15)
+		local list = shots[id]
+		if list then
+			for _, s in ipairs(list) do
+				if not s.done and bt >= s.at then
+					s.done = true
+					local cam = FX.Shot(w, VT)
+					if args.debug then
+						local rs = walker:FindFirstChild("RightShoulder", true)
+						local R = H.require("AnimRig")
+						local rg = R.rigs and R.rigs[walker]
+						local j = rg and rg.joints.RS
+						print("dbg", s.id, AE.active[walker] ~= nil, j and tostring(j.motor.Transform), j and j.motor.Name, rg and rg.outT and tostring(rg.outT.RS), fr.mode, g and g.id)
+					end
+					local figs = { { walker, "boxer" } }
+					for _, m in ipairs(team) do
+						table.insert(figs, { m, "coach" })
+					end
+					shoot(s.id, s.label, figs, cam, r.Position, { beat = id, mode = fr.mode, gesture = g and g.id or nil, carry = plan.carry })
+				end
+			end
+		end
+		if gif and id == gif.beat and bt >= gif.from and bt <= gif.to and (i % gif.every == 0) then
+			local fid = string.format("%s_%03d", gif.id, #gifFrames + 1)
+			local out = { id = fid, figures = { exportFigure(walker, "boxer") }, focus = { r.Position.X, r.Position.Y, r.Position.Z },
+				yaw = math.atan2(-r.CFrame.LookVector.X, -r.CFrame.LookVector.Z) }
+			local props = { name = "Props", role = "props", meshes = {}, parts = exportParts("EntranceBelt") }
+			if #props.parts > 0 then
+				table.insert(out.figures, props)
+			end
+			Host.WriteJSON(OUT .. "/" .. fid .. ".json", out)
+			table.insert(gifFrames, fid .. ".json")
+		end
+	end
+	TOOLS.dropCarriers(w)
+	if w.belt then
+		w.belt.model:Destroy()
+	end
+	AE.active[walker] = nil
+	return gifFrames
+end
+
+local function storyPlan(carry)
+	local p = Entrance.Plan({ corner = "Red", choice = { walk1 = "fistpump", walk2 = carry and "turnitup" or "shadowbox", ring = "turnbuckle", carry = true },
+		popularity = carry and 90 or 20, venue = "Arena", last = true, belts = 1 })
+	p.pts = PTS
+	return p
+end
+
+if ONLY.story then
+	local walker = boxer(3, CFrame.new(PTS.entrance))
+	placeAt(walker, PTS.entrance, CENTRE)
+	local team = { coach(CFrame.new(PTS.entrance + Vector3.new(-2, 0, -3))) }
+	placeAt(team[1], PTS.entrance + Vector3.new(-2.1, 0, -2.6), CENTRE)
+	run({ walker, team[1] }, 1.0)
+	runWalk(walker, team, storyPlan(false), {
+		tunnel = { { at = 0.95, id = "01_tunnel", label = "the tunnel: the reveal at the stage, a fist pump for the crowd" } },
+		aisle = { { at = 1.55, id = "02_tracking", label = "tracking down the aisle: shadowboxing, the coach behind him" } },
+		crowd = { { at = 0.7, id = "03_crowd", label = "the crowd shot from the walkway rail" } },
+		steps = { { at = 0.75, id = "04b_steps", label = "the ring shot: up the ring steps" } },
+		ropes = { { at = 0.45, id = "04c_ropes", label = "ducking through the ropes" } },
+		ring = { { at = Entrance.RING_WALK + 0.95, id = "05_turnbuckle", label = "the turnbuckle salute in his corner" } },
+		robe = { { at = 0.85, id = "06_robe", label = "the robe comes off in his corner" } },
+	})
+	-- the carried walk: a favourite on the crowd's shoulders (the robe back on, back to the tunnel)
+	CS:RemoveTag(walker, "Fighter")
+	walker:Destroy()
+	for _, m in ipairs(team) do
+		CS:RemoveTag(m, "Ambient")
+		m:Destroy()
+	end
+	run({}, 0.1)
+	local w2 = boxer(3, CFrame.new(PTS.entrance))
+	placeAt(w2, PTS.entrance, CENTRE)
+	run({ w2 }, 1.0)
+	runWalk(w2, {}, storyPlan(true), {
+		tunnel = { { at = 1.2, id = "04a_carried_tunnel", label = "carried out of the tunnel on the fans' shoulders" } },
+		aisle = { { at = 1.4, id = "04_carried", label = "carried down the aisle: four fans in the red corner's colours" } },
+		setdown = { { at = 0.55, id = "04d_setdown", label = "set down at the ring steps" } },
+	})
+	CS:RemoveTag(w2, "Fighter")
+	w2:Destroy()
+	run({}, 0.1)
+end
+
+if ONLY.gif then
+	-- three celebrations, each the tunnel beat of a walk that opens with it (standing on the stage), a frame every 1/12 s
+	for _, c in ipairs({ { "fistpump", "Fist Pump" }, { "chestbeat", "Chest Beat" }, { "beltlift", "Belt Lift" } }) do
+		local walker = boxer(3, CFrame.new(PTS.entrance))
+		placeAt(walker, PTS.entrance, CENTRE)
+		run({ walker }, 1.0)
+		local p = Entrance.Plan({ corner = "Red", choice = { walk1 = c[1], walk2 = "none", ring = "fistpump" }, popularity = 10, venue = "Arena", belts = 1 })
+		p.pts = PTS
+		local frames = runWalk(walker, {}, p, {}, { id = "gif_" .. c[1], beat = "tunnel", from = 0.05, to = 1.6, every = 5 })
+		table.insert(index.gifs, { id = "gif_" .. c[1], label = c[2], frames = frames })
+		print("gif", c[1], #frames)
+		CS:RemoveTag(walker, "Fighter")
+		walker:Destroy()
+		run({}, 0.1)
+	end
+end
+Host.WriteJSON(OUT .. "/index.json", index, true)
+print("out:", OUT)
+process.exit(0)

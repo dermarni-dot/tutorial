@@ -744,6 +744,7 @@ do
 	f:Punch(O, "leadhook", false)
 	local free = 100 - P.body
 	check("clinch: the man who holds smothers it (the other's work lands fuller)", free > held * 1.5, free .. " vs " .. held)
+	P.clinchUntil, O.clinchUntil = S.now() + 10, S.now() + 10 -- (a long hold: only the referee ends it)
 	for _ = 1, 6 do
 		S.advance(0.5)
 		f:Punch(P, "uppercut", false)
@@ -835,37 +836,31 @@ end
 ------------------------------------------------------------------------
 -- whole fights: adaptation and the balance bounds
 ------------------------------------------------------------------------
--- adaptation in a real fight: against a man who spams the jab, the AI defends it more as the fight goes on
+-- adaptation in a real fight: against a man who spams the jab, the AI defends it more as the fight goes on (the
+-- damage is turned right down so the fight runs its distance: this is about the read, not the result)
 do
-	local early, late = { n = 0, ev = 0 }, { n = 0, ev = 0 }
+	local seen = { [1] = { n = 0, miss = 0 }, [3] = { n = 0, miss = 0 } }
 	for seed = 1, (QUICK and 3 or 6) do
-		local bucket
-		local res = S.Fight({
+		local last = { thrown = 0, landed = 0 }
+		S.Fight({
 			red = { bot = "spam", style = "BoxerPuncher", level = 60 },
 			blue = { style = "CounterPuncher", level = 60, noTraits = true },
-			rounds = 4, seed = seed,
-			onTick = function(fight, now)
-				bucket = fight.round <= 1 and early or (fight.round >= 3 and late or nil)
-				if bucket then
-					local P = fight.P
-					local thrown = P.totals.thrown
-					local missed = P.totals.thrown - P.totals.landed
-					bucket.lastThrown = bucket.lastThrown or thrown
-					bucket.lastMissed = bucket.lastMissed or missed
-					bucket.n += thrown - bucket.lastThrown
-					bucket.ev += missed - bucket.lastMissed
-					bucket.lastThrown, bucket.lastMissed = thrown, missed
-				end
-				if fight.round == 2 then
-					late.lastThrown, late.lastMissed = nil, nil
+			rounds = 3, seed = seed,
+			onTick = function(fight)
+				fight.damageScale = 0.05
+				local P = fight.P
+				local b = seen[fight.round]
+				local dt, dl = P.totals.thrown - last.thrown, P.totals.landed - last.landed
+				last.thrown, last.landed = P.totals.thrown, P.totals.landed
+				if b then
+					b.n += dt
+					b.miss += dt - dl
 				end
 			end,
 		})
-		early.lastThrown, early.lastMissed = nil, nil
-		late.lastThrown, late.lastMissed = nil, nil
 	end
-	local e, l = early.ev / math.max(1, early.n), late.ev / math.max(1, late.n)
-	check("adapt: the AI learns a spammed jab (more of them miss / are blocked later)", l > e + 0.03, string.format("%.2f -> %.2f", e, l))
+	local e, l = seen[1].miss / math.max(1, seen[1].n), seen[3].miss / math.max(1, seen[3].n)
+	check("adapt: the AI learns a spammed jab (more of them miss / are blocked by round 3)", l > e + 0.03 and seen[3].n > 20, string.format("%.2f -> %.2f (%d / %d)", e, l, seen[1].n, seen[3].n))
 end
 
 local function rate(n, spec)

@@ -1557,6 +1557,10 @@ do
 		KM.getupState(kind)
 		local token = {}
 		GU.endToken = token
+		if kind == "up" and touchPad then
+			-- (the touch pads come straight back: the success holds only for a blink, not over them)
+			hold = math.min(hold or 1, 0.25)
+		end
 		task.delay(hold or 1, function()
 			if GU.endToken == token and GU.state == kind then
 				getup.Visible = false
@@ -4043,9 +4047,14 @@ function KM.chordLive(ids)
 	return false
 end
 
-local function isHeld(mod, now)
+-- a modifier that is an action of its own (Shift is the sprint, Q the slip) only makes a chord when the second
+-- key comes within CHORD_FRESH seconds of its press: Shift held to sprint and a Q pressed later is a slip, not a
+-- weave (the pure modifiers, Alt, any time)
+local CHORD_FRESH = 0.4
+KM.CHORD_FRESH = CHORD_FRESH
+local function isHeld(mod, now, ownAction)
 	if Ctl.held[mod] then
-		return true
+		return not ownAction or now - (Ctl.pressedAt[mod] or -10) <= CHORD_FRESH
 	end
 	local at = Ctl.flickAt[mod]
 	return at ~= nil and now - at < 0.4
@@ -4061,7 +4070,7 @@ local function onPress(name, device)
 	local chords = lk.chord[name]
 	if chords then
 		for _, c in ipairs(chords) do
-			if isHeld(c.mod, now) then
+			if isHeld(c.mod, now, lk.plain[c.mod] ~= nil or lk.double[c.mod] ~= nil) then
 				Ctl.chordUsed[c.mod] = true
 				Ctl.deferred[c.mod] = nil
 				fire(c.id, name)
@@ -4156,6 +4165,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	end
 	-- SHIFT before the gameProcessed check: shift-lock may claim the key, the chords must still see it held
 	Ctl.held[name] = true
+	Ctl.pressedAt[name] = os.clock() -- (a modifier's press time: CHORD_FRESH, even when the key is game-processed)
 	local ringKey = gui.Enabled and RING_KEYS[name] ~= nil and (RING_KEYS[name] ~= "list" or KM.listOff == true)
 	if gp and not (device == "pad" and GuiService.SelectedObject == nil) and not ringKey then
 		return

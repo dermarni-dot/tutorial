@@ -201,7 +201,7 @@ screen("standup", function(dev)
 	down(S, "heavy", 11, 6)
 	S.settle(0.3)
 	S.remotes.FightEvent:Fire({ t = "getup", who = "you" })
-	S.settle(0.3)
+	S.settle(0.12)
 	return S
 end)
 screen("countedout", function(dev)

@@ -87,7 +87,7 @@ Keymap.Actions = {
 	-- turns into the dodge on the server (Evasion.CANCEL)
 	{ id = "weaveL", label = "Weave left", section = "advanced", kbd = { "LeftShift+Q" }, pad = "Thumbstick2Left+ButtonL2", touch = "Hold BLOCK, swipe left",
 		desc = "Bob and weave under it to the left. Hooks and overhands miss, and the counter window after it is the longest.",
-		how = "Shift + Q. On a pad flick the right stick left, then LT. Never weave into an uppercut: it lands bigger." },
+		how = "Shift + Q, pressed together (within 0.4 s: Shift held for a sprint and a Q later is a slip). On a pad flick the right stick left, then LT. Never weave into an uppercut: it lands bigger." },
 	{ id = "weaveR", label = "Weave right", section = "advanced", kbd = { "LeftShift+E" }, pad = "Thumbstick2Right+ButtonL2", touch = "Hold BLOCK, swipe right",
 		desc = "The same to the right." },
 	{ id = "duck", label = "Duck", section = "advanced", kbd = { "N" }, pad = "Thumbstick2Down+ButtonL2", touch = "Swipe CLINCH down",
