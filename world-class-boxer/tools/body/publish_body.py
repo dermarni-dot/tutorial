@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.join(ROOT, "tools", "hair"))
 import publish as hp  # noqa: E402  (upload, ensure, LocalIds, lua, cache helpers)
 
 OUT = os.path.join(HERE, "out")
+LITE = os.path.join(OUT, "lite")  # the lite detail set (the v9 meshes): lite/tier<N>/, lite/gear/
 CACHE = os.path.join(HERE, "uploaded.json")
 MANIFEST = os.path.join(ROOT, "src", "shared", "BodyAssetData.lua")
 LOCAL_DEFAULT = "/tmp/claude-0/BodyAssetData_local.lua"
@@ -101,7 +102,25 @@ def main():
                             "model/x-file-mesh-data", dry, local)
             used.append(mid)
             parts[name] = {"mesh": mid, "size": rec["size"], "attachments": rec["attachments"], "nt": rec["nt"]}
-        tiers.append({"tier": n, "name": td["name"], "tris": td["tris"], "fit": td["fit"], "parts": parts})
+        # the lite detail set (Config.Detail.meshes "lite": the v9 meshes, kept in tools/body/out/lite/tier<N>): their
+        # hashes are in the cache, so they keep their ids and nothing is uploaded again
+        lite_tris = None
+        lpj = os.path.join(LITE, "tier%d" % n, "parts.json")
+        if os.path.exists(lpj):
+            with open(lpj) as f:
+                ld = json.load(f)
+            lite_tris = ld["tris"]
+            for name in PARTS:
+                rec = ld["parts"][name]
+                lid = hp.ensure(cache, os.path.join(os.path.dirname(lpj), rec["mesh_file"]), "Mesh",
+                                f"WCB Body T{n} {name} lite",
+                                f"Become a World Class Boxer: muscle tier {n} ({ld['name']}) R15 body part {name}, "
+                                "the light detail set", "model/x-file-mesh-data", dry, local)
+                used.append(lid)
+                parts[name]["lite"] = {"mesh": lid, "size": rec["size"], "attachments": rec["attachments"],
+                                       "nt": rec["nt"]}
+        tiers.append({"tier": n, "name": td["name"], "tris": td["tris"], "liteTris": lite_tris, "fit": td["fit"],
+                      "parts": parts})
     if [t["tier"] for t in tiers] != [1, 2, 3, 4, 5]:
         raise SystemExit("expected tiers 1-5 in tools/body/out, got %s" % [t["tier"] for t in tiers])
 
@@ -133,7 +152,8 @@ def main():
     data = {
         "version": 1,
         "unit": unit,
-        "tiers": [{"name": t["name"], "tris": t["tris"], "fit": t["fit"], "parts": t["parts"]} for t in tiers],
+        "tiers": [dict({"name": t["name"], "tris": t["tris"], "fit": t["fit"], "parts": t["parts"]},
+                       **({"liteTris": t["liteTris"]} if t["liteTris"] else {})) for t in tiers],
         "faces": faces,
         "defaultFace": fj.get("default", "smile"),
         "expressions": fj["expressions"],
@@ -146,7 +166,9 @@ def main():
             "-- for: apply the HumanoidDescription with BodyTypeScale 0 / ProportionScale 0 and only Height / Width /\n"
             "-- Depth / Head scales (Width = Depth = Height = 1 reproduce unit). An id of 0 = not uploaded: keep the\n"
             "-- default part / face. expressions: mood -> face key; a nil entry = the boxer's own chosen face.\n"
-            "-- tiers[n].fit: gear-fit girths / widths (studs, unscaled, convex hull) at fixed heights (rest space).\n")
+            "-- tiers[n].fit: gear-fit girths / widths (studs, unscaled, convex hull) at fixed heights (rest space).\n"
+            "-- parts[<Part>].lite: the same part in the lite detail set (Config.Detail.meshes = \"lite\": the v9 mesh,\n"
+            "-- its own size and attachments; liteTris = that set's triangles per body).\n")
     if local:
         head = ("-- LOCAL manifest from tools/body/publish_body.py --local: FAKE asset ids (nothing uploaded), for\n"
                 "-- offline simulation only. Each id's file is in the .ids.json sidecar next to this file.\n")

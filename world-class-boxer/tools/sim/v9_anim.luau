@@ -156,9 +156,19 @@ for _, path in ipairs({ args.body or "", args.gear or "" }) do
 	end
 end
 local FACE_FILES = {}
+-- (the drawn faces' files carry their revision: faces.json names each key's file, e.g. face_wcb_grit_v2.png)
+local FACE_JSON = {}
+do
+	local fj = root .. "/tools/body/out/faces/faces.json"
+	if fs.isFile(fj) then
+		for _, e in ipairs(serde.decode("json", fs.readFile(fj)).faces or {}) do
+			FACE_JSON[e.key] = e.file
+		end
+	end
+end
 for _, f in ipairs(REAL.faces or {}) do
 	if f.id and f.id ~= 0 then
-		FACE_FILES["rbxassetid://" .. f.id] = root .. "/tools/body/out/faces/face_" .. f.key .. ".png"
+		FACE_FILES["rbxassetid://" .. f.id] = root .. "/tools/body/out/faces/" .. (FACE_JSON[f.key] or ("face_" .. f.key .. ".png"))
 	end
 end
 do

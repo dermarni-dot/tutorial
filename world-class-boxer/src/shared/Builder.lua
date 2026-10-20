@@ -141,7 +141,8 @@ end
 local function tiersStep(model, app, build, opts, sp)
 	local tiers = BodyTiers.Tiers(build, { potential = sp.frame.potential, female = sp.female }, BuilderTiers.Current(model))
 	local sc = Builder.Scales(app, build, opts)
-	BuilderTiers.Apply(model, tiers, Vector3.new(sc.width, sc.height, sc.depth))
+	-- (the detail level's mesh set: the low level's crowd NPCs wear the lighter v9 meshes, Config.Detail.meshes)
+	BuilderTiers.Apply(model, tiers, Vector3.new(sc.width, sc.height, sc.depth), sp.cfg ~= nil and sp.cfg.meshes == "lite")
 end
 
 ------------------------------------------------------------------------

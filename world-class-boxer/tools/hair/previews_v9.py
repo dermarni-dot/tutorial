@@ -27,7 +27,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 ROOT = os.path.dirname(os.path.dirname(HERE))
 OUTV9 = os.path.join(ROOT, "previews", "final", "v9", "hair")
-WORK = "/tmp/claude-0/-home-user-tutorial/3e72dc83-9506-5d11-a575-9dd4f250e9a5/scratchpad/v9/renders"
+WORK = os.environ.get("HAIR_WORK", "/tmp/claude-0/-home-user-tutorial/3e72dc83-9506-5d11-a575-9dd4f250e9a5/scratchpad/v9/renders")
 CLASSIC_REF = os.path.join(HERE, "ref", "classic")
 
 import numpy as np  # noqa: E402

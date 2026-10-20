@@ -663,8 +663,27 @@ def upper_torso(tr):
     for y, ey, w in ((2.93, 0.125, 1.0), (2.695, 0.122, 1.0), (2.465, 0.118, 0.92)):
         b.append(Bp((0.165, y, -0.42), (0.15, 0.16 * w, ey, ey, 0.3, 0.3), amp(tr, 0.003, 0.012, 0.027),
                     rotz(-3), 2.2, 0.12))
+    # (v10 detail) the forms the denser loft can carry: separations between the abs' rows (the tendinous lines), the
+    # linea semilunaris between the abs and the obliques, the pecs' lower edge and the pec-delt tie-in, the serratus'
+    # fingers, the external oblique's flank roll, the clavicles, the scapulae (infraspinatus, teres major) and the
+    b += [
+        Bp((0.165, 2.812, -0.44), (0.16, 0.16, 0.05, 0.05, 0.3, 0.3), amp(tr, 0, -0.0014, -0.0077)),   # ab row lines
+        Bp((0.165, 2.58, -0.44), (0.16, 0.16, 0.05, 0.05, 0.3, 0.3), amp(tr, 0, -0.0014, -0.007)),
+        Bp((0.335, 2.70, -0.40), (0.05, 0.05, 0.42, 0.36, 0.3, 0.3), amp(tr, 0, -0.0021, -0.0077), rotz(-8)),  # semilunaris
+        Bp((0.38, 2.97, -0.44), (0.32, 0.3, 0.05, 0.05, 0.3, 0.3), amp(tr, 0, -0.0028, -0.0084), rotz(14)),  # pec's lower edge
+        Bp((0.74, 3.44, -0.30), (0.12, 0.14, 0.16, 0.14, 0.2, 0.22), amp(tr, 0.004, 0.035, 0.006), rotz(30)),  # pec-delt tie-in
+        Bp((0.70, 3.40, -0.36), (0.05, 0.05, 0.15, 0.13, 0.2, 0.2), amp(tr, 0, -0.0014, -0.0049), rotz(28)),  # deltopectoral line
+        Bp((0.35, 3.64, -0.33), (0.30, 0.30, 0.025, 0.03, 0.2, 0.2), amp(tr, 0.006, 0.0, 0.004), rotz(-8)),  # clavicle
+        Bp((0.62, 2.28, -0.16), (0.14, 0.14, 0.12, 0.16, 0.3, 0.3), amp(tr, 0.002, 0.025, 0.008)),  # oblique flank roll
+        Bp((0.16, 3.05, 0.44), (0.18, 0.16, 0.28, 0.24, 0.2, 0.2), amp(tr, 0.0, 0.012, 0.004), rotz(18)),  # lower trap
+        Bp((0.0, 3.30, 0.44), (0.34, 0.34, 0.42, 0.24, 0.2, 0.2), amp(tr, 0.0, 0.014, 0.004), None, 1.6),  # mid / lower trap diamond
+        Bp((0.50, 3.28, 0.44), (0.17, 0.16, 0.14, 0.16, 0.22, 0.22), amp(tr, 0.0, 0.025, 0.008), rotz(-12)),  # infraspinatus
+        Bp((0.70, 3.10, 0.36), (0.16, 0.16, 0.13, 0.15, 0.22, 0.22), amp(tr, 0.0, 0.022, 0.005), rotz(-30)),  # teres major
+    ]
+    for k, (yy, zz) in enumerate(((3.04, -0.27), (2.94, -0.25), (2.84, -0.22), (2.75, -0.19))):
+        b.append(Bp((0.76 - 0.012 * k, yy, zz), (0.07, 0.07, 0.035, 0.035, 0.1, 0.12), amp(tr, 0, 0.008, 0.012), rotz(-28)))
     sd = ([YW, 2.32, 2.36, 3.36, 3.42, 3.54], [0.6, 0.6, 1.3, 1.3, 0.8, 0.8])
-    return loft(torso_prof(), tr["m"], YW, 3.54, (0.22, 1.0, 2, 0.88), (0.33, 0.85, 6), nb=22, nseg=30, bias=0.5,
+    return loft(torso_prof(), tr["m"], YW, 3.54, (0.22, 1.0, 2, 0.88), (0.33, 0.85, 6), nb=30, nseg=42, bias=0.5,
                 sdens=sd, bumps=sym(b))
 
 
@@ -672,10 +691,15 @@ def lower_torso(tr):
     b = [
         Bp((0.36, 1.99, 0.30), (0.34, 0.36, 0.17, 0.24, 0.30, 0.36), amp(tr, 0.03, 0.06, 0.0)),  # glutes
         Bp((0.0, 2.10, -0.42), (0.22, 0.22, 0.14, 0.10, 0.3, 0.3), amp(tr, 0.0, 0.012, 0.01)),  # lower abs
-        Bp((0.0, 2.0, 0.45), (0.04, 0.04, 0.17, 0.15, 0.3, 0.3), amp(tr, -0.015, -0.01, 0.0)),  # cleft
+        Bp((0.0, 2.0, 0.45), (0.05, 0.05, 0.17, 0.15, 0.3, 0.3), amp(tr, -0.0105, -0.007, 0)),  # cleft
+        # (v10 detail) the glutes' upper shelf and the side hollow, the lumbar dimples, the iliac crest's V-lines
+        Bp((0.30, 2.13, 0.36), (0.26, 0.30, 0.10, 0.12, 0.25, 0.25), amp(tr, 0.006, 0.02, 0.004)),  # glute medius shelf
+        Bp((0.66, 1.98, 0.10), (0.08, 0.08, 0.12, 0.10, 0.2, 0.2), amp(tr, 0, -0.006, -0.008)),  # side hollow
+        Bp((0.15, 2.19, 0.44), (0.05, 0.05, 0.05, 0.05, 0.2, 0.2), amp(tr, -0.0021, -0.0014, -0.0056)),  # dimples
+        Bp((0.24, 2.10, -0.40), (0.05, 0.05, 0.16, 0.14, 0.25, 0.25), amp(tr, 0, -0.0028, -0.0084), rotz(-38)),  # V-line
     ]
     # the child of the waist joint: a touch thinner near it so the UpperTorso's dome dives cleanly under
-    return loft(torso_prof(), tr["m"], 1.82, 2.30, (0.26, 1.0, 5, 0.9), (0.18, 1.0, 2), nb=7, nseg=24, bias=0.2,
+    return loft(torso_prof(), tr["m"], 1.82, 2.30, (0.26, 1.0, 5, 0.9), (0.18, 1.0, 2), nb=9, nseg=32, bias=0.2,
                 shrink=[(YW, 0.10, 0.04)], bumps=sym(b))
 
 
@@ -693,11 +717,21 @@ def upper_arm(tr):
         Bp((X, 3.08, -0.22), (0.24, 0.24, 0.22, 0.32, 0.26, 0.26), amp(tr, 0.008, 0.08, 0.008)),  # biceps
         Bp((X + 0.04, 3.20, 0.22), (0.20, 0.24, 0.30, 0.24, 0.25, 0.25), amp(tr, 0.008, 0.075, 0.005)),  # triceps
         Bp((X + 0.22, 3.22, 0.0), (0.06, 0.08, 0.10, 0.08, 0.25, 0.25), amp(tr, 0, 0, -0.008)),  # delt insertion
+        # (v10 detail) the deltoid's three heads parted by shallow lines, the biceps' peak and the brachialis under its
+        # outer edge, the triceps' horseshoe (long head / lateral head and the flat tendon above the elbow)
+        Bp((X + 0.10, 3.40, -0.19), (0.05, 0.05, 0.18, 0.14, 0.12, 0.12), amp(tr, 0, -0.0014, -0.0056), rotx(-12)),  # front / side delt
+        Bp((X + 0.10, 3.40, 0.19), (0.05, 0.05, 0.18, 0.14, 0.12, 0.12), amp(tr, 0, -0.0014, -0.0049), rotx(12)),  # side / rear delt
+        Bp((X + 0.02, 3.06, -0.26), (0.12, 0.12, 0.12, 0.14, 0.12, 0.14), amp(tr, 0.002, 0.03, 0.01)),  # biceps peak
+        Bp((X + 0.21, 2.98, -0.08), (0.08, 0.08, 0.14, 0.10, 0.14, 0.14), amp(tr, 0.002, 0.025, 0.006)),  # brachialis
+        Bp((X - 0.06, 3.18, 0.25), (0.11, 0.12, 0.22, 0.18, 0.12, 0.14), amp(tr, 0.003, 0.03, 0.008)),  # triceps long head
+        Bp((X + 0.16, 3.22, 0.18), (0.10, 0.10, 0.18, 0.14, 0.12, 0.14), amp(tr, 0.002, 0.026, 0.008)),  # lateral head
+        Bp((X + 0.04, 2.98, 0.28), (0.10, 0.10, 0.06, 0.06, 0.12, 0.12), amp(tr, 0, -0.004, -0.010)),  # triceps tendon flat
+        Bp((X + 0.0, 3.17, -0.30), (0.10, 0.10, 0.24, 0.20, 0.06, 0.06), amp(tr, 0, 0, -0.004)),  # biceps' mid line
     ]
     # (both ends are ball joints: the elbow dome and the shoulder dome are near-spheres about their pivots in game
     # space - JOINT_DOME - so the arm turns in place at both)
-    return loft(pr, tr["m"], YE, YS_PIVOT, (JOINT_DOME["elbow"], 1.0, 2, 0.88), (JOINT_DOME["shoulder"], 1.0, 4), nb=8,
-                nseg=16, frame=VERT(X), bumps=b)
+    return loft(pr, tr["m"], YE, YS_PIVOT, (JOINT_DOME["elbow"], 1.0, 2, 0.88), (JOINT_DOME["shoulder"], 1.0, 4), nb=11,
+                nseg=22, frame=VERT(X), bumps=b)
 
 
 def lower_arm(tr):
@@ -709,8 +743,15 @@ def lower_arm(tr):
     b = [
         Bp((X + 0.07, 2.64, -0.08), (0.22, 0.22, 0.38, 0.22, 0.24, 0.24), amp(tr, 0.006, 0.045, 0.0)),  # brachioradialis
         Bp((X - 0.10, 2.62, -0.04), (0.18, 0.18, 0.32, 0.18, 0.22, 0.22), amp(tr, 0.004, 0.04, 0.0)),  # flexors
+        # (v10 detail) the extensors on the back of the forearm and the line between them and the brachioradialis, the
+        # flexors' belly over the inner front, the wrist's tendons and the ulna's knob
+        Bp((X + 0.10, 2.58, 0.13), (0.13, 0.13, 0.30, 0.18, 0.14, 0.16), amp(tr, 0.004, 0.035, 0.006)),  # extensors
+        Bp((X + 0.17, 2.55, 0.02), (0.05, 0.05, 0.3, 0.16, 0.12, 0.12), amp(tr, 0, -0.0014, -0.0049)),  # their line
+        Bp((X - 0.08, 2.66, -0.15), (0.12, 0.12, 0.22, 0.14, 0.12, 0.14), amp(tr, 0.003, 0.03, 0.008)),  # flexor belly
+        Bp((X - 0.13, 2.25, -0.04), (0.06, 0.06, 0.14, 0.12, 0.035, 0.035), amp(tr, 0.003, 0.0, 0.005)),  # wrist tendons
+        Bp((X + 0.11, 2.21, 0.10), (0.05, 0.05, 0.05, 0.05, 0.08, 0.08), amp(tr, 0.006, 0.0, 0.0)),  # ulna's knob
     ]
-    return loft(pr, tr["m"], YWR, YE, (JOINT_DOME["wrist"], 1.0, 2, 0.9), (JOINT_DOME["elbow"], 1.0, 2), nb=8, nseg=14,
+    return loft(pr, tr["m"], YWR, YE, (JOINT_DOME["wrist"], 1.0, 2, 0.9), (JOINT_DOME["elbow"], 1.0, 2), nb=10, nseg=20,
                 frame=VERT(X), shrink=[(YE, 0.10, 0.06)], bumps=b)
 
 
@@ -722,15 +763,29 @@ def hand(tr):
               ax=([0.135, 0.165, 0.132], [0.01, 0.01, 0.006]),
               af=([0.215, 0.212, 0.158], [0.01, 0.01, 0.004]),
               p=[3.0, 3.0, 2.4], cx=[-0.02, 0.0, 0.0])
-    shells = [loft(pr, tr["m"], 1.93, YWR, (0.06, 1.0, 2), (0.12, 1.0, 2), nb=4, nseg=12, frame=VERT(X))]
-    # fingers: index at the front (-Z), relaxed curl toward the body (-X for the right hand)
-    for i, (z, L, r) in enumerate(((-0.15, 0.17, 0.056), (-0.05, 0.185, 0.058), (0.05, 0.175, 0.056),
-                                   (0.148, 0.145, 0.052))):
-        y0 = 1.97
-        pts = [(X - 0.015, y0, z), (X - 0.035, y0 - 0.55 * L, z), (X - 0.095, y0 - L, z * 1.02)]
-        shells.append(tube(pts, [r, r * 0.96, r * 0.9], nside=6, kcap=2, uvbox=(0.2 * i, 0.8, 0.2 * i + 0.2, 1.0)))
-    pts = [(X - 0.03, 2.10, -0.16), (X - 0.07, 2.01, -0.235), (X - 0.12, 1.935, -0.255)]
-    shells.append(tube(pts, [0.068, 0.063, 0.057], nside=6, kcap=2, uvbox=(0.8, 0.8, 1.0, 1.0)))
+    # (v10 detail) the back of the hand carries the knuckles (one per finger, over its base) and the tendons running
+    # up to them; the palm the thumb's pad (thenar) and the heel under the little finger (hypothenar)
+    b = []
+    for z, k in ((-0.15, 1.0), (-0.05, 1.08), (0.05, 1.0), (0.148, 0.85)):
+        b.append(Bp((X + 0.12, 1.985, z), (0.06, 0.06, 0.045, 0.04, 0.042, 0.042), 0.016 * k))  # knuckle
+        b.append(Bp((X + 0.13, 2.07, z * 0.8), (0.04, 0.04, 0.08, 0.06, 0.016, 0.016), 0.004))  # tendon
+    b += [
+        Bp((X - 0.12, 2.05, -0.12), (0.07, 0.07, 0.08, 0.07, 0.09, 0.08), 0.024),  # thenar (the thumb's pad)
+        Bp((X - 0.13, 2.03, 0.13), (0.06, 0.06, 0.07, 0.06, 0.06, 0.06), 0.012),  # hypothenar
+        Bp((X - 0.15, 2.0, 0.0), (0.05, 0.05, 0.07, 0.06, 0.12, 0.12), -0.008),  # the palm's hollow
+    ]
+    shells = [loft(pr, tr["m"], 1.93, YWR, (0.06, 1.0, 2), (0.12, 1.0, 2), nb=6, nseg=16, frame=VERT(X), bumps=b)]
+    # fingers: index at the front (-Z), relaxed curl toward the body (-X for the right hand); four joints each (the
+    # knuckle, the middle and the end joints bulge a little) and slimmer than v9's so a sliver of gap parts them
+    for i, (z, L, r) in enumerate(((-0.158, 0.17, 0.0495), (-0.053, 0.185, 0.0515), (0.052, 0.175, 0.0495),
+                                   (0.152, 0.145, 0.046))):
+        y0 = 1.975
+        pts = [(X - 0.005, y0, z), (X - 0.03, y0 - 0.45 * L, z), (X - 0.062, y0 - 0.77 * L, z * 1.01),
+               (X - 0.105, y0 - L, z * 1.02)]
+        shells.append(tube(pts, [r * 1.02, r * 1.05, r * 0.97, r * 0.86], nside=8, kcap=2,
+                           uvbox=(0.2 * i, 0.8, 0.2 * i + 0.2, 1.0)))
+    pts = [(X - 0.03, 2.10, -0.16), (X - 0.065, 2.03, -0.225), (X - 0.10, 1.965, -0.25), (X - 0.128, 1.925, -0.256)]
+    shells.append(tube(pts, [0.068, 0.066, 0.06, 0.053], nside=8, kcap=2, uvbox=(0.8, 0.8, 1.0, 1.0)))
     # palm UVs live in the top 80 %
     shells[0]["U"] = shells[0]["U"] * np.array([1.0, 0.8])
     return merge_lp(shells)
@@ -749,10 +804,24 @@ def upper_leg(tr):
         Bp((X + 0.26, 1.36, -0.05), (0.16, 0.16, 0.36, 0.30, 0.30, 0.30), amp(tr, 0.0, 0.03, 0.0)),  # outer sweep
         Bp((X, 1.36, 0.32), (0.28, 0.28, 0.35, 0.30, 0.25, 0.25), amp(tr, 0.004, 0.04, 0.0)),  # hamstrings
         Bp((X - 0.02, 1.72, 0.36), (0.32, 0.30, 0.18, 0.09, 0.25, 0.25), amp(tr, 0.012, 0.035, 0.0)),  # glute fold (stays under the hem)
+        # (v10 detail) the quads as three heads (rectus femoris down the front, vastus lateralis outside, the VMO's
+        # teardrop over the knee's inner side) with the lines between them, the sartorius' diagonal, the adductors, the
+        # hamstrings split (biceps femoris outside, semitendinosus inside) and the kneecap
+        Bp((X + 0.0, 1.40, -0.38), (0.11, 0.11, 0.32, 0.20, 0.12, 0.14), amp(tr, 0.003, 0.03, 0.01)),  # rectus femoris
+        Bp((X + 0.22, 1.30, -0.24), (0.12, 0.12, 0.32, 0.22, 0.16, 0.16), amp(tr, 0.003, 0.03, 0.008)),  # vastus lateralis
+        Bp((X + 0.13, 1.36, -0.36), (0.05, 0.05, 0.3, 0.26, 0.1, 0.1), amp(tr, 0, -0.0021, -0.007), rotz(-6)),  # RF / VL line
+        Bp((X - 0.11, 1.38, -0.33), (0.05, 0.05, 0.3, 0.26, 0.1, 0.1), amp(tr, 0, -0.0021, -0.0056), rotz(18)),  # RF / VM line
+        Bp((X - 0.15, 1.12, -0.27), (0.10, 0.10, 0.10, 0.14, 0.12, 0.12), amp(tr, 0.003, 0.03, 0.012)),  # the VMO teardrop
+        Bp((X - 0.12, 1.50, -0.22), (0.05, 0.05, 0.3, 0.26, 0.12, 0.12), amp(tr, 0, -0.0014, -0.0049), rotx(-25) @ rotz(28)),  # sartorius
+        Bp((X - 0.30, 1.50, -0.05), (0.12, 0.12, 0.24, 0.12, 0.16, 0.16), amp(tr, 0.003, 0.025, 0.0)),  # adductors
+        Bp((X + 0.14, 1.32, 0.33), (0.12, 0.12, 0.30, 0.20, 0.12, 0.14), amp(tr, 0.002, 0.025, 0.006)),  # biceps femoris
+        Bp((X - 0.12, 1.30, 0.32), (0.12, 0.12, 0.30, 0.20, 0.12, 0.14), amp(tr, 0.002, 0.025, 0.006)),  # semitendinosus
+        Bp((X + 0.01, 1.30, 0.38), (0.05, 0.05, 0.3, 0.22, 0.1, 0.1), amp(tr, 0, -0.0014, -0.0056)),  # their line
+        Bp((X - 0.02, 1.00, -0.30), (0.09, 0.09, 0.08, 0.08, 0.08, 0.08), amp(tr, 0.012, 0.0, 0.0)),  # kneecap
     ]
     # (the top is a ball joint centred on the hip pivot - JOINT_DOME: the thigh turns inside the pelvis without its
     # top swinging out through the seat; the knee end the same)
-    return loft(pr, tr["m"], YK, YH, (JOINT_DOME["knee"], 1.0, 2, 0.88), (JOINT_DOME["hip"], 1.0, 3), nb=10, nseg=14,
+    return loft(pr, tr["m"], YK, YH, (JOINT_DOME["knee"], 1.0, 2, 0.88), (JOINT_DOME["hip"], 1.0, 3), nb=14, nseg=20,
                 frame=VERT(X), shrink=[(YH, 0.16, 0.06)], bumps=b)
 
 
@@ -767,8 +836,16 @@ def lower_leg(tr):
         Bp((X - 0.09, 0.70, 0.22), (0.17, 0.15, 0.24, 0.20, 0.20, 0.20), amp(tr, 0.008, 0.06, 0.0)),  # medial calf
         Bp((X + 0.09, 0.75, 0.22), (0.15, 0.17, 0.22, 0.20, 0.20, 0.20), amp(tr, 0.005, 0.045, 0.0)),  # lateral calf
         Bp((X + 0.06, 0.70, -0.20), (0.12, 0.14, 0.30, 0.20, 0.20, 0.20), amp(tr, 0.0, 0.02, 0.0)),  # tibialis
+        # (v10 detail) the calf's two heads parted, the soleus under them, the shin's edge, the Achilles' tendon and
+        # the ankle bones (the inner one higher, the outer lower and further back)
+        Bp((X, 0.74, 0.29), (0.05, 0.05, 0.16, 0.12, 0.1, 0.1), amp(tr, 0, -0.0021, -0.0056)),  # calf heads' line
+        Bp((X + 0.0, 0.52, 0.20), (0.18, 0.18, 0.12, 0.14, 0.12, 0.14), amp(tr, 0.003, 0.025, 0.004)),  # soleus
+        Bp((X - 0.02, 0.62, -0.25), (0.03, 0.03, 0.30, 0.26, 0.08, 0.08), amp(tr, 0.004, 0.0, 0.004)),  # shin's edge
+        Bp((X, 0.36, 0.19), (0.05, 0.05, 0.14, 0.10, 0.06, 0.06), amp(tr, 0.006, 0.0, 0.002)),  # Achilles
+        Bp((X - 0.17, 0.385, -0.01), (0.05, 0.05, 0.05, 0.045, 0.06, 0.06), 0.022 * tr["f"]),  # inner ankle bone
+        Bp((X + 0.175, 0.36, 0.03), (0.05, 0.05, 0.045, 0.045, 0.06, 0.06), 0.02 * tr["f"]),  # outer ankle bone
     ]
-    return loft(pr, tr["m"], YA, YK, (0.18, 1.0, 3), (JOINT_DOME["knee"], 1.0, 2), nb=8, nseg=14, frame=VERT(X),
+    return loft(pr, tr["m"], YA, YK, (0.18, 1.0, 3), (JOINT_DOME["knee"], 1.0, 2), nb=11, nseg=18, frame=VERT(X),
                 shrink=[(YK, 0.10, 0.06)], bumps=b)
 
 
@@ -777,8 +854,14 @@ def foot(tr):
     pr = Prof(s, ax=[0.185, 0.205, 0.215, 0.235, 0.225],
               af=[0.20, 0.22, 0.17, 0.085, 0.055],  # "front" = up from yc
               ab=[0.15, 0.15, 0.15, 0.15, 0.15], p=[2.6, 2.6, 2.6, 2.8, 2.8])
-    return loft(pr, tr["m"], s[0], s[-1], (0.10, 1.0, 2), (0.11, 1.0, 2), nb=6, nseg=12,
-                frame=((LEG_X, 0.15, 0.0), (0, 0, -1), (1, 0, 0), (0, -1, 0)))
+    # (v10 detail) the heel's round, the arch's rise on the inner side, the toes' knuckle line over the front
+    X = LEG_X
+    b = [Bp((X, 0.11, 0.22), (0.12, 0.12, 0.09, 0.09, 0.08, 0.10), 0.012 * tr["f"]),  # heel
+         Bp((X - 0.17, 0.05, -0.05), (0.06, 0.06, 0.05, 0.05, 0.14, 0.14), -0.012 * tr["f"]),  # arch
+         Bp((X, 0.12, -0.28), (0.18, 0.18, 0.03, 0.03, 0.03, 0.03), 0.006 * tr["f"]),  # toes' knuckle line
+         Bp((X - 0.06, 0.17, -0.06), (0.05, 0.05, 0.04, 0.06, 0.16, 0.14), 0.008 * tr["f"])]  # the instep's tendon
+    return loft(pr, tr["m"], s[0], s[-1], (0.10, 1.0, 2), (0.11, 1.0, 2), nb=8, nseg=16,
+                frame=((LEG_X, 0.15, 0.0), (0, 0, -1), (1, 0, 0), (0, -1, 0)), bumps=b)
 
 
 BUILDERS = {"UpperTorso": upper_torso, "LowerTorso": lower_torso, "UpperArm": upper_arm, "LowerArm": lower_arm,

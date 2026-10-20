@@ -219,3 +219,34 @@ client drill (`Activities.Start`) on guisim with a fake server and a virtual clo
 path (keys, pad buttons / stick flicks, on-screen buttons): the session hands in, client score = server replay,
 every action reachable, the prompts name the device's controls, the stats table is valid, the pose attributes move.
 `test_ui_layout` lays the drills out mid-session (`drill_*` screens) through the same `drillsim.luau`.
+
+## The world: world_scene, world_render, test_worlddetail
+
+```sh
+lune run tools/sim/world_scene.luau [--out DIR] [--level 1|2|3] [--only gym,city,venues,menu] [--src DIR] [--counts]
+/opt/bpyenv/bin/python tools/sim/world_render.py DIR/scene.json OUT_DIR [--only view,view] [--samples N] [--res WxH]
+lune run tools/sim/test_worlddetail.luau [--keep]      # ~1 min: builds the world at Low / Medium / High
+```
+
+- `world_scene.luau` builds the world offline on fakeengine with a permissive stub layer (signals, PivotTo / GetPivot /
+  GetBoundingBox, TweenService, Remotes, a pinned Perf level): the server gym and city (`MapBuilder.BuildGym` ->
+  GymDecor, CityMap), the client gym / city dressing (`GymVisuals.Refresh`, `CityVisuals.Refresh` on a level-3
+  profile), the detail layer (`WorldDetail.BuildAll` at `--level`), every venue (`Venues.BuildTemplates` /
+  `Venues.New` per kind, then `VenueDetail.Build`) and the title set (`MenuStage.Build`, plus a grey stand-in where the
+  menu clones your boxer). `DIR/scene.json`: per root (`server_gym_and_city`, `server_city`, `LocalGym`, `LocalCity`,
+  `WorldDetail_gym`, `WorldDetail_city`, `venue_<Kind>`, `VenueDetail_<Kind>`, `menu`) the parts (shape, size, CFrame,
+  colour, material, transparency, SpecialMesh, tags, collision flags), lights, SurfaceGuis laid out to face
+  fractions, decals / textures and beams; `counts` (instances, parts, lights, guis, decals, beams, particles) and
+  `cells` (parts per detail cell tier). `--src` builds another commit's `src` (a `git archive` of it): the "before".
+- `world_render.py` renders the views in its `VIEWS` table with Cycles: parts merged by material class with their
+  colours, SurfaceGuis rasterised with PIL (frames, gradients, text, the uploaded images by id), decals / textures
+  from the upload caches (`tools/world/uploaded.json`, `tools/ui/uploaded.json`), Point / Spot / Surface lights, Neon
+  emission, `NightLight` / `NightLens` switched on in the night views. Approximate: no Roblox material textures.
+- `test_worlddetail.luau`: every detail part never collides / queries / touches; no detail part (thicker than a floor
+  decal) in a keep-out volume (station use points and equipment, prompts, the Ambient members' spots, the spawn pad,
+  the doors, the entrance path, the lounge stair, the gym ring's canvas; Main Street's pedestrian and traffic lanes;
+  the venue rings inside the ropes, the walkway lanes, the stool corners, the floor cameras); the detail builds without
+  a warning; the part counts rise Low < Medium < High and stay under their caps. Overlaps of detail with solid props
+  are printed (not failures).
+- The textures the detail layer uses: `tools/world/build_textures.py` (PIL + numpy -> `tools/world/out`) and
+  `tools/world/publish_world.py` (Open Cloud upload, hash cache, moderation, writes `src/shared/WorldAssetData.lua`).

@@ -137,14 +137,18 @@ do
 		local l = BuilderGear.SetPieces("gloves", "Gloves")
 		return #l == 6 and table.find(l, "Glove_L") and table.find(l, "GloveCuff_R")
 	end)())
-	-- the whole worn outfit stays under 6k triangles at every tier
-	local worst = 0
+	-- the whole worn outfit per detail set (Config.Detail.meshes): the lite set (the low level's crowd NPCs) under 6k
+	-- triangles at every tier, as the v9 gear was; the detailed set (full / medium) under 14k
+	local worst, worstLite, liteAll = 0, 0, true
 	for tier = 1, 5 do
 		for _, outfit in ipairs({ { "Pro", "High-Top", "gloves", true }, { "Long", "Low-Top", "wraps", true } }) do
-			local t = 0
+			local t, tl = 0, 0
 			local function add(group, style)
 				for _, name in ipairs(BuilderGear.SetPieces(group, style)) do
-					t += GEAR.tiers[tier][name].nt
+					local e = GEAR.tiers[tier][name]
+					t += e.nt
+					liteAll = liteAll and e.lite ~= nil
+					tl += (e.lite and e.lite.nt) or e.nt
 				end
 			end
 			add("trunks", outfit[1])
@@ -152,9 +156,24 @@ do
 			add(outfit[3], outfit[3] == "gloves" and "Gloves" or "Wraps")
 			add("top", "Top")
 			worst = math.max(worst, t)
+			worstLite = math.max(worstLite, tl)
 		end
 	end
-	check("a whole outfit < 6000 tris", worst < 6000, worst)
+	print(string.format("worst outfit: %d tris (detailed set), %d (lite set)", worst, worstLite))
+	check("a whole outfit < 14000 tris (detailed set)", worst < 14000, worst)
+	check("a whole outfit < 6000 tris (lite set)", worstLite < 6000, worstLite)
+	check("every real piece has a lite entry", liteAll)
+	-- the lite set: Entry(..., lite) takes the piece's lite mesh, the full one when it has none
+	local gl, gf = BuilderGear.Entry(3, "Glove_R", nil, true), BuilderGear.Entry(3, "Glove_R")
+	if GEAR.tiers[3].Glove_R.lite then
+		check("Entry lite: the lite mesh", gl and gf and gl.lite == true and gl.id ~= gf.id and not gf.lite)
+	end
+	check("Entry lite without a lite mesh: the full one", (function()
+		local d = { pieces = { X = { part = "RightHand", slot = "gloves", group = "gloves" } },
+			tiers = { { X = { mesh = 5, offset = { 0, 0, 0 }, size = { 1, 1, 1 } } } } }
+		local e = BuilderGear.Entry(1, "X", d, true)
+		return e and e.id == 5 and not e.lite
+	end)())
 end
 
 ------------------------------------------------------------------------
@@ -327,6 +346,33 @@ local function count(t)
 	return n
 end
 
+------------------------------------------------------------------------
+-- detail sets: a low-detail boxer (the crowd) wears the lite body and the lite gear fitted to it, the same pieces
+------------------------------------------------------------------------
+do
+	setup()
+	local app = Looks.Defaults(1)
+	local lowM = dress(app, build(50), { hands = "gloves", detail = "low" })
+	local fullM = dress(app, build(50), { hands = "gloves", detail = "full" })
+	local ut = lowM:FindFirstChild("UpperTorso")
+	check("low detail: the lite body", ut and ut:GetAttribute("BodyLite") == true)
+	check("full detail: the detailed body", fullM:FindFirstChild("UpperTorso"):GetAttribute("BodyLite") == nil)
+	local la, fa = meshes(folder(lowM, "Attire")), meshes(folder(fullM, "Attire"))
+	local lh, fh = meshes(folder(lowM, "Hands")), meshes(folder(fullM, "Hands"))
+	local same, liteIds = true, true
+	for name, p in pairs(fa) do
+		local q = la[name]
+		same = same and q ~= nil
+		local e = GEAR.tiers[3][name]
+		if q and e and e.lite then
+			liteIds = liteIds and q:GetAttribute("GearMesh") == e.lite.mesh and p:GetAttribute("GearMesh") == e.mesh
+		end
+	end
+	check("low detail: the same pieces (instances) as full", same and count(la) == count(fa) and count(lh) == count(fh),
+		count(la) .. "/" .. count(fa))
+	check("low detail: the lite gear meshes, full the detailed", liteIds)
+end
+
 -- the placement contract for one built piece
 local function placed(p, model)
 	local name = p:GetAttribute("GearPiece")
@@ -391,12 +437,14 @@ do
 	check("Pro + High-Top: every piece", #miss == 0 and count(att) == #want, table.concat(miss, ",") .. " / " .. count(att))
 	check("no part-built trunks / boots", (function()
 		for _, p in ipairs(folder(model, "Attire"):GetChildren()) do
-			if p.ClassName == "Part" then
+			-- (the lettering patches on the band / the leg are parts: v10's WCB mark on a band without text)
+			if p.ClassName == "Part" and p.Name ~= "WaistText" and p.Name ~= "SponsorPatch" then
 				return false
 			end
 		end
 		return true
 	end)())
+	check("the WCB mark on a band without lettering (full detail)", folder(model, "Attire"):FindFirstChild("WaistText") ~= nil)
 	check("no long legs, no top on a man", att.TrunkLegLong_R == nil and att.Top == nil)
 	local bad = {}
 	for _, p in pairs(att) do

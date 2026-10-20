@@ -1570,6 +1570,15 @@ function Head.SetHeadgear(model, color, on)
 		mk(folder, head, "HGStrap", V3(0.07 * s.Y, 0.025 * s.Y, (b - a).Magnitude), CFrame.lookAt(mid, b, out.Unit), strapC, "Block")
 	end
 	mk(folder, head, "HGChin", V3(0.24 * s.X, 0.09 * s.Y, 0.16 * s.Z), hcf * CF(0, -0.46 * s.Y, -0.31 * s.Z), strapC, "Ellipsoid", mat)
+	-- (v10 detail) the stitched seam over the crown (front to back), the brow pad's roll split from the crown, an ear
+	-- opening in each cheek pad and the chin strap's buckle at the cheek
+	local seamC = darken(color, 0.78)
+	mk(folder, head, "HGSeam", V3(0.05 * s.X, s.Y * 0.64, s.Z * 1.2), hcf * CF(0, 0.36 * s.Y, 0.05 * s.Z), seamC, "Ellipsoid", mat)
+	mk(folder, head, "HGBrowRoll", V3(s.X * 0.8, s.Y * 0.07, s.Z * 0.12), hcf * CF(0, 0.39 * s.Y, -0.53 * s.Z), darken(color, 0.86), "Ellipsoid", mat)
+	for side = -1, 1, 2 do
+		mk(folder, head, "HGEarHole", V3(0.04 * s.X, 0.2 * s.Y, 0.2 * s.Z), hcf * CF(side * 0.6 * s.X, 0.0, 0.06 * s.Z), darken(color, 0.45), "Ellipsoid", mat)
+	end
+	mk(folder, head, "HGBuckle", V3(0.03 * s.X, 0.07 * s.Y, 0.07 * s.Z), hcf * CF(0.5 * s.X, -0.3 * s.Y, -0.06 * s.Z), Color3.fromRGB(190, 190, 196), "Block", Enum.Material.Metal)
 end
 
 ------------------------------------------------------------------------

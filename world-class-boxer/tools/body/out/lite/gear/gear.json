@@ -1,0 +1,3352 @@
+{
+ "version": 1,
+ "slots": [
+  "trunks",
+  "trim",
+  "gloves",
+  "gloveTrim",
+  "wraps",
+  "wraps2",
+  "shoes",
+  "soles",
+  "laces",
+  "socks",
+  "top",
+  "topTrim"
+ ],
+ "pieces": {
+  "Waistband": {
+   "part": "LowerTorso",
+   "slot": "trim",
+   "group": "trunks",
+   "shared": false,
+   "tierOf": [
+    "LowerTorso",
+    "UpperTorso",
+    "LeftUpperLeg",
+    "RightUpperLeg"
+   ]
+  },
+  "TrunkSeat": {
+   "part": "LowerTorso",
+   "slot": "trunks",
+   "group": "trunks",
+   "shared": false,
+   "tierOf": [
+    "LowerTorso",
+    "UpperTorso",
+    "LeftUpperLeg",
+    "RightUpperLeg"
+   ]
+  },
+  "TrunkLeg_R": {
+   "part": "RightUpperLeg",
+   "slot": "trunks",
+   "group": "trunks",
+   "shared": false
+  },
+  "TrunkLeg_L": {
+   "part": "LeftUpperLeg",
+   "slot": "trunks",
+   "group": "trunks",
+   "shared": false
+  },
+  "TrunkLegLong_R": {
+   "part": "RightUpperLeg",
+   "slot": "trunks",
+   "group": "trunks",
+   "shared": false
+  },
+  "TrunkLegLong_L": {
+   "part": "LeftUpperLeg",
+   "slot": "trunks",
+   "group": "trunks",
+   "shared": false
+  },
+  "TrunkStripe_R": {
+   "part": "RightUpperLeg",
+   "slot": "trim",
+   "group": "trunks",
+   "shared": false
+  },
+  "TrunkStripe_L": {
+   "part": "LeftUpperLeg",
+   "slot": "trim",
+   "group": "trunks",
+   "shared": false
+  },
+  "TrunkHem_R": {
+   "part": "RightUpperLeg",
+   "slot": "trim",
+   "group": "trunks",
+   "shared": false
+  },
+  "TrunkHem_L": {
+   "part": "LeftUpperLeg",
+   "slot": "trim",
+   "group": "trunks",
+   "shared": false
+  },
+  "TrunkHemLong_R": {
+   "part": "RightUpperLeg",
+   "slot": "trim",
+   "group": "trunks",
+   "shared": false
+  },
+  "TrunkHemLong_L": {
+   "part": "LeftUpperLeg",
+   "slot": "trim",
+   "group": "trunks",
+   "shared": false
+  },
+  "Glove_R": {
+   "part": "RightHand",
+   "slot": "gloves",
+   "group": "gloves",
+   "shared": true
+  },
+  "Glove_L": {
+   "part": "LeftHand",
+   "slot": "gloves",
+   "group": "gloves",
+   "shared": true
+  },
+  "GloveCuff_R": {
+   "part": "RightLowerArm",
+   "slot": "gloves",
+   "group": "gloves",
+   "shared": false
+  },
+  "GloveCuff_L": {
+   "part": "LeftLowerArm",
+   "slot": "gloves",
+   "group": "gloves",
+   "shared": false
+  },
+  "GloveStrap_R": {
+   "part": "RightLowerArm",
+   "slot": "gloveTrim",
+   "group": "gloves",
+   "shared": false
+  },
+  "GloveStrap_L": {
+   "part": "LeftLowerArm",
+   "slot": "gloveTrim",
+   "group": "gloves",
+   "shared": false
+  },
+  "Wrap_R": {
+   "part": "RightHand",
+   "slot": "wraps",
+   "group": "wraps",
+   "shared": true
+  },
+  "Wrap_L": {
+   "part": "LeftHand",
+   "slot": "wraps",
+   "group": "wraps",
+   "shared": true
+  },
+  "WrapWrist_R": {
+   "part": "RightLowerArm",
+   "slot": "wraps2",
+   "group": "wraps",
+   "shared": false
+  },
+  "WrapWrist_L": {
+   "part": "LeftLowerArm",
+   "slot": "wraps2",
+   "group": "wraps",
+   "shared": false
+  },
+  "BootFoot_R": {
+   "part": "RightFoot",
+   "slot": "shoes",
+   "group": "shoes",
+   "shared": true
+  },
+  "BootFoot_L": {
+   "part": "LeftFoot",
+   "slot": "shoes",
+   "group": "shoes",
+   "shared": true
+  },
+  "Sole_R": {
+   "part": "RightFoot",
+   "slot": "soles",
+   "group": "shoes",
+   "shared": true
+  },
+  "Sole_L": {
+   "part": "LeftFoot",
+   "slot": "soles",
+   "group": "shoes",
+   "shared": true
+  },
+  "ShoeLaces_R": {
+   "part": "RightFoot",
+   "slot": "laces",
+   "group": "shoes",
+   "shared": true
+  },
+  "ShoeLaces_L": {
+   "part": "LeftFoot",
+   "slot": "laces",
+   "group": "shoes",
+   "shared": true
+  },
+  "BootShaft_R": {
+   "part": "RightLowerLeg",
+   "slot": "shoes",
+   "group": "shoes",
+   "shared": false
+  },
+  "BootShaft_L": {
+   "part": "LeftLowerLeg",
+   "slot": "shoes",
+   "group": "shoes",
+   "shared": false
+  },
+  "BootLaces_R": {
+   "part": "RightLowerLeg",
+   "slot": "laces",
+   "group": "shoes",
+   "shared": false
+  },
+  "BootLaces_L": {
+   "part": "LeftLowerLeg",
+   "slot": "laces",
+   "group": "shoes",
+   "shared": false
+  },
+  "BootSock_R": {
+   "part": "RightLowerLeg",
+   "slot": "socks",
+   "group": "shoes",
+   "shared": false
+  },
+  "BootSock_L": {
+   "part": "LeftLowerLeg",
+   "slot": "socks",
+   "group": "shoes",
+   "shared": false
+  },
+  "ShoeCollar_R": {
+   "part": "RightLowerLeg",
+   "slot": "shoes",
+   "group": "shoes",
+   "shared": false
+  },
+  "ShoeCollar_L": {
+   "part": "LeftLowerLeg",
+   "slot": "shoes",
+   "group": "shoes",
+   "shared": false
+  },
+  "AnkleSock_R": {
+   "part": "RightLowerLeg",
+   "slot": "socks",
+   "group": "shoes",
+   "shared": false
+  },
+  "AnkleSock_L": {
+   "part": "LeftLowerLeg",
+   "slot": "socks",
+   "group": "shoes",
+   "shared": false
+  },
+  "Top": {
+   "part": "UpperTorso",
+   "slot": "top",
+   "group": "top",
+   "shared": false
+  },
+  "TopBand": {
+   "part": "UpperTorso",
+   "slot": "topTrim",
+   "group": "top",
+   "shared": false
+  }
+ },
+ "sets": {
+  "trunks": {
+   "Classic": [
+    "Waistband",
+    "TrunkSeat",
+    "TrunkLeg"
+   ],
+   "Striped": [
+    "Waistband",
+    "TrunkSeat",
+    "TrunkLeg",
+    "TrunkStripe"
+   ],
+   "Pro": [
+    "Waistband",
+    "TrunkSeat",
+    "TrunkLeg",
+    "TrunkStripe",
+    "TrunkHem"
+   ],
+   "Long": [
+    "Waistband",
+    "TrunkSeat",
+    "TrunkLegLong",
+    "TrunkHemLong"
+   ]
+  },
+  "shoes": {
+   "High-Top": [
+    "BootFoot",
+    "Sole",
+    "ShoeLaces",
+    "BootShaft",
+    "BootLaces",
+    "BootSock"
+   ],
+   "Low-Top": [
+    "BootFoot",
+    "Sole",
+    "ShoeLaces",
+    "ShoeCollar",
+    "AnkleSock"
+   ]
+  },
+  "gloves": {
+   "Gloves": [
+    "Glove",
+    "GloveCuff",
+    "GloveStrap"
+   ]
+  },
+  "wraps": {
+   "Wraps": [
+    "Wrap",
+    "WrapWrist"
+   ]
+  },
+  "top": {
+   "Top": [
+    "Top",
+    "TopBand"
+   ]
+  }
+ },
+ "tiers": {
+  "1": {
+   "Waistband": {
+    "file": "tier1/Waistband.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     -0.0,
+     0.2566,
+     -0.0223
+    ],
+    "size": [
+     1.4685,
+     0.3758,
+     1.1589
+    ],
+    "nt": 336
+   },
+   "TrunkSeat": {
+    "file": "tier1/TrunkSeat.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     -0.1723,
+     -0.0127
+    ],
+    "size": [
+     1.5497,
+     0.695,
+     1.1506
+    ],
+    "nt": 360
+   },
+   "TrunkLeg_R": {
+    "file": "tier1/TrunkLeg_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0117,
+     0.3217,
+     -0.0088
+    ],
+    "size": [
+     0.7238,
+     0.8953,
+     0.8036
+    ],
+    "nt": 304
+   },
+   "TrunkLeg_L": {
+    "file": "tier1/TrunkLeg_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0117,
+     0.3217,
+     -0.0088
+    ],
+    "size": [
+     0.7238,
+     0.8953,
+     0.8036
+    ],
+    "nt": 304
+   },
+   "TrunkHem_R": {
+    "file": "tier1/TrunkHem_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0157,
+     -0.0702,
+     -0.011
+    ],
+    "size": [
+     0.7338,
+     0.1216,
+     0.7769
+    ],
+    "nt": 128
+   },
+   "TrunkHem_L": {
+    "file": "tier1/TrunkHem_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0157,
+     -0.0702,
+     -0.011
+    ],
+    "size": [
+     0.7338,
+     0.1216,
+     0.7769
+    ],
+    "nt": 128
+   },
+   "TrunkStripe_R": {
+    "file": "tier1/TrunkStripe_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.3611,
+     0.1332,
+     -0.0133
+    ],
+    "size": [
+     0.0395,
+     0.4814,
+     0.0979
+    ],
+    "nt": 48
+   },
+   "TrunkStripe_L": {
+    "file": "tier1/TrunkStripe_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.3611,
+     0.1332,
+     -0.0133
+    ],
+    "size": [
+     0.0395,
+     0.4814,
+     0.0979
+    ],
+    "nt": 48
+   },
+   "TrunkLegLong_R": {
+    "file": "tier1/TrunkLegLong_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0111,
+     0.1367,
+     -0.0089
+    ],
+    "size": [
+     0.7194,
+     1.2652,
+     0.8002
+    ],
+    "nt": 368
+   },
+   "TrunkLegLong_L": {
+    "file": "tier1/TrunkLegLong_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0111,
+     0.1367,
+     -0.0089
+    ],
+    "size": [
+     0.7194,
+     1.2652,
+     0.8002
+    ],
+    "nt": 368
+   },
+   "TrunkHemLong_R": {
+    "file": "tier1/TrunkHemLong_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0136,
+     -0.4401,
+     -0.0109
+    ],
+    "size": [
+     0.6726,
+     0.1217,
+     0.7016
+    ],
+    "nt": 128
+   },
+   "TrunkHemLong_L": {
+    "file": "tier1/TrunkHemLong_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0136,
+     -0.4401,
+     -0.0109
+    ],
+    "size": [
+     0.6726,
+     0.1217,
+     0.7016
+    ],
+    "nt": 128
+   },
+   "GloveCuff_R": {
+    "file": "tier1/GloveCuff_R.mesh",
+    "part": "RightLowerArm",
+    "offset": [
+     -0.0156,
+     -0.347,
+     -0.0524
+    ],
+    "size": [
+     0.5964,
+     0.638,
+     0.6947
+    ],
+    "nt": 240
+   },
+   "GloveCuff_L": {
+    "file": "tier1/GloveCuff_L.mesh",
+    "part": "LeftLowerArm",
+    "offset": [
+     0.0156,
+     -0.347,
+     -0.0524
+    ],
+    "size": [
+     0.5964,
+     0.638,
+     0.6947
+    ],
+    "nt": 240
+   },
+   "GloveStrap_R": {
+    "file": "tier1/GloveStrap_R.mesh",
+    "part": "RightLowerArm",
+    "offset": [
+     0.0001,
+     -0.32,
+     -0.0117
+    ],
+    "size": [
+     0.506,
+     0.2176,
+     0.5632
+    ],
+    "nt": 160
+   },
+   "GloveStrap_L": {
+    "file": "tier1/GloveStrap_L.mesh",
+    "part": "LeftLowerArm",
+    "offset": [
+     -0.0001,
+     -0.32,
+     -0.0117
+    ],
+    "size": [
+     0.506,
+     0.2176,
+     0.5632
+    ],
+    "nt": 160
+   },
+   "WrapWrist_R": {
+    "file": "tier1/WrapWrist_R.mesh",
+    "part": "RightLowerArm",
+    "offset": [
+     0.0002,
+     -0.3859,
+     -0.0274
+    ],
+    "size": [
+     0.4315,
+     0.4961,
+     0.5363
+    ],
+    "nt": 336
+   },
+   "WrapWrist_L": {
+    "file": "tier1/WrapWrist_L.mesh",
+    "part": "LeftLowerArm",
+    "offset": [
+     -0.0002,
+     -0.3859,
+     -0.0274
+    ],
+    "size": [
+     0.4315,
+     0.4961,
+     0.5363
+    ],
+    "nt": 336
+   },
+   "BootShaft_R": {
+    "file": "tier1/BootShaft_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     -0.0003,
+     -0.3031,
+     0.0095
+    ],
+    "size": [
+     0.4845,
+     0.6852,
+     0.5166
+    ],
+    "nt": 272
+   },
+   "BootShaft_L": {
+    "file": "tier1/BootShaft_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     0.0003,
+     -0.3031,
+     0.0095
+    ],
+    "size": [
+     0.4845,
+     0.6852,
+     0.5166
+    ],
+    "nt": 272
+   },
+   "BootLaces_R": {
+    "file": "tier1/BootLaces_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.0,
+     -0.2597,
+     -0.2233
+    ],
+    "size": [
+     0.164,
+     0.444,
+     0.0684
+    ],
+    "nt": 96
+   },
+   "BootLaces_L": {
+    "file": "tier1/BootLaces_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     0.0,
+     -0.2597,
+     -0.2233
+    ],
+    "size": [
+     0.164,
+     0.444,
+     0.0684
+    ],
+    "nt": 96
+   },
+   "BootSock_R": {
+    "file": "tier1/BootSock_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     -0.0002,
+     0.0357,
+     0.0119
+    ],
+    "size": [
+     0.4485,
+     0.1468,
+     0.4878
+    ],
+    "nt": 176
+   },
+   "BootSock_L": {
+    "file": "tier1/BootSock_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     0.0002,
+     0.0357,
+     0.0119
+    ],
+    "size": [
+     0.4485,
+     0.1468,
+     0.4878
+    ],
+    "nt": 176
+   },
+   "ShoeCollar_R": {
+    "file": "tier1/ShoeCollar_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.0001,
+     -0.4948,
+     -0.0055
+    ],
+    "size": [
+     0.3972,
+     0.1777,
+     0.4287
+    ],
+    "nt": 240
+   },
+   "ShoeCollar_L": {
+    "file": "tier1/ShoeCollar_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     -0.0001,
+     -0.4948,
+     -0.0055
+    ],
+    "size": [
+     0.3972,
+     0.1777,
+     0.4287
+    ],
+    "nt": 240
+   },
+   "AnkleSock_R": {
+    "file": "tier1/AnkleSock_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.0001,
+     -0.4273,
+     -0.0004
+    ],
+    "size": [
+     0.3569,
+     0.3107,
+     0.3918
+    ],
+    "nt": 240
+   },
+   "AnkleSock_L": {
+    "file": "tier1/AnkleSock_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     -0.0001,
+     -0.4273,
+     -0.0004
+    ],
+    "size": [
+     0.3569,
+     0.3107,
+     0.3918
+    ],
+    "nt": 240
+   },
+   "Glove_R": {
+    "file": "shared/Glove_R.mesh",
+    "part": "RightHand",
+    "offset": [
+     -0.0308,
+     -0.1128,
+     -0.01
+    ],
+    "size": [
+     0.5994,
+     0.95,
+     0.8074
+    ],
+    "nt": 416
+   },
+   "Glove_L": {
+    "file": "shared/Glove_L.mesh",
+    "part": "LeftHand",
+    "offset": [
+     0.0308,
+     -0.1128,
+     -0.01
+    ],
+    "size": [
+     0.5994,
+     0.95,
+     0.8074
+    ],
+    "nt": 416
+   },
+   "Wrap_R": {
+    "file": "shared/Wrap_R.mesh",
+    "part": "RightHand",
+    "offset": [
+     -0.0073,
+     0.0749,
+     0.0045
+    ],
+    "size": [
+     0.3736,
+     0.4427,
+     0.5967
+    ],
+    "nt": 304
+   },
+   "Wrap_L": {
+    "file": "shared/Wrap_L.mesh",
+    "part": "LeftHand",
+    "offset": [
+     0.0073,
+     0.0749,
+     0.0045
+    ],
+    "size": [
+     0.3736,
+     0.4427,
+     0.5967
+    ],
+    "nt": 304
+   },
+   "BootFoot_R": {
+    "file": "shared/BootFoot_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.019,
+     -0.0
+    ],
+    "size": [
+     0.4575,
+     0.4988,
+     0.8836
+    ],
+    "nt": 192
+   },
+   "BootFoot_L": {
+    "file": "shared/BootFoot_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     -0.0,
+     0.019,
+     -0.0
+    ],
+    "size": [
+     0.4575,
+     0.4988,
+     0.8836
+    ],
+    "nt": 192
+   },
+   "Sole_R": {
+    "file": "shared/Sole_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     -0.0001,
+     -0.1974,
+     0.0004
+    ],
+    "size": [
+     0.514,
+     0.102,
+     0.8748
+    ],
+    "nt": 192
+   },
+   "Sole_L": {
+    "file": "shared/Sole_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     0.0001,
+     -0.1974,
+     0.0004
+    ],
+    "size": [
+     0.514,
+     0.102,
+     0.8748
+    ],
+    "nt": 192
+   },
+   "ShoeLaces_R": {
+    "file": "shared/ShoeLaces_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.1411,
+     -0.1191
+    ],
+    "size": [
+     0.1806,
+     0.1564,
+     0.3011
+    ],
+    "nt": 96
+   },
+   "ShoeLaces_L": {
+    "file": "shared/ShoeLaces_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     0.0,
+     0.1411,
+     -0.1191
+    ],
+    "size": [
+     0.1806,
+     0.1564,
+     0.3011
+    ],
+    "nt": 96
+   },
+   "Top": {
+    "file": "tier1/Top.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     -0.0,
+     0.6114,
+     -0.0071
+    ],
+    "size": [
+     1.5396,
+     1.2917,
+     0.9342
+    ],
+    "nt": 464
+   },
+   "TopBand": {
+    "file": "tier1/TopBand.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     -0.0,
+     0.0298,
+     0.0045
+    ],
+    "size": [
+     1.4434,
+     0.1385,
+     0.9005
+    ],
+    "nt": 160
+   }
+  },
+  "2": {
+   "Waistband": {
+    "file": "tier2/Waistband.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     -0.0,
+     0.2566,
+     -0.0275
+    ],
+    "size": [
+     1.4598,
+     0.3758,
+     1.1603
+    ],
+    "nt": 336
+   },
+   "TrunkSeat": {
+    "file": "tier2/TrunkSeat.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     -0.1723,
+     -0.0194
+    ],
+    "size": [
+     1.5601,
+     0.695,
+     1.1779
+    ],
+    "nt": 360
+   },
+   "TrunkLeg_R": {
+    "file": "tier2/TrunkLeg_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0157,
+     0.3217,
+     0.0026
+    ],
+    "size": [
+     0.7425,
+     0.8953,
+     0.8335
+    ],
+    "nt": 304
+   },
+   "TrunkLeg_L": {
+    "file": "tier2/TrunkLeg_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0157,
+     0.3217,
+     0.0026
+    ],
+    "size": [
+     0.7425,
+     0.8953,
+     0.8335
+    ],
+    "nt": 304
+   },
+   "TrunkHem_R": {
+    "file": "tier2/TrunkHem_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0173,
+     -0.0702,
+     -0.0135
+    ],
+    "size": [
+     0.7573,
+     0.1216,
+     0.8128
+    ],
+    "nt": 128
+   },
+   "TrunkHem_L": {
+    "file": "tier2/TrunkHem_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0173,
+     -0.0702,
+     -0.0135
+    ],
+    "size": [
+     0.7573,
+     0.1216,
+     0.8128
+    ],
+    "nt": 128
+   },
+   "TrunkStripe_R": {
+    "file": "tier2/TrunkStripe_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.3709,
+     0.1333,
+     -0.0025
+    ],
+    "size": [
+     0.0477,
+     0.4815,
+     0.1074
+    ],
+    "nt": 48
+   },
+   "TrunkStripe_L": {
+    "file": "tier2/TrunkStripe_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.3709,
+     0.1333,
+     -0.0025
+    ],
+    "size": [
+     0.0477,
+     0.4815,
+     0.1074
+    ],
+    "nt": 48
+   },
+   "TrunkLegLong_R": {
+    "file": "tier2/TrunkLegLong_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0121,
+     0.1367,
+     0.0027
+    ],
+    "size": [
+     0.7324,
+     1.2652,
+     0.83
+    ],
+    "nt": 368
+   },
+   "TrunkLegLong_L": {
+    "file": "tier2/TrunkLegLong_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0121,
+     0.1367,
+     0.0027
+    ],
+    "size": [
+     0.7324,
+     1.2652,
+     0.83
+    ],
+    "nt": 368
+   },
+   "TrunkHemLong_R": {
+    "file": "tier2/TrunkHemLong_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0143,
+     -0.4401,
+     -0.0121
+    ],
+    "size": [
+     0.6904,
+     0.1218,
+     0.7327
+    ],
+    "nt": 128
+   },
+   "TrunkHemLong_L": {
+    "file": "tier2/TrunkHemLong_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0143,
+     -0.4401,
+     -0.0121
+    ],
+    "size": [
+     0.6904,
+     0.1218,
+     0.7327
+    ],
+    "nt": 128
+   },
+   "GloveCuff_R": {
+    "file": "tier2/GloveCuff_R.mesh",
+    "part": "RightLowerArm",
+    "offset": [
+     -0.0106,
+     -0.347,
+     -0.0488
+    ],
+    "size": [
+     0.6063,
+     0.638,
+     0.7021
+    ],
+    "nt": 240
+   },
+   "GloveCuff_L": {
+    "file": "tier2/GloveCuff_L.mesh",
+    "part": "LeftLowerArm",
+    "offset": [
+     0.0106,
+     -0.347,
+     -0.0488
+    ],
+    "size": [
+     0.6063,
+     0.638,
+     0.7021
+    ],
+    "nt": 240
+   },
+   "GloveStrap_R": {
+    "file": "tier2/GloveStrap_R.mesh",
+    "part": "RightLowerArm",
+    "offset": [
+     0.0003,
+     -0.32,
+     -0.0093
+    ],
+    "size": [
+     0.5187,
+     0.2176,
+     0.5701
+    ],
+    "nt": 160
+   },
+   "GloveStrap_L": {
+    "file": "tier2/GloveStrap_L.mesh",
+    "part": "LeftLowerArm",
+    "offset": [
+     -0.0003,
+     -0.32,
+     -0.0093
+    ],
+    "size": [
+     0.5187,
+     0.2176,
+     0.5701
+    ],
+    "nt": 160
+   },
+   "WrapWrist_R": {
+    "file": "tier2/WrapWrist_R.mesh",
+    "part": "RightLowerArm",
+    "offset": [
+     0.0004,
+     -0.3859,
+     -0.0253
+    ],
+    "size": [
+     0.4478,
+     0.4961,
+     0.5407
+    ],
+    "nt": 336
+   },
+   "WrapWrist_L": {
+    "file": "tier2/WrapWrist_L.mesh",
+    "part": "LeftLowerArm",
+    "offset": [
+     -0.0004,
+     -0.3859,
+     -0.0253
+    ],
+    "size": [
+     0.4478,
+     0.4961,
+     0.5407
+    ],
+    "nt": 336
+   },
+   "BootShaft_R": {
+    "file": "tier2/BootShaft_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     -0.0006,
+     -0.3031,
+     0.0076
+    ],
+    "size": [
+     0.5012,
+     0.6852,
+     0.5415
+    ],
+    "nt": 272
+   },
+   "BootShaft_L": {
+    "file": "tier2/BootShaft_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     0.0006,
+     -0.3031,
+     0.0076
+    ],
+    "size": [
+     0.5012,
+     0.6852,
+     0.5415
+    ],
+    "nt": 272
+   },
+   "BootLaces_R": {
+    "file": "tier2/BootLaces_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     -0.0,
+     -0.2597,
+     -0.2338
+    ],
+    "size": [
+     0.164,
+     0.444,
+     0.0736
+    ],
+    "nt": 96
+   },
+   "BootLaces_L": {
+    "file": "tier2/BootLaces_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     0.0,
+     -0.2597,
+     -0.2338
+    ],
+    "size": [
+     0.164,
+     0.444,
+     0.0736
+    ],
+    "nt": 96
+   },
+   "BootSock_R": {
+    "file": "tier2/BootSock_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     -0.0005,
+     0.0357,
+     0.0111
+    ],
+    "size": [
+     0.4649,
+     0.1468,
+     0.5168
+    ],
+    "nt": 176
+   },
+   "BootSock_L": {
+    "file": "tier2/BootSock_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     0.0005,
+     0.0357,
+     0.0111
+    ],
+    "size": [
+     0.4649,
+     0.1468,
+     0.5168
+    ],
+    "nt": 176
+   },
+   "ShoeCollar_R": {
+    "file": "tier2/ShoeCollar_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.0001,
+     -0.4948,
+     -0.0106
+    ],
+    "size": [
+     0.4033,
+     0.1777,
+     0.4343
+    ],
+    "nt": 240
+   },
+   "ShoeCollar_L": {
+    "file": "tier2/ShoeCollar_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     -0.0001,
+     -0.4948,
+     -0.0106
+    ],
+    "size": [
+     0.4033,
+     0.1777,
+     0.4343
+    ],
+    "nt": 240
+   },
+   "AnkleSock_R": {
+    "file": "tier2/AnkleSock_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.0001,
+     -0.4273,
+     -0.0045
+    ],
+    "size": [
+     0.366,
+     0.3107,
+     0.4005
+    ],
+    "nt": 240
+   },
+   "AnkleSock_L": {
+    "file": "tier2/AnkleSock_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     -0.0001,
+     -0.4273,
+     -0.0045
+    ],
+    "size": [
+     0.366,
+     0.3107,
+     0.4005
+    ],
+    "nt": 240
+   },
+   "Glove_R": {
+    "file": "shared/Glove_R.mesh",
+    "part": "RightHand",
+    "offset": [
+     -0.0318,
+     -0.1128,
+     -0.0113
+    ],
+    "size": [
+     0.5994,
+     0.95,
+     0.8074
+    ],
+    "nt": 416
+   },
+   "Glove_L": {
+    "file": "shared/Glove_L.mesh",
+    "part": "LeftHand",
+    "offset": [
+     0.0318,
+     -0.1128,
+     -0.0113
+    ],
+    "size": [
+     0.5994,
+     0.95,
+     0.8074
+    ],
+    "nt": 416
+   },
+   "Wrap_R": {
+    "file": "shared/Wrap_R.mesh",
+    "part": "RightHand",
+    "offset": [
+     -0.0083,
+     0.0749,
+     0.0032
+    ],
+    "size": [
+     0.3736,
+     0.4427,
+     0.5967
+    ],
+    "nt": 304
+   },
+   "Wrap_L": {
+    "file": "shared/Wrap_L.mesh",
+    "part": "LeftHand",
+    "offset": [
+     0.0083,
+     0.0749,
+     0.0032
+    ],
+    "size": [
+     0.3736,
+     0.4427,
+     0.5967
+    ],
+    "nt": 304
+   },
+   "BootFoot_R": {
+    "file": "shared/BootFoot_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.019,
+     -0.0
+    ],
+    "size": [
+     0.4575,
+     0.4988,
+     0.8836
+    ],
+    "nt": 192
+   },
+   "BootFoot_L": {
+    "file": "shared/BootFoot_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     -0.0,
+     0.019,
+     -0.0
+    ],
+    "size": [
+     0.4575,
+     0.4988,
+     0.8836
+    ],
+    "nt": 192
+   },
+   "Sole_R": {
+    "file": "shared/Sole_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     -0.0001,
+     -0.1974,
+     0.0004
+    ],
+    "size": [
+     0.514,
+     0.102,
+     0.8748
+    ],
+    "nt": 192
+   },
+   "Sole_L": {
+    "file": "shared/Sole_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     0.0001,
+     -0.1974,
+     0.0004
+    ],
+    "size": [
+     0.514,
+     0.102,
+     0.8748
+    ],
+    "nt": 192
+   },
+   "ShoeLaces_R": {
+    "file": "shared/ShoeLaces_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.1411,
+     -0.1191
+    ],
+    "size": [
+     0.1806,
+     0.1564,
+     0.3011
+    ],
+    "nt": 96
+   },
+   "ShoeLaces_L": {
+    "file": "shared/ShoeLaces_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     0.0,
+     0.1411,
+     -0.1191
+    ],
+    "size": [
+     0.1806,
+     0.1564,
+     0.3011
+    ],
+    "nt": 96
+   },
+   "Top": {
+    "file": "tier2/Top.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     -0.0,
+     0.6099,
+     -0.0076
+    ],
+    "size": [
+     1.5774,
+     1.316,
+     0.9957
+    ],
+    "nt": 464
+   },
+   "TopBand": {
+    "file": "tier2/TopBand.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.0162,
+     0.0089
+    ],
+    "size": [
+     1.4842,
+     0.1386,
+     0.9275
+    ],
+    "nt": 160
+   }
+  },
+  "3": {
+   "Waistband": {
+    "file": "tier3/Waistband.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     0.2566,
+     -0.0336
+    ],
+    "size": [
+     1.4504,
+     0.3758,
+     1.1616
+    ],
+    "nt": 336
+   },
+   "TrunkSeat": {
+    "file": "tier3/TrunkSeat.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     -0.1723,
+     -0.0258
+    ],
+    "size": [
+     1.5674,
+     0.695,
+     1.205
+    ],
+    "nt": 360
+   },
+   "TrunkLeg_R": {
+    "file": "tier3/TrunkLeg_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0163,
+     0.3217,
+     0.0009
+    ],
+    "size": [
+     0.7635,
+     0.8953,
+     0.8733
+    ],
+    "nt": 304
+   },
+   "TrunkLeg_L": {
+    "file": "tier3/TrunkLeg_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0163,
+     0.3217,
+     0.0009
+    ],
+    "size": [
+     0.7635,
+     0.8953,
+     0.8733
+    ],
+    "nt": 304
+   },
+   "TrunkHem_R": {
+    "file": "tier3/TrunkHem_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.019,
+     -0.0702,
+     -0.0143
+    ],
+    "size": [
+     0.776,
+     0.1215,
+     0.8568
+    ],
+    "nt": 128
+   },
+   "TrunkHem_L": {
+    "file": "tier3/TrunkHem_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.019,
+     -0.0702,
+     -0.0143
+    ],
+    "size": [
+     0.776,
+     0.1215,
+     0.8568
+    ],
+    "nt": 128
+   },
+   "TrunkStripe_R": {
+    "file": "tier3/TrunkStripe_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.3784,
+     0.1334,
+     -0.0104
+    ],
+    "size": [
+     0.0534,
+     0.4818,
+     0.1069
+    ],
+    "nt": 48
+   },
+   "TrunkStripe_L": {
+    "file": "tier3/TrunkStripe_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.3784,
+     0.1334,
+     -0.0104
+    ],
+    "size": [
+     0.0534,
+     0.4818,
+     0.1069
+    ],
+    "nt": 48
+   },
+   "TrunkLegLong_R": {
+    "file": "tier3/TrunkLegLong_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0123,
+     0.1367,
+     0.0034
+    ],
+    "size": [
+     0.7524,
+     1.2652,
+     0.8649
+    ],
+    "nt": 368
+   },
+   "TrunkLegLong_L": {
+    "file": "tier3/TrunkLegLong_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0123,
+     0.1367,
+     0.0034
+    ],
+    "size": [
+     0.7524,
+     1.2652,
+     0.8649
+    ],
+    "nt": 368
+   },
+   "TrunkHemLong_R": {
+    "file": "tier3/TrunkHemLong_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0146,
+     -0.44,
+     -0.0117
+    ],
+    "size": [
+     0.7084,
+     0.122,
+     0.7613
+    ],
+    "nt": 128
+   },
+   "TrunkHemLong_L": {
+    "file": "tier3/TrunkHemLong_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0146,
+     -0.44,
+     -0.0117
+    ],
+    "size": [
+     0.7084,
+     0.122,
+     0.7613
+    ],
+    "nt": 128
+   },
+   "GloveCuff_R": {
+    "file": "tier3/GloveCuff_R.mesh",
+    "part": "RightLowerArm",
+    "offset": [
+     -0.0059,
+     -0.347,
+     -0.0451
+    ],
+    "size": [
+     0.6157,
+     0.638,
+     0.7095
+    ],
+    "nt": 240
+   },
+   "GloveCuff_L": {
+    "file": "tier3/GloveCuff_L.mesh",
+    "part": "LeftLowerArm",
+    "offset": [
+     0.0059,
+     -0.347,
+     -0.0451
+    ],
+    "size": [
+     0.6157,
+     0.638,
+     0.7095
+    ],
+    "nt": 240
+   },
+   "GloveStrap_R": {
+    "file": "tier3/GloveStrap_R.mesh",
+    "part": "RightLowerArm",
+    "offset": [
+     0.0005,
+     -0.32,
+     -0.007
+    ],
+    "size": [
+     0.5311,
+     0.2176,
+     0.5771
+    ],
+    "nt": 160
+   },
+   "GloveStrap_L": {
+    "file": "tier3/GloveStrap_L.mesh",
+    "part": "LeftLowerArm",
+    "offset": [
+     -0.0005,
+     -0.32,
+     -0.007
+    ],
+    "size": [
+     0.5311,
+     0.2176,
+     0.5771
+    ],
+    "nt": 160
+   },
+   "WrapWrist_R": {
+    "file": "tier3/WrapWrist_R.mesh",
+    "part": "RightLowerArm",
+    "offset": [
+     0.0006,
+     -0.3859,
+     -0.022
+    ],
+    "size": [
+     0.4626,
+     0.4961,
+     0.5471
+    ],
+    "nt": 336
+   },
+   "WrapWrist_L": {
+    "file": "tier3/WrapWrist_L.mesh",
+    "part": "LeftLowerArm",
+    "offset": [
+     -0.0006,
+     -0.3859,
+     -0.022
+    ],
+    "size": [
+     0.4626,
+     0.4961,
+     0.5471
+    ],
+    "nt": 336
+   },
+   "BootShaft_R": {
+    "file": "tier3/BootShaft_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     -0.0009,
+     -0.3031,
+     0.0069
+    ],
+    "size": [
+     0.5174,
+     0.6852,
+     0.5675
+    ],
+    "nt": 272
+   },
+   "BootShaft_L": {
+    "file": "tier3/BootShaft_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     0.0009,
+     -0.3031,
+     0.0069
+    ],
+    "size": [
+     0.5174,
+     0.6852,
+     0.5675
+    ],
+    "nt": 272
+   },
+   "BootLaces_R": {
+    "file": "tier3/BootLaces_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     -0.0,
+     -0.2597,
+     -0.2438
+    ],
+    "size": [
+     0.164,
+     0.444,
+     0.079
+    ],
+    "nt": 96
+   },
+   "BootLaces_L": {
+    "file": "tier3/BootLaces_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     0.0,
+     -0.2597,
+     -0.2438
+    ],
+    "size": [
+     0.164,
+     0.444,
+     0.079
+    ],
+    "nt": 96
+   },
+   "BootSock_R": {
+    "file": "tier3/BootSock_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     -0.0008,
+     0.0357,
+     0.0101
+    ],
+    "size": [
+     0.4807,
+     0.1468,
+     0.5441
+    ],
+    "nt": 176
+   },
+   "BootSock_L": {
+    "file": "tier3/BootSock_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     0.0008,
+     0.0357,
+     0.0101
+    ],
+    "size": [
+     0.4807,
+     0.1468,
+     0.5441
+    ],
+    "nt": 176
+   },
+   "ShoeCollar_R": {
+    "file": "tier3/ShoeCollar_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.0001,
+     -0.4948,
+     -0.015
+    ],
+    "size": [
+     0.4094,
+     0.1777,
+     0.4398
+    ],
+    "nt": 240
+   },
+   "ShoeCollar_L": {
+    "file": "tier3/ShoeCollar_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     -0.0001,
+     -0.4948,
+     -0.015
+    ],
+    "size": [
+     0.4094,
+     0.1777,
+     0.4398
+    ],
+    "nt": 240
+   },
+   "AnkleSock_R": {
+    "file": "tier3/AnkleSock_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.0,
+     -0.4273,
+     -0.0079
+    ],
+    "size": [
+     0.3752,
+     0.3107,
+     0.4092
+    ],
+    "nt": 240
+   },
+   "AnkleSock_L": {
+    "file": "tier3/AnkleSock_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     -0.0,
+     -0.4273,
+     -0.0079
+    ],
+    "size": [
+     0.3752,
+     0.3107,
+     0.4092
+    ],
+    "nt": 240
+   },
+   "Glove_R": {
+    "file": "shared/Glove_R.mesh",
+    "part": "RightHand",
+    "offset": [
+     -0.0327,
+     -0.1128,
+     -0.0126
+    ],
+    "size": [
+     0.5994,
+     0.95,
+     0.8074
+    ],
+    "nt": 416
+   },
+   "Glove_L": {
+    "file": "shared/Glove_L.mesh",
+    "part": "LeftHand",
+    "offset": [
+     0.0327,
+     -0.1128,
+     -0.0126
+    ],
+    "size": [
+     0.5994,
+     0.95,
+     0.8074
+    ],
+    "nt": 416
+   },
+   "Wrap_R": {
+    "file": "shared/Wrap_R.mesh",
+    "part": "RightHand",
+    "offset": [
+     -0.0092,
+     0.0749,
+     0.0019
+    ],
+    "size": [
+     0.3736,
+     0.4427,
+     0.5967
+    ],
+    "nt": 304
+   },
+   "Wrap_L": {
+    "file": "shared/Wrap_L.mesh",
+    "part": "LeftHand",
+    "offset": [
+     0.0092,
+     0.0749,
+     0.0019
+    ],
+    "size": [
+     0.3736,
+     0.4427,
+     0.5967
+    ],
+    "nt": 304
+   },
+   "BootFoot_R": {
+    "file": "shared/BootFoot_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.019,
+     -0.0
+    ],
+    "size": [
+     0.4575,
+     0.4988,
+     0.8836
+    ],
+    "nt": 192
+   },
+   "BootFoot_L": {
+    "file": "shared/BootFoot_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     -0.0,
+     0.019,
+     -0.0
+    ],
+    "size": [
+     0.4575,
+     0.4988,
+     0.8836
+    ],
+    "nt": 192
+   },
+   "Sole_R": {
+    "file": "shared/Sole_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     -0.0001,
+     -0.1974,
+     0.0004
+    ],
+    "size": [
+     0.514,
+     0.102,
+     0.8748
+    ],
+    "nt": 192
+   },
+   "Sole_L": {
+    "file": "shared/Sole_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     0.0001,
+     -0.1974,
+     0.0004
+    ],
+    "size": [
+     0.514,
+     0.102,
+     0.8748
+    ],
+    "nt": 192
+   },
+   "ShoeLaces_R": {
+    "file": "shared/ShoeLaces_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.1411,
+     -0.1191
+    ],
+    "size": [
+     0.1806,
+     0.1564,
+     0.3011
+    ],
+    "nt": 96
+   },
+   "ShoeLaces_L": {
+    "file": "shared/ShoeLaces_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     0.0,
+     0.1411,
+     -0.1191
+    ],
+    "size": [
+     0.1806,
+     0.1564,
+     0.3011
+    ],
+    "nt": 96
+   },
+   "Top": {
+    "file": "tier3/Top.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     -0.0,
+     0.6082,
+     -0.0084
+    ],
+    "size": [
+     1.6146,
+     1.34,
+     1.0589
+    ],
+    "nt": 464
+   },
+   "TopBand": {
+    "file": "tier3/TopBand.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.0025,
+     0.0163
+    ],
+    "size": [
+     1.5236,
+     0.1386,
+     0.9616
+    ],
+    "nt": 160
+   }
+  },
+  "4": {
+   "Waistband": {
+    "file": "tier4/Waistband.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     0.2566,
+     -0.0404
+    ],
+    "size": [
+     1.4416,
+     0.3758,
+     1.1628
+    ],
+    "nt": 336
+   },
+   "TrunkSeat": {
+    "file": "tier4/TrunkSeat.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     -0.1723,
+     -0.0366
+    ],
+    "size": [
+     1.5844,
+     0.695,
+     1.2387
+    ],
+    "nt": 360
+   },
+   "TrunkLeg_R": {
+    "file": "tier4/TrunkLeg_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0188,
+     0.3217,
+     -0.0005
+    ],
+    "size": [
+     0.7802,
+     0.8953,
+     0.9144
+    ],
+    "nt": 304
+   },
+   "TrunkLeg_L": {
+    "file": "tier4/TrunkLeg_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0188,
+     0.3217,
+     -0.0005
+    ],
+    "size": [
+     0.7802,
+     0.8953,
+     0.9144
+    ],
+    "nt": 304
+   },
+   "TrunkHem_R": {
+    "file": "tier4/TrunkHem_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0201,
+     -0.0702,
+     -0.0153
+    ],
+    "size": [
+     0.7955,
+     0.1215,
+     0.8981
+    ],
+    "nt": 128
+   },
+   "TrunkHem_L": {
+    "file": "tier4/TrunkHem_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0201,
+     -0.0702,
+     -0.0153
+    ],
+    "size": [
+     0.7955,
+     0.1215,
+     0.8981
+    ],
+    "nt": 128
+   },
+   "TrunkStripe_R": {
+    "file": "tier4/TrunkStripe_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.3877,
+     0.1334,
+     -0.0052
+    ],
+    "size": [
+     0.0563,
+     0.4818,
+     0.106
+    ],
+    "nt": 48
+   },
+   "TrunkStripe_L": {
+    "file": "tier4/TrunkStripe_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.3877,
+     0.1334,
+     -0.0052
+    ],
+    "size": [
+     0.0563,
+     0.4818,
+     0.106
+    ],
+    "nt": 48
+   },
+   "TrunkLegLong_R": {
+    "file": "tier4/TrunkLegLong_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0142,
+     0.1367,
+     0.0026
+    ],
+    "size": [
+     0.7659,
+     1.2652,
+     0.905
+    ],
+    "nt": 368
+   },
+   "TrunkLegLong_L": {
+    "file": "tier4/TrunkLegLong_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0142,
+     0.1367,
+     0.0026
+    ],
+    "size": [
+     0.7659,
+     1.2652,
+     0.905
+    ],
+    "nt": 368
+   },
+   "TrunkHemLong_R": {
+    "file": "tier4/TrunkHemLong_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0142,
+     -0.4399,
+     -0.0114
+    ],
+    "size": [
+     0.7249,
+     0.1221,
+     0.7915
+    ],
+    "nt": 128
+   },
+   "TrunkHemLong_L": {
+    "file": "tier4/TrunkHemLong_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0142,
+     -0.4399,
+     -0.0114
+    ],
+    "size": [
+     0.7249,
+     0.1221,
+     0.7915
+    ],
+    "nt": 128
+   },
+   "GloveCuff_R": {
+    "file": "tier4/GloveCuff_R.mesh",
+    "part": "RightLowerArm",
+    "offset": [
+     -0.0015,
+     -0.347,
+     -0.0414
+    ],
+    "size": [
+     0.6245,
+     0.638,
+     0.7168
+    ],
+    "nt": 240
+   },
+   "GloveCuff_L": {
+    "file": "tier4/GloveCuff_L.mesh",
+    "part": "LeftLowerArm",
+    "offset": [
+     0.0015,
+     -0.347,
+     -0.0414
+    ],
+    "size": [
+     0.6245,
+     0.638,
+     0.7168
+    ],
+    "nt": 240
+   },
+   "GloveStrap_R": {
+    "file": "tier4/GloveStrap_R.mesh",
+    "part": "RightLowerArm",
+    "offset": [
+     0.0006,
+     -0.32,
+     -0.0046
+    ],
+    "size": [
+     0.5433,
+     0.2176,
+     0.5839
+    ],
+    "nt": 160
+   },
+   "GloveStrap_L": {
+    "file": "tier4/GloveStrap_L.mesh",
+    "part": "LeftLowerArm",
+    "offset": [
+     -0.0006,
+     -0.32,
+     -0.0046
+    ],
+    "size": [
+     0.5433,
+     0.2176,
+     0.5839
+    ],
+    "nt": 160
+   },
+   "WrapWrist_R": {
+    "file": "tier4/WrapWrist_R.mesh",
+    "part": "RightLowerArm",
+    "offset": [
+     0.0007,
+     -0.3859,
+     -0.0188
+    ],
+    "size": [
+     0.4765,
+     0.4961,
+     0.5535
+    ],
+    "nt": 336
+   },
+   "WrapWrist_L": {
+    "file": "tier4/WrapWrist_L.mesh",
+    "part": "LeftLowerArm",
+    "offset": [
+     -0.0007,
+     -0.3859,
+     -0.0188
+    ],
+    "size": [
+     0.4765,
+     0.4961,
+     0.5535
+    ],
+    "nt": 336
+   },
+   "BootShaft_R": {
+    "file": "tier4/BootShaft_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     -0.001,
+     -0.3031,
+     0.0079
+    ],
+    "size": [
+     0.5328,
+     0.6852,
+     0.5929
+    ],
+    "nt": 272
+   },
+   "BootShaft_L": {
+    "file": "tier4/BootShaft_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     0.001,
+     -0.3031,
+     0.0079
+    ],
+    "size": [
+     0.5328,
+     0.6852,
+     0.5929
+    ],
+    "nt": 272
+   },
+   "BootLaces_R": {
+    "file": "tier4/BootLaces_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.0,
+     -0.2597,
+     -0.2518
+    ],
+    "size": [
+     0.164,
+     0.444,
+     0.0843
+    ],
+    "nt": 96
+   },
+   "BootLaces_L": {
+    "file": "tier4/BootLaces_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     0.0,
+     -0.2597,
+     -0.2518
+    ],
+    "size": [
+     0.164,
+     0.444,
+     0.0843
+    ],
+    "nt": 96
+   },
+   "BootSock_R": {
+    "file": "tier4/BootSock_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     -0.0015,
+     0.0357,
+     0.0107
+    ],
+    "size": [
+     0.4969,
+     0.1468,
+     0.5706
+    ],
+    "nt": 176
+   },
+   "BootSock_L": {
+    "file": "tier4/BootSock_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     0.0015,
+     0.0357,
+     0.0107
+    ],
+    "size": [
+     0.4969,
+     0.1468,
+     0.5706
+    ],
+    "nt": 176
+   },
+   "ShoeCollar_R": {
+    "file": "tier4/ShoeCollar_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.0001,
+     -0.4948,
+     -0.0176
+    ],
+    "size": [
+     0.4155,
+     0.1777,
+     0.4454
+    ],
+    "nt": 240
+   },
+   "ShoeCollar_L": {
+    "file": "tier4/ShoeCollar_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     -0.0001,
+     -0.4948,
+     -0.0176
+    ],
+    "size": [
+     0.4155,
+     0.1777,
+     0.4454
+    ],
+    "nt": 240
+   },
+   "AnkleSock_R": {
+    "file": "tier4/AnkleSock_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.0001,
+     -0.4273,
+     -0.0096
+    ],
+    "size": [
+     0.3843,
+     0.3107,
+     0.418
+    ],
+    "nt": 240
+   },
+   "AnkleSock_L": {
+    "file": "tier4/AnkleSock_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     -0.0001,
+     -0.4273,
+     -0.0096
+    ],
+    "size": [
+     0.3843,
+     0.3107,
+     0.418
+    ],
+    "nt": 240
+   },
+   "Glove_R": {
+    "file": "shared/Glove_R.mesh",
+    "part": "RightHand",
+    "offset": [
+     -0.0336,
+     -0.1128,
+     -0.0139
+    ],
+    "size": [
+     0.5994,
+     0.95,
+     0.8074
+    ],
+    "nt": 416
+   },
+   "Glove_L": {
+    "file": "shared/Glove_L.mesh",
+    "part": "LeftHand",
+    "offset": [
+     0.0336,
+     -0.1128,
+     -0.0139
+    ],
+    "size": [
+     0.5994,
+     0.95,
+     0.8074
+    ],
+    "nt": 416
+   },
+   "Wrap_R": {
+    "file": "shared/Wrap_R.mesh",
+    "part": "RightHand",
+    "offset": [
+     -0.0101,
+     0.0749,
+     0.0006
+    ],
+    "size": [
+     0.3736,
+     0.4427,
+     0.5967
+    ],
+    "nt": 304
+   },
+   "Wrap_L": {
+    "file": "shared/Wrap_L.mesh",
+    "part": "LeftHand",
+    "offset": [
+     0.0101,
+     0.0749,
+     0.0006
+    ],
+    "size": [
+     0.3736,
+     0.4427,
+     0.5967
+    ],
+    "nt": 304
+   },
+   "BootFoot_R": {
+    "file": "shared/BootFoot_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.019,
+     -0.0
+    ],
+    "size": [
+     0.4575,
+     0.4988,
+     0.8836
+    ],
+    "nt": 192
+   },
+   "BootFoot_L": {
+    "file": "shared/BootFoot_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     -0.0,
+     0.019,
+     -0.0
+    ],
+    "size": [
+     0.4575,
+     0.4988,
+     0.8836
+    ],
+    "nt": 192
+   },
+   "Sole_R": {
+    "file": "shared/Sole_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     -0.0001,
+     -0.1974,
+     0.0004
+    ],
+    "size": [
+     0.514,
+     0.102,
+     0.8748
+    ],
+    "nt": 192
+   },
+   "Sole_L": {
+    "file": "shared/Sole_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     0.0001,
+     -0.1974,
+     0.0004
+    ],
+    "size": [
+     0.514,
+     0.102,
+     0.8748
+    ],
+    "nt": 192
+   },
+   "ShoeLaces_R": {
+    "file": "shared/ShoeLaces_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.1411,
+     -0.1191
+    ],
+    "size": [
+     0.1806,
+     0.1564,
+     0.3011
+    ],
+    "nt": 96
+   },
+   "ShoeLaces_L": {
+    "file": "shared/ShoeLaces_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     0.0,
+     0.1411,
+     -0.1191
+    ],
+    "size": [
+     0.1806,
+     0.1564,
+     0.3011
+    ],
+    "nt": 96
+   },
+   "Top": {
+    "file": "tier4/Top.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     -0.0,
+     0.6063,
+     -0.009
+    ],
+    "size": [
+     1.6512,
+     1.3636,
+     1.119
+    ],
+    "nt": 464
+   },
+   "TopBand": {
+    "file": "tier4/TopBand.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     -0.0112,
+     0.0252
+    ],
+    "size": [
+     1.56,
+     0.1386,
+     0.9932
+    ],
+    "nt": 160
+   }
+  },
+  "5": {
+   "Waistband": {
+    "file": "tier5/Waistband.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     0.2566,
+     -0.0461
+    ],
+    "size": [
+     1.4326,
+     0.3758,
+     1.1638
+    ],
+    "nt": 336
+   },
+   "TrunkSeat": {
+    "file": "tier5/TrunkSeat.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     -0.1723,
+     -0.046
+    ],
+    "size": [
+     1.6077,
+     0.695,
+     1.2705
+    ],
+    "nt": 360
+   },
+   "TrunkLeg_R": {
+    "file": "tier5/TrunkLeg_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0188,
+     0.3217,
+     -0.0064
+    ],
+    "size": [
+     0.8005,
+     0.8953,
+     0.9413
+    ],
+    "nt": 304
+   },
+   "TrunkLeg_L": {
+    "file": "tier5/TrunkLeg_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0188,
+     0.3217,
+     -0.0064
+    ],
+    "size": [
+     0.8005,
+     0.8953,
+     0.9413
+    ],
+    "nt": 304
+   },
+   "TrunkHem_R": {
+    "file": "tier5/TrunkHem_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0196,
+     -0.0702,
+     -0.016
+    ],
+    "size": [
+     0.8168,
+     0.1215,
+     0.935
+    ],
+    "nt": 128
+   },
+   "TrunkHem_L": {
+    "file": "tier5/TrunkHem_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0196,
+     -0.0702,
+     -0.016
+    ],
+    "size": [
+     0.8168,
+     0.1215,
+     0.935
+    ],
+    "nt": 128
+   },
+   "TrunkStripe_R": {
+    "file": "tier5/TrunkStripe_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.3939,
+     0.1335,
+     -0.0067
+    ],
+    "size": [
+     0.0643,
+     0.4819,
+     0.1057
+    ],
+    "nt": 48
+   },
+   "TrunkStripe_L": {
+    "file": "tier5/TrunkStripe_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.3939,
+     0.1335,
+     -0.0067
+    ],
+    "size": [
+     0.0643,
+     0.4819,
+     0.1057
+    ],
+    "nt": 48
+   },
+   "TrunkLegLong_R": {
+    "file": "tier5/TrunkLegLong_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0149,
+     0.1367,
+     -0.0041
+    ],
+    "size": [
+     0.7849,
+     1.2652,
+     0.9336
+    ],
+    "nt": 368
+   },
+   "TrunkLegLong_L": {
+    "file": "tier5/TrunkLegLong_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0149,
+     0.1367,
+     -0.0041
+    ],
+    "size": [
+     0.7849,
+     1.2652,
+     0.9336
+    ],
+    "nt": 368
+   },
+   "TrunkHemLong_R": {
+    "file": "tier5/TrunkHemLong_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.013,
+     -0.4399,
+     -0.0119
+    ],
+    "size": [
+     0.7419,
+     0.1222,
+     0.8217
+    ],
+    "nt": 128
+   },
+   "TrunkHemLong_L": {
+    "file": "tier5/TrunkHemLong_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.013,
+     -0.4399,
+     -0.0119
+    ],
+    "size": [
+     0.7419,
+     0.1222,
+     0.8217
+    ],
+    "nt": 128
+   },
+   "GloveCuff_R": {
+    "file": "tier5/GloveCuff_R.mesh",
+    "part": "RightLowerArm",
+    "offset": [
+     0.0015,
+     -0.347,
+     -0.0377
+    ],
+    "size": [
+     0.6348,
+     0.638,
+     0.7242
+    ],
+    "nt": 240
+   },
+   "GloveCuff_L": {
+    "file": "tier5/GloveCuff_L.mesh",
+    "part": "LeftLowerArm",
+    "offset": [
+     -0.0015,
+     -0.347,
+     -0.0377
+    ],
+    "size": [
+     0.6348,
+     0.638,
+     0.7242
+    ],
+    "nt": 240
+   },
+   "GloveStrap_R": {
+    "file": "tier5/GloveStrap_R.mesh",
+    "part": "RightLowerArm",
+    "offset": [
+     0.0005,
+     -0.32,
+     -0.0022
+    ],
+    "size": [
+     0.5552,
+     0.2176,
+     0.5908
+    ],
+    "nt": 160
+   },
+   "GloveStrap_L": {
+    "file": "tier5/GloveStrap_L.mesh",
+    "part": "LeftLowerArm",
+    "offset": [
+     -0.0005,
+     -0.32,
+     -0.0022
+    ],
+    "size": [
+     0.5552,
+     0.2176,
+     0.5908
+    ],
+    "nt": 160
+   },
+   "WrapWrist_R": {
+    "file": "tier5/WrapWrist_R.mesh",
+    "part": "RightLowerArm",
+    "offset": [
+     0.0007,
+     -0.3859,
+     -0.0156
+    ],
+    "size": [
+     0.4899,
+     0.4961,
+     0.5599
+    ],
+    "nt": 336
+   },
+   "WrapWrist_L": {
+    "file": "tier5/WrapWrist_L.mesh",
+    "part": "LeftLowerArm",
+    "offset": [
+     -0.0007,
+     -0.3859,
+     -0.0156
+    ],
+    "size": [
+     0.4899,
+     0.4961,
+     0.5599
+    ],
+    "nt": 336
+   },
+   "BootShaft_R": {
+    "file": "tier5/BootShaft_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     -0.001,
+     -0.3031,
+     0.0098
+    ],
+    "size": [
+     0.5477,
+     0.6852,
+     0.6168
+    ],
+    "nt": 272
+   },
+   "BootShaft_L": {
+    "file": "tier5/BootShaft_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     0.001,
+     -0.3031,
+     0.0098
+    ],
+    "size": [
+     0.5477,
+     0.6852,
+     0.6168
+    ],
+    "nt": 272
+   },
+   "BootLaces_R": {
+    "file": "tier5/BootLaces_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.0,
+     -0.2597,
+     -0.2582
+    ],
+    "size": [
+     0.164,
+     0.444,
+     0.0894
+    ],
+    "nt": 96
+   },
+   "BootLaces_L": {
+    "file": "tier5/BootLaces_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     0.0,
+     -0.2597,
+     -0.2582
+    ],
+    "size": [
+     0.164,
+     0.444,
+     0.0894
+    ],
+    "nt": 96
+   },
+   "BootSock_R": {
+    "file": "tier5/BootSock_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     -0.0024,
+     0.0357,
+     0.0123
+    ],
+    "size": [
+     0.5134,
+     0.1468,
+     0.5951
+    ],
+    "nt": 176
+   },
+   "BootSock_L": {
+    "file": "tier5/BootSock_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     0.0024,
+     0.0357,
+     0.0123
+    ],
+    "size": [
+     0.5134,
+     0.1468,
+     0.5951
+    ],
+    "nt": 176
+   },
+   "ShoeCollar_R": {
+    "file": "tier5/ShoeCollar_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.0001,
+     -0.4948,
+     -0.0186
+    ],
+    "size": [
+     0.4215,
+     0.1777,
+     0.4509
+    ],
+    "nt": 240
+   },
+   "ShoeCollar_L": {
+    "file": "tier5/ShoeCollar_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     -0.0001,
+     -0.4948,
+     -0.0186
+    ],
+    "size": [
+     0.4215,
+     0.1777,
+     0.4509
+    ],
+    "nt": 240
+   },
+   "AnkleSock_R": {
+    "file": "tier5/AnkleSock_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.0001,
+     -0.4273,
+     -0.0098
+    ],
+    "size": [
+     0.3935,
+     0.3107,
+     0.4271
+    ],
+    "nt": 240
+   },
+   "AnkleSock_L": {
+    "file": "tier5/AnkleSock_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     -0.0001,
+     -0.4273,
+     -0.0098
+    ],
+    "size": [
+     0.3935,
+     0.3107,
+     0.4271
+    ],
+    "nt": 240
+   },
+   "Glove_R": {
+    "file": "shared/Glove_R.mesh",
+    "part": "RightHand",
+    "offset": [
+     -0.0346,
+     -0.1128,
+     -0.0152
+    ],
+    "size": [
+     0.5994,
+     0.95,
+     0.8074
+    ],
+    "nt": 416
+   },
+   "Glove_L": {
+    "file": "shared/Glove_L.mesh",
+    "part": "LeftHand",
+    "offset": [
+     0.0346,
+     -0.1128,
+     -0.0152
+    ],
+    "size": [
+     0.5994,
+     0.95,
+     0.8074
+    ],
+    "nt": 416
+   },
+   "Wrap_R": {
+    "file": "shared/Wrap_R.mesh",
+    "part": "RightHand",
+    "offset": [
+     -0.0111,
+     0.0749,
+     -0.0007
+    ],
+    "size": [
+     0.3736,
+     0.4427,
+     0.5967
+    ],
+    "nt": 304
+   },
+   "Wrap_L": {
+    "file": "shared/Wrap_L.mesh",
+    "part": "LeftHand",
+    "offset": [
+     0.0111,
+     0.0749,
+     -0.0007
+    ],
+    "size": [
+     0.3736,
+     0.4427,
+     0.5967
+    ],
+    "nt": 304
+   },
+   "BootFoot_R": {
+    "file": "shared/BootFoot_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.019,
+     -0.0
+    ],
+    "size": [
+     0.4575,
+     0.4988,
+     0.8836
+    ],
+    "nt": 192
+   },
+   "BootFoot_L": {
+    "file": "shared/BootFoot_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     -0.0,
+     0.019,
+     -0.0
+    ],
+    "size": [
+     0.4575,
+     0.4988,
+     0.8836
+    ],
+    "nt": 192
+   },
+   "Sole_R": {
+    "file": "shared/Sole_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     -0.0001,
+     -0.1974,
+     0.0004
+    ],
+    "size": [
+     0.514,
+     0.102,
+     0.8748
+    ],
+    "nt": 192
+   },
+   "Sole_L": {
+    "file": "shared/Sole_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     0.0001,
+     -0.1974,
+     0.0004
+    ],
+    "size": [
+     0.514,
+     0.102,
+     0.8748
+    ],
+    "nt": 192
+   },
+   "ShoeLaces_R": {
+    "file": "shared/ShoeLaces_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.1411,
+     -0.1191
+    ],
+    "size": [
+     0.1806,
+     0.1564,
+     0.3011
+    ],
+    "nt": 96
+   },
+   "ShoeLaces_L": {
+    "file": "shared/ShoeLaces_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     0.0,
+     0.1411,
+     -0.1191
+    ],
+    "size": [
+     0.1806,
+     0.1564,
+     0.3011
+    ],
+    "nt": 96
+   },
+   "Top": {
+    "file": "tier5/Top.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     -0.0,
+     0.6043,
+     -0.0099
+    ],
+    "size": [
+     1.6875,
+     1.387,
+     1.1769
+    ],
+    "nt": 464
+   },
+   "TopBand": {
+    "file": "tier5/TopBand.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     -0.0,
+     -0.0249,
+     0.035
+    ],
+    "size": [
+     1.5924,
+     0.1386,
+     1.024
+    ],
+    "nt": 160
+   }
+  }
+ },
+ "worn_tris_tier5": {
+  "pro_hightop_gloves": 5336,
+  "long_lowtop_wraps_top": 5512,
+  "everything_max": 5960
+ }
+}

@@ -207,8 +207,10 @@ end
 BodyTiers.Vec3 = vec3
 
 -- a tier part's entry: { id, size = {x,y,z}, attachments = { [name] = {x,y,z} } }, or nil when the mesh is not
--- uploaded (id 0) or the entry is malformed (the default body part stays)
-function BodyTiers.PartEntry(tier, name, d)
+-- uploaded (id 0) or the entry is malformed (the default body part stays). lite = true: the part's `lite` mesh (the
+-- v9 set the low detail level wears, Config.Detail.meshes), its own size and attachments; the full mesh when the
+-- entry has no usable lite one
+function BodyTiers.PartEntry(tier, name, d, lite)
 	d = d or load()
 	local tiers = type(d) == "table" and type(d.tiers) == "table" and d.tiers or nil
 	local t = tiers and (tiers[tier] or tiers[tostring(tier)])
@@ -216,6 +218,10 @@ function BodyTiers.PartEntry(tier, name, d)
 	local e = parts and parts[name]
 	if type(e) ~= "table" then
 		return nil
+	end
+	local isLite = false
+	if lite and type(e.lite) == "table" and idOf(e.lite.mesh) and vec3(e.lite.size) then
+		e, isLite = e.lite, true
 	end
 	local id = idOf(e.mesh)
 	local size = vec3(e.size)
@@ -231,7 +237,7 @@ function BodyTiers.PartEntry(tier, name, d)
 			end
 		end
 	end
-	return { id = id, size = size, attachments = atts, tier = tier, name = name }
+	return { id = id, size = size, attachments = atts, tier = tier, name = name, lite = isLite }
 end
 
 -- a tier's gear-fit measure (BodyAssetData tiers[n].fit[key]: { width, depth, girth, y }, unscaled studs), or nil

@@ -599,6 +599,42 @@ do
 end
 
 ------------------------------------------------------------------------
+-- detail sets (Config.Detail.meshes): the low level's lite meshes (the v9 set), swapped both ways
+------------------------------------------------------------------------
+do
+	BodyTiers.SetData(REAL)
+	BuilderTiers.Reset()
+	local AS = fakeAssets()
+	BuilderTiers.Services = { AssetService = AS, Content = Content }
+	local full, lite = BodyTiers.PartEntry(3, "UpperTorso"), BodyTiers.PartEntry(3, "UpperTorso", nil, true)
+	check("lite entry: its own mesh, size and attachments", full and lite and lite.lite == true and not full.lite and lite.id ~= full.id
+		and lite.attachments.WaistRigAttachment ~= nil, lite and lite.id)
+	local Config = H.require("Config")
+	check("Config.Detail.meshes: full / medium detailed, low lite", Config.Detail.full.meshes == "full"
+		and Config.Detail.medium.meshes == "full" and Config.Detail.low.meshes == "lite")
+	local model = newRig(Vector3.new(1, 1, 1), "engine")
+	local tiers = BodyTiers.Tiers(build(50), { potential = 0.95 })
+	local n1, key1 = BuilderTiers.Apply(model, tiers, Vector3.new(1, 1, 1))
+	local ut = model:FindFirstChild("UpperTorso")
+	check("detailed set first", n1 == 14 and ut:GetAttribute("BodyMesh") == full.id and ut:GetAttribute("BodyLite") == nil, n1)
+	local n2, key2 = BuilderTiers.Apply(model, BodyTiers.Tiers(build(50), { potential = 0.95 }, BuilderTiers.Current(model)),
+		Vector3.new(1, 1, 1), true)
+	ut = model:FindFirstChild("UpperTorso")
+	check("lite: every part swapped to its tier's lite mesh", n2 == 14 and ut:GetAttribute("BodyMesh") == lite.id
+		and ut:GetAttribute("BodyLite") == true and key2 == key1, tostring(n2) .. " " .. tostring(key2))
+	check("lite: the part's size is the lite mesh's", ut.Size.Y > 0 and math.abs(ut.Size.Y - lite.size[2]) < 1e-3, ut.Size.Y)
+	local n3 = BuilderTiers.Apply(model, BodyTiers.Tiers(build(50), { potential = 0.95 }, BuilderTiers.Current(model)), Vector3.new(1, 1, 1), true)
+	check("lite again: nothing to swap", n3 == 0, n3)
+	local n4 = BuilderTiers.Apply(model, BodyTiers.Tiers(build(50), { potential = 0.95 }, BuilderTiers.Current(model)), Vector3.new(1, 1, 1))
+	ut = model:FindFirstChild("UpperTorso")
+	check("back to the detailed set", n4 == 14 and ut:GetAttribute("BodyMesh") == full.id and ut:GetAttribute("BodyLite") == nil, n4)
+	-- the triangles a body wears per set (BodyAssetData: tris / liteTris)
+	local t3 = REAL.tiers[3]
+	print(string.format("body triangles: %d detailed, %d lite", t3.tris or 0, t3.liteTris or 0))
+	check("lite set lighter than the detailed one", (t3.liteTris or 0) > 0 and t3.liteTris < t3.tris)
+end
+
+------------------------------------------------------------------------
 -- the asset hair on the classic head
 ------------------------------------------------------------------------
 do

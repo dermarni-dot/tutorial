@@ -413,12 +413,15 @@ def band_and_seat(B, n):
         return 0.012 + 0.016 * tt ** 1.1
     # ---- the waistband: snug elastic, a little rounded out in the middle
     y0, y1 = Y_BAND
-    ys = np.linspace(y0, y1, 4)
+    # (v10 detail) the elastic between two piped edges: a raised cord just inside the top and the bottom edge, a shallow
+    # channel inside each, the elastic's middle a little rounded out
+    ys = [y0, y0 + 0.018, y0 + 0.036, y0 + 0.06, (y0 + y1) / 2, y1 - 0.06, y1 - 0.036, y1 - 0.018, y1]
+    prof_ = [0.0, 0.007, -0.002, 0.0, 0.0, 0.0, -0.002, 0.007, 0.0]
     rings = []
     for i, y in enumerate(ys):
-        tt = i / (len(ys) - 1)
+        tt = (y - y0) / (y1 - y0)
         r = radial(srcs, y, c, phis, sigma=2.5)
-        rings.append(ring(c, r + 0.030 + 0.008 * math.sin(math.pi * tt), phis, y))
+        rings.append(ring(c, r + 0.030 + 0.008 * math.sin(math.pi * tt) + prof_[i], phis, y))
     top = lip(rings[-1], c, (0, 1, 0), 0.035)
     bot = lip(rings[0], c, (0, -1, 0), 0.03)
     G = bot[::-1] + rings + top
@@ -477,6 +480,8 @@ class SeatField:
 WAIST_TURNS = ((22, 0, 0), (-22, 0, 0), (16, 8, 5), (-16, -8, 5), (0, 9, 0), (0, -9, 0), (0, 0, 10), (0, 0, -5))
 # the thigh swings the seat is cut round (its hull): the walk's
 SEAT_SWING = (-14, 16)
+# the shorts' leg slit on the outer side of the hem: its height and half width (rad)
+SLIT_H, SLIT_W = 0.075, math.radians(20)
 # thigh pitch (deg, + = knee forward) the leg top must stay hidden through: the town walk's -23..+33 (v9_anim.luau
 # measures it) and the stance / punches; a jog's and a run's high knee goes further and creases the seat
 HIP_SWING = (-28, -18, -9, 0, 9, 18, 27, 36)
@@ -494,7 +499,7 @@ def trunk_leg(B, n, length, field):
     ul = B.part(n, "RightUpperLeg")
     hip = B.J(n, "RightHip")
     yh = Y_HEM[length]
-    ys = [Y_LEG_TOP, 2.47, 2.40] + list(np.linspace(2.31, yh, 3 if length == "short" else 5))
+    ys = [Y_LEG_TOP, 2.47, 2.40] + list(np.linspace(2.31, yh, 4 if length == "short" else 6))
     rings, cs = [], []
     for y in ys:
         cc = centroid([ul], min(y, 2.75))
@@ -564,8 +569,16 @@ def trunk_leg(B, n, length, field):
     topc, pole = tuck(rings[0][::-1][::-1], cs[0], (0, 1, 0), 0.03)
     G = topc[::-1] + rings + hem_lip
     Gd = np.array(G)
+    # (v10 detail) the leg slit: an inverted V notched up into the outer side of the hem (the hem ring and its lip lifted
+    # there, the ring above it eased up a little so the cloth stays smooth into the notch)
+    ih0 = len(topc) + len(rings) - 1
+    ang = np.abs(((phis - math.pi / 2) + math.pi) % (2 * math.pi) - math.pi)
+    notch = SLIT_H * np.clip(1 - ang / SLIT_W, 0, 1) ** 1.3
+    for k in range(ih0, len(G)):
+        Gd[k][:, 1] += notch
+    Gd[ih0 - 1][:, 1] += notch * 0.35
     # (the top closes on a pole above the tuck rings, hidden in the seat / thigh)
-    leg = sheet(Gd[:, ::6], pole_lo=pole, nref=range(2, 2 + len(rings)))
+    leg = sheet(Gd[:, ::4], pole_lo=pole, nref=range(2, 2 + len(rings)))
     # ---- the hem trim: the last ~0.08 of the leg plus its lip, 0.008 out
     L = sheet(Gd, nref=range(2, 2 + len(rings)))
     Nd = L["N"].reshape(len(G), NSEG_DENSE + 1, 3)[:, :NSEG_DENSE]
@@ -579,20 +592,30 @@ def trunk_leg(B, n, length, field):
     nu = Nd[a] * (1 - t) + Nd[a + 1] * t
     hrows = [up + nu * 0.009] + [Gd[k] + Nd[k] * 0.009 for k in range(ih, len(G))]
     top_tuck = up + nu * 0.009 + np.array([0, 0.012, 0]) - nu * 0.012
-    hem = sheet(np.array([top_tuck] + hrows)[:, ::6], nref=[1, 2])
+    # (over the slit the trim follows the V: its top row the same 0.085 above the lifted hem)
+    up[:, 1] = yb + notch
+    hrows[0] = up + nu * 0.009
+    top_tuck = up + nu * 0.009 + np.array([0, 0.012, 0]) - nu * 0.012
+    hem = sheet(np.array([top_tuck] + hrows)[:, ::4], nref=[1, 2])
     # ---- the side stripe: the outer side (phi 90 +- 8 deg), hem to under the seat edge
     cols = np.where(np.abs(phis - math.pi / 2) <= math.radians(8.5))[0]
     rows = [k for k in range(len(topc), ih + 1) if Gd[k][0, 1] <= Y_SEAT[0] + 0.06]
     S = np.array([Gd[k][cols] + Nd[k][cols] * 0.007 for k in rows])
-    stripe = strip_patch(S, [Nd[k][cols] for k in rows])
+    # (the stripe stops short of the slit; piped along both edges)
+    S = S[:-1] if len(S) > 2 else S
+    stripe = strip_patch(S, [Nd[k][cols] for k in rows][:len(S)], piping=0.0045)
     return leg, hem, stripe
 
 
-def strip_patch(S, Ns):
+def strip_patch(S, Ns, piping=0.0):
     """an open grid patch (rows x cols) -> lp, normals from the given cloth normals, with its two long edges folded
-    down onto the cloth (a thin tape, not a floating card)"""
+    down onto the cloth (a thin tape, not a floating card); piping > 0 raises a cord along both edges"""
     S = np.asarray(S, float)
     Ns = np.asarray(Ns, float)
+    if piping > 0 and S.shape[1] >= 3:
+        S = S.copy()
+        S[:, 0] += Ns[:, 0] * piping
+        S[:, -1] += Ns[:, -1] * piping
     R, C = S.shape[:2]
     # fold the outer columns 0.006 back toward the cloth
     S2 = np.concatenate([S[:, :1] - Ns[:, :1] * 0.006, S, S[:, -1:] - Ns[:, -1:] * 0.006], axis=1)
@@ -628,11 +651,48 @@ def glove(B):
                  p=[2.4, 2.55, 2.6, 2.5, 2.25, 2.05, 2.0],
                  cx=[-0.035, -0.04, -0.035, -0.02, -0.005, 0.0, 0.0],
                  cz=[zc + 0.005, zc, zc, zc, zc + 0.01, zc + 0.02, zc + 0.02])
-    body = bb.loft(pr, 0.0, s[0], s[-1], (0.13, 1.0, 3), (0.06, 1.0, 2), nb=7, nseg=16, frame=bb.VERT(X), sub=2)
+    # (v10 detail) padding contours: the knuckle roll over the striking end, a shallow crease where it meets the back of
+    # the hand, the raised logo panel on the back (+X, the WCB / brand mark sits on it), the fingers' curl on the palm
+    # side (three soft rolls between grooves) and the grip bar inside them
+    b = [
+        bb.Bp((X + 0.04, 2.64, zc), (0.30, 0.26, 0.10, 0.12, 0.42, 0.42), 0.022),  # knuckle roll
+        bb.Bp((X + 0.20, 2.79, zc), (0.12, 0.12, 0.022, 0.022, 0.40, 0.40), -0.010),  # its crease on the back
+        bb.Bp((X + 0.19, 2.94, zc), (0.07, 0.07, 0.11, 0.10, 0.17, 0.17), 0.012, None, 3.0, 0.4),  # logo panel
+        bb.Bp((X + 0.20, 2.94, zc), (0.07, 0.07, 0.125, 0.115, 0.19, 0.19), -0.004, None, 3.0, 0.75),  # its edge
+    ]
+    for y in (2.60, 2.69, 2.78):
+        b.append(bb.Bp((X - 0.27, y, zc + 0.02), (0.08, 0.08, 0.04, 0.04, 0.30, 0.30), 0.010))  # finger rolls
+    for y in (2.645, 2.735):
+        b.append(bb.Bp((X - 0.28, y, zc + 0.02), (0.08, 0.08, 0.018, 0.018, 0.28, 0.28), -0.008))  # between them
+    body = bb.loft(pr, 0.0, s[0], s[-1], (0.13, 1.0, 3), (0.06, 1.0, 2), nb=11, nseg=24, frame=bb.VERT(X), sub=2,
+                   bumps=b)
     pts = [(X - 0.10, 3.00, zc - 0.17), (X - 0.175, 2.87, zc - 0.29), (X - 0.19, 2.72, zc - 0.315),
            (X - 0.135, 2.60, zc - 0.27)]
-    thumb = bb.tube(pts, [0.095, 0.115, 0.11, 0.088], nside=8, kcap=2)
-    return merge([body, thumb]), X
+    thumb = bb.tube(pts, [0.095, 0.115, 0.11, 0.088], nside=10, kcap=3)
+    # the thumb's attachment: the leather tab that holds its tip to the fist
+    tab = bb.tube([(X - 0.13, 2.62, zc - 0.25), (X - 0.10, 2.585, zc - 0.205), (X - 0.07, 2.565, zc - 0.165)],
+                  [0.045, 0.042, 0.04], nside=6, kcap=2)
+    # the stitched seam: a welt round the glove where the palm and the back panels meet (the plane through the fist's
+    # axis, front edge -> over the striking end -> back edge), a thin cord on the surface
+    seam = glove_seam(body, X - 0.03, zc)
+    return merge([body, thumb, tab, seam]), X
+
+
+def glove_seam(body, xs, zc, n=44, r=0.011):
+    """the welt in the plane x = xs: rays from inside the fist sweeping from the wrist's front edge (up, -Z) down over
+    the striking end and up the back edge (+Z), each hit lifted r off the surface; the ends dive under the cuff"""
+    cen = np.array([xs, 2.80, zc])
+    pts = []
+    for a in np.linspace(math.radians(-150), math.radians(150), n):
+        d = np.array([0.0, -math.cos(a), math.sin(a)])  # a = 0: straight down (the striking end)
+        t = bb.raycast(body, cen + d * 2.0, -d)
+        if t is None:
+            continue
+        hit = cen + d * 2.0 - d * t
+        pts.append(hit + d * r * 0.6)
+    pts = np.array(pts)
+    pts = pts[pts[:, 1] < 3.08]
+    return bb.tube(list(pts), [r] * len(pts), nside=4, kcap=1)
 
 
 def glove_section_sources(gl, X3, Xt):
@@ -663,13 +723,20 @@ def cuff_and_strap(B, n, gl, X3):
     G = bot[::-1] + rings + top
     cuff = sheet(np.array(G)[:, ::6], pole_lo=pole, nref=range(2, 2 + len(rings)))
     # the strap: a hook-and-loop band round the cuff, y 3.17 .. 3.37, 0.014 proud, rounded edges
-    sy = np.linspace(3.17, 3.37, 2)
+    # (v10 detail) the hook-and-loop closure: the strap's free end as a tab lying over it on the outer side (+X), a
+    # little proud, its end squared off, with a stitched border round the tab (a groove just inside its edge)
+    tab = np.clip(1 - np.abs(((phis - math.radians(70)) + math.pi) % (2 * math.pi) - math.pi) / math.radians(42), 0, 1)
+    tab = np.clip(tab * 4, 0, 1)
+    border = np.clip(1 - np.abs(tab - 0.7) / 0.25, 0, 1)
+    sy = np.linspace(3.165, 3.375, 5)
     srings = []
-    for y in sy:
+    for i, y in enumerate(sy):
         r = np.array([np.interp(y, ys, [rr[k] for rr in rads]) for k in range(len(phis))])
-        srings.append(ring(c, r + 0.016, phis, y))
+        edge = 0.0 if i in (0, len(sy) - 1) else 1.0
+        stitch = -0.003 if i in (1, len(sy) - 2) else 0.0
+        srings.append(ring(c, r + 0.016 + tab * 0.010 * edge + (stitch + border * -0.003 * edge) * (tab > 0.2), phis, y))
     G = lip(srings[0], c, (0, -1, 0), 0.016, back=0.4)[::-1] + srings + lip(srings[-1], c, (0, 1, 0), 0.016, back=0.4)
-    strap = sheet(np.array(G)[:, ::6], nref=range(2, 2 + len(srings)))
+    strap = sheet(np.array(G)[:, ::3], nref=range(2, 2 + len(srings)))
     return cuff, strap
 
 
@@ -684,12 +751,32 @@ def wrap_hand(B):
         cs.append(cc)
     cs = np.array(cs)
     cs[1:-1] = 0.25 * cs[:-2] + 0.5 * cs[1:-1] + 0.25 * cs[2:]
+    # (v10 detail) the wrap's crossing layers: the turns round the hand climb as a shallow helix (each layer's edge a
+    # small step), two passes cross in an X over the back of the hand (+X) between the wrist and the knuckles, and the
+    # knuckle pad builds up under the last turns
+    ys = list(np.linspace(3.15, 2.765, 11))
+    cs = np.array([centroid([hd], y) for y in ys])
+    cs[1:-1] = 0.25 * cs[:-2] + 0.5 * cs[1:-1] + 0.25 * cs[2:]
+    rings = []
     for i, y in enumerate(ys):
         r = radial([hd], y, cs[i], phis, nfin=16, sigma=2.0) + 0.022
+        saw = ((3.15 - y) / 0.085 + (phis + math.pi) / (2 * math.pi)) % 1.0
+        r = r + 0.010 * saw + 0.012 * sstep_(2.86, 2.78, y)
+        # the X over the back: two bands (+-35 deg to the hand's axis) as raised strips
+        d = (phis - math.pi / 2 + math.pi) % (2 * math.pi) - math.pi  # 0 at the back of the hand (+X)
+        u = (y - 2.96) / 0.17
+        for sg in (-1, 1):
+            off = np.abs(d - sg * 0.9 * u)
+            r = r + 0.011 * np.clip(1 - off / 0.24, 0, 1) ** 0.5 * (abs(u) < 1.05)
         rings.append(ring(cs[i], r, phis, y))
     G = tuck(rings[0], cs[0], (0, 1, 0), 0.02)[0][::-1] + rings + lip(rings[-1], cs[-1], (0, -1, 0), 0.025)
     _, pole = tuck(rings[0], cs[0], (0, 1, 0), 0.02)
-    return sheet(np.array(G)[:, ::6], pole_lo=pole, nref=range(2, 2 + len(rings)))
+    return sheet(np.array(G)[:, ::3], pole_lo=pole, nref=range(2, 2 + len(rings)))
+
+
+def sstep_(e0, e1, x):
+    t = min(1.0, max(0.0, (x - e0) / (e1 - e0)))
+    return t * t * (3 - 2 * t)
 
 
 def wrap_wrist(B, n, wrap, X3):
@@ -699,17 +786,19 @@ def wrap_wrist(B, n, wrap, X3):
     w = glove_section_sources(wrap, X3, Xt)
     hd = B.part(n, "RightHand")
     c = np.array([Xt, 0.0])
-    ys = np.linspace(3.0, 3.44, 7)
+    ys = np.linspace(3.0, 3.44, 13)
     rings = []
     for i, y in enumerate(ys):
         r = radial([la], y, c, phis, nfin=16, sigma=2.5) + 0.024
         if y <= 3.17:
             r = np.maximum(r, radial([w, hd], y, c, phis, nfin=16, sigma=2.5) + 0.012)
-        r = r + 0.008 * (i % 2)  # the layers of the wrap
+        # the layers of the wrap: (v10) a helix round the wrist, each turn's edge a step that runs diagonally across
+        saw = ((y - 3.0) / 0.075 + (phis + math.pi) / (2 * math.pi)) % 1.0
+        r = r + 0.009 * saw
         rings.append(ring(c, r, phis, y))
     bot, pole = tuck(rings[0], c, (0, -1, 0), 0.02)
     G = bot[::-1] + rings + lip(rings[-1], c, (0, 1, 0), 0.022)
-    return sheet(np.array(G)[:, ::6], pole_lo=pole, nref=range(2, 2 + len(rings)))
+    return sheet(np.array(G)[:, ::4], pole_lo=pole, nref=range(2, 2 + len(rings)))
 
 
 # ------------------------------------------------------------------------------------------ boots
@@ -729,11 +818,19 @@ def sole(B):
     phis = 2 * math.pi * (np.arange(nseg * 3) / (nseg * 3) - 0.5)
     c = centroid([ft], 0.07)
     r = radial([ft], 0.07, c, phis, sigma=2.0) + 0.05
-    hs = [(-0.014, -0.028), (0.004, 0.0), (0.072, -0.004), (0.088, -0.05)]
+    # (v10 detail) the tread lip: the outsole's edge rolls out a little proud at the floor, a groove runs round the
+    # side above it (the outsole / midsole line), the midsole's top edge; underneath, two tread rings step in to the
+    # middle (the pivot circle's grooves)
+    hs = [(-0.012, -0.10, ), (-0.014, -0.06), (-0.012, -0.024), (-0.004, 0.006), (0.010, 0.010), (0.024, 0.0),
+          (0.032, -0.008), (0.040, 0.0), (0.072, -0.004), (0.088, -0.05)]
     rings = [ring(c, r + dr, phis, h) for h, dr in hs]
-    ctr_lo = np.array([c[0], -0.014, c[1]])
+    ctr_lo = np.array([c[0], -0.012, c[1]])
     ctr_hi = np.array([c[0], 0.088, c[1]])
-    return sheet(np.array(rings)[:, ::4], pole_lo=ctr_lo, pole_hi=ctr_hi, nref=[1, 2])
+    G = np.array(rings)
+    # the two bottom rings: a tread step (the inner one a little higher: a groove between)
+    G[0] = ring(c, r - 0.10, phis, -0.006)
+    G[1] = ring(c, r - 0.06, phis, -0.014)
+    return sheet(G[:, ::3], pole_lo=ctr_lo, pole_hi=ctr_hi, nref=[4, 5])
 
 
 def raycast_lp(lp, o, d):
@@ -760,7 +857,7 @@ def surf_hit(lp, o, d, lift):
 def shoe_laces(B, foot_lp):
     """three crossed lace pairs over the instep of the boot foot"""
     X = B.J(3, "RightAnkle")[0]
-    zs = [-0.06, -0.15, -0.24, -0.33]
+    zs = [-0.05, -0.12, -0.19, -0.26, -0.33]
     rows = []
     for z in zs:
         L = surf_hit(foot_lp, (X - 0.075, 1.0, z), (0, -1, 0), 0.012)
@@ -770,7 +867,21 @@ def shoe_laces(B, foot_lp):
     for i in range(len(rows) - 1):
         pairs.append((rows[i][0], rows[i + 1][1]))
         pairs.append((rows[i][1], rows[i + 1][0]))
-    return lace_bars(foot_lp, pairs, None, 0.0, r=0.018)
+    return merge([lace_bars(foot_lp, pairs, None, 0.0, r=0.016), eyelets(foot_lp, rows, (0, -1, 0))])
+
+
+def eyelets(surf, rows, d, r=0.017):
+    """(v10 detail) an eyelet ring at every lace end: a short flat tube along the surface's normal there"""
+    out = []
+    d = np.asarray(d, float)
+    for pair in rows:
+        for p in pair:
+            if p is None:
+                continue
+            a = p + d * 0.012
+            b = p - d * 0.004
+            out.append(bb.tube([a, b], [r, r], nside=6, kcap=1))
+    return merge(out)
 
 
 def shaft_parts(B, n, foot_lp):
@@ -787,15 +898,25 @@ def shaft_parts(B, n, foot_lp):
             r = np.maximum(r, np.where(rf > 0, rf + foot_off, 0))
         return r
     # ---- the boot shaft (high-top): ankle to mid-calf
-    ys = [0.27, 0.40, 0.55, 0.70, 0.87]
-    rads = [np.maximum(rad(y, 0.040), smooth_circ(rad(y, 0.040), 5)) for y in ys]
+    # (v10 detail) the shaft's padded ankle collar (a roll round the top), the tongue down the front under the laces
+    # (a raised panel between the eyelet rows), a seam band round the ankle; six lace crossings with eyelets
+    front = np.cos(phis)  # 1 at the front (-Z)
+    tongue = np.clip((front - 0.86) / 0.06, 0, 1)
+    ys = [0.27, 0.33, 0.40, 0.47, 0.55, 0.62, 0.70, 0.76, 0.80, 0.84, 0.87]
+    rads = []
+    for y in ys:
+        r = np.maximum(rad(y, 0.040), smooth_circ(rad(y, 0.040), 5))
+        r = r + 0.008 * tongue * (0.36 < y < 0.86)
+        r = r + 0.006 * (abs(y - 0.33) < 0.01)  # the ankle seam band
+        r = r + 0.022 * math.sin(math.pi * min(1.0, max(0.0, (y - 0.76) / 0.11))) * (1 - 0.6 * tongue)  # the collar
+        rads.append(r)
     rings = [ring(c, r, phis, y) for r, y in zip(rads, ys)]
     bot, pole = tuck(rings[0], c, (0, -1, 0), 0.03, k=0.85)
     G = bot[::-1] + rings + lip(rings[-1], c, (0, 1, 0), 0.035)
-    shaft = sheet(np.array(G)[:, ::6], pole_lo=pole, nref=range(2, 2 + len(rings)))
+    shaft = sheet(np.array(G)[:, ::3], pole_lo=pole, nref=range(2, 2 + len(rings)))
     out["BootShaft"] = shaft
-    # laces on its front: 4 crossings from y 0.38 to 0.80
-    ly = [0.38, 0.52, 0.66, 0.80]
+    # laces on its front: 6 rows from y 0.36 to 0.78, an eyelet at every end
+    ly = list(np.linspace(0.36, 0.78, 6))
     rows = []
     for y in ly:
         L = surf_hit(shaft, (c[0] - 0.07, y, -2.0), (0, 0, 1), 0.012)
@@ -805,27 +926,28 @@ def shaft_parts(B, n, foot_lp):
     for i in range(len(rows) - 1):
         pairs.append((rows[i][0], rows[i + 1][1]))
         pairs.append((rows[i][1], rows[i + 1][0]))
-    out["BootLaces"] = lace_bars(shaft, pairs, None, 0.0, r=0.017)
-    # ---- the sock showing above the shaft
-    ys2 = [0.845, 0.95]
-    rr = [rad(y, 0.016) for y in ys2]
+    out["BootLaces"] = merge([lace_bars(shaft, pairs, None, 0.0, r=0.015), eyelets(shaft, rows, (0, 0, 1))])
+    # ---- the sock showing above the shaft: (v10) a ribbed cuff
+    rib = 0.004 * np.cos(phis * 16)
+    ys2 = [0.845, 0.90, 0.95]
+    rr = [rad(y, 0.016) + rib * (y > 0.85) for y in ys2]
     rings = [ring(c, r, phis, y) for r, y in zip(rr, ys2)]
     bot, pole = tuck(rings[0], c, (0, -1, 0), 0.015)
     G = bot[::-1] + rings + lip(rings[-1], c, (0, 1, 0), 0.016)
-    out["BootSock"] = sheet(np.array(G)[:, ::6], pole_lo=pole, nref=range(2, 2 + len(rings)))
+    out["BootSock"] = sheet(np.array(G)[:, ::3], pole_lo=pole, nref=range(2, 2 + len(rings)))
     # ---- the low-top: a padded collar round the ankle, an ankle sock above it
     ys3 = [0.31, 0.35, 0.39, 0.43]
     rr = [rad(y, 0.036 + 0.016 * math.sin(math.pi * i / 3)) for i, y in enumerate(ys3)]
     rings = [ring(c, r, phis, y) for r, y in zip(rr, ys3)]
     bot, pole = tuck(rings[0], c, (0, -1, 0), 0.02)
     G = bot[::-1] + rings + lip(rings[-1], c, (0, 1, 0), 0.025)
-    out["ShoeCollar"] = sheet(np.array(G)[:, ::6], pole_lo=pole, nref=range(2, 2 + len(rings)))
-    ys4 = [0.30, 0.40, 0.50, 0.57]
-    rr = [rad(y, 0.014) for y in ys4]
+    out["ShoeCollar"] = sheet(np.array(G)[:, ::4], pole_lo=pole, nref=range(2, 2 + len(rings)))
+    ys4 = [0.30, 0.40, 0.47, 0.52, 0.57]
+    rr = [rad(y, 0.014) + rib * (y > 0.46) + 0.004 * (y > 0.46) for y in ys4]
     rings = [ring(c, r, phis, y) for r, y in zip(rr, ys4)]
     bot, pole = tuck(rings[0], c, (0, -1, 0), 0.015)
     G = bot[::-1] + rings + lip(rings[-1], c, (0, 1, 0), 0.014)
-    out["AnkleSock"] = sheet(np.array(G)[:, ::6], pole_lo=pole, nref=range(2, 2 + len(rings)))
+    out["AnkleSock"] = sheet(np.array(G)[:, ::3], pole_lo=pole, nref=range(2, 2 + len(rings)))
     return out
 
 
@@ -833,7 +955,7 @@ def shaft_parts(B, n, foot_lp):
 def sports_top(B, n):
     """the women's sports top on the UpperTorso of tier n: a crop top from the underband to the armpit line with
     a scooped front, a little fullness over the chest, racer straps over the shoulders. Returns (top, band)"""
-    nseg = 20
+    nseg = 28
     k = 3
     phis = 2 * math.pi * (np.arange(nseg * k) / (nseg * k) - 0.5)
     ut = B.part(n, "UpperTorso")
@@ -853,7 +975,10 @@ def sports_top(B, n):
             Rg[j] = ring(c, np.array([r]), np.array([ph]), y)[0]
         # smooth the ring
         d = Rg[:, [0, 2]] - c
-        rr = smooth_circ(np.linalg.norm(d, axis=1), 2.0)
+        # (v10: never inside the raw section - the denser body's back carries the scapulae - so a circular max before
+        # the smoothing, as radial() does)
+        raw = np.linalg.norm(d, axis=1)
+        rr = np.maximum(smooth_circ(max_circ(raw, 3), 2.0), raw)
         # fullness over the chest: two soft bells at the pecs
         ex = np.zeros(len(phis))
         for sx in (-1, 1):
@@ -882,7 +1007,7 @@ def sports_top(B, n):
             x = sx * (0.25 + 0.10 * math.sin(a) - 0.09 * t)
             o = np.array([x, 4.50, c[1]])
             dvec = np.array([0.0, math.sin(a), -math.cos(a)])
-            h = surf_hit(ut, o, -dvec, 0.024)
+            h = surf_hit(ut, o, -dvec, 0.030)
             if h is not None:
                 path.append(h)
         path = np.array(path)

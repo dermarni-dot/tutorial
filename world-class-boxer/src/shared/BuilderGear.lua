@@ -59,8 +59,9 @@ local function vec(t)
 	return V3(t[1], t[2], t[3])
 end
 
--- the piece `name` for a body part of tier `tier`: { id, offset, size, part, slot, group, name } or nil
-function BuilderGear.Entry(tier, name, d)
+-- the piece `name` for a body part of tier `tier`: { id, offset, size, part, slot, group, name } or nil. lite = true:
+-- the piece's `lite` mesh (the v9 set worn on lite body parts, Config.Detail.meshes), the full one when it has none
+function BuilderGear.Entry(tier, name, d, lite)
 	d = d or load()
 	local tiers = type(d.tiers) == "table" and d.tiers or nil
 	local t = tiers and (tiers[tier] or tiers[tostring(tier)])
@@ -69,11 +70,16 @@ function BuilderGear.Entry(tier, name, d)
 	if type(e) ~= "table" or type(p) ~= "table" then
 		return nil
 	end
+	local isLite = false
+	if lite and type(e.lite) == "table" and idOf(e.lite.mesh) and vec(e.lite.offset) and vec(e.lite.size) then
+		e, isLite = e.lite, true
+	end
 	local id, offset, size = idOf(e.mesh), vec(e.offset), vec(e.size)
 	if not (id and offset and size) or size.X <= 0 or size.Y <= 0 or size.Z <= 0 then
 		return nil
 	end
-	return { id = id, offset = offset, size = size, part = p.part, slot = p.slot, group = p.group, name = name, tier = tier }
+	return { id = id, offset = offset, size = size, part = p.part, slot = p.slot, group = p.group, name = name, tier = tier,
+		lite = isLite }
 end
 
 -- the piece names a style wears (sided names expanded to _L / _R), or nil when the manifest has no such set
@@ -183,12 +189,14 @@ function BuilderGear.Preload()
 	task.spawn(function()
 		local d = load()
 		local seen = {}
-		for tier, t in pairs(type(d.tiers) == "table" and d.tiers or {}) do
-			for name in pairs(type(t) == "table" and t or {}) do
-				local e = BuilderGear.Entry(tier, name, d)
-				if e and not seen[e.id] then
-					seen[e.id] = true
-					BuilderGear.Template(e.id, e.size)
+		for _, lite in ipairs({ false, true }) do
+			for tier, t in pairs(type(d.tiers) == "table" and d.tiers or {}) do
+				for name in pairs(type(t) == "table" and t or {}) do
+					local e = BuilderGear.Entry(tier, name, d, lite)
+					if e and not seen[e.id] then
+						seen[e.id] = true
+						BuilderGear.Template(e.id, e.size)
+					end
 				end
 			end
 		end
@@ -218,19 +226,20 @@ local function pieceTier(model, p)
 			tier = math.max(tier, t)
 		end
 	end
-	return tier, body, own
+	-- (the detail set: a lite body part wears the lite gear fitted to it)
+	return tier, body, own, body:GetAttribute("BodyLite") == true
 end
 BuilderGear.PieceTier = pieceTier
 
 -- a piece of tier `tier` worn on a body part of tier `own`: the offset is in the part's space of ITS tier; the
 -- LowerTorso's rig attachments are the same rest-space points at every tier, so the difference of the RootRigAttachment's
 -- part-space positions moves the offset onto the part the model really shows
-local function onPart(e, partName, tier, own)
+local function onPart(e, partName, tier, own, lite)
 	if tier == own then
 		return e
 	end
-	local a = BodyTiers.PartEntry(own, partName)
-	local b = BodyTiers.PartEntry(tier, partName)
+	local a = BodyTiers.PartEntry(own, partName, nil, lite)
+	local b = BodyTiers.PartEntry(tier, partName, nil, lite)
 	local pa = a and a.attachments.RootRigAttachment
 	local pb = b and b.attachments.RootRigAttachment
 	if not (pa and pb) then
@@ -251,18 +260,18 @@ function BuilderGear.Resolve(model, group, style)
 	for _, name in ipairs(names) do
 		local d = load()
 		local p = type(d.pieces) == "table" and d.pieces[name] or nil
-		local tier, body, own
+		local tier, body, own, lite
 		if p then
-			tier, body, own = pieceTier(model, p)
+			tier, body, own, lite = pieceTier(model, p)
 		end
 		if not tier then
 			return nil, "not a tier part: " .. tostring(p and p.part or name)
 		end
-		local e = BuilderGear.Entry(tier, name, d)
+		local e = BuilderGear.Entry(tier, name, d, lite)
 		if not e then
 			return nil, "not uploaded: " .. name
 		end
-		e = onPart(e, p.part, tier, own)
+		e = onPart(e, p.part, tier, own, lite)
 		local template = BuilderGear.Template(e.id, e.size)
 		if not template then
 			return nil, "failed: " .. name
@@ -331,8 +340,12 @@ function BuilderGear.Available(model, group, style)
 	local d = load()
 	for _, name in ipairs(names) do
 		local p = type(d.pieces) == "table" and d.pieces[name] or nil
-		local tier = p and pieceTier(model, p)
-		local e = tier and BuilderGear.Entry(tier, name, d)
+		local tier, lite
+		if p then
+			local _b, _o
+			tier, _b, _o, lite = pieceTier(model, p)
+		end
+		local e = tier and BuilderGear.Entry(tier, name, d, lite)
 		if not e then
 			return false
 		end

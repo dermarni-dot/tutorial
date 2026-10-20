@@ -100,3 +100,23 @@ piece's bbox centre in that part's space (rest pose, unscaled), `size` = the mes
 The glove, wrap, boot foot, sole and instep laces are one mesh at every tier (the hand and foot do not change), with
 a per-tier offset. An id of 0 = not uploaded: `BuilderGear.Resolve` returns nil and BuilderBody builds the
 part-built gear for that group.
+
+## Detail sets (v10)
+
+The body and the mesh gear come in two sets per tier, picked by the boxer's detail level (`Config.Detail[level].meshes`):
+`"full"` (full and medium: players, the fight opponent, gym NPCs, officials) wears the v10 detailed meshes (11,472 body
+triangles: the muscle forms, knuckles, ankle bones; ~12.6-13.4k for a whole outfit of gear: laces, eyelets, seams, the
+glove's padding contours, piping, leg slits), `"lite"` (low: the crowd NPCs) the v9 meshes they replaced (6,768 body
+triangles, <= 5,960 for an outfit), so a crowd costs what it did. The instances are the same either way.
+
+* `BodyAssetData.tiers[n].parts[<Part>].lite = { mesh, size, attachments, nt }` (its own bbox and part-space
+  attachments: the joint pivots are the same rest-space points in both sets) and `tiers[n].liteTris`.
+* `GearAssetData.tiers[n][<piece>].lite = { mesh, offset, size, nt }`: the v9 piece, fitted to the v9 body.
+* The lite meshes are kept in `tools/body/out/lite/` (`tier<N>/`, `gear/`, `body_tiers.json`); publish_body.py /
+  publish_gear.py add them to the manifests (their hashes are in the cache: same ids, nothing uploaded again).
+* `BodyTiers.PartEntry(tier, name, d, lite)` / `BuilderGear.Entry(tier, name, d, lite)` return the lite entry (the full
+  one when there is none, `entry.lite` says which); `BuilderTiers.Apply(model, tiers, scale, lite)` swaps every part to
+  its set (a part of the right tier in the other set is swapped too; attributes `BodyMesh`, `BodyLite`); the gear
+  follows the body part it welds to (`BodyLite`), so a lite body always wears the lite gear fitted to it.
+* `tools/body/torso_surf.py --write` regenerates BuilderBody's TORSO_SURF (the marks lying on the torso) from the
+  detailed torsos.

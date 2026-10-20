@@ -17,6 +17,9 @@
 -- * HipHeight follows the swapped legs (root -> hips -> knees -> ankles -> the soles, R15's rule
 --   Height = HipHeight + RootPart.Size.Y / 2)
 -- * an id 0 / a failed load keeps the part that is there (the default part, or the last tier that loaded)
+-- * detail sets (Config.Detail.meshes): Apply(..., lite = true) swaps in each part's `lite` mesh (the v9 set the low
+--   detail level wears) instead of the detailed one; a part showing the other set of its tier is swapped too
+--   (attribute BodyMesh = the id it shows, BodyLite = true on a lite part)
 -- Builder.Cosmetics runs Apply first (before the colours, so every layer is built on the final parts).
 -- Tests: BuilderTiers.Services = { AssetService = fake, Content = fake } and BuilderTiers.Reset().
 local BuilderTiers = {}
@@ -97,13 +100,14 @@ local function prepare(mp, e)
 	valueChild(mp, "StringValue", "AvatarPartScaleType", "Classic")
 	mp:SetAttribute("BodyTier", e.tier)
 	mp:SetAttribute("BodyMesh", e.id)
+	mp:SetAttribute("BodyLite", e.lite == true or nil)
 	return mp
 end
 
 -- the template for (tier, part name), or nil + reason (not uploaded / failed: the caller keeps its part). Yields
 -- on the first call for a key (CreateMeshPartAsync); later calls are free
-function BuilderTiers.Template(tier, name)
-	local e = BodyTiers.PartEntry(tier, name)
+function BuilderTiers.Template(tier, name, lite)
+	local e = BodyTiers.PartEntry(tier, name, nil, lite)
 	if not e then
 		return nil, "not uploaded"
 	end
@@ -142,9 +146,11 @@ end
 -- load every uploaded template in the background (server start), so the first boxers do not wait on them
 function BuilderTiers.Preload()
 	task.spawn(function()
-		for tier = 1, BodyTiers.TIERS do
-			for _, name in ipairs(BodyTiers.PARTS) do
-				BuilderTiers.Template(tier, name)
+		for _, lite in ipairs({ false, true }) do
+			for tier = 1, BodyTiers.TIERS do
+				for _, name in ipairs(BodyTiers.PARTS) do
+					BuilderTiers.Template(tier, name, lite)
+				end
 			end
 		end
 	end)
@@ -311,8 +317,8 @@ end
 
 -- swap every part whose tier changed. tiers = { [part] = 1..5 } (BodyTiers.Tiers); scale = Vector3 (W, H, D)
 -- the description applied. Returns the number of parts swapped and the model's tier key (attribute BodyTiers:
--- the tiers the parts really show, 0 = a default part)
-function BuilderTiers.Apply(model, tiers, scale)
+-- the tiers the parts really show, 0 = a default part). lite = true: the detail set of the low level (the v9 meshes)
+function BuilderTiers.Apply(model, tiers, scale, lite)
 	local hum = model and model:FindFirstChildOfClass("Humanoid")
 	if not (hum and type(tiers) == "table") then
 		return 0, nil
@@ -321,9 +327,12 @@ function BuilderTiers.Apply(model, tiers, scale)
 	for _, name in ipairs(BodyTiers.PARTS) do
 		local want = tiers[name]
 		local cur = model:FindFirstChild(name)
-		if want and cur and cur:GetAttribute("BodyTier") ~= want then
+		-- (the mesh this tier's part shows in the wanted detail set: another set's part of the same tier is swapped too)
+		local e = want and BodyTiers.PartEntry(want, name, nil, lite)
+		local otherSet = e ~= nil and cur ~= nil and cur:GetAttribute("BodyTier") == want and cur:GetAttribute("BodyMesh") ~= e.id
+		if want and cur and (cur:GetAttribute("BodyTier") ~= want or otherSet) then
 			local wasIn = model.Parent ~= nil
-			local template = BuilderTiers.Template(want, name)
+			local template = BuilderTiers.Template(want, name, lite)
 			-- (the load may have yielded: a model in the world may be gone; a new NPC is built before it is parented)
 			if template and not (wasIn and model.Parent == nil) and swap(model, hum, name, template, scale) then
 				n += 1

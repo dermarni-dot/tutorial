@@ -62,6 +62,11 @@ def main():
     with open(os.path.join(GEAR, "gear.json")) as f:
         gj = json.load(f)
     ids = {}  # file -> id (a shared mesh is listed by every tier)
+    lite_gj = None
+    lite_path = os.path.join(pb.LITE, "gear", "gear.json")
+    if os.path.exists(lite_path):
+        with open(lite_path) as f:
+            lite_gj = json.load(f)
     tiers = []
     for n in sorted(gj["tiers"], key=int):
         rec = {}
@@ -75,6 +80,18 @@ def main():
                                            % (key, "every tier" if shared else "muscle tier %s" % n),
                                            "model/x-file-mesh-data", dry, local)
             rec[key] = {"mesh": ids[e["file"]], "offset": e["offset"], "size": e["size"], "nt": e["nt"]}
+            # the lite detail set (the v9 piece fitted to the v9 body: tools/body/out/lite/gear; cached ids)
+            le = lite_gj and lite_gj["tiers"].get(n, {}).get(key)
+            if le:
+                lf = "lite/" + le["file"]
+                if lf not in ids:
+                    shared = le["file"].startswith("shared/")
+                    label = key if shared else f"T{n} {key}"
+                    ids[lf] = hp.ensure(cache, os.path.join(pb.LITE, "gear", le["file"]), "Mesh",
+                                        f"WCB Gear {label} lite", "Become a World Class Boxer: boxing gear piece %s "
+                                        "(%s), the light detail set" % (key, "every tier" if shared else "muscle tier %s" % n),
+                                        "model/x-file-mesh-data", dry, local)
+                rec[key]["lite"] = {"mesh": ids[lf], "offset": le["offset"], "size": le["size"], "nt": le["nt"]}
         tiers.append(rec)
     used = list(ids.values())
     if dry:
@@ -108,7 +125,8 @@ def main():
             "-- of tier n (mesh id, offset = its centre in the body part's space, rest pose, unscaled; size = the mesh\n"
             "-- bbox = the MeshPart's unscaled Size; nt = tris). pieces[piece] = the body part it welds to, its colour\n"
             "-- slot and group; sets = the pieces each style wears (a sided name stands for _L and _R). An id of 0 =\n"
-            "-- not uploaded: BuilderGear falls back to the part-built gear.\n")
+            "-- not uploaded: BuilderGear falls back to the part-built gear. tiers[n][piece].lite = the piece of the lite\n"
+            "-- detail set (Config.Detail.meshes \"lite\": the v9 mesh, worn on the lite body parts).\n")
     if local:
         head = ("-- LOCAL manifest from tools/body/publish_gear.py --local: FAKE asset ids (nothing uploaded), for\n"
                 "-- offline simulation only. Each id's file is in the .ids.json sidecar next to this file.\n")

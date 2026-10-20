@@ -58,6 +58,9 @@ def turned(lp, pivot, R):
     return (lp["P"] - pivot) @ R.T + pivot
 
 
+PCT = False
+
+
 def check(parts, parent, child, pivot, poses, label):
     pp, cp = parts[parent], parts[child]
     rest_in = inside(cp["P"], cp["T"], pp["P"])  # parent verts inside the child at rest (the tucked seam)
@@ -75,6 +78,10 @@ def check(parts, parent, child, pivot, poses, label):
             far = float(d.max())
         rows.append((name, int(pin.sum()), float(hgt), int(exp.sum()), far))
     print(f"{label:9s} " + "  ".join(f"{n}:{k:3d}@{h:+.2f}/{e:2d}~{f:.2f}" for n, k, h, e, f in rows))
+    if PCT:
+        # (the counts grow with the mesh's density: the same as a share of the parent's vertices)
+        npv = max(1, len(pp["P"]))
+        print(f"{'':9s} " + "  ".join(f"{n}:{100 * k / npv:4.1f}%/{100 * e / npv:4.1f}%" for n, k, h, e, f in rows))
     return rows
 
 
@@ -82,7 +89,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tiers", default="1,3,5")
     ap.add_argument("--joint", default="hip,shoulder,elbow,wrist,knee")
+    ap.add_argument("--pct", action="store_true", help="also print the counts as a share of the parent's vertices")
     a = ap.parse_args()
+    global PCT
+    PCT = a.pct
     for n in (int(x) for x in a.tiers.split(",")):
         parts = bb.build_tier(None, n)
         J = {k: np.array(v) for k, v in parts["_J"].items()}

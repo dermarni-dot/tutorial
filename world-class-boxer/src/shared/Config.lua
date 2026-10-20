@@ -1176,12 +1176,15 @@ Config.FacilityNames = {
 -- separately. Strands/veins are Beams (no parts).
 Config.Detail = {
 	full = { partBudget = 120, eyeExtras = true, freckles = 26, wrinkles = true, sweatBeads = true, strands = 80, hairBumps = 53,
-		muscleLayers = 2, grooves = true, veins = true, wordmarks = true, laces = "full", shadows = true },
+		muscleLayers = 2, grooves = true, veins = true, wordmarks = true, laces = "full", shadows = true, meshes = "full" },
 	medium = { partBudget = 20, eyeExtras = false, freckles = 8, wrinkles = true, sweatBeads = false, strands = 16, hairBumps = 18,
-		muscleLayers = 1, grooves = false, veins = false, wordmarks = false, laces = "merged", shadows = false },
+		muscleLayers = 1, grooves = false, veins = false, wordmarks = false, laces = "merged", shadows = false, meshes = "full" },
 	low = { partBudget = 0, eyeExtras = false, freckles = 0, wrinkles = false, sweatBeads = false, strands = 0, hairBumps = 10,
-		muscleLayers = 1, grooves = false, veins = false, wordmarks = false, laces = "none", shadows = false },
+		muscleLayers = 1, grooves = false, veins = false, wordmarks = false, laces = "none", shadows = false, meshes = "lite" },
 }
+-- meshes: the muscle-tier body and the mesh gear a level wears (tools/body/CONTRACT.md, "Detail sets"): "full" = the
+-- v10 detailed meshes (~11.5k body triangles, ~12.6k for gloves / trunks / boots), "lite" = the v9 meshes they replaced
+-- (6.8k body, 5.3k gear: the crowd NPCs stay as affordable as before). The same number of instances either way.
 Config.DetailAliases = { hero = "full", npc = "medium", lite = "low" }
 -- (opts) -> "full"|"medium"|"low", its Config.Detail entry. Missing/unknown -> full.
 function Config.DetailLevel(opts)

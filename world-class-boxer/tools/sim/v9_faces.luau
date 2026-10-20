@@ -198,6 +198,11 @@ for _, r in ipairs(ROBES) do
 	local L = { id = r.id, label = r.id, g = r.g, tier = r.tier, skin = r.skin, preset = "Classic", frame = r.frame, height = r.height }
 	table.insert(ENTRIES, { id = r.id, look = L, state = "robe", robe = r.robe })
 end
+-- the sparring headgear (Builder.SetHeadgear, the colours FightEngine gives the two corners)
+for _, r in ipairs({ { id = "headgear_blue_t3", tier = 3, skin = 6, color = { 30, 60, 160 } }, { id = "headgear_red_t5", tier = 5, skin = 9, color = { 170, 25, 30 } } }) do
+	local L = { id = r.id, label = r.id, g = 1, tier = r.tier, skin = r.skin, preset = "Classic", frame = "Athletic", height = 70 }
+	table.insert(ENTRIES, { id = r.id, look = L, state = "headgear", headgear = r.color })
+end
 
 ------------------------------------------------------------------------
 -- host: the fake engine
@@ -555,6 +560,10 @@ for _, e in ipairs(ENTRIES) do
 	end
 	if e.damage then
 		Builder.SetDamage(model, app, DAMAGE[e.damage])
+		solve(model)
+	end
+	if e.headgear then
+		Builder.SetHeadgear(model, roblox.Color3.fromRGB(e.headgear[1], e.headgear[2], e.headgear[3]), true)
 		solve(model)
 	end
 	local robeReport
