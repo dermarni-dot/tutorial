@@ -102,7 +102,7 @@ do
 		end
 	end
 	check("manifest: 40 boxing pieces", #names - official == 40, #names - official)
-	check("manifest: 34 official pieces", official == 34, official)
+	check("manifest: 27 official pieces (13 + 7 sided pairs)", official == 27, official)
 	local missing, zero = {}, 0
 	for tier = 1, 5 do
 		for _, name in ipairs(names) do
