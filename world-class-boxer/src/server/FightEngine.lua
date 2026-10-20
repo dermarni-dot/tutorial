@@ -1651,7 +1651,9 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		self:ChainResult(F, O, sp, "blocked")
 		return
 	elseif O.blocking and body then
-		dmg *= 0.75
+		-- elbows in: a good guard takes more off a body shot (the sims had body punchers walking through every
+		-- AI at every level: 0.75 flat let through too much)
+		dmg *= math.clamp(0.8 - os_.Blocking / 250, 0.45, 0.75)
 	end
 
 	-- landed

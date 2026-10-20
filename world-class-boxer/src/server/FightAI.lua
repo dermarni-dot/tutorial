@@ -241,8 +241,11 @@ function FightAI:OnOppPunch(ptype, body, windup, info)
 	local s = F.data.stats
 	local chance = (s.Reflexes * 0.5 + s.RingIQ * 0.3 + s.HeadMovement * 0.2) / 100 * 0.62
 	chance += (self.anticipate[ptype] or 0) * 0.3
-	-- slip the punch he throws most (the read of tonight)
+	-- slip the punch he throws most (the read of tonight); a body puncher's shots are expected low
 	chance += self.read:Share(ptype) * 0.25 * self.arch.adapt
+	if body then
+		chance += self.read:BodyShare() * 0.2 * self.arch.adapt
+	end
 	chance += readBonus
 	-- a Counter Specialist reads a flurry
 	local cs = engine.Trait and engine:Trait(F, "CounterSpecialist") or 0
@@ -341,8 +344,8 @@ function FightAI:PickDefence(kind, body, hand)
 			table.insert(options, { move, w })
 		end
 	end
-	-- layer 1: the guard (elbows in for the body)
-	add("block", a.block + (body and 0.3 or 0))
+	-- layer 1: the guard (elbows in for the body, more so against a man who lives down there)
+	add("block", a.block + (body and (0.3 + self.read:BodyShare() * 0.5 * self.arch.adapt) or 0))
 	-- layer 2: the head movement that beats this punch
 	local slick = engine.Trait and engine:Trait(F, "Slick") or 0
 	local weaver = engine.Trait and engine:Trait(F, "Weaver") or 0

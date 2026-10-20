@@ -836,31 +836,41 @@ end
 ------------------------------------------------------------------------
 -- whole fights: adaptation and the balance bounds
 ------------------------------------------------------------------------
--- adaptation in a real fight: against a man who spams the jab, the AI defends it more as the fight goes on (the
--- damage is turned right down so the fight runs its distance: this is about the read, not the result)
+-- adaptation in a real fight: against a man who spams the jab, an AI that reads him makes more of them miss (or
+-- blocks them) than the same AI with its read switched off, on the same seeds (the damage is turned right down so
+-- the fights run their distance: this is about the read, not the result)
 do
-	local seen = { [1] = { n = 0, miss = 0 }, [3] = { n = 0, miss = 0 } }
-	for seed = 1, (QUICK and 3 or 6) do
-		local last = { thrown = 0, landed = 0 }
-		S.Fight({
-			red = { bot = "spam", style = "BoxerPuncher", level = 60 },
-			blue = { style = "CounterPuncher", level = 60, noTraits = true },
-			rounds = 3, seed = seed,
-			onTick = function(fight)
-				fight.damageScale = 0.05
-				local P = fight.P
-				local b = seen[fight.round]
-				local dt, dl = P.totals.thrown - last.thrown, P.totals.landed - last.landed
-				last.thrown, last.landed = P.totals.thrown, P.totals.landed
-				if b then
-					b.n += dt
-					b.miss += dt - dl
-				end
-			end,
-		})
+	local function share(learn)
+		local n, miss = 0, 0
+		for seed = 1, (QUICK and 4 or 8) do
+			local last = { thrown = 0, landed = 0 }
+			S.Fight({
+				red = { bot = "spam", style = "BoxerPuncher", level = 60 },
+				blue = { style = "CounterPuncher", level = 60, noTraits = true },
+				rounds = 3, seed = seed,
+				onTick = function(fight)
+					fight.damageScale = 0.05
+					if not learn and not fight.O.ai.readOff then
+						fight.O.ai.readOff = true
+						fight.O.ai.read = FightRead.new()
+						fight.O.ai.read.Punch = function() end
+						fight.O.ai.seq = setmetatable({}, { __newindex = function() end })
+					end
+					local P = fight.P
+					local dt, dl = P.totals.thrown - last.thrown, P.totals.landed - last.landed
+					last.thrown, last.landed = P.totals.thrown, P.totals.landed
+					if fight.round >= 2 then
+						n += dt
+						miss += dt - dl
+					end
+				end,
+			})
+		end
+		return miss / math.max(1, n), n
 	end
-	local e, l = seen[1].miss / math.max(1, seen[1].n), seen[3].miss / math.max(1, seen[3].n)
-	check("adapt: the AI learns a spammed jab (more of them miss / are blocked by round 3)", l > e + 0.03 and seen[3].n > 20, string.format("%.2f -> %.2f (%d / %d)", e, l, seen[1].n, seen[3].n))
+	local on, n1 = share(true)
+	local off = share(false)
+	check("adapt: the AI learns a spammed jab (more of them miss / are blocked than with its read off)", on > off + 0.02 and n1 > 50, string.format("%.3f vs %.3f (%d)", on, off, n1))
 end
 
 local function rate(n, spec)
@@ -931,7 +941,7 @@ do
 	check("balance: high-level AI is a puzzle (a one-punch spammer rarely wins)", spam80 <= 0.2, spam80)
 	check("balance: thinking beats spamming against a good AI", smart80 >= spam80, smart80 .. " vs " .. spam80)
 	-- each trait takes something off the type it resists, but never makes it hopeless for a player who adapts
-	local pairsT = { { "IronChin", "power" }, { "BodyArmor", "body" }, { "Slick", "headhunter" }, { "CounterSpecialist", "volume" }, { "PressureProof", "pressure" } }
+	local pairsT = { { "IronChin", "power" }, { "BodyArmor", "body" }, { "Slick", "onetwo" }, { "CounterSpecialist", "volume" }, { "PressureProof", "pressure" } }
 	for _, tp in ipairs(pairsT) do
 		local without = edge(N, function(i)
 			return { red = { bot = tp[2], style = "BoxerPuncher", level = 60 }, blue = { style = STYLES[(i % 5) + 1], level = 60, noTraits = true }, rounds = 6 }
