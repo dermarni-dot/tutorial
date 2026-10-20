@@ -87452,7 +87452,9 @@ end
 -- tile (the image holds 2 x 2)
 local function tileFloor(m, name, x1, x2, z1, z2, tint, tile, transp)
 	local w, l = x2 - x1, z2 - z1
-	local p = Part(m, name, V3(w, 0.05, l), CF((x1 + x2) / 2, FLOOR_Y + 0.012, (z1 + z2) / 2), C.black, M.SmoothPlastic, { t = 1, shadow = false })
+	-- (its top face just 0.006 over the floor: the tape, chalk lines, mats and scuffs the server and GymVisuals lay
+	-- from 0.51 up stay on top of the tiles)
+	local p = Part(m, name, V3(w, 0.05, l), CF((x1 + x2) / 2, FLOOR_Y + 0.006 - 0.025, (z1 + z2) / 2), C.black, M.SmoothPlastic, { t = 1, shadow = false })
 	local k = 1 / 0.55
 	local col = Color3.new(math.min(1, tint.R * k), math.min(1, tint.G * k), math.min(1, tint.B * k))
 	K.Texture(p, FACE.Top, "rubberTiles", tile * 2, tile * 2, { Color3 = col, Transparency = transp or 0 })
