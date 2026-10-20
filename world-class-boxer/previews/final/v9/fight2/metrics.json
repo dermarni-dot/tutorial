@@ -8050,6 +8050,206 @@
     }
    },
    "tier": 3
+  },
+  {
+   "id": "feint",
+   "impacts": {},
+   "ranges": {
+    "chestYaw": [
+     -40.3811,
+     -19.2668
+    ],
+    "headPitch": [
+     -19.3987,
+     -7.3675
+    ],
+    "headRoll": [
+     -4.818,
+     2.193
+    ],
+    "kneeL": [
+     36.5567,
+     85.2295
+    ],
+    "kneeR": [
+     32.5181,
+     73.1518
+    ],
+    "pelvisY": [
+     2.4529,
+     2.7303
+    ],
+    "pelvisYaw": [
+     -21.5009,
+     -16.7517
+    ],
+    "trunkPitch": [
+     -2.7647,
+     0.6757
+    ]
+   },
+   "sinkMin": 0,
+   "slideL": 0.0022,
+   "slideMaxSpeed": 0.0126,
+   "slideR": 0.0011,
+   "snap": {
+    "arms": {
+     "acc": 17.4606,
+     "accAt": 1.0167,
+     "accJ": "LE",
+     "pops": 40,
+     "step": 27.0964,
+     "stepJ": "LE"
+    },
+    "legs": {
+     "acc": 14.4661,
+     "accAt": 0.65,
+     "accJ": "LK",
+     "pops": 40,
+     "step": 17.6506,
+     "stepJ": "LK"
+    },
+    "neck": {
+     "acc": 2.2295,
+     "accAt": 1.0167,
+     "accJ": "Neck",
+     "pops": 0,
+     "step": 3.8467,
+     "stepJ": "Neck"
+    },
+    "rootMove": {
+     "acc": 0.1877,
+     "accAt": 0.6,
+     "pops": 21,
+     "step": 0.3458
+    },
+    "trunk": {
+     "acc": 2.75,
+     "accAt": 1.0167,
+     "accJ": "W",
+     "pops": 0,
+     "step": 4.6,
+     "stepJ": "W"
+    }
+   },
+   "tier": 3
+  },
+  {
+   "id": "clinch_inside",
+   "impacts": [
+    {
+     "dy": -0.9132,
+     "guardHandY": -0.3021,
+     "hand": "L",
+     "headOffX": 0.4852,
+     "kind": "uppercut",
+     "reachZ": 1.4456,
+     "t": 0.9833,
+     "toTarget": 1.2572,
+     "zone": "body"
+    },
+    {
+     "dy": -0.8613,
+     "guardHandY": -0.2689,
+     "hand": "R",
+     "headOffX": -0.0288,
+     "kind": "uppercut",
+     "reachZ": 1.4347,
+     "t": 1.4333,
+     "toTarget": 1.2197,
+     "zone": "body"
+    },
+    {
+     "dy": -0.8937,
+     "guardHandY": -0.2808,
+     "hand": "L",
+     "headOffX": 0.399,
+     "kind": "uppercut",
+     "reachZ": 1.4145,
+     "t": 1.8833,
+     "toTarget": 1.2325,
+     "zone": "body"
+    }
+   ],
+   "ranges": {
+    "chestYaw": [
+     -43.6928,
+     25.8706
+    ],
+    "headPitch": [
+     -39.4494,
+     -6.2118
+    ],
+    "headRoll": [
+     -19.412,
+     0.8707
+    ],
+    "kneeL": [
+     30.0879,
+     126.0333
+    ],
+    "kneeR": [
+     42.6167,
+     111.7894
+    ],
+    "pelvisY": [
+     1.7038,
+     2.7371
+    ],
+    "pelvisYaw": [
+     -35.8814,
+     3.348
+    ],
+    "trunkPitch": [
+     -31.3072,
+     2.2616
+    ]
+   },
+   "sinkMin": 0,
+   "slideL": 0.0585,
+   "slideMaxSpeed": 0.8337,
+   "slideR": 0.0718,
+   "snap": {
+    "arms": {
+     "acc": 36.7813,
+     "accAt": 1.4167,
+     "accJ": "RE",
+     "pops": 81,
+     "step": 29.6028,
+     "stepJ": "LS"
+    },
+    "legs": {
+     "acc": 10.5095,
+     "accAt": 1.7667,
+     "accJ": "LK",
+     "pops": 120,
+     "step": 15.8313,
+     "stepJ": "LK"
+    },
+    "neck": {
+     "acc": 3.6072,
+     "accAt": 1.3,
+     "accJ": "Neck",
+     "pops": 0,
+     "step": 5.4566,
+     "stepJ": "Neck"
+    },
+    "rootMove": {
+     "acc": 0.1812,
+     "accAt": 1.7667,
+     "pops": 31,
+     "step": 0.2664
+    },
+    "trunk": {
+     "acc": 5.1372,
+     "accAt": 1.3833,
+     "accJ": "W",
+     "pops": 5,
+     "step": 6.7175,
+     "stepJ": "W"
+    }
+   },
+   "tier": 3
   }
  ],
  "after": [
@@ -8070,16 +8270,16 @@
      -0.759
     ],
     "kneeL": [
-     50.8546,
-     65.9512
+     51.2095,
+     66.1059
     ],
     "kneeR": [
-     54.032,
-     70.2421
+     54.525,
+     70.5725
     ],
     "pelvisY": [
-     2.6397,
-     2.7031
+     2.6399,
+     2.7032
     ],
     "pelvisYaw": [
      -17.1898,
@@ -8087,33 +8287,33 @@
     ],
     "trunkPitch": [
      -2.85,
-     -1.3243
+     -1.3357
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.017,
+   "slideL": 0.0165,
    "slideMaxSpeed": 0.02,
    "slideR": 0.0114,
    "snap": {
     "arms": {
-     "acc": 0.1996,
-     "accAt": 0.4333,
+     "acc": 0.2113,
+     "accAt": 0.5167,
      "accJ": "LS",
      "pops": 0,
-     "step": 0.9886,
+     "step": 1.0581,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 4.2371,
-     "accAt": 0.7667,
+     "acc": 4.2336,
+     "accAt": 0.85,
      "accJ": "RA",
      "pops": 1,
-     "step": 4.1234,
+     "step": 4.0965,
      "stepJ": "RK"
     },
     "neck": {
      "acc": 0.0072,
-     "accAt": 2.6833,
+     "accAt": 2.7667,
      "accJ": "Neck",
      "pops": 0,
      "step": 0.126,
@@ -8121,13 +8321,13 @@
     },
     "rootMove": {
      "acc": 0.0014,
-     "accAt": 0.2833,
+     "accAt": 0.3667,
      "pops": 0,
      "step": 0.0074
     },
     "trunk": {
      "acc": 0.0051,
-     "accAt": 2.7333,
+     "accAt": 2.8167,
      "accJ": "W",
      "pops": 0,
      "step": 0.0937,
@@ -8154,15 +8354,15 @@
     ],
     "kneeL": [
      32.518,
-     54.7012
+     54.933
     ],
     "kneeR": [
-     32.7804,
-     64.1204
+     33.2369,
+     64.2328
     ],
     "pelvisY": [
-     2.733,
-     2.9078
+     2.7345,
+     2.9084
     ],
     "pelvisYaw": [
      -22.9183,
@@ -8174,24 +8374,24 @@
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.007,
+   "slideL": 0.0076,
    "slideMaxSpeed": 0.0233,
    "slideR": 0.0079,
    "snap": {
     "arms": {
-     "acc": 0.7541,
+     "acc": 0.7766,
      "accAt": 1.1167,
      "accJ": "RS",
      "pops": 0,
-     "step": 3.0089,
+     "step": 3.0829,
      "stepJ": "RS"
     },
     "legs": {
-     "acc": 4.513,
+     "acc": 4.5182,
      "accAt": 0.55,
      "accJ": "LA",
-     "pops": 3,
-     "step": 5.6186,
+     "pops": 2,
+     "step": 5.5831,
      "stepJ": "RK"
     },
     "neck": {
@@ -8203,8 +8403,8 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0133,
-     "accAt": 1.0667,
+     "acc": 0.0134,
+     "accAt": 0.1667,
      "pops": 0,
      "step": 0.0215
     },
@@ -8236,16 +8436,16 @@
      -0.9192
     ],
     "kneeL": [
-     70.6632,
-     88.486
+     71.0808,
+     88.6223
     ],
     "kneeR": [
-     74.8737,
-     90.0423
+     75.428,
+     90.2773
     ],
     "pelvisY": [
-     2.3377,
-     2.468
+     2.3378,
+     2.4681
     ],
     "pelvisYaw": [
      -10.3307,
@@ -8262,19 +8462,19 @@
    "slideR": 0.0108,
    "snap": {
     "arms": {
-     "acc": 0.1402,
+     "acc": 0.1296,
      "accAt": 1.15,
      "accJ": "LE",
      "pops": 0,
-     "step": 0.7103,
+     "step": 0.6647,
      "stepJ": "LE"
     },
     "legs": {
-     "acc": 3.9277,
+     "acc": 3.9355,
      "accAt": 3,
      "accJ": "LA",
      "pops": 0,
-     "step": 3.4701,
+     "step": 3.4639,
      "stepJ": "LK"
     },
     "neck": {
@@ -8319,16 +8519,16 @@
      -5.9976
     ],
     "kneeL": [
-     52.3093,
-     62.0692
+     52.6405,
+     62.3417
     ],
     "kneeR": [
-     55.6105,
-     69.5744
+     55.9427,
+     69.893
     ],
     "pelvisY": [
-     2.6301,
-     2.6987
+     2.6303,
+     2.6989
     ],
     "pelvisYaw": [
      -28.6484,
@@ -8341,23 +8541,23 @@
    },
    "sinkMin": 0,
    "slideL": 0.0068,
-   "slideMaxSpeed": 0.0193,
+   "slideMaxSpeed": 0.0194,
    "slideR": 0.0088,
    "snap": {
     "arms": {
-     "acc": 0.0753,
+     "acc": 0.0751,
      "accAt": 2.3,
      "accJ": "RE",
      "pops": 0,
-     "step": 0.3777,
+     "step": 0.3825,
      "stepJ": "RS"
     },
     "legs": {
-     "acc": 3.2499,
+     "acc": 3.2455,
      "accAt": 1.4,
      "accJ": "RA",
      "pops": 0,
-     "step": 3.3163,
+     "step": 3.3228,
      "stepJ": "RK"
     },
     "neck": {
@@ -8402,16 +8602,16 @@
      -1.1375
     ],
     "kneeL": [
-     56.7226,
-     69.4883
+     57.0024,
+     69.7432
     ],
     "kneeR": [
-     58.2501,
-     70.4165
+     58.7009,
+     70.8034
     ],
     "pelvisY": [
-     2.5705,
-     2.6476
+     2.5707,
+     2.6477
     ],
     "pelvisYaw": [
      -17.1898,
@@ -8424,23 +8624,23 @@
    },
    "sinkMin": 0,
    "slideL": 0.0055,
-   "slideMaxSpeed": 0.0162,
+   "slideMaxSpeed": 0.0161,
    "slideR": 0.0061,
    "snap": {
     "arms": {
-     "acc": 1.0427,
+     "acc": 1.0993,
      "accAt": 0.0833,
      "accJ": "RS",
      "pops": 0,
-     "step": 6,
+     "step": 6.315,
      "stepJ": "RS"
     },
     "legs": {
-     "acc": 3.3821,
+     "acc": 3.3801,
      "accAt": 1.45,
      "accJ": "RA",
      "pops": 0,
-     "step": 3.3884,
+     "step": 3.3723,
      "stepJ": "RK"
     },
     "neck": {
@@ -8485,16 +8685,16 @@
      -0.9722
     ],
     "kneeL": [
-     32.5047,
-     66.3366
+     32.7237,
+     66.6756
     ],
     "kneeR": [
-     36.6974,
-     70.4703
+     37.2712,
+     70.8475
     ],
     "pelvisY": [
-     2.612,
-     2.7019
+     2.6122,
+     2.702
     ],
     "pelvisYaw": [
      -17.3275,
@@ -8506,24 +8706,24 @@
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.0141,
-   "slideMaxSpeed": 0.0866,
-   "slideR": 0.0093,
+   "slideL": 0.0137,
+   "slideMaxSpeed": 0.0807,
+   "slideR": 0.009,
    "snap": {
     "arms": {
-     "acc": 0.1988,
+     "acc": 0.2097,
      "accAt": 0.35,
      "accJ": "LS",
      "pops": 0,
-     "step": 0.9599,
+     "step": 1.0158,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 8.9288,
+     "acc": 8.9226,
      "accAt": 1.3833,
      "accJ": "LK",
-     "pops": 32,
-     "step": 11.3226,
+     "pops": 31,
+     "step": 11.3386,
      "stepJ": "LK"
     },
     "neck": {
@@ -8568,16 +8768,16 @@
      -0.641
     ],
     "kneeL": [
-     52.3052,
-     66.4214
+     52.563,
+     66.6493
     ],
     "kneeR": [
-     55.005,
-     68.3189
+     55.5028,
+     68.7675
     ],
     "pelvisY": [
-     2.6399,
-     2.7031
+     2.6401,
+     2.7033
     ],
     "pelvisYaw": [
      -17.1898,
@@ -8594,19 +8794,19 @@
    "slideR": 0.0057,
    "snap": {
     "arms": {
-     "acc": 0.1996,
+     "acc": 0.2113,
      "accAt": 0.3333,
      "accJ": "LS",
      "pops": 0,
-     "step": 0.9886,
+     "step": 1.0581,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 14.441,
+     "acc": 14.4693,
      "accAt": 0.45,
      "accJ": "LA",
      "pops": 16,
-     "step": 20.7603,
+     "step": 20.8225,
      "stepJ": "LA"
     },
     "neck": {
@@ -8651,16 +8851,16 @@
      -3.827
     ],
     "kneeL": [
-     36.7234,
-     85.2326
+     37.1112,
+     85.364
     ],
     "kneeR": [
-     28.1903,
-     67.8839
+     28.2378,
+     68.154
     ],
     "pelvisY": [
-     2.4606,
-     2.7018
+     2.4634,
+     2.702
     ],
     "pelvisYaw": [
      -17.5023,
@@ -8672,24 +8872,24 @@
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.0215,
+   "slideL": 0.0213,
    "slideMaxSpeed": 0.7258,
    "slideR": 0.0062,
    "snap": {
     "arms": {
-     "acc": 0.8631,
+     "acc": 0.9741,
      "accAt": 2.2333,
      "accJ": "RE",
      "pops": 0,
-     "step": 4.4475,
+     "step": 4.9951,
      "stepJ": "RE"
     },
     "legs": {
-     "acc": 13.6016,
+     "acc": 13.6079,
      "accAt": 0.4333,
      "accJ": "RK",
-     "pops": 22,
-     "step": 16.4009,
+     "pops": 21,
+     "step": 16.4699,
      "stepJ": "RK"
     },
     "neck": {
@@ -8701,10 +8901,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0661,
+     "acc": 0.0611,
      "accAt": 0.4,
      "pops": 2,
-     "step": 0.0813
+     "step": 0.077
     },
     "trunk": {
      "acc": 0.4881,
@@ -8718,23 +8918,223 @@
    "tier": 3
   },
   {
+   "id": "feint",
+   "impacts": {},
+   "ranges": {
+    "chestYaw": [
+     -33.4134,
+     -20.8229
+    ],
+    "headPitch": [
+     -15.7997,
+     -11.6472
+    ],
+    "headRoll": [
+     -5.1277,
+     -0.8432
+    ],
+    "kneeL": [
+     49.0802,
+     66.1336
+    ],
+    "kneeR": [
+     56.2761,
+     71.286
+    ],
+    "pelvisY": [
+     2.5751,
+     2.7025
+    ],
+    "pelvisYaw": [
+     -19.8689,
+     -17.1898
+    ],
+    "trunkPitch": [
+     -5.3998,
+     -1.3357
+    ]
+   },
+   "sinkMin": 0,
+   "slideL": 0.005,
+   "slideMaxSpeed": 0.0179,
+   "slideR": 0.003,
+   "snap": {
+    "arms": {
+     "acc": 2.8803,
+     "accAt": 0.9833,
+     "accJ": "LE",
+     "pops": 0,
+     "step": 6.5778,
+     "stepJ": "LE"
+    },
+    "legs": {
+     "acc": 4.2263,
+     "accAt": 0.6667,
+     "accJ": "RA",
+     "pops": 1,
+     "step": 4.2242,
+     "stepJ": "LK"
+    },
+    "neck": {
+     "acc": 0.6849,
+     "accAt": 0.4833,
+     "accJ": "Neck",
+     "pops": 0,
+     "step": 1.7597,
+     "stepJ": "Neck"
+    },
+    "rootMove": {
+     "acc": 0.0094,
+     "accAt": 0.9167,
+     "pops": 0,
+     "step": 0.0257
+    },
+    "trunk": {
+     "acc": 0.9435,
+     "accAt": 0.4833,
+     "accJ": "W",
+     "pops": 0,
+     "step": 2.4442,
+     "stepJ": "W"
+    }
+   },
+   "tier": 3
+  },
+  {
+   "id": "clinch_inside",
+   "impacts": [
+    {
+     "dy": -0.933,
+     "guardHandY": -0.3294,
+     "hand": "L",
+     "headOffX": 0.1237,
+     "kind": "uppercut",
+     "reachZ": 1.5028,
+     "t": 0.9833,
+     "toTarget": 1.2448,
+     "zone": "body"
+    },
+    {
+     "dy": -0.587,
+     "guardHandY": -0.3068,
+     "hand": "R",
+     "headOffX": 0.1878,
+     "kind": "uppercut",
+     "reachZ": 1.3897,
+     "t": 1.4333,
+     "toTarget": 1.099,
+     "zone": "body"
+    },
+    {
+     "dy": -0.7948,
+     "guardHandY": -0.3182,
+     "hand": "L",
+     "headOffX": 0.1782,
+     "kind": "uppercut",
+     "reachZ": 1.4863,
+     "t": 1.8833,
+     "toTarget": 1.1248,
+     "zone": "body"
+    }
+   ],
+   "ranges": {
+    "chestYaw": [
+     -22.711,
+     2.0821
+    ],
+    "headPitch": [
+     -41.6992,
+     -10.6632
+    ],
+    "headRoll": [
+     -12.875,
+     -3.827
+    ],
+    "kneeL": [
+     33.8035,
+     85.632
+    ],
+    "kneeR": [
+     28.2378,
+     67.8496
+    ],
+    "pelvisY": [
+     2.4389,
+     2.702
+    ],
+    "pelvisYaw": [
+     -24.0239,
+     -10.5651
+    ],
+    "trunkPitch": [
+     -29.9971,
+     0.0778
+    ]
+   },
+   "sinkMin": 0,
+   "slideL": 0.0272,
+   "slideMaxSpeed": 0.7258,
+   "slideR": 0.006,
+   "snap": {
+    "arms": {
+     "acc": 27.6471,
+     "accAt": 0.9667,
+     "accJ": "LE",
+     "pops": 73,
+     "step": 20.4775,
+     "stepJ": "RS"
+    },
+    "legs": {
+     "acc": 13.6079,
+     "accAt": 0.4333,
+     "accJ": "RK",
+     "pops": 27,
+     "step": 16.4699,
+     "stepJ": "RK"
+    },
+    "neck": {
+     "acc": 1.4842,
+     "accAt": 0.9833,
+     "accJ": "Neck",
+     "pops": 0,
+     "step": 2.6209,
+     "stepJ": "Neck"
+    },
+    "rootMove": {
+     "acc": 0.0611,
+     "accAt": 0.4,
+     "pops": 14,
+     "step": 0.077
+    },
+    "trunk": {
+     "acc": 4.6218,
+     "accAt": 0.8333,
+     "accJ": "W",
+     "pops": 2,
+     "step": 4.1837,
+     "stepJ": "W"
+    }
+   },
+   "tier": 3
+  },
+  {
    "id": "jab",
    "impacts": [
     {
-     "dy": -0.3662,
-     "guardHandY": -0.1305,
+     "dy": -0.3667,
+     "guardHandY": -0.1403,
      "hand": "L",
      "headOffX": 0.1029,
      "kind": "jab",
-     "reachZ": 3.0871,
+     "reachZ": 3.0832,
      "t": 0.5667,
-     "toTarget": 0.7963,
+     "toTarget": 0.7998,
      "zone": "head"
     }
    ],
    "ranges": {
     "chestYaw": [
-     -46.1314,
+     -46.1321,
      -20.7586
     ],
     "headPitch": [
@@ -8746,16 +9146,16 @@
      -0.7585
     ],
     "kneeL": [
-     53.5167,
-     68.6216
+     53.7952,
+     69.9117
     ],
     "kneeR": [
-     55.7223,
-     79.7501
+     56.2761,
+     79.1084
     ],
     "pelvisY": [
-     2.5423,
-     2.7032
+     2.5425,
+     2.7034
     ],
     "pelvisYaw": [
      -22.0339,
@@ -8763,7 +9163,7 @@
     ],
     "trunkPitch": [
      -9.3794,
-     -1.2823
+     -1.2913
     ]
    },
    "sinkMin": 0,
@@ -8772,19 +9172,19 @@
    "slideR": 0.0037,
    "snap": {
     "arms": {
-     "acc": 14.7051,
+     "acc": 17.5073,
      "accAt": 0.65,
      "accJ": "LE",
-     "pops": 18,
-     "step": 25.5539,
+     "pops": 20,
+     "step": 27.7284,
      "stepJ": "LE"
     },
     "legs": {
-     "acc": 3.7703,
+     "acc": 3.82,
      "accAt": 0.4167,
      "accJ": "LA",
      "pops": 0,
-     "step": 5.6052,
+     "step": 5.6526,
      "stepJ": "RK"
     },
     "neck": {
@@ -8796,10 +9196,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0129,
+     "acc": 0.0158,
      "accAt": 0.5,
      "pops": 0,
-     "step": 0.0307
+     "step": 0.0378
     },
     "trunk": {
      "acc": 2.3134,
@@ -8816,14 +9216,14 @@
    "id": "cross",
    "impacts": [
     {
-     "dy": -0.354,
-     "guardHandY": -0.125,
+     "dy": -0.3507,
+     "guardHandY": -0.1363,
      "hand": "R",
      "headOffX": -0.0066,
      "kind": "cross",
-     "reachZ": 3.1309,
+     "reachZ": 3.135,
      "t": 0.65,
-     "toTarget": 0.737,
+     "toTarget": 0.7317,
      "zone": "head"
     }
    ],
@@ -8841,16 +9241,16 @@
      -0.7604
     ],
     "kneeL": [
-     54.1859,
-     66.0251
+     54.5346,
+     66.2044
     ],
     "kneeR": [
-     27.5528,
-     62.3233
+     27.0721,
+     62.9921
     ],
     "pelvisY": [
-     2.6183,
-     2.7175
+     2.6197,
+     2.7216
     ],
     "pelvisYaw": [
      -17.9916,
@@ -8863,23 +9263,23 @@
    },
    "sinkMin": 0,
    "slideL": 0.0054,
-   "slideMaxSpeed": 0.7803,
-   "slideR": 0.038,
+   "slideMaxSpeed": 0.7866,
+   "slideR": 0.0383,
    "snap": {
     "arms": {
-     "acc": 15.1056,
+     "acc": 15.0705,
      "accAt": 0.65,
      "accJ": "RE",
-     "pops": 10,
-     "step": 19.3815,
+     "pops": 8,
+     "step": 19.9065,
      "stepJ": "RE"
     },
     "legs": {
-     "acc": 13.2138,
+     "acc": 13.2176,
      "accAt": 0.6833,
      "accJ": "RA",
      "pops": 6,
-     "step": 13.7637,
+     "step": 13.7657,
      "stepJ": "RA"
     },
     "neck": {
@@ -8891,10 +9291,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0236,
+     "acc": 0.0254,
      "accAt": 0.7167,
      "pops": 2,
-     "step": 0.0551
+     "step": 0.0574
     },
     "trunk": {
      "acc": 3.5603,
@@ -8911,70 +9311,70 @@
    "id": "leadhook",
    "impacts": [
     {
-     "dy": -0.3713,
-     "guardHandY": -0.0496,
+     "dy": -0.404,
+     "guardHandY": -0.0673,
      "hand": "L",
-     "headOffX": 0.117,
+     "headOffX": 0.1062,
      "kind": "leadhook",
-     "reachZ": 3.7136,
+     "reachZ": 3.6695,
      "t": 0.6667,
-     "toTarget": 0.7433,
+     "toTarget": 0.7534,
      "zone": "head"
     }
    ],
    "ranges": {
     "chestYaw": [
-     -54.8246,
+     -53.4359,
      -5.5932
     ],
     "headPitch": [
-     -22.3195,
+     -22.3961,
      -11.6472
     ],
     "headRoll": [
-     -6.2592,
+     -5.9036,
      -0.7667
     ],
     "kneeL": [
-     55.4868,
-     118.3379
+     55.7365,
+     118.5755
     ],
     "kneeR": [
-     22.5621,
-     75.0677
+     22.7291,
+     75.2495
     ],
     "pelvisY": [
-     1.8185,
-     2.7018
+     1.8283,
+     2.702
     ],
     "pelvisYaw": [
-     -35.5922,
-     -6.7215
+     -34.8086,
+     -6.7093
     ],
     "trunkPitch": [
-     -3.7972,
+     -3.8087,
      -1.3357
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.028,
-   "slideMaxSpeed": 0.3819,
+   "slideL": 0.0274,
+   "slideMaxSpeed": 0.3713,
    "slideR": 0.0011,
    "snap": {
     "arms": {
-     "acc": 20.7341,
+     "acc": 17.9747,
      "accAt": 0.6167,
      "accJ": "LS",
-     "pops": 20,
-     "step": 24.0278,
+     "pops": 17,
+     "step": 24.4066,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 8.0785,
+     "acc": 8.0687,
      "accAt": 0.45,
      "accJ": "RA",
-     "pops": 14,
-     "step": 12.0567,
+     "pops": 12,
+     "step": 12.0492,
      "stepJ": "RK"
     },
     "neck": {
@@ -8986,17 +9386,17 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0863,
+     "acc": 0.0853,
      "accAt": 0.6333,
      "pops": 18,
-     "step": 0.2087
+     "step": 0.2065
     },
     "trunk": {
-     "acc": 5.2002,
+     "acc": 5.1811,
      "accAt": 0.45,
      "accJ": "Root",
      "pops": 1,
-     "step": 5.6824,
+     "step": 5.6336,
      "stepJ": "Root"
     }
    },
@@ -9006,70 +9406,70 @@
    "id": "rearhook",
    "impacts": [
     {
-     "dy": -0.1933,
-     "guardHandY": -0.0617,
+     "dy": -0.1929,
+     "guardHandY": -0.0808,
      "hand": "R",
-     "headOffX": -0.0502,
+     "headOffX": -0.0389,
      "kind": "rearhook",
-     "reachZ": 3.1727,
+     "reachZ": 3.1728,
      "t": 0.7,
-     "toTarget": 0.941,
+     "toTarget": 0.9396,
      "zone": "head"
     }
    ],
    "ranges": {
     "chestYaw": [
      -38.3559,
-     56.0616
+     54.6819
     ],
     "headPitch": [
-     -22.0449,
-     -10.6447
+     -22.1205,
+     -10.643
     ],
     "headRoll": [
-     -7.258,
-     3.1743
+     -7.259,
+     2.8271
     ],
     "kneeL": [
-     55.2128,
-     82.2851
+     55.4005,
+     81.6032
     ],
     "kneeR": [
-     32.4602,
-     66.3822
+     32.5181,
+     67.5616
     ],
     "pelvisY": [
-     2.4698,
-     2.7018
+     2.4789,
+     2.702
     ],
     "pelvisYaw": [
-     -23.2387,
-     25.2789
+     -23.2864,
+     24.5323
     ],
     "trunkPitch": [
-     -3.148,
-     -1.3172
+     -3.1605,
+     -1.3167
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.0032,
-   "slideMaxSpeed": 0.7886,
-   "slideR": 0.0275,
+   "slideL": 0.0029,
+   "slideMaxSpeed": 0.78,
+   "slideR": 0.0273,
    "snap": {
     "arms": {
-     "acc": 10.7162,
-     "accAt": 0.6333,
+     "acc": 10.3115,
+     "accAt": 0.7167,
      "accJ": "RS",
-     "pops": 15,
-     "step": 18.446,
+     "pops": 11,
+     "step": 18.608,
      "stepJ": "RS"
     },
     "legs": {
-     "acc": 12.9035,
+     "acc": 12.9088,
      "accAt": 0.7,
      "accJ": "RA",
-     "pops": 13,
-     "step": 12.7924,
+     "pops": 12,
+     "step": 12.7993,
      "stepJ": "RA"
     },
     "neck": {
@@ -9077,21 +9477,21 @@
      "accAt": 0.4667,
      "accJ": "Neck",
      "pops": 0,
-     "step": 7.4744,
+     "step": 7.3445,
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0292,
-     "accAt": 0.7333,
-     "pops": 7,
-     "step": 0.1168
+     "acc": 0.0297,
+     "accAt": 0.4333,
+     "pops": 8,
+     "step": 0.1275
     },
     "trunk": {
-     "acc": 4.2664,
+     "acc": 4.1937,
      "accAt": 0.7,
      "accJ": "W",
      "pops": 2,
-     "step": 9.1633,
+     "step": 9.0056,
      "stepJ": "W"
     }
    },
@@ -9101,14 +9501,14 @@
    "id": "uppercut",
    "impacts": [
     {
-     "dy": -0.3345,
-     "guardHandY": -0.0564,
+     "dy": -0.32,
+     "guardHandY": -0.0807,
      "hand": "R",
      "headOffX": 0.1062,
      "kind": "uppercut",
-     "reachZ": 3.0542,
+     "reachZ": 3.0866,
      "t": 0.7,
-     "toTarget": 0.7875,
+     "toTarget": 0.7516,
      "zone": "head"
     }
    ],
@@ -9126,16 +9526,16 @@
      -0.7933
     ],
     "kneeL": [
-     44.02,
-     104.7944
+     43.8603,
+     104.9962
     ],
     "kneeR": [
-     32.5181,
-     97.4222
+     32.5069,
+     97.8152
     ],
     "pelvisY": [
-     1.9628,
-     2.8217
+     1.963,
+     2.8267
     ],
     "pelvisYaw": [
      -21.1681,
@@ -9148,23 +9548,23 @@
    },
    "sinkMin": 0,
    "slideL": 0.0035,
-   "slideMaxSpeed": 0.786,
-   "slideR": 0.0217,
+   "slideMaxSpeed": 0.7792,
+   "slideR": 0.0212,
    "snap": {
     "arms": {
-     "acc": 12.5915,
+     "acc": 12.7729,
      "accAt": 0.7,
      "accJ": "RS",
-     "pops": 8,
-     "step": 18.7147,
+     "pops": 10,
+     "step": 18.8,
      "stepJ": "RS"
     },
     "legs": {
-     "acc": 13.1537,
+     "acc": 13.1628,
      "accAt": 0.7,
      "accJ": "RA",
      "pops": 10,
-     "step": 12.8935,
+     "step": 12.9014,
      "stepJ": "RA"
     },
     "neck": {
@@ -9178,7 +9578,7 @@
     "rootMove": {
      "acc": 0.0676,
      "accAt": 0.5333,
-     "pops": 21,
+     "pops": 22,
      "step": 0.2039
     },
     "trunk": {
@@ -9196,14 +9596,14 @@
    "id": "overhand",
    "impacts": [
     {
-     "dy": -0.0422,
-     "guardHandY": -0.0595,
+     "dy": -0.0167,
+     "guardHandY": -0.0691,
      "hand": "R",
      "headOffX": 0.0875,
      "kind": "overhand",
-     "reachZ": 3.0583,
+     "reachZ": 3.0521,
      "t": 0.8333,
-     "toTarget": 0.7054,
+     "toTarget": 0.7106,
      "zone": "head"
     }
    ],
@@ -9221,16 +9621,16 @@
      -1.4763
     ],
     "kneeL": [
-     53.7008,
-     92.4723
+     53.9615,
+     92.5526
     ],
     "kneeR": [
      32.5181,
-     78.2676
+     78.7055
     ],
     "pelvisY": [
-     2.2864,
-     2.7018
+     2.2866,
+     2.702
     ],
     "pelvisYaw": [
      -19.0119,
@@ -9243,23 +9643,23 @@
    },
    "sinkMin": 0,
    "slideL": 0.0031,
-   "slideMaxSpeed": 0.8129,
-   "slideR": 0.0204,
+   "slideMaxSpeed": 0.8101,
+   "slideR": 0.0203,
    "snap": {
     "arms": {
-     "acc": 9.2665,
+     "acc": 12.5103,
      "accAt": 0.8167,
      "accJ": "RE",
-     "pops": 9,
-     "step": 19.0883,
+     "pops": 12,
+     "step": 19.1288,
      "stepJ": "RS"
     },
     "legs": {
-     "acc": 13.3775,
+     "acc": 13.2876,
      "accAt": 1.2,
      "accJ": "RA",
      "pops": 9,
-     "step": 13.9935,
+     "step": 14.0243,
      "stepJ": "RA"
     },
     "neck": {
@@ -9291,92 +9691,92 @@
    "id": "bodyjab",
    "impacts": [
     {
-     "dy": -0.473,
-     "guardHandY": -0.1656,
+     "dy": -0.464,
+     "guardHandY": -0.1661,
      "hand": "L",
-     "headOffX": 0.154,
+     "headOffX": 0.1729,
      "kind": "jab",
-     "reachZ": 3.0116,
+     "reachZ": 3.0777,
      "t": 0.5667,
-     "toTarget": 1.0998,
+     "toTarget": 1.0378,
      "zone": "body"
     }
    ],
    "ranges": {
     "chestYaw": [
-     -42.7438,
+     -46.3323,
      -20.7586
     ],
     "headPitch": [
-     -28.2187,
+     -27.943,
      -11.6472
     ],
     "headRoll": [
-     -8.4446,
-     -0.759
+     -9.1441,
+     -0.7597
     ],
     "kneeL": [
-     53.6948,
-     94.374
+     53.941,
+     96.1396
     ],
     "kneeR": [
-     55.7223,
-     108.6142
+     56.2761,
+     108.1325
     ],
     "pelvisY": [
-     2.1065,
-     2.7018
+     2.1067,
+     2.702
     ],
     "pelvisYaw": [
-     -21.3073,
-     -16.3393
+     -22.0339,
+     -16.3746
     ],
     "trunkPitch": [
-     -12.874,
+     -12.7089,
      -1.3357
     ]
    },
    "sinkMin": 0,
    "slideL": 0.0053,
-   "slideMaxSpeed": 0.0159,
+   "slideMaxSpeed": 0.0161,
    "slideR": 0.0038,
    "snap": {
     "arms": {
-     "acc": 13.0634,
+     "acc": 13.4479,
      "accAt": 0.55,
      "accJ": "LE",
-     "pops": 18,
-     "step": 24.3794,
+     "pops": 23,
+     "step": 27.3339,
      "stepJ": "LE"
     },
     "legs": {
-     "acc": 4.1403,
+     "acc": 4.3089,
      "accAt": 0.4167,
      "accJ": "LA",
-     "pops": 4,
-     "step": 8.2854,
-     "stepJ": "RK"
+     "pops": 3,
+     "step": 8.3809,
+     "stepJ": "LK"
     },
     "neck": {
-     "acc": 1.737,
+     "acc": 1.7535,
      "accAt": 0.4167,
      "accJ": "Neck",
      "pops": 0,
-     "step": 3.0047,
+     "step": 3.4925,
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0494,
+     "acc": 0.0492,
      "accAt": 0.5,
-     "pops": 10,
-     "step": 0.117
+     "pops": 7,
+     "step": 0.1166
     },
     "trunk": {
-     "acc": 2.2517,
+     "acc": 2.3134,
      "accAt": 0.4167,
      "accJ": "Root",
      "pops": 0,
-     "step": 4.3331,
+     "step": 4.8711,
      "stepJ": "W"
     }
    },
@@ -9386,14 +9786,14 @@
    "id": "bodycross",
    "impacts": [
     {
-     "dy": -0.4887,
-     "guardHandY": -0.1506,
+     "dy": -0.4813,
+     "guardHandY": -0.1575,
      "hand": "R",
      "headOffX": -0.0308,
      "kind": "cross",
-     "reachZ": 3.0416,
+     "reachZ": 3.1105,
      "t": 0.65,
-     "toTarget": 1.061,
+     "toTarget": 0.998,
      "zone": "body"
     }
    ],
@@ -9411,16 +9811,16 @@
      -0.7604
     ],
     "kneeL": [
-     53.6769,
-     94.1212
+     53.9274,
+     96.7841
     ],
     "kneeR": [
-     55.7223,
-     92.1398
+     56.2761,
+     89.1949
     ],
     "pelvisY": [
-     2.1154,
-     2.7018
+     2.1156,
+     2.702
     ],
     "pelvisYaw": [
      -17.9916,
@@ -9437,19 +9837,19 @@
    "slideR": 0.0841,
    "snap": {
     "arms": {
-     "acc": 11.3579,
+     "acc": 11.3818,
      "accAt": 0.65,
      "accJ": "RE",
      "pops": 9,
-     "step": 15.6877,
+     "step": 16.2761,
      "stepJ": "RE"
     },
     "legs": {
-     "acc": 13.1498,
+     "acc": 13.1083,
      "accAt": 0.6833,
      "accJ": "RA",
      "pops": 6,
-     "step": 13.2192,
+     "step": 13.2315,
      "stepJ": "RA"
     },
     "neck": {
@@ -9461,10 +9861,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0258,
+     "acc": 0.0272,
      "accAt": 0.4167,
-     "pops": 2,
-     "step": 0.0759
+     "pops": 3,
+     "step": 0.081
     },
     "trunk": {
      "acc": 3.6151,
@@ -9481,70 +9881,70 @@
    "id": "bodyhook",
    "impacts": [
     {
-     "dy": -0.5681,
-     "guardHandY": -0.04,
+     "dy": -0.5621,
+     "guardHandY": -0.0553,
      "hand": "L",
-     "headOffX": 0.061,
+     "headOffX": 0.0441,
      "kind": "leadhook",
-     "reachZ": 3.4117,
+     "reachZ": 3.4099,
      "t": 0.6667,
-     "toTarget": 1.1585,
+     "toTarget": 1.1007,
      "zone": "body"
     }
    ],
    "ranges": {
     "chestYaw": [
-     -54.3272,
+     -52.9997,
      -5.5932
     ],
     "headPitch": [
-     -30.157,
+     -30.1494,
      -11.6472
     ],
     "headRoll": [
-     -6.0565,
+     -5.6274,
      -0.7667
     ],
     "kneeL": [
-     55.4868,
-     117.7593
+     55.7365,
+     118.0204
     ],
     "kneeR": [
-     32.0137,
-     69.2922
+     32.0606,
+     69.7549
     ],
     "pelvisY": [
-     1.8168,
-     2.7018
+     1.8269,
+     2.702
     ],
     "pelvisYaw": [
-     -35.3592,
-     -6.7179
+     -34.6118,
+     -6.7063
     ],
     "trunkPitch": [
-     -7.2425,
+     -7.2593,
      -1.3357
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.0488,
-   "slideMaxSpeed": 0.4749,
+   "slideL": 0.0474,
+   "slideMaxSpeed": 0.4607,
    "slideR": 0.0011,
    "snap": {
     "arms": {
-     "acc": 18.1806,
-     "accAt": 0.8,
+     "acc": 12.9193,
+     "accAt": 0.4667,
      "accJ": "LS",
-     "pops": 30,
-     "step": 32.8609,
+     "pops": 25,
+     "step": 28.6601,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 8.1291,
+     "acc": 8.1203,
      "accAt": 0.45,
      "accJ": "RA",
      "pops": 9,
-     "step": 11.4508,
+     "step": 11.2509,
      "stepJ": "LA"
     },
     "neck": {
@@ -9556,17 +9956,17 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.049,
+     "acc": 0.0481,
      "accAt": 0.6333,
      "pops": 20,
-     "step": 0.1659
+     "step": 0.1655
     },
     "trunk": {
-     "acc": 5.1945,
+     "acc": 5.1763,
      "accAt": 0.45,
      "accJ": "Root",
      "pops": 1,
-     "step": 5.6679,
+     "step": 5.6214,
      "stepJ": "Root"
     }
    },
@@ -9576,14 +9976,14 @@
    "id": "bodyuppercut",
    "impacts": [
     {
-     "dy": -0.4896,
-     "guardHandY": -0.0914,
+     "dy": -0.4756,
+     "guardHandY": -0.1108,
      "hand": "R",
      "headOffX": 0.1146,
      "kind": "uppercut",
-     "reachZ": 2.8641,
+     "reachZ": 2.9187,
      "t": 0.7,
-     "toTarget": 1.2087,
+     "toTarget": 1.1523,
      "zone": "body"
     }
    ],
@@ -9601,16 +10001,16 @@
      -0.7933
     ],
     "kneeL": [
-     54.0236,
-     109.0403
+     54.2916,
+     109.2403
     ],
     "kneeR": [
-     50.911,
-     101.133
+     51.5798,
+     101.5244
     ],
     "pelvisY": [
-     1.8669,
-     2.7018
+     1.8671,
+     2.702
     ],
     "pelvisYaw": [
      -21.1681,
@@ -9627,19 +10027,19 @@
    "slideR": 0.046,
    "snap": {
     "arms": {
-     "acc": 31.6946,
+     "acc": 32.176,
      "accAt": 0.6833,
      "accJ": "RE",
      "pops": 16,
-     "step": 24.0989,
+     "step": 24.7819,
      "stepJ": "RE"
     },
     "legs": {
-     "acc": 13.1078,
+     "acc": 13.1192,
      "accAt": 0.7,
      "accJ": "RA",
      "pops": 8,
-     "step": 12.7633,
+     "step": 12.7825,
      "stepJ": "RA"
     },
     "neck": {
@@ -9671,31 +10071,31 @@
    "id": "combo12",
    "impacts": [
     {
-     "dy": -0.3662,
-     "guardHandY": -0.1305,
+     "dy": -0.3667,
+     "guardHandY": -0.1403,
      "hand": "L",
      "headOffX": 0.1029,
      "kind": "jab",
-     "reachZ": 3.0871,
+     "reachZ": 3.0832,
      "t": 0.5667,
-     "toTarget": 0.7963,
+     "toTarget": 0.7998,
      "zone": "head"
     },
     {
-     "dy": -0.3697,
-     "guardHandY": -0.108,
+     "dy": -0.3678,
+     "guardHandY": -0.1189,
      "hand": "R",
      "headOffX": -0.0112,
      "kind": "cross",
-     "reachZ": 3.0509,
+     "reachZ": 3.0465,
      "t": 0.85,
-     "toTarget": 0.8004,
+     "toTarget": 0.803,
      "zone": "head"
     }
    ],
    "ranges": {
     "chestYaw": [
-     -46.1314,
+     -46.1321,
      37.0181
     ],
     "headPitch": [
@@ -9703,20 +10103,20 @@
      -11.6472
     ],
     "headRoll": [
-     -8.9618,
+     -8.9619,
      -0.4589
     ],
     "kneeL": [
-     53.0429,
-     68.6216
+     53.2705,
+     69.9117
     ],
     "kneeR": [
      32.5181,
-     79.7501
+     79.1084
     ],
     "pelvisY": [
-     2.5423,
-     2.7609
+     2.5425,
+     2.7612
     ],
     "pelvisYaw": [
      -22.0339,
@@ -9730,44 +10130,44 @@
    "sinkMin": 0,
    "slideL": 0.0068,
    "slideMaxSpeed": 0.724,
-   "slideR": 0.0423,
+   "slideR": 0.0422,
    "snap": {
     "arms": {
-     "acc": 14.7051,
+     "acc": 17.5073,
      "accAt": 0.65,
      "accJ": "LE",
-     "pops": 30,
-     "step": 25.5539,
+     "pops": 33,
+     "step": 27.7284,
      "stepJ": "LE"
     },
     "legs": {
-     "acc": 11.309,
-     "accAt": 0.6833,
-     "accJ": "RA",
+     "acc": 11.4284,
+     "accAt": 0.7333,
+     "accJ": "RK",
      "pops": 9,
-     "step": 11.4732,
+     "step": 11.4285,
      "stepJ": "RK"
     },
     "neck": {
-     "acc": 3.9914,
+     "acc": 3.9917,
      "accAt": 0.6333,
      "accJ": "Neck",
      "pops": 0,
-     "step": 10.1075,
+     "step": 10.1076,
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0888,
+     "acc": 0.0973,
      "accAt": 0.7333,
-     "pops": 4,
-     "step": 0.0708
+     "pops": 2,
+     "step": 0.0641
     },
     "trunk": {
      "acc": 5.2157,
      "accAt": 0.7667,
      "accJ": "W",
      "pops": 3,
-     "step": 12.629,
+     "step": 12.6291,
      "stepJ": "W"
     }
    },
@@ -9777,36 +10177,36 @@
    "id": "combo123",
    "impacts": [
     {
-     "dy": -0.3662,
-     "guardHandY": -0.1305,
+     "dy": -0.3667,
+     "guardHandY": -0.1403,
      "hand": "L",
      "headOffX": 0.1029,
      "kind": "jab",
-     "reachZ": 3.0871,
+     "reachZ": 3.0832,
      "t": 0.5667,
-     "toTarget": 0.7963,
+     "toTarget": 0.7998,
      "zone": "head"
     },
     {
-     "dy": -0.3697,
-     "guardHandY": -0.108,
+     "dy": -0.3678,
+     "guardHandY": -0.1189,
      "hand": "R",
      "headOffX": -0.0112,
      "kind": "cross",
-     "reachZ": 3.0509,
+     "reachZ": 3.0465,
      "t": 0.85,
-     "toTarget": 0.8004,
+     "toTarget": 0.803,
      "zone": "head"
     },
     {
-     "dy": -0.1822,
-     "guardHandY": -0.0383,
+     "dy": -0.1817,
+     "guardHandY": -0.0558,
      "hand": "L",
      "headOffX": 0.0716,
      "kind": "leadhook",
-     "reachZ": 3.856,
+     "reachZ": 3.8589,
      "t": 1.1667,
-     "toTarget": 0.7137,
+     "toTarget": 0.7098,
      "zone": "head"
     }
    ],
@@ -9820,20 +10220,20 @@
      -11.6472
     ],
     "headRoll": [
-     -8.9618,
+     -8.9619,
      2.4138
     ],
     "kneeL": [
-     52.3233,
-     76.3748
+     52.582,
+     76.2352
     ],
     "kneeR": [
      32.5181,
-     79.7501
+     79.1084
     ],
     "pelvisY": [
-     2.4756,
-     2.7609
+     2.4841,
+     2.7612
     ],
     "pelvisYaw": [
      -34.3627,
@@ -9846,23 +10246,23 @@
    },
    "sinkMin": 0,
    "slideL": 0.0544,
-   "slideMaxSpeed": 0.7432,
-   "slideR": 0.0349,
+   "slideMaxSpeed": 0.7433,
+   "slideR": 0.0348,
    "snap": {
     "arms": {
-     "acc": 17.9451,
-     "accAt": 1.1333,
-     "accJ": "LS",
+     "acc": 17.5073,
+     "accAt": 0.65,
+     "accJ": "LE",
      "pops": 55,
-     "step": 25.5539,
+     "step": 27.7284,
      "stepJ": "LE"
     },
     "legs": {
-     "acc": 18.571,
+     "acc": 18.58,
      "accAt": 0.9333,
      "accJ": "RA",
      "pops": 17,
-     "step": 18.2637,
+     "step": 18.2752,
      "stepJ": "RA"
     },
     "neck": {
@@ -9870,13 +10270,13 @@
      "accAt": 1.1667,
      "accJ": "Neck",
      "pops": 1,
-     "step": 10.1075,
+     "step": 10.1076,
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0888,
+     "acc": 0.0973,
      "accAt": 0.7333,
-     "pops": 18,
+     "pops": 16,
      "step": 0.1626
     },
     "trunk": {
@@ -9884,7 +10284,7 @@
      "accAt": 0.7667,
      "accJ": "W",
      "pops": 4,
-     "step": 12.629,
+     "step": 12.6291,
      "stepJ": "W"
     }
    },
@@ -9894,78 +10294,78 @@
    "id": "combo1234",
    "impacts": [
     {
-     "dy": -0.3662,
-     "guardHandY": -0.1305,
+     "dy": -0.3667,
+     "guardHandY": -0.1403,
      "hand": "L",
      "headOffX": 0.1029,
      "kind": "jab",
-     "reachZ": 3.0871,
+     "reachZ": 3.0832,
      "t": 0.5667,
-     "toTarget": 0.7963,
+     "toTarget": 0.7998,
      "zone": "head"
     },
     {
-     "dy": -0.3697,
-     "guardHandY": -0.108,
+     "dy": -0.3678,
+     "guardHandY": -0.1189,
      "hand": "R",
      "headOffX": -0.0112,
      "kind": "cross",
-     "reachZ": 3.0509,
+     "reachZ": 3.0465,
      "t": 0.85,
-     "toTarget": 0.8004,
+     "toTarget": 0.803,
      "zone": "head"
     },
     {
-     "dy": -0.1822,
-     "guardHandY": -0.0383,
+     "dy": -0.1817,
+     "guardHandY": -0.0558,
      "hand": "L",
      "headOffX": 0.0716,
      "kind": "leadhook",
-     "reachZ": 3.856,
+     "reachZ": 3.8589,
      "t": 1.1667,
-     "toTarget": 0.7137,
+     "toTarget": 0.7098,
      "zone": "head"
     },
     {
-     "dy": -0.2104,
-     "guardHandY": -0.0687,
+     "dy": -0.2103,
+     "guardHandY": -0.0853,
      "hand": "R",
-     "headOffX": -0.1571,
+     "headOffX": -0.1458,
      "kind": "rearhook",
      "reachZ": 3.1208,
      "t": 1.5167,
-     "toTarget": 0.942,
+     "toTarget": 0.9408,
      "zone": "head"
     }
    ],
    "ranges": {
     "chestYaw": [
      -53.6384,
-     59.545
+     58.1387
     ],
     "headPitch": [
      -26.4032,
      -11.6472
     ],
     "headRoll": [
-     -8.9618,
-     6.5622
+     -8.9619,
+     6.2328
     ],
     "kneeL": [
-     52.4469,
-     85.8468
+     52.7981,
+     86.8458
     ],
     "kneeR": [
      32.5181,
-     79.7501
+     79.1084
     ],
     "pelvisY": [
-     2.4756,
-     2.7609
+     2.4841,
+     2.7612
     ],
     "pelvisYaw": [
      -34.3627,
-     24.5976
+     23.8674
     ],
     "trunkPitch": [
      -9.3794,
@@ -9974,23 +10374,23 @@
    },
    "sinkMin": 0,
    "slideL": 0.0549,
-   "slideMaxSpeed": 0.7641,
-   "slideR": 0.0855,
+   "slideMaxSpeed": 0.7976,
+   "slideR": 0.1144,
    "snap": {
     "arms": {
-     "acc": 17.9451,
-     "accAt": 1.1333,
-     "accJ": "LS",
-     "pops": 75,
-     "step": 25.5539,
+     "acc": 17.5073,
+     "accAt": 0.65,
+     "accJ": "LE",
+     "pops": 74,
+     "step": 27.7284,
      "stepJ": "LE"
     },
     "legs": {
-     "acc": 18.571,
+     "acc": 18.58,
      "accAt": 0.9333,
      "accJ": "RA",
-     "pops": 29,
-     "step": 18.2637,
+     "pops": 27,
+     "step": 18.2752,
      "stepJ": "RA"
     },
     "neck": {
@@ -9998,21 +10398,21 @@
      "accAt": 1.25,
      "accJ": "Neck",
      "pops": 2,
-     "step": 10.6377,
+     "step": 10.4862,
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0888,
+     "acc": 0.0973,
      "accAt": 0.7333,
      "pops": 13,
-     "step": 0.1171
+     "step": 0.128
     },
     "trunk": {
      "acc": 5.2157,
      "accAt": 0.7667,
      "accJ": "W",
      "pops": 7,
-     "step": 13.1548,
+     "step": 12.973,
      "stepJ": "W"
     }
    },
@@ -10022,81 +10422,81 @@
    "id": "combo_body_head",
    "impacts": [
     {
-     "dy": -0.5681,
-     "guardHandY": -0.04,
+     "dy": -0.5621,
+     "guardHandY": -0.0553,
      "hand": "L",
-     "headOffX": 0.061,
+     "headOffX": 0.0441,
      "kind": "leadhook",
-     "reachZ": 3.4117,
+     "reachZ": 3.4099,
      "t": 0.6667,
-     "toTarget": 1.1585,
+     "toTarget": 1.1007,
      "zone": "body"
     },
     {
-     "dy": -0.1716,
-     "guardHandY": -0.029,
+     "dy": -0.1672,
+     "guardHandY": -0.0468,
      "hand": "L",
      "headOffX": 0.0735,
      "kind": "leadhook",
-     "reachZ": 3.8452,
+     "reachZ": 3.848,
      "t": 1.0167,
-     "toTarget": 0.6866,
+     "toTarget": 0.6808,
      "zone": "head"
     }
    ],
    "ranges": {
     "chestYaw": [
-     -54.3272,
+     -52.9997,
      -5.5932
     ],
     "headPitch": [
-     -30.157,
+     -30.1494,
      -11.6472
     ],
     "headRoll": [
-     -6.6894,
+     -6.3148,
      -1.1028
     ],
     "kneeL": [
-     52.7168,
-     119.8957
+     52.9684,
+     120.1743
     ],
     "kneeR": [
-     31.9944,
-     77.3354
+     32.0467,
+     77.5176
     ],
     "pelvisY": [
-     1.8168,
-     2.7018
+     1.8269,
+     2.702
     ],
     "pelvisYaw": [
-     -35.3592,
-     -6.7179
+     -34.6118,
+     -6.7063
     ],
     "trunkPitch": [
-     -7.2425,
+     -7.2593,
      -1.3357
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.0912,
+   "slideL": 0.0904,
    "slideMaxSpeed": 0.7536,
-   "slideR": 0.0042,
+   "slideR": 0.0041,
    "snap": {
     "arms": {
-     "acc": 17.8491,
-     "accAt": 0.7833,
+     "acc": 16.8409,
+     "accAt": 0.8333,
      "accJ": "LS",
      "pops": 42,
-     "step": 23.7293,
+     "step": 22.9021,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 13.1822,
+     "acc": 13.2009,
      "accAt": 0.9667,
      "accJ": "LA",
      "pops": 23,
-     "step": 20.7105,
+     "step": 20.3334,
      "stepJ": "LA"
     },
     "neck": {
@@ -10108,17 +10508,17 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.049,
+     "acc": 0.0481,
      "accAt": 0.6333,
      "pops": 21,
      "step": 0.1611
     },
     "trunk": {
-     "acc": 5.1945,
+     "acc": 5.1763,
      "accAt": 0.45,
      "accJ": "Root",
      "pops": 1,
-     "step": 5.6679,
+     "step": 5.6214,
      "stepJ": "Root"
     }
    },
@@ -10128,36 +10528,36 @@
    "id": "combo_jab_jab_cross",
    "impacts": [
     {
-     "dy": -0.3662,
-     "guardHandY": -0.1305,
+     "dy": -0.3667,
+     "guardHandY": -0.1403,
      "hand": "L",
      "headOffX": 0.1029,
      "kind": "jab",
-     "reachZ": 3.0871,
+     "reachZ": 3.0832,
      "t": 0.5667,
-     "toTarget": 0.7963,
+     "toTarget": 0.7998,
      "zone": "head"
     },
     {
-     "dy": -0.3663,
-     "guardHandY": -0.0822,
+     "dy": -0.3659,
+     "guardHandY": -0.0981,
      "hand": "L",
      "headOffX": -0.0726,
      "kind": "jab",
-     "reachZ": 2.9987,
+     "reachZ": 2.9977,
      "t": 0.75,
-     "toTarget": 0.8445,
+     "toTarget": 0.8452,
      "zone": "head"
     },
     {
-     "dy": -0.3682,
-     "guardHandY": -0.1154,
+     "dy": -0.365,
+     "guardHandY": -0.1256,
      "hand": "R",
      "headOffX": -0.0265,
      "kind": "cross",
-     "reachZ": 3.0513,
+     "reachZ": 3.0486,
      "t": 1.0167,
-     "toTarget": 0.8239,
+     "toTarget": 0.8242,
      "zone": "head"
     }
    ],
@@ -10175,16 +10575,16 @@
      0.1777
     ],
     "kneeL": [
-     52.7141,
-     78.3575
+     52.9658,
+     78.9361
     ],
     "kneeR": [
-     32.5181,
-     79.7501
+     32.518,
+     79.1084
     ],
     "pelvisY": [
-     2.5288,
-     2.7018
+     2.5346,
+     2.702
     ],
     "pelvisYaw": [
      -22.0338,
@@ -10201,41 +10601,41 @@
    "slideR": 0.0184,
    "snap": {
     "arms": {
-     "acc": 26.6698,
+     "acc": 26.9067,
      "accAt": 0.7167,
      "accJ": "LE",
-     "pops": 51,
-     "step": 32.1325,
+     "pops": 58,
+     "step": 32.1375,
      "stepJ": "LE"
     },
     "legs": {
-     "acc": 10.6158,
+     "acc": 10.3542,
      "accAt": 0.6833,
      "accJ": "RK",
      "pops": 11,
-     "step": 15.0875,
+     "step": 14.7749,
      "stepJ": "RK"
     },
     "neck": {
-     "acc": 4.3698,
+     "acc": 4.3789,
      "accAt": 0.8,
      "accJ": "Neck",
      "pops": 1,
-     "step": 8.4131,
+     "step": 8.4143,
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0964,
+     "acc": 0.092,
      "accAt": 0.6833,
      "pops": 10,
-     "step": 0.1993
+     "step": 0.1887
     },
     "trunk": {
-     "acc": 4.0511,
+     "acc": 4.0513,
      "accAt": 0.9333,
      "accJ": "W",
      "pops": 1,
-     "step": 10.5728,
+     "step": 10.5742,
      "stepJ": "W"
     }
    },
@@ -10245,15 +10645,15 @@
    "id": "sp_checkhook",
    "impacts": [
     {
-     "dy": -0.4095,
-     "guardHandY": -0.044,
+     "dy": -0.4451,
+     "guardHandY": -0.0609,
      "hand": "L",
      "headOffX": 0.1709,
      "kind": "leadhook",
-     "reachZ": 3.7022,
+     "reachZ": 3.6693,
      "special": "checkhook",
      "t": 0.6,
-     "toTarget": 0.7866,
+     "toTarget": 0.7967,
      "zone": "head"
     }
    ],
@@ -10271,16 +10671,16 @@
      -0.7637
     ],
     "kneeL": [
-     50.9374,
-     117.3245
+     51.2955,
+     117.917
     ],
     "kneeR": [
-     24.7847,
-     71.8076
+     25.0784,
+     71.9299
     ],
     "pelvisY": [
-     1.7447,
-     2.7018
+     1.7449,
+     2.702
     ],
     "pelvisYaw": [
      -37.0336,
@@ -10293,23 +10693,23 @@
    },
    "sinkMin": 0,
    "slideL": 0.0334,
-   "slideMaxSpeed": 0.4973,
+   "slideMaxSpeed": 0.4972,
    "slideR": 0.005,
    "snap": {
     "arms": {
-     "acc": 13.5248,
-     "accAt": 0.4333,
+     "acc": 15.8447,
+     "accAt": 0.5667,
      "accJ": "LS",
-     "pops": 20,
-     "step": 25.2332,
+     "pops": 18,
+     "step": 25.0077,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 12.906,
+     "acc": 12.9139,
      "accAt": 1.4333,
      "accJ": "LA",
-     "pops": 15,
-     "step": 15.041,
+     "pops": 14,
+     "step": 15.0401,
      "stepJ": "LA"
     },
     "neck": {
@@ -10321,10 +10721,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0943,
+     "acc": 0.093,
      "accAt": 0.5833,
      "pops": 19,
-     "step": 0.2263
+     "step": 0.2232
     },
     "trunk": {
      "acc": 5.0283,
@@ -10341,15 +10741,15 @@
    "id": "sp_phillyshell",
    "impacts": [
     {
-     "dy": -0.231,
-     "guardHandY": -0.1111,
+     "dy": -0.2155,
+     "guardHandY": -0.1203,
      "hand": "R",
      "headOffX": -0.1142,
      "kind": "cross",
-     "reachZ": 3.2778,
+     "reachZ": 3.2417,
      "special": "phillyshell",
      "t": 0.85,
-     "toTarget": 0.5379,
+     "toTarget": 0.561,
      "zone": "head"
     }
    ],
@@ -10367,16 +10767,16 @@
      1.9203
     ],
     "kneeL": [
-     50.9375,
-     85.025
+     51.2956,
+     93.932
     ],
     "kneeR": [
-     18.3426,
-     81.0719
+     32.5181,
+     81.3836
     ],
     "pelvisY": [
-     2.4373,
-     2.702
+     2.2498,
+     2.7179
     ],
     "pelvisYaw": [
      -29.7921,
@@ -10389,23 +10789,23 @@
    },
    "sinkMin": 0,
    "slideL": 0.0078,
-   "slideMaxSpeed": 0.1059,
-   "slideR": 0.0082,
+   "slideMaxSpeed": 0.2459,
+   "slideR": 0.0245,
    "snap": {
     "arms": {
-     "acc": 7.0064,
-     "accAt": 0.7333,
-     "accJ": "RS",
-     "pops": 6,
-     "step": 14.5232,
-     "stepJ": "RS"
+     "acc": 12.3184,
+     "accAt": 0.8667,
+     "accJ": "RE",
+     "pops": 11,
+     "step": 20.8987,
+     "stepJ": "RE"
     },
     "legs": {
-     "acc": 13.1758,
+     "acc": 14.7752,
      "accAt": 0.7167,
      "accJ": "RK",
-     "pops": 25,
-     "step": 13.7167,
+     "pops": 12,
+     "step": 14.7753,
      "stepJ": "RK"
     },
     "neck": {
@@ -10417,10 +10817,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.1903,
-     "accAt": 0.75,
-     "pops": 10,
-     "step": 0.1795
+     "acc": 0.1464,
+     "accAt": 0.7167,
+     "pops": 9,
+     "step": 0.172
     },
     "trunk": {
      "acc": 4.1114,
@@ -10437,15 +10837,15 @@
    "id": "sp_pullcounter",
    "impacts": [
     {
-     "dy": -0.1987,
-     "guardHandY": -0.1143,
+     "dy": -0.1986,
+     "guardHandY": -0.1228,
      "hand": "R",
      "headOffX": -0.1191,
      "kind": "cross",
-     "reachZ": 3.2527,
+     "reachZ": 3.2615,
      "special": "pullcounter",
      "t": 0.8333,
-     "toTarget": 0.5429,
+     "toTarget": 0.5341,
      "zone": "head"
     }
    ],
@@ -10463,16 +10863,16 @@
      1.7633
     ],
     "kneeL": [
-     50.9374,
-     94.8026
+     51.2955,
+     95.3713
     ],
     "kneeR": [
      32.5181,
-     81.4966
+     81.8497
     ],
     "pelvisY": [
-     2.3211,
-     2.7348
+     2.3169,
+     2.7255
     ],
     "pelvisYaw": [
      -23.1477,
@@ -10489,19 +10889,19 @@
    "slideR": 0.0248,
    "snap": {
     "arms": {
-     "acc": 9.4275,
+     "acc": 10.2165,
      "accAt": 0.8333,
      "accJ": "RE",
-     "pops": 9,
-     "step": 16.0101,
+     "pops": 8,
+     "step": 14.8115,
      "stepJ": "RE"
     },
     "legs": {
-     "acc": 14.5187,
+     "acc": 14.2086,
      "accAt": 0.6833,
      "accJ": "RA",
-     "pops": 15,
-     "step": 14.2264,
+     "pops": 16,
+     "step": 13.868,
      "stepJ": "RK"
     },
     "neck": {
@@ -10513,10 +10913,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0942,
+     "acc": 0.105,
      "accAt": 0.7,
      "pops": 10,
-     "step": 0.1831
+     "step": 0.1855
     },
     "trunk": {
      "acc": 4.1326,
@@ -10533,25 +10933,25 @@
    "id": "sp_livershot",
    "impacts": [
     {
-     "dy": -0.5438,
-     "guardHandY": -0.014,
+     "dy": -0.5371,
+     "guardHandY": -0.0291,
      "hand": "L",
-     "headOffX": 0.0078,
+     "headOffX": -0.0129,
      "kind": "leadhook",
-     "reachZ": 3.4162,
+     "reachZ": 3.4131,
      "special": "livershot",
      "t": 0.6833,
-     "toTarget": 1.1593,
+     "toTarget": 1.1014,
      "zone": "body"
     }
    ],
    "ranges": {
     "chestYaw": [
-     -51.1682,
-     7.0383
+     -49.8505,
+     7.0384
     ],
     "headPitch": [
-     -35.4077,
+     -35.2749,
      -9.5243
     ],
     "headRoll": [
@@ -10559,45 +10959,45 @@
      -0.775
     ],
     "kneeL": [
-     50.9374,
-     104.381
+     51.2955,
+     104.9627
     ],
     "kneeR": [
-     55.7223,
-     101.9701
+     56.2761,
+     102.0204
     ],
     "pelvisY": [
-     1.9258,
-     2.7018
+     1.926,
+     2.702
     ],
     "pelvisYaw": [
-     -32.9631,
-     0.4469
+     -32.2557,
+     0.4632
     ],
     "trunkPitch": [
-     -8.2148,
+     -8.2183,
      -1.3357
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.0098,
+   "slideL": 0.0097,
    "slideMaxSpeed": 0.7414,
    "slideR": 0.0061,
    "snap": {
     "arms": {
-     "acc": 19.3232,
+     "acc": 18.7924,
      "accAt": 0.5167,
      "accJ": "LS",
-     "pops": 27,
-     "step": 31.6959,
+     "pops": 26,
+     "step": 27.1564,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 16.3652,
+     "acc": 16.3551,
      "accAt": 0.5,
      "accJ": "LA",
-     "pops": 24,
-     "step": 16.5199,
+     "pops": 25,
+     "step": 16.499,
      "stepJ": "LA"
     },
     "neck": {
@@ -10615,11 +11015,11 @@
      "step": 0.1651
     },
     "trunk": {
-     "acc": 9.7024,
+     "acc": 9.6824,
      "accAt": 0.5,
      "accJ": "Root",
      "pops": 5,
-     "step": 9.6658,
+     "step": 9.6128,
      "stepJ": "Root"
     }
    },
@@ -10629,15 +11029,15 @@
    "id": "sp_gazelle",
    "impacts": [
     {
-     "dy": -0.1893,
-     "guardHandY": -0.0708,
+     "dy": -0.1843,
+     "guardHandY": -0.0824,
      "hand": "L",
      "headOffX": 0.3377,
      "kind": "leadhook",
-     "reachZ": 3.7495,
+     "reachZ": 3.7482,
      "special": "gazelle",
      "t": 0.85,
-     "toTarget": 0.7467,
+     "toTarget": 0.7436,
      "zone": "head"
     }
    ],
@@ -10655,16 +11055,16 @@
      -0.8885
     ],
     "kneeL": [
-     50.9375,
-     90.5642
+     51.2956,
+     90.8043
     ],
     "kneeR": [
-     8.1838,
-     99.2372
+     8.1851,
+     99.5713
     ],
     "pelvisY": [
-     2.2217,
-     2.8174
+     2.2219,
+     2.8204
     ],
     "pelvisYaw": [
      -38.5686,
@@ -10681,19 +11081,19 @@
    "slideR": 0.0048,
    "snap": {
     "arms": {
-     "acc": 26.5999,
+     "acc": 20.8897,
      "accAt": 0.75,
      "accJ": "LS",
-     "pops": 32,
-     "step": 31.1912,
+     "pops": 30,
+     "step": 29.2062,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 13.9501,
-     "accAt": 0.7333,
-     "accJ": "RK",
+     "acc": 13.6095,
+     "accAt": 0.8,
+     "accJ": "LA",
      "pops": 32,
-     "step": 18.1115,
+     "step": 18.0866,
      "stepJ": "RK"
     },
     "neck": {
@@ -10705,10 +11105,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.1503,
+     "acc": 0.1468,
      "accAt": 0.7333,
      "pops": 26,
-     "step": 0.2221
+     "step": 0.2209
     },
     "trunk": {
      "acc": 6.7941,
@@ -10725,34 +11125,34 @@
    "id": "sp_peekaboo",
    "impacts": [
     {
-     "dy": -0.8344,
-     "guardHandY": -0.0549,
+     "dy": -0.8314,
+     "guardHandY": -0.0681,
      "hand": "L",
-     "headOffX": -0.0132,
+     "headOffX": -0.013,
      "kind": "leadhook",
-     "reachZ": 3.7467,
+     "reachZ": 3.7148,
      "special": "peekaboo",
      "t": 1.25,
-     "toTarget": 0.8383,
+     "toTarget": 0.8345,
      "zone": "head"
     },
     {
-     "dy": -0.1935,
-     "guardHandY": -0.2351,
+     "dy": -0.193,
+     "guardHandY": -0.243,
      "hand": "R",
-     "headOffX": -0.111,
+     "headOffX": -0.0994,
      "kind": "rearhook",
-     "reachZ": 3.1042,
+     "reachZ": 3.1034,
      "special": "peekaboo",
      "t": 1.4333,
-     "toTarget": 0.9972,
+     "toTarget": 0.9949,
      "zone": "head"
     }
    ],
    "ranges": {
     "chestYaw": [
      -38.2237,
-     59.1559
+     57.7688
     ],
     "headPitch": [
      -32.8173,
@@ -10760,23 +11160,23 @@
     ],
     "headRoll": [
      -15.8571,
-     5.7331
+     5.397
     ],
     "kneeL": [
-     48.6483,
-     87.2419
+     48.8906,
+     87.374
     ],
     "kneeR": [
      32.5181,
-     94.2691
+     94.5845
     ],
     "pelvisY": [
-     2.2162,
-     2.7018
+     2.2164,
+     2.702
     ],
     "pelvisYaw": [
-     -32.7341,
-     25.7074
+     -32.7393,
+     24.9658
     ],
     "trunkPitch": [
      -15.0982,
@@ -10784,24 +11184,24 @@
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.0042,
+   "slideL": 0.0041,
    "slideMaxSpeed": 0.2025,
-   "slideR": 0.0154,
+   "slideR": 0.015,
    "snap": {
     "arms": {
-     "acc": 30.9701,
+     "acc": 30.0952,
      "accAt": 1.2,
      "accJ": "LS",
-     "pops": 42,
-     "step": 30.3938,
+     "pops": 36,
+     "step": 30.1792,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 20.1193,
+     "acc": 20.1547,
      "accAt": 1.05,
      "accJ": "LA",
-     "pops": 50,
-     "step": 18.3766,
+     "pops": 51,
+     "step": 18.4179,
      "stepJ": "LA"
     },
     "neck": {
@@ -10815,15 +11215,15 @@
     "rootMove": {
      "acc": 0.1023,
      "accAt": 1.2,
-     "pops": 21,
-     "step": 0.1406
+     "pops": 23,
+     "step": 0.1414
     },
     "trunk": {
      "acc": 11.942,
      "accAt": 1.05,
      "accJ": "Root",
      "pops": 9,
-     "step": 13.2443,
+     "step": 13.0281,
      "stepJ": "W"
     }
    },
@@ -10833,15 +11233,15 @@
    "id": "sp_stepback",
    "impacts": [
     {
-     "dy": -0.253,
-     "guardHandY": -0.1174,
+     "dy": -0.2558,
+     "guardHandY": -0.1268,
      "hand": "R",
      "headOffX": -0.1069,
      "kind": "cross",
-     "reachZ": 3.2797,
+     "reachZ": 3.2868,
      "special": "stepback",
      "t": 0.8,
-     "toTarget": 0.5454,
+     "toTarget": 0.5391,
      "zone": "head"
     }
    ],
@@ -10859,16 +11259,16 @@
      1.6039
     ],
     "kneeL": [
-     50.9374,
-     84.8283
+     51.2955,
+     84.8017
     ],
     "kneeR": [
      32.5181,
-     68.571
+     68.8955
     ],
     "pelvisY": [
-     2.5545,
-     2.7018
+     2.557,
+     2.702
     ],
     "pelvisYaw": [
      -24.7922,
@@ -10881,23 +11281,23 @@
    },
    "sinkMin": 0,
    "slideL": 0.0092,
-   "slideMaxSpeed": 0.7652,
-   "slideR": 0.0356,
+   "slideMaxSpeed": 0.7647,
+   "slideR": 0.0354,
    "snap": {
     "arms": {
-     "acc": 12.7244,
+     "acc": 12.9035,
      "accAt": 0.8167,
      "accJ": "RE",
      "pops": 10,
-     "step": 19.9351,
+     "step": 20.2658,
      "stepJ": "RE"
     },
     "legs": {
-     "acc": 13.0377,
+     "acc": 13.0408,
      "accAt": 0.7833,
      "accJ": "RA",
      "pops": 12,
-     "step": 12.9258,
+     "step": 12.9395,
      "stepJ": "RA"
     },
     "neck": {
@@ -10909,10 +11309,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0262,
+     "acc": 0.0266,
      "accAt": 0.5833,
      "pops": 4,
-     "step": 0.0974
+     "step": 0.0991
     },
     "trunk": {
      "acc": 7.1556,
@@ -10929,15 +11329,15 @@
    "id": "sp_overhand",
    "impacts": [
     {
-     "dy": -0.0547,
-     "guardHandY": -0.0408,
+     "dy": -0.0322,
+     "guardHandY": -0.051,
      "hand": "R",
      "headOffX": 0.069,
      "kind": "overhand",
-     "reachZ": 3.1059,
+     "reachZ": 3.1039,
      "special": "overhand",
      "t": 0.6667,
-     "toTarget": 0.6721,
+     "toTarget": 0.6726,
      "zone": "head"
     }
    ],
@@ -10955,16 +11355,16 @@
      -0.7865
     ],
     "kneeL": [
-     50.9374,
-     92.3846
+     51.2955,
+     91.9923
     ],
     "kneeR": [
      32.5181,
-     75.3068
+     75.4832
     ],
     "pelvisY": [
-     2.2963,
-     2.7018
+     2.3006,
+     2.702
     ],
     "pelvisYaw": [
      -18.6542,
@@ -10977,23 +11377,23 @@
    },
    "sinkMin": 0,
    "slideL": 0.0084,
-   "slideMaxSpeed": 0.1723,
-   "slideR": 0.0121,
+   "slideMaxSpeed": 0.1703,
+   "slideR": 0.012,
    "snap": {
     "arms": {
-     "acc": 11.346,
+     "acc": 15.8402,
      "accAt": 0.65,
      "accJ": "RE",
      "pops": 17,
-     "step": 22.4324,
+     "step": 23.1007,
      "stepJ": "RE"
     },
     "legs": {
-     "acc": 13.136,
+     "acc": 13.118,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 15,
-     "step": 12.8941,
+     "step": 12.9032,
      "stepJ": "RA"
     },
     "neck": {
@@ -11005,10 +11405,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.053,
-     "accAt": 0.5167,
+     "acc": 0.0532,
+     "accAt": 0.5,
      "pops": 14,
-     "step": 0.1278
+     "step": 0.1311
     },
     "trunk": {
      "acc": 4.6581,
@@ -11025,15 +11425,15 @@
    "id": "sp_leaduppercut",
    "impacts": [
     {
-     "dy": -0.3909,
-     "guardHandY": -0.018,
+     "dy": -0.3772,
+     "guardHandY": -0.0407,
      "hand": "L",
      "headOffX": 0.0146,
      "kind": "uppercut",
-     "reachZ": 3.0756,
+     "reachZ": 3.0759,
      "special": "leaduppercut",
      "t": 0.6667,
-     "toTarget": 0.7996,
+     "toTarget": 0.7927,
      "zone": "head"
     }
    ],
@@ -11051,16 +11451,16 @@
      -0.7758
     ],
     "kneeL": [
-     47.0793,
-     112.6683
+     46.6782,
+     112.6857
     ],
     "kneeR": [
      32.5181,
-     103.4422
+     104.021
     ],
     "pelvisY": [
-     1.9154,
-     2.8135
+     1.9156,
+     2.8431
     ],
     "pelvisYaw": [
      -39.5469,
@@ -11072,24 +11472,24 @@
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.0105,
-   "slideMaxSpeed": 0.0561,
+   "slideL": 0.0121,
+   "slideMaxSpeed": 0.0847,
    "slideR": 0.0061,
    "snap": {
     "arms": {
-     "acc": 11.1902,
-     "accAt": 0.65,
+     "acc": 11.4034,
+     "accAt": 0.6833,
      "accJ": "LS",
      "pops": 7,
-     "step": 18.3961,
+     "step": 18.4852,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 14.6068,
+     "acc": 14.5941,
      "accAt": 0.6167,
      "accJ": "LA",
-     "pops": 26,
-     "step": 14.9271,
+     "pops": 29,
+     "step": 14.3026,
      "stepJ": "RK"
     },
     "neck": {
@@ -11103,8 +11503,8 @@
     "rootMove": {
      "acc": 0.0981,
      "accAt": 0.5333,
-     "pops": 18,
-     "step": 0.2121
+     "pops": 17,
+     "step": 0.2165
     },
     "trunk": {
      "acc": 3.9803,
@@ -11121,27 +11521,27 @@
    "id": "sp_doublejab",
    "impacts": [
     {
-     "dy": -0.3508,
-     "guardHandY": -0.1087,
+     "dy": -0.3535,
+     "guardHandY": -0.121,
      "hand": "L",
      "headOffX": 0.0617,
      "kind": "jab",
-     "reachZ": 3.1404,
+     "reachZ": 3.1315,
      "special": "doublejab",
      "t": 0.6,
-     "toTarget": 0.7355,
+     "toTarget": 0.7446,
      "zone": "head"
     },
     {
-     "dy": -0.3615,
-     "guardHandY": -0.0711,
+     "dy": -0.3614,
+     "guardHandY": -0.0868,
      "hand": "L",
      "headOffX": -0.0858,
      "kind": "jab",
-     "reachZ": 3.0031,
+     "reachZ": 3.0012,
      "special": "doublejab",
      "t": 0.85,
-     "toTarget": 0.8356,
+     "toTarget": 0.8372,
      "zone": "head"
     }
    ],
@@ -11159,16 +11559,16 @@
      -0.7821
     ],
     "kneeL": [
-     50.9374,
-     71.6396
+     51.2955,
+     72.1459
     ],
     "kneeR": [
-     28.0053,
-     73.3712
+     28.2052,
+     72.7602
     ],
     "pelvisY": [
-     2.5883,
-     2.7018
+     2.5885,
+     2.702
     ],
     "pelvisYaw": [
      -22.7792,
@@ -11181,23 +11581,23 @@
    },
    "sinkMin": 0,
    "slideL": 0.0072,
-   "slideMaxSpeed": 0.0348,
+   "slideMaxSpeed": 0.0347,
    "slideR": 0.0076,
    "snap": {
     "arms": {
-     "acc": 19.9895,
+     "acc": 19.9281,
      "accAt": 0.8167,
      "accJ": "LE",
-     "pops": 29,
-     "step": 24.9944,
+     "pops": 34,
+     "step": 26.341,
      "stepJ": "LE"
     },
     "legs": {
-     "acc": 5.1368,
+     "acc": 5.0491,
      "accAt": 0.7833,
      "accJ": "RK",
      "pops": 4,
-     "step": 9.5296,
+     "step": 9.2879,
      "stepJ": "RK"
     },
     "neck": {
@@ -11209,10 +11609,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0708,
+     "acc": 0.071,
      "accAt": 1.0167,
-     "pops": 13,
-     "step": 0.1937
+     "pops": 12,
+     "step": 0.1944
     },
     "trunk": {
      "acc": 1.3536,
@@ -11229,15 +11629,15 @@
    "id": "sp_feintcross",
    "impacts": [
     {
-     "dy": -0.3452,
-     "guardHandY": -0.1201,
+     "dy": -0.343,
+     "guardHandY": -0.1295,
      "hand": "R",
      "headOffX": -0.1048,
      "kind": "cross",
-     "reachZ": 3.1003,
+     "reachZ": 3.1062,
      "special": "feintcross",
      "t": 0.7833,
-     "toTarget": 0.7413,
+     "toTarget": 0.7351,
      "zone": "head"
     }
    ],
@@ -11255,16 +11655,16 @@
      1.5044
     ],
     "kneeL": [
-     50.9374,
-     65.6828
+     51.2955,
+     65.8512
     ],
     "kneeR": [
-     33.5168,
-     72.3267
+     32.5181,
+     72.4968
     ],
     "pelvisY": [
-     2.578,
-     2.7018
+     2.5788,
+     2.702
     ],
     "pelvisYaw": [
      -18.233,
@@ -11278,22 +11678,22 @@
    "sinkMin": 0,
    "slideL": 0.0101,
    "slideMaxSpeed": 0.2459,
-   "slideR": 0.0247,
+   "slideR": 0.024,
    "snap": {
     "arms": {
-     "acc": 16.094,
+     "acc": 15.8811,
      "accAt": 0.8,
      "accJ": "RE",
-     "pops": 12,
-     "step": 20.3606,
+     "pops": 10,
+     "step": 20.756,
      "stepJ": "RE"
     },
     "legs": {
-     "acc": 14.6179,
+     "acc": 14.6296,
      "accAt": 0.6833,
      "accJ": "RA",
      "pops": 7,
-     "step": 12.7225,
+     "step": 12.719,
      "stepJ": "RA"
     },
     "neck": {
@@ -11305,10 +11705,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0139,
+     "acc": 0.0143,
      "accAt": 0.6,
      "pops": 0,
-     "step": 0.0391
+     "step": 0.0423
     },
     "trunk": {
      "acc": 4.1112,
@@ -11325,37 +11725,37 @@
    "id": "sp_bodyhead",
    "impacts": [
     {
-     "dy": -0.5311,
-     "guardHandY": -0.0359,
+     "dy": -0.5258,
+     "guardHandY": -0.0504,
      "hand": "L",
-     "headOffX": 0.0441,
+     "headOffX": 0.0257,
      "kind": "leadhook",
-     "reachZ": 3.4153,
+     "reachZ": 3.4135,
      "special": "bodyhead",
      "t": 0.6667,
-     "toTarget": 1.1533,
+     "toTarget": 1.0951,
      "zone": "body"
     },
     {
-     "dy": -0.1748,
-     "guardHandY": -0.0159,
+     "dy": -0.1695,
+     "guardHandY": -0.0337,
      "hand": "L",
-     "headOffX": 0.1218,
+     "headOffX": 0.1217,
      "kind": "leadhook",
-     "reachZ": 3.8194,
+     "reachZ": 3.8213,
      "special": "bodyhead",
      "t": 0.9667,
-     "toTarget": 0.7134,
+     "toTarget": 0.7082,
      "zone": "head"
     }
    ],
    "ranges": {
     "chestYaw": [
      -56.0129,
-     7.0553
+     7.0554
     ],
     "headPitch": [
-     -32.594,
+     -32.5503,
      -10.3273
     ],
     "headRoll": [
@@ -11363,23 +11763,23 @@
      -1.0069
     ],
     "kneeL": [
-     51.4322,
-     108.6793
+     51.7847,
+     109.3525
     ],
     "kneeR": [
-     55.7223,
-     98.87
+     56.2761,
+     98.9804
     ],
     "pelvisY": [
-     1.9677,
-     2.7018
+     1.9679,
+     2.702
     ],
     "pelvisYaw": [
      -35.5981,
-     0.4371
+     0.4536
     ],
     "trunkPitch": [
-     -8.1739,
+     -8.1926,
      -1.3357
     ]
    },
@@ -11389,19 +11789,19 @@
    "slideR": 0.0055,
    "snap": {
     "arms": {
-     "acc": 19.126,
+     "acc": 18.5915,
      "accAt": 0.5,
      "accJ": "LS",
-     "pops": 37,
-     "step": 28.0507,
+     "pops": 39,
+     "step": 26.2605,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 16.2585,
+     "acc": 16.2488,
      "accAt": 0.4833,
      "accJ": "LA",
-     "pops": 37,
-     "step": 16.1939,
+     "pops": 36,
+     "step": 16.1628,
      "stepJ": "LA"
     },
     "neck": {
@@ -11419,11 +11819,11 @@
      "step": 0.1637
     },
     "trunk": {
-     "acc": 9.7142,
+     "acc": 9.6941,
      "accAt": 0.4833,
      "accJ": "Root",
      "pops": 5,
-     "step": 9.6973,
+     "step": 9.6439,
      "stepJ": "Root"
     }
    },
@@ -11433,39 +11833,39 @@
    "id": "sp_onetwothree",
    "impacts": [
     {
-     "dy": -0.6816,
-     "guardHandY": -0.0985,
+     "dy": -0.6777,
+     "guardHandY": -0.1144,
      "hand": "L",
      "headOffX": 0.0444,
      "kind": "jab",
-     "reachZ": 2.799,
+     "reachZ": 2.8101,
      "special": "onetwothree",
      "t": 0.5833,
-     "toTarget": 1.285,
+     "toTarget": 1.2818,
      "zone": "head"
     },
     {
-     "dy": -0.4132,
-     "guardHandY": -0.1925,
+     "dy": -0.4043,
+     "guardHandY": -0.1959,
      "hand": "R",
      "headOffX": -0.1174,
      "kind": "cross",
-     "reachZ": 2.859,
+     "reachZ": 2.8748,
      "special": "onetwothree",
      "t": 0.9,
-     "toTarget": 1.0015,
+     "toTarget": 0.9811,
      "zone": "head"
     },
     {
-     "dy": -0.2144,
-     "guardHandY": -0.0308,
+     "dy": -0.22,
+     "guardHandY": -0.0441,
      "hand": "L",
      "headOffX": 0.1217,
      "kind": "leadhook",
-     "reachZ": 3.8396,
+     "reachZ": 3.8452,
      "special": "onetwothree",
      "t": 1.2333,
-     "toTarget": 0.7786,
+     "toTarget": 0.7812,
      "zone": "head"
     }
    ],
@@ -11483,16 +11883,16 @@
      2.7257
     ],
     "kneeL": [
-     30.3068,
-     82.0801
+     31.6096,
+     82.5574
     ],
     "kneeR": [
      32.5181,
-     69.4433
+     69.4629
     ],
     "pelvisY": [
-     2.5215,
-     2.7293
+     2.5199,
+     2.7353
     ],
     "pelvisYaw": [
      -37.0049,
@@ -11504,24 +11904,24 @@
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.0725,
+   "slideL": 0.0726,
    "slideMaxSpeed": 0.7585,
    "slideR": 0.0053,
    "snap": {
     "arms": {
-     "acc": 18.2594,
+     "acc": 18.6027,
      "accAt": 0.55,
      "accJ": "LS",
-     "pops": 38,
-     "step": 28.8081,
-     "stepJ": "RE"
+     "pops": 45,
+     "step": 29.7953,
+     "stepJ": "LE"
     },
     "legs": {
-     "acc": 19.4569,
+     "acc": 19.4504,
      "accAt": 0.8667,
      "accJ": "RA",
      "pops": 17,
-     "step": 17.9101,
+     "step": 17.9088,
      "stepJ": "RA"
     },
     "neck": {
@@ -11533,9 +11933,9 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0362,
+     "acc": 0.0358,
      "accAt": 0.35,
-     "pops": 2,
+     "pops": 3,
      "step": 0.0947
     },
     "trunk": {
@@ -11553,15 +11953,15 @@
    "id": "sp_shovelhook",
    "impacts": [
     {
-     "dy": -0.1938,
-     "guardHandY": -0.0453,
+     "dy": -0.1923,
+     "guardHandY": -0.0621,
      "hand": "L",
      "headOffX": 0.1487,
      "kind": "leadhook",
-     "reachZ": 3.925,
+     "reachZ": 3.9277,
      "special": "shovelhook",
      "t": 0.6833,
-     "toTarget": 0.7122,
+     "toTarget": 0.7085,
      "zone": "head"
     }
    ],
@@ -11579,16 +11979,16 @@
      -0.775
     ],
     "kneeL": [
-     50.9374,
-     92.7711
+     51.2955,
+     92.8961
     ],
     "kneeR": [
-     55.7223,
-     90.9356
+     56.2761,
+     91.3931
     ],
     "pelvisY": [
-     2.1043,
-     2.7018
+     2.1045,
+     2.702
     ],
     "pelvisYaw": [
      -36.0536,
@@ -11605,19 +12005,19 @@
    "slideR": 0.0061,
    "snap": {
     "arms": {
-     "acc": 16.2657,
-     "accAt": 0.6667,
+     "acc": 14.3959,
+     "accAt": 0.5,
      "accJ": "LS",
-     "pops": 22,
-     "step": 24.8641,
+     "pops": 17,
+     "step": 24.4393,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 18.0555,
+     "acc": 18.129,
      "accAt": 0.5,
      "accJ": "RA",
      "pops": 34,
-     "step": 16.5173,
+     "step": 16.5685,
      "stepJ": "RA"
     },
     "neck": {
@@ -11662,16 +12062,16 @@
      2.1498
     ],
     "kneeL": [
-     53.7164,
-     73.7307
+     53.9547,
+     73.7577
     ],
     "kneeR": [
-     55.7223,
-     75.6183
+     56.2761,
+     76.1986
     ],
     "pelvisY": [
-     2.4812,
-     2.7018
+     2.4814,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -11688,19 +12088,19 @@
    "slideR": 0.003,
    "snap": {
     "arms": {
-     "acc": 0.1996,
+     "acc": 0.2113,
      "accAt": 0.3333,
      "accJ": "LS",
      "pops": 0,
-     "step": 0.9783,
+     "step": 1.0453,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 3.6989,
+     "acc": 3.6991,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 0,
-     "step": 4.0229,
+     "step": 4.0078,
      "stepJ": "LK"
     },
     "neck": {
@@ -11745,16 +12145,16 @@
      -0.8432
     ],
     "kneeL": [
-     53.7133,
-     66.0443
+     53.9522,
+     66.476
     ],
     "kneeR": [
-     55.7223,
-     86.6395
+     56.2761,
+     86.8367
     ],
     "pelvisY": [
-     2.4852,
-     2.7018
+     2.4854,
+     2.702
     ],
     "pelvisYaw": [
      -22.1337,
@@ -11767,23 +12167,23 @@
    },
    "sinkMin": 0,
    "slideL": 0.0047,
-   "slideMaxSpeed": 0.0129,
+   "slideMaxSpeed": 0.013,
    "slideR": 0.003,
    "snap": {
     "arms": {
-     "acc": 0.1996,
+     "acc": 0.2113,
      "accAt": 0.3333,
      "accJ": "LS",
      "pops": 0,
-     "step": 0.9783,
+     "step": 1.0453,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 4.1956,
+     "acc": 4.1901,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 1,
-     "step": 5.1172,
+     "step": 5.0847,
      "stepJ": "RK"
     },
     "neck": {
@@ -11828,16 +12228,16 @@
      -0.759
     ],
     "kneeL": [
-     53.7695,
-     105.0338
+     54.0152,
+     105.2227
     ],
     "kneeR": [
-     55.7223,
-     110.6284
+     56.2761,
+     111.0146
     ],
     "pelvisY": [
-     1.9491,
-     2.7018
+     1.9493,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -11854,19 +12254,19 @@
    "slideR": 0.0027,
    "snap": {
     "arms": {
-     "acc": 0.1996,
+     "acc": 0.2113,
      "accAt": 0.3333,
      "accJ": "LS",
      "pops": 0,
-     "step": 0.9886,
+     "step": 1.0581,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 4.4241,
+     "acc": 4.4204,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 1,
-     "step": 6.0431,
+     "step": 6.0403,
      "stepJ": "RK"
     },
     "neck": {
@@ -11911,16 +12311,16 @@
      -1.262
     ],
     "kneeL": [
-     53.6945,
-     64.3208
+     53.9331,
+     64.4968
     ],
     "kneeR": [
-     54.032,
-     68.3303
+     54.525,
+     68.72
     ],
     "pelvisY": [
-     2.64,
-     2.7031
+     2.6402,
+     2.7032
     ],
     "pelvisYaw": [
      -17.1898,
@@ -11933,23 +12333,23 @@
    },
    "sinkMin": 0,
    "slideL": 0.0054,
-   "slideMaxSpeed": 0.0129,
+   "slideMaxSpeed": 0.013,
    "slideR": 0.003,
    "snap": {
     "arms": {
-     "acc": 3.3854,
+     "acc": 2.1316,
      "accAt": 0.45,
      "accJ": "RE",
      "pops": 0,
-     "step": 7.6809,
+     "step": 4.8683,
      "stepJ": "RE"
     },
     "legs": {
-     "acc": 4.2371,
+     "acc": 4.2336,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 1,
-     "step": 4.1234,
+     "step": 4.0965,
      "stepJ": "RK"
     },
     "neck": {
@@ -11994,16 +12394,16 @@
      -2.356
     ],
     "kneeL": [
-     52.4737,
-     76.5517
+     52.7331,
+     76.6968
     ],
     "kneeR": [
-     55.7223,
-     82.7002
+     56.2761,
+     83.0648
     ],
     "pelvisY": [
-     2.4531,
-     2.7018
+     2.4533,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -12020,19 +12420,19 @@
    "slideR": 0.0052,
    "snap": {
     "arms": {
-     "acc": 1.5552,
+     "acc": 1.4388,
      "accAt": 1.2667,
      "accJ": "LE",
      "pops": 0,
-     "step": 3.9713,
+     "step": 4.2552,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 4.34,
+     "acc": 4.3382,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 1,
-     "step": 3.6886,
+     "step": 3.6981,
      "stepJ": "LA"
     },
     "neck": {
@@ -12077,16 +12477,16 @@
      -5.9961
     ],
     "kneeL": [
-     52.6786,
-     67.2951
+     52.9882,
+     67.7858
     ],
     "kneeR": [
-     56.2994,
-     84.4247
+     56.6392,
+     84.5877
     ],
     "pelvisY": [
-     2.4622,
-     2.6979
+     2.4624,
+     2.6981
     ],
     "pelvisYaw": [
      -33.5916,
@@ -12103,19 +12503,19 @@
    "slideR": 0.0066,
    "snap": {
     "arms": {
-     "acc": 0.0681,
+     "acc": 0.069,
      "accAt": 0.75,
      "accJ": "RS",
      "pops": 0,
-     "step": 0.3772,
+     "step": 0.382,
      "stepJ": "RS"
     },
     "legs": {
-     "acc": 2.3542,
+     "acc": 2.352,
      "accAt": 0.8,
      "accJ": "RA",
      "pops": 0,
-     "step": 5.3846,
+     "step": 5.3447,
      "stepJ": "RK"
     },
     "neck": {
@@ -12147,15 +12547,15 @@
    "id": "pull_counter_special",
    "impacts": [
     {
-     "dy": -0.2209,
-     "guardHandY": -0.1171,
+     "dy": -0.2327,
+     "guardHandY": -0.1257,
      "hand": "R",
      "headOffX": -0.1166,
      "kind": "cross",
-     "reachZ": 3.1246,
+     "reachZ": 3.1063,
      "special": "pullcounter",
      "t": 0.8167,
-     "toTarget": 0.6464,
+     "toTarget": 0.6683,
      "zone": "head"
     }
    ],
@@ -12173,16 +12573,16 @@
      1.6581
     ],
     "kneeL": [
-     47.0119,
-     60.0383
+     48.4056,
+     58.3209
     ],
     "kneeR": [
-     32.4292,
-     77.8104
+     32.5181,
+     78.2001
     ],
     "pelvisY": [
-     2.5518,
-     2.7517
+     2.5517,
+     2.7364
     ],
     "pelvisYaw": [
      -23.1476,
@@ -12196,22 +12596,22 @@
    "sinkMin": 0,
    "slideL": 0.0057,
    "slideMaxSpeed": 0.2458,
-   "slideR": 0.0208,
+   "slideR": 0.0207,
    "snap": {
     "arms": {
-     "acc": 13.5264,
+     "acc": 13.9385,
      "accAt": 0.8,
      "accJ": "RE",
-     "pops": 10,
-     "step": 23.0954,
+     "pops": 9,
+     "step": 23.5903,
      "stepJ": "RE"
     },
     "legs": {
-     "acc": 16.1771,
+     "acc": 15.709,
      "accAt": 0.7167,
      "accJ": "RA",
-     "pops": 10,
-     "step": 13.5176,
+     "pops": 9,
+     "step": 13.5229,
      "stepJ": "RA"
     },
     "neck": {
@@ -12223,10 +12623,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0767,
+     "acc": 0.0484,
      "accAt": 0.7167,
-     "pops": 4,
-     "step": 0.0808
+     "pops": 3,
+     "step": 0.0788
     },
     "trunk": {
      "acc": 4.1326,
@@ -12256,16 +12656,16 @@
      -0.759
     ],
     "kneeL": [
-     53.8274,
-     104.1684
+     54.0611,
+     104.3545
     ],
     "kneeR": [
-     55.7223,
-     113.9574
+     56.2761,
+     114.2783
     ],
     "pelvisY": [
-     1.9563,
-     2.7018
+     1.9565,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -12282,19 +12682,19 @@
    "slideR": 0.003,
    "snap": {
     "arms": {
-     "acc": 0.1996,
+     "acc": 0.2113,
      "accAt": 0.3333,
      "accJ": "LS",
      "pops": 0,
-     "step": 0.9886,
+     "step": 1.0581,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 4.3157,
+     "acc": 4.3166,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 1,
-     "step": 6.2426,
+     "step": 6.2406,
      "stepJ": "RK"
     },
     "neck": {
@@ -12339,16 +12739,16 @@
      -0.759
     ],
     "kneeL": [
-     53.7369,
-     104.3247
+     53.9772,
+     104.5254
     ],
     "kneeR": [
-     55.7223,
-     111.1416
+     56.2761,
+     111.5236
     ],
     "pelvisY": [
-     1.9563,
-     2.7018
+     1.9565,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -12365,19 +12765,19 @@
    "slideR": 0.0026,
    "snap": {
     "arms": {
-     "acc": 0.1996,
+     "acc": 0.2113,
      "accAt": 0.3333,
      "accJ": "LS",
      "pops": 0,
-     "step": 0.9886,
+     "step": 1.0581,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 4.3219,
+     "acc": 4.3146,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 1,
-     "step": 5.8663,
+     "step": 5.8598,
      "stepJ": "RK"
     },
     "neck": {
@@ -12422,16 +12822,16 @@
      -0.8432
     ],
     "kneeL": [
-     53.7572,
-     102.0805
+     53.9942,
+     102.2954
     ],
     "kneeR": [
-     55.7223,
-     110.7217
+     56.2761,
+     111.1118
     ],
     "pelvisY": [
-     1.9811,
-     2.7018
+     1.9813,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -12448,19 +12848,19 @@
    "slideR": 0.003,
    "snap": {
     "arms": {
-     "acc": 0.1996,
+     "acc": 0.2113,
      "accAt": 0.3333,
      "accJ": "LS",
      "pops": 0,
-     "step": 0.9783,
+     "step": 1.0453,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 4.3337,
+     "acc": 4.3296,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 1,
-     "step": 6.9424,
+     "step": 6.9363,
      "stepJ": "RK"
     },
     "neck": {
@@ -12505,16 +12905,16 @@
      -0.3861
     ],
     "kneeL": [
-     49.2294,
-     65.951
+     49.4921,
+     66.1056
     ],
     "kneeR": [
-     55.7223,
-     76.4212
+     56.2517,
+     76.7908
     ],
     "pelvisY": [
-     2.6093,
-     2.7018
+     2.6095,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -12531,19 +12931,19 @@
    "slideR": 0.003,
    "snap": {
     "arms": {
-     "acc": 0.1996,
+     "acc": 0.2113,
      "accAt": 0.3333,
      "accJ": "LS",
      "pops": 0,
-     "step": 0.9783,
+     "step": 1.0453,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 4.4685,
+     "acc": 4.4652,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 1,
-     "step": 4.6472,
+     "step": 4.6243,
      "stepJ": "RK"
     },
     "neck": {
@@ -12588,16 +12988,16 @@
      6.7651
     ],
     "kneeL": [
-     35.4165,
-     67.4107
+     36.3906,
+     67.6177
     ],
     "kneeR": [
-     21.9109,
-     74.5543
+     22.2644,
+     74.5262
     ],
     "pelvisY": [
-     2.5195,
-     2.7018
+     2.5273,
+     2.702
     ],
     "pelvisYaw": [
      -17.1903,
@@ -12609,24 +13009,24 @@
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.0063,
-   "slideMaxSpeed": 0.0579,
+   "slideL": 0.0067,
+   "slideMaxSpeed": 0.0572,
    "slideR": 0.0031,
    "snap": {
     "arms": {
-     "acc": 0.1996,
+     "acc": 0.2113,
      "accAt": 0.3333,
      "accJ": "LS",
      "pops": 0,
-     "step": 0.9588,
+     "step": 1.0141,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 21.3263,
+     "acc": 21.4504,
      "accAt": 0.5167,
      "accJ": "RK",
-     "pops": 58,
-     "step": 24.8463,
+     "pops": 56,
+     "step": 24.4101,
      "stepJ": "RK"
     },
     "neck": {
@@ -12638,10 +13038,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.1025,
+     "acc": 0.0935,
      "accAt": 0.4833,
      "pops": 2,
-     "step": 0.0961
+     "step": 0.0884
     },
     "trunk": {
      "acc": 0.3262,
@@ -12671,16 +13071,16 @@
      -0.759
     ],
     "kneeL": [
-     53.9262,
-     65.9528
+     54.1672,
+     66.1075
     ],
     "kneeR": [
-     55.7223,
-     78.8968
+     56.2761,
+     79.2175
     ],
     "pelvisY": [
-     2.5731,
-     2.7018
+     2.5733,
+     2.702
     ],
     "pelvisYaw": [
      -29.5608,
@@ -12697,19 +13097,19 @@
    "slideR": 0.0032,
    "snap": {
     "arms": {
-     "acc": 1.0334,
+     "acc": 1.1195,
      "accAt": 0.4,
      "accJ": "LS",
      "pops": 0,
-     "step": 5.6668,
+     "step": 6.1437,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 4.3912,
+     "acc": 4.3863,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 1,
-     "step": 4.8568,
+     "step": 4.831,
      "stepJ": "RK"
     },
     "neck": {
@@ -12741,45 +13141,45 @@
    "id": "weave_counter",
    "impacts": [
     {
-     "dy": -0.4778,
-     "guardHandY": -0.0338,
+     "dy": -0.4885,
+     "guardHandY": -0.0519,
      "hand": "L",
-     "headOffX": 0.1752,
+     "headOffX": 0.1606,
      "kind": "leadhook",
-     "reachZ": 3.4395,
+     "reachZ": 3.3655,
      "t": 0.9167,
-     "toTarget": 0.7633,
+     "toTarget": 0.7839,
      "zone": "head"
     }
    ],
    "ranges": {
     "chestYaw": [
-     -63.6156,
-     -20.7558
+     -61.7359,
+     -20.7563
     ],
     "headPitch": [
-     -22.8147,
-     -9.2989
+     -22.8431,
+     -9.3516
     ],
     "headRoll": [
-     -9.2438,
-     -0.939
+     -9.2428,
+     -0.9203
     ],
     "kneeL": [
-     52.9297,
-     104.1684
+     53.1418,
+     104.3545
     ],
     "kneeR": [
-     55.7223,
-     113.9574
+     56.2761,
+     114.2783
     ],
     "pelvisY": [
-     1.9563,
-     2.7018
+     1.9565,
+     2.702
     ],
     "pelvisYaw": [
-     -40.8294,
-     -16.6591
+     -39.7777,
+     -16.6571
     ],
     "trunkPitch": [
      -7.6008,
@@ -12787,32 +13187,32 @@
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.0471,
-   "slideMaxSpeed": 0.4727,
+   "slideL": 0.0411,
+   "slideMaxSpeed": 0.4693,
    "slideR": 0.005,
    "snap": {
     "arms": {
-     "acc": 14.39,
+     "acc": 14.3223,
      "accAt": 0.9167,
      "accJ": "LS",
-     "pops": 21,
-     "step": 24.2993,
+     "pops": 24,
+     "step": 24.7136,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 4.3157,
+     "acc": 4.3166,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 1,
-     "step": 7.697,
+     "step": 7.9696,
      "stepJ": "LA"
     },
     "neck": {
-     "acc": 2.4698,
+     "acc": 2.375,
      "accAt": 0.9167,
      "accJ": "Neck",
      "pops": 0,
-     "step": 5.3441,
+     "step": 5.1094,
      "stepJ": "Neck"
     },
     "rootMove": {
@@ -12822,11 +13222,11 @@
      "step": 0.0865
     },
     "trunk": {
-     "acc": 2.7741,
+     "acc": 2.6727,
      "accAt": 0.9167,
      "accJ": "W",
      "pops": 0,
-     "step": 5.3933,
+     "step": 5.192,
      "stepJ": "W"
     }
    },
@@ -12836,14 +13236,14 @@
    "id": "duck_uppercut",
    "impacts": [
     {
-     "dy": -0.3978,
-     "guardHandY": -0.0396,
+     "dy": -0.3959,
+     "guardHandY": -0.0634,
      "hand": "R",
      "headOffX": 0.096,
      "kind": "uppercut",
-     "reachZ": 2.1656,
+     "reachZ": 2.1151,
      "t": 0.8667,
-     "toTarget": 1.6529,
+     "toTarget": 1.6919,
      "zone": "head"
     }
    ],
@@ -12861,16 +13261,16 @@
      -0.8886
     ],
     "kneeL": [
-     46.7029,
-     109.6717
+     44.5569,
+     109.4742
     ],
     "kneeR": [
-     39.5771,
-     115.6603
+     43.3004,
+     116.1967
     ],
     "pelvisY": [
-     1.8472,
-     2.7859
+     1.8474,
+     2.7861
     ],
     "pelvisYaw": [
      -17.3295,
@@ -12887,19 +13287,19 @@
    "slideR": 0.023,
    "snap": {
     "arms": {
-     "acc": 14.2964,
+     "acc": 14.0786,
      "accAt": 0.8667,
      "accJ": "RS",
      "pops": 13,
-     "step": 17.8422,
+     "step": 17.4651,
      "stepJ": "RE"
     },
     "legs": {
-     "acc": 8.2599,
+     "acc": 8.2979,
      "accAt": 0.6833,
      "accJ": "RA",
      "pops": 3,
-     "step": 11.1169,
+     "step": 10.7312,
      "stepJ": "RK"
     },
     "neck": {
@@ -12914,7 +13314,7 @@
      "acc": 0.0418,
      "accAt": 0.7,
      "pops": 10,
-     "step": 0.1491
+     "step": 0.1482
     },
     "trunk": {
      "acc": 2.9744,
@@ -12931,14 +13331,14 @@
    "id": "slip_counter",
    "impacts": [
     {
-     "dy": -0.2924,
-     "guardHandY": -0.101,
+     "dy": -0.2978,
+     "guardHandY": -0.1135,
      "hand": "R",
      "headOffX": 0.145,
      "kind": "cross",
-     "reachZ": 3.0748,
+     "reachZ": 3.057,
      "t": 0.7667,
-     "toTarget": 0.7368,
+     "toTarget": 0.7562,
      "zone": "head"
     }
    ],
@@ -12956,16 +13356,16 @@
      -0.7729
     ],
     "kneeL": [
-     47.9705,
-     69.4086
+     44.6465,
+     67.8131
     ],
     "kneeR": [
      32.5181,
-     82.6223
+     82.9247
     ],
     "pelvisY": [
-     2.4892,
-     2.7904
+     2.4894,
+     2.8118
     ],
     "pelvisYaw": [
      -21.1159,
@@ -12982,19 +13382,19 @@
    "slideR": 0.0194,
    "snap": {
     "arms": {
-     "acc": 11.0845,
+     "acc": 10.4904,
      "accAt": 0.7667,
      "accJ": "RE",
      "pops": 9,
-     "step": 19.7423,
+     "step": 21.4579,
      "stepJ": "RE"
     },
     "legs": {
-     "acc": 17.0151,
+     "acc": 17.5685,
      "accAt": 0.6833,
      "accJ": "RA",
      "pops": 9,
-     "step": 13.0933,
+     "step": 13.1032,
      "stepJ": "RA"
     },
     "neck": {
@@ -13006,10 +13406,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.085,
+     "acc": 0.102,
      "accAt": 0.6833,
-     "pops": 7,
-     "step": 0.1032
+     "pops": 5,
+     "step": 0.0995
     },
     "trunk": {
      "acc": 5.0029,
@@ -13039,16 +13439,16 @@
      3.1052
     ],
     "kneeL": [
-     48.1135,
-     103.141
+     48.3105,
+     103.3067
     ],
     "kneeR": [
-     55.7223,
-     108.1175
+     56.2761,
+     108.4274
     ],
     "pelvisY": [
-     1.9317,
-     2.7018
+     1.9319,
+     2.702
     ],
     "pelvisYaw": [
      -22.1336,
@@ -13060,24 +13460,24 @@
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.0073,
+   "slideL": 0.0072,
    "slideMaxSpeed": 0.0162,
    "slideR": 0.0052,
    "snap": {
     "arms": {
-     "acc": 0.1996,
+     "acc": 0.2113,
      "accAt": 0.3333,
      "accJ": "LS",
      "pops": 0,
-     "step": 0.9886,
+     "step": 1.0581,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 4.3312,
+     "acc": 4.3344,
      "accAt": 1.4167,
      "accJ": "LA",
      "pops": 2,
-     "step": 4.8366,
+     "step": 4.8328,
      "stepJ": "LA"
     },
     "neck": {
@@ -13122,16 +13522,16 @@
      -0.7585
     ],
     "kneeL": [
-     51.8692,
-     65.7413
+     52.2552,
+     65.9534
     ],
     "kneeR": [
-     54.032,
-     69.504
+     54.525,
+     69.8905
     ],
     "pelvisY": [
-     2.6397,
-     2.7018
+     2.6399,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -13148,19 +13548,19 @@
    "slideR": 0.005,
    "snap": {
     "arms": {
-     "acc": 0.2916,
+     "acc": 0.2988,
      "accAt": 1.0333,
      "accJ": "LS",
      "pops": 0,
-     "step": 1.1602,
+     "step": 1.224,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 4.2587,
+     "acc": 4.2553,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 1,
-     "step": 4.3435,
+     "step": 4.3159,
      "stepJ": "RK"
     },
     "neck": {
@@ -13205,16 +13605,16 @@
      2.1889
     ],
     "kneeL": [
-     51.9231,
-     76.0713
+     52.3087,
+     76.3187
     ],
     "kneeR": [
-     54.032,
-     68.5281
+     54.525,
+     68.9177
     ],
     "pelvisY": [
-     2.6336,
-     2.7038
+     2.6338,
+     2.704
     ],
     "pelvisYaw": [
      -17.1898,
@@ -13231,19 +13631,19 @@
    "slideR": 0.005,
    "snap": {
     "arms": {
-     "acc": 0.4484,
+     "acc": 0.4478,
      "accAt": 0.55,
      "accJ": "RS",
      "pops": 0,
-     "step": 1.9299,
+     "step": 1.9664,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 4.2854,
+     "acc": 4.282,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 2,
-     "step": 6.5385,
+     "step": 6.5477,
      "stepJ": "LA"
     },
     "neck": {
@@ -13288,16 +13688,16 @@
      12.4272
     ],
     "kneeL": [
-     54.2846,
-     78.7361
+     54.5479,
+     79.217
     ],
     "kneeR": [
-     54.032,
-     85.4
+     54.525,
+     85.8555
     ],
     "pelvisY": [
-     2.3438,
-     2.7018
+     2.344,
+     2.702
     ],
     "pelvisYaw": [
      -17.1905,
@@ -13314,19 +13714,19 @@
    "slideR": 0.005,
    "snap": {
     "arms": {
-     "acc": 1.5716,
+     "acc": 1.5957,
      "accAt": 0.5667,
      "accJ": "RS",
      "pops": 0,
-     "step": 4.6664,
-     "stepJ": "RS"
+     "step": 4.774,
+     "stepJ": "LS"
     },
     "legs": {
-     "acc": 4.3666,
+     "acc": 4.3651,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 1,
-     "step": 5.7881,
+     "step": 5.8202,
      "stepJ": "LK"
     },
     "neck": {
@@ -13371,16 +13771,16 @@
      -1.2428
     ],
     "kneeL": [
-     54.2846,
-     86.0672
+     54.5479,
+     85.8777
     ],
     "kneeR": [
-     54.032,
-     94.9132
+     54.525,
+     95.2219
     ],
     "pelvisY": [
-     2.3422,
-     2.7018
+     2.3424,
+     2.702
     ],
     "pelvisYaw": [
      -17.1905,
@@ -13397,19 +13797,19 @@
    "slideR": 0.005,
    "snap": {
     "arms": {
-     "acc": 1.5762,
+     "acc": 1.6014,
      "accAt": 0.6,
      "accJ": "RS",
      "pops": 0,
-     "step": 4.5394,
-     "stepJ": "RS"
+     "step": 4.6277,
+     "stepJ": "LS"
     },
     "legs": {
-     "acc": 4.7906,
+     "acc": 4.785,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 1,
-     "step": 6.7305,
+     "step": 6.6803,
      "stepJ": "LK"
     },
     "neck": {
@@ -13454,16 +13854,16 @@
      0.9125
     ],
     "kneeL": [
-     54.2846,
-     94.9976
+     54.5479,
+     95.207
     ],
     "kneeR": [
-     54.032,
-     96.433
+     54.525,
+     96.7864
     ],
     "pelvisY": [
-     2.3169,
-     2.7018
+     2.3171,
+     2.702
     ],
     "pelvisYaw": [
      -17.1908,
@@ -13480,19 +13880,19 @@
    "slideR": 0.005,
    "snap": {
     "arms": {
-     "acc": 1.6698,
+     "acc": 1.6954,
      "accAt": 0.6,
      "accJ": "RS",
      "pops": 0,
-     "step": 4.8668,
+     "step": 5.0204,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 4.5293,
+     "acc": 4.5256,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 1,
-     "step": 8.3326,
+     "step": 8.3414,
      "stepJ": "LA"
     },
     "neck": {
@@ -13537,16 +13937,16 @@
      -0.7352
     ],
     "kneeL": [
-     53.4965,
-     65.9759
+     53.7308,
+     66.2654
     ],
     "kneeR": [
-     54.469,
-     76.3695
+     54.9607,
+     76.7323
     ],
     "pelvisY": [
-     2.5519,
-     2.7075
+     2.5521,
+     2.7077
     ],
     "pelvisYaw": [
      -17.1898,
@@ -13563,19 +13963,19 @@
    "slideR": 0.005,
    "snap": {
     "arms": {
-     "acc": 1.803,
+     "acc": 1.7322,
      "accAt": 0.4667,
      "accJ": "RS",
      "pops": 0,
-     "step": 3.5316,
+     "step": 3.4339,
      "stepJ": "RS"
     },
     "legs": {
-     "acc": 4.2451,
+     "acc": 4.242,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 1,
-     "step": 5.2393,
+     "step": 5.212,
      "stepJ": "RK"
     },
     "neck": {
@@ -13620,16 +14020,16 @@
      -3.922
     ],
     "kneeL": [
-     54.2846,
-     85.5399
+     54.5479,
+     85.6757
     ],
     "kneeR": [
-     54.032,
-     84.8008
+     54.525,
+     85.117
     ],
     "pelvisY": [
-     2.3487,
-     2.7018
+     2.3489,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -13646,19 +14046,19 @@
    "slideR": 0.005,
    "snap": {
     "arms": {
-     "acc": 1.9343,
+     "acc": 1.8745,
      "accAt": 0.5667,
      "accJ": "RS",
      "pops": 0,
-     "step": 5.0037,
+     "step": 4.6887,
      "stepJ": "RE"
     },
     "legs": {
-     "acc": 4.8644,
+     "acc": 4.8693,
      "accAt": 1.2333,
      "accJ": "LA",
      "pops": 2,
-     "step": 6.3991,
+     "step": 6.3783,
      "stepJ": "LK"
     },
     "neck": {
@@ -13703,16 +14103,16 @@
      1.6624
     ],
     "kneeL": [
-     54.2846,
-     100.4649
+     54.5479,
+     100.2346
     ],
     "kneeR": [
-     54.032,
-     101.0878
+     54.525,
+     101.4328
     ],
     "pelvisY": [
-     2.1896,
-     2.7018
+     2.19,
+     2.702
     ],
     "pelvisYaw": [
      -17.3468,
@@ -13729,19 +14129,19 @@
    "slideR": 0.0033,
    "snap": {
     "arms": {
-     "acc": 8.4213,
+     "acc": 9.2574,
      "accAt": 0.7667,
-     "accJ": "RE",
+     "accJ": "LE",
      "pops": 18,
-     "step": 15.4371,
-     "stepJ": "RS"
+     "step": 15.9255,
+     "stepJ": "LE"
     },
     "legs": {
-     "acc": 4.9241,
+     "acc": 4.9238,
      "accAt": 1.15,
      "accJ": "RA",
      "pops": 11,
-     "step": 8.4853,
+     "step": 8.4991,
      "stepJ": "RH"
     },
     "neck": {
@@ -13786,16 +14186,16 @@
      3.1667
     ],
     "kneeL": [
-     58.8352,
-     83.3145
+     59.1128,
+     83.6258
     ],
     "kneeR": [
-     64.0456,
-     92.9579
+     64.5353,
+     93.4204
     ],
     "pelvisY": [
-     2.2427,
-     2.6304
+     2.2428,
+     2.6305
     ],
     "pelvisYaw": [
      -17.1904,
@@ -13812,19 +14212,19 @@
    "slideR": 0.0082,
    "snap": {
     "arms": {
-     "acc": 0.3939,
+     "acc": 0.4039,
      "accAt": 2.9333,
      "accJ": "LS",
      "pops": 0,
-     "step": 1.9155,
-     "stepJ": "RS"
+     "step": 2.0037,
+     "stepJ": "LS"
     },
     "legs": {
-     "acc": 4.4241,
+     "acc": 4.4232,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 1,
-     "step": 3.9147,
+     "step": 3.9166,
      "stepJ": "LA"
     },
     "neck": {
@@ -13869,16 +14269,16 @@
      -0.3775
     ],
     "kneeL": [
-     59.2522,
-     87.1907
+     59.5293,
+     87.487
     ],
     "kneeR": [
-     64.4935,
-     88.9427
+     64.9812,
+     89.3113
     ],
     "pelvisY": [
-     2.2626,
-     2.6249
+     2.2627,
+     2.6251
     ],
     "pelvisYaw": [
      -17.1905,
@@ -13895,19 +14295,19 @@
    "slideR": 0.0077,
    "snap": {
     "arms": {
-     "acc": 0.4233,
+     "acc": 0.4127,
      "accAt": 0.0833,
      "accJ": "RS",
      "pops": 0,
-     "step": 3.1078,
+     "step": 3.044,
      "stepJ": "RS"
     },
     "legs": {
-     "acc": 4.3545,
+     "acc": 4.353,
      "accAt": 0.6667,
      "accJ": "RA",
      "pops": 1,
-     "step": 6.2788,
+     "step": 6.1765,
      "stepJ": "LK"
     },
     "neck": {
@@ -13945,7 +14345,7 @@
     ],
     "headPitch": [
      -88.699,
-     87.9119
+     88.9188
     ],
     "headRoll": [
      -5.971,
@@ -13953,15 +14353,15 @@
     ],
     "kneeL": [
      6.8012,
-     106.3043
+     109.7281
     ],
     "kneeR": [
      14.324,
-     105.2976
+     105.2741
     ],
     "pelvisY": [
-     0.539,
-     2.7018
+     0.5121,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -13972,25 +14372,25 @@
      90
     ]
    },
-   "sinkMin": -0.0202,
+   "sinkMin": -0.0433,
    "slideL": 0.0402,
-   "slideMaxSpeed": 19.4784,
-   "slideR": 0.7318,
+   "slideMaxSpeed": 19.3053,
+   "slideR": 0.7264,
    "snap": {
     "arms": {
-     "acc": 4.8452,
+     "acc": 4.5132,
      "accAt": 0.5667,
-     "accJ": "RS",
+     "accJ": "LE",
      "pops": 3,
-     "step": 11.2791,
+     "step": 10.478,
      "stepJ": "RS"
     },
     "legs": {
-     "acc": 14.9755,
-     "accAt": 7.6167,
+     "acc": 14.955,
+     "accAt": 0.9833,
      "accJ": "LK",
-     "pops": 43,
-     "step": 14.6924,
+     "pops": 39,
+     "step": 10.8968,
      "stepJ": "LK"
     },
     "neck": {
@@ -14002,7 +14402,7 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0888,
+     "acc": 0.0877,
      "accAt": 0.7167,
      "pops": 27,
      "step": 0.226
@@ -14036,15 +14436,15 @@
     ],
     "kneeL": [
      4.5837,
-     96.8369
+     96.8644
     ],
     "kneeR": [
-     34.9156,
+     34.9155,
      131.1418
     ],
     "pelvisY": [
-     0.7614,
-     2.7018
+     0.7534,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -14056,24 +14456,24 @@
     ]
    },
    "sinkMin": -0.0222,
-   "slideL": 0.2135,
-   "slideMaxSpeed": 8.6304,
+   "slideL": 0.2115,
+   "slideMaxSpeed": 8.5517,
    "slideR": 0.061,
    "snap": {
     "arms": {
-     "acc": 5.0162,
+     "acc": 4.6607,
      "accAt": 0.4833,
      "accJ": "RS",
      "pops": 3,
-     "step": 11.747,
+     "step": 10.9688,
      "stepJ": "RS"
     },
     "legs": {
-     "acc": 13.2197,
+     "acc": 13.247,
      "accAt": 4.8,
      "accJ": "RK",
      "pops": 36,
-     "step": 16.1589,
+     "step": 16.1565,
      "stepJ": "RK"
     },
     "neck": {
@@ -14085,7 +14485,7 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0664,
+     "acc": 0.0702,
      "accAt": 4.7167,
      "pops": 24,
      "step": 0.2263
@@ -14111,23 +14511,23 @@
     ],
     "headPitch": [
      -89.786,
-     9.0237
+     9.5158
     ],
     "headRoll": [
-     -5.971,
-     81.7643
+     -5.9708,
+     81.8771
     ],
     "kneeL": [
-     52.111,
-     121.7933
+     52.4246,
+     121.7934
     ],
     "kneeR": [
-     54.032,
-     101.4863
+     54.525,
+     101.4857
     ],
     "pelvisY": [
-     1.0038,
-     2.7018
+     0.9322,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -14135,50 +14535,50 @@
     ],
     "trunkPitch": [
      -76.982,
-     10.4675
+     10.4374
     ]
    },
    "sinkMin": -0.0646,
-   "slideL": 0.1708,
-   "slideMaxSpeed": 7.933,
-   "slideR": 0.0265,
+   "slideL": 0.1707,
+   "slideMaxSpeed": 7.9326,
+   "slideR": 0.0264,
    "snap": {
     "arms": {
-     "acc": 4.4317,
+     "acc": 4.0933,
      "accAt": 0.5833,
      "accJ": "RS",
-     "pops": 1,
-     "step": 13.5655,
+     "pops": 2,
+     "step": 13.5679,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 13.5756,
+     "acc": 13.6427,
      "accAt": 0.75,
      "accJ": "RA",
      "pops": 49,
-     "step": 20.7521,
+     "step": 20.8046,
      "stepJ": "LA"
     },
     "neck": {
-     "acc": 15.8186,
+     "acc": 15.8268,
      "accAt": 5.7667,
      "accJ": "Neck",
      "pops": 11,
-     "step": 15.8102,
+     "step": 15.821,
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.1015,
+     "acc": 0.1016,
      "accAt": 0.75,
      "pops": 8,
-     "step": 0.1152
+     "step": 0.1184
     },
     "trunk": {
-     "acc": 1.8063,
+     "acc": 1.8071,
      "accAt": 0.6,
      "accJ": "W",
      "pops": 0,
-     "step": 4.8546,
+     "step": 4.8563,
      "stepJ": "Root"
     }
    },
@@ -14194,7 +14594,7 @@
     ],
     "headPitch": [
      -89.5836,
-     -4.4817
+     -4.4818
     ],
     "headRoll": [
      -79.5152,
@@ -14202,15 +14602,15 @@
     ],
     "kneeL": [
      8.5944,
-     111.0455
+     111.0442
     ],
     "kneeR": [
      11.4592,
-     112.0133
+     112.012
     ],
     "pelvisY": [
-     0.8247,
-     2.7018
+     0.7613,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -14221,25 +14621,25 @@
      -1.3357
     ]
    },
-   "sinkMin": -0.0265,
-   "slideL": 0.1125,
-   "slideMaxSpeed": 10.1439,
-   "slideR": 0.3118,
+   "sinkMin": -0.0264,
+   "slideL": 0.1126,
+   "slideMaxSpeed": 9.9356,
+   "slideR": 0.3057,
    "snap": {
     "arms": {
-     "acc": 5.2985,
+     "acc": 4.9211,
      "accAt": 0.75,
      "accJ": "RS",
      "pops": 4,
-     "step": 11.6808,
+     "step": 11.3317,
      "stepJ": "RS"
     },
     "legs": {
-     "acc": 13.0697,
+     "acc": 13.088,
      "accAt": 0.9,
      "accJ": "RA",
      "pops": 39,
-     "step": 19.0021,
+     "step": 19.0815,
      "stepJ": "LA"
     },
     "neck": {
@@ -14251,10 +14651,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0911,
+     "acc": 0.0917,
      "accAt": 1.5833,
      "pops": 17,
-     "step": 0.1712
+     "step": 0.1728
     },
     "trunk": {
      "acc": 1.7635,
@@ -14284,16 +14684,16 @@
      19.4105
     ],
     "kneeL": [
-     51.2702,
-     110.9764
+     51.6198,
+     110.9755
     ],
     "kneeR": [
-     52.8303,
-     109.5672
+     53.409,
+     109.5665
     ],
     "pelvisY": [
-     1.9834,
-     2.7018
+     1.9827,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -14304,25 +14704,25 @@
      -1.1372
     ]
    },
-   "sinkMin": -0.025,
-   "slideL": 0.2152,
-   "slideMaxSpeed": 15.787,
-   "slideR": 0.4917,
+   "sinkMin": -0.0251,
+   "slideL": 0.2153,
+   "slideMaxSpeed": 15.5809,
+   "slideR": 0.486,
    "snap": {
     "arms": {
-     "acc": 1.2349,
+     "acc": 1.173,
      "accAt": 0.6167,
      "accJ": "RS",
      "pops": 0,
-     "step": 6.556,
-     "stepJ": "RS"
+     "step": 6.1592,
+     "stepJ": "LE"
     },
     "legs": {
-     "acc": 18.5438,
+     "acc": 18.6008,
      "accAt": 0.8333,
      "accJ": "RA",
-     "pops": 44,
-     "step": 19.608,
+     "pops": 43,
+     "step": 19.6808,
      "stepJ": "LA"
     },
     "neck": {
@@ -14334,7 +14734,7 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0706,
+     "acc": 0.069,
      "accAt": 0.8333,
      "pops": 4,
      "step": 0.0595
@@ -14357,27 +14757,27 @@
    "ranges": {
     "chestYaw": [
      -180,
-     5.7475
+     5.7456
     ],
     "headPitch": [
      -12.1719,
-     72.3853
+     73.8698
     ],
     "headRoll": [
-     -18.2477,
+     -18.3188,
      11.2073
     ],
     "kneeL": [
      2.8648,
-     60.408
+     60.4286
     ],
     "kneeR": [
      2.8648,
-     69.2786
+     69.177
     ],
     "pelvisY": [
-     0.5232,
-     2.7866
+     0.4947,
+     2.7872
     ],
     "pelvisYaw": [
      -17.1898,
@@ -14398,37 +14798,37 @@
      "accAt": 1.7833,
      "accJ": "RS",
      "pops": 0,
-     "step": 4.7445,
+     "step": 5.3503,
      "stepJ": "LE"
     },
     "legs": {
-     "acc": 3.7267,
+     "acc": 3.7012,
      "accAt": 0.55,
      "accJ": "RK",
      "pops": 0,
-     "step": 6.6291,
-     "stepJ": "RK"
+     "step": 6.6292,
+     "stepJ": "LK"
     },
     "neck": {
-     "acc": 16.5034,
+     "acc": 16.6526,
      "accAt": 1.7833,
      "accJ": "Neck",
      "pops": 9,
-     "step": 20.9904,
+     "step": 20.2452,
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.071,
+     "acc": 0.048,
      "accAt": 1.8167,
      "pops": 7,
-     "step": 0.1633
+     "step": 0.1679
     },
     "trunk": {
      "acc": 1.0368,
      "accAt": 1.8,
      "accJ": "Root",
      "pops": 0,
-     "step": 3.6455,
+     "step": 3.6453,
      "stepJ": "Root"
     }
    },
@@ -14449,19 +14849,19 @@
     ],
     "headRoll": [
      -25.1344,
-     67.1503
+     65.9876
     ],
     "kneeL": [
      34.9155,
-     71.1012
+     70.9717
     ],
     "kneeR": [
      34.9155,
-     69.3351
+     69.7215
     ],
     "pelvisY": [
-     0.73,
-     2.8111
+     0.6729,
+     2.8114
     ],
     "pelvisYaw": [
      -17.1898,
@@ -14474,37 +14874,37 @@
    },
    "sinkMin": 0,
    "slideL": 0.0031,
-   "slideMaxSpeed": 0.0444,
+   "slideMaxSpeed": 0.0443,
    "slideR": 0.001,
    "snap": {
     "arms": {
-     "acc": 2.9084,
+     "acc": 2.9151,
      "accAt": 1.85,
      "accJ": "RS",
      "pops": 0,
-     "step": 5.3356,
-     "stepJ": "RS"
+     "step": 5.4304,
+     "stepJ": "LE"
     },
     "legs": {
-     "acc": 3.198,
+     "acc": 3.1117,
      "accAt": 0.8,
      "accJ": "RK",
      "pops": 0,
-     "step": 4.1234,
+     "step": 4.0965,
      "stepJ": "RK"
     },
     "neck": {
-     "acc": 17.7401,
+     "acc": 17.7489,
      "accAt": 1.85,
      "accJ": "Neck",
      "pops": 9,
-     "step": 16.4941,
+     "step": 16.4888,
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0667,
-     "accAt": 1.8333,
-     "pops": 3,
+     "acc": 0.0562,
+     "accAt": 1.85,
+     "pops": 4,
      "step": 0.1761
     },
     "trunk": {
@@ -14512,7 +14912,7 @@
      "accAt": 0.6333,
      "accJ": "W",
      "pops": 0,
-     "step": 3.6455,
+     "step": 3.6453,
      "stepJ": "Root"
     }
    },
@@ -14529,23 +14929,23 @@
     ],
     "headPitch": [
      -41.9247,
-     27.6659
+     30.986
     ],
     "headRoll": [
      -5.15,
-     62.4954
+     70.8959
     ],
     "kneeL": [
-     54.2846,
-     120.2891
+     54.5479,
+     120.2895
     ],
     "kneeR": [
-     54.032,
-     94.0231
+     54.525,
+     94.0142
     ],
     "pelvisY": [
-     1.1622,
-     2.7018
+     1.0422,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -14557,20 +14957,20 @@
     ]
    },
    "sinkMin": -0.0333,
-   "slideL": 0.2883,
-   "slideMaxSpeed": 5.0094,
-   "slideR": 0.1711,
+   "slideL": 0.2879,
+   "slideMaxSpeed": 4.9711,
+   "slideR": 0.1698,
    "snap": {
     "arms": {
-     "acc": 4.3132,
-     "accAt": 0.5833,
-     "accJ": "RS",
+     "acc": 4.1606,
+     "accAt": 1.9333,
+     "accJ": "LS",
      "pops": 1,
-     "step": 15.48,
+     "step": 16.3257,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 11.3736,
+     "acc": 11.2795,
      "accAt": 0.5667,
      "accJ": "RK",
      "pops": 7,
@@ -14581,15 +14981,15 @@
      "acc": 11.6893,
      "accAt": 0.5667,
      "accJ": "Neck",
-     "pops": 7,
+     "pops": 6,
      "step": 15.7267,
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0598,
+     "acc": 0.0623,
      "accAt": 1.9167,
-     "pops": 4,
-     "step": 0.1255
+     "pops": 5,
+     "step": 0.1344
     },
     "trunk": {
      "acc": 1.587,
@@ -14613,23 +15013,23 @@
     ],
     "headPitch": [
      -12.3117,
-     77.6613
+     76.7799
     ],
     "headRoll": [
-     -36.9789,
+     -35.5263,
      18.3074
     ],
     "kneeL": [
      9.1019,
-     112.4141
+     112.4331
     ],
     "kneeR": [
      8.5944,
-     125.6817
+     125.7054
     ],
     "pelvisY": [
-     0.5647,
-     2.7018
+     0.5274,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -14641,9 +15041,9 @@
     ]
    },
    "sinkMin": -0.0335,
-   "slideL": 0.0754,
-   "slideMaxSpeed": 6.0588,
-   "slideR": 0.1143,
+   "slideL": 0.0744,
+   "slideMaxSpeed": 6.0116,
+   "slideR": 0.1135,
    "snap": {
     "arms": {
      "acc": 3.616,
@@ -14654,26 +15054,26 @@
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 14.9666,
+     "acc": 14.7724,
      "accAt": 1.5833,
      "accJ": "LK",
-     "pops": 11,
-     "step": 16.355,
+     "pops": 10,
+     "step": 16.2934,
      "stepJ": "LK"
     },
     "neck": {
-     "acc": 13.5038,
+     "acc": 12.7613,
      "accAt": 1.8667,
      "accJ": "Neck",
      "pops": 8,
-     "step": 18.221,
+     "step": 16.4542,
      "stepJ": "Neck"
     },
     "rootMove": {
      "acc": 0.0424,
      "accAt": 1.5333,
      "pops": 11,
-     "step": 0.1737
+     "step": 0.1765
     },
     "trunk": {
      "acc": 1.492,
@@ -14697,23 +15097,23 @@
     ],
     "headPitch": [
      -55.0773,
-     -8.2633
+     -8.2591
     ],
     "headRoll": [
-     -78.8024,
+     -78.9823,
      14.1935
     ],
     "kneeL": [
      8.5944,
-     109.359
+     109.358
     ],
     "kneeR": [
      11.4592,
-     110.9771
+     110.9765
     ],
     "pelvisY": [
-     0.8777,
-     2.7077
+     0.8141,
+     2.7079
     ],
     "pelvisYaw": [
      -17.1898,
@@ -14724,25 +15124,25 @@
      -1.3357
     ]
    },
-   "sinkMin": -0.0054,
+   "sinkMin": -0.0044,
    "slideL": 0.1787,
-   "slideMaxSpeed": 4.9911,
-   "slideR": 0.4162,
+   "slideMaxSpeed": 4.9468,
+   "slideR": 0.4116,
    "snap": {
     "arms": {
      "acc": 3.2982,
      "accAt": 2.5667,
      "accJ": "LS",
      "pops": 0,
-     "step": 6.3894,
+     "step": 6.5211,
      "stepJ": "RS"
     },
     "legs": {
-     "acc": 14.7337,
+     "acc": 14.7523,
      "accAt": 1.3,
      "accJ": "RA",
      "pops": 28,
-     "step": 11.8083,
+     "step": 11.8267,
      "stepJ": "RA"
     },
     "neck": {
@@ -14754,10 +15154,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.054,
+     "acc": 0.0541,
      "accAt": 2.5667,
      "pops": 5,
-     "step": 0.1797
+     "step": 0.176
     },
     "trunk": {
      "acc": 9.279,
@@ -14781,23 +15181,23 @@
     ],
     "headPitch": [
      -84.2759,
-     -2.2563
+     -2.9635
     ],
     "headRoll": [
-     -75.1191,
+     -83.6439,
      7.3978
     ],
     "kneeL": [
-     54.2846,
-     116.3728
+     54.5479,
+     116.3708
     ],
     "kneeR": [
-     54.032,
-     116.617
+     54.525,
+     116.6156
     ],
     "pelvisY": [
-     1.1647,
-     2.7018
+     1.0447,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -14809,39 +15209,39 @@
     ]
    },
    "sinkMin": -0.0258,
-   "slideL": 0.0281,
-   "slideMaxSpeed": 3.3692,
-   "slideR": 0.1175,
+   "slideL": 0.028,
+   "slideMaxSpeed": 3.3049,
+   "slideR": 0.1152,
    "snap": {
     "arms": {
-     "acc": 5.397,
+     "acc": 5.4203,
      "accAt": 2.15,
      "accJ": "RS",
      "pops": 4,
-     "step": 22.562,
+     "step": 22.679,
      "stepJ": "RS"
     },
     "legs": {
-     "acc": 12.6875,
+     "acc": 12.6869,
      "accAt": 1.7,
      "accJ": "LK",
-     "pops": 28,
-     "step": 12.2745,
-     "stepJ": "RK"
+     "pops": 25,
+     "step": 12.0114,
+     "stepJ": "LA"
     },
     "neck": {
-     "acc": 6.5141,
+     "acc": 4.5707,
      "accAt": 2.1167,
      "accJ": "Neck",
-     "pops": 2,
-     "step": 5.6177,
+     "pops": 1,
+     "step": 6.0452,
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0829,
-     "accAt": 2.1167,
-     "pops": 17,
-     "step": 0.2566
+     "acc": 0.0722,
+     "accAt": 2.0833,
+     "pops": 18,
+     "step": 0.2602
     },
     "trunk": {
      "acc": 4.4256,
@@ -14865,23 +15265,23 @@
     ],
     "headPitch": [
      -12.3117,
-     72.289
+     72.9448
     ],
     "headRoll": [
-     -18.1268,
+     -18.1559,
      5.1651
     ],
     "kneeL": [
      2.8648,
-     60.3045
+     60.2804
     ],
     "kneeR": [
      2.8648,
-     69.3351
+     71.8166
     ],
     "pelvisY": [
-     0.5246,
-     2.7346
+     0.4961,
+     2.7353
     ],
     "pelvisYaw": [
      -17.1898,
@@ -14902,37 +15302,37 @@
      "accAt": 2,
      "accJ": "LS",
      "pops": 0,
-     "step": 4.7618,
+     "step": 5.0497,
      "stepJ": "RE"
     },
     "legs": {
      "acc": 2.6792,
      "accAt": 2.0167,
-     "accJ": "LK",
+     "accJ": "RK",
      "pops": 0,
      "step": 6.6292,
-     "stepJ": "RK"
+     "stepJ": "LK"
     },
     "neck": {
-     "acc": 15.8774,
+     "acc": 15.3261,
      "accAt": 2,
      "accJ": "Neck",
-     "pops": 9,
-     "step": 21.3311,
+     "pops": 8,
+     "step": 20.807,
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0955,
+     "acc": 0.0761,
      "accAt": 2.0333,
      "pops": 8,
-     "step": 0.1661
+     "step": 0.1677
     },
     "trunk": {
      "acc": 1.4981,
      "accAt": 0.6333,
      "accJ": "W",
      "pops": 0,
-     "step": 3.512,
+     "step": 3.5117,
      "stepJ": "Root"
     }
    },
@@ -14944,35 +15344,35 @@
    "koLandWall": 1.2723,
    "ranges": {
     "chestYaw": [
-     -62.2151,
+     -62.1938,
      95.1517
     ],
     "headPitch": [
-     -23.2361,
+     -23.2363,
      -5.3058
     ],
     "headRoll": [
      -5.15,
-     67.2566
+     65.9669
     ],
     "kneeL": [
      34.9155,
-     67.5584
+     67.5595
     ],
     "kneeR": [
      34.9155,
-     63.5082
+     63.9372
     ],
     "pelvisY": [
-     0.7301,
-     2.8452
+     0.6729,
+     2.8455
     ],
     "pelvisYaw": [
      -17.1898,
-     84.2898
+     84.2706
     ],
     "trunkPitch": [
-     -90,
+     -89.972,
      -0.6198
     ]
    },
@@ -14982,41 +15382,41 @@
    "slideR": 0.001,
    "snap": {
     "arms": {
-     "acc": 1.9563,
+     "acc": 1.7009,
      "accAt": 1.8333,
-     "accJ": "RS",
+     "accJ": "LS",
      "pops": 0,
-     "step": 5.56,
-     "stepJ": "RS"
+     "step": 5.3719,
+     "stepJ": "LE"
     },
     "legs": {
-     "acc": 4.1234,
+     "acc": 4.0964,
      "accAt": 0.5667,
      "accJ": "RK",
      "pops": 1,
-     "step": 4.8684,
+     "step": 4.7983,
      "stepJ": "RK"
     },
     "neck": {
-     "acc": 18.5429,
+     "acc": 18.3542,
      "accAt": 1.8333,
      "accJ": "Neck",
-     "pops": 9,
-     "step": 18.3734,
+     "pops": 8,
+     "step": 18.2701,
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0465,
+     "acc": 0.0725,
      "accAt": 1.8167,
      "pops": 3,
-     "step": 0.1623
+     "step": 0.1672
     },
     "trunk": {
      "acc": 1.1387,
      "accAt": 0.6,
      "accJ": "W",
      "pops": 0,
-     "step": 3.5105,
+     "step": 3.5103,
      "stepJ": "Root"
     }
    },
@@ -15039,16 +15439,16 @@
      2.0896
     ],
     "kneeL": [
-     54.2846,
-     87.9405
+     54.5479,
+     87.9875
     ],
     "kneeR": [
-     54.032,
-     82.3169
+     54.525,
+     82.4946
     ],
     "pelvisY": [
-     2.4074,
-     2.7018
+     2.4076,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -15060,24 +15460,24 @@
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.011,
-   "slideMaxSpeed": 0.2008,
-   "slideR": 0.0073,
+   "slideL": 0.0107,
+   "slideMaxSpeed": 0.1948,
+   "slideR": 0.0072,
    "snap": {
     "arms": {
-     "acc": 1.6375,
+     "acc": 1.6629,
      "accAt": 0.6,
      "accJ": "RS",
      "pops": 0,
-     "step": 3.2112,
-     "stepJ": "RE"
+     "step": 3.5956,
+     "stepJ": "LE"
     },
     "legs": {
-     "acc": 9.8196,
+     "acc": 9.7837,
      "accAt": 0.6167,
      "accJ": "RK",
      "pops": 5,
-     "step": 8.5617,
+     "step": 8.5336,
      "stepJ": "RK"
     },
     "neck": {
@@ -15122,16 +15522,16 @@
      2.4394
     ],
     "kneeL": [
-     55.6157,
-     80.8763
+     55.8551,
+     80.8842
     ],
     "kneeR": [
-     55.7223,
-     90.5062
+     56.2761,
+     90.6949
     ],
     "pelvisY": [
-     2.2947,
-     2.7018
+     2.2948,
+     2.702
     ],
     "pelvisYaw": [
      -17.1898,
@@ -15148,19 +15548,19 @@
    "slideR": 0.0081,
    "snap": {
     "arms": {
-     "acc": 2.2465,
+     "acc": 2.1202,
      "accAt": 0.2,
      "accJ": "RS",
      "pops": 0,
-     "step": 6.4035,
+     "step": 6.0231,
      "stepJ": "RS"
     },
     "legs": {
-     "acc": 4.6983,
+     "acc": 4.7086,
      "accAt": 0.3333,
      "accJ": "RA",
      "pops": 2,
-     "step": 7.022,
+     "step": 7.0386,
      "stepJ": "LA"
     },
     "neck": {
@@ -15205,16 +15605,16 @@
      7.2039
     ],
     "kneeL": [
-     32.4538,
-     56.1047
+     32.453,
+     56.3678
     ],
     "kneeR": [
-     32.5198,
-     61.3513
+     32.5197,
+     61.5049
     ],
     "pelvisY": [
-     2.661,
-     3.0332
+     2.6612,
+     3.0334
     ],
     "pelvisYaw": [
      -17.1898,
@@ -15226,16 +15626,16 @@
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.0037,
-   "slideMaxSpeed": 0.0347,
+   "slideL": 0.0035,
+   "slideMaxSpeed": 0.0285,
    "slideR": 0.002,
    "snap": {
     "arms": {
-     "acc": 1.5399,
+     "acc": 1.5582,
      "accAt": 0.2,
      "accJ": "LS",
      "pops": 0,
-     "step": 6.6357,
+     "step": 6.8195,
      "stepJ": "LS"
     },
     "legs": {
@@ -15243,7 +15643,7 @@
      "accAt": 0.7,
      "accJ": "RA",
      "pops": 0,
-     "step": 5.7487,
+     "step": 5.764,
      "stepJ": "RA"
     },
     "neck": {
@@ -15275,58 +15675,58 @@
    "id": "sty_boxerpuncher",
    "impacts": [
     {
-     "dy": -0.3627,
-     "guardHandY": -0.1363,
+     "dy": -0.3619,
+     "guardHandY": -0.147,
      "hand": "L",
      "headOffX": 0.0939,
      "kind": "jab",
-     "reachZ": 3.0797,
+     "reachZ": 3.0791,
      "t": 0.5667,
      "toTarget": 0.7928,
      "zone": "head"
     },
     {
-     "dy": -0.4119,
-     "guardHandY": -0.1688,
+     "dy": -0.4047,
+     "guardHandY": -0.176,
      "hand": "R",
      "headOffX": -0.1055,
      "kind": "cross",
-     "reachZ": 2.9087,
+     "reachZ": 2.914,
      "t": 1.65,
-     "toTarget": 0.8939,
+     "toTarget": 0.8849,
      "zone": "head"
     },
     {
-     "dy": -0.1472,
-     "guardHandY": -0.0602,
+     "dy": -0.1453,
+     "guardHandY": -0.0776,
      "hand": "L",
      "headOffX": 0.1243,
      "kind": "leadhook",
-     "reachZ": 3.733,
+     "reachZ": 3.7347,
      "t": 2.6667,
-     "toTarget": 0.7334,
+     "toTarget": 0.7286,
      "zone": "head"
     },
     {
-     "dy": -0.3394,
-     "guardHandY": -0.0634,
+     "dy": -0.3259,
+     "guardHandY": -0.0873,
      "hand": "R",
      "headOffX": 0.0272,
      "kind": "uppercut",
-     "reachZ": 3.0777,
+     "reachZ": 3.1086,
      "t": 3.7,
-     "toTarget": 0.824,
+     "toTarget": 0.7882,
      "zone": "head"
     },
     {
-     "dy": -0.0439,
-     "guardHandY": -0.0818,
+     "dy": -0.0357,
+     "guardHandY": -0.0934,
      "hand": "R",
      "headOffX": 0.1188,
      "kind": "overhand",
-     "reachZ": 3.1093,
+     "reachZ": 3.0924,
      "t": 4.8333,
-     "toTarget": 0.6941,
+     "toTarget": 0.7087,
      "zone": "head"
     }
    ],
@@ -15344,16 +15744,16 @@
      1.4456
     ],
     "kneeL": [
-     43.184,
-     109.5505
+     43.3208,
+     109.7678
     ],
     "kneeR": [
      32.5181,
-     102.2264
+     102.536
     ],
     "pelvisY": [
-     1.9594,
-     2.8745
+     1.9596,
+     2.8747
     ],
     "pelvisYaw": [
      -34.4907,
@@ -15366,23 +15766,23 @@
    },
    "sinkMin": 0,
    "slideL": 0.0746,
-   "slideMaxSpeed": 0.7592,
-   "slideR": 0.0394,
+   "slideMaxSpeed": 0.7593,
+   "slideR": 0.0393,
    "snap": {
     "arms": {
-     "acc": 15.5627,
-     "accAt": 2.4667,
-     "accJ": "LS",
-     "pops": 70,
-     "step": 25.4995,
-     "stepJ": "LS"
+     "acc": 17.5317,
+     "accAt": 4.8167,
+     "accJ": "RE",
+     "pops": 74,
+     "step": 27.357,
+     "stepJ": "LE"
     },
     "legs": {
-     "acc": 13.5498,
+     "acc": 13.3986,
      "accAt": 5.2,
      "accJ": "RA",
      "pops": 41,
-     "step": 14.6402,
+     "step": 14.6361,
      "stepJ": "LA"
     },
     "neck": {
@@ -15414,58 +15814,58 @@
    "id": "sty_outboxer",
    "impacts": [
     {
-     "dy": -0.1657,
-     "guardHandY": -0.1024,
+     "dy": -0.1759,
+     "guardHandY": -0.1187,
      "hand": "L",
      "headOffX": -0.0997,
      "kind": "jab",
-     "reachZ": 3.1838,
+     "reachZ": 3.1487,
      "t": 0.5667,
-     "toTarget": 0.6222,
+     "toTarget": 0.6589,
      "zone": "head"
     },
     {
-     "dy": -0.3904,
-     "guardHandY": -0.3142,
+     "dy": -0.3853,
+     "guardHandY": -0.3237,
      "hand": "R",
      "headOffX": 0.0248,
      "kind": "cross",
-     "reachZ": 3.0074,
+     "reachZ": 3.0121,
      "t": 1.65,
-     "toTarget": 0.7945,
+     "toTarget": 0.7872,
      "zone": "head"
     },
     {
-     "dy": -0.1506,
-     "guardHandY": -0.0673,
+     "dy": -0.1497,
+     "guardHandY": -0.085,
      "hand": "L",
      "headOffX": 0.0985,
      "kind": "leadhook",
-     "reachZ": 3.8245,
+     "reachZ": 3.8266,
      "t": 2.6667,
-     "toTarget": 0.7118,
+     "toTarget": 0.708,
      "zone": "head"
     },
     {
-     "dy": -0.3473,
-     "guardHandY": -0.197,
+     "dy": -0.3319,
+     "guardHandY": -0.2224,
      "hand": "R",
      "headOffX": 0.0712,
      "kind": "uppercut",
-     "reachZ": 2.9084,
+     "reachZ": 2.9398,
      "t": 3.7,
-     "toTarget": 0.9996,
+     "toTarget": 0.9583,
      "zone": "head"
     },
     {
-     "dy": -0.0609,
-     "guardHandY": -0.2214,
+     "dy": -0.0372,
+     "guardHandY": -0.2337,
      "hand": "R",
      "headOffX": 0.232,
      "kind": "overhand",
-     "reachZ": 3.1021,
+     "reachZ": 3.0998,
      "t": 4.8333,
-     "toTarget": 0.6989,
+     "toTarget": 0.7,
      "zone": "head"
     }
    ],
@@ -15480,19 +15880,19 @@
     ],
     "headRoll": [
      -22.1098,
-     2.338
+     2.3373
     ],
     "kneeL": [
-     30.1135,
-     96.568
+     30.1427,
+     96.7414
     ],
     "kneeR": [
-     10.4132,
-     87.9502
+     10.5239,
+     88.1527
     ],
     "pelvisY": [
-     2.0605,
-     2.8942
+     2.068,
+     2.8956
     ],
     "pelvisYaw": [
      -38.2866,
@@ -15509,19 +15909,19 @@
    "slideR": 0.0908,
    "snap": {
     "arms": {
-     "acc": 21.7992,
+     "acc": 22.4177,
      "accAt": 0.5667,
      "accJ": "LE",
-     "pops": 85,
-     "step": 27.6515,
+     "pops": 87,
+     "step": 28.7612,
      "stepJ": "LE"
     },
     "legs": {
-     "acc": 24.8653,
+     "acc": 25.0185,
      "accAt": 3.55,
-     "accJ": "RA",
-     "pops": 70,
-     "step": 24.744,
+     "accJ": "RK",
+     "pops": 71,
+     "step": 25.0185,
      "stepJ": "RK"
     },
     "neck": {
@@ -15533,10 +15933,10 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.3158,
+     "acc": 0.3178,
      "accAt": 3.55,
-     "pops": 52,
-     "step": 0.2645
+     "pops": 51,
+     "step": 0.263
     },
     "trunk": {
      "acc": 4.8601,
@@ -15553,64 +15953,64 @@
    "id": "sty_swarmer",
    "impacts": [
     {
-     "dy": -0.3815,
-     "guardHandY": -0.0717,
+     "dy": -0.3806,
+     "guardHandY": -0.0744,
      "hand": "L",
      "headOffX": -0.0477,
      "kind": "jab",
-     "reachZ": 3.1133,
+     "reachZ": 3.1069,
      "t": 0.5667,
-     "toTarget": 0.7735,
+     "toTarget": 0.7784,
      "zone": "head"
     },
     {
-     "dy": -0.3784,
-     "guardHandY": -0.0785,
+     "dy": -0.3772,
+     "guardHandY": -0.0786,
      "hand": "R",
      "headOffX": -0.4869,
      "kind": "cross",
-     "reachZ": 3.043,
+     "reachZ": 3.0456,
      "t": 1.65,
-     "toTarget": 0.7576,
+     "toTarget": 0.7545,
      "zone": "head"
     },
     {
-     "dy": -0.1649,
-     "guardHandY": -0.0208,
+     "dy": -0.1608,
+     "guardHandY": -0.0292,
      "hand": "L",
-     "headOffX": 0.1869,
+     "headOffX": 0.17,
      "kind": "leadhook",
-     "reachZ": 3.5704,
+     "reachZ": 3.5696,
      "t": 2.6667,
-     "toTarget": 0.7743,
+     "toTarget": 0.7698,
      "zone": "head"
     },
     {
-     "dy": -0.3512,
-     "guardHandY": -0.0164,
+     "dy": -0.3365,
+     "guardHandY": -0.0287,
      "hand": "R",
      "headOffX": 0.189,
      "kind": "uppercut",
-     "reachZ": 3.1293,
+     "reachZ": 3.1385,
      "t": 3.7,
-     "toTarget": 0.784,
+     "toTarget": 0.7677,
      "zone": "head"
     },
     {
-     "dy": -0.1879,
-     "guardHandY": -0.0245,
+     "dy": -0.1757,
+     "guardHandY": -0.0238,
      "hand": "R",
      "headOffX": 0.0175,
      "kind": "overhand",
-     "reachZ": 3.0423,
+     "reachZ": 3.0404,
      "t": 4.8333,
-     "toTarget": 0.7774,
+     "toTarget": 0.7771,
      "zone": "head"
     }
    ],
    "ranges": {
     "chestYaw": [
-     -49.8545,
+     -48.3406,
      46.6679
     ],
     "headPitch": [
@@ -15622,19 +16022,19 @@
      8.0801
     ],
     "kneeL": [
-     51.0811,
-     107.7447
+     52.0203,
+     108.2963
     ],
     "kneeR": [
-     47.5536,
-     122.2995
+     46.7432,
+     122.619
     ],
     "pelvisY": [
-     1.6516,
-     2.59
+     1.6518,
+     2.5965
     ],
     "pelvisYaw": [
-     -30.0917,
+     -29.2916,
      20.0621
     ],
     "trunkPitch": [
@@ -15643,24 +16043,24 @@
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.0501,
+   "slideL": 0.0479,
    "slideMaxSpeed": 0.7644,
-   "slideR": 0.1267,
+   "slideR": 0.1263,
    "snap": {
     "arms": {
-     "acc": 18.4916,
+     "acc": 19.4714,
      "accAt": 3.7,
      "accJ": "RS",
-     "pops": 69,
-     "step": 24.4907,
+     "pops": 76,
+     "step": 25.3166,
      "stepJ": "RE"
     },
     "legs": {
-     "acc": 13.2262,
+     "acc": 13.2493,
      "accAt": 5.1667,
      "accJ": "RA",
-     "pops": 45,
-     "step": 14.1349,
+     "pops": 44,
+     "step": 14.1883,
      "stepJ": "LA"
     },
     "neck": {
@@ -15672,13 +16072,13 @@
      "stepJ": "Neck"
     },
     "rootMove": {
-     "acc": 0.0899,
+     "acc": 0.0898,
      "accAt": 3.5,
-     "pops": 50,
-     "step": 0.2217
+     "pops": 51,
+     "step": 0.2209
     },
     "trunk": {
-     "acc": 5.5314,
+     "acc": 5.5119,
      "accAt": 2.45,
      "accJ": "Root",
      "pops": 2,
@@ -15692,64 +16092,64 @@
    "id": "sty_slugger",
    "impacts": [
     {
-     "dy": -0.3835,
-     "guardHandY": -0.0387,
+     "dy": -0.3859,
+     "guardHandY": -0.055,
      "hand": "L",
      "headOffX": 0.0489,
      "kind": "jab",
-     "reachZ": 3.0393,
+     "reachZ": 3.0275,
      "t": 0.5667,
-     "toTarget": 0.8392,
+     "toTarget": 0.8505,
      "zone": "head"
     },
     {
-     "dy": -0.4204,
-     "guardHandY": -0.1119,
+     "dy": -0.4162,
+     "guardHandY": -0.1223,
      "hand": "R",
      "headOffX": 0.0922,
      "kind": "cross",
-     "reachZ": 2.9421,
+     "reachZ": 2.9375,
      "t": 1.65,
-     "toTarget": 0.8701,
+     "toTarget": 0.8714,
      "zone": "head"
     },
     {
-     "dy": -0.1522,
-     "guardHandY": -0.0245,
+     "dy": -0.1505,
+     "guardHandY": -0.0422,
      "hand": "L",
-     "headOffX": 0.0961,
+     "headOffX": 0.0939,
      "kind": "leadhook",
-     "reachZ": 3.708,
+     "reachZ": 3.7098,
      "t": 2.6667,
-     "toTarget": 0.7366,
+     "toTarget": 0.7323,
      "zone": "head"
     },
     {
-     "dy": -0.3384,
-     "guardHandY": -0.0945,
+     "dy": -0.3298,
+     "guardHandY": -0.1139,
      "hand": "R",
      "headOffX": 0.0321,
      "kind": "uppercut",
-     "reachZ": 3.129,
+     "reachZ": 3.1426,
      "t": 3.7,
-     "toTarget": 0.7765,
+     "toTarget": 0.7594,
      "zone": "head"
     },
     {
-     "dy": -0.1061,
-     "guardHandY": -0.1065,
+     "dy": -0.0667,
+     "guardHandY": -0.1121,
      "hand": "R",
      "headOffX": -0.0706,
      "kind": "overhand",
-     "reachZ": 3.0812,
+     "reachZ": 3.0842,
      "t": 4.8333,
-     "toTarget": 0.7337,
+     "toTarget": 0.7271,
      "zone": "head"
     }
    ],
    "ranges": {
     "chestYaw": [
-     -47.4025,
+     -47.1491,
      36.5919
     ],
     "headPitch": [
@@ -15758,22 +16158,22 @@
     ],
     "headRoll": [
      -14.8413,
-     0.4328
+     0.4333
     ],
     "kneeL": [
-     42.4207,
-     110.1829
+     42.6905,
+     110.5601
     ],
     "kneeR": [
      32.5181,
-     102.6714
+     103.0087
     ],
     "pelvisY": [
-     1.7688,
-     2.7136
+     1.769,
+     2.7138
     ],
     "pelvisYaw": [
-     -32.1278,
+     -31.9983,
      12.2441
     ],
     "trunkPitch": [
@@ -15782,24 +16182,24 @@
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.0756,
-   "slideMaxSpeed": 0.7661,
-   "slideR": 0.1669,
+   "slideL": 0.0755,
+   "slideMaxSpeed": 0.7643,
+   "slideR": 0.1668,
    "snap": {
     "arms": {
-     "acc": 16.6994,
+     "acc": 18.101,
      "accAt": 0.5667,
      "accJ": "LE",
-     "pops": 79,
-     "step": 26.5726,
+     "pops": 74,
+     "step": 26.9541,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 15.0335,
+     "acc": 15.0543,
      "accAt": 2.45,
      "accJ": "LA",
      "pops": 66,
-     "step": 18.4724,
+     "step": 18.5158,
      "stepJ": "LA"
     },
     "neck": {
@@ -15817,11 +16217,11 @@
      "step": 0.2124
     },
     "trunk": {
-     "acc": 8.5682,
+     "acc": 8.565,
      "accAt": 2.45,
      "accJ": "Root",
      "pops": 4,
-     "step": 8.7647,
+     "step": 8.7566,
      "stepJ": "Root"
     }
    },
@@ -15831,64 +16231,64 @@
    "id": "sty_counter",
    "impacts": [
     {
-     "dy": -0.2831,
-     "guardHandY": -0.1021,
+     "dy": -0.2744,
+     "guardHandY": -0.1139,
      "hand": "L",
      "headOffX": 0.2345,
      "kind": "jab",
-     "reachZ": 3.0578,
+     "reachZ": 3.0562,
      "t": 0.5667,
-     "toTarget": 0.7792,
+     "toTarget": 0.7775,
      "zone": "head"
     },
     {
-     "dy": -0.353,
-     "guardHandY": -0.2281,
+     "dy": -0.3566,
+     "guardHandY": -0.2459,
      "hand": "R",
      "headOffX": 0.4266,
      "kind": "cross",
-     "reachZ": 3.1349,
+     "reachZ": 3.1235,
      "t": 1.65,
-     "toTarget": 0.6638,
+     "toTarget": 0.6763,
      "zone": "head"
     },
     {
-     "dy": -0.1896,
-     "guardHandY": -0.1625,
+     "dy": -0.2233,
+     "guardHandY": -0.1726,
      "hand": "L",
      "headOffX": 0.5928,
      "kind": "leadhook",
-     "reachZ": 3.9334,
+     "reachZ": 3.8382,
      "t": 2.6667,
-     "toTarget": 0.6831,
+     "toTarget": 0.6298,
      "zone": "head"
     },
     {
-     "dy": -0.4797,
-     "guardHandY": -0.1345,
+     "dy": -0.4574,
+     "guardHandY": -0.1631,
      "hand": "R",
      "headOffX": 0.3744,
      "kind": "uppercut",
-     "reachZ": 2.5844,
+     "reachZ": 2.6295,
      "t": 3.7,
-     "toTarget": 1.384,
+     "toTarget": 1.3211,
      "zone": "head"
     },
     {
-     "dy": -0.2881,
-     "guardHandY": -0.1811,
+     "dy": -0.2474,
+     "guardHandY": -0.198,
      "hand": "R",
      "headOffX": 0.4455,
      "kind": "overhand",
-     "reachZ": 2.9133,
+     "reachZ": 2.9185,
      "t": 4.8333,
-     "toTarget": 0.943,
+     "toTarget": 0.9217,
      "zone": "head"
     }
    ],
    "ranges": {
     "chestYaw": [
-     -66.0139,
+     -66.013,
      25.271
     ],
     "headPitch": [
@@ -15897,48 +16297,48 @@
     ],
     "headRoll": [
      -23.6124,
-     -4.6795
+     -4.6796
     ],
     "kneeL": [
-     43.047,
-     111.9701
+     42.3858,
+     112.1184
     ],
     "kneeR": [
-     32.518,
-     106.0737
+     32.5181,
+     106.4699
     ],
     "pelvisY": [
-     1.9067,
-     2.8518
+     1.9069,
+     2.8547
     ],
     "pelvisYaw": [
-     -43.5647,
+     -43.5646,
      3.0147
     ],
     "trunkPitch": [
      -7.0931,
-     8.0334
+     8.0335
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.0532,
-   "slideMaxSpeed": 0.7739,
-   "slideR": 0.0934,
+   "slideL": 0.0526,
+   "slideMaxSpeed": 0.7713,
+   "slideR": 0.095,
    "snap": {
     "arms": {
-     "acc": 23.2017,
+     "acc": 23.3788,
      "accAt": 0.5667,
      "accJ": "LE",
-     "pops": 79,
-     "step": 31.5508,
+     "pops": 83,
+     "step": 32.3957,
      "stepJ": "LE"
     },
     "legs": {
-     "acc": 13.1995,
-     "accAt": 1.6667,
+     "acc": 13.2824,
+     "accAt": 5.1833,
      "accJ": "RA",
-     "pops": 41,
-     "step": 14.5149,
+     "pops": 42,
+     "step": 14.5205,
      "stepJ": "LA"
     },
     "neck": {
@@ -15952,7 +16352,7 @@
     "rootMove": {
      "acc": 0.0875,
      "accAt": 3.5167,
-     "pops": 51,
+     "pops": 50,
      "step": 0.2288
     },
     "trunk": {
@@ -15970,58 +16370,58 @@
    "id": "sty_outboxer_heavy",
    "impacts": [
     {
-     "dy": -0.2229,
-     "guardHandY": -0.0607,
+     "dy": -0.2137,
+     "guardHandY": -0.0798,
      "hand": "L",
      "headOffX": -0.0368,
      "kind": "jab",
-     "reachZ": 3.1525,
+     "reachZ": 3.1128,
      "t": 0.5667,
-     "toTarget": 0.6692,
+     "toTarget": 0.704,
      "zone": "head"
     },
     {
-     "dy": -0.4047,
-     "guardHandY": -0.2702,
+     "dy": -0.3887,
+     "guardHandY": -0.2868,
      "hand": "R",
      "headOffX": 0.0403,
      "kind": "cross",
-     "reachZ": 2.9986,
+     "reachZ": 2.9916,
      "t": 1.65,
-     "toTarget": 0.81,
+     "toTarget": 0.808,
      "zone": "head"
     },
     {
-     "dy": -0.17,
-     "guardHandY": -0.0161,
+     "dy": -0.1705,
+     "guardHandY": -0.039,
      "hand": "L",
      "headOffX": -0.0008,
      "kind": "leadhook",
-     "reachZ": 3.8328,
+     "reachZ": 3.8346,
      "t": 2.6667,
-     "toTarget": 0.7542,
+     "toTarget": 0.7506,
      "zone": "head"
     },
     {
-     "dy": -0.3929,
-     "guardHandY": -0.0797,
+     "dy": -0.3795,
+     "guardHandY": -0.1151,
      "hand": "R",
      "headOffX": 0.121,
      "kind": "uppercut",
-     "reachZ": 2.7931,
+     "reachZ": 2.8271,
      "t": 3.7,
-     "toTarget": 1.1278,
+     "toTarget": 1.0837,
      "zone": "head"
     },
     {
-     "dy": -0.3865,
-     "guardHandY": -0.1344,
+     "dy": -0.3391,
+     "guardHandY": -0.1558,
      "hand": "R",
      "headOffX": 0.2615,
      "kind": "overhand",
-     "reachZ": 2.8151,
+     "reachZ": 2.8138,
      "t": 4.8333,
-     "toTarget": 1.0618,
+     "toTarget": 1.0434,
      "zone": "head"
     }
    ],
@@ -16036,19 +16436,19 @@
     ],
     "headRoll": [
      -22.0488,
-     1.8046
+     1.8105
     ],
     "kneeL": [
-     28.9636,
-     110.8381
+     29.0843,
+     110.9754
     ],
     "kneeR": [
-     10.8904,
-     86.1261
+     10.9778,
+     86.3766
     ],
     "pelvisY": [
-     1.9789,
-     3.0352
+     1.9942,
+     3.0359
     ],
     "pelvisYaw": [
      -40.042,
@@ -16060,24 +16460,24 @@
     ]
    },
    "sinkMin": 0,
-   "slideL": 0.0714,
+   "slideL": 0.0712,
    "slideMaxSpeed": 0.7558,
-   "slideR": 0.0346,
+   "slideR": 0.0345,
    "snap": {
     "arms": {
-     "acc": 29.1476,
-     "accAt": 2.5667,
-     "accJ": "LS",
-     "pops": 78,
-     "step": 35.8889,
+     "acc": 22.0011,
+     "accAt": 0.5667,
+     "accJ": "LE",
+     "pops": 74,
+     "step": 35.2582,
      "stepJ": "LS"
     },
     "legs": {
-     "acc": 14.3439,
+     "acc": 14.3017,
      "accAt": 3.6333,
      "accJ": "LK",
-     "pops": 82,
-     "step": 19.714,
+     "pops": 79,
+     "step": 19.6208,
      "stepJ": "RK"
     },
     "neck": {
