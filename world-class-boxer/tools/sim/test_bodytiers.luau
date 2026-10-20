@@ -1703,7 +1703,7 @@ do
 	check("headgear: the drawn face, its damage and sweat unobstructed", #bad == 0, table.concat(bad, "; ", 1, math.min(#bad, 8)))
 
 	-- the officials' caps leave the drawn face unobstructed: the same rays from the drawn ink to a camera in front and
-	-- at 3/4, level and 10 deg above, hit no cap part (every style, detail and head size), and no visible cap part
+	-- at 3/4, level (the padded ink) and from above (the measured ink: 10 deg in front, 8 at the 3/4), hit no cap part (every style, detail and head size), and no visible cap part
 	-- comes down below Head.CAP_CLEAR in front of the face (|x| < 0.3), which is above the padded brow ink
 	check("cap: the clearance sits above the padded brow ink", Head.CAP_CLEAR > Head.DECAL_INK[2][4] + 0.02)
 	local capBad, low = {}, {}
@@ -1726,11 +1726,15 @@ do
 							local ax = b[1] + (b[2] - b[1]) * i / 6
 							local ay = b[3] + (b[4] - b[3]) * j / 6
 							for _, sx in ipairs({ -1, 1 }) do
-								for _, pitch in ipairs({ 0, 10 }) do
-									local w = blocked(fm, sx * ax, ay, { 0, 32, -32 }, label, hatParts, pitch)
-									if w then
-										table.insert(capBad, w)
-									end
+								-- level: the padded ink at the front and the 3/4; from above (the game's camera, the
+								-- renders' 6 / 8 deg): the measured ink, 10 deg at the front and 8 at the 3/4
+								local w = blocked(fm, sx * ax, ay, { 0, 32, -32 }, label, hatParts, 0)
+								if not w and ay <= INK_MEASURED.yHi then
+									w = blocked(fm, sx * ax, ay, { 0 }, label, hatParts, 10)
+										or blocked(fm, sx * ax, ay, { 32, -32 }, label, hatParts, 8)
+								end
+								if w then
+									table.insert(capBad, w)
 								end
 							end
 						end

@@ -363,6 +363,14 @@ onAct = function(rig, s, now, predicted)
 		act.zone = f3 == "body" and "body" or "head"
 		act.windup = clamp(tonumber(f4) or 0.2, 0.08, 0.9)
 		act.power = clamp(tonumber(f5) or 0.6, 0, 1.5)
+		-- a feint (FightEngine: "jab|L|head|0.12|0.20" - a short, light jab that is never meant to land): the
+		-- shoulder and the lead hand twitch with a half step, the arm never goes out (AnimFight.applyAct "feint")
+		local pw = tonumber(f5)
+		if k == "jab" and pw and pw <= 0.25 and act.windup <= 0.13 then
+			act.kind, act.dur = "feint", 0.38
+			rig.act = act
+			return
+		end
 		act.dur = act.windup * 2.05 + 0.045
 		-- (the optional sixth field: the punch's place in a chain - 2 and up flow out of the last punch)
 		-- (or the model's Chain attribute, which FightEngine sets just before the act: the same number)

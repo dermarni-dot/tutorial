@@ -1012,6 +1012,14 @@ function AnimFight.startPunch(rig, act, t)
 		kind = hand == "L" and "leadhook" or "rearhook"
 	end
 	act.pkind = kind
+	-- inside work in the clinch (FightEngine: "uppercut|<hand>|body|0.18|0.35" while tied up): a short dig to the
+	-- body - little turn, no dip or lunge, a short arm - not a full punch thrown out of a hug
+	if rig.a.Guard == "clinch" and not act.over then
+		act.over = { hip = (PUNCH[kind] and PUNCH[kind].hip or 0.3) * 0.35, sho = (PUNCH[kind] and PUNCH[kind].sho or 0.2) * 0.35,
+			fwd = 0.02, side = 0, dip = 0.02, aDip = 0.08, aHip = 0.02, aSho = 0.02, load = 0.14, reach = 0.72, rec = 0.75, pivotAmt = 0.15,
+			heelR = 0.15, heelL = 0.1, step = false, stepR = false }
+		act.inside = true
+	end
 	act.prm = punchParams(rig, kind, comboPos, act.variant, act.over)
 	if kind == "uppercut" then
 		act.prm.mirror = hand == "L" and -1 or 1
@@ -1823,10 +1831,13 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 		-- in the recovery it unwinds to the stance (fh / fs = the share of the starting values left)
 		local drv = el < w
 		local fh, fs = drv and (1 - hipK) or 0, drv and (1 - shoK) or 0
-		local dipExtra = body and (prm.path == "upper" and 0.2 or 0.42) or 0
+		local dipExtra = (body and not act.inside) and (prm.path == "upper" and 0.2 or 0.42) or 0
 		local leanExtra = body and -0.06 or 0
 		-- (a hook to the body turns less: the fist has to land in front of the chest, not beside it)
 		local rk = (body and prm.path == "hook") and 0.72 or 1
+		if not act.turnK and act.inside then
+			act.turnK, act.lunge = 1, 0
+		end
 		if not act.turnK then
 			act.turnK, act.lunge = fitPunch(rig, p, act, body, near, pw * rk, (prm.dip + dipExtra) * pw)
 			-- a long lunge: the lead foot steps in with it (an overhand's too: its lunge up at a taller man's
@@ -1988,6 +1999,10 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 	local inward = L_ and 1 or -1
 	if guard and g.ok and rig.lod >= 2 then
 		local Pg = V3(guard[1], guard[2] - (rig.guardSink or 0) * 0.3, guard[3])
+		if act.inside then
+			-- (a dig starts low and tucked in, the elbow on the ribs, not from the guard at the face)
+			Pg = Pg + V3(0, -0.55, 0.3)
+		end
 		local P0 = act.from or Pg
 		local eT = prm.elbowT or prm.tArm
 		local pk = PEAK[prm.path] or PEAK.straight
@@ -2175,8 +2190,14 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 		-- (from the guard the arm IK takes over from the stance's arm as the punch starts moving it, not
 		-- in the last frames of the drive)
 		local kb = act.from and 1 or smooth(clamp((u - eT) / 0.3, 0, 1))
+		if act.inside then
+			-- (out of the tie-up the arm comes off him over the whole drive: never a whip down to the body)
+			kb = smooth(clamp(u / 0.95, 0, 1))
+		end
 		if retK > 0 then
-			kb = 1
+			-- (inside work goes back to the tie-up, not to a guard: the arm is handed back to the clinch pose
+			-- over the recovery)
+			kb = act.inside and (1 - smooth(retK)) or 1
 		end
 		-- the elbow's direction (the pole) blends from the guard's to the punch's and back; where that
 		-- blend points along the arm itself (the raised, out-turned elbow of an overhand or a hook
@@ -3083,6 +3104,25 @@ function AnimFight.applyAct(p, rig, act, t)
 	elseif k == "blockhit" then
 		flex(rig, "forearms", pulse)
 		flex(rig, "frontDelt", pulse * 0.6)
+	elseif k == "feint" then
+		-- the feint: the lead shoulder dips and turns in as if the jab were coming, the lead glove twitches a
+		-- third of the way out and back, the head dips with it, the lead foot half steps in - and no punch
+		local e = K.attackDecay(el, 0.09, act.dur)
+		if not act.stepped then
+			act.stepped = true
+			if L.ready(rig, "L", t) then
+				L.request(rig, "L", 0, -0.18, 0.12, 0.05, 0.3, t)
+			end
+		end
+		p.Root = CF(0, -0.07 * e, -0.08 * e) * p.Root * A(0, -0.05 * e, 0)
+		p.W = p.W * A(-0.07 * e, -0.15 * e, 0.09 * e)
+		p.Neck = p.Neck * A(0.06 * e, 0.12 * e, -0.04 * e)
+		local g = rig.gl
+		if g and rig.lod >= 2 then
+			guardArm(rig, p, "L", g[1] + 0.05 * e, g[2] + 0.06 * e, g[3] - 0.5 * e, 1, nil, rig.guardPoleL)
+		end
+		flex(rig, "frontDelt", e * 0.6, -1)
+		flex(rig, "obliques", e * 0.4)
 	elseif EVADE[k] then
 		-- the defence: the move sets where the body wants to be this frame; AnimFight.evade springs it there (next
 		-- frame, under the stance: the punches aim from it), so every dodge eases in and out, chains into the next

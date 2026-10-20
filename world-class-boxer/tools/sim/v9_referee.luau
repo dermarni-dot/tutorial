@@ -4,7 +4,7 @@
 --   * the referee's look comes from the server's own code (Officials.Look when the src has it, else FightEngine's old
 --     SpawnReferee inline: Looks.Random + Looks.RandomBuild, opts outfit = "referee", detail = "medium", bare hands),
 --     built by Builder.Cosmetics on the fake R15 rig of v8_scene / v9_anim (the tier swap, the classic head and its
---     drawn face decal, the headgear, the outfit: mesh pieces through BuilderGear or the part-built fallback)
+--     drawn face decal, the headgear or the officials' cap (BoxerLook/Hat), the outfit: mesh pieces through BuilderGear or the part-built fallback)
 --   * the spar coach (outfit "cornerman") the same way, and two boxers for scale (gloves, trunks, boots)
 --   * the poses are the REAL client Animator (src/client/Animator.client.lua + Anim*) on a virtual clock: the referee
 --     tagged "Referee" (Loop = referee: his stance), walking (the root glides, AssemblyLinearVelocity set, as the
@@ -548,7 +548,7 @@ end
 -- what an official wears: outfit pieces (mesh / part-built), boxing gear found on him, face decals
 local BOXING = { "Glove", "Wrap", "Trunk", "Waistband", "Boot", "Sole_", "ShoeLaces", "AnkleSock", "ShoeCollar", "Mouthguard" }
 local function audit(model)
-	local rec = { tiers = model:GetAttribute("BodyTiers"), mesh = {}, parts = {}, boxing = {}, decals = 0, headgear = false }
+	local rec = { tiers = model:GetAttribute("BodyTiers"), mesh = {}, parts = {}, boxing = {}, decals = 0, headgear = false, hat = false }
 	for _, d in ipairs(model:GetDescendants()) do
 		if d.ClassName == "Decal" and d.Parent and d.Parent.Name == "Head" then
 			rec.decals += 1
@@ -557,6 +557,8 @@ local function audit(model)
 			local folder = d.Parent.Name
 			if folder == "Headgear" then
 				rec.headgear = true
+			elseif folder == "Hat" then
+				rec.hat = true
 			elseif d:GetAttribute("GearMesh") then
 				table.insert(rec.mesh, d.Name)
 			elseif folder == "Attire" or folder == "Hands" then
@@ -620,8 +622,8 @@ local function official(seed, kind, champ, at, tier)
 	rec.kind = kind
 	rec.seed = seed
 	rec.face = app.face and app.face.style
-	print(string.format("%s seed %d: tiers %s  face %s  decals %d  headgear %s\n  mesh   %s\n  parts  %s\n  BOXING %s", kind, seed,
-		tostring(rec.tiers), tostring(rec.face), rec.decals, tostring(rec.headgear), table.concat(rec.mesh, " "), table.concat(rec.parts, " "),
+	print(string.format("%s seed %d: tiers %s  face %s  decals %d  headgear %s  hat %s\n  mesh   %s\n  parts  %s\n  BOXING %s", kind, seed,
+		tostring(rec.tiers), tostring(rec.face), rec.decals, tostring(rec.headgear), tostring(rec.hat), table.concat(rec.mesh, " "), table.concat(rec.parts, " "),
 		#rec.boxing > 0 and table.concat(rec.boxing, " ") or "none"))
 	return m, rec
 end

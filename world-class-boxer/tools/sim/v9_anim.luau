@@ -1309,6 +1309,11 @@ scen("footwork", 3.6, { { 0.3, "A", "move", { 0, -1.0, 0.45 } }, { 1.1, "A", "mo
 scen("pivot", 2.2, { { 0.4, "A", "act", "pivot|L" }, { 0.4, "A", "move", { 0, 0, 0.05, -0.6, pivot = true } } })
 scen("clinch", 2.8, { { 0.2, "A", "Guard", "clinch" }, { 0.2, "B", "Guard", "clinch" }, { 0.2, "A", "move", { 0, -0.9, 0.3 } },
 	{ 2.2, "A", "Guard", "stance" }, { 2.2, "B", "Guard", "stance" }, { 2.2, "A", "move", { 0, 0.9, 0.4 } } })
+-- the feint (FightEngine's: a short, light jab) and inside work in the clinch (short body uppercuts)
+scen("feint", 1.4, { { 0.4, "A", "act", "jab|L|head|0.12|0.20" }, { 0.9, "A", "act", "jab|L|head|0.12|0.20" } })
+scen("clinch_inside", 2.8, { { 0.2, "A", "Guard", "clinch" }, { 0.2, "B", "Guard", "clinch" }, { 0.2, "A", "move", { 0, -0.9, 0.3 } },
+	punchAt(0.8, "A", "uppercut", "L", "body", 0.18), punchAt(1.25, "A", "uppercut", "R", "body", 0.18), punchAt(1.7, "A", "uppercut", "L", "body", 0.18),
+	{ 2.3, "A", "Guard", "stance" }, { 2.3, "B", "Guard", "stance" }, { 2.3, "A", "move", { 0, 0.9, 0.4 } } })
 -- punches
 for _, pk in ipairs({ { "jab", "L" }, { "cross", "R" }, { "leadhook", "L" }, { "rearhook", "R" }, { "uppercut", "R" }, { "overhand", "R" } }) do
 	scen(pk[1], 1.5, { punchAt(0.4, "A", pk[1], pk[2]) })
