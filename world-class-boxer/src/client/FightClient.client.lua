@@ -284,6 +284,15 @@ function KM.module(name)
 	end
 	return nil
 end
+-- the knockdown screen (BoxerClient.KnockFX), every call guarded: a missing module or an error there never
+-- touches the fight
+function KM.knock(method, ...)
+	local mod = KM.module("KnockFX")
+	local fn = mod and mod[method]
+	if fn then
+		pcall(fn, ...)
+	end
+end
 function KM.now()
 	local Settings = KM.module("Settings")
 	if Settings and type(Settings.Keymap) == "function" then
@@ -321,84 +330,35 @@ do
 		return Color3.fromRGB(c[1], c[2], c[3])
 	end
 
-	-- the one colour ramp every damage bar uses (HEALTH, HEAD, BODY; UI.Ramp, shared with the gym
-	-- screens): the value decides the colour, the label and icon say which bar it is. Stamina has its
-	-- own: blue while there is gas, amber from half, red under a quarter (and then it pulses: updateFX)
-	rampColor, stamColor = UI.Ramp, UI.StamColor
+	-- the one colour ramp every damage bar uses (HEALTH, HEAD, BODY; UI.HealthRamp: UI.Ramp's bands, blended):
+	-- the value decides the colour, the label and icon say which bar it is. Stamina has its own: blue
+	-- while there is gas, amber from a third, red when it is gone (and then it pulses: updateFX)
+	rampColor, stamColor = UI.HealthRamp, UI.StamRamp
 
-	-- a bar with a permanent-damage cap (striped, from the far end), a trailing white "ghost" that
-	-- shows the chunk just lost, and the live fill. side "R" depletes toward the outside edge.
-	-- label (optional) sits inside the bar on the near end; showValue puts the number on the far end
-	-- (thick bars only: a thin bar carries its number on its caption)
-	local function hudBar(parent, props, color, side, label, thick, showValue)
-		local right = side == "R"
-		local bg = UI.Frame(parent, props)
-		bg.BackgroundColor3 = T.ink
-		bg.BackgroundTransparency = 0.1
-		bg.ClipsDescendants = true
-		UI.Corner(bg, thick and 4 or 2)
-		local anchor = right and Vector2.new(1, 0) or Vector2.new(0, 0)
-		local pos = right and UDim2.fromScale(1, 0) or UDim2.fromScale(0, 0)
-		local ghost = UI.Frame(bg, { Name = "Ghost", Size = UDim2.fromScale(1, 1), AnchorPoint = anchor, Position = pos, BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.2, ZIndex = 2 })
-		local fill = UI.Frame(bg, { Name = "Fill", Size = UDim2.fromScale(1, 1), AnchorPoint = anchor, Position = pos, BackgroundColor3 = color, ZIndex = 3 })
-		UI.Gradient(fill, { Color3.new(1, 1, 1), Color3.fromRGB(165, 165, 165) }, 90)
-		-- the cap eats in from the far end: damage that will not come back this fight
-		local cap = UI.Frame(bg, { Name = "Cap", Size = UDim2.fromScale(0, 1), AnchorPoint = right and Vector2.new(0, 0) or Vector2.new(1, 0),
-			Position = right and UDim2.fromScale(0, 0) or UDim2.fromScale(1, 0), BackgroundColor3 = Color3.fromRGB(80, 14, 20), ZIndex = 4 })
-		local stripes = UI.Gradient(cap, Color3.new(1, 1, 1), 35, NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.24, 0.1), NumberSequenceKeypoint.new(0.25, 0.55), NumberSequenceKeypoint.new(0.49, 0.55),
-			NumberSequenceKeypoint.new(0.5, 0.1), NumberSequenceKeypoint.new(0.74, 0.1), NumberSequenceKeypoint.new(0.75, 0.55), NumberSequenceKeypoint.new(1, 0.55),
-		}))
-		pcall(function()
-			stripes.TileMode = Enum.GradientTileMode.Repeat
-			stripes.Scale = 0.25
-		end)
-		local value
-		if showValue then
-			value = UI.Text(bg, "", { Name = "Value", Face = "number", TextSize = 16, TextStrokeTransparency = 0.5, ZIndex = 5, Size = UDim2.fromScale(1, 1),
-				AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = right and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right, TextWrapped = false })
-			UI.New("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6), Parent = value })
-		end
-		local labelText
-		if label then
-			labelText = UI.Text(bg, label, { Name = "Label", Font = T.semi, TextSize = 13, TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.6, ZIndex = 5,
-				Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = right and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left, TextWrapped = false })
-			UI.New("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), Parent = labelText })
-		end
-		return { bg = bg, fill = fill, ghost = ghost, cap = cap, value = value, label = labelText, v = 1, ghostV = 1, pending = false }
+	-- the broadcast bar (UI.FightBar): the inner end cut on a slant and mirrored for the blue corner, five
+	-- segments on the HEALTH bar, a permanent-damage cap eating in from the inner end, a red ghost of the
+	-- chunk just lost (held a beat, then it drains), the chunk the corner wins back glowing between rounds,
+	-- a white flash on a big hit and a strobe while rocked, a red throb under a quarter. label (optional)
+	-- sits inside on the outer end; showValue puts the number (and a "+N" on recovery) on the inner end.
+	-- side "R" fills from the outside edge. stam = the stamina bar (its own blue, a refill shimmer)
+	local function hudBar(parent, props, color, side, label, thick, showValue, stam)
+		local b = UI.FightBar(parent, props, {
+			side = side, color = color, label = label, number = showValue, segments = (thick and label) and 5 or 0, slant = thick and 0.85 or 1.1,
+			low = stam and 0.2 or 0.25, shimmer = stam, ghost = stam and Color3.fromRGB(150, 196, 255) or T.red, heal = not stam,
+		})
+		b.ghostColor = b.ghost.BackgroundColor3
+		return b
 	end
 
 	function setBar(b, frac, capFrac, color)
-		frac = math.clamp(frac or 0, 0, 1)
-		capFrac = math.clamp(capFrac or 1, 0, 1)
-		b.fill.Size = UDim2.fromScale(frac, 1)
-		if color then
-			b.fill.BackgroundColor3 = color
-		end
-		b.cap.Size = UDim2.fromScale(1 - capFrac, 1)
-		local pct = math.floor(frac * 100 + 0.5)
-		if b.value then
-			b.value.Text = tostring(pct)
-		end
+		b:set(frac, capFrac, color)
 		if b.caption then
 			-- thin pool bars carry the number on their caption: "HEAD  72"
-			b.caption.Text = b.word .. "  " .. pct
-		end
-		if frac < b.ghostV - 0.003 then
-			-- hold the lost chunk for a beat, then let it drain away
-			if not b.pending then
-				b.pending = true
-				task.delay(0.35, function()
-					b.pending = false
-					b.ghostV = b.v
-					TweenService:Create(b.ghost, TweenInfo.new(0.45, Enum.EasingStyle.Quad), { Size = UDim2.fromScale(b.v, 1) }):Play()
-				end)
+			local text = b.word .. "  " .. math.floor(math.clamp(frac or 0, 0, 1) * 100 + 0.5)
+			if b.caption.Text ~= text then
+				b.caption.Text = text
 			end
-		elseif not b.pending then
-			b.ghostV = frac
-			b.ghost.Size = UDim2.fromScale(frac, 1)
 		end
-		b.v = frac
 	end
 
 	-- the hit-location figure on the outer side of each panel: head, neck, shoulders, both sides of the
@@ -524,22 +484,24 @@ do
 		-- record + nickname under the name
 		local sub = UI.Text(f, "", { Name = "Sub", Font = T.semi, TextSize = 13, TextColor3 = T.sub, AnchorPoint = outer, AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = align,
 			TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-		-- HEALTH (overall), then HEAD | BODY | STAMINA
+		-- HEALTH (overall), STAMINA right under it (thinner, its own blue), then HEAD | BODY
 		local health = hudBar(f, { Name = "Health", AnchorPoint = outer }, T.green, side, "HEALTH", true, true)
+		local stam = hudBar(f, { Name = "Stamina", AnchorPoint = outer }, T.blue, side, nil, false, false, true)
+		local stamIcon = UI.Icon(f, "bolt", 14, Color3.fromRGB(110, 190, 255), { Name = "StamIcon", AnchorPoint = Vector2.new(left and 0 or 1, 0.5) })
 		local pools = UI.Frame(f, { Name = "Pools", BackgroundTransparency = 1, AnchorPoint = outer })
 		local function pool(i, word, color)
-			local cell = UI.Frame(pools, { Name = word, BackgroundTransparency = 1, Position = UDim2.new((i - 1) / 3, i > 1 and 4 or 0, 0, 0), Size = UDim2.new(1 / 3, -6, 1, 0) })
-			local cap = UI.Text(cell, word, { Name = "Caption", Font = T.semi, TextSize = 13, TextColor3 = T.sub, Size = UDim2.new(1, 0, 0, 16), AutomaticSize = Enum.AutomaticSize.None,
-				TextXAlignment = align, TextWrapped = false })
+			local cell = UI.Frame(pools, { Name = word, BackgroundTransparency = 1, Position = UDim2.new((i - 1) / 2, i > 1 and 6 or 0, 0, 0), Size = UDim2.new(1 / 2, -6, 1, 0) })
+			local cap = UI.Text(cell, word, { Name = "Caption", Font = T.semi, TextSize = 13, TextColor3 = T.sub, AnchorPoint = Vector2.new(left and 0 or 1, 0),
+				Position = left and UDim2.fromScale(0, 0) or UDim2.fromScale(1, 0), Size = UDim2.new(0, 78, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = align, TextWrapped = false })
 			local glyph = poolGlyph(cell, word, T.sub)
 			glyph.AnchorPoint = Vector2.new(left and 0 or 1, 0.5)
-			local b = hudBar(cell, { Name = "Bar" }, color, side)
+			local b = hudBar(cell, { Name = "Bar", AnchorPoint = Vector2.new(left and 0 or 1, 0.5) }, color, side)
 			b.caption, b.word, b.glyph, b.cell = cap, word, glyph, cell
 			return b
 		end
-		local head = pool(left and 1 or 3, "HEAD", T.green)
-		local body = pool(2, "BODY", T.green)
-		local stam = pool(left and 3 or 1, "STAMINA", T.blue)
+		local head = pool(left and 1 or 2, "HEAD", T.green)
+		local body = pool(left and 2 or 1, "BODY", T.green)
+		stam.icon = stamIcon
 		-- damage icons + the player's balance
 		local icons = UI.Frame(f, { Name = "Icons", BackgroundTransparency = 1, AnchorPoint = outer })
 		UI.List(icons, 5, true, left and Enum.HorizontalAlignment.Left or Enum.HorizontalAlignment.Right)
@@ -586,15 +548,19 @@ do
 			UI.SetTextSize(p.name, 21)
 			p.tags.Position = left and UDim2.new(1, -8, 0, 5) or UDim2.fromOffset(8, 5)
 			p.sub.Visible = false
-			p.health.bg.Position, p.health.bg.Size = at(10, 32), UDim2.new(1, -20, 0, 18)
+			-- the slim strip: HEALTH big (no caption: the colour and the number say it), STAMINA a thin blue
+			-- line under it, HEAD | BODY as two glyph-marked hairlines
+			p.health.bg.Position, p.health.bg.Size = at(10, 31), UDim2.new(1, -20, 0, 19)
 			p.health.label.Visible = false
-			p.pools.Position, p.pools.Size = at(10, 55), UDim2.new(1, -20, 0, 10)
-			for _, b in ipairs({ p.head, p.body, p.stam }) do
+			p.stam.icon.Visible = false
+			p.stam.bg.Position, p.stam.bg.Size = at(10, 52), UDim2.new(1, -20, 0, 7)
+			p.pools.Position, p.pools.Size = at(10, 61), UDim2.new(1, -20, 0, 7)
+			for _, b in ipairs({ p.head, p.body }) do
 				b.caption.Visible = false
 				b.glyph.Visible = true
 				b.glyph.Position = left and UDim2.new(0, 0, 0.5, 0) or UDim2.new(1, 0, 0.5, 0)
-				b.bg.Position = left and UDim2.fromOffset(16, 1) or UDim2.fromOffset(0, 1)
-				b.bg.Size = UDim2.new(1, -16, 0, 8)
+				b.bg.Position = left and UDim2.new(0, 15, 0.5, 0) or UDim2.new(1, -15, 0.5, 0)
+				b.bg.Size = UDim2.new(1, -15, 0, 5)
 			end
 			p.icons.Visible = false
 			p.zones.frame.Visible = false
@@ -607,13 +573,19 @@ do
 			p.tags.Position = left and UDim2.new(1, -12, 0, 10) or UDim2.fromOffset(12, 10)
 			p.sub.Visible = true
 			p.sub.Position, p.sub.Size = at(54, 39), UDim2.new(1, -66, 0, 16)
-			p.health.bg.Position, p.health.bg.Size = at(x0, 60), UDim2.new(1, -(x0 + 14), 0, 20)
+			-- HEALTH 24 tall with its caption and number, STAMINA a 9 px blue bar under it (its bolt in the
+			-- figure column's edge), HEAD | BODY in one row: caption with the number, then the bar
+			p.health.bg.Position, p.health.bg.Size = at(x0, 58), UDim2.new(1, -(x0 + 14), 0, 24)
 			p.health.label.Visible = true
-			p.pools.Position, p.pools.Size = at(x0, 86), UDim2.new(1, -(x0 + 14), 0, 30)
-			for _, b in ipairs({ p.head, p.body, p.stam }) do
+			p.stam.icon.Visible = true
+			p.stam.icon.Position = left and UDim2.fromOffset(x0, 90) or UDim2.new(1, -x0, 0, 90)
+			p.stam.bg.Position, p.stam.bg.Size = at(x0 + 18, 86), UDim2.new(1, -(x0 + 18 + 14), 0, 9)
+			p.pools.Position, p.pools.Size = at(x0, 100), UDim2.new(1, -(x0 + 14), 0, 16)
+			for _, b in ipairs({ p.head, p.body }) do
 				b.caption.Visible = true
 				b.glyph.Visible = false
-				b.bg.Position, b.bg.Size = UDim2.fromOffset(0, 19), UDim2.new(1, 0, 0, 10)
+				b.bg.Position = left and UDim2.new(0, 80, 0.5, 0) or UDim2.new(1, -80, 0.5, 0)
+				b.bg.Size = UDim2.new(1, -80, 0, 7)
 			end
 			p.icons.Visible = true
 			p.icons.Position, p.icons.Size = at(x0, 118), UDim2.new(1, -(x0 + 14), 0, 20)
@@ -1415,7 +1387,7 @@ do
 	end
 	function showCount(n, standing)
 		crowdStrip.Visible = false
-		countBox.Visible = true
+		countBox.Visible = not getup.Visible -- (down yourself: the get-up panel carries the count)
 		countNum.Text = tostring(n)
 		countNum.TextColor3 = standing and Color3.fromRGB(230, 230, 230) or (n >= 8 and T.red or Color3.new(1, 1, 1))
 		countScale.Scale = 1.35
@@ -1426,27 +1398,171 @@ do
 	end
 
 	------------------------------------------------------------------------
-	-- Get-up: mash SPACE / tap, and time presses on the sweeping marker (green zone = worth 3)
+	-- Get-up: mash SPACE / tap, and time presses on the sweeping marker (green zone = worth 3). The panel
+	-- carries the referee's count itself (big, on its left: the count box stands aside while it is up), the
+	-- GET UP! call-out with the press of the device in use, the strength meter (a pulse on every press, a
+	-- gold flash on a green triple), the timing bar (a wide glowing zone, the marker with a trail), and
+	-- ends on STAND UP! or COUNTED OUT. The whole panel is the tap target.
 	------------------------------------------------------------------------
-	getup = UI.Frame(hud, { Name = "GetUp", Size = UDim2.fromOffset(560, 160), Position = UDim2.new(0.5, 0, 0.64, 0), AnchorPoint = Vector2.new(0.5, 0), Visible = false, ZIndex = 24 })
-	UI.Glass(getup, { transparency = 0.05, radius = UI.R.xl, stroke = T.red, strokeT = 0.3 })
-	-- the broadcast's red alert band behind the title (restyle only: the panel's logic is unchanged)
-	local getupBand = UI.Frame(getup, { Name = "AlertBand", Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = T.red, ZIndex = 24 })
-	UI.Corner(getupBand, UI.R.xl)
-	UI.Gradient(getupBand, Color3.new(1, 1, 1), 90, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.72), NumberSequenceKeypoint.new(1, 1) }))
-	getupTitle = UI.Text(getup, "YOU'RE DOWN!  MASH SPACE / TAP - HIT THE GREEN ZONE", { Face = "displayMed", TextSize = 22, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(12, 12),
-		Size = UDim2.new(1, -24, 0, 26), TextColor3 = T.red, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextScaled = true, ZIndex = 25 })
-	UI.New("UITextSizeConstraint", { MaxTextSize = 22, MinTextSize = 16, Parent = getupTitle })
-	local getupBarBg
-	getupBarBg, setGetup = UI.Bar(getup, { Position = UDim2.fromOffset(24, 48), Size = UDim2.new(1, -48, 0, 20), ZIndex = 25 }, T.gold)
-	local timing = UI.Frame(getup, { Position = UDim2.fromOffset(24, 80), Size = UDim2.new(1, -48, 0, 26), BackgroundColor3 = T.ink, ZIndex = 25 })
-	UI.Corner(timing, 6)
-	zone = UI.Frame(timing, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(0.2, 1), BackgroundColor3 = T.green, BackgroundTransparency = 0.2, ZIndex = 26 })
-	UI.Corner(zone, 6)
-	marker = UI.Frame(timing, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, -0.2), Size = UDim2.new(0, 5, 1.4, 0), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 27 })
-	UI.Corner(marker, 2)
-	getupHint = UI.Text(getup, "", { Font = T.semi, TextSize = 14, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(12, 118), Size = UDim2.new(1, -24, 0, 30),
-		AutomaticSize = Enum.AutomaticSize.None, ZIndex = 25 })
+	getup = UI.Frame(hud, { Name = "GetUp", Size = UDim2.fromOffset(660, 214), Position = UDim2.new(0.5, 0, 0.6, 0), AnchorPoint = Vector2.new(0.5, 0), BackgroundTransparency = 1, Visible = false, ZIndex = 24 })
+	local GU = { trail = {}, last = {} }
+	KM.getupUI = GU
+	GU.scale = UI.New("UIScale", { Parent = getup })
+	-- the body shakes inside the panel (the tap target stays put)
+	GU.body = UI.Frame(getup, { Name = "Body", Size = UDim2.fromScale(1, 1), ZIndex = 24 })
+	UI.Glass(GU.body, { transparency = 0.04, radius = UI.R.xl, stroke = T.red, strokeT = 0.25 })
+	GU.stroke = GU.body:FindFirstChildOfClass("UIStroke")
+	GU.band = UI.Frame(GU.body, { Name = "AlertBand", Size = UDim2.new(1, 0, 0, 70), BackgroundColor3 = T.red, ZIndex = 24 })
+	UI.Corner(GU.band, UI.R.xl)
+	UI.Gradient(GU.band, Color3.new(1, 1, 1), 90, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 1) }))
+	-- the referee's count
+	GU.countBox = UI.Frame(GU.body, { Name = "CountBox", Position = UDim2.fromOffset(14, 14), Size = UDim2.new(0, 132, 1, -28), BackgroundColor3 = T.ink, BackgroundTransparency = 0.1, ZIndex = 25 })
+	UI.Corner(GU.countBox, UI.R.lg)
+	GU.countStroke = UI.New("UIStroke", { Color = T.gold, Transparency = 0.35, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = GU.countBox })
+	GU.countKicker = UI.Text(GU.countBox, "COUNT", { Name = "Kicker", Font = T.semi, TextSize = 13, TextColor3 = T.gold, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 18),
+		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, ZIndex = 26 })
+	GU.countNum = UI.Text(GU.countBox, "", { Name = "Number", Face = "display", TextSize = 104, TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.6, Position = UDim2.fromOffset(0, 24),
+		Size = UDim2.new(1, 0, 1, -50), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, ZIndex = 26 })
+	GU.countScale = UI.New("UIScale", { Parent = GU.countNum })
+	GU.countOf = UI.Text(GU.countBox, "OF 10", { Name = "Of", Font = T.semi, TextSize = 13, TextColor3 = T.sub, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, -6),
+		Size = UDim2.new(1, 0, 0, 18), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, ZIndex = 26 })
+	-- the call-out and the press to make
+	GU.right = UI.Frame(GU.body, { Name = "Main", BackgroundTransparency = 1, Position = UDim2.fromOffset(162, 10), Size = UDim2.new(1, -182, 1, -20), ZIndex = 25 })
+	getupTitle = UI.Text(GU.right, "GET UP!", { Name = "Callout", Face = "display", TextSize = 46, TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.6, Position = UDim2.fromOffset(0, 0),
+		Size = UDim2.new(1, -150, 0, 54), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextScaled = true, ZIndex = 26 })
+	UI.New("UITextSizeConstraint", { MaxTextSize = 46, MinTextSize = 22, Parent = getupTitle })
+	GU.press = UI.Frame(GU.right, { Name = "Press", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 8), Size = UDim2.fromOffset(0, 40), AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundColor3 = T.gold, ZIndex = 26 })
+	UI.Corner(GU.press, UI.R.md)
+	UI.Gradient(GU.press, UI.GoldRamp, 90)
+	UI.List(GU.press, 6, true)
+	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 12), Parent = GU.press })
+	GU.pressIcon = UI.Icon(GU.press, "fist", 22, T.ink, { Name = "PressIcon", LayoutOrder = 1, ZIndex = 27, Position = UDim2.fromOffset(0, 9) })
+	GU.pressText = UI.Text(GU.press, "SPACE", { Name = "Key", Face = "displayMed", TextSize = 22, TextColor3 = T.ink, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
+		TextWrapped = false, LayoutOrder = 2, ZIndex = 27 })
+	GU.sub = UI.Text(GU.right, "MASH IT  ·  GREEN = x3", { Name = "How", Font = T.semi, TextSize = 14, TextColor3 = T.sub, Position = UDim2.fromOffset(2, 54), Size = UDim2.new(1, 0, 0, 18),
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 26 })
+	-- the strength meter: fills with the presses, pulses on each, flashes gold on a green triple
+	local getupBarBg = UI.Frame(GU.right, { Name = "Strength", Position = UDim2.fromOffset(0, 80), Size = UDim2.new(1, 0, 0, 22), BackgroundColor3 = T.ink, BackgroundTransparency = 0.1, ZIndex = 26 })
+	UI.Corner(getupBarBg, 11)
+	UI.New("UIStroke", { Color = T.gold, Transparency = 0.6, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = getupBarBg })
+	GU.fill = UI.Frame(getupBarBg, { Name = "Fill", Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.gold, ZIndex = 27 })
+	UI.Corner(GU.fill, 11)
+	UI.Gradient(GU.fill, UI.GoldRamp, 90)
+	local fillSheen = UI.Frame(GU.fill, { Name = "Sheen", Size = UDim2.new(1, 0, 0.45, 0), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.65, ZIndex = 28 })
+	UI.Corner(fillSheen, 11)
+	GU.pulse = UI.Frame(getupBarBg, { Name = "Pulse", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, 8, 1, 8), BackgroundColor3 = T.gold,
+		BackgroundTransparency = 1, ZIndex = 25 })
+	UI.Corner(GU.pulse, 15)
+	GU.pct = UI.Text(getupBarBg, "", { Name = "Pct", Face = "number", TextSize = 16, TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.4, Size = UDim2.fromScale(1, 1),
+		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, ZIndex = 29 })
+	GU.barScale = UI.New("UIScale", { Parent = getupBarBg })
+	function setGetup(frac)
+		frac = math.clamp(tonumber(frac) or 0, 0, 1)
+		GU.frac = frac
+		UI.Tween(GU.fill, { Size = UDim2.fromScale(frac, 1) }, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+		GU.pct.Text = frac >= 1 and "READY" or (math.floor(frac * 100 + 0.5) .. "%")
+	end
+	-- the timing bar: a wide green zone with a glow, the white marker and its trail
+	local timing = UI.Frame(GU.right, { Name = "Timing", Position = UDim2.fromOffset(0, 112), Size = UDim2.new(1, 0, 0, 38), BackgroundColor3 = T.ink, BackgroundTransparency = 0.05, ZIndex = 26 })
+	UI.Corner(timing, 8)
+	UI.New("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.85, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = timing })
+	GU.glow = UI.Frame(timing, { Name = "ZoneGlow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0.2, 18, 1, 10), BackgroundColor3 = T.green,
+		BackgroundTransparency = 0.72, ZIndex = 26 })
+	UI.Corner(GU.glow, 12)
+	zone = UI.Frame(timing, { Name = "Zone", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(0.2, 1), BackgroundColor3 = T.green, BackgroundTransparency = 0.12, ZIndex = 27 })
+	UI.Corner(zone, 8)
+	UI.Gradient(zone, { Color3.new(1, 1, 1), Color3.fromRGB(160, 160, 160) }, 90)
+	GU.zoneText = UI.Text(zone, "x3", { Name = "Triple", Face = "number", TextSize = 18, TextColor3 = T.ink, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, ZIndex = 28 })
+	for k = 1, 3 do
+		local tr = UI.Frame(timing, { Name = "Trail" .. k, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 8 - k, 1, 4 - 2 * k),
+			BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.45 + k * 0.15, ZIndex = 28 })
+		UI.Corner(tr, 3)
+		GU.trail[k] = tr
+	end
+	marker = UI.Frame(timing, { Name = "Marker", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 8, 1, 14), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 29 })
+	UI.Corner(marker, 4)
+	UI.New("UIStroke", { Color = T.ink, Transparency = 0.2, Thickness = 2, Parent = marker })
+	getupHint = UI.Text(GU.right, "", { Name = "Hint", Font = T.semi, TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromOffset(2, 158), Size = UDim2.new(1, 0, 0, 18),
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 26 })
+
+	-- the marker sweeps (every frame while down: F.markerPos is what a press is judged on) with its trail
+	function KM.getupFrame(now)
+		F.markerPos = 0.5 + 0.5 * math.sin((now - (F.downAt or now)) * (F.markerSpeed or 3))
+		marker.Position = UDim2.fromScale(F.markerPos, 0.5)
+		local h = GU.last
+		table.insert(h, 1, F.markerPos)
+		if #h > 9 then
+			table.remove(h)
+		end
+		for k, tr in ipairs(GU.trail) do
+			tr.Position = UDim2.fromScale(h[math.min(#h, k * 3)] or F.markerPos, 0.5)
+		end
+		local inZone = math.abs(F.markerPos - 0.5) <= (F.zoneW or 0.2) / 2
+		if inZone ~= GU.inZone then
+			GU.inZone = inZone
+			GU.glow.BackgroundTransparency = inZone and 0.45 or 0.72
+		end
+	end
+
+	-- the referee's count in the panel
+	function KM.getupCount(n)
+		GU.countNum.Text = tostring(n)
+		GU.countNum.TextColor3 = n >= 8 and T.red or (n >= 6 and T.gold or Color3.new(1, 1, 1))
+		GU.countScale.Scale = 1.3
+		UI.Tween(GU.countScale, { Scale = 1 }, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
+	end
+
+	-- the panel's look for a phase: "down" (mashing), "up" (STAND UP!), "out" (COUNTED OUT)
+	function KM.getupState(kind)
+		GU.state = kind
+		local color = kind == "up" and T.green or T.red
+		GU.band.BackgroundColor3 = color
+		if GU.stroke then
+			GU.stroke.Color = color
+		end
+		GU.countStroke.Color = kind == "up" and T.green or (kind == "out" and T.red or T.gold)
+		GU.press.Visible = kind == "down"
+		timing.Visible = kind == "down"
+		if kind == "up" then
+			UI.BindHint(getupTitle, function()
+				return "STAND UP!"
+			end)
+			getupTitle.TextColor3 = Color3.fromRGB(170, 255, 200)
+			GU.sub.Text = "YOU BEAT THE COUNT"
+			getupHint.Text = "Hands up - show the referee you can go on."
+			GU.countNum.TextColor3 = T.green
+			setGetup(1)
+		elseif kind == "out" then
+			UI.BindHint(getupTitle, function()
+				return "COUNTED OUT"
+			end)
+			getupTitle.TextColor3 = T.redLight
+			GU.sub.Text = "THE REFEREE WAVES IT OFF"
+			getupHint.Text = ""
+			GU.countNum.Text = "10"
+			GU.countNum.TextColor3 = T.red
+		else
+			getupTitle.TextColor3 = Color3.new(1, 1, 1)
+		end
+		GU.scale.Scale = 1.06
+		UI.Tween(GU.scale, { Scale = 1 }, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
+	end
+	-- STAND UP / COUNTED OUT hold for a beat, then the panel goes
+	function KM.getupEnd(kind, hold)
+		if not getup.Visible then
+			return
+		end
+		KM.getupState(kind)
+		local token = {}
+		GU.endToken = token
+		task.delay(hold or 1, function()
+			if GU.endToken == token and GU.state == kind then
+				getup.Visible = false
+			end
+		end)
+	end
 
 	function getupPress()
 		if not F.down then
@@ -1463,16 +1579,43 @@ do
 		end
 		F.mash += triple and 3 or 1
 		send({ t = "mash", good = good })
-		zone.BackgroundColor3 = good and Color3.fromRGB(120, 255, 150) or T.red
+		setGetup(F.mash / math.max(1, F.target))
+		-- the feel of it: the panel kicks, the meter pulses (gold and bigger on a green triple), the zone lights
+		local kick = triple and 7 or 4
+		GU.body.Position = UDim2.fromOffset(math.random(-kick, kick), math.random(-kick, kick) * 0.6)
+		UI.Tween(GU.body, { Position = UDim2.fromOffset(0, 0) }, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+		GU.barScale.Scale = triple and 1.08 or 1.04
+		UI.Tween(GU.barScale, { Scale = 1 }, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
+		GU.pulse.BackgroundColor3 = triple and T.goldLight or Color3.new(1, 1, 1)
+		GU.pulse.BackgroundTransparency = triple and 0.2 or 0.6
+		UI.Tween(GU.pulse, { BackgroundTransparency = 1 }, TweenInfo.new(triple and 0.4 or 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+		zone.BackgroundColor3 = good and Color3.fromRGB(150, 255, 175) or T.red
+		GU.zoneText.Text = triple and "x3!" or (good and "x3" or "x1")
 		task.delay(0.12, function()
 			zone.BackgroundColor3 = T.green
+			GU.zoneText.Text = "x3"
 		end)
-		setGetup(F.mash / math.max(1, F.target))
 	end
 
-	local getupBtn = UI.Button(getup, "", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 28 }, getupPress)
+	local getupBtn = UI.Button(getup, "", { Name = "Tap", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 30 }, getupPress)
 	getupBtn.Text = ""
 	getupBtn.Selectable = false -- a gamepad mashes A through the fight bindings, not the UI selection
+
+	-- the panel's own sizes: the full one, and a phone's (larger type relative to the screen, the count
+	-- block narrower, no hint line)
+	function KM.layoutGetup(compact)
+		getup.Size = UDim2.fromOffset(compact and 640 or 660, compact and 196 or 214)
+		GU.band.Size = UDim2.new(1, 0, 0, compact and 62 or 70)
+		GU.countBox.Size = UDim2.new(0, compact and 116 or 132, 1, -28)
+		UI.SetTextSize(GU.countNum, compact and 92 or 104)
+		local x = compact and 144 or 162
+		GU.right.Position, GU.right.Size = UDim2.fromOffset(x, 10), UDim2.new(1, -(x + 18), 1, -20)
+		getupTitle.Size = UDim2.new(1, -150, 0, compact and 48 or 54)
+		GU.sub.Position = UDim2.fromOffset(2, compact and 48 or 54)
+		getupBarBg.Position, getupBarBg.Size = UDim2.fromOffset(0, compact and 72 or 80), UDim2.new(1, 0, 0, compact and 22 or 22)
+		timing.Position, timing.Size = UDim2.fromOffset(0, compact and 104 or 112), UDim2.new(1, 0, 0, compact and 52 or 38)
+		getupHint.Visible = not compact
+	end
 
 	-- responsive layout: short (phone) canvases get the slim scoreboard and their own sizes for the count
 	-- and the get-up panel, placed so they never overlap (count under the board, get-up under the count)
@@ -1537,16 +1680,11 @@ do
 		UI.SetTextSize(countWho, compact and 18 or 22)
 		local countTop = compact and (below + 6) or math.floor(canvas.Y * 0.42 - countH / 2)
 		countBox.Position = UDim2.new(0.5, 0, 0, countTop)
-		local getupH = compact and 136 or 160
-		getup.Size = UDim2.fromOffset(compact and 500 or 560, getupH)
-		getupBarBg.Position, getupBarBg.Size = UDim2.fromOffset(24, compact and 42 or 48), UDim2.new(1, -48, 0, compact and 16 or 20)
-		timing.Position, timing.Size = UDim2.fromOffset(24, compact and 66 or 80), UDim2.new(1, -48, 0, compact and 24 or 26)
-		getupHint.Position = UDim2.fromOffset(12, compact and 96 or 118)
-		getupHint.Size = UDim2.new(1, -24, 0, compact and 34 or 30)
-		local getupTop = math.max(countTop + countH + 6, canvas.Y - getupH - (compact and 10 or 90))
-		if not compact then
-			getupTop = math.floor(canvas.Y * 0.64)
-		end
+		-- the get-up panel carries its own count (the count box stands aside while it is up): under the board
+		-- on a phone, a little below the middle on a big screen
+		KM.layoutGetup(compact)
+		local getupH = compact and 196 or 214
+		local getupTop = compact and math.max(below + 8, math.floor((canvas.Y - getupH) * 0.6)) or math.floor(canvas.Y * 0.56)
 		getup.Position = UDim2.new(0.5, 0, 0, getupTop)
 		banner.TextSize = compact and 68 or 96
 		bannerBand.Size = UDim2.new(1, 0, 0, compact and 90 or 120)
@@ -1562,11 +1700,19 @@ do
 		if KM.combo then
 			KM.combo.Layout(below, compact, touchPad ~= nil or UserInputService.TouchEnabled, math.max(40, UI.MinHit(hud)))
 		end
+		if KM.intel then
+			KM.intel.Layout(below, compact, touchPad ~= nil or UserInputService.TouchEnabled, math.max(40, UI.MinHit(hud)))
+		end
 	end
 	-- the combo counter (BoxerClient.ComboHud: display only, the server judges the chains)
 	KM.combo = KM.module("ComboHud")
 	if KM.combo then
 		KM.combo.Mount(hud)
+	end
+	-- the deeper fight's reads (BoxerClient.FightIntel: trait hints, the momentum strip, the live score)
+	KM.intel = KM.module("FightIntel")
+	if KM.intel then
+		KM.intel.Mount(hud)
 	end
 	gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutHud)
 	hud:GetAttributeChangedSignal("UIScale"):Connect(layoutHud)
@@ -1855,6 +2001,9 @@ do
 				end
 			elseif dir == "D" then
 				send({ t = "dodge", kind = "duck" })
+			elseif dir == "U" then
+				-- the feint (a fake jab: FightEngine:Feint)
+				send({ t = "feint" })
 			end
 		end, function(swiped)
 			if not swiped then
@@ -3067,6 +3216,10 @@ local function startCamera()
 		end
 		local now = os.clock()
 		local tier, conc, fx = updateFX(dt, now)
+		-- [tournaments] the celebration cutscene (BoxerClient.Ceremony) owns the camera while it runs
+		if player:GetAttribute("Ceremony") == true then
+			return
+		end
 		local me = getRoot(player.Character)
 		local opp = getRoot(F.opp)
 		if not me then
@@ -3096,6 +3249,13 @@ local function startCamera()
 				push = push * push * (3 - 2 * push)
 				F.broadcastCF = CFrame.lookAt(hp + flatSide * (7 - 1.8 * push) + Vector3.new(0, 1.2 - 0.35 * push, 0), hp)
 				F.broadcastUntil = now + 0.1
+			end
+		end
+		-- [Entrance] the ring-walk cinematic's shot (BoxerClient.EntranceFX) is the on-air camera while it runs
+		if camMode == "entrance" and KM.module("EntranceFX") then
+			local okE, ecf = pcall(KM.module("EntranceFX").Camera, now)
+			if okE and typeof(ecf) == "CFrame" then
+				F.broadcastCF, F.broadcastUntil = ecf, now + 0.05
 			end
 		end
 		if F.broadcastUntil and now < F.broadcastUntil and F.broadcastCF then
@@ -3196,11 +3356,9 @@ local function startCamera()
 		end
 		-- get-up timing marker
 		if F.down then
-			F.markerPos = 0.5 + 0.5 * math.sin((now - (F.downAt or now)) * (F.markerSpeed or 3))
-			marker.Position = UDim2.fromScale(F.markerPos, -0.15)
-			FX.downBlur = 14 * math.clamp(1 - F.mash / math.max(1, F.target), 0, 1)
-		else
-			FX.downBlur = math.max(0, FX.downBlur - dt * 20)
+			KM.getupFrame(now)
+			-- the knockdown screen (KnockFX) clears as the meter fills
+			KM.knock("Progress", F.mash / math.max(1, F.target or 10))
 		end
 	end)
 end
@@ -3752,6 +3910,8 @@ local SEND_ACTIONS = {
 	-- the dodges (Shared.Evasion; FightEngine:Dodge)
 	weaveL = { t = "dodge", kind = "weave", dir = -1 }, weaveR = { t = "dodge", kind = "weave", dir = 1 }, duck = { t = "dodge", kind = "duck" },
 	pull = { t = "dodge", kind = "pull" }, sidestepL = { t = "dodge", kind = "sidestep", dir = -1 }, sidestepR = { t = "dodge", kind = "sidestep", dir = 1 },
+	-- the feint (FightEngine:Feint): a fake jab
+	feint = { t = "feint" },
 }
 
 local function addBinding(dev, b, id)
@@ -4314,6 +4474,9 @@ local function finish()
 	if KM.combo then
 		KM.combo.Reset()
 	end
+	if KM.intel then
+		KM.intel.Reset(true)
+	end
 	lockReset(false)
 	KM.setPlayerList(true)
 	KM.dropRingSprint()
@@ -4323,6 +4486,7 @@ local function finish()
 	F.countdown = false
 	F.active = false
 	F.down = false
+	KM.knock("Clear")
 	gui.Enabled = false
 	fxGui.Enabled = false
 	overlay.Visible = false
@@ -4600,6 +4764,11 @@ local function buildTape()
 	if o.archetype and not compact then
 		ovNote("Scouting", o.archetype, T.blue)
 	end
+	-- his ring traits as far as the scouting report knows them (the rest are revealed in the fight)
+	local traitLine = KM.intel and KM.intel.TapeLine(o.traits)
+	if traitLine and not compact then
+		ovNote("Traits", traitLine, T.orange)
+	end
 	local wi = F.weighIn
 	if wi then
 		if wi.over > 0 then
@@ -4709,8 +4878,8 @@ function handlers.state(msg)
 	timeText.TextColor3 = (msg.time or 99) <= 10 and T.red or T.text
 	F.me, F.oppState = msg.me, msg.opp
 	local function apply(panel, s, female, model)
-		-- one colour language: HEALTH / HEAD / BODY follow their value (green, gold, orange, red),
-		-- STAMINA is blue, amber from half, red under a quarter; danger pulses in updateFX
+		-- one colour language: HEALTH / HEAD / BODY follow their value (green, gold, orange, red, blended),
+		-- STAMINA is blue, amber from a third, red when it is gone; danger pulses in updateFX and the bars
 		local overall, overallCap = overallOf(s)
 		local hv, bv = (tonumber(s.hp) or 0) / 100, (tonumber(s.body) or 0) / 100
 		setBar(panel.head, hv, (s.cap or 100) / 100, rampColor(hv))
@@ -4719,6 +4888,8 @@ function handlers.state(msg)
 		local max = math.max(1, s.max or 100)
 		local sv = (tonumber(s.stam) or 0) / max
 		setBar(panel.stam, sv, (s.stamCap or max) / max, stamColor(sv))
+		-- rocked: the HEALTH bar strobes while the server's hurt flag holds
+		panel.health:stunned(s.hurt == true)
 		setChip(panel, chipFor(s, s.hurt, female))
 		-- damage icons: swelling from the face damage stage the builder publishes, bruised ribs from body HP
 		local stage = model and tonumber(model:GetAttribute("FaceDmgTier")) or 0
@@ -4726,6 +4897,12 @@ function handlers.state(msg)
 		panel.ribs.Visible = (tonumber(s.body) or 100) < 40
 	end
 	apply(L, msg.me, F.tape and F.tape.you.female, player.Character)
+	-- rocked on your feet: a lighter version of the knockdown screen
+	local hurt = msg.me.hurt == true
+	if hurt and not F.wasHurt and not F.down then
+		KM.knock("Hit", "wobble")
+	end
+	F.wasHurt = hurt
 	apply(R, msg.opp, F.tape and F.tape.opp.female, F.opp)
 	if L.bal and msg.me.bal then
 		local b = math.clamp(msg.me.bal / 100, 0, 1)
@@ -4917,6 +5094,32 @@ end
 handlers.comboEnd = handlers.combo
 handlers.comboBroken = handlers.combo
 
+-- the deeper fight (FightEngine; BoxerClient.FightIntel shows them): a ring trait's hint / reveal, a corner call
+-- (a feint he bit on, a second wind), the momentum and the live score, the clinch's inside work
+function handlers.trait(msg)
+	if KM.intel then
+		KM.intel.On(msg)
+	end
+end
+function handlers.intel(msg)
+	if KM.intel then
+		KM.intel.On(msg)
+	end
+	if msg.wind then
+		showFlash(flash, "SECOND WIND!", T.green, 1.2)
+	end
+end
+function handlers.mom(msg)
+	if KM.intel then
+		KM.intel.On(msg)
+	end
+end
+function handlers.inside(msg)
+	if msg.who == "you" then
+		showFlash(flash, "INSIDE WORK", T.orange, 0.5)
+	end
+end
+
 function handlers.miss(msg)
 	if msg.why ~= "short" then
 		-- the whoosh of a punch cutting air
@@ -5042,13 +5245,14 @@ function handlers.kd(msg)
 		F.downAt = os.clock()
 		refreshControls()
 		flashFrame(redFlash, 1 - 0.6 * fxScale(), 0.8)
+		-- the lights go out: white flash, blur, the colour drains, the sound goes under water (KnockFX)
+		KM.knock("Hit", msg.severity == "out" and "out" or "down")
 		if msg.severity == "out" then
 			-- lights out: the Animator plays the knockout fall (msg.anim); the physics ragdoll is the
 			-- round-1 fallback for a server that does not animate it
 			if not msg.anim then
 				setRagdoll(true)
 			end
-			TweenService:Create(blackout, TweenInfo.new(1.4), { BackgroundTransparency = 0.25 }):Play()
 		end
 	end
 end
@@ -5063,20 +5267,27 @@ function handlers.getupStart(msg)
 	local conc = F.me and F.me.conc or 0
 	F.markerSpeed = 2.6 - ability * 1.0 + conc * 1.0
 	zone.Size = UDim2.fromScale(F.zoneW, 1)
+	local GU = KM.getupUI
+	GU.glow.Size = UDim2.new(F.zoneW, 18, 1, 10)
 	setGetup(0)
-	-- the title names the press of the device in use: SPACE, A / CROSS on a pad, taps on touch
+	KM.getupState("down")
+	-- the call-out, and the press of the device in use on the key cap: SPACE, A / CROSS on a pad, TAP
 	local isFlash = msg.severity == "flash"
-	UI.BindHint(getupTitle, function(mode)
+	UI.BindHint(getupTitle, function()
+		return isFlash and "SHAKE IT OFF!" or "GET UP!"
+	end)
+	UI.BindHint(GU.pressText, function(mode)
 		local touch = mode == "touch" or (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and mode ~= "gamepad")
 		if mode == "gamepad" and Gamepad then
-			local a = Gamepad.Label(K.ButtonA)
-			return isFlash and ("FLASH KNOCKDOWN! SHAKE IT OFF - MASH " .. a .. " / HIT THE GREEN") or ("YOU'RE DOWN!  MASH " .. a .. " - HIT THE GREEN ZONE")
+			return Gamepad.Label(K.ButtonA)
 		end
-		return isFlash and ("FLASH KNOCKDOWN! SHAKE IT OFF - " .. (touch and "TAP" or "MASH") .. " / HIT THE GREEN")
-			or (touch and "YOU'RE DOWN!  TAP FAST - HIT THE GREEN ZONE" or "YOU'RE DOWN!  MASH SPACE / TAP - HIT THE GREEN ZONE")
+		return touch and "TAP" or "SPACE"
 	end)
-	getupHint.Text = string.format("Get up before 10. Green-zone presses count triple. (needed: %d)", msg.target or 10)
+	GU.sub.Text = (isFlash and "FLASH KNOCKDOWN" or (msg.severity == "heavy" and "DOWN HARD" or "KNOCKDOWN")) .. "  ·  MASH IT  ·  GREEN = x3"
+	getupHint.Text = string.format("Fill the bar before 10  ·  needed %d", msg.target or 10)
+	GU.countNum.Text = ""
 	getup.Visible = true
+	hideCount()
 end
 
 function handlers.count(msg)
@@ -5090,6 +5301,11 @@ function handlers.count(msg)
 	sfx(soundId("RefereeCount", "Click"), 0.8, 0.45)
 	if msg.who == "you" and not msg.standing then
 		setGetup((msg.mash or F.mash) / math.max(1, msg.target or F.target))
+		KM.getupCount(n)
+		KM.knock("Count", n)
+		if n >= 10 and F.down then
+			KM.getupEnd("out", 2.2)
+		end
 	end
 end
 
@@ -5097,7 +5313,8 @@ function handlers.getup(msg)
 	local mine = msg.who == "you"
 	if mine then
 		F.down = false
-		getup.Visible = false
+		KM.getupEnd("up", 1)
+		KM.knock("Release", 0.9)
 		refreshControls()
 		sfx(BUILTIN.Grunt or "rbxasset://sounds/uuhhh.mp3", 1, 0.5)
 		FX.hitBlur = 10 -- the world swims back into focus
@@ -5130,8 +5347,12 @@ function handlers.bell(msg)
 	if KM.combo then
 		KM.combo.Reset()
 	end
+	if KM.intel then
+		KM.intel.Reset()
+	end
 	Tog.reset(true) -- the server drops the guard in the corner
 	refreshControls()
+	KM.knock("Release", 0.8)
 	showBanner("DING DING DING", T.gold, 1.5)
 	setTicker("End of round " .. msg.n)
 	phase("bell", { n = msg.n })
@@ -5208,8 +5429,15 @@ end
 
 function handlers.final(msg)
 	F.active = false
+	-- down and not getting up: COUNTED OUT holds on the panel; a knockout's screen stays heavy, then fades
+	-- toward the result
+	if F.down and getup.Visible and KM.getupUI.state == "down" then
+		KM.getupEnd("out", 2.2)
+	else
+		getup.Visible = false
+	end
+	KM.knock("Release", F.down and 2.6 or 0.8)
 	F.down = false
-	getup.Visible = false
 	local res = msg.result
 	local text
 	if F.tutorial and not F.tutorial.debut and res.method ~= "KO" then

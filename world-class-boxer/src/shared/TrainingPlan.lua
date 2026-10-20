@@ -67,7 +67,7 @@ function TP.OnFocus(actId, focusId)
 end
 
 -- the stat gain bonus for a session on today's block (the plan or the camp)
-TP.PLAN_BONUS = 0.12
+TP.PLAN_BONUS = 0.15
 
 -- weekly templates: seven blocks from the day the plan is set
 TP.Templates = {
@@ -170,21 +170,21 @@ end
 
 -- the training a fight calls for: two focus blocks against the opponent's style / archetype
 TP.Counters = {
-	Slugger = { "defence", "conditioning", why = "He hits hard. Make him miss and be ready to take one." },
-	KO = { "defence", "conditioning", why = "A knockout artist: tight defence and a strong core." },
-	Swarmer = { "endurance", "speed", why = "He'll walk you down all night. Have the gas and the feet to turn him." },
-	Pressure = { "endurance", "speed", why = "Pressure fighter: conditioning and angles beat pressure." },
-	OutBoxer = { "speed", "ringiq", why = "He moves. Cut the ring off and beat him to the punch." },
-	Defensive = { "ringiq", "speed", why = "Hard to hit: feints, timing and quick hands." },
-	CounterPuncher = { "ringiq", "defence", why = "He waits for your mistakes. Feint, and don't stay in front of him." },
-	Counter = { "ringiq", "defence", why = "A counter puncher: throw with purpose and move your head." },
-	BoxerPuncher = { "ringiq", "power", why = "He does everything well. Sharpen your craft and your power." },
-	Technician = { "ringiq", "power", why = "A technician: out-think him in sparring, then hurt him." },
+	Slugger = { focus = { "defence", "conditioning" }, why = "He hits hard. Make him miss and be ready to take one." },
+	KO = { focus = { "defence", "conditioning" }, why = "A knockout artist: tight defence and a strong core." },
+	Swarmer = { focus = { "endurance", "speed" }, why = "He'll walk you down all night. Have the gas and the feet to turn him." },
+	Pressure = { focus = { "endurance", "speed" }, why = "Pressure fighter: conditioning and angles beat pressure." },
+	OutBoxer = { focus = { "speed", "ringiq" }, why = "He moves. Cut the ring off and beat him to the punch." },
+	Defensive = { focus = { "ringiq", "speed" }, why = "Hard to hit: feints, timing and quick hands." },
+	CounterPuncher = { focus = { "ringiq", "defence" }, why = "He waits for your mistakes. Feint, and don't stay in front of him." },
+	Counter = { focus = { "ringiq", "defence" }, why = "A counter puncher: throw with purpose and move your head." },
+	BoxerPuncher = { focus = { "ringiq", "power" }, why = "He does everything well. Sharpen your craft and your power." },
+	Technician = { focus = { "ringiq", "power" }, why = "A technician: out-think him in sparring, then hurt him." },
 }
 function TP.CampFocus(styleId, archetypeId)
 	local c = TP.Counters[archetypeId or ""] or TP.Counters[styleId or ""]
 	if c then
-		return { c[1], c[2] }, c.why
+		return { c.focus[1], c.focus[2] }, c.why
 	end
 	return { "ringiq", "conditioning" }, "Sharpen your craft and your engine."
 end
@@ -324,7 +324,11 @@ end
 ------------------------------------------------------------------------
 -- total mastery XP for levels 1..5 (a session gives about 6..20)
 TP.MasteryXP = { 30, 100, 220, 400, 650 }
-TP.MasteryNames = { [0] = "Novice", "Apprentice", "Skilled", "Expert", "Elite", "Master" }
+local MASTERY_NAMES = { "Novice", "Apprentice", "Skilled", "Expert", "Elite", "Master" }
+-- the name of a mastery level 0..5
+function TP.MasteryName(level)
+	return MASTERY_NAMES[math.floor(clamp(num(level, 0), 0, 5)) + 1]
+end
 TP.Perks = {
 	{ level = 1, text = "Grooved: 5% less energy" },
 	{ level = 2, text = "Efficient: 8% less fatigue" },

@@ -64,6 +64,12 @@ local Evasion = require(Shared:WaitForChild("Evasion"))
 local Traits = require(Shared:WaitForChild("Traits"))
 local FightAI = require(script.Parent.FightAI)
 local Career = require(script.Parent.Career)
+-- [Entrance] the ring-walk cinematic's beats (RingWalk + Shared.Entrance): optional, the old walkout runs without it
+local RingWalk
+do
+	local okR, modR = pcall(require, script.Parent:FindFirstChild("RingWalk"))
+	RingWalk = okR and type(modR) == "table" and modR or nil
+end
 -- fight spacing (FightMotion.Spacing; the round-1 numbers if that module is missing)
 local SPACING = FightMotion and FightMotion.Spacing
 	or { base = 3.5, min = 2.85, minSep = 2.6, inside = 3, clinch = 4.4, pivot = 3.2, cover = 5 }
@@ -1436,7 +1442,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		return
 	end
 	if self:Evaded(F, O, ptype, body, now) then
-		if F.ai then
+		if F.ai and F.ai.obs then
 			F.ai.obs.slips += 1
 		end
 		self:Swing(O, 0.025)
@@ -3817,6 +3823,17 @@ end
 
 function Fight:Entrance()
 	local P, O = self.P, self.O
+	-- [Entrance] the cinematic ring walk: RingWalk runs the Shared.Entrance beats (and ends in the corners)
+	if RingWalk then
+		local okW, errW = pcall(RingWalk.Run, self)
+		if okW then
+			return
+		end
+		warn("[Boxer] RingWalk failed:", errW)
+		if self.aborted then
+			return
+		end
+	end
 	local isStadium = self.venue == "Stadium"
 	pcall(Builder.SetRobe, O.model, O.data.app, true, O.data.lookOpts)
 	pcall(Builder.SetRobe, P.model, P.data.app, true, P.data.lookOpts)
@@ -4441,7 +4458,7 @@ function Fight:Ceremony(spec)
 				ohum:MoveTo(center + face * 1.75)
 			end
 			if refModel and self.ref.hum then
-				self.ref.hum:MoveTo(center + right * 3.4 + face * 0.6)
+				self.ref.hum:MoveTo(center + right * 3.1 - face * 0.9)
 			end
 		end },
 		{ B.strap, function()
@@ -4454,7 +4471,7 @@ function Fight:Ceremony(spec)
 		{ B.strap + 1.5, function()
 			setPose(official, "cerClap")
 			if ohum then
-				ohum:MoveTo(center - right * 2.8 + face * 0.8)
+				ohum:MoveTo(center - right * 2.7 - face * 1.1)
 			end
 		end },
 		{ B.lift, function()
@@ -4700,6 +4717,12 @@ function FightEngine.Input(player, msg)
 	elseif t == "ceremonySkip" then
 		-- (the celebration cutscene's SKIP: the server ends its timeline)
 		fight.ceremonySkip = true
+		return
+	elseif t == "entranceSkip" then
+		-- [Entrance] the ring walk's SKIP (RingWalk: vs the AI at once, in PvP once both asked)
+		if RingWalk then
+			RingWalk.Skip(fight, F)
+		end
 		return
 	elseif t == "pause" then
 		-- (not a fight input: the Moves & Controls window opened / closed)

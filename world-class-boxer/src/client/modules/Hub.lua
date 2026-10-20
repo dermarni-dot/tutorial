@@ -11,6 +11,8 @@ local GuiService = game:GetService("GuiService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
+-- the opponents' ring traits as the scouting report knows them (Traits.ScoutView)
+local Traits = require(Shared:WaitForChild("Traits"))
 local UI = require(Shared:WaitForChild("UI"))
 local State = require(script.Parent:WaitForChild("State"))
 local FighterCard = require(script.Parent:WaitForChild("FighterCard"))
@@ -21,6 +23,18 @@ if not okMuscle then
 	MuscleScreen = nil
 end
 local Flags = require(script.Parent:WaitForChild("Flags"))
+-- the training programme's rules (plans, camps, mastery, goals, coach personas): optional, nil-safe
+local okTP, TP = pcall(function()
+	return require(Shared:WaitForChild("TrainingPlan", 5))
+end)
+if not okTP then
+	TP = nil
+end
+-- the Tournaments tab (bracket, calendar, belts): optional, a broken module leaves the tab with a notice
+local okTourney, TourneyUI = pcall(require, script.Parent:WaitForChild("TourneyUI"))
+if not okTourney then
+	TourneyUI = nil
+end
 local T = UI.Theme
 local rec = State.rec
 
@@ -33,19 +47,21 @@ local renderId = 0
 local function stale(body, id)
 	return id ~= renderId or not body.Parent
 end
-local TABS = { "Career", "Training", "Body", "Stats", "Gym", "Gear", "Coaches", "Sponsors", "Life", "Rankings", "Rivals", "PvP", "Shop", "Legacy" }
+local TABS = { "Career", "Tournaments", "Training", "Body", "Stats", "Gym", "Gear", "Coaches", "Sponsors", "Life", "Rankings", "Rivals", "PvP", "Shop", "Legacy" }
 Hub.Tabs = TABS -- every tab (the side navigation groups them in NAV)
 -- the side navigation, grouped like a sports game's career menu
 local NAV = {
-	{ "CAREER", { "Career", "Rankings", "Rivals", "PvP", "Legacy" } },
+	{ "CAREER", { "Career", "Tournaments", "Rankings", "Rivals", "PvP", "Legacy" } },
 	{ "TRAINING", { "Training", "Body", "Stats", "Gym", "Coaches" } },
 	{ "LIFE", { "Gear", "Sponsors", "Life", "Shop" } },
 }
 local NAV_ICONS = {
 	Career = "glove", Training = "dumbbell", Body = "heart", Stats = "chart", Gym = "home",
 	Gear = "shield", Coaches = "people", Sponsors = "coin", Life = "home", Rankings = "trophy",
-	Rivals = "people", PvP = "glove", Shop = "bag", Legacy = "crown",
+	Rivals = "people", PvP = "glove", Shop = "bag", Legacy = "crown", Tournaments = "belt",
 }
+-- (the phone's narrow rail: a shorter label where the tab's name would not fit)
+local RAIL_LABELS = { Tournaments = "TOURNEYS" }
 local TAB_HINTS = {
 	Career = "Your next step toward a world title.", Training = "Build strength. Sharpen your craft.",
 	Body = "Track your physique and recovery.", Stats = "Know your strengths. Find your edge.",
@@ -54,6 +70,7 @@ local TAB_HINTS = {
 	Life = "Your life beyond the ropes.", Rankings = "See where you stand in the world.",
 	Rivals = "Scout the competition.", PvP = "Test yourself against other players.",
 	Shop = "Equip your journey to the top.", Legacy = "Every round becomes part of your story.",
+	Tournaments = "Eight boxers, three nights, one belt.",
 }
 local tabButtons = {}
 
@@ -235,9 +252,16 @@ local function showBoxer(id)
 	UI.Stat(strip, tostring(b.overall), "OVERALL", { Size = UDim2.new(0.22, -8, 1, 0), order = 3, valueSize = 28, valueColor = T.gold, icon = "star" })
 	UI.Stat(strip, tostring(math.floor(b.heat or 0)), "RIVALRY", { Size = UDim2.new(0.22, -8, 1, 0), order = 4, valueSize = 28, icon = "flame" })
 	UI.Line(body, string.format("%s  ·  %s  ·  %s", b.style, b.archetype ~= "" and b.archetype or "?", b.personality), { TextColor3 = T.sub, TextSize = 14 })
+	local scout = Traits.ScoutText(Traits.ScoutView(b))
+	if scout then
+		UI.Line(body, "TRAITS: " .. scout, { TextColor3 = T.orange, Font = T.semi, TextSize = 14 })
+	end
 	UI.Line(body, "Rankings: " .. rankText(b.ranks), { Font = T.semi, TextSize = 14 })
 	if b.belts and #b.belts > 0 then
 		UI.Line(body, "HOLDS: " .. table.concat(b.belts, "  ·  "), { TextColor3 = T.gold, Font = T.semi })
+	end
+	if type(b.tbelts) == "table" and #b.tbelts > 0 then
+		UI.Line(body, "TOURNAMENTS WON: " .. table.concat(b.tbelts, "  ·  "), { TextColor3 = T.gold, TextSize = 13 })
 	end
 	if b.h2h.w + b.h2h.l + b.h2h.d > 0 then
 		UI.Line(body, string.format("HEAD TO HEAD: you %d - %d them (%d draws)", b.h2h.w, b.h2h.l, b.h2h.d), { TextColor3 = T.red, Font = T.semi })
@@ -267,6 +291,11 @@ local function oppBlock(parent, o)
 	UI.Text(ovr, tostring(o.overall), { Face = "number", TextSize = 28, TextColor3 = T.text, Size = UDim2.new(1, 0, 0, 32), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center })
 	UI.Text(ovr, "OVR", { Font = T.semi, TextSize = 9, TextColor3 = T.sub, Position = UDim2.new(0, 0, 1, -14), Size = UDim2.new(1, 0, 0, 10), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center })
 	UI.Line(parent, string.format("%s  ·  %s  ·  Age %d  ·  %s", o.style, o.archetype or "", o.age, rankText(o.ranks)), { TextColor3 = T.sub, TextSize = 13 })
+	-- the scouting report on his ring traits (the hidden ones are revealed in the fight)
+	local scout = Traits.ScoutText(Traits.ScoutView(o))
+	if scout then
+		UI.Line(parent, "SCOUTING: " .. scout, { TextColor3 = T.orange, Font = T.semi, TextSize = 13 })
+	end
 	if o.h2h and (o.h2h.w + o.h2h.l + o.h2h.d) > 0 then
 		UI.Line(parent, string.format("RIVALRY: you %d - %d them (%d draws)  ·  heat %d", o.h2h.w, o.h2h.l, o.h2h.d, math.floor(o.heat or 0)), { TextColor3 = T.red, Font = T.semi, TextSize = 13 })
 	end
@@ -342,6 +371,18 @@ R.Career = function(body, P)
 		local c = UI.Card(body, { stroke = T.red })
 		local o = P.camp.offer
 		fightHeader(c, o, true)
+		if type(o.tourney) == "table" then
+			-- a tournament bout: the event, the round, the belt for the final
+			local trow = UI.Frame(c, { Name = "TourneyLine", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30) })
+			local iw = 0
+			if TourneyUI then
+				TourneyUI.BeltIcon(trow, o.tourney.id, 60, { Position = UDim2.new(0, 0, 0.5, 0), AnchorPoint = Vector2.new(0, 0.5) })
+				iw = 68
+			end
+			UI.Text(trow, string.upper(string.format("%s  ·  %s%s", tostring(o.tourney.name or ""), tostring(o.tourney.roundName or ""), o.tourneyBelt and "  ·  FOR THE BELT" or "")),
+				{ Face = "displayMed", TextSize = 16, TextColor3 = T.gold, Position = UDim2.fromOffset(iw, 0), Size = UDim2.new(1, -iw, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
+					TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		end
 		oppBlock(c, o.opp)
 		quote(c, o.talk)
 		local stakes = stakesText(o)
@@ -361,10 +402,24 @@ R.Career = function(body, P)
 			UI.Line(c, "Camp so far: " .. table.concat(P.camp.log, ", "):sub(1, 220), { TextColor3 = T.sub, TextSize = 12 })
 		end
 		local ready = P.camp.daysLeft <= 0
-		UI.Line(c, ready and "Camp is complete. It's FIGHT NIGHT." or "Train at the gym, eat, sleep: each night is a camp day. You can also fight early (fewer camp days).", { TextColor3 = ready and T.gold or T.sub, TextSize = 13 })
+		local tourneyWait = type(o.tourney) == "table" and not ready
+		UI.Line(c, ready and "Camp is complete. It's FIGHT NIGHT." or (tourneyWait and "A tournament bout is on its day: train, eat and sleep until then. Health and injuries carry over between rounds."
+			or "Train at the gym, eat, sleep: each night is a camp day. You can also fight early (fewer camp days)."), { TextColor3 = ready and T.gold or T.sub, TextSize = 13 })
+		if tourneyWait then
+			-- (the bracket does not move for one boxer: no early fight, the bracket is one tap away)
+			buttons(c, {
+				act("THE BRACKET", T.gold, function()
+					tab = "Tournaments"
+					Hub.RenderNow()
+				end, 180),
+				act("SCOUT", T.panel2, function()
+					showBoxer(o.oppId)
+				end, 110),
+			}, 44)
+		end
 		local confirmEarly = false
 		local fightBtn
-		buttons(c, {
+		local _ = not tourneyWait and buttons(c, {
 			function(row)
 				fightBtn = UI.Button(row, ready and "FIGHT NIGHT (LIVE)" or "FIGHT NOW (EARLY)", { Size = UDim2.new(0, 230, 1, 0), BackgroundColor3 = T.red, TextSize = 16 }, function()
 					if not ready and not confirmEarly then
@@ -459,6 +514,19 @@ R.Career = function(body, P)
 	end
 end
 
+R.Tournaments = function(body, P)
+	if not TourneyUI then
+		UI.Line(body, "Tournaments are unavailable right now.", { TextColor3 = T.sub })
+		return
+	end
+	TourneyUI.Tab(body, P, {
+		open = function(name)
+			tab = name
+			Hub.RenderNow()
+		end,
+	})
+end
+
 local AREAS = { "Boxing Area", "Weight Room", "Cardio Room", "Outdoors", "Pool", "Recovery Area" }
 -- what an exercise builds, strongest first; with a width, as many whole stats as fit at the text
 -- floor and "+N more" for the rest (a narrow card never cuts a stat name)
@@ -531,8 +599,7 @@ local METER_ICONS = { ENERGY = "energy", HYDRATION = "water", NUTRITION = "food"
 local function meterTile(parent, caption, value, color, order)
 	local f, v = UI.Stat(parent, tostring(math.floor(value)), caption, { Size = UDim2.new(0.25, -8, 1, 0), order = order, valueSize = 30, valueColor = color,
 		icon = METER_ICONS[caption], iconColor = color, iconSize = 18 })
-	local _, set = UI.Bar(f, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 12, 1, -8), Size = UDim2.new(1, -24, 0, 4) }, color)
-	set(value / 100)
+	UI.Meter(f, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 12, 1, -8), Size = UDim2.new(1, -24, 0, 6) }, { color = color }):set(value / 100)
 	return f, v
 end
 
@@ -553,7 +620,15 @@ local function exerciseCard(grid, a, P, order, cap)
 	local tile = UI.Frame(grid, { Name = "Activity", LayoutOrder = order, BackgroundColor3 = T.panel, BackgroundTransparency = 0.05 })
 	UI.Corner(tile, UI.R.lg)
 	UI.Stroke(tile, Color3.new(1, 1, 1), 1, 0.92)
-	local accent = UI.Frame(tile, { Size = UDim2.new(0, 3, 1, -24), Position = UDim2.fromOffset(0, 12), BackgroundColor3 = a.recovery and T.blue or T.red })
+	-- (gold: on today's plan / camp focus block)
+	local onFocus = false
+	local trv = type(P.training) == "table" and P.training or nil
+	for _, f in ipairs(trv and trv.focus or {}) do
+		if TP and TP.OnFocus(a.id, f) then
+			onFocus = true
+		end
+	end
+	local accent = UI.Frame(tile, { Name = onFocus and "FocusAccent" or "Accent", Size = UDim2.new(0, onFocus and 4 or 3, 1, -24), Position = UDim2.fromOffset(0, 12), BackgroundColor3 = onFocus and T.gold or (a.recovery and T.blue or T.red) })
 	UI.Corner(accent, 2)
 	local THUMB_W = 78
 	local right = THUMB_W + 22
@@ -593,10 +668,14 @@ local function exerciseCard(grid, a, P, order, cap)
 		UI.Text(tile, grade, { Face = "display", TextSize = 22, TextColor3 = gcol, Position = UDim2.fromOffset(16, by - 4), Size = UDim2.fromOffset(28, 26), AutomaticSize = Enum.AutomaticSize.None,
 			TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 		UI.Text(tile, "BEST", { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(48, by - 2), Size = UDim2.fromOffset(40, 12), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
-		local _, set = UI.Bar(tile, { Position = UDim2.fromOffset(48, by + 13), Size = UDim2.new(1, -(right + 48 + 92), 0, 6) }, gcol)
+		-- the drill's mastery level (M0..M5) next to the best and the sessions
+		local m = trv and type(trv.mastery) == "table" and trv.mastery[a.id] or nil
+		local mtxt = m and string.format("  ·  M%d", m.lv or 0) or ""
+		local numW = m and 124 or 88
+		local _, set = UI.Bar(tile, { Position = UDim2.fromOffset(48, by + 13), Size = UDim2.new(1, -(right + 48 + numW + 4), 0, 6) }, gcol)
 		set(pct / 100)
-		UI.Text(tile, string.format("%d%%  ·  %d×", pct, sessions), { Face = "number", TextSize = 15, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -(right + 2), 0, by + 2),
-			Size = UDim2.fromOffset(88, 18), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+		UI.Text(tile, string.format("%d%%  ·  %d×%s", pct, sessions, mtxt), { Face = "number", TextSize = 15, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -(right + 2), 0, by + 2),
+			Size = UDim2.fromOffset(numW, 18), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
 	end
 	local tried = sessions == 0 and UI.Text(tile, "NOT TRIED YET", { Font = T.semi, TextSize = 12, TextColor3 = T.dim, Position = UDim2.fromOffset(16, by + 2), Size = UDim2.new(1, -(right + 16), 0, 18),
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
@@ -634,6 +713,14 @@ local function exerciseCard(grid, a, P, order, cap)
 			-- the thumbnail lights what the card lists (its three main muscles)
 			map:SetTargets(listed, T.red)
 		end
+	end
+	-- done today already: the next one pays less (TrainingPlan.RepeatMul)
+	local nToday = trv and type(trv.today) == "table" and tonumber(trv.today[a.id]) or 0
+	if nToday > 0 and not a.recovery and TP then
+		-- (over the thumbnail's top corner: "2× -20%")
+		local rc = UI.Chip(tile, string.format("%d× %+d%%", nToday, math.floor((TP.RepeatMul(nToday) - 1) * 100 + 0.5)), T.orange, { Name = "RepeatChip", AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -10, 0, 8), TextSize = 11, h = 18 })
+		rc.ZIndex = 3
 	end
 	UI.Button(tile, "GO", { Size = UDim2.fromOffset(THUMB_W, goH), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -10, 1, -10), BackgroundColor3 = T.gold, TextSize = 16 }, function()
 		Hub.Close()
@@ -679,6 +766,274 @@ local function openControls()
 		end
 	end
 end
+
+------------------------------------------------------------------------
+-- Training programme (Training tab): the weekly plan or the fight camp, today's goals, the coach's
+-- tips, personal records. P.training = server Training.ProgramView; the rules are Shared.TrainingPlan.
+------------------------------------------------------------------------
+local FOCUS_SHORT = { power = "POWER", speed = "SPEED", endurance = "CARDIO", defence = "DEFENCE", ringiq = "RING IQ", conditioning = "FITNESS", weightcut = "CUT", rest = "REST" }
+local planEdit = false -- the template picker is open
+
+local function focusColor(id)
+	local f = TP and TP.FocusById[id]
+	return f and rgb(f.rgb, T.sub) or T.sub
+end
+
+local function goalRows(card, list, compact)
+	for i, g in ipairs(list) do
+		local row = UI.Frame(card, { Name = "Goal", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = 100 + i })
+		row:SetAttribute("Kind", g.kind)
+		row:SetAttribute("Done", g.done == true)
+		local col = g.done and T.green or (g.weekly and T.purple or T.text)
+		UI.Icon(row, g.done and "check" or (g.icon or "target"), 16, g.done and T.green or T.gold, { Position = UDim2.fromOffset(0, 3) })
+		UI.Text(row, (g.weekly and "WEEK: " or "") .. g.text, { Font = T.semi, TextSize = 13, TextColor3 = col, Position = UDim2.fromOffset(22, 0), Size = UDim2.new(1, -78, 1, 0),
+			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		UI.Text(row, string.format("%d/%d", g.n or 0, g.need or 1), { Face = "number", TextSize = 15, TextColor3 = col, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0),
+			Size = UDim2.fromOffset(52, 22), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+	end
+end
+
+-- the seven days of the plan: tap a day to cycle its focus block
+local function weekStrip(card, plan)
+	local h = hit(card, 50)
+	local strip = UI.Frame(card, { Name = "WeekStrip", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, h) })
+	UI.List(strip, 4, true)
+	local order = {}
+	for _, f in ipairs(TP.Focus) do
+		table.insert(order, f.id)
+	end
+	for i = 1, TP.WEEK do
+		local id = plan.days[i] or "rest"
+		local today = i == plan.today
+		local col = focusColor(id)
+		local b = UI.Button(strip, "", { Name = "PlanDay" .. i, Size = UDim2.new(1 / TP.WEEK, -4, 1, 0), BackgroundColor3 = today and col:Lerp(T.bg, 0.55) or T.panel2, LayoutOrder = i }, function()
+			local k = table.find(order, id) or 0
+			result(State.req("SetPlanDay", i, order[k % #order + 1]))
+		end)
+		if today then
+			UI.Stroke(b, T.gold, 2, 0)
+		end
+		UI.Icon(b, TP.FocusById[id] and TP.FocusById[id].icon or "sleep", 16, col, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 5) })
+		UI.Text(b, today and "TODAY" or ("DAY " .. i), { Font = T.semi, TextSize = 11, TextColor3 = today and T.gold or T.dim, Position = UDim2.new(0, 0, 0, 21), Size = UDim2.new(1, 0, 0, 12),
+			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, TextScaled = true })
+		local lbl = UI.Text(b, FOCUS_SHORT[id] or id, { Font = T.semi, TextSize = 11, TextColor3 = col, Position = UDim2.new(0, 2, 1, -16), Size = UDim2.new(1, -4, 0, 13),
+			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, TextScaled = true })
+		UI.New("UITextSizeConstraint", { MaxTextSize = 12, MinTextSize = 8, Parent = lbl })
+	end
+end
+
+local function templatePicker(card, P)
+	local grid = UI.Frame(card, { Name = "Templates", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+	local cols = UI.CanvasSize(State.gui).X >= 1000 and 4 or 2
+	UI.Grid(grid, UDim2.new(1 / cols, -6, 0, hit(card, 40)), nil, 6)
+	local function pick(id)
+		planEdit = false
+		result(State.req("SetPlan", id), id == "none" and "Free training: no plan." or nil)
+	end
+	for i, tpl in ipairs(TP.Templates) do
+		local b = UI.Button(grid, string.upper(tpl.name), { Name = "Template_" .. tpl.id, LayoutOrder = i, TextSize = 13,
+			BackgroundColor3 = (P.training and P.training.plan and P.training.plan.template == tpl.id) and T.goldDeep or T.panel2 }, function()
+			pick(tpl.id)
+		end)
+		b:SetAttribute("Template", tpl.id)
+	end
+	UI.Button(grid, "NO PLAN (FREE)", { Name = "Template_none", LayoutOrder = 99, TextSize = 13, BackgroundColor3 = T.panel2 }, function()
+		pick("none")
+	end)
+end
+
+-- the camp: day strip coloured by phase, readiness, the focus against the opponent
+local function campBlock(card, camp)
+	local phases = camp.phases or {}
+	local n = math.max(1, #phases)
+	local strip = UI.Frame(card, { Name = "CampStrip", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30) })
+	UI.List(strip, 3, true)
+	for i = 1, n do
+		local ph = TP.Phases[phases[i]] or TP.Phases.build
+		local col = rgb(ph.rgb, T.sub)
+		local cell = UI.Frame(strip, { Name = "CampDay", Size = UDim2.new(1 / n, -3, 1, 0), BackgroundColor3 = i < camp.day and col:Lerp(T.bg, 0.6) or (i == camp.day and col or T.panel2), LayoutOrder = i })
+		UI.Corner(cell, UI.R.sm)
+		if i == camp.day then
+			UI.Stroke(cell, T.white, 1.5, 0.1)
+		end
+		local lbl = UI.Text(cell, (n <= 6 and (ph.name .. " ") or "") .. i, { Font = T.semi, TextSize = 11, TextColor3 = i == camp.day and T.ink or col, Size = UDim2.new(1, -4, 1, -6), Position = UDim2.fromOffset(2, 3),
+			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, TextScaled = true })
+		UI.New("UITextSizeConstraint", { MaxTextSize = 12, MinTextSize = 8, Parent = lbl })
+	end
+	local ph = TP.Phases[camp.phase or ""]
+	if ph then
+		UI.Line(card, string.format("%s: %s  Today %d/%d sessions.", ph.name, ph.desc, camp.todayN or 0, ph.target), { TextSize = 13, TextColor3 = rgb(ph.rgb, T.text), Font = T.semi })
+	elseif camp.phase == "fight" then
+		UI.Line(card, "Camp is over: it's fight night.", { TextSize = 13, TextColor3 = T.gold, Font = T.semi })
+	end
+	if camp.readiness then
+		local score = camp.readiness
+		local col = score >= 80 and T.gold or (score >= 65 and T.green or (score >= 45 and T.text or T.orange))
+		local row = UI.StatRow(card, "READINESS", score, 100, col, string.format("%d", score))
+		row.Name = "Readiness"
+		local warn = {}
+		if camp.over then
+			table.insert(warn, "overtrained: ease off")
+		end
+		if camp.drained then
+			table.insert(warn, "drained by the cut")
+		end
+		UI.Line(card, string.format("Fight-night forecast: %s%s. Peak right for a bonus in the ring; overtraining or a hard cut costs you.", tostring(camp.label or ""),
+			#warn > 0 and (" (" .. table.concat(warn, ", ") .. ")") or ""), { TextSize = 12, TextColor3 = #warn > 0 and T.orange or T.sub })
+	end
+	if type(camp.focus) == "table" and #camp.focus > 0 then
+		local names = {}
+		for _, id in ipairs(camp.focus) do
+			table.insert(names, TP.FocusById[id] and TP.FocusById[id].name or id)
+		end
+		UI.Line(card, string.format("CAMP FOCUS%s: %s (+%d%% gains). %s", camp.opp and (" vs " .. string.upper(camp.opp)) or "", table.concat(names, " + "), math.floor(TP.PLAN_BONUS * 100 + 0.5), camp.why or ""),
+			{ TextSize = 13, TextColor3 = T.text })
+	end
+end
+
+-- the programme card: plan / camp, goals, coach tips
+local function programSection(body, P)
+	local tr = P.training
+	if not (TP and type(tr) == "table") then
+		return
+	end
+	local compact = compactHub()
+	local camp = tr.camp
+	local card = UI.Card(body, { stroke = camp and T.red or nil })
+	card.Name = "Programme"
+	local head = UI.Frame(card, { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, hit(card, 28)) })
+	local title
+	if camp then
+		title = string.format("FIGHT CAMP  ·  DAY %d OF %d", math.min(camp.day or 1, camp.total or 1), camp.total or 1)
+	elseif tr.plan then
+		local f = tr.focus and tr.focus[1]
+		title = "TRAINING PLAN  ·  TODAY: " .. (f and (TP.FocusById[f] and string.upper(TP.FocusById[f].name) or f) or "-")
+	else
+		title = "TRAINING PLAN  ·  FREE TRAINING"
+	end
+	UI.Kicker(head, title, camp and T.red or T.gold, { icon = "calendar", Size = UDim2.new(1, -150, 1, 0) })
+	if not camp then
+		UI.Button(head, planEdit and "CLOSE" or (tr.plan and "CHANGE PLAN" or "SET A PLAN"), { Name = "PlanEdit", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0),
+			Size = UDim2.new(0, 140, 1, 0), BackgroundColor3 = planEdit and T.panel2 or T.goldDeep, TextSize = 13 }, function()
+			planEdit = not planEdit
+			Hub.RenderNow()
+		end)
+	end
+	if camp then
+		campBlock(card, camp)
+	elseif tr.plan then
+		weekStrip(card, tr.plan)
+		local f = tr.focus and TP.FocusById[tr.focus[1]]
+		if f and not compact then
+			UI.Line(card, f.rest and "Rest day: recovery only and a proper meal. Skip hard training for fresh legs tomorrow (+6% gains)."
+				or string.format("%s: %s. Drills on today's block earn +%d%% gains. Tap a day to change it.", f.name, f.desc, math.floor(TP.PLAN_BONUS * 100 + 0.5)), { TextSize = 12, TextColor3 = T.sub })
+		end
+	elseif not planEdit then
+		UI.Line(card, "Pick a weekly plan: training on the day's focus block earns bonus gains. Free training still works.", { TextSize = 12, TextColor3 = T.sub })
+	end
+	if planEdit and not camp then
+		templatePicker(card, P)
+	end
+	-- goals
+	local gl = {}
+	for _, g in ipairs(tr.goals or {}) do
+		table.insert(gl, g)
+	end
+	if tr.weekly then
+		local w = table.clone(tr.weekly)
+		w.weekly = true
+		table.insert(gl, w)
+	end
+	if #gl > 0 then
+		local done = 0
+		for _, g in ipairs(tr.goals or {}) do
+			if g.done then
+				done += 1
+			end
+		end
+		local gh = UI.Frame(card, { Name = "GoalsHead", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = 99 })
+		UI.Kicker(gh, string.format("TODAY'S GOALS  %d/%d", done, #(tr.goals or {})), T.gold, { icon = "target", Size = UDim2.new(1, -120, 1, 0) })
+		if (tr.streak or 0) > 0 then
+			UI.Chip(gh, string.format("STREAK %d", tr.streak), T.orange, { icon = "flame", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), TextSize = 12 })
+		end
+		goalRows(card, gl, compact)
+		local rw = tr.reward or {}
+		if not compact and rw.goal then
+			local f = UI.Line(card, string.format("Each goal %s and %d XP; all three +%s more%s. Weekly challenge %s.", money(rw.goal.money or 0), rw.goal.xp or 0, money(rw.sweep and rw.sweep.money or 0),
+				(tr.streak or 0) > 0 and " (streak bonus)" or "", money(rw.weekly and rw.weekly.money or 0)), { TextSize = 12, TextColor3 = T.dim })
+			f.LayoutOrder = 200
+		end
+	end
+	-- the coach
+	for i, tip in ipairs(tr.tips or {}) do
+		if i > (compact and 1 or 2) then
+			break
+		end
+		local l = UI.Line(card, string.format('<font color="#%s">%s%s:</font> %s', T.gold:ToHex(), string.upper(tip.coach or "COACH"), tip.persona and (" (" .. tip.persona .. ")") or "", tip.text or ""),
+			{ RichText = true, TextSize = 13, TextColor3 = T.text })
+		l.Name = "CoachTip"
+		l.LayoutOrder = 300 + i
+	end
+	if tr.rust then
+		local l = UI.Line(card, string.format("RING RUST: %d days without training. Stamina, speed and timing are fading.", tr.idle or 0), { TextSize = 13, TextColor3 = T.orange, Font = T.semi })
+		l.LayoutOrder = 400
+	end
+end
+Hub.ProgramSection = programSection
+
+-- personal records: each drill's best grade and best numbers, its mastery and overload
+local REC_NAMES = {
+	punches = "punches", maxPower = "max power", handSpeed = "hand speed", hitsPerMin = "hits/min", bestStreak = "streak", accuracy = "accuracy", counters = "counters",
+	cleanCombos = "clean combos", load = "load", goodReps = "good reps", distance = "distance", topSpeed = "top speed", maxWatts = "watts", meters = "metres",
+	stepsPerSec = "steps/s", cleanJumps = "clean jumps", doubleUnders = "double unders", lengths = "lengths", cleanSlams = "slams", perfectCurls = "perfect curls",
+}
+local function recordsSection(body, P)
+	local recs = type(P.records) == "table" and P.records or {}
+	local mastery = type(P.training) == "table" and P.training.mastery or {}
+	local list = {}
+	for _, a in ipairs(Config.Activities) do
+		local r = recs[a.id]
+		if type(r) == "table" and (tonumber(r.sessions) or 0) > 0 then
+			table.insert(list, { a = a, r = r, m = mastery[a.id] })
+		end
+	end
+	if #list == 0 then
+		return
+	end
+	UI.Header(body, "PERSONAL RECORDS", T.gold, "trophy")
+	local cols = UI.CanvasSize(State.gui).X >= 1100 and 3 or (UI.CanvasSize(State.gui).X >= 760 and 2 or 1)
+	local grid = UI.Frame(body, { Name = "Records", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+	UI.Grid(grid, UDim2.new(1 / cols, cols > 1 and -6 or 0, 0, 62), nil, 6)
+	for i, e in ipairs(list) do
+		local tile = UI.Frame(grid, { Name = "Record", LayoutOrder = i, BackgroundColor3 = T.panel, BackgroundTransparency = 0.05 })
+		UI.Corner(tile, UI.R.md)
+		tile:SetAttribute("Activity", e.a.id)
+		local grade = Config.GradeFor(tonumber(e.r.best) or 0)
+		local g = Config.GradeInfo(grade).rgb
+		local gcol = Color3.fromRGB(g[1], g[2], g[3])
+		UI.Text(tile, grade, { Face = "display", TextSize = 24, TextColor3 = gcol, Position = UDim2.fromOffset(8, 6), Size = UDim2.fromOffset(28, 30), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+		local lv = e.m and e.m.lv or 0
+		local mtxt = TP and string.format("%s%s", string.upper(TP.MasteryName(lv) or ""), (e.m and (e.m.ov or 0) > 0) and string.format(" · OVERLOAD %d", e.m.ov) or "") or ""
+		UI.Text(tile, string.upper(e.a.name), { Font = T.semi, TextSize = 13, Position = UDim2.fromOffset(42, 6), Size = UDim2.new(1, -50, 0, 16), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		UI.Text(tile, string.format("%d%% best  ·  %d×  ·  %s", Config.QualityPct(tonumber(e.r.best) or 0), tonumber(e.r.sessions) or 0, mtxt), { TextSize = 12, TextColor3 = T.sub, Position = UDim2.fromOffset(42, 23), Size = UDim2.new(1, -50, 0, 14),
+			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		local nums = {}
+		local keys = {}
+		for k in pairs(type(e.r.stats) == "table" and e.r.stats or {}) do
+			table.insert(keys, k)
+		end
+		table.sort(keys)
+		for _, k in ipairs(keys) do
+			if REC_NAMES[k] and #nums < 3 then
+				local v = tonumber(e.r.stats[k]) or 0
+				table.insert(nums, string.format("%s %s", REC_NAMES[k], v == math.floor(v) and tostring(v) or string.format("%.1f", v)))
+			end
+		end
+		UI.Text(tile, #nums > 0 and table.concat(nums, "  ·  ") or "No numbers logged yet", { TextSize = 12, TextColor3 = #nums > 0 and T.gold or T.dim, Position = UDim2.fromOffset(42, 40), Size = UDim2.new(1, -50, 0, 14),
+			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	end
+end
+Hub.RecordsSection = recordsSection
 
 R.Training = function(body, P)
 	local c = P.condition
@@ -785,6 +1140,8 @@ R.Training = function(body, P)
 			State.open.Sleep()
 		end, compact and 160 or 170),
 	}, compact and 36 or 40)
+	-- the weekly plan / fight camp, today's goals and the coach (programSection above)
+	programSection(body, P)
 	local cap = frameCap(P)
 	-- two columns only where a card keeps its name, cost chip and gains whole at the text floor (a
 	-- 667 phone's half-width card cut "DOUBLE-END BAG" under its chip): the smallest phones take one
@@ -805,6 +1162,7 @@ R.Training = function(body, P)
 			end
 		end
 	end
+	recordsSection(body, P)
 end
 
 local FLEX_NAMES = {
@@ -1260,6 +1618,18 @@ R.Gear = function(body, P)
 	end
 end
 
+-- the coach's personality and what he adds to the training programme (Shared.TrainingPlan personas)
+local function coachPersonaLine(card, specId, tier)
+	local p = TP and TP.CoachPersonas[specId]
+	if not p then
+		return
+	end
+	local says = p.says and p.says[1] or ""
+	local l = UI.Line(card, string.format('<font color="#%s">%s.</font> %s%s', T.text:ToHex(), string.upper(p.persona), p.perkText, says ~= "" and string.format('  <font color="#%s">"%s"</font>', T.dim:ToHex(), says) or ""),
+		{ RichText = true, TextSize = 13, TextColor3 = tier > 0 and T.green or T.sub })
+	l.Name = "CoachPersona"
+end
+
 R.Coaches = function(body, P)
 	UI.Line(body, string.format("Money %s    Team salary per fight: %s", money(P.money), money(P.salary or 0)), { Font = T.bold, TextColor3 = T.green, TextSize = 16 })
 	UI.Line(body, "Each coach boosts the stats of their specialty in training. Salaries come out of every purse. An elite Ring IQ or Defense coach also reads your opponents between rounds.", { TextColor3 = T.sub, TextSize = 13 })
@@ -1271,6 +1641,7 @@ R.Coaches = function(body, P)
 			table.insert(statNames, Config.StatNames[k])
 		end
 		UI.Line(c, string.format("%s COACH  -  %s", (spec.name or spec.id):upper(), table.concat(statNames, ", ")), { Font = T.bold, TextColor3 = T.gold })
+		coachPersonaLine(c, spec.id, tier)
 		if tier > 0 then
 			local def = Catalog.CoachTiers[tier]
 			UI.Line(c, string.format("Hired: %s (%s, +%d%% gains, %s per fight)", Catalog.CoachNames[spec.id][tier], def.name, def.boost * 100, money(def.salary)), { TextSize = 14 })
@@ -1848,7 +2219,7 @@ function Hub.Open(which)
 			UI.Hover(b, { amount = 0.94 })
 			local bar = UI.Frame(b, { Name = "Active", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(3, rail and 18 or 20), BackgroundColor3 = T.gold, Visible = false })
 			UI.Corner(bar, 2)
-			UI.Text(b, string.upper(name), { Name = "Label", Face = "displayMed", TextSize = rail and 16 or 18, TextColor3 = T.sub, Position = UDim2.fromOffset(rail and 6 or 44, 0),
+			UI.Text(b, (rail and RAIL_LABELS[name]) or string.upper(name), { Name = "Label", Face = "displayMed", TextSize = rail and 16 or 18, TextColor3 = T.sub, Position = UDim2.fromOffset(rail and 6 or 44, 0),
 				Size = UDim2.new(1, rail and -8 or -50, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
 				TextXAlignment = rail and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left })
 			if not rail then

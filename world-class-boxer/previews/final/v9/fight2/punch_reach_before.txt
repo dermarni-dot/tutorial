@@ -1,0 +1,37 @@
+      waist max |pitch| 3 |yaw| 13 |roll| 6 deg
+punch T1 jab       reach 3.230 (frame 11)  glove->target 0.853  dy -0.389  elbow 12 deg
+      waist max |pitch| 8 |yaw| 28 |roll| 9 deg
+punch T1 cross     reach 3.266 (frame 14)  glove->target 0.820  dy -0.402  elbow 12 deg
+      waist max |pitch| 3 |yaw| 21 |roll| 10 deg
+punch T1 leadhook  reach 4.065 (frame 17)  glove->target 0.573  dy -0.224  elbow 53 deg
+      waist max |pitch| 2 |yaw| 32 |roll| 12 deg
+punch T1 rearhook  reach 3.412 (frame 19)  glove->target 0.746  dy -0.191  elbow 85 deg
+      waist max |pitch| 6 |yaw| 12 |roll| 2 deg
+punch T1 uppercut  reach 3.143 (frame 14)  glove->target 0.863  dy -0.369  elbow 44 deg
+      waist max |pitch| 13 |yaw| 16 |roll| 6 deg
+punch T1 bodyjab   reach 2.888 (frame 11)  glove->target 1.108  dy -0.373  elbow 19 deg
+      waist max |pitch| 3 |yaw| 13 |roll| 6 deg
+punch T3 jab       reach 3.233 (frame 11)  glove->target 0.851  dy -0.389  elbow 12 deg
+      waist max |pitch| 8 |yaw| 28 |roll| 10 deg
+punch T3 cross     reach 3.289 (frame 14)  glove->target 0.817  dy -0.402  elbow 12 deg
+      waist max |pitch| 3 |yaw| 21 |roll| 10 deg
+punch T3 leadhook  reach 4.141 (frame 17)  glove->target 0.539  dy -0.212  elbow 57 deg
+      waist max |pitch| 2 |yaw| 32 |roll| 12 deg
+punch T3 rearhook  reach 3.417 (frame 19)  glove->target 0.717  dy -0.213  elbow 91 deg
+      waist max |pitch| 6 |yaw| 13 |roll| 2 deg
+punch T3 uppercut  reach 3.145 (frame 14)  glove->target 0.883  dy -0.378  elbow 44 deg
+      waist max |pitch| 13 |yaw| 16 |roll| 6 deg
+punch T3 bodyjab   reach 2.891 (frame 11)  glove->target 1.108  dy -0.374  elbow 19 deg
+      waist max |pitch| 3 |yaw| 13 |roll| 6 deg
+punch T5 jab       reach 3.235 (frame 11)  glove->target 0.849  dy -0.390  elbow 12 deg
+      waist max |pitch| 8 |yaw| 28 |roll| 10 deg
+punch T5 cross     reach 3.308 (frame 14)  glove->target 0.815  dy -0.403  elbow 12 deg
+      waist max |pitch| 3 |yaw| 21 |roll| 10 deg
+punch T5 leadhook  reach 4.183 (frame 18)  glove->target 0.349  dy -0.241  elbow 55 deg
+      waist max |pitch| 2 |yaw| 33 |roll| 13 deg
+punch T5 rearhook  reach 3.420 (frame 19)  glove->target 0.692  dy -0.213  elbow 91 deg
+      waist max |pitch| 6 |yaw| 13 |roll| 2 deg
+punch T5 uppercut  reach 3.119 (frame 14)  glove->target 0.907  dy -0.389  elbow 44 deg
+      waist max |pitch| 13 |yaw| 16 |roll| 6 deg
+punch T5 bodyjab   reach 2.905 (frame 11)  glove->target 1.108  dy -0.375  elbow 19 deg
+out: /tmp/claude-0/-home-user-tutorial/3e72dc83-9506-5d11-a575-9dd4f250e9a5/scratchpad/pb

@@ -216,4 +216,39 @@ Tournaments.Ceremony = {
 	wide = 7.6, -- the crowd wide shot, the confetti
 }
 
+-- the cutscene's camera at time t (BoxerClient.Ceremony every frame; tools/sim/v9_ceremony.luau's storyboard): four
+-- shots with hard cuts. B = the beats, center = the ring centre, face = the way the winner faces (unit, flat), wp /
+-- hp = the winner's root / head positions now. -> CFrame, vertical field of view (degrees), shot name
+local function smooth01(x)
+	x = math.clamp(x, 0, 1)
+	return x * x * (3 - 2 * x)
+end
+function Tournaments.CeremonyShot(t, B, center, face, wp, hp)
+	B = B or Tournaments.Ceremony
+	local UP = Vector3.yAxis
+	local right = face:Cross(UP)
+	if t < B.walkIn then
+		-- the winner close-up as the referee raises his hand: a slow push in on the face
+		local k = smooth01(t / B.walkIn)
+		local from = hp + face * (4.4 - 1.3 * k) + right * (1.1 - 0.4 * k) + UP * 0.15
+		return CFrame.lookAt(from, hp - UP * (0.35 + 0.4 * (1 - k))), 50, "closeup"
+	elseif t < B.lift then
+		-- the orbit while the official walks in and straps the belt on
+		local k = (t - B.walkIn) / (B.lift - B.walkIn)
+		local a = math.rad(25 + 190 * smooth01(k))
+		local dir = face * math.cos(a) + right * math.sin(a)
+		local from = center + dir * 10.5 + UP * (4.6 + 1.2 * math.sin(k * math.pi))
+		return CFrame.lookAt(from, wp + UP * 0.2), 55, "orbit"
+	elseif t < B.wide then
+		-- the low hero shot: the belt overhead
+		local k = smooth01((t - B.lift) / (B.wide - B.lift))
+		local from = wp + face * (5.0 - 0.8 * k) + right * 0.9 - UP * (1.7 - 0.4 * k)
+		return CFrame.lookAt(from, hp + UP * 1.1), 52, "hero"
+	end
+	-- the crowd wide shot over his shoulder, craning up and back
+	local k = smooth01((t - B.wide) / math.max(0.5, B.dur - B.wide))
+	local from = center - face * (8 + 7 * k) + right * (2.5 + 2 * k) + UP * (5.5 + 4 * k)
+	return CFrame.lookAt(from, center + face * 26 + UP * (5 - 2 * k)), 66, "wide"
+end
+
 return Tournaments

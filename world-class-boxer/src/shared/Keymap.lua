@@ -111,6 +111,10 @@ Keymap.Actions = {
 		how = "On a pad: flick the right stick left, then X within half a second. On touch: a slip on the BLOCK pad, then JAB within half a second." },
 	{ id = "countercross", label = "Counter cross", section = "advanced", kbd = { "E+MouseButton2" }, pad = "Thumbstick2Right+ButtonY", touch = "Swipe BLOCK, then CROSS",
 		desc = "Slip right and fire the cross over his jab: hold E and right-click.", how = "On a pad: flick right, then Y." },
+	-- the feint (FightEngine:Feint; Config.FightDepth.feint): a flick-then-button on a pad like the counters
+	{ id = "feint", label = "Feint", section = "advanced", kbd = { "M" }, pad = "Thumbstick2Up+ButtonX", touch = "Swipe CLINCH up",
+		desc = "Fake the jab. If he reacts (a block, a slip, a dodge) he bit: your next punch is open and his counter is gone.",
+		how = "Cheap but not free, and spamming it costs more. Smart opponents stop biting on a feint they keep seeing. On a pad flick the right stick up, then X." },
 	-- SPECIAL (Moves.lua: unlocked per style, career tier, training and fights)
 	{ id = "special_checkhook", special = "checkhook", label = "Check hook", section = "special", kbd = { "One" }, pad = "ButtonR1+ButtonX", touch = "CHECK" },
 	{ id = "special_phillyshell", special = "phillyshell", label = "Philly shell counter", section = "special", kbd = { "Two" }, pad = "ButtonR1+ButtonL2", touch = "SHELL" },

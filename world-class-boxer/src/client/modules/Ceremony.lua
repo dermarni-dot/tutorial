@@ -46,11 +46,6 @@ local V3 = Vector3.new
 local CF = CFrame.new
 local UP = Vector3.yAxis
 
-local function smooth(x)
-	x = math.clamp(x, 0, 1)
-	return x * x * (3 - 2 * x)
-end
-
 local function vfx(name, ...)
 	if VenueFX == nil then
 		VenueFX = optional("VenueFX") or false
@@ -119,7 +114,7 @@ local function buildGui(spec)
 	-- SKIP: top right, under the letterbox's edge (finger-sized on touch)
 	local sh = math.max(40, UI.MinHit(root))
 	ui.skip = UI.Button(root, "SKIP", { Name = "Skip", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 12), Size = UDim2.fromOffset(math.max(120, sh * 2.4), sh),
-		BackgroundColor3 = T.panel2, TextSize = 16, icon = UI.HasIcon("play") and "play" or nil })
+		BackgroundColor3 = T.panel2, TextSize = 16 })
 	local hint = UI.Text(ui.skip, "", { Name = "Hint", Font = T.semi, TextSize = 11, TextColor3 = T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 1, 4),
 		Size = UDim2.fromOffset(160, 14), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
 	UI.BindHint(hint, UI.KeyHint("SPACE", Enum.KeyCode.ButtonB, "TAP"))
@@ -434,7 +429,7 @@ function Ceremony.Play(msg)
 				local mid = (lh.Position + rh.Position) / 2
 				local froot = partOf(off, "HumanoidRootPart")
 				local look = froot and froot.CFrame.LookVector or -face
-				held:PivotTo(CFrame.lookAt(mid + look * 0.25 - UP * 0.15, mid + look * 2) * CFrame.Angles(0, math.pi, 0))
+				held:PivotTo(CFrame.lookAt(mid + look * 0.25 - UP * 0.15, mid + look * 2))
 				held.Parent = folder
 			else
 				held.Parent = nil
@@ -467,31 +462,8 @@ function Ceremony.Play(msg)
 			end
 			s.part.CFrame = CFrame.lookAt(s.base, aim)
 		end
-		-- the camera: four shots, hard cuts between them
-		local goal, fov
-		if t < B.walkIn then
-			local k = smooth(t / B.walkIn)
-			local from = hp + face * (4.4 - 1.3 * k) + right * (1.1 - 0.4 * k) + UP * 0.15
-			goal = CFrame.lookAt(from, hp - UP * (0.35 + 0.4 * (1 - k)))
-			fov = 50
-		elseif t < B.lift then
-			local k = (t - B.walkIn) / (B.lift - B.walkIn)
-			local a = math.rad(25 + 190 * smooth(k))
-			local dir = (face * math.cos(a) + right * math.sin(a))
-			local from = center + dir * 10.5 + UP * (4.6 + 1.2 * math.sin(k * math.pi))
-			goal = CFrame.lookAt(from, wp + UP * 0.2)
-			fov = 55
-		elseif t < B.wide then
-			local k = smooth((t - B.lift) / (B.wide - B.lift))
-			local from = wp + face * (6.8 - 1.2 * k) + right * 1.4 - UP * (1.9 - 0.5 * k)
-			goal = CFrame.lookAt(from, hp + UP * 1.3)
-			fov = 58
-		else
-			local k = smooth((t - B.wide) / math.max(0.5, B.dur - B.wide))
-			local from = center - face * (8 + 7 * k) + right * (2.5 + 2 * k) + UP * (5.5 + 4 * k)
-			goal = CFrame.lookAt(from, center + face * 26 + UP * (5 - 2 * k))
-			fov = 66
-		end
+		-- the camera: four shots, hard cuts between them (Shared.Tournaments.CeremonyShot: the storyboard's too)
+		local goal, fov = Tournaments.CeremonyShot(t, B, center, face, wp, hp)
 		cam.CFrame = goal
 		cam.FieldOfView = fov
 	end)

@@ -11,6 +11,8 @@
 --   brightness  0.5 .. 1.6   overall exposure (player attribute Brightness, read by LightLevels)
 --   menuAtStart bool         open the main menu when you join
 --   controlHints bool        keep the fight's key-cap strip on screen (otherwise it fades after round 1)
+--   liveScore   bool         show the live score in a fight: this round's work and the judges' cards so far
+--                            (player attribute LiveScore, read by BoxerClient.FightIntel)
 --   aimAssist   Off | Low | High   console aim assist (gamepad only; the server honours the SAVED level)
 --   vibration   bool         controller vibration on hits taken / landed / knockdowns (Gamepad.Rumble)
 --   vibrationStrength 0 .. 1 how hard it rumbles
@@ -33,7 +35,7 @@ local Perf = require(script.Parent:WaitForChild("Perf"))
 local Settings = {}
 local player = Players.LocalPlayer
 
-Settings.Defaults = { uiScale = 1, screenFx = 1, shake = 1, music = 0.8, sfx = 1, brightness = 1, detail = "Auto", menuAtStart = true, controlHints = false,
+Settings.Defaults = { uiScale = 1, screenFx = 1, shake = 1, music = 0.8, sfx = 1, brightness = 1, detail = "Auto", menuAtStart = true, controlHints = false, liveScore = false,
 	aimAssist = "Off", vibration = true, vibrationStrength = 1, keymap = {} }
 Settings.Details = { "Auto", "High", "Medium", "Low" }
 Settings.AimAssists = { "Off", "Low", "High" }
@@ -57,7 +59,7 @@ function Settings.Sanitize(t)
 	if table.find(Settings.AimAssists, t.aimAssist) then
 		out.aimAssist = t.aimAssist
 	end
-	for _, k in ipairs({ "menuAtStart", "controlHints", "vibration" }) do
+	for _, k in ipairs({ "menuAtStart", "controlHints", "vibration", "liveScore" }) do
 		if type(t[k]) == "boolean" then
 			out[k] = t[k]
 		end
@@ -207,6 +209,7 @@ function Settings.Apply()
 	Config.ScreenFX = v.screenFx -- read every frame by FightClient / VenueFX
 	player:SetAttribute("CamShake", v.shake) -- client-local: FightClient / training / menu cameras
 	player:SetAttribute("ControlHints", v.controlHints == true) -- FightClient: keep the key strip up
+	player:SetAttribute("LiveScore", v.liveScore == true) -- FightIntel: the live score chip in a fight
 	player:SetAttribute("Brightness", v.brightness) -- client-local: LightLevels exposure
 	player:SetAttribute("AimAssist", v.aimAssist) -- client-local: FightClient (the server reads the saved copy)
 	if UI.Gamepad and UI.Gamepad.SetVibration then

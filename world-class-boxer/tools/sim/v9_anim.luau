@@ -1420,7 +1420,7 @@ local function kdScen(id, pose, kind, hand, sev, getup, count, ko, zone)
 		table.insert(ev, { up, "A", "KOKind", false })
 		dur = up + getup + 1.2
 	end
-	scen(id, dur, ev, { ref = true, every = 4 })
+	scen(id, dur, ev, { ref = true, every = 4, focus = { 0.2, dur } })
 end
 kdScen("kd_back", "back", "cross", "R", 1.1, 2.4, 4)
 kdScen("kd_sit", "sit", "jab", "L", 0.9, 1.3, 3)

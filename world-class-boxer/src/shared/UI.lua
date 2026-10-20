@@ -1137,18 +1137,19 @@ function UI.FightBar(parent, props, opts)
 	local align = bar.right and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
 	if opts.label then
 		bar.label = UI.Text(bg, opts.label, { Name = "Label", Font = T.semi, TextSize = 13, TextColor3 = WHITE, TextStrokeTransparency = 0.55, ZIndex = z + 7,
-			Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = align, TextWrapped = false })
-		UI.New("UIPadding", { PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 9), Parent = bar.label })
+			AnchorPoint = Vector2.new(bar.right and 1 or 0, 0), Position = bar.right and UDim2.new(1, -9, 0, 0) or UDim2.fromOffset(9, 0), Size = UDim2.new(0.5, 0, 1, 0),
+			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = align, TextWrapped = false })
 	end
 	if opts.number then
 		local inner = bar.right and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right
-		bar.value = UI.Text(bg, "", { Name = "Value", Face = "number", TextSize = 16, TextStrokeTransparency = 0.45, ZIndex = z + 7, Size = UDim2.fromScale(1, 1),
-			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = inner, TextWrapped = false })
-		bar.valuePad = UI.New("UIPadding", { Parent = bar.value })
+		-- (both sit from the outer end to just short of the slanted inner end: _shape sizes them)
+		local anchor = Vector2.new(bar.right and 1 or 0, 0)
+		local pos = bar.right and UDim2.fromScale(1, 0) or UDim2.fromScale(0, 0)
+		bar.value = UI.Text(bg, "", { Name = "Value", Face = "number", TextSize = 16, TextStrokeTransparency = 0.45, ZIndex = z + 7, AnchorPoint = anchor, Position = pos,
+			Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = inner, TextWrapped = false })
 		-- the recovery between rounds as a number: "+18" beside the value, fading
 		bar.gain = UI.Text(bg, "", { Name = "Gain", Face = "number", TextSize = 14, TextColor3 = Color3.fromRGB(150, 255, 185), TextStrokeTransparency = 0.45, TextTransparency = 1,
-			ZIndex = z + 7, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = inner, TextWrapped = false })
-		bar.gainPad = UI.New("UIPadding", { Parent = bar.gain })
+			ZIndex = z + 7, AnchorPoint = anchor, Position = pos, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = inner, TextWrapped = false })
 	end
 	local function reshape()
 		bar:_shape()
@@ -1178,11 +1179,9 @@ function FightBar:_shape(force)
 		l.key = nil
 	end
 	-- the number keeps clear of the slanted end
-	if self.valuePad then
-		local s = UDim.new(self.a, 7)
-		self.valuePad.PaddingRight, self.valuePad.PaddingLeft = self.right and UDim.new(0, 0) or s, self.right and s or UDim.new(0, 0)
-		local g = UDim.new(self.a, 36)
-		self.gainPad.PaddingRight, self.gainPad.PaddingLeft = self.right and UDim.new(0, 0) or g, self.right and g or UDim.new(0, 0)
+	if self.value then
+		self.value.Size = UDim2.new(1 - self.a, -7, 1, 0)
+		self.gain.Size = UDim2.new(1 - self.a, -40, 1, 0)
 	end
 	if self.ticksL then
 		local l = self.ticksL
@@ -1349,7 +1348,7 @@ function FightBar:_step(dt)
 	-- danger: the track throbs red while the value sits at or under `low`
 	if self.low and self.v > 0 and self.v <= self.low then
 		local p = math.sin(self.clock * 7) * 0.5 + 0.5
-		self.track.f.BackgroundColor3 = self.trackColor:Lerp(T.redDeep, 0.35 + 0.5 * p)
+		self.track.f.BackgroundColor3 = self.trackColor:Lerp(T.redDeep, 0.2 + 0.4 * p)
 		self.lowOn = true
 		busy = true
 	elseif self.lowOn then

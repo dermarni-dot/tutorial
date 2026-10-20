@@ -134,7 +134,7 @@ end)
 -- a big hit just landed: 78 -> 44, the red ghost part-way down (held, then draining)
 screen("ghost", function(dev)
 	local S = fight(dev, side(78, 80, 64), side(70, 66, 58))
-	state(S, side(44, 72, 58, { hurt = true }), side(70, 66, 55))
+	state(S, side(44, 72, 58), side(70, 66, 55))
 	S.settle(0.62)
 	return S
 end)

@@ -11,6 +11,16 @@ local Catalog = require(Shared:WaitForChild("Catalog"))
 local Looks = require(Shared:WaitForChild("Looks"))
 local DrillScore = require(Shared:WaitForChild("DrillScore"))
 local TP = require(Shared:WaitForChild("TrainingPlan"))
+-- the AI boxers' ring traits and their scouting (fight system; optional: the coach tips read them if present)
+local Traits
+do
+	local m = Shared:FindFirstChild("Traits")
+	local ok, mod = false, nil
+	if m then
+		ok, mod = pcall(require, m)
+	end
+	Traits = (ok and type(mod) == "table" and type(mod.ForBoxer) == "function") and mod or nil
+end
 
 local Training = {}
 local rng = Random.new()
@@ -1172,6 +1182,24 @@ local function pay(profile, rw)
 	profile.xp = math.max(0, math.floor(finite(profile.xp, 0))) + (rw.xp or 0)
 end
 
+-- does this event count for this goal? (variety, breadth and plan days are counted as sets in goalEvent)
+local function goalMatches(g, ev)
+	local k, session = g.kind, ev.kind == "session"
+	local q = finite(ev.q, 0)
+	return (k == "grade" and session and q >= 1.2)
+		or (k == "recover" and ev.kind == "recover")
+		or (k == "plan" and session and ev.onPlan == true)
+		or (k == "focus" and session and TP.OnFocus(ev.act, g.focus))
+		or (k == "camp" and session)
+		or (k == "record" and ev.kind == "record")
+		or (k == "fuel" and ev.kind == "meal" and TP.GOOD_MEALS[ev.meal] == true)
+		or (k == "spar" and session and ev.act == "Sparring")
+		or (k == "rest" and ev.kind == "rest")
+		or (k == "wsessions" and session and q >= 1.0)
+		or (k == "wmastery" and ev.kind == "mastery")
+		or (k == "woverload" and ev.kind == "overload")
+end
+
 -- One event for the goals: { kind = "session" | "recover" | "meal" | "record" | "mastery" | "overload" | "rest",
 -- act, q, onPlan, meal }. Completed goals are paid at once. -> { { text, money, xp, fame, weekly?, sweep? } }
 local function goalEvent(profile, ev)
@@ -1193,43 +1221,21 @@ local function goalEvent(profile, ev)
 		end
 		local session = ev.kind == "session"
 		for _, g in ipairs(G.list) do
-			local k = g.kind
-			if k == "grade" and session and finite(ev.q, 0) >= 1.2 then
-				bump(g)
-			elseif k == "variety" and session then
+			if g.kind == "variety" then
 				g.seen = type(g.seen) == "table" and g.seen or {}
-				if not g.seen[ev.act] then
+				if session and not g.seen[ev.act] then
 					g.seen[ev.act] = true
 					bump(g)
 				end
-			elseif k == "recover" and ev.kind == "recover" then
-				bump(g)
-			elseif k == "plan" and session and ev.onPlan then
-				bump(g)
-			elseif k == "focus" and session and TP.OnFocus(ev.act, g.focus) then
-				bump(g)
-			elseif k == "camp" and session then
-				bump(g)
-			elseif k == "record" and ev.kind == "record" then
-				bump(g)
-			elseif k == "fuel" and ev.kind == "meal" and TP.GOOD_MEALS[ev.meal] then
-				bump(g)
-			elseif k == "spar" and session and ev.act == "Sparring" then
-				bump(g)
-			elseif k == "rest" and ev.kind == "rest" then
+			elseif goalMatches(g, ev) then
 				bump(g)
 			end
 		end
 		local w = G.weekly
 		if type(w) == "table" and not w.done then
 			local k = w.kind
-			if k == "wsessions" and session and finite(ev.q, 0) >= 1.0 then
-				bump(w)
-			elseif k == "wmastery" and ev.kind == "mastery" then
-				bump(w)
-			elseif k == "woverload" and ev.kind == "overload" then
-				bump(w)
-			elseif (k == "wbreadth" and session) or (k == "wplan" and ((session and ev.onPlan) or ev.kind == "rest")) then
+			if (k == "wbreadth" and session) or (k == "wplan" and ((session and ev.onPlan) or ev.kind == "rest")) then
+				-- (counted as a set: areas trained / days on plan)
 				w.seen = type(w.seen) == "table" and w.seen or {}
 				if k == "wbreadth" then
 					for _, f in ipairs(TP.ActFocus[ev.act] or {}) do
@@ -1247,6 +1253,8 @@ local function goalEvent(profile, ev)
 				if n > finite(w.n, 0) then
 					bump(w, n - finite(w.n, 0))
 				end
+			elseif goalMatches(w, ev) then
+				bump(w)
 			end
 		end
 		-- every daily goal done: the sweep, times the streak
@@ -1328,6 +1336,14 @@ local TRAIT_TIPS = {
 	{ "slow", "speed", "He's slow to start. Fast hands steal the early rounds." },
 }
 
+-- Shared.Traits ids -> the focus block and the drills that prepare the way round them
+local TRAIT_FOCUS = {
+	IronChin = { "power", "heavy bag (body hooks) and the medicine ball" }, BodyArmor = { "speed", "speed bag and mitts (head-hunting)" },
+	Slick = { "ringiq", "mitts (hooks and feints)" }, Weaver = { "ringiq", "mitts and the double-end bag (straights, uppercuts)" },
+	CounterSpecialist = { "defence", "shadow boxing and the double-end bag (single shots, feints)" }, Granite = { "endurance", "roadwork and the rope (out-work him)" },
+	PressureProof = { "speed", "ladder and the rope (box from range)" }, RingGeneral = { "speed", "ladder and the heavy bag (cut off the ring, the body)" },
+}
+
 -- up to `max` tips: { coach, persona, text, focus, act }
 function Training.CoachTips(profile, max)
 	max = max or 3
@@ -1361,6 +1377,20 @@ function Training.CoachTips(profile, max)
 			end
 			if st(b.stats, "PunchSpeed") - st(stats, "Reflexes") >= 8 then
 				add("speed", string.format("%s's hands are fast (%d against your reflexes %d). The Double-End Bag sharpens your eyes.", name, st(b.stats, "PunchSpeed"), st(stats, "Reflexes")), "DoubleEnd")
+			end
+		end
+		-- his ring traits the tapes show (Shared.Traits scouting: met before, enough pro bouts, an elite corner)
+		if Traits and b then
+			local okS, scouted = pcall(function()
+				local list = Traits.ForBoxer({ id = b.id, style = b.style, archetype = b.archetype, overall = b.overall })
+				return Traits.Scout(list, { fights = b.record, h2h = b.h2h, elite = Training.EliteCorner(profile) })
+			end)
+			for _, t in ipairs(okS and type(scouted) == "table" and scouted or {}) do
+				local d = Traits.Data and Traits.Data[t.id]
+				local tf = TRAIT_FOCUS[t.id]
+				if t.known and d and tf then
+					add(tf[1], string.format("Scouting: %s is %s. %s Train it on the %s.", name, string.upper(d.name or t.id), d.counter or "", tf[2]))
+				end
 			end
 		end
 		local traits = b and b.traits
@@ -1405,7 +1435,7 @@ function Training.CoachTips(profile, max)
 		end
 	end
 	if sv >= 0.5 and sg then
-		add("conditioning", string.format("Your %s is %d%% sore. Train something else today, or ice bath and massage it out.", string.lower(Config.MuscleNames[sg] or sg), math.floor(sv * 100 + 0.5)), "IceBath")
+		add("conditioning", string.format("Soreness in your %s: %d%%. Train something else today, or ice bath and massage it out.", string.lower(Config.MuscleNames[sg] or sg), math.floor(sv * 100 + 0.5)), "IceBath")
 	end
 	if finite(c.fatigue, 0) > 60 then
 		add("conditioning", "You're running on fumes. Recovery work or an early night will pay more than another session.", "Stretch")
@@ -1447,7 +1477,7 @@ function Training.CoachTips(profile, max)
 end
 
 local function pctText(m)
-	return string.format("%+d%%", math.floor((m - 1) * 100 + (m >= 1 and 0.5 or -0.5)))
+	return string.format("%+d%%", math.floor((m - 1) * 100 + 0.5))
 end
 
 -- the session report card: grade, what went well, what to fix, the multipliers, mastery / overload,
@@ -1486,7 +1516,7 @@ local function reportCard(profile, act, quality, mods, info)
 			table.insert(chips, { text = "STALE " .. pctText(mods.stale), good = false })
 		end
 		if mods.soreMul < 0.97 and mods.soreGroup then
-			table.insert(fix, string.format("Trained a sore %s: fewer gains. Recover it or train around it.", string.lower(Config.MuscleNames[mods.soreGroup] or mods.soreGroup)))
+			table.insert(fix, string.format("Trained through soreness (%s): fewer gains. Recover it or train around it.", string.lower(Config.MuscleNames[mods.soreGroup] or mods.soreGroup)))
 			table.insert(chips, { text = "SORE " .. pctText(mods.soreMul), good = false })
 		end
 	end
@@ -1500,7 +1530,7 @@ local function reportCard(profile, act, quality, mods, info)
 	end
 	local m = info.mastery
 	if m and m.up then
-		table.insert(well, string.format("Mastery up: %s %s.", act.name, TP.MasteryNames[m.level] or ""))
+		table.insert(well, string.format("Mastery up: %s %s.", act.name, TP.MasteryName(m.level) or ""))
 	end
 	if info.overload and info.overload.to > info.overload.from then
 		table.insert(well, string.format("The load goes up: overload %d next time.", info.overload.to))
@@ -1563,7 +1593,7 @@ local function afterSession(profile, act, quality, mods)
 			perkText = p.text
 		end
 	end
-	info.mastery = { level = lv1, name = TP.MasteryNames[lv1], into = into, need = need, gained = gained, up = lv1 > lv0, perk = lv1 > lv0 and perkText or nil }
+	info.mastery = { level = lv1, name = TP.MasteryName(lv1), into = into, need = need, gained = gained, up = lv1 > lv0, perk = lv1 > lv0 and perkText or nil }
 	if training then
 		local ov0 = e.ov
 		local easy = coachPerk(profile, "overloadEasy") > 0 and TP.OnFocus(act.id, "power")
@@ -3345,6 +3375,8 @@ function Training.DrillPlan(act, lv, params)
 				end
 				if seg.j == "burst" and type(seg.target) == "number" then
 					seg.target *= 1 + 0.04 * overload
+				elseif seg.j == "rope" and type(seg.omega) == "number" then
+					seg.omega *= 1 + 0.03 * overload -- a faster rope
 				end
 			end
 		end

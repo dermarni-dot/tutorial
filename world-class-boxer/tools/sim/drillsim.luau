@@ -13,7 +13,8 @@
 --   D.events, D.plan             -- the ActivityInput stream the server recorded, the server's plan
 --   D.char                       -- the character model the pose attributes land on
 -- The server side is the real code: Training.DrillPlan draws the plan; FinishActivity answers ok = false (the
--- result screen is not part of this) after recording what the client handed in.
+-- result screen is not part of this) after recording what the client handed in, or what o.finish(quality,
+-- stats) returns (a real Training.Perform / Record result: the report screen).
 local fs = require("@lune/fs")
 local task = require("@lune/task")
 local Host = require("./host")
@@ -77,6 +78,10 @@ function DrillSim.Attach(S, o)
 			local _, quality, stats = ...
 			local ctx = D.ctx()
 			D.finished = { quality = quality, stats = stats, tEnd = ctx and ctx.now() or 0 }
+			if o.finish then
+				-- (a test that wants the result screen: the server's real result for this session)
+				return o.finish(quality, stats)
+			end
 			return { ok = false, err = "test" }
 		elseif action == "CancelActivity" then
 			D.cancelled = true

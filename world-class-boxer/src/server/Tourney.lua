@@ -355,7 +355,7 @@ local function boutOffer(profile, def, run)
 	offer.venue = def.venue
 	offer.venueName = Config.Venues[def.venue] and Config.Venues[def.venue].name or offer.venueName
 	offer.tourney = { id = def.id, ed = run.ed, round = r, name = def.name, roundName = T.RoundName(r), seed = run.seeds and run.seeds[oppId] or nil }
-	-- (a final is fought for the event's belt: the venue dresses it as a title night)
+	-- (a final is fought for the event's belt: the Hub marks it FOR THE BELT, Tourney.CeremonyFor plays the cutscene)
 	offer.tourneyBelt = r == T.ROUNDS and def.id or nil
 	return offer
 end

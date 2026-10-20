@@ -84,8 +84,10 @@ local function serverModules(S)
 	return folder
 end
 
-local function profileFor(S)
-	local Career = S.host.requireNode(serverModules(S)._kids.Career)
+local function profileFor(S, opts)
+	opts = opts or {}
+	local folder = serverModules(S)
+	local Career = S.host.requireNode(folder._kids.Career)
 	local Looks = S.require("Looks")
 	local prof = Career.CreateProfile(nil, {
 		first = "Marcus", last = "Reed-Okonkwo", name = "Marcus Reed-Okonkwo", nickname = "The Hammer", age = 24, nationality = "USA",
@@ -93,9 +95,38 @@ local function profileFor(S)
 	}, 1)
 	prof.record = { w = 18, l = 2, d = 1, ko = 12 }
 	prof.money = 1250000
+	if opts.tourney then
+		-- the Tournaments tab: a local pro with two belts won, inside the City Championship's entry window; with
+		-- opts.tourney == "run" he is in its bracket (the semi-final booked, the quarter-finals decided)
+		local Tourney = S.host.requireNode(folder._kids.Tourney)
+		local TD = S.require("Tournaments")
+		local def = TD.ById.city
+		prof.tier = 2
+		prof.day = def.offset + def.every - def.window + 1
+		Tourney.Tick(prof)
+		local st = Tourney.State(prof)
+		st.belts.novice = { n = 2, last = 3 }
+		st.belts.regional = { n = 1, last = 9 }
+		st.wear = "novice"
+		st.history = { { id = "novice", ed = 4, place = 4, day = 5, prize = 1200, how = "won" }, { id = "city", ed = 9, place = 2, day = 11, prize = 3000, how = "lost" } }
+		if opts.tourney == "run" then
+			assert(Tourney.Enter(prof, "city"))
+			prof.day = prof.tourney.run.ed
+			prof.camp.daysLeft = 0
+			Career.ApplyResult(prof, { outcome = "win", method = "KO", round = 2, cards = { { 20, 18 }, { 20, 18 }, { 20, 18 } }, kdFor = 1, kdAgainst = 0, landed = 40, oppLanded = 20,
+				punches = {}, damageTaken = 30, headTaken = 24, bodyTaken = 16 })
+		end
+	end
+	-- the training programme (opts.program(prof, Training, Career): a plan, a camp, sessions done today)
+	local Training = S.host.requireNode(folder._kids.Training)
+	if opts.program then
+		opts.program(prof, Training, Career)
+	end
 	local P = Career.Summary(prof, true)
 	P.settings = P.settings or {}
 	P.settings.ui = { menuAtStart = false }
+	-- (Main's summary adds the programme view)
+	P.training = Training.ProgramView(prof)
 	return P
 end
 
@@ -103,7 +134,7 @@ end
 local function client(dev, opts)
 	opts = opts or {}
 	local S = GS.new(dev)
-	local P = profileFor(S)
+	local P = profileFor(S, opts)
 	if opts.debut then
 		-- a boxer just out of the creator: the guided debut is offered (Main's summary field)
 		P.debut = { offer = true, rounds = 3, venue = "Community Center" }
@@ -357,6 +388,86 @@ screen("hub", function(dev)
 	S.settle(0.6)
 	return S
 end)
+-- the Tournaments tab: the calendar (an open entry, the rules, prizes, holders), the belts won with WEAR IN RING
+-- WALKS, the results; and with a bracket being fought (the semi-final booked): the bracket on top
+screen("hub_tournaments", function(dev)
+	local S = client(dev, { tourney = true })
+	S.require("Client/Hub").Open("Tournaments")
+	S.settle(0.6)
+	check("hub_tournaments@" .. dev .. ": an event to enter", find(S, "BoxerUI.Root.Hub") ~= nil)
+	return S
+end)
+-- scroll the hub's content so the named section is at the top of the view (the checks see what is on the screen)
+local function scrollTo(S, name)
+	local obj
+	local function walk(n)
+		for _, c in ipairs(n:GetChildren()) do
+			if obj then
+				return
+			end
+			if c.Name == name then
+				obj = c
+				return
+			end
+			walk(c)
+		end
+	end
+	walk(S.playerGui)
+	assert(obj, "no " .. name .. " on the screen")
+	local sc = obj.Parent
+	while sc and not sc:IsA("ScrollingFrame") do
+		sc = sc.Parent
+	end
+	assert(sc, name .. " is not in a scrolling list")
+	local y = obj.AbsolutePosition.Y - sc.AbsolutePosition.Y + sc.CanvasPosition.Y
+	sc.CanvasPosition = require("@lune/roblox").Vector2.new(0, math.max(0, y - 8))
+	S.settle(0.2)
+	return obj
+end
+screen("hub_bracket", function(dev)
+	local S = client(dev, { tourney = "run" })
+	S.require("Client/Hub").Open("Tournaments")
+	S.settle(0.6)
+	local b = scrollTo(S, "Bracket")
+	local n = 0
+	for _, d in ipairs(b:GetDescendants()) do
+		if d.Name:match("^Match%d_%d$") then
+			n += 1
+		end
+	end
+	check("hub_bracket@" .. dev .. ": 7 matches drawn", n == 7, n)
+	return S
+end)
+-- the bracket's run card on top (WITHDRAW, the wear) and the belts won section
+screen("hub_bracket_card", function(dev)
+	local S = client(dev, { tourney = "run" })
+	S.require("Client/Hub").Open("Tournaments")
+	S.settle(0.6)
+	scrollTo(S, "RunName")
+	return S
+end)
+screen("hub_tourney_belts", function(dev)
+	local S = client(dev, { tourney = true })
+	S.require("Client/Hub").Open("Tournaments")
+	S.settle(0.6)
+	scrollTo(S, "Belts")
+	return S
+end)
+-- the celebration cutscene's banner, letterbox and SKIP over the fight's final scene (BoxerClient.Ceremony)
+screen("ceremony", function(dev)
+	local S = client(dev)
+	startFight(S, {})
+	local fire = S.remotes.FightEvent
+	fire:Fire({ t = "final", result = { outcome = "win", method = "KO", round = 7 }, oppName = "Dmitri Volkovsky" })
+	S.settle(0.3)
+	local TD = S.require("Tournaments")
+	fire:Fire({ t = "ceremony", spec = { belt = "world", kicker = "AND THE NEW...", title = TD.ById.world.champion, event = TD.ById.world.name, name = "Marcus Reed-Okonkwo" },
+		beats = TD.Ceremony })
+	S.settle(2.6)
+	check("ceremony@" .. dev .. ": the banner is up", find(S, "CeremonyUI.Root.Banner") ~= nil)
+	check("ceremony@" .. dev .. ": SKIP", find(S, "CeremonyUI.Root.Skip") ~= nil)
+	return S
+end)
 screen("hub_training", function(dev)
 	local S = client(dev)
 	S.require("Client/Hub").Open("Training")
@@ -392,6 +503,68 @@ local function press(S, name)
 	S.signal(b, "MouseButton1Click"):Fire()
 	S.settle(0.4)
 end
+-- the training programme: the Balanced Week plan with a morning's sessions behind it (goals ticking, a repeat
+-- on the heavy bag, personal records), the template picker open, a fight camp in its peak days, the records
+local function trainedToday(prof, Training)
+	prof.money = 1250000
+	Training.SetPlan(prof, "balanced")
+	for _, s in ipairs({ { "HeavyBag", 1.3, { punches = 64, maxPower = 812 } }, { "HeavyBag", 1.1, { punches = 58 } }, { "SpeedBag", 1.25, { hitsPerMin = 212, bestStreak = 31 } }, { "Squat", 1.0, { goodReps = 7, load = 185 } } }) do
+		local act = Training.Activity(s[1])
+		Training.Perform(prof, act, s[2])
+		Training.Record(prof, act.id, s[2], s[3])
+	end
+	Training.Eat(prof, "Balanced")
+end
+local function inCamp(prof, Training)
+	trainedToday(prof, Training)
+	local cls = prof.world.classes[prof.physical.weightClass]
+	local b = prof.world.boxers[cls[2]]
+	prof.camp = { offer = { oppId = b.id, kind = "Pro Fight", opp = { name = b.name, style = b.style } }, daysLeft = 2, daysTotal = 6, log = {},
+		-- (four camp days behind him: three solid build days, a sharp peak day)
+		prep = { days = { { n = 3, q = 3.5, hard = 1 }, { n = 3, q = 3.4, hard = 1 }, { n = 2, q = 2.6, hard = 2 }, { n = 2, q = 2.5, hard = 2 }, { n = 0, q = 0, hard = 0 }, { n = 0, q = 0, hard = 0 } }, over = 0 } }
+	prof.condition.fatigue = 30
+	Training.Perform(prof, Training.Activity("DoubleEnd"), 1.25)
+end
+screen("hub_plan", function(dev)
+	local S = client(dev, { program = trainedToday })
+	S.require("Client/Hub").Open("Training")
+	S.settle(0.6)
+	scrollTo(S, "Programme")
+	check("hub_plan@" .. dev .. ": the week strip shows seven days", named(S, "PlanDay7") ~= nil and named(S, "PlanDay1") ~= nil)
+	check("hub_plan@" .. dev .. ": goals listed", named(S, "Goal") ~= nil)
+	return S
+end)
+screen("hub_plan_edit", function(dev)
+	local S = client(dev, { program = trainedToday })
+	S.require("Client/Hub").Open("Training")
+	S.settle(0.6)
+	press(S, "PlanEdit")
+	scrollTo(S, "Programme")
+	check("hub_plan_edit@" .. dev .. ": the templates", named(S, "Template_balanced") ~= nil and named(S, "Template_none") ~= nil)
+	return S
+end)
+screen("hub_camp", function(dev)
+	local S = client(dev, { program = inCamp })
+	S.require("Client/Hub").Open("Training")
+	S.settle(0.6)
+	scrollTo(S, "Programme")
+	check("hub_camp@" .. dev .. ": the camp strip and the readiness", named(S, "CampStrip") ~= nil and named(S, "Readiness") ~= nil)
+	return S
+end)
+screen("hub_records", function(dev)
+	local S = client(dev, { program = trainedToday })
+	S.require("Client/Hub").Open("Training")
+	S.settle(0.6)
+	scrollTo(S, "Records")
+	return S
+end)
+screen("hub_coaches", function(dev)
+	local S = client(dev)
+	S.require("Client/Hub").Open("Coaches")
+	S.settle(0.6)
+	check("hub_coaches@" .. dev .. ": the coach personas", named(S, "CoachPersona") ~= nil)
+	return S
+end)
 local function creatorStep(dev, step)
 	local S = client(dev)
 	S.require("Client/Creator").Open()
@@ -469,6 +642,47 @@ screen("result", function(dev)
 	S.settle(0.6)
 	return S
 end)
+-- [Entrance] the Locker Room's ENTRANCE picker (BoxerClient.EntrancePicker) on an old save's defaults, the belt lift noted
+screen("entrance", function(dev)
+	local S = client(dev)
+	-- (ClientMain loads the picker in a thread of its own: wait for it before requiring the same modules here)
+	local State = S.require("Client/State")
+	for _ = 1, 20 do
+		if State.open.Entrance then
+			break
+		end
+		S.settle(0.1)
+	end
+	S.P.entrance = S.require("Entrance").View({})
+	State.open.Entrance()
+	S.settle(0.6)
+	check("entrance@" .. dev .. ": the picker is up", find(S, "BoxerUI.Root.Entrance") ~= nil)
+	return S
+end)
+-- [Entrance] the ring walk's overlay (BoxerClient.EntranceFX: the name reveal and SKIP) over the fight HUD
+screen("entrance_walk", function(dev)
+	local S = client(dev, { fightOnly = true })
+	local FX = S.require("Client/EntranceFX")
+	FX.Start()
+	local fire = S.remotes.FightEvent
+	fire:Fire({ t = "start", rounds = 12, tape = TAPE, kind = "World Title Fight", venue = "Arena", venueName = "Grand Arena", moves = {}, stakes = { "WBC" } })
+	S.settle(0.2)
+	local Inst = S.host.globals.Instance
+	local m = Inst.new("Model")
+	local hrp = Inst.new("Part")
+	hrp.Name = "HumanoidRootPart"
+	hrp.Size = require("@lune/roblox").Vector3.new(2, 2, 1)
+	hrp.Parent = m
+	local hum = Inst.new("Humanoid")
+	hum.HipHeight = 2
+	hum.Parent = m
+	local Entrance = S.require("Entrance")
+	local plan = Entrance.Plan({ corner = "Red", choice = {}, popularity = 20, venue = "Arena" })
+	plan.model, plan.name, plan.nick, plan.record, plan.nat = m, "Marcus Reed-Okonkwo", "The Hammer", { w = 18, l = 2, d = 1, ko = 12 }, "USA"
+	fire:Fire({ t = "entrance", phase = "you", plan = plan })
+	S.settle(0.6)
+	return S
+end)
 -- the training drills mid-session (tools/sim/drillsim.luau: the real client drill, the server's real plan, a
 -- virtual clock run up to the moment the drill's own screen is up): the panel, its stage, its buttons and the
 -- metrics strip / muscles card at the drill's widest point
@@ -521,12 +735,54 @@ for _, d in ipairs(DRILLS) do
 	end)
 end
 
+-- a drill's report card: the real client drill played idle to its end, the server's real result for a session
+-- graded A after a morning of training (the coach's report: the multipliers, well / fix, mastery, goals, the
+-- soreness map)
+screen("drill_report", function(dev)
+	local S = client(dev)
+	DrillSim.SeedRandom(S.host)
+	local Config = S.require("Config")
+	local act = Config.FindById(Config.Activities, "SpeedBag")
+	local Training = DrillSim.ServerModule(S.host, "Training")
+	local Career = DrillSim.ServerModule(S.host, "Career")
+	local Looks = S.require("Looks")
+	local prof = Career.CreateProfile(nil, { first = "Marcus", last = "Reed", name = "Marcus Reed", nickname = "The Hammer", age = 24, nationality = "USA",
+		weightClass = 5, style = "boxer", look = Looks.Defaults(1) }, 1)
+	prof.money = 50000
+	Training.SetPlan(prof, "speed")
+	for _, id in ipairs({ "SpeedBag", "HeavyBag", "Bench" }) do
+		Training.Perform(prof, Training.Activity(id), 1.25)
+		Training.Record(prof, id, 1.25, { punches = 40 })
+	end
+	local D = DrillSim.Attach(S, { act = act, lv = 3, params = { level = 3 }, P = S.P, finish = function(_, stats)
+		local q = 1.28
+		local result = Training.Perform(prof, act, q)
+		local record = Training.Record(prof, act.id, q, Training.SanitizeStats(stats) or { hitsPerMin = 230 })
+		return { ok = true, result = result, quality = q, act = act.id, record = record }
+	end })
+	D.start()
+	local shown = false
+	for _ = 1, 60 * 240 do
+		D.frame()
+		if named(S, "ReportKicker") then
+			shown = true
+			break
+		end
+	end
+	assert(shown, "the report card never showed")
+	for _ = 1, 90 do
+		D.frame()
+	end
+	check("drill_report@" .. dev .. ": what went well and the mastery bar", named(S, "Well") ~= nil and named(S, "Mastery") ~= nil)
+	return S
+end)
+
 local DEVICES = { "phone", "phone_small", "tablet", "desktop", "console" }
-local PAD_SELECT = { hub = true, hub_training = true, controls = true, result = true, menu_career = true, tutorial_offer = true, tutorial_done = true, debut_offer = true }
+local PAD_SELECT = { entrance = true, hub = true, hub_training = true, hub_plan = true, hub_tournaments = true, hub_bracket = true, controls = true, result = true, menu_career = true, tutorial_offer = true, tutorial_done = true, debut_offer = true }
 -- (the tutorial's step card is checked with the fight HUD's pieces: on the screen, below the top bar, finger-sized
 -- on touch, apart from the scoreboard, the touch pads, the key strip and the stance chips)
 -- the fight HUD also on a phone with a controller and a short laptop window (the key strip on small canvases)
-local EXTRA = { drill_bench = { "laptop" }, drill_massage = { "laptop", "phone_pad" }, drill_bike = { "laptop" }, fight = { "phone_pad", "laptop" }, fight_strip = { "phone_pad", "laptop" }, fight_down = { "phone_pad" }, menu = { "laptop" }, gym = { "laptop" },
+local EXTRA = { entrance_walk = { "phone_pad", "laptop" }, drill_bench = { "laptop" }, drill_massage = { "laptop", "phone_pad" }, drill_bike = { "laptop" }, fight = { "phone_pad", "laptop" }, fight_strip = { "phone_pad", "laptop" }, fight_down = { "phone_pad" }, menu = { "laptop" }, gym = { "laptop" },
 	fight_tutorial = { "phone_pad", "laptop" }, fight_tutorial_keys = { "phone_pad", "laptop" }, tutorial_offer = { "phone_pad" },
 	fight_combo = { "phone_pad", "laptop" }, fight_debut = { "phone_pad", "laptop" }, debut_offer = { "phone_pad" } }
 
@@ -651,6 +907,19 @@ local function run(name, dev)
 		if strip then
 			check(name .. "@" .. dev .. " key strip within the screen width", strip.x >= -1 and strip.x + strip.w <= S.W + 1, describe(strip))
 			check(name .. "@" .. dev .. " key strip under 40% of the screen height", strip.h <= S.H * 0.4, describe(strip))
+		end
+	end
+	-- [Entrance] the walk's overlay: the reveal and SKIP are up and keep clear of each other and of the ticker
+	if name == "entrance_walk" then
+		local rv, sk = rectOf(S, "EntranceUI.Root.Reveal"), rectOf(S, "EntranceUI.Root.Skip")
+		check(name .. "@" .. dev .. " the reveal and SKIP are up", rv ~= nil and sk ~= nil and rv.visibleW > 1 and sk.visibleW > 1)
+		if rv and sk then
+			check(name .. "@" .. dev .. " reveal clear of SKIP", not GS.Overlap(rv, sk, 1), describe(rv) .. " / " .. describe(sk))
+			local tk = rectOf(S, "FightUI.HUDRoot.Ticker")
+			if tk and tk.visibleW > 1 then
+				check(name .. "@" .. dev .. " reveal clear of the ticker", not GS.Overlap(rv, tk, 1), describe(rv) .. " / " .. describe(tk))
+				check(name .. "@" .. dev .. " SKIP clear of the ticker", not GS.Overlap(sk, tk, 1), describe(sk) .. " / " .. describe(tk))
+			end
 		end
 	end
 	-- a controller gets a selection on the screens Roblox's selection drives (UI.Window's start selection, the

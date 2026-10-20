@@ -324,3 +324,26 @@ lune run tools/sim/test_referee.luau          # a few seconds
   title fight), the referee's whole `official.Referee` set as welded mesh pieces painted from those colours, no boxing
   gear, one face decal, every tier / mixed tiers / the lite set, the coach's `Coach` set, `Config.HeadgearOfficials`
   either way, ids 0 -> the part-built outfit, FightEngine building through Officials.
+
+## Tournaments: test_tournaments and the v9 ceremony previews
+
+`lune run tools/sim/test_tournaments.luau [-v]` (a few seconds) checks `src/shared/Tournaments.lua` (the five events, their
+calendar, rules, prizes, belt designs), `src/server/Tourney.lua` and its hooks in Career / World on real careers: the
+calendar (starts, entry windows), entry rules by career level and division (the invitational by ranking), bracket
+generation (8 of the division, seeded 1v8 4v5 3v6 2v7), every round through `Career.ApplyResult` (the AI side by
+`World.AIBout` without draws, `recovery` days between rounds instead of a suspension, the wear carried into the next
+round, a draw through on punches landed, a loss / a withdrawal / a concussion ending the run), prizes, fame, ranking
+points and the belt (worn in ring walks), AI editions (`Tourney.Tick`: holders, `b.tbelts`, the log), saves (an old
+save without `profile.tourney`, the JSON round trip, corrupt pieces), the cutscene spec and every `BeltModel` design.
+`test_ui_layout` lays out `hub_tournaments`, `hub_bracket`, `hub_bracket_card`, `hub_tourney_belts` and `ceremony`.
+
+```sh
+lune run tools/sim/v9_ceremony.luau [--out DIR] [--times 1.3,2.9,4.3,5.0,6.6,9.4]
+/opt/bpyenv/bin/python tools/sim/v9_ceremony_render.py DIR previews/final/v9/tournaments [--samples N] [--only belts,story]
+```
+
+`v9_ceremony.luau` (v9_referee's harness: the fake rig, Builder.Cosmetics, the real Animator) exports every belt design
+(display and worn) and the storyboard frames of the cutscene: FightEngine's timeline replayed with AnimCeremony's poses,
+the belt placed as BoxerClient.Ceremony places it, the camera from `Tournaments.CeremonyShot`. The render draws them in a
+stand-in arena with the frame's confetti / streamers / pyro / spotlights and the cutscene's 2D layer (letterbox, banner,
+SKIP) composited.

@@ -94,6 +94,27 @@ else
 	warn("[ClientMain] Tutorial unavailable:", TutorialClient)
 	TutorialClient = nil
 end
+-- the celebration cutscene after a won tournament final / a new title (camera, confetti, banner, SKIP): optional
+task.spawn(function()
+	local ok, CeremonyClient = pcall(function()
+		return require(Modules:WaitForChild("Ceremony", 10))
+	end)
+	if ok and type(CeremonyClient) == "table" then
+		pcall(CeremonyClient.Start)
+	else
+		warn("[ClientMain] Ceremony unavailable:", CeremonyClient)
+	end
+end)
+-- [Entrance] the ring-walk cinematic (camera, crowd carry, reveal, SKIP) and the Locker's ENTRANCE picker: optional
+task.spawn(function()
+	local ok, err = pcall(function()
+		require(Modules:WaitForChild("EntranceFX", 10)).Start()
+		require(Modules:WaitForChild("EntrancePicker", 10))
+	end)
+	if not ok then
+		warn("[ClientMain] Entrance unavailable:", err)
+	end
+end)
 local gui = State.gui
 local rec = State.rec
 
@@ -135,12 +156,15 @@ local function miniBar(label, color, order, icon)
 	-- the meter's icon in its colour, then its caption
 	UI.Icon(f, icon, 14, color, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5) })
 	UI.Text(f, label, { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(20, 0), Size = UDim2.new(0, 82, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
-	local _, set = UI.Bar(f, { Position = UDim2.new(0, 104, 0.5, -3), Size = UDim2.new(1, -144, 0, 6) }, color)
+	-- the meter in the fight bars' finish (UI.Meter: rounded, the sheen, an eased fill, a ghost that drains
+	-- when the value drops, a glow when it comes back)
+	local meter = UI.Meter(f, { Position = UDim2.new(0, 104, 0.5, -4), Size = UDim2.new(1, -144, 0, 8) }, { color = color })
 	local val = UI.Text(f, "", { Face = "number", TextSize = 15, Position = UDim2.new(1, -34, 0, 0), Size = UDim2.new(0, 34, 1, 0), TextXAlignment = Enum.TextXAlignment.Right,
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	return function(v, c)
-		set(v / 100, c)
+		meter:set(v / 100, c)
 		val.Text = tostring(math.floor(v))
+		val.TextColor3 = c == T.red and T.redLight or T.text
 	end
 end
 local setEnergy = miniBar("ENERGY", T.gold, 1, "energy")
@@ -151,9 +175,11 @@ local setFatigue = miniBar("FATIGUE", T.orange, 4, "pulse")
 local condStrip = UI.Frame(hud, { Name = "CondStrip", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 4, Visible = false })
 UI.List(condStrip, 6, true)
 local condChips = {}
+-- (each chip: the meter's icon and its number, tinted by how it stands)
+local CHIP_ICONS = { ENERGY = "energy", WATER = "water", FOOD = "food", FATIGUE = "pulse" }
 for i, k in ipairs({ "ENERGY", "WATER", "FOOD", "FATIGUE" }) do
-	local f, t = UI.Chip(condStrip, k, T.sub, { order = i, h = 26, TextSize = 13 })
-	condChips[k] = { frame = f, text = t }
+	local f, t = UI.Chip(condStrip, k, T.sub, { order = i, h = 26, TextSize = 13, icon = CHIP_ICONS[k], radius = 13 })
+	condChips[k] = { frame = f, text = t, icon = f:FindFirstChild("ChipIcon") }
 end
 local function setCond(k, v, color)
 	local c = condChips[k]
@@ -163,6 +189,9 @@ local function setCond(k, v, color)
 	local st = c.frame:FindFirstChildOfClass("UIStroke")
 	if st then
 		st.Color = color
+	end
+	if c.icon then
+		UI.SetIconColor(c.icon, color)
 	end
 end
 local campBox = UI.Frame(hud, { Name = "Camp", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = T.panel2, BackgroundTransparency = 0.4, LayoutOrder = 5 })

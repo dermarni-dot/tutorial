@@ -592,7 +592,7 @@ Config.FightDepth = {
 -- boxer's hands hang after its combinations (skill 0); pace = how far under its pace line its stamina may dip
 -- before it slows down.
 Config.FightAI = {
-	perceive = { 0.24, 0.12 }, motor = { 0.11, 0.05 }, predictCut = 0.6, predictFrom = 0.45,
+	perceive = { 0.2, 0.09 }, motor = { 0.08, 0.03 }, predictCut = 0.6, predictFrom = 0.45,
 	mistake = 0.35, drop = 0.45, dropHit = 0.06, paceSlack = 0.08,
 }
 

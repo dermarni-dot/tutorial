@@ -212,6 +212,8 @@ local function summary(player)
 	s.debut = { offer = Tutorial.ShouldOfferDebut(profile), rounds = Config.Tiers[1].rounds, venue = debutVenue and debutVenue.name or nil }
 	-- PvP record / rating (read-only view; profile.pvp is created lazily by the first PvP bout)
 	s.pvp = PvP.View(profile)
+	-- [Entrance] the ring-walk choice (old saves: the defaults) and the belts the picker's belt lift needs
+	s.entrance = require(Shared.Entrance).View(profile)
 	-- the training programme: the weekly plan, the camp's phases and readiness, mastery, goals, coach tips
 	s.training = Training.ProgramView(profile)
 	-- R-ui: always a table (Settings.Supported() checks it); ui = the saved values, or nil before the first save
@@ -1726,6 +1728,25 @@ function handlers.SetAvatarLook(player, profile, on)
 	return { ok = true, avatar = on }
 end
 
+-- [Entrance] the Locker Room's ENTRANCE picker: the ring-walk celebrations and the crowd carry (Shared.Entrance.Sanitize),
+-- the walkout song and announcer style (sanitized as Career.CreateProfile does)
+function handlers.SetEntrance(player, profile, data)
+	if type(data) ~= "table" then
+		return { ok = false, err = "Nothing to save." }
+	end
+	profile.entrance = require(Shared.Entrance).Sanitize(data)
+	if type(profile.identity) == "table" then
+		if data.music ~= nil then
+			profile.identity.music = tostring(data.music):gsub("%D", ""):sub(1, 20)
+		end
+		if table.find(Config.VoiceTypes, data.voice) then
+			profile.identity.voice = data.voice
+		end
+	end
+	task.spawn(DataManager.Save, player)
+	return { ok = true, entrance = profile.entrance }
+end
+
 function handlers.GetOffers(player, profile)
 	return { ok = true, offers = Career.GetOffers(profile), camp = profile.camp ~= nil }
 end
@@ -2119,7 +2140,7 @@ end
 -- the fight's control strip (same ranges as Settings.Sanitize on the client; unknown keys dropped)
 local UI_SETTING_RANGES = { uiScale = { 0.8, 1.25 }, screenFx = { 0, 1.5 }, shake = { 0, 1.5 }, music = { 0, 1 }, sfx = { 0, 1 }, brightness = { 0.5, 1.6 } }
 local UI_DETAILS = { Auto = true, High = true, Medium = true, Low = true }
-local UI_FLAGS = { "menuAtStart", "controlHints", "vibration" }
+local UI_FLAGS = { "menuAtStart", "controlHints", "vibration", "liveScore" }
 -- controls job: console settings (aim assist level, vibration strength) and the custom control map
 -- (Keymap.Sanitize keeps only known actions with valid bindings for their device)
 local UI_ASSIST = { Off = true, Low = true, High = true }

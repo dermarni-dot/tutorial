@@ -806,6 +806,20 @@ function FighterCard.Full(parent, P, opts)
 	-- the championships: the four world belts as goals, lit when held
 	UI.Kicker(info, "CHAMPIONSHIPS", T.gold, { order = 6, icon = "belt" })
 	beltRow(info, P, 7, small and 96 or 112)
+	-- the tournament belts won (TourneyUI's badges: each event's own colours, plate and emblem)
+	local tb = type(P.tourney) == "table" and type(P.tourney.belts) == "table" and P.tourney.belts or {}
+	if #tb > 0 then
+		local okT, TourneyUI = pcall(require, script.Parent:WaitForChild("TourneyUI", 2))
+		if okT and type(TourneyUI) == "table" then
+			local iw = small and 84 or 100
+			local trow = UI.Frame(info, { Name = "TourneyBelts", BackgroundTransparency = 1, Size = UDim2.new(1, -6, 0, math.floor(iw * 0.5)), LayoutOrder = 7, ClipsDescendants = true })
+			UI.List(trow, 10, true)
+			local fit = math.max(1, math.floor((infoW - 6 + 10) / (iw + 10)))
+			for i = 1, math.min(#tb, fit) do
+				TourneyUI.BeltIcon(trow, tb[i].id, iw, { LayoutOrder = i })
+			end
+		end
+	end
 	-- rankings by organisation
 	UI.Kicker(info, "WORLD RANKINGS", T.sub, { order = 8, icon = "podium" })
 	local ranks = UI.Frame(info, { Name = "Ranks", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 9 })

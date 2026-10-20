@@ -441,6 +441,13 @@ function Services.Locker()
 		local pal = Looks.Palette
 		local glove = Catalog.Find(Catalog.Gloves, P.gear.equipped.gloves) or Catalog.Gloves[1]
 		local custom = glove.custom or {}
+		-- [Entrance] the ring walk's celebrations, the crowd carry, walkout song / announcer (BoxerClient.EntrancePicker,
+		-- opened over the locker: the fit being edited stays as it is)
+		if State.open.Entrance then
+			UI.Button(body, "RING WALK ENTRANCE", { Name = "EntranceButton", Size = UDim2.new(1, -8, 0, math.max(40, UI.MinHit(body))), BackgroundColor3 = T.panel2, icon = "robe" }, function()
+				State.open.Entrance(true)
+			end)
+		end
 		-- kits: a whole outfit in one tap (glove colour / cuff only where the gloves allow it)
 		UI.Header(body, "KITS")
 		local kits = {}

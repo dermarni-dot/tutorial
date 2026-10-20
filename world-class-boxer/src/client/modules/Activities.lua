@@ -5602,6 +5602,101 @@ local function gainPopups(ctx, r0, grown)
 end
 
 -- a bout (or sparring) has the player: the report and the reveal camera give way to the ring
+-- the coach's report card (server Training's result.report, plus the goals Record completed): the
+-- multipliers as chips, what went well / what to fix, mastery and overload, goals done, the camp, a tip
+local function reportSection(list, nextOrder, res, listW, compact)
+	local r0 = type(res.result) == "table" and res.result or {}
+	local rep = type(r0.report) == "table" and r0.report or nil
+	if not rep then
+		return
+	end
+	UI.Kicker(list, "COACH'S REPORT", T.gold, { order = nextOrder(), TextSize = 13, icon = "whistle", Name = "ReportKicker" })
+	local chips = {}
+	for _, c in ipairs(type(rep.chips) == "table" and rep.chips or {}) do
+		table.insert(chips, { tostring(c.text), c.good and T.green or T.orange })
+	end
+	if #chips > 0 then
+		local f = chipFlow(list, chips, nextOrder(), listW)
+		f.Name = "ReportChips"
+	end
+	local function line(icon, color, text, name)
+		local row = UI.Frame(list, { Name = name, BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = nextOrder() })
+		UI.Icon(row, icon, 15, color, { Position = UDim2.fromOffset(0, 2) })
+		UI.Text(row, text, { Font = T.semi, TextSize = 14, TextColor3 = T.text, Position = UDim2.fromOffset(22, 0), Size = UDim2.new(1, -22, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+	end
+	for _, t in ipairs(type(rep.well) == "table" and rep.well or {}) do
+		line("check", T.green, tostring(t), "Well")
+	end
+	for _, t in ipairs(type(rep.fix) == "table" and rep.fix or {}) do
+		line("warning", T.orange, tostring(t), "Fix")
+	end
+	-- mastery: the level, the bar to the next one, the overload the drill is at
+	local m = rep.mastery
+	if type(m) == "table" then
+		local row = UI.Frame(list, { Name = "Mastery", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 22), LayoutOrder = nextOrder() })
+		local ov = type(rep.overload) == "table" and rep.overload or nil
+		local label = string.format("MASTERY %s%s", string.upper(tostring(m.name or "")), ov and ov.to > 0 and string.format("  ·  OVERLOAD %d", ov.to) or "")
+		UI.Text(row, label, { Font = T.semi, TextSize = 13, TextColor3 = m.up and T.gold or T.text, Size = UDim2.new(0.5, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		local need = tonumber(m.need) or 0
+		local _, set = UI.Bar(row, { Position = UDim2.new(0.5, 6, 0.5, -4), Size = UDim2.new(0.5, -76, 0, 8) }, T.gold)
+		set(need > 0 and math.clamp((tonumber(m.into) or 0) / need, 0, 1) or 1)
+		UI.Text(row, string.format("+%d", tonumber(m.gained) or 0), { Face = "number", TextSize = 15, TextColor3 = T.gold, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(62, 22),
+			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+		if m.up and m.perk then
+			line("medal", T.gold, "NEW PERK  " .. tostring(m.perk), "Perk")
+		end
+	end
+	-- goals done this session (the session's own, and the personal best's from Record)
+	local goals = {}
+	for _, src in ipairs({ rep.goals, type(res.record) == "table" and res.record.goals or nil }) do
+		for _, g in ipairs(type(src) == "table" and src or {}) do
+			table.insert(goals, { string.format("%s %s  +$%s", g.sweep and "SWEEP" or (g.weekly and "WEEKLY" or "GOAL"), tostring(g.text or ""), tostring(g.money or 0)), T.gold, true })
+		end
+	end
+	if #goals > 0 then
+		local f = chipFlow(list, goals, nextOrder(), listW)
+		f.Name = "GoalChips"
+	end
+	if type(rep.camp) == "table" then
+		local c = rep.camp
+		local l = UI.Text(list, string.format("FIGHT CAMP  ·  DAY %d/%d  ·  %s  ·  READINESS %d (%s)", tonumber(c.day) or 1, tonumber(c.total) or 1, string.upper(tostring(c.phase or "")), tonumber(c.readiness) or 0, tostring(c.label or "")),
+			{ Font = T.semi, TextSize = 13, TextColor3 = T.red, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = nextOrder() })
+		l.Name = "CampLine"
+	end
+	if type(rep.tip) == "table" and rep.tip.text and not compact then
+		local l = UI.Text(list, string.format('<font color="#%s">%s:</font> %s', T.gold:ToHex(), string.upper(tostring(rep.tip.coach or "COACH")), tostring(rep.tip.text)),
+			{ RichText = true, TextSize = 13, TextColor3 = T.sub, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = nextOrder() })
+		l.Name = "ReportTip"
+	end
+end
+
+-- the soreness after the session on a small figure (orange = sore), beside its numbers
+local function sorenessMap(list, nextOrder, sore)
+	local any = false
+	for _, v in pairs(type(sore) == "table" and sore or {}) do
+		if (tonumber(v) or 0) >= 0.1 then
+			any = true
+		end
+	end
+	if not any or not BodyMap.new then
+		return
+	end
+	local row = UI.Frame(list, { Name = "SoreMap", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 120), LayoutOrder = nextOrder() })
+	local okMap, map = pcall(BodyMap.new, row, { Size = UDim2.fromOffset(150, 118), labels = false, glow = false })
+	if okMap and map and map.SetSoreness then
+		map:SetSoreness(sore)
+	end
+	local lines = {}
+	for _, k in ipairs(Config.MuscleKeys) do
+		local v = tonumber(sore[k])
+		if v and v >= 0.1 then
+			table.insert(lines, string.format("%s %d%%", string.upper(Config.MuscleNames[k] or k), math.floor(v * 100 + 0.5)))
+		end
+	end
+	UI.Text(row, "SORENESS\n" .. table.concat(lines, "\n"), { Font = T.semi, TextSize = 13, TextColor3 = T.orange, Position = UDim2.fromOffset(160, 0), Size = UDim2.new(1, -160, 1, 0),
+		AutomaticSize = Enum.AutomaticSize.None, TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true, TextTruncate = Enum.TextTruncate.AtEnd })
+end
+
 local function inRing()
 	local b = State.busy()
 	return State.inFight() or b == "fight" or b == "spar" or b == "pvp"
@@ -5739,6 +5834,11 @@ local function showResult(ctx, res, quality)
 	UI.Frame(quote, { Size = UDim2.new(0, 3, 1, -12), Position = UDim2.fromOffset(0, 6), BackgroundColor3 = gcol })
 	UI.Text(quote, string.format('"%s"  <font color="#%s">- COACH</font>', coachRemark(ctx.act.id, grade), T.sub:ToHex()), { RichText = true, Font = T.semi, TextSize = 14, Position = UDim2.fromOffset(14, 6), Size = UDim2.new(1, -24, 1, -12),
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd })
+	-- 1b. the coach's report card
+	local okRep, errRep = pcall(reportSection, list, nextOrder, res, listW, compact)
+	if not okRep then
+		warn("[Activities] report:", errRep)
+	end
 	-- 2. muscle growth: every part that grew - the level before (its colour), the growth now (green),
 	-- tonight's share once you sleep (pale green), your frame's potential (gold tick); in numbers the
 	-- gain now, tonight's and the level now (the one the Muscle screen and the Body tab show)
@@ -5811,6 +5911,7 @@ local function showResult(ctx, res, quality)
 		UI.Kicker(list, "YOUR BODY", T.red, { order = nextOrder(), TextSize = 13 })
 		chipFlow(list, sc, nextOrder(), listW)
 	end
+	pcall(sorenessMap, list, nextOrder, r0.sore)
 	-- 5. the session in numbers, then notes (injuries in red)
 	local summary = table.clone(ctx.lines)
 	table.insert(summary, ctx.recovery and string.format("HR settled at %d BPM", math.floor(ctx.hr + 0.5)) or string.format("HR peak %d BPM", math.floor(ctx.hrPeak + 0.5)))
@@ -6028,6 +6129,11 @@ function Activities.Start(actId)
 	State.activity = current
 	local ctx = newContext({ act = act, level = res.level, params = res.params, plan = res.plan, station = act.station, baseEffort = BASE_EFFORT[res.minigame] })
 	current.ctx = ctx
+	-- progressive overload (the drill's mastery): the server drew a tighter plan
+	local ovl = type(res.plan) == "table" and tonumber(res.plan.overload) or 0
+	if ovl and ovl > 0 then
+		State.toast(string.format("OVERLOAD %d: tighter timing, bigger gains if you nail it.", ovl), T.gold, 3)
+	end
 	local camConn
 	if res.pose then
 		task.wait(0.15) -- let the server place the character

@@ -32,7 +32,7 @@ local function run(kind, seed)
 	local Training, Config, TP = T.Training, T.Config, T.TP
 	local P = T.profile(22)
 	Training.Migrate(P)
-	local rng = Random.new(seed * 31 + #kind)
+	local rng = T.H.globals.Random.new(seed * 31 + #kind)
 	local function q(skill, actId)
 		local ov = 0
 		if Training.Mastery then

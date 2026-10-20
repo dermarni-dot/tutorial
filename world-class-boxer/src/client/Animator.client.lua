@@ -47,6 +47,8 @@ end
 local FaceFX = optional("FaceFX")
 local HairFX = optional("HairFX")
 R.setFX({ FaceFX = FaceFX, HairFX = HairFX })
+-- [Entrance] the ring walk's celebrations / climbs / ride on the crowd's shoulders (BoxerClient.AnimEntrance)
+local Entrance = optional("AnimEntrance")
 
 local A = CFrame.Angles
 local CF = CFrame.new
@@ -1149,6 +1151,10 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 			rig.clampOut = co
 		end
 		R.floorClamp(rig, out, co)
+	end
+	-- [Entrance] a ring-walk pose over the output (client-local visual: the root never moves for it)
+	if Entrance and Entrance.active[model] then
+		Entrance.output(rig, model, out, t, dt)
 	end
 	for _, k in ipairs(KEYS) do
 		local j = joints[k]

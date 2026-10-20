@@ -12,7 +12,8 @@
 --                    carpet, fans behind barriers at the door (more with popularity), title photos
 --                    and the Champion's Lounge: the gate up to the mezzanine over the east lobby
 --                    opens for you and its deck becomes your lounge (bar, sofas, trophies, screen)
--- Always: the career wall next to the Fight Board (your real fights), the trophy case with the
+-- Always: the career wall next to the Fight Board (your real fights) with your personal records on its
+-- back (facing the gym), the trophy case with the
 -- titles you actually won, the "YOURS" plates under the belts you hold and the sparring ring
 -- (rope Beams with sag and physics, corner pads, apron, steps) matched to your ring level.
 -- A tier going up plays a facility-upgrade reveal.
@@ -25,6 +26,12 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
 local GymSound = require(script.Parent:WaitForChild("GymSound"))
+-- the tournament belts in the trophy case (Shared.Tournaments' designs, built by Shared.BeltModel): optional
+local Tournaments, BeltModel
+pcall(function()
+	Tournaments = require(Shared:WaitForChild("Tournaments", 5))
+	BeltModel = require(Shared:WaitForChild("BeltModel", 5))
+end)
 
 local GymFacility = {}
 local player = Players.LocalPlayer
@@ -1059,6 +1066,76 @@ local function buildCareer(m, P, idx)
 	sign(plate, Enum.NormalId.Back, string.format("PRO %d-%d-%d  |  AMATEUR %d-%d", rec.w or 0, rec.l or 0, rec.d or 0, arec.w or 0, arec.l or 0), WHITE, DARK, 40)
 end
 
+-- the personal records board: on the back of the west career panel, facing into the gym (no new floor
+-- footprint), each drill's best grade and best numbers, most-trained drills first (P.records, P.training)
+local REC_WORDS = {
+	punches = "PUNCHES", maxPower = "MAX POWER", hitsPerMin = "HITS/MIN", bestStreak = "STREAK", counters = "COUNTERS", cleanCombos = "CLEAN COMBOS",
+	load = "LOAD", goodReps = "GOOD REPS", distance = "DISTANCE", topSpeed = "TOP SPEED", maxWatts = "WATTS", meters = "METRES", cleanJumps = "CLEAN JUMPS",
+	doubleUnders = "DOUBLE UNDERS", lengths = "LENGTHS", cleanSlams = "SLAMS", perfectCurls = "PERFECT CURLS", stepsPerSec = "STEPS/S", rebounds = "REBOUNDS",
+}
+local function recordRows(P)
+	local recs = type(P) == "table" and type(P.records) == "table" and P.records or {}
+	local rows = {}
+	for _, a in ipairs(Config.Activities) do
+		local r = recs[a.id]
+		local n = type(r) == "table" and tonumber(r.sessions) or 0
+		if n and n > 0 then
+			local nums, keys = {}, {}
+			for k in pairs(type(r.stats) == "table" and r.stats or {}) do
+				if REC_WORDS[k] then
+					table.insert(keys, k)
+				end
+			end
+			table.sort(keys)
+			for i = 1, math.min(2, #keys) do
+				local v = tonumber(r.stats[keys[i]]) or 0
+				table.insert(nums, string.format("%s %s", REC_WORDS[keys[i]], v == math.floor(v) and tostring(v) or string.format("%.1f", v)))
+			end
+			local best = tonumber(r.best) or 0
+			table.insert(rows, { name = string.upper(a.name), n = n, grade = Config.GradeFor and Config.GradeFor(best) or "-", pct = math.floor(drillPct(best)), nums = table.concat(nums, "  ·  ") })
+		end
+	end
+	table.sort(rows, function(x, y)
+		if x.n ~= y.n then
+			return x.n > y.n
+		end
+		return x.name < y.name
+	end)
+	while #rows > 8 do
+		table.remove(rows)
+	end
+	return rows
+end
+local function recordsKey(P)
+	local parts = {}
+	for _, r in ipairs(recordRows(P)) do
+		table.insert(parts, r.name .. r.grade .. r.pct .. r.nums)
+	end
+	return table.concat(parts, "|")
+end
+local function buildRecords(m, P, idx)
+	local base = CF(-13.5, LOBBY_Y, 32.2) * ANG(0, RAD(180), 0)
+	local plate = part(m, "RecordsBoard", V3(7.8, 8.4, 0.05), base * CF(0, 5.4, 0.2), idx <= 1 and rgb(232, 230, 222) or DARK, M.SmoothPlastic, { shadow = false })
+	local sg = gui(plate, Enum.NormalId.Back, 40, 0.5)
+	local ink = idx <= 1 and rgb(40, 40, 50) or WHITE
+	local accent = idx >= 4 and GOLD or (idx <= 1 and RED or rgb(80, 200, 255))
+	frame(sg, { Size = UDim2.new(1, 0, 0.11, 0), BackgroundColor3 = accent })
+	label(sg, "PERSONAL RECORDS", { TextColor3 = idx <= 1 and WHITE or DARK, Size = UDim2.fromScale(0.9, 0.08), Position = UDim2.fromScale(0.05, 0.015) })
+	local rows = recordRows(P)
+	if #rows == 0 then
+		label(sg, "TRAIN ANY STATION\nYOUR BEST SESSIONS GO UP HERE", { TextColor3 = ink, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.86, 0.2), Position = UDim2.fromScale(0.07, 0.4) })
+		return
+	end
+	for i, r in ipairs(rows) do
+		local y = 0.14 + (i - 1) * 0.105
+		label(sg, r.grade, { TextColor3 = accent, Size = UDim2.fromScale(0.1, 0.08), Position = UDim2.fromScale(0.04, y) })
+		label(sg, string.format("%s  %d%%", r.name, r.pct), { TextColor3 = ink, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.fromScale(0.8, 0.045), Position = UDim2.fromScale(0.16, y) })
+		if r.nums ~= "" then
+			label(sg, r.nums, { TextColor3 = idx <= 1 and rgb(90, 90, 100) or rgb(170, 180, 195), Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.fromScale(0.8, 0.035), Position = UDim2.fromScale(0.16, y + 0.048) })
+		end
+	end
+end
+
 ------------------------------------------------------------------------
 -- 5. Titles: trophy case, belt display plates, title photos
 ------------------------------------------------------------------------
@@ -1078,6 +1155,16 @@ local function titleList(P)
 	end
 	if reg.regional then
 		table.insert(list, { kind = "cup", name = "REGIONAL CHAMPION", color = rgb(205, 210, 220) })
+	end
+	-- the tournament belts won, each in its own design (P.tourney: Tourney.View)
+	local tb = type(P.tourney) == "table" and type(P.tourney.belts) == "table" and P.tourney.belts or {}
+	if Tournaments and BeltModel then
+		for _, b in ipairs(tb) do
+			local def = Tournaments.ById[b.id]
+			if def then
+				table.insert(list, { kind = "tbelt", id = b.id, name = def.short .. ((tonumber(b.n) or 1) > 1 and (" x" .. b.n) or ""), color = BLACK })
+			end
+		end
 	end
 	return list
 end
@@ -1138,6 +1225,13 @@ local function buildTrophies(m, P)
 			local base = case.CFrame * CF(x, case.Size.Y / 2, -0.3)
 			if t.kind == "cup" then
 				trophyCup(m, base, 1.8, t.color)
+			elseif t.kind == "tbelt" then
+				part(m, "BeltStand", V3(0.25, 1.6, 0.25), base * CF(0, 0.8, 0.6), BLACK, M.Metal)
+				pcall(function()
+					local belt = BeltModel.Build(Tournaments.Design(t.id), { mode = "display", scale = math.min(0.42, (case.Size.X - 4) / n / 9.2), anchored = true, name = "TourneyBelt_" .. t.id,
+						cframe = base * CF(0, 1.9, 0.45) * ANG(RAD(-10), 0, 0) })
+					belt.Parent = m
+				end)
 			else
 				part(m, "BeltStand", V3(0.25, 1.6, 0.25), base * CF(0, 0.8, 0.6), BLACK, M.Metal)
 				beltModel(m, base * CF(0, 1.9, 0.45) * ANG(RAD(-10), 0, 0), t.color, 0.62)
@@ -2043,6 +2137,7 @@ function GymFacility.Refresh(P, localGym, info)
 	local h1 = hist[1]
 	local careerKey = string.format("%d|%d|%s|%s|%s", idx >= 4 and 3 or (idx <= 1 and 1 or 2), #hist, h1 and tostring(h1.day) or "", h1 and tostring(h1.opp) or "", P.identity and tostring(P.identity.nickname) or "")
 	rebuild(root, "CareerWall", careerKey, buildCareer, P, idx)
+	rebuild(root, "RecordsBoard", string.format("%d|%s", idx >= 4 and 3 or (idx <= 1 and 1 or 2), recordsKey(P)), buildRecords, P, idx)
 	local titles = titleList(P)
 	local tkeys = {}
 	for _, t in ipairs(titles) do

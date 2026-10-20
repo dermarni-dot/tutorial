@@ -8,7 +8,7 @@
 -- experience's mesh / image APIs off, the memory budget spent) it falls back to plain Frames.
 --   local map = BodyMap.new(parent, { Size = UDim2.fromOffset(300, 340), views = "both", legend = true })
 --   map:SetTargets(act.parts, color)   map:SetGrowth(result.parts)   map:SetDevelopment(P.body, cap)
---   map:Lit() -> { { id, w } } strongest first      map:Pulse()      BodyMap.Short(id) -> "Pecs"
+--   map:SetSoreness(condition.sore)   map:Lit() -> { { id, w } } strongest first      map:Pulse()      BodyMap.Short(id) -> "Pecs"
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local AssetService = game:GetService("AssetService")
 local UI = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("UI"))
@@ -718,6 +718,18 @@ function BodyMap:SetTargets(weights, color, scaleMax)
 		self.legend.Visible = false
 	end
 	self:_apply(colors, ks)
+end
+
+-- soreness by group: { [group] = 0..1 } lights every part of a sore group, orange to red with the level
+function BodyMap:SetSoreness(sore)
+	local w = {}
+	for _, p in ipairs(Config.MuscleParts) do
+		local v = math.clamp(tonumber(type(sore) == "table" and sore[p.group] or 0) or 0, 0, 1)
+		if v >= 0.05 then
+			w[p.id] = v
+		end
+	end
+	self:SetTargets(w, T.orange, 1)
 end
 
 -- growth after a session: { [partId] = gain }; the biggest gains glow brightest (returns the sorted list)
