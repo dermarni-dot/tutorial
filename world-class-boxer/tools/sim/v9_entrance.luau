@@ -782,7 +782,7 @@ local function runWalk(walker, team, plan, shots, gif)
 			if robe then
 				robe:Destroy()
 			end
-			solve(walker)
+			solve(walker, true)
 			recordWelds(walker)
 			currentModel = nil
 		end
@@ -871,13 +871,13 @@ if ONLY.story then
 	placeAt(team[1], PTS.entrance + Vector3.new(-2.1, 0, -2.6), CENTRE)
 	run({ walker, team[1] }, 1.0)
 	runWalk(walker, team, storyPlan(false), {
-		tunnel = { { at = 0.95, id = "01_tunnel", label = "the tunnel: the reveal at the stage, a fist pump for the crowd" } },
-		aisle = { { at = 1.55, id = "02_tracking", label = "tracking down the aisle: shadowboxing, the coach behind him" } },
-		crowd = { { at = 0.7, id = "03_crowd", label = "the crowd shot from the walkway rail" } },
-		steps = { { at = 0.75, id = "04b_steps", label = "the ring shot: up the ring steps" } },
-		ropes = { { at = 0.45, id = "04c_ropes", label = "ducking through the ropes" } },
-		ring = { { at = Entrance.RING_WALK + 0.95, id = "05_turnbuckle", label = "the turnbuckle salute in his corner" } },
-		robe = { { at = 0.85, id = "06_robe", label = "the robe comes off in his corner" } },
+		tunnel = { { at = 0.95, id = "01_tunnel", label = "tunnel: the reveal, a fist pump" } },
+		aisle = { { at = 1.55, id = "02_tracking", label = "tracking: shadowboxing, coach behind" } },
+		crowd = { { at = 0.7, id = "03_crowd", label = "crowd shot from the rail" } },
+		steps = { { at = 0.75, id = "04b_steps", label = "ring shot: up the steps" } },
+		ropes = { { at = 0.45, id = "04c_ropes", label = "through the ropes" } },
+		ring = { { at = Entrance.RING_WALK + 0.95, id = "05_turnbuckle", label = "turnbuckle salute" } },
+		robe = { { at = 0.85, id = "06_robe", label = "robe off in his corner" } },
 	})
 	-- the carried walk: a favourite on the crowd's shoulders (the robe back on, back to the tunnel)
 	CS:RemoveTag(walker, "Fighter")
@@ -891,9 +891,9 @@ if ONLY.story then
 	placeAt(w2, PTS.entrance, CENTRE)
 	run({ w2 }, 1.0)
 	runWalk(w2, {}, storyPlan(true), {
-		tunnel = { { at = 1.2, id = "04a_carried_tunnel", label = "carried out of the tunnel on the fans' shoulders" } },
-		aisle = { { at = 1.4, id = "04_carried", label = "carried down the aisle: four fans in the red corner's colours" } },
-		setdown = { { at = 0.55, id = "04d_setdown", label = "set down at the ring steps" } },
+		tunnel = { { at = 1.2, id = "04a_carried_tunnel", label = "carried out of the tunnel" } },
+		aisle = { { at = 1.4, id = "04_carried", label = "carried down the aisle" } },
+		setdown = { { at = 0.55, id = "04d_setdown", label = "set down at the steps" } },
 	})
 	CS:RemoveTag(w2, "Fighter")
 	w2:Destroy()

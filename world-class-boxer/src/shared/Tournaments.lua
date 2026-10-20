@@ -80,11 +80,12 @@ for i, def in ipairs(Tournaments.List) do
 	Tournaments.ById[def.id] = def
 end
 
--- the other title belts, for the cutscene's strapping and the trophy case: the old regional / national belts, and
+-- the other title belts, for the cutscene's strapping and the trophy case: the old regional / national belts (their own
+-- keys: the tournaments use "regional" / "national"), and
 -- the world titles by their place in Config.Orgs (the label is the org's own key, passed in)
 Tournaments.TitleBelts = {
-	regional = { strap = { 40, 40, 46 }, plate = { 205, 210, 220 }, trim = { 150, 150, 160 }, jewel = { 196, 30, 36 }, shape = "round", emblem = "star", sides = 1, label = "REGIONAL" },
-	national = { strap = { 120, 20, 28 }, plate = { 205, 127, 50 }, trim = { 140, 84, 30 }, jewel = { 255, 214, 92 }, shape = "shield", emblem = "star", sides = 2, label = "NATIONAL" },
+	titleRegional = { strap = { 40, 40, 46 }, plate = { 205, 210, 220 }, trim = { 150, 150, 160 }, jewel = { 196, 30, 36 }, shape = "round", emblem = "star", sides = 1, label = "REGIONAL" },
+	titleNational = { strap = { 120, 20, 28 }, plate = { 205, 127, 50 }, trim = { 140, 84, 30 }, jewel = { 255, 214, 92 }, shape = "shield", emblem = "star", sides = 2, label = "NATIONAL" },
 }
 local WORLD_BELTS = {
 	{ strap = { 20, 20, 22 }, shape = "round", emblem = "globe", jewel = { 196, 30, 36 }, sides = 2 },
@@ -93,7 +94,7 @@ local WORLD_BELTS = {
 	{ strap = { 30, 56, 160 }, shape = "octagon", emblem = "globe", jewel = { 255, 255, 255 }, sides = 2 },
 }
 
--- a belt design by key: a tournament id, "regional" / "national", or a world title (orgs = Config.Orgs: the key's
+-- a belt design by key: a tournament id, "titleRegional" / "titleNational" (the old regional / national titles), or a world title (orgs = Config.Orgs: the key's
 -- place in it picks the design); nil for anything else
 function Tournaments.Design(key, orgs)
 	local def = Tournaments.ById[key]

@@ -189,7 +189,8 @@ function FightAI:OnOppComboEnd(n)
 	local now = engine:Now()
 	self.afterAt = now + 0.45
 	self.afterDist = engine:Distance(self.F, O)
-	if n >= 3 and self.skill >= 0.3 then
+	-- (a skilled boxer sees it more often: a raw one rarely times it at all)
+	if n >= 3 and self.rng:NextNumber() < math.clamp((self.skill - 0.3) * 1.4, 0, 0.75) then
 		local again, share = self.read:AfterCombo()
 		if again == "punch" and share > 0.5 then
 			self.punishAt = nil
@@ -781,7 +782,7 @@ function FightAI:Think(now)
 	if self:TrySpecial(now, dist) then
 		return
 	end
-	if now < F.counterUntil and self:Fits("jab", dist) then
+	if now < F.counterUntil and self:Fits("jab", dist) and self.rng:NextNumber() < 0.45 + 0.55 * self.skill then
 		self:Throw(self:CounterPunch(dist), false)
 		return
 	end
@@ -816,7 +817,8 @@ function FightAI:Think(now)
 	end
 	if self:Fits("jab", dist) then
 		-- (engine.aiWork: a gym sparring partner works harder than the fight-night pace)
-		if self.rng:NextNumber() < (aggr * 0.13 + self.jabRate * 0.07) * (engine.aiWork or 1) then
+		-- (a raw boxer looks for its openings less often: the work rate grows with its skill)
+		if self.rng:NextNumber() < (aggr * 0.13 + self.jabRate * 0.07) * (engine.aiWork or 1) * (0.7 + 0.4 * self.skill) then
 			self.queue = self:BuildCombo()
 			local first = table.remove(self.queue, 1)
 			self:Throw(first.p, first.body)
@@ -859,7 +861,8 @@ function FightAI:TryFeint(now, dist)
 		return false
 	end
 	local styleK = (self.style.id == "CounterPuncher" and 1.6) or (self.style.id == "OutBoxer" and 1.3) or (self.style.id == "BoxerPuncher" and 1.1) or 0.7
-	local rate = (0.02 + 0.1 * self.skill) * styleK * (self.mode == "bait" and 1.5 or 1)
+	-- (a chance a think, ~4 a second: about one feint a minute from a raw boxer, four or five from an elite one)
+	local rate = (0.002 + 0.022 * self.skill) * styleK * (self.mode == "bait" and 1.5 or 1)
 	-- he blocks the moment it throws: feints work on him
 	rate *= 0.7 + self.read:ReactBlock()
 	if F.stamina < F.maxStam * 0.3 or self.rng:NextNumber() > rate then

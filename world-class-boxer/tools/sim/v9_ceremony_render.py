@@ -122,6 +122,15 @@ def new_scene(res, samples, lens=50, bg=(0.11, 0.115, 0.125)):
     return v8.V8Scene(res=res, samples=samples, lens=lens, bg=bg)
 
 
+def belt_set(res, samples, low):
+    """a studio set for a belt: the floor (v8's sits at y = 0, through the belt) moved down under it"""
+    sc = new_scene(res, samples, lens=50, bg=(0.07, 0.072, 0.08))
+    drop_floor(sc)
+    P = np.array([(-40, low, -40), (40, low, -40), (40, low, 40), (-40, low, 40)], float)
+    sc.add_world(P, np.array([(0, 2, 1), (0, 3, 2)]), "set", mat=sc.gear_mat((0.05, 0.052, 0.058), "Plastic", 0), smooth=False)
+    return sc
+
+
 # ---------------------------------------------------------------------------------------------- belts
 def render_belts(scene_dir, out_dir, samples):
     data = json.load(open(os.path.join(scene_dir, "belts.json")))
@@ -134,7 +143,7 @@ def render_belts(scene_dir, out_dir, samples):
         disp = modes.get("display")
         if disp:
             for vname, view, dist in (("front", (0, 4, 1.0), 12.5), ("3/4", (35, 16, 1.0), 12.0), ("plate", (12, 8, 1.0), 4.6)):
-                sc = new_scene((560, 340), samples, lens=50, bg=(0.07, 0.072, 0.08))
+                sc = belt_set((560, 340), samples, -0.9)
                 add_parts(sc, disp["figure"])
                 sc.rig((0, 0, 0), 3.2)
                 p = os.path.join(out_dir, f"_belt_{key}_{vname.replace('/', '')}.png")
@@ -143,7 +152,7 @@ def render_belts(scene_dir, out_dir, samples):
                 labels.append(f"{disp['name']}  {vname}")
         worn = modes.get("worn")
         if worn:
-            sc = new_scene((560, 340), samples, lens=50, bg=(0.07, 0.072, 0.08))
+            sc = belt_set((560, 340), samples, -0.6)
             add_parts(sc, worn["figure"])
             sc.rig((0, 0, 0), 1.6)
             p = os.path.join(out_dir, f"_belt_{key}_worn.png")
@@ -156,7 +165,7 @@ def render_belts(scene_dir, out_dir, samples):
                      title=f"{(disp or worn)['name']}  -  plate {d.get('shape')}, emblem {d.get('emblem')}, side plates {d.get('sides')} a side, {(disp or {}).get('parts')} parts")
         cells[key] = paths
         print("rendered", out, flush=True)
-    tkeys = [k for k in ("novice", "city", "regional", "national", "world") if k in cells]
+    tkeys = [k for k in ("novice", "city", "regional", "national", "world") if k in cells]  # (the tournaments)
     okeys = [k for k in by if k not in tkeys]
     for name, keys in (("belts_tournaments.jpg", tkeys), ("belts_titles.jpg", okeys)):
         paths, labels = [], []
@@ -463,7 +472,7 @@ def render_badge(scene_dir, out_dir, samples):
     data = json.load(open(os.path.join(scene_dir, "belts.json")))
     for b in data["belts"]:
         if b["key"] == "world" and b["mode"] == "display":
-            sc = new_scene((440, 260), samples, lens=50, bg=(0.05, 0.052, 0.06))
+            sc = belt_set((440, 260), samples, -0.9)
             add_parts(sc, b["figure"])
             sc.rig((0, 0, 0), 3.2)
             sc.render(os.path.join(out_dir, "_badge.png"), view=(0, 4, 1.0), dist=12.0, focus=(0, 0, 0.4))

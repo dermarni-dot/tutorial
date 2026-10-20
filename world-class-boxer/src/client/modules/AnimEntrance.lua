@@ -502,7 +502,8 @@ function AnimEntrance.output(rig, model, out, _t, _dt)
 			local dist = V3(dir.X, 0, dir.Z).Magnitude
 			local dirU = dist > 0.01 and V3(dir.X, 0, dir.Z).Unit or flatLook(rootCF)
 			faceDir = dirU
-			rootOff = rootCF.Position + dirU * max(0, dist - 1.25) * up + V3(0, 1.55 * up, 0)
+			-- (up onto the middle rope beside the post: the post between his feet, his chest over the pad)
+			rootOff = rootCF.Position + dirU * max(0, dist - 1.5) * up + V3(0, 2.5 * up, 0)
 			stand(q)
 			if u < 0.55 then
 				climbLegs(q, u / 0.55 * 2)

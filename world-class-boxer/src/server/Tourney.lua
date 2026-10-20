@@ -605,9 +605,9 @@ function Tourney.CeremonyFor(profile, offer)
 		end
 	end
 	if offer.kind == "Regional Title" then
-		return { belt = "regional", kicker = "AND THE NEW...", title = "REGIONAL CHAMPION", event = "Regional Title", name = name, kind = "title" }
+		return { belt = "titleRegional", kicker = "AND THE NEW...", title = "REGIONAL CHAMPION", event = "Regional Title", name = name, kind = "title" }
 	elseif offer.kind == "National Title" then
-		return { belt = "national", kicker = "AND THE NEW...", title = "NATIONAL CHAMPION", event = "National Title", name = name, kind = "title" }
+		return { belt = "titleNational", kicker = "AND THE NEW...", title = "NATIONAL CHAMPION", event = "National Title", name = name, kind = "title" }
 	end
 	return nil
 end

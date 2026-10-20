@@ -471,12 +471,13 @@ local function shot(w, now)
 		pos = V3(pos.X, floorY + 3.2 + lift * 0.5, pos.Z)
 		return CFrame.lookAt(pos, rp + V3(0, 1.2 + lift, 0)), "crowd"
 	elseif id == "setdown" then
-		local pos = pts.steps + side * 6.6 + out * 1.2
-		pos = V3(pos.X, floorY + 3.4, pos.Z)
+		local pos = pts.steps + side * 9.5 + out * 3.5
+		pos = V3(pos.X, floorY + 4.2, pos.Z)
 		return CFrame.lookAt(pos, pts.steps + V3(0, 2.4 + lift * 0.6 * (1 - e), 0)), "setdown"
 	elseif id == "steps" or id == "ropes" then
-		local pos = pts.centre - out * 1.5 + side * 4.6
-		pos = V3(pos.X, canvasY + 4.6, pos.Z)
+		-- (inside the ring, a few strides from his ropes: he comes up the steps and through them toward the lens)
+		local pos = pts.centre + out * (pts.half - 7.5) + side * 4.2
+		pos = V3(pos.X, canvasY + 3.6, pos.Z)
 		local at = id == "steps" and pts.steps:Lerp(pts.apron, smooth(e)) or pts.apron:Lerp(pts.inside, smooth(e))
 		return CFrame.lookAt(pos, V3(at.X, (id == "steps" and floorY + (canvasY - floorY) * smooth(e) or canvasY) + 2.4, at.Z)), "ringin"
 	elseif id == "ring" then
@@ -491,10 +492,12 @@ local function shot(w, now)
 			return CFrame.lookAt(pos, pts.corner + V3(0, 2, 0)), "lap"
 		end
 		-- outside his corner, looking back at him over the post (he faces his fans out there)
+		-- (off the corner's diagonal: the post and its pad never stand between the lens and him)
 		local diag = unitOr(flat(pts.post - pts.centre), out)
-		local pos = pts.post + diag * 7.8 + diag:Cross(V3(0, 1, 0)) * 1.5
-		pos = V3(pos.X, canvasY + (celeb == "turnbuckle" and 3.2 or 2.6), pos.Z)
-		return CFrame.lookAt(pos, pts.corner + V3(0, 2.6 + (celeb == "turnbuckle" and 1.2 or 0), 0) + diag * (celeb == "turnbuckle" and 1.6 or 0)), "corner"
+		local tb = celeb == "turnbuckle"
+		local pos = pts.post + diag * (tb and 8.5 or 7.8) + diag:Cross(V3(0, 1, 0)) * (tb and 4.6 or 3.2)
+		pos = V3(pos.X, canvasY + (tb and 4.4 or 2.8), pos.Z)
+		return CFrame.lookAt(pos, pts.corner + V3(0, tb and 3.8 or 2.6, 0) + diag * (tb and 1.9 or 0)), "corner"
 	elseif id == "robe" then
 		local toC = unitOr(flat(pts.centre - pts.corner), -out)
 		local pos = pts.corner + toC * 7.2 + toC:Cross(V3(0, 1, 0)) * 1.8
@@ -552,7 +555,18 @@ end
 local function step(dt)
 	local now = os.clock()
 	local w = S.walk
-	if w and not S.skipped then
+	-- (his own walk keeps walking on the beats even when this client skipped the pictures: PvP waits for both)
+	if w and S.skipped then
+		local beat = Entrance.BeatAt(w.beats, now - w.t0)
+		local id = beat and beat.id or "end"
+		if id ~= w.lastBeat then
+			w.lastBeat = id
+			drive(w, id)
+		end
+		if now - w.t0 > w.total + 0.5 then
+			EntranceFX.EndWalk(w)
+		end
+	elseif w then
 		local el = now - w.t0
 		local beat = Entrance.BeatAt(w.beats, el)
 		local id = beat and beat.id or "end"

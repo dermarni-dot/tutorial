@@ -292,12 +292,12 @@ function FightSim.new(opts)
 		body = { range = 0.78, rate = 0.45, combo = { 1, 3 }, pool = { jab = 0.6, cross = 0.8, leadhook = 1.2, rearhook = 1, uppercut = 0.5 }, body = 0.7, react = 0.3, defend = { "block", "slip" } },
 		volume = { range = 0.84, rate = 0.7, combo = { 3, 5 }, pool = { jab = 1, cross = 1, leadhook = 0.7, rearhook = 0.5, uppercut = 0.3 }, body = 0.2, react = 0.25, defend = { "block", "slip" } },
 		power = { range = 0.8, rate = 0.35, combo = { 1, 2 }, pool = { cross = 0.6, rearhook = 1.2, uppercut = 1, overhand = 1.2 }, body = 0.1, react = 0.3, defend = { "block", "roll" } },
-		counter = { range = 0.95, rate = 0.18, combo = { 1, 2 }, pool = { jab = 0.6, cross = 1, leadhook = 0.8 }, body = 0.15, react = 0.55, defend = { "slip", "pull", "weave", "parry", "block" }, counters = true },
+		counter = { range = 0.95, rate = 0.18, combo = { 1, 2 }, pool = { jab = 0.6, cross = 1, leadhook = 0.8 }, body = 0.15, react = 0.55, defend = { "slip", "pull", "weave", "parry", "block" }, counters = true, guard = 0.5, pace = true },
 		pressure = { range = 0.68, rate = 0.6, combo = { 2, 4 }, pool = { jab = 0.6, cross = 0.8, leadhook = 1, rearhook = 0.8, uppercut = 0.6 }, body = 0.35, react = 0.25, defend = { "block", "weave" }, cut = 0.7 },
 		-- the thinking player: mixes it up, feints, reads the trait hints and switches to the counter
-		smart = { range = 0.84, rate = 0.5, combo = { 1, 4 }, pool = { jab = 1, cross = 1, leadhook = 0.9, rearhook = 0.7, uppercut = 0.6, overhand = 0.3 }, body = 0.3, react = 0.4, defend = { "slip", "block", "weave", "pull" }, feint = 0.12, counters = true, adapt = true, clinch = true },
+		smart = { range = 0.84, rate = 0.42, combo = { 1, 4 }, pool = { jab = 1, cross = 1, leadhook = 0.9, rearhook = 0.7, uppercut = 0.6, overhand = 0.3 }, body = 0.3, react = 0.45, defend = { "slip", "block", "weave", "pull" }, feint = 0.08, counters = true, adapt = true, clinch = true, guard = 0.5, pace = true },
 		-- a beginner: wild, slow to react, never defends well
-		novice = { range = 0.8, rate = 0.4, combo = { 1, 3 }, pool = { jab = 1, cross = 1, leadhook = 0.8, rearhook = 0.8, uppercut = 0.4, overhand = 0.4 }, body = 0.15, react = 0.1, defend = { "block" } },
+		novice = { range = 0.8, rate = 0.4, combo = { 1, 3 }, pool = { jab = 1, cross = 1, leadhook = 0.8, rearhook = 0.8, uppercut = 0.4, overhand = 0.4 }, body = 0.15, react = 0.1, defend = { "block" }, guard = 0.2 },
 	}
 	-- how the smart bot answers a trait hint (Traits.Data counters, as a player would play them)
 	local ADAPT = {
@@ -317,7 +317,7 @@ function FightSim.new(opts)
 		self.pol = table.clone(Bot.Policies[policy] or Bot.Policies.smart)
 		self.name = policy
 		self.F, self.O, self.engine, self.rng = F, O, engine, rng
-		self.nextThink, self.queue, self.reaction = 0, {}, 0.24
+		self.nextThink, self.queue, self.reaction = 0, {}, 0.2
 		self.seen = 0
 		self.obs = { slips = 0 } -- (an older engine counts the AI's misses here)
 		return self
@@ -331,7 +331,7 @@ function FightSim.new(opts)
 		if self.rng:NextNumber() > self.pol.react or engine:Now() < F.busyUntil then
 			return
 		end
-		local react = self.reaction + self.rng:NextNumber() * 0.12
+		local react = self.reaction + self.rng:NextNumber() * 0.08
 		if react >= windup then
 			return
 		end
@@ -457,8 +457,10 @@ function FightSim.new(opts)
 			self.nextThink = math.min(self.nextThink, F.busyUntil + 0.05)
 			return
 		end
-		local tired = F.stamina < F.maxStam * 0.25
-		if self.rng:NextNumber() < self.pol.rate * (tired and 0.5 or 1) then
+		-- (a player who manages his gas eases off as the tank empties; a novice punches himself out)
+		local stam = F.stamina / F.maxStam
+		local pace = self.pol.pace and math.clamp((stam - 0.2) / 0.4, 0.25, 1) or (stam < 0.25 and 0.5 or 1)
+		if self.rng:NextNumber() < self.pol.rate * pace then
 			local seqs = self.pol.seqs
 			local list = {}
 			if seqs then
@@ -476,9 +478,10 @@ function FightSim.new(opts)
 			self.queue = list
 			engine:Punch(F, first.p, first.body)
 			self.nextThink = math.min(self.nextThink, F.busyUntil + 0.05)
-		elseif self.rng:NextNumber() < 0.15 then
+		elseif self.rng:NextNumber() < (self.pol.guard or 0.3) then
+			-- (a player keeps his hands up between his punches: the guard, held a moment)
 			engine:SetBlock(F, true)
-			self.blockUntil = now + 0.4
+			self.blockUntil = now + 0.45
 		end
 	end
 

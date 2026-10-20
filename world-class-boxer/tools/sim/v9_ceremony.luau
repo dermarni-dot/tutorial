@@ -592,8 +592,8 @@ local KEYS = {}
 for _, def in ipairs(Tournaments.List) do
 	table.insert(KEYS, { def.id, def.name })
 end
-table.insert(KEYS, { "regional", "Regional title" })
-table.insert(KEYS, { "national", "National title" })
+table.insert(KEYS, { "titleRegional", "Regional title" })
+table.insert(KEYS, { "titleNational", "National title" })
 for _, org in ipairs(Config.Orgs) do
 	table.insert(KEYS, { org, org .. " world title" })
 end

@@ -149,7 +149,7 @@ def render_story(scene_dir, world, out_dir, samples, res, shots_only):
         d = json.load(open(os.path.join(scene_dir, s["file"])))
         sc = game_scene(res, samples)
         WR.setup_world("night", 0)
-        bpy.context.scene.view_settings.exposure = 1.1
+        bpy.context.scene.view_settings.exposure = 1.4
         cam = d["camera"]
         eye = np.array(cam["cf"][:3])
         focus = np.array(d["focus"])
@@ -197,8 +197,8 @@ def render_gifs(scene_dir, out_dir, samples):
                           (focus[0] - 14, floor, focus[2] + 14)])
             sc.add_world(P, np.array([(0, 2, 1), (0, 3, 2)]), "floorq", mat=sc.gear_mat((0.16, 0.16, 0.18), "Fabric", 0), smooth=False)
             add_figures(sc, scene_dir, d["figures"])
-            eye = focus + look * 10.5 + right * 3.2 + np.array([0, 0.9, 0])
-            tgt = focus + np.array([0, 0.9, 0])
+            eye = focus + look * 17 + right * 5 + np.array([0, 1.6, 0])
+            tgt = focus + np.array([0, 1.3, 0])
             bpy.context.view_layer.update()
             sc.rig(tuple(focus + np.array([0, 1.2, 0])), 2.6)
             area("key2", tuple(focus + look * 6 + right * 4 + np.array([0, 5, 0])), tuple(tgt), 700, (1, 0.95, 0.9), 4)

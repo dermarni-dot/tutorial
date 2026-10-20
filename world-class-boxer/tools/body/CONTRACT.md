@@ -118,6 +118,9 @@ triangles, <= 5,960 for an outfit), so a crowd costs what it did. The instances 
   one when there is none, `entry.lite` says which); `BuilderTiers.Apply(model, tiers, scale, lite)` swaps every part to
   its set (a part of the right tier in the other set is swapped too; attributes `BodyMesh`, `BodyLite`); the gear
   follows the body part it welds to (`BodyLite`), so a lite body always wears the lite gear fitted to it.
+* The lite set is rebuilt with `tools/body/lite/build_body_v9.py` and `tools/body/lite/build_gear_v9.py` (the v9
+  builders of 1536e0f^, which reproduce the published v9 meshes byte for byte when unslimmed), then
+  `build_official.py --only lite`. They import the slim pass from `build_body.py`, so both sets carry the same shape.
 * `tools/body/torso_surf.py --write` regenerates BuilderBody's TORSO_SURF (the marks lying on the torso) from the
   detailed torsos.
 
@@ -138,3 +141,14 @@ dressSoles dressLaces towel`, and `sets.official = { Referee = {...}, Coach = {.
 * BuilderBody builds the set for the official's outfit (`referee` -> Referee, `cornerman` -> Coach) and paints the slots
   from `opts.officialColors` (`src/shared/Officials.lua`: the venue's shirt, white for a title fight); with any id 0 or a
   failed load it keeps the old part-built outfit.
+
+## The slim pass (v11)
+
+`build_body.py` SLIM / BULK / ARM_DX (shared by the lite builders): every limb and torso cross-section is narrowed along
+its bone (the waist and mid limbs most, the joint ends less, 1 at the wrist and ankle so the shared hands, feet, gloves
+and boots are unchanged), more with the tier's mass; the muscle bells' mass term is cut to BULK = 0.82 and the definition
+terms stay. The limb domes shrink with their sections (near-spheres about the same pivots). The torso and leg pivots,
+the shoulder height and the elbow / wrist heights do not move; the arm axis (`unit.armAxisX`, ARM_DX) comes in 0.085
+(tier 1) to 0.13 (tier 5) so the upper arm still rests against the slimmer torso. Girths before / after:
+`tiers[n].fit`. Gear and officials' clothes are rebuilt on the slim bodies (build_gear.py, lite/build_gear_v9.py,
+build_official.py) and BuilderBody's TORSO_SURF regenerated (torso_surf.py --write).

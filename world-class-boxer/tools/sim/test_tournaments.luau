@@ -560,9 +560,9 @@ do
 	check("ceremony: a new world title", c and c.belt == org and c.title:find(org, 1, true))
 	prof.belts[org] = true
 	check("ceremony: not a defense", Tourney.CeremonyFor(prof, { kind = "Title Defense", stakes = { org } }) == nil)
-	check("ceremony: regional title", Tourney.CeremonyFor(prof, { kind = "Regional Title" }).belt == "regional")
+	check("ceremony: regional title", Tourney.CeremonyFor(prof, { kind = "Regional Title" }).belt == "titleRegional")
 	check("ceremony: a QF has none", Tourney.CeremonyFor(prof, { kind = "Tournament Quarter-final", tourney = { id = "city", round = 1 } }) == nil)
-	for _, key in ipairs({ "novice", "city", "regional", "national", "world", "regional", "national", Config.Orgs[1], Config.Orgs[4] }) do
+	for _, key in ipairs({ "novice", "city", "regional", "national", "world", "titleRegional", "titleNational", Config.Orgs[1], Config.Orgs[4] }) do
 		local d = T.Design(key, Config.Orgs)
 		check("design " .. key, d ~= nil)
 		for _, mode in ipairs({ "display", "worn" }) do
@@ -578,6 +578,7 @@ do
 		end
 	end
 	check("design: unknown", T.Design("nope", Config.Orgs) == nil)
+	check("design: the old titles keep their own designs", T.Design("titleRegional") ~= T.Design("regional") and T.Design("titleNational") ~= T.Design("national"))
 end
 
 print(string.format("test_tournaments: %d passed, %d failed", pass, fail))
