@@ -1270,7 +1270,7 @@ Config.AvatarLook = {
 Config.Expressions = { "neutral", "confident", "determined", "anger", "fear", "fatigue", "pain", "dazed", "effort", "happy", "ko" }
 
 -- true = draw no hair at all (the old hard-coded BALD MODE); kept as a one-line debug toggle
-Config.BaldMode = false -- off: the asset hair (HairAssetData) is uploaded and drawn; true = every boxer bald
+Config.BaldMode = true -- every boxer is bald (the user's call: no hair; everyone wears headgear instead)
 
 -- daily growth of hair / beard (0..1.5 / 0..1) used by Training.dayTick
 Config.HairGrowthPerDay = 0.02
