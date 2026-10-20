@@ -235,9 +235,16 @@ local function setup(model)
 		readTags(rig)
 		return
 	end
-	local seed = model:GetAttribute("AmbientSeed") or (#model.Name * 97 + 13)
+	-- the rig's seed (its persona, its swing: AnimFight): AnimSeed / AmbientSeed when the server sets one, else a hash
+	-- of the whole name - every boxer moves his own way and the same on every client (the name's length alone gave
+	-- every two boxers with names of one length the same persona)
+	local seed = model:GetAttribute("AnimSeed") or model:GetAttribute("AmbientSeed")
 	if type(seed) ~= "number" then
-		seed = 13
+		local h = 13
+		for i = 1, #model.Name do
+			h = (h * 31 + string.byte(model.Name, i)) % 1000003
+		end
+		seed = h
 	end
 	rig = {
 		model = model, joints = {}, geo = { ok = false }, a = {}, p = {}, kp = {}, kp2 = {},

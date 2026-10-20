@@ -110,6 +110,66 @@ function AnimFight.persona(seed)
 	}
 end
 
+------------------------------------------------------------------------
+-- Swings: how this boxer throws. A style template (the Style attribute FightEngine sets for both corners: the
+-- player's chosen fighting style, an AI boxer's) with an optional PunchStyle attribute laid over it (Compact / Wide /
+-- Snappy / Heavy), and every number spread a little by the boxer's seed (a hash of his name): no two boxers swing
+-- alike. Only the shapes inside the punch's window change - the hook's arc and elbow height, the jab's snap and its
+-- way home, the cross's shoulder roll, the uppercut's dip, the overhand's loop, the load before each punch, the guard's
+-- hand height and the lead hand's flicks; the server's timing (contact at the windup), the reach (fitPunch still lands
+-- every glove on its spot) and the FightMotion durations are untouched.
+--   arc   hook arc (x the variant's)         elbow  hook elbow height (added to the pole's lift)
+--   snap  the straights' drive (x pow)       rec    the way home (x the recovery's length, 0.8..1.2)
+--   roll  the cross's shoulder roll / turn   dip    the uppercut's dip before it
+--   loop  the overhand's loop over the top   load   the counter-turn before every punch
+--   reach the straights' lean into it        hands  guard height (+ up)   flick  the lead hand's pawing
+------------------------------------------------------------------------
+local SWING = {
+	BoxerPuncher = { arc = 1, elbow = 0, snap = 1, rec = 1, roll = 1, dip = 1, loop = 1, load = 1, reach = 1, hands = 0, flick = 1 },
+	-- sluggers load up and swing heavy and wide, the way home slower
+	Slugger = { arc = 1.32, elbow = 0.18, snap = 0.9, rec = 1.15, roll = 1.2, dip = 1.25, loop = 1.3, load = 1.35, reach = 0.9, hands = 0.02, flick = 0.6 },
+	-- out-boxers are snappy and long, quick home, the lead hand always busy
+	OutBoxer = { arc = 0.92, elbow = -0.02, snap = 1.18, rec = 0.84, roll = 0.85, dip = 0.85, loop = 0.9, load = 0.8, reach = 1.25, hands = -0.03, flick = 1.5 },
+	-- swarmers are short and compact, punches in bursts out of the crouch
+	Swarmer = { arc = 0.72, elbow = -0.12, snap = 1.1, rec = 0.82, roll = 1.05, dip = 1.3, loop = 0.85, load = 0.9, reach = 0.85, hands = 0.04, flick = 0.8 },
+	-- counter punchers are economical, the hands low, the cross rolled off the shoulder
+	CounterPuncher = { arc = 0.85, elbow = 0.04, snap = 1.06, rec = 0.9, roll = 1.35, dip = 0.95, loop = 0.9, load = 0.7, reach = 1, hands = -0.06, flick = 0.9 },
+}
+-- a PunchStyle laid over the style's template (multiplies; elbow and hands add)
+local PUNCH_STYLE = {
+	Compact = { arc = 0.78, elbow = -0.06, rec = 0.88, load = 0.85, loop = 0.85, reach = 0.9 },
+	Wide = { arc = 1.35, elbow = 0.14, loop = 1.25, load = 1.1 },
+	Snappy = { snap = 1.2, rec = 0.82, load = 0.8, flick = 1.3 },
+	Heavy = { load = 1.3, rec = 1.15, arc = 1.15, roll = 1.2, dip = 1.2, snap = 0.92 },
+}
+AnimFight.SWING, AnimFight.PUNCH_STYLE = SWING, PUNCH_STYLE
+local SWING_ADD = { elbow = true, hands = true }
+function AnimFight.swing(rig)
+	local a = rig.a
+	local key = tostring(a.Style) .. "|" .. tostring(a.PunchStyle)
+	local sw = rig.swingProf
+	if sw and sw.key == key then
+		return sw
+	end
+	local base = SWING[a.Style] or SWING.BoxerPuncher
+	local over = PUNCH_STYLE[a.PunchStyle]
+	sw = { key = key }
+	local i = 0
+	for k, v in pairs(SWING.BoxerPuncher) do
+		i += 1
+		local x = base[k] or v
+		if over and over[k] then
+			x = SWING_ADD[k] and (x + over[k]) or (x * over[k])
+		end
+		-- (the boxer's own spread: +-10% on the multipliers, +-0.04 on the offsets; seeded, the same everywhere)
+		local r = K.rand3(rig.seed, i * 3.7, 19.3) * 2 - 1
+		sw[k] = SWING_ADD[k] and (x + 0.04 * r) or (x * (1 + 0.1 * r))
+	end
+	sw.rec = clamp(sw.rec, 0.78, 1.22)
+	rig.swingProf = sw
+	return sw
+end
+
 function AnimFight.setup(rig)
 	rig.persona = AnimFight.persona(rig.seed)
 	rig.bouncePhase = (rig.seed % 13) / 13
@@ -422,6 +482,7 @@ function AnimFight.stance(p, rig, t, dt)
 	-- gloves: the style's guard, the persona's habits, tired arms sink and drift forward, hands live
 	local lt, rt = st.leadT, st.rearT
 	local hl = st.hands
+	local swg = AnimFight.swing(rig)
 	local life = P.handLife * (0.6 + 0.4 * stam)
 	local hf = hl[3] * tempo
 	local sinkY, sinkZ = 0.45 * tired - br * 0.4, 0.2 * tired
@@ -432,10 +493,10 @@ function AnimFight.stance(p, rig, t, dt)
 	local tuckL = min(0.22, max(0, -lt[3] - 1.05) * 0.6) * jam
 	local tuckR = min(0.22, max(0, -rt[3] - 1.05) * 0.6) * jam
 	gl[1] = lt[1] + P.guardX * -1 + noise(t * hf + 31, ns + 5) * hl[2] * life
-	gl[2] = lt[2] + P.guardY - sinkY + tuckL * 0.35 + noise(t * hf * 1.2 + 37, ns + 6) * hl[2] * life + bounce * 0.6
+	gl[2] = lt[2] + P.guardY + swg.hands - sinkY + tuckL * 0.35 + noise(t * hf * 1.2 + 37, ns + 6) * hl[2] * life + bounce * 0.6
 	gl[3] = lt[3] + sinkZ + tuckL + noise(t * hf * 0.9 + 41, ns + 7) * hl[2] * life * 0.6
 	gr[1] = rt[1] + P.guardX + sroll * 0.5 + noise(t * hf * 1.1 + 43, ns + 8) * hl[2] * life * 0.7
-	gr[2] = rt[2] + P.guardY - sinkY - 0.25 * gut + tuckR * 0.35 + noise(t * hf * 0.95 + 47, ns + 9) * hl[2] * life * 0.7 + bounce * 0.5
+	gr[2] = rt[2] + P.guardY + swg.hands * 0.7 - sinkY - 0.25 * gut + tuckR * 0.35 + noise(t * hf * 0.95 + 47, ns + 9) * hl[2] * life * 0.7 + bounce * 0.5
 	gr[3] = rt[3] + sinkZ + tuckR + noise(t * hf + 53, ns + 10) * hl[2] * life * 0.4
 	-- secondary motion (no style is without it): the gloves ride the bounce on a soft spring - a beat late and
 	-- a touch past it, the way loose arms follow the body - breathing lifts the shoulders and the gloves with
@@ -457,10 +518,10 @@ function AnimFight.stance(p, rig, t, dt)
 		gl[3] += cir * 0.5 * sin(ph * 0.7 + 1)
 	end
 	-- the out-boxer's pawing lead: measured little extensions ("range finding")
-	if hl[1] > 0.08 and mv < 0.6 then
+	if hl[1] * swg.flick > 0.08 and mv < 0.6 then
 		local pw = noise(t * 0.9 * tempo + 61, ns + 11)
 		local paw = max(0, pw - 0.25) / 0.75
-		paw = paw * paw * hl[1] * life
+		paw = paw * paw * hl[1] * swg.flick * life
 		gl[3] -= paw * 1.2
 		gl[2] += paw * 0.35
 		gl[1] += paw * 0.15
@@ -885,6 +946,36 @@ local function punchParams(rig, kind, comboPos, force, over)
 			prm[k] = val
 		end
 	end
+	-- the boxer's own swing (AnimFight.swing): shapes only, inside the punch's window
+	local sw = AnimFight.swing(rig)
+	prm.load = clamp(prm.load * (0.75 + 0.25 * sw.load), 0.06, 0.45)
+	prm.aHip *= sw.load
+	prm.aSho *= sw.load
+	prm.aLean = (prm.aLean or 0) * sw.load
+	prm.rec *= sw.rec
+	if prm.path == "hook" then
+		prm.arc = (prm.arc or 0.6) * sw.arc
+		prm.elbowLift = sw.elbow
+		prm.follow = (prm.follow or 1) * (0.8 + 0.2 * sw.arc)
+	elseif prm.path == "straight" then
+		prm.pow = clamp(prm.pow * sw.snap, 1.15, 2.6)
+		prm.lean *= sw.reach
+		prm.fwd *= 0.85 + 0.15 * sw.reach
+		if kind == "cross" then
+			-- (a long cross reaches out off the lean; a short one rolls over the shoulder)
+			prm.roll *= sw.roll
+			prm.sho *= 0.88 + 0.12 * sw.roll
+			prm.nx = (prm.nx or 0) * sw.roll
+		else
+			prm.wrist = (prm.wrist or 1) * (0.85 + 0.15 * sw.snap)
+		end
+	elseif prm.path == "upper" then
+		prm.aDip *= sw.dip
+		prm.load = clamp(prm.load * (0.85 + 0.15 * sw.dip), 0.06, 0.48)
+	elseif prm.path == "over" then
+		prm.loop = sw.loop
+		prm.aDip *= 0.8 + 0.2 * sw.load
+	end
 	-- a little life in every repetition: never the same punch twice
 	local j = K.rand3(rig.seed, rig.punchCount, 3.1)
 	prm.hip *= 0.92 + 0.16 * j
@@ -1167,7 +1258,7 @@ local function aimPoint(rig, p, act, body, near)
 	return lp, isBag
 end
 
-local function pathPoints(path, P0, P3, inward, arc, rise)
+local function pathPoints(path, P0, P3, inward, arc, rise, loop)
 	local d = P3 - P0
 	if path == "hook" then
 		local out = V3(-inward, 0, 0)
@@ -1176,7 +1267,8 @@ local function pathPoints(path, P0, P3, inward, arc, rise)
 		return P0 + V3(0, -0.5, -0.05) + d * 0.15, P3 + V3(0, -0.7, 0.2)
 	elseif path == "over" then
 		local out = V3(-inward, 0, 0)
-		return P0 + V3(0, 0.6, 0) + out * 0.35 + d * 0.2, P3 + V3(0, 0.55, 0.25) + out * 0.1
+		local lp = loop or 1
+		return P0 + V3(0, 0.6 * lp, 0) + out * (0.35 * lp) + d * 0.2, P3 + V3(0, 0.55 * lp, 0.25) + out * 0.1
 	end
 	local up = V3(0, rise or 0.05, 0)
 	return P0 + d * 0.33 + up, P3 - d * 0.3 + up * 0.5
@@ -1217,7 +1309,10 @@ local function hookPos(rig, p, act, P0, P3, u, eT, armK, inward, body, sc, throu
 	-- sweeps about the same distance across)
 	-- (a hand coming up from across the belly is still chambering as the sweep begins: it swings out
 	-- further round to still come in from the side)
-	local sw = (clamp(1.4 / max(0.5, r3), HOOK_SWING, 1.1) + 0.15 * across) * (body and 0.75 or 1)
+	-- (the boxer's arc: a wide looping hook swings further round, a tight one stays compact - the variant's arc
+	-- and his swing, AnimFight.swing; the landing spot is the same)
+	local arcK = clamp(((act.prm.arc or 0.6) / 0.6) ^ 0.6, 0.72, 1.4)
+	local sw = (clamp(1.4 / max(0.5, r3), HOOK_SWING, 1.1) * arcK + 0.15 * across) * (body and 0.75 or 1)
 	local ac = a3 - inward * sw
 	local rc = max(0.6, r3 - 0.15)
 	local c = h0:Lerp(V3(px + sin(ac) * rc, h0.Y + (p3.Y - h0.Y) * (body and 0.5 or 0.85) + (body and -0.05 or 0.05), pz - cos(ac) * rc), ck)
@@ -1970,7 +2065,7 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 				-- out-boxer's low lead - still whips round from the load, it does not stall and jerk)
 				len = max(((b - a) * sc).Magnitude / 0.2, 1.3)
 			else
-				local _, B2 = pathPoints(prm.path, P0, P3, inward, prm.arc or 0.6, prm.rise)
+				local _, B2 = pathPoints(prm.path, P0, P3, inward, prm.arc or 0.6, prm.rise, prm.loop)
 				len = max(((P3 - P0) * sc).Magnitude, 3 * ((P3 - B2) * sc).Magnitude)
 			end
 			-- (a hook to the body lands while the knees drop the whole body with it: timed a touch faster)
@@ -2038,7 +2133,7 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 			if prm.path == "hook" then
 				pos = hookPos(rig, p, act, P0, P3, u, eT, armK, inward, body, sc, contact and followBump((el - w) / hold) or 0)
 			else
-				local B1, B2 = pathPoints(prm.path, P0, P3, inward, prm.arc or 0.6, prm.rise)
+				local B1, B2 = pathPoints(prm.path, P0, P3, inward, prm.arc or 0.6, prm.rise, prm.loop)
 				pos = K.bezier(P0, B1, B2, P3, armK)
 				if contact then
 					-- drives through a touch at contact
@@ -2090,7 +2185,8 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 		-- when it has no direction of its own, and never swivels round the line faster than
 		-- SWIVEL_RATE
 		local gpo = (L_ and rig.guardPoleL or rig.guardPoleR) or 0.2
-		local px, py, pz = lerp(gpo, pole[1], kp), lerp(-1, pole[2], kp), zb
+		-- (a hook's elbow rides as high as the boxer carries it: his swing's elbow lift)
+		local px, py, pz = lerp(gpo, pole[1], kp), lerp(-1, pole[2] + (prm.elbowLift or 0) * 1.5, kp), zb
 		local armG = g[R.ARM_OF[act.hand][3]]
 		if armG and armG.ok then
 			local mx = L_ and -1 or 1

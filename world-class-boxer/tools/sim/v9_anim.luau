@@ -1440,6 +1440,13 @@ kdScen("ko_standing", "standing", "rearhook", "R", 1.4, nil, nil, "standing")
 scen("rest_stool", 4, { { 0.2, "A", "Guard", "rest" }, { 0.2, "A", "Stam", 0.4 } }, { stool = true, every = 4 })
 scen("win_lose", 5, { { 0.2, "A", "Guard", "win" }, { 0.2, "B", "Guard", "lose" } }, { every = 4 })
 
+-- swing styles: the same five punches from six different boxers (AnimFight.swing: Style + the seed + PunchStyle)
+for _, sb in ipairs({ { "boxerpuncher", "BoxerPuncher", 1101 }, { "outboxer", "OutBoxer", 2202 }, { "swarmer", "Swarmer", 3303 },
+	{ "slugger", "Slugger", 4404 }, { "counter", "CounterPuncher", 5505 }, { "outboxer_heavy", "OutBoxer", 6606, "Heavy" } }) do
+	scen("sty_" .. sb[1], 5.4, { punchAt(0.4, "A", "jab", "L"), punchAt(1.4, "A", "cross", "R"), punchAt(2.4, "A", "leadhook", "L"),
+		punchAt(3.4, "A", "uppercut", "R"), punchAt(4.4, "A", "overhand", "R") }, { style = sb[2], seed = sb[3], pstyle = sb[4], focus = { 0, 5.4 } })
+end
+
 local function fightClip(tier)
 	local arena = E.new("Model", E.workspace)
 	arena.Name = "Arena"
@@ -1487,6 +1494,16 @@ local function fightClip(tier)
 			end
 		end
 		a:SetAttribute("Style", sc.style or "BoxerPuncher")
+		a:SetAttribute("PunchStyle", sc.pstyle)
+		if (sc.seed or 0) ~= (a:GetAttribute("AnimSeed") or 0) then
+			-- (a boxer of his own: the rig is set up again with this seed)
+			a:SetAttribute("AnimSeed", sc.seed)
+			CS:RemoveTag(a, "Fighter")
+			for _ = 1, 3 do
+				frame({ a, b, refM })
+			end
+			CS:AddTag(a, "Fighter")
+		end
 		if sc.ref and not CS:HasTag(refM, "Referee") then
 			CS:AddTag(refM, "Referee")
 		end
