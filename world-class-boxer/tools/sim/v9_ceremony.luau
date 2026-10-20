@@ -579,7 +579,14 @@ Host.MkDir(OUT)
 local Tournaments = H.require("Tournaments")
 local BeltModel = H.require("BeltModel")
 local Config = H.require("Config")
-H.require("AnimCeremony") -- (installs the cutscene's poses into AnimGym's table, the one the Animator plays)
+-- (installs the cutscene's poses into AnimGym's table, the one the Animator plays; the Animator's own requires may
+-- still be under way in its thread: wait for them)
+for _ = 1, 50 do
+	if pcall(H.require, "AnimCeremony") then
+		break
+	end
+	ltask.wait(0.1)
+end
 
 local function partsFigure(model, name, role)
 	local fr = exportFigure(model, role)
