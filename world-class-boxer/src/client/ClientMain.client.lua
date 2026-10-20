@@ -14,6 +14,7 @@ local player = Players.LocalPlayer
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local UI = require(Shared:WaitForChild("UI"))
+local Combos = require(Shared:WaitForChild("Combos")) -- (the result screen's combo line)
 local T = UI.Theme
 local Modules = script.Parent:WaitForChild("BoxerClient")
 local State = require(Modules:WaitForChild("State"))
@@ -414,6 +415,18 @@ local function showResult(data)
 			return v .. "%"
 		end, 3)
 		versusRow(stats, "KNOCKDOWNS", res.kdFor or 0, res.kdAgainst or 0, nil, 4)
+		-- the combinations (FightEngine res.combos / oppCombos: named combos landed, the best chain)
+		if type(res.combos) == "table" then
+			local oc = type(res.oppCombos) == "table" and res.oppCombos or {}
+			versusRow(stats, "COMBOS LANDED", tonumber(res.combos.landed) or 0, tonumber(oc.landed) or 0, nil, 5)
+			versusRow(stats, "BEST COMBO (PUNCHES)", tonumber(res.combos.best) or 0, tonumber(oc.best) or 0, nil, 6)
+		end
+	end
+	if type(res.combos) == "table" and Combos then
+		local line = Combos.StatsText(res.combos)
+		if line then
+			UI.Line(body, line, { Name = "ComboLine", TextColor3 = T.gold, TextSize = 14, Font = T.semi })
+		end
 	end
 	if res.weighIn and res.weighIn.over and res.weighIn.over > 0 then
 		UI.Line(body, string.format("Missed weight by %.1f lbs.", res.weighIn.over), { TextColor3 = T.red, TextSize = 14, Font = T.semi })
@@ -533,7 +546,7 @@ end
 -- Profile updates
 ------------------------------------------------------------------------
 local menuShownOnce = false
-local tutorialOffered = false -- the first-time tutorial's offer was put up this session
+local debutOffered = false -- the guided debut's offer was put up this session (a new boxer, right after the creator)
 local lastFlag
 local hubShownKey = nil -- the profile / state the open hub was last rebuilt for
 -- the server is retrying a failed DataStore read: say so once (the career is not lost)
@@ -555,19 +568,8 @@ local function refresh()
 			return
 		end
 		if not Creator.IsOpen() and not gui:FindFirstChild("Retired") then
-			-- a brand-new player is offered the tutorial fight first (SKIP leads to the title screen)
-			if TutorialClient and not tutorialOffered and not menuShownOnce and type(P.tutorial) == "table" and P.tutorial.offer == true then
-				tutorialOffered = true
-				menuShownOnce = true
-				TutorialClient.Offer(function()
-					if MainMenu then
-						MainMenu.Open()
-					else
-						Creator.Open()
-					end
-				end)
-				return
-			end
+			-- (the first-time flow: the title screen, the creator, then the guided debut, the boxer's own first
+			-- career fight. The random-boxer practice round is optional: Settings > PRACTICE ROUND)
 			-- a new player meets the title screen first (NEW CAREER opens the creator)
 			if MainMenu and not menuShownOnce then
 				menuShownOnce = true
@@ -591,12 +593,25 @@ local function refresh()
 		return
 	end
 	wasRetired = false
+	-- a new boxer (made in the creator, no bout yet): his guided debut is offered right away (once a session; a
+	-- debut called off offers itself again: BoxerClient.Tutorial)
+	local debutOfferedNow = false
+	if TutorialClient and TutorialClient.OfferDebut and not debutOffered and type(P.debut) == "table" and P.debut.offer == true
+		and not fight and State.busy() == nil and not Creator.IsOpen() and not TutorialClient.Busy() then
+		debutOffered = true
+		debutOfferedNow = true
+		Hub.Close()
+		if MainMenu and MainMenu.IsOpen() then
+			MainMenu.Close()
+		end
+		TutorialClient.OfferDebut(P.debut)
+	end
 	if not menuShownOnce then
 		menuShownOnce = true
 		-- the saved settings first (Settings listens to State.Changed too, but handler order is not
 		-- guaranteed): "show the menu at start" must be the player's saved choice
 		Settings.Load(P)
-		if MainMenu and Settings.Get("menuAtStart") and not fight then
+		if MainMenu and Settings.Get("menuAtStart") and not fight and not debutOfferedNow then
 			task.defer(MainMenu.Open)
 		end
 	end

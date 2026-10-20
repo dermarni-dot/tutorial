@@ -1,7 +1,9 @@
--- Tutorial (client): the first-time tutorial fight around the real fight HUD (FightClient).
---   Offer(after)   the "YOUR FIRST FIGHT" card a new player meets before the title screen: START / SKIP
---   Begin()        asks the server for the bout (StartTutorial; State.open.Tutorial, the Settings screen's
---                  REPLAY THE TUTORIAL FIGHT)
+-- Tutorial (client): the guided fights around the real fight HUD (FightClient).
+--   OfferDebut()   the "YOUR DEBUT" card a new boxer meets right after the creator (ClientMain, from the summary's
+--                  debut.offer): FIGHT MY DEBUT (StartDebut: a real career bout, guided) / SKIP THE GUIDE
+--                  (SkipDebut: the career goes on as usual, nothing booked)
+--   Offer(after)   the practice round's card (START / SKIP); Begin() asks the server for the practice bout
+--                  (StartTutorial; State.open.Tutorial, the Settings screen's PRACTICE ROUND)
 --   the step card  during the bout: the step, what to do and the key / button / touch pad for it on the device
 --                  in use (Shared.Tutorial.Caps over the player's own control map), placed under the scoreboard
 --                  and clear of the touch pads; SKIP TUTORIAL calls the bout off
@@ -142,7 +144,7 @@ local function estimate(step, w, tight)
 end
 
 -- the fight HUD's pieces the card keeps clear of, as design-px rects in this root's space
-local OBSTACLES = { "Scoreboard", "TouchPad", "DefencePad", "MovesPad", "SprintPad", "StanceChips", "Controls", "Ticker" }
+local OBSTACLES = { "Scoreboard", "TouchPad", "DefencePad", "MovesPad", "SprintPad", "StanceChips", "Controls", "Ticker", "ComboMeter" }
 local function rectOf(obj, s, origin)
 	local p, z = obj.AbsolutePosition, obj.AbsoluteSize
 	return { x0 = (p.X - origin.X) / s, y0 = (p.Y - origin.Y) / s, x1 = (p.X + z.X - origin.X) / s, y1 = (p.Y + z.Y - origin.Y) / s }
@@ -273,6 +275,7 @@ local function obstacleKey()
 end
 
 local function skipBout()
+	-- (the debut: the guide stops, the fight goes on; the practice round: the bout is called off)
 	State.FightRemote:FireServer({ t = "tutorialSkip" })
 	if card then
 		card.Visible = false
@@ -288,7 +291,9 @@ local function buildCard()
 		card:Destroy()
 		card = nil
 	end
-	local step = Steps.STEPS[view.step] or Steps.STEPS[1]
+	local step = Steps.StepOf(view)
+	local debut = view.debut == true
+	local skipText = debut and "SKIP GUIDE" or "SKIP TUTORIAL"
 	local sz = sizes()
 	local x, y, w, _, tight = Tutorial.Place(step)
 	card_key = obstacleKey()
@@ -302,20 +307,20 @@ local function buildCard()
 	local hit = math.max(30, UI.MinHit(root))
 	local headH = math.max(eff(sz.kicker) + 2 + eff(sz.title) + 4, hit)
 	local head = UI.Frame(card, { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, headH), LayoutOrder = 1 })
-	local skipW = math.max(SKIP_W, UI.TextWidth("SKIP TUTORIAL", eff(12), T.semi) + 16)
+	local skipW = math.max(SKIP_W, UI.TextWidth(skipText, eff(12), T.semi) + 16)
 	-- the coach's whistle (a tick once it is done) before the step line
 	local ks = eff(sz.kicker) + 2
 	UI.Icon(head, view.done and "check" or "whistle", ks, view.done and T.green or T.gold, { Name = "StepIcon" })
-	UI.Text(head, string.format("TUTORIAL  ·  STEP %d OF %d", view.step, view.total or #Steps.STEPS), { Name = "Step", Font = T.semi, TextSize = sz.kicker, TextColor3 = T.gold,
+	UI.Text(head, string.format("%s  ·  STEP %d OF %d", debut and "YOUR DEBUT" or "TUTORIAL", view.step, view.total or #Steps.STEPS), { Name = "Step", Font = T.semi, TextSize = sz.kicker, TextColor3 = T.gold,
 		Position = UDim2.fromOffset(ks + 6, 0), Size = UDim2.new(1, -(skipW + 14 + ks), 0, ks), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	UI.Title(head, view.done and "NICE WORK!" or step.title, { Name = "Title", TextSize = sz.title, Position = UDim2.fromOffset(0, eff(sz.kicker) + 2),
 		Size = UDim2.new(1, -(skipW + 8), 0, eff(sz.title) + 4), AutomaticSize = Enum.AutomaticSize.None, TextTruncate = Enum.TextTruncate.AtEnd })
-	local skip = UI.Button(head, "SKIP TUTORIAL", { Name = "Skip", Font = T.semi, TextSize = 12, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0),
+	local skip = UI.Button(head, skipText, { Name = "Skip", Font = T.semi, TextSize = 12, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0),
 		Size = UDim2.fromOffset(skipW, hit), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.2 }, skipBout)
 	skip.Selectable = false -- (a pad's buttons are the fight's: the pad skips at the offer)
 	-- what to do (a short screen with the key strip up keeps the title and the keys)
 	if not tight or view.done then
-		UI.Text(card, view.done and "That's the tutorial. You're ready for a real fight." or step.text, { Name = "Body", TextSize = sz.body, TextColor3 = T.text, Size = UDim2.new(1, 0, 0, 0),
+		UI.Text(card, view.done and (debut and "That's the guide done. Now win your debut." or "That's the tutorial. You're ready for a real fight.") or step.text, { Name = "Body", TextSize = sz.body, TextColor3 = T.text, Size = UDim2.new(1, 0, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 })
 	end
 	-- the keys (or the stamina step's checklist)
@@ -371,6 +376,10 @@ local function onFight(msg)
 			card:Destroy()
 			card = nil
 		end
+	elseif t == "debutEnd" then
+		inBout = false
+		Tutorial.DebutEnded(msg)
+		return
 	elseif not inBout then
 		if t == "tutorialEnd" then
 			Tutorial.Ended(msg)
@@ -409,6 +418,17 @@ local function onFight(msg)
 	elseif t == "tutorialEnd" then
 		inBout = false
 		Tutorial.Ended(msg)
+	elseif t == "final" or t == "result" or t == "aborted" then
+		-- (the debut is a career bout: it ends like one, the result screen is ClientMain's)
+		if view and view.debut then
+			inBout = false
+			view = nil
+			if card then
+				card:Destroy()
+				card = nil
+			end
+			busy = false
+		end
 	end
 end
 
@@ -475,7 +495,7 @@ function Tutorial.Offer(after)
 	local shade, win, body = UI.Window(root, "TutorialOffer", 620, 430, "YOUR FIRST FIGHT", { kicker = "TUTORIAL", footer = 64 })
 	local _ = shade
 	UI.Text(body, "Learn the ropes in a short practice fight before you create your own boxer.", { TextSize = 17, Font = T.semi, LayoutOrder = 1 })
-	UI.Text(body, "You box as a random fighter against a random opponent, one step at a time: moving, the jab and the cross, hooks, uppercuts and body shots, blocking, slipping, stamina and a special move.",
+	UI.Text(body, "You box as a random fighter against a random opponent, one step at a time: moving, the jab and the cross, hooks, uppercuts and body shots, combinations, blocking, slipping and weaving, counters, stamina and a special move.",
 		{ TextSize = 14, TextColor3 = T.sub, LayoutOrder = 2 })
 	UI.Text(body, "It is only practice: nothing carries over to your career.", { TextSize = 14, TextColor3 = T.sub, LayoutOrder = 3 })
 	local bh = math.max(44, UI.MinHit(win))
@@ -530,6 +550,77 @@ function Tutorial.Ended(msg)
 	UI.PadStart(go)
 end
 
+------------------------------------------------------------------------
+-- The debut (a new boxer's first career fight, guided)
+------------------------------------------------------------------------
+local debutStarting = false
+function Tutorial.BeginDebut()
+	if debutStarting or inBout then
+		return false
+	end
+	debutStarting, busy = true, true
+	closeWindow("DebutOffer")
+	local r = State.req("StartDebut")
+	debutStarting = false
+	if not (type(r) == "table" and r.ok) then
+		busy = false
+		State.toast((type(r) == "table" and r.err) or "Couldn't start your debut right now.", T.red)
+		return false
+	end
+	return true
+end
+
+function Tutorial.SkipDebut()
+	closeWindow("DebutOffer")
+	busy = false
+	task.spawn(State.req, "SkipDebut")
+	State.toast("No guide, then. Book your first fight at the FIGHT BOARD (or press H) when you're ready.", T.gold, 6)
+end
+
+-- the card a new boxer meets right after the creator (info = the summary's debut table)
+function Tutorial.OfferDebut(info)
+	ensureGui()
+	closeWindow("DebutOffer")
+	busy = true
+	info = type(info) == "table" and info or {}
+	local _, win, body = UI.Window(root, "DebutOffer", 640, 470, "YOUR DEBUT", { kicker = "AMATEUR BOUT  ·  TONIGHT", footer = 64 })
+	UI.Text(body, "Your first fight is tonight: a " .. tostring(info.rounds or 3) .. "-round amateur bout against a fellow novice from your division, at the "
+		.. tostring(info.venue or "Community Center") .. ".", { Name = "Lead", TextSize = 17, Font = T.semi, LayoutOrder = 1 })
+	UI.Text(body, "Your coach talks you through it step by step: moving, the jab and the cross, hooks, uppercuts and body shots, combinations, blocking, slipping and weaving, counters and stamina. The clock waits while you learn each one.",
+		{ TextSize = 14, TextColor3 = T.sub, LayoutOrder = 2 })
+	UI.Text(body, "It's a real fight: the result goes on your record and pays a purse. Gentler rules for this one night: his punches hurt half as much and you can't be stopped before the last round. The win is still yours to earn.",
+		{ TextSize = 14, TextColor3 = T.sub, LayoutOrder = 3 })
+	local bh = math.max(44, UI.MinHit(win))
+	local start = UI.Button(win, "FIGHT MY DEBUT", { Name = "StartDebut", Size = UDim2.new(0.5, -24, 0, bh), Position = UDim2.new(0, 16, 1, -(10 + bh)), BackgroundColor3 = T.gold, TextColor3 = T.ink },
+		function()
+			Tutorial.BeginDebut()
+		end)
+	UI.PadStart(start)
+	UI.Button(win, "SKIP THE GUIDE", { Name = "SkipDebut", Size = UDim2.new(0.5, -24, 0, bh), Position = UDim2.new(0.5, 8, 1, -(10 + bh)) }, Tutorial.SkipDebut)
+	return win
+end
+
+-- the debut was called off (left the ring, a reset, a crash): it is still on offer (msg.how)
+function Tutorial.DebutEnded(msg)
+	view = nil
+	if card then
+		card:Destroy()
+		card = nil
+	end
+	busy = false
+	if type(msg) == "table" and msg.how ~= "completed" then
+		State.toast("Your debut was called off: nothing went on your record. It's still waiting for you.", T.gold, 6)
+		local P = State.P
+		if msg.offer ~= false and not (P and P.retired) then
+			task.delay(1.2, function()
+				if not inBout and not busy then
+					Tutorial.OfferDebut(msg.info)
+				end
+			end)
+		end
+	end
+end
+
 -- a tutorial offer, bout or wrap-up is up (ClientMain keeps the title screen / the creator away meanwhile)
 function Tutorial.Busy()
 	return busy or inBout
@@ -556,6 +647,7 @@ function Tutorial.Start()
 		end))
 	end
 	State.open.Tutorial = Tutorial.Begin
+	State.open.Debut = Tutorial.OfferDebut
 	-- the HUD moved under the card (the key strip comes and goes, the pads page): place it again
 	task.spawn(function()
 		while gui and gui.Parent do

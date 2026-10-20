@@ -15,6 +15,8 @@
 --   Moves.ForAI(data)            an AI boxer's set: its style's home moves once it is good enough, and the
 --                                fight moves its record and tier have earned
 --   Moves.UnlockText(id, info?)  how to unlock it, for the menu (with info: the progress, "Win 15 fights (9/15)")
+-- The signature combos (Shared.Combos.Signatures) unlock through the same fight milestones and the same
+-- Moves.Info (Combos.UnlockedSignatures / SignatureUnlockedBy / SignatureUnlockText); they have no keys of their own.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 

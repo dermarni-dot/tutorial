@@ -82,6 +82,24 @@ Keymap.Actions = {
 		desc = "Duck and roll under hooks and overhands.", how = "Never roll into an uppercut." },
 	{ id = "quickdodge", label = "Quick dodge", section = "advanced", kbd = { "LeftShift+Space" }, pad = "ButtonR3", touch = "Hold BLOCK, swipe down",
 		desc = "A short, snappy roll: a smaller window but you are back on your feet sooner.", how = "For reading one punch, not a flurry." },
+	-- the dodges (Shared.Evasion: what each one beats, its window and its counter). On a controller each is a flick
+	-- of the right stick followed by a button within 0.4 s: the flick's own move (a slip, the roll, the parry)
+	-- turns into the dodge on the server (Evasion.CANCEL)
+	{ id = "weaveL", label = "Weave left", section = "advanced", kbd = { "LeftShift+Q" }, pad = "Thumbstick2Left+ButtonL2", touch = "Hold BLOCK, swipe left",
+		desc = "Bob and weave under it to the left. Hooks and overhands miss, and the counter window after it is the longest.",
+		how = "Shift + Q. On a pad flick the right stick left, then LT. Never weave into an uppercut: it lands bigger." },
+	{ id = "weaveR", label = "Weave right", section = "advanced", kbd = { "LeftShift+E" }, pad = "Thumbstick2Right+ButtonL2", touch = "Hold BLOCK, swipe right",
+		desc = "The same to the right." },
+	{ id = "duck", label = "Duck", section = "advanced", kbd = { "N" }, pad = "Thumbstick2Down+ButtonL2", touch = "Swipe CLINCH down",
+		desc = "Drop straight down under a hook (most overhands and straights miss too). Quick, but an uppercut lands huge.",
+		how = "Duck, then come up with the uppercut: the DUCK-UPPERCUT counter." },
+	{ id = "pull", label = "Pull back", section = "advanced", kbd = { "Y" }, pad = "Thumbstick2Up+ButtonL2", touch = "Hold BLOCK, swipe up",
+		desc = "Lean back out of range: jabs and crosses fall short. Hooks still find you.", how = "Pull, then fire the cross as he resets." },
+	{ id = "sidestepL", label = "Side-step left", section = "advanced", kbd = { "LeftAlt+A", "Comma" }, pad = "Thumbstick2Left+DPadLeft", touch = "Hold CLINCH, swipe left",
+		desc = "Step off his line to the left: everything misses, body shots too, and you are at an angle. The dearest dodge on the gas.",
+		how = "Hold Alt and press A. On a pad flick the right stick left, then D-pad left." },
+	{ id = "sidestepR", label = "Side-step right", section = "advanced", kbd = { "LeftAlt+D", "Period" }, pad = "Thumbstick2Right+DPadRight", touch = "Hold CLINCH, swipe right",
+		desc = "The same to the right." },
 	{ id = "parry", label = "Parry", section = "advanced", kbd = { "V" }, pad = "DPadUp", touch = "Swipe BLOCK up",
 		desc = "Catch a straight punch with the glove and fire back: a short window with a big counter.", how = "Time it on the jab or the cross." },
 	{ id = "pivotL", label = "Pivot left", section = "advanced", kbd = { "2xA", "Z" }, pad = "DPadLeft", touch = "Swipe CLINCH left",
@@ -113,7 +131,7 @@ Keymap.Actions = {
 Keymap.Sections = {
 	{ id = "basic", title = "Basic", blurb = "Moving, guarding and holding on." },
 	{ id = "punch", title = "Punches", blurb = "Every punch goes to the head unless the body shot is armed. Punching drops a tapped guard." },
-	{ id = "advanced", title = "Advanced", blurb = "Head movement, footwork and counters. A punch you land right after a slip, roll, parry or pivot counts as a counter." },
+	{ id = "advanced", title = "Advanced", blurb = "Head movement, footwork and counters. A punch you land right after a slip, weave, duck, pull, side-step, roll, parry or pivot counts as a counter." },
 	{ id = "special", title = "Special moves", blurb = "Signature moves unlocked by your style, your career, your training and your fights: every bout, win and KO counts (Moves & Controls > Special)." },
 }
 

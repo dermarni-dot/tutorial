@@ -161,6 +161,10 @@ to select and **B** to go back.
 | Slip left / right | Q / E | flick the right stick left / right | swipe BLOCK left / right |
 | Dodge (roll under) | Space | flick the right stick down | swipe BLOCK down |
 | Quick dodge | Shift + Space | click the right stick (R3) | hold BLOCK, then swipe down |
+| Weave left / right | Shift + Q / Shift + E | flick the right stick left / right, then LT / L2 | hold BLOCK, then swipe left / right |
+| Duck | N | flick the right stick down, then LT / L2 | swipe CLINCH down |
+| Pull back | Y | flick the right stick up, then LT / L2 | hold BLOCK, then swipe up |
+| Side-step left / right | Alt + A / Alt + D (or , / .) | flick the right stick left / right, then D-pad left / right | hold CLINCH, then swipe left / right |
 | Parry | V | D-pad up (or flick the right stick up) | swipe BLOCK up |
 | Pivot left / right | double-tap A / D (or Z / X) | D-pad left / right | swipe CLINCH left / right |
 | Counter jab | hold Q + left click | flick left, then X / Square | a slip on BLOCK, then JAB within half a second |
@@ -216,7 +220,9 @@ Every pad is at least a fingertip (44 px) on screen. The head movement is in swi
 more pads: **BLOCK** taps raise / drop the guard, a swipe left / right slips, down rolls under, up
 parries, and holding it a moment before swiping down is the quick dodge; **CLINCH** taps tie him up and a
 swipe left / right pivots; a slip followed by **JAB** or **CROSS** within half a second is the counter
-jab / cross. The commentary ticker leaves the picture while the pads are up.
+jab / cross. The newer dodges are holds and swipes on the same two pads (no new buttons): hold BLOCK and
+swipe left / right to weave or up to pull back, swipe CLINCH down to duck, hold CLINCH and swipe left / right
+to side-step. Combinations need no buttons at all: only the timing. The commentary ticker leaves the picture while the pads are up.
 
 **Tap, don't hold.** Block, the body-shot modifier and the controls legend are toggles on every
 device: a tap turns them on, the next tap turns them off. A press held longer than about a third of
@@ -797,6 +803,55 @@ rebuilds at most twice a second, head-only previews five times).
 - **Fight nights:** weigh-ins, ring walks, a referee, judges' scorecards and a crowd. The venues are
   a community centre, a club arena, the Grand Arena and the National Stadium for title fights. The
   big venues have fight-night lighting, LED screens, broadcast cameras and a walkout stage.
+
+### Combinations, dodges and the debut
+
+**Combinations** (`src/shared/Combos.lua`, run by FightEngine, server-authoritative). A punch takes its wind-up
+x 1.9 to play out; the **chain window** opens when that recovery ends and lasts 0.30 + 0.6 x wind-up seconds
+(0.32 to 0.60: a jab about 0.40 s, a rear hook 0.48, an overhand 0.55). The next punch inside it continues the
+combination (it winds up 12% quicker); later, a new one starts. A press up to 0.15 s before the recovery ends is
+held by the server and thrown on time; an earlier one is a **mash** and costs the chain accuracy. The HUD's combo
+counter (`BoxerClient.ComboHud`, under the left of the scoreboard, or right of the defence pads on touch) counts
+the punches landed and calls out the named combos: 1-2, 1-2-3, 1-1-2, 2-3-2, 1-2-3-2, 1-2-UPPERCUT, JAB-BODY-HOOK,
+DOWNSTAIRS-UPSTAIRS, DOUBLE HOOK, UPPERCUT-HOOK, LEFT-RIGHT HOOKS, JAB-OVERHAND, and out of a dodge SLIP-COUNTER,
+WEAVE-COUNTER, DUCK-UPPERCUT and STEP-COUNTER. The rules: each punch already landed in the chain adds 4% damage x
+the style's combo factor (at most four of them); a named combo's last punch +8% damage and +4 points of accuracy
+and, once it lands (its last punch clean, all but one of its punches landed), a quarter of its stamina back; a
+level change (head / body) +3 points; from the 5th punch on -4 points a punch and from the 4th +8% stamina a punch
+(at most +40%); the third same punch in a row -6; each mash -3 (at most -9); misses in a chain of four or more
+cost 1.5 more stamina; the second blocked punch of a chain smothers it (the defender gets a 0.8 s counter window,
+the attacker 0.15 s more recovery). The AI reads a flurry from its 4th punch (+6 points of defence a punch, at
+most 18) and expects a follow-up it has seen twice (+15). It throws named combos by style (the out-boxer's jab
+combinations, the swarmer's hooks and body work, the slugger's overhand and uppercut-hook) and skill (ring IQ and
+focus: 25% to 90% of its combinations are a named one; a raw boxer keeps them to three punches).
+**Signature combos** unlock through the fight milestones (Moves & Controls lists them with the progress): BODY
+ATTACK (1-2b-3b-3, 5 bouts), DEMPSEY FINISH (3-4-3, 3 wins), FOUR-PIECE (1-2-3-uppercut, 2 KO wins), WEAVE & HOOK
+(weave-3-4, 10 bouts); landed by their owner they do +15% damage and +6 points of accuracy. The result screen and
+the rest card show the combos landed and the best chain. A chained punch's act carries its place in the combination
+as the act's sixth field (`cross|R|head|0.21||2`, the Animator's format) and the model attribute **Chain** (set just
+before Act; the client's prediction does the same in PredAct / PredChain).
+
+**Dodges** (`src/shared/Evasion.lua`): each is an evade window and a longer recovery. Inside the window the dodge
+beats the punches it is for: slip and pull the straights (the slip half the hooks), weave and duck the hooks and
+overhands, the roll hooks and overhands, the side-step everything (body shots too) for 9 stamina and an angle.
+After the window and before the recovery ends you are **caught** (+10 points, +15% damage); an uppercut into a
+weave or a duck lands 35% / 50% bigger. A dodge that wins opens a counter window (0.7 to 0.95 s: a counter, +8
+points) and a chain for the counter combos. The acts are `slip|L`, `roll`, `weave|L|0.50`, `duck|0.40`,
+`pull|0.45`, `sidestep|R|0.55` (the last field is the act's length). The AI dodges by style: counter-punchers and out-boxers most, the swarmer weaves, the slugger
+mostly blocks.
+
+**The guided debut** is the first-time flow: title screen, creator, then **YOUR DEBUT** (a new boxer of a player
+with no past careers; old saves and returning players never get it). It is a real Amateur Bout (`Career.DebutOffer`:
+a weaker amateur of the player's own world and division, not a defensive or counter specialist, at the Community
+Center with a modest crowd) fought as the player's own boxer: the result goes on the amateur record, pays the
+purse and counts for the move unlocks. The step card guides it (move, jab, cross, hooks and uppercut, body shots,
+a combination, block, slip and weave, dodge and counter, stamina, his first special move if he has one, then WIN
+IT) with the device's own keys; the clock waits while a step is learned (round 1 ends a few seconds after the
+combination, the final round always runs). For that night only incoming damage is halved, the player cannot be
+knocked down or stopped before the final round, the opponent cannot be dropped before the last step and defends
+softer while the steps run. SKIP THE GUIDE on the offer (or SKIP GUIDE on the card) leaves the career as usual.
+Leaving, resetting or a crash mid-bout calls it off: nothing is recorded and it is offered again. The old
+random-boxer practice bout is optional now: **Settings > PRACTICE ROUND**.
 
 ## PvP: player vs player
 

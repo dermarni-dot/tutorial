@@ -13,6 +13,14 @@ do
 	end)
 	Moves = (ok and type(mod) == "table") and mod or nil
 end
+-- the combinations' signature combos (Shared.Combos: unlocked by the same fight milestones), nil-safe
+local Combos
+do
+	local ok, mod = pcall(function()
+		return require(Shared:WaitForChild("Combos"))
+	end)
+	Combos = (ok and type(mod) == "table") and mod or nil
+end
 local World = require(script.Parent.World)
 local Training = require(script.Parent.Training)
 
@@ -318,6 +326,73 @@ function Career.GetOffers(profile)
 	profile.offers = offers
 	profile.offersDay = profile.day
 	return offers
+end
+
+-- The guided debut (Shared.Tutorial: the first career fight of a new boxer, offered right after the creator): an
+-- ordinary Amateur Bout offer against a weak amateur from the player's own world and division. opts = { below =
+-- { far, near } (his overall this far under the player's: Tutorial.Debut.OPP_BELOW), rng }. Not a defensive
+-- specialist or a counter puncher (no first opponent for a beginner), never a champion. The offer counts like any
+-- other once it is fought (ApplyResult: record, purse, fame, move unlocks); nil when the world has nobody.
+local DEBUT_HARD = { Defensive = true, Counter = true }
+function Career.DebutOffer(profile, opts)
+	opts = type(opts) == "table" and opts or {}
+	local r = opts.rng or rng
+	local below = type(opts.below) == "table" and opts.below or { 16, 6 }
+	local world = profile.world
+	local ci = profile.physical.weightClass
+	local pOv = tonumber(profile.overall) or 35
+	local exclude = {}
+	for _, org in ipairs(Config.Orgs) do
+		local champ = world.champions and world.champions[org] and world.champions[org][ci]
+		if champ then
+			exclude[champ] = true
+		end
+	end
+	for _, id in ipairs(world.classes[ci] or {}) do
+		local b = world.boxers[id]
+		if b and DEBUT_HARD[b.archetype] then
+			exclude[id] = true
+		end
+	end
+	local b
+	for widen = 0, 4 do
+		b = World.Pick(profile, ci, pOv - below[1] - widen * 4, pOv - below[2], exclude, r)
+		if b and b.overall < pOv then
+			break
+		end
+	end
+	if not b then
+		return nil
+	end
+	local offer = makeOffer(profile, b, "Amateur Bout")
+	offer.debut = true
+	if opts.venue and Config.Venues[opts.venue] then
+		offer.venue, offer.venueName = opts.venue, Config.Venues[opts.venue].name
+	end
+	return offer
+end
+
+-- the debut opponent's fight-night stats (the copy FighterFromBoxer made, never the world's boxer): a young world
+-- can have no amateur under a brand-new boxer, so for this one bout his stats are scaled down until his overall is
+-- at least `gap` under the player's. Returns oData.
+function Career.DebutOpponent(oData, playerOverall, gap)
+	if type(oData) ~= "table" or type(oData.stats) ~= "table" then
+		return oData
+	end
+	local goal = (tonumber(playerOverall) or 35) - (tonumber(gap) or 4)
+	for _ = 1, 12 do
+		local ov = Config.Overall(oData.stats)
+		if ov <= goal then
+			break
+		end
+		local k = math.clamp(goal / math.max(1, ov), 0.6, 0.98)
+		for key, v in pairs(oData.stats) do
+			if type(v) == "number" then
+				oData.stats[key] = math.max(10, math.floor(v * k))
+			end
+		end
+	end
+	return oData
 end
 
 function Career.AcceptOffer(profile, index)
@@ -870,6 +945,7 @@ function Career.ApplyResult(profile, res)
 	local rec = profile.tier == 1 and profile.amateurRecord or profile.record
 	-- the special moves before this result (a bout, a win, a KO or a promotion may unlock new ones)
 	local movesBefore = Moves and Moves.Unlocked(Moves.Info(profile)) or nil
+	local sigsBefore = (Moves and Combos) and Combos.UnlockedSignatures(Moves.Info(profile)) or nil
 
 	if win then
 		rec.w += 1
@@ -1073,6 +1149,16 @@ function Career.ApplyResult(profile, res)
 		for _, id in ipairs(Moves.List) do
 			if now[id] and not movesBefore[id] then
 				table.insert(notes, string.format("NEW SPECIAL MOVE: %s (%s). Moves & Controls has its keys.", Moves.Data[id].name, tostring(Moves.UnlockedBy(id, info))))
+			end
+		end
+	end
+	-- new signature combos (Combos.Signatures: the same fight milestones)
+	if sigsBefore then
+		local info = Moves.Info(profile)
+		local now = Combos.UnlockedSignatures(info)
+		for _, c in ipairs(Combos.Signatures) do
+			if now[c.id] and not sigsBefore[c.id] then
+				table.insert(notes, string.format("NEW SIGNATURE COMBO: %s (%s). Moves & Controls shows how it goes.", c.name, tostring(Combos.SignatureUnlockedBy(c.id, info))))
 			end
 		end
 	end

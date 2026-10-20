@@ -1559,6 +1559,14 @@ do
 		if refreshControls then
 			refreshControls()
 		end
+		if KM.combo then
+			KM.combo.Layout(below, compact, touchPad ~= nil or UserInputService.TouchEnabled, math.max(40, UI.MinHit(hud)))
+		end
+	end
+	-- the combo counter (BoxerClient.ComboHud: display only, the server judges the chains)
+	KM.combo = KM.module("ComboHud")
+	if KM.combo then
+		KM.combo.Mount(hud)
 	end
 	gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutHud)
 	hud:GetAttributeChangedSignal("UIScale"):Connect(layoutHud)
@@ -1837,9 +1845,16 @@ do
 		-- CLINCH: a tap ties him up (on the release, so a swipe can be a pivot instead)
 		local clinch = roundPad(defencePad, "Clinch", "CLINCH\n< PIVOT >", T.green, 76, UDim2.fromOffset(55, 38))
 		UI.SetTextSize(clinch:FindFirstChildOfClass("TextLabel"), 15)
-		swipePad(clinch, nil, function(dir)
+		swipePad(clinch, nil, function(dir, heldFor)
 			if dir == "L" or dir == "R" then
-				send({ t = "pivot", dir = dir == "L" and -1 or 1 })
+				-- held first: the side-step, else the pivot
+				if heldFor >= Tog.HOLD then
+					send({ t = "dodge", kind = "sidestep", dir = dir == "L" and -1 or 1 })
+				else
+					send({ t = "pivot", dir = dir == "L" and -1 or 1 })
+				end
+			elseif dir == "D" then
+				send({ t = "dodge", kind = "duck" })
 			end
 		end, function(swiped)
 			if not swiped then
@@ -1866,12 +1881,20 @@ do
 			-- the server too, in case the move is refused there)
 			Tog.pressedAt.block = nil
 			Tog.set("block", false)
+			local held = heldFor >= Tog.HOLD
 			if dir == "L" or dir == "R" then
 				KM.touchSlipAt = os.clock()
-				send({ t = "slip", dir = dir == "L" and -1 or 1 })
+				-- held first (the guard was up as a hold): the weave, else the slip
+				if held then
+					send({ t = "dodge", kind = "weave", dir = dir == "L" and -1 or 1 })
+				else
+					send({ t = "slip", dir = dir == "L" and -1 or 1 })
+				end
 			elseif dir == "D" then
-				-- held first (the guard was up as a hold): the quick dodge, else the full roll
-				send({ t = "roll", quick = heldFor >= Tog.HOLD or nil })
+				-- held first: the quick dodge, else the full roll
+				send({ t = "roll", quick = held or nil })
+			elseif held then
+				send({ t = "dodge", kind = "pull" })
 			else
 				send({ t = "parry" })
 			end
@@ -3261,24 +3284,56 @@ throwPunch = function(p, body, counter)
 	if Tog.on.body and not Tog.held("body") then
 		Tog.set("body", false)
 	end
+	KM.predictPunch(p, body, counter, false)
+end
+
+-- the local prediction of a punch the server will (almost surely) throw: the act and its place in the combination
+-- (PredChain beside PredAct, as the server's Chain beside Act: Shared.Combos). A press just before the predicted
+-- recovery ends is predicted when it ends, as the server's buffer throws it then.
+function KM.predictPunch(p, body, counter, buffered)
 	local P = Config.Punches[p]
 	local char = player.Character
 	local now = os.clock()
-	-- only predict what the server will almost surely accept (not down / stumbling / mid-punch); a
-	-- counter punch comes out of the slip's recovery, which the local busy clock counts
-	if not P or not (canPredict(char) or (counter and char and F.active and not F.down and now < pred.busyUntil and now - pred.lastAt > 0.2)) then
+	local Combos = KM.Combos
+	if not Combos then
+		local okC, mod = pcall(require, Shared:WaitForChild("Combos"))
+		Combos = okC and mod or { BUFFER = 0.15, CHAIN_WINDUP = 0.88, Window = function()
+			return 0.4
+		end }
+		KM.Combos = Combos
+	end
+	if P and not buffered and not counter and char and F.active and now < pred.busyUntil and pred.busyUntil - now <= Combos.BUFFER and not pred.buffered then
+		pred.buffered = true
+		task.delay(pred.busyUntil - now, function()
+			pred.buffered = false
+			if F.active then
+				KM.predictPunch(p, body, false, true)
+			end
+		end)
 		return
 	end
-	local windup = predWindup(P.windup)
+	if buffered then
+		now = math.max(now, pred.busyUntil)
+	end
+	-- only predict what the server will almost surely accept (not down / stumbling / mid-punch); a
+	-- counter punch comes out of the slip's recovery, which the local busy clock counts
+	if not P or not ((buffered and char and F.active and not F.down) or canPredict(char) or (counter and char and F.active and not F.down and now < pred.busyUntil and now - pred.lastAt > 0.2)) then
+		return
+	end
+	local chained = now <= (pred.chainUntil or 0)
+	pred.chainN = chained and (pred.chainN or 0) + 1 or 1
+	local windup = predWindup(P.windup) * (chained and Combos.CHAIN_WINDUP or 1)
 	local hand = P.hand
 	if p == "uppercut" then
-		hand = (pred.hand == "R" and now - pred.lastAt < 0.7) and "L" or "R"
+		hand = (pred.hand == "R" and chained) and "L" or "R"
 	end
 	pred.hand = hand
 	pred.lastAt = now
 	pred.busyUntil = now + windup * 1.9
+	pred.chainUntil = pred.busyUntil + Combos.Window(windup)
 	pred.id += 1
-	char:SetAttribute("PredAct", string.format("%s|%s|%s|%.2f", p, hand, body and "body" or "head", windup))
+	char:SetAttribute("PredChain", pred.chainN)
+	char:SetAttribute("PredAct", string.format("%s|%s|%s|%.2f", p, hand, body and "body" or "head", windup) .. (pred.chainN >= 2 and ("||" .. pred.chainN) or ""))
 	char:SetAttribute("PredActId", pred.id)
 end
 
@@ -3689,6 +3744,9 @@ local TOGGLE_ACTIONS = { block = "block", body = "body", legend = "legend" }
 local SEND_ACTIONS = {
 	slipL = { t = "slip", dir = -1 }, slipR = { t = "slip", dir = 1 }, dodge = { t = "roll" }, quickdodge = { t = "roll", quick = true },
 	parry = { t = "parry" }, pivotL = { t = "pivot", dir = -1 }, pivotR = { t = "pivot", dir = 1 }, clinch = { t = "clinch" },
+	-- the dodges (Shared.Evasion; FightEngine:Dodge)
+	weaveL = { t = "dodge", kind = "weave", dir = -1 }, weaveR = { t = "dodge", kind = "weave", dir = 1 }, duck = { t = "dodge", kind = "duck" },
+	pull = { t = "dodge", kind = "pull" }, sidestepL = { t = "dodge", kind = "sidestep", dir = -1 }, sidestepR = { t = "dodge", kind = "sidestep", dir = 1 },
 }
 
 local function addBinding(dev, b, id)
@@ -4248,6 +4306,9 @@ task.spawn(function()
 end)
 
 local function finish()
+	if KM.combo then
+		KM.combo.Reset()
+	end
 	lockReset(false)
 	KM.setPlayerList(true)
 	KM.dropRingSprint()
@@ -4410,8 +4471,12 @@ function handlers.start(msg)
 	end
 	F.pvp = msg.pvp == true
 	local oppTag = type(msg.tape.opp.player) == "string" and (" (" .. msg.tape.opp.player .. ")") or ""
-	if F.tutorial then
-		-- the first-time tutorial (the step card is BoxerClient.Tutorial's)
+	if F.tutorial and F.tutorial.debut then
+		-- the guided debut: a real amateur bout (the step card is BoxerClient.Tutorial's)
+		setBug("YOUR DEBUT  ·  AMATEUR BOUT", T.gold, "DEBUT")
+		F.stakesText = "AMATEUR DEBUT vs " .. msg.tape.opp.name
+	elseif F.tutorial then
+		-- the practice round (the step card is BoxerClient.Tutorial's)
 		setBug("TUTORIAL  ·  PRACTICE FIGHT", T.blue, "TUTORIAL")
 		F.stakesText = "TUTORIAL FIGHT vs " .. msg.tape.opp.name
 	elseif F.spar then
@@ -4824,7 +4889,8 @@ function handlers.lunge(msg)
 	end)
 end
 
-local DEF_TEXT = { SLIPPED = "SLIPPED", ["ROLLED UNDER"] = "ROLLED UNDER", PARRIED = "PARRIED", PIVOT = "PIVOTED OFF" }
+local DEF_TEXT = { SLIPPED = "SLIPPED", ["ROLLED UNDER"] = "ROLLED UNDER", PARRIED = "PARRIED", PIVOT = "PIVOTED OFF", WEAVED = "WEAVED", DUCKED = "DUCKED",
+	["PULLED BACK"] = "PULLED BACK", SIDESTEPPED = "SIDE-STEPPED" }
 function handlers.defense(msg)
 	local mine = msg.who == "you"
 	if mine then
@@ -4833,6 +4899,18 @@ function handlers.defense(msg)
 		showFlash(defFlash, "OPPONENT " .. (DEF_TEXT[msg.move] or msg.move), T.sub, 0.6)
 	end
 end
+
+-- the combinations (FightEngine / Shared.Combos): the counter and its call-outs (BoxerClient.ComboHud)
+function handlers.combo(msg)
+	if KM.combo then
+		KM.combo.On(msg)
+	end
+	if msg.who == "you" and type(msg.name) == "string" and msg.sig then
+		crowdMoment(msg.name .. "!", T.orange)
+	end
+end
+handlers.comboEnd = handlers.combo
+handlers.comboBroken = handlers.combo
 
 function handlers.miss(msg)
 	if msg.why ~= "short" then
@@ -5044,6 +5122,9 @@ end
 
 function handlers.bell(msg)
 	F.active = false
+	if KM.combo then
+		KM.combo.Reset()
+	end
 	Tog.reset(true) -- the server drops the guard in the corner
 	refreshControls()
 	showBanner("DING DING DING", T.gold, 1.5)
@@ -5099,6 +5180,10 @@ function buildRest(msg)
 		ovRow(string.format("%d / %d", st.landed or 0, st.thrown or 0), "Landed / thrown", string.format("%d / %d", st.oppLanded or 0, st.oppThrown or 0))
 		if not compact then
 			ovRow(pct(st.landed or 0, st.thrown or 0), "Accuracy", pct(st.oppLanded or 0, st.oppThrown or 0))
+			if st.combos ~= nil then
+				-- (the combinations so far: named combos landed, the best chain)
+				ovRow(tostring(tonumber(st.combos) or 0), "Combos landed", tostring(tonumber(st.oppCombos) or 0))
+			end
 		end
 	end
 	local c = msg.cond
@@ -5122,7 +5207,7 @@ function handlers.final(msg)
 	getup.Visible = false
 	local res = msg.result
 	local text
-	if F.tutorial and res.method ~= "KO" then
+	if F.tutorial and not F.tutorial.debut and res.method ~= "KO" then
 		text = "TUTORIAL COMPLETE"
 	elseif res.method == "KO" or res.method == "TKO" or res.method == "RTD" then
 		text = res.method .. "!"

@@ -33,6 +33,10 @@ do
 	Moves = (ok and type(mod) == "table") and mod or nil
 end
 
+-- combinations (the AI's plans by style and skill, the chain it reads) and the dodges (by style)
+local Combos = require(ReplicatedStorage.Shared:WaitForChild("Combos"))
+local Evasion = require(ReplicatedStorage.Shared:WaitForChild("Evasion"))
+
 local FightAI = {}
 FightAI.__index = FightAI
 
@@ -69,6 +73,12 @@ function FightAI.new(F, O, engine)
 		self.anticipate[k] = total > 0 and v / total or 0
 	end
 	self.obs = { blockTime = 0, time = 0, punches = {}, body = 0, slips = 0 }
+	-- the player's sequences it has seen ("1 2>3": a lead hook after a 1-2), for the defence that adapts
+	self.seq = {}
+	-- how good a combination puncher it is: its ring IQ and focus (0..1)
+	self.skill = math.clamp(((F.data.stats.RingIQ or 50) + (F.data.mental.Focus or 50)) / 200, 0, 1)
+	self.dodgeMul = Evasion.StyleDodge[style.id] or 1
+	self.favourite = Evasion.StyleFavourite[style.id]
 	return self
 end
 
@@ -97,6 +107,8 @@ function FightAI:OnOppPunch(ptype, body, windup)
 	if body then
 		self.obs.body += 1
 	end
+	-- (read and learn the player's combination even while busy: the sequence counts either way)
+	local readBonus = self:ReadChain()
 	if F.state == "down" or F.state == "clinch" or engine:Now() < F.busyUntil then
 		return
 	end
@@ -108,6 +120,7 @@ function FightAI:OnOppPunch(ptype, body, windup)
 		total += v
 	end
 	chance += ((self.obs.punches[ptype] or 0) / math.max(1, total)) * 0.12 * self.arch.adapt
+	chance += readBonus
 	if F.stamina < F.maxStam * 0.25 then
 		chance *= 0.6
 	end
@@ -150,6 +163,18 @@ function FightAI:OnOppPunch(ptype, body, windup)
 			add("slip", a.slip * 0.4)
 		end
 	end
+	-- the dodges (Evasion): the ones that beat this punch, by style (counter-punchers and out-boxers move their
+	-- heads most) and its habits; a side-step is dear on the gas, so a tired man keeps it for later
+	local head = (a.slip + a.roll) * 0.5
+	for d, w in pairs(Evasion.AIWeights[kind] or {}) do
+		if not body or (Evasion.Moves[d] and Evasion.Moves[d].body) then
+			local fav = d == self.favourite and 1.5 or 1
+			local cost = Evasion.Moves[d] and Evasion.Moves[d].stam or 5
+			if F.stamina >= cost * 2.5 then
+				add(d, w * head * self.dodgeMul * fav * 0.55)
+			end
+		end
+	end
 	local totalW = 0
 	for _, o in ipairs(options) do
 		totalW += o[2]
@@ -175,6 +200,8 @@ function FightAI:OnOppPunch(ptype, body, windup)
 			engine:Parry(F)
 		elseif move == "pivot" then
 			engine:Pivot(F, self.rng:NextNumber() < 0.5 and -1 or 1)
+		elseif Evasion.Moves[move] and engine.Dodge then
+			engine:Dodge(F, move, self.rng:NextNumber() < 0.5 and -1 or 1)
 		else
 			engine:SetBlock(F, true)
 			self.blockUntil = engine:Now() + 0.55
@@ -249,16 +276,26 @@ function FightAI:Fits(ptype, dist)
 	return dist <= self.engine:PunchRange(self.F, ptype) + 0.25
 end
 
+-- the combination to throw. A plan (Combos.Plans: a named or a signature combo its style likes, every punch in
+-- range) Combos.PlanShare(skill) of the time; otherwise the old few random punches (a raw boxer's wilder flurry,
+-- which the combo rules punish)
 function FightAI:BuildCombo()
 	local n = 1
 	local aggr = self:Aggression()
-	if self.rng:NextNumber() < aggr then
+	local wantCombo = self.rng:NextNumber() < aggr
+	local dist = self.engine:Distance(self.F, self.O)
+	if wantCombo and self.rng:NextNumber() < Combos.PlanShare(self.skill) then
+		local plan = self:PickPlan(dist)
+		if plan then
+			return plan
+		end
+	end
+	if wantCombo then
 		local extra = (self.engine:IsHurt(self.O) or self.mode == "finish") and 1 or 0
 		n = self.rng:NextInteger(2, self.comboMax + extra)
 	end
 	local finish = self.mode == "finish" and 0.2 or 0
 	n = math.max(1, math.min(n, math.floor(self.F.stamina / 6)))
-	local dist = self.engine:Distance(self.F, self.O)
 	local list = {}
 	for i = 1, n do
 		local p = "jab"
@@ -287,6 +324,90 @@ function FightAI:BuildCombo()
 		table.insert(list, { p = p, body = body })
 	end
 	return list
+end
+
+-- a plan its style likes (and its signature combos), every punch in reach from here, no longer than its skill
+-- allows and affordable on its gas; nil when none fits
+function FightAI:PickPlan(dist)
+	local F = self.F
+	local likes = Combos.StylePlans[self.style.id] or Combos.StylePlans.BoxerPuncher
+	local maxLen = Combos.PlanMax(self.skill)
+	local pool, total = {}, 0
+	local function consider(id, w)
+		local plan = Combos.Plans[id]
+		if not plan or w <= 0 or #plan > maxLen + (Combos.ById[id] and Combos.ById[id].signature and 1 or 0) then
+			return
+		end
+		if F.stamina < #plan * 6 then
+			return
+		end
+		for i, step in ipairs(plan) do
+			-- (the later punches are thrown a step closer: only the first must reach from here, the rest nearly)
+			if dist > self.engine:PunchRange(F, step[1]) + (i == 1 and 0.25 or 0.6) then
+				return
+			end
+		end
+		table.insert(pool, { id, w })
+		total += w
+	end
+	for id, w in pairs(likes) do
+		local bodyHeavy = id == "jabbodyhook" or id == "bodyhead"
+		consider(id, w * (bodyHeavy and (0.6 + self.bodyBias * 2) or 1) * (self.mode == "finish" and #Combos.Plans[id] >= 3 and 1.4 or 1))
+	end
+	for id in pairs(F.sigs or {}) do
+		if Combos.Plans[id] then
+			consider(id, Combos.SIG_PLAN_WEIGHT)
+		end
+	end
+	if total <= 0 then
+		return nil
+	end
+	table.sort(pool, function(x, y)
+		return x[1] < y[1]
+	end)
+	local pick = self.rng:NextNumber() * total
+	for _, o in ipairs(pool) do
+		pick -= o[2]
+		if pick <= 0 then
+			local out = {}
+			for _, step in ipairs(Combos.Plans[o[1]]) do
+				table.insert(out, { p = step[1], body = step[2] == true })
+			end
+			self.lastPlan = o[1]
+			return out
+		end
+	end
+	return nil
+end
+
+-- the defence that adapts to the player's combinations: a long flurry is read from its READ_FROM-th punch, and
+-- a follow-up it has seen him throw after the same punches LEARN_SEEN times is expected. Returns the extra
+-- defend chance (and learns the sequence)
+function FightAI:ReadChain()
+	local chain = self.O.chain
+	if not chain or chain.closed or #chain.items == 0 then
+		return 0
+	end
+	local bonus = 0
+	local n = chain.punches
+	if n >= Combos.READ_FROM then
+		bonus += math.min(Combos.READ_MAX, (n - Combos.READ_FROM + 1) * Combos.READ_STEP)
+	end
+	local items = chain.items
+	local cur = items[#items]
+	if #items >= 2 and not cur.dodge then
+		local prev = {}
+		for i = math.max(1, #items - 2), #items - 1 do
+			table.insert(prev, items[i].tok)
+		end
+		local key = table.concat(prev, " ") .. ">" .. tostring(cur.tok)
+		local seen = self.seq[key] or 0
+		if seen >= Combos.LEARN_SEEN then
+			bonus += Combos.LEARN_BONUS * math.min(1.5, self.arch.adapt or 1)
+		end
+		self.seq[key] = seen + 1
+	end
+	return bonus
 end
 
 function FightAI:Think(now)
@@ -373,6 +494,7 @@ function FightAI:Think(now)
 		local nxt = table.remove(self.queue, 1)
 		if dist <= engine:PunchRange(F, nxt.p) + 0.4 then
 			engine:Punch(F, nxt.p, nxt.body)
+			self:ChainNext()
 		else
 			self.queue = {}
 		end
@@ -385,10 +507,19 @@ function FightAI:Think(now)
 			self.queue = self:BuildCombo()
 			local first = table.remove(self.queue, 1)
 			engine:Punch(F, first.p, first.body)
+			self:ChainNext()
 		elseif self.rng:NextNumber() < (1 - aggr) * 0.3 * (0.6 + self.arch.block) * (engine.aiDefense or 1) then
 			engine:SetBlock(F, true)
 			self.blockUntil = now + 0.5
 		end
+	end
+end
+
+-- with more of the combination queued, think again the moment the punch's recovery ends: the next one lands
+-- inside the chain window (Combos) instead of whenever the next think comes round
+function FightAI:ChainNext()
+	if #self.queue > 0 then
+		self.nextThink = math.min(self.nextThink, self.F.busyUntil + 0.02 + self.rng:NextNumber() * 0.08 * (1.2 - self.skill))
 	end
 end
 

@@ -5,7 +5,8 @@
 --   MOVES       Basic, Punches, Advanced and Special moves with the key / button / touch glyph of the device
 --               shown (a cycler picks the device; it starts on the one in use), what each move does and when
 --               to use it; special moves say whether they are unlocked and how to unlock them, with the progress
---               ("Win 15 fights (9/15)", Moves.lua)
+--               ("Win 15 fights (9/15)", Moves.lua); then the combinations (Combos.lua: the rhythm, the named combos
+--               and the signature combos with their unlock and progress)
 --   KEYBOARD    rebind any action: click a key cap, press the key (a second key while one is held makes a
 --               chord, two quick taps a double tap, Backspace clears the slot, Escape cancels). A key that
 --               another action holds is swapped over, so no two actions share a key. Two slots per action.
@@ -24,6 +25,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local UI = require(Shared:WaitForChild("UI"))
 local Keymap = require(Shared:WaitForChild("Keymap"))
 local Moves = require(Shared:WaitForChild("Moves"))
+local Combos = require(Shared:WaitForChild("Combos"))
 local Modules = script.Parent
 local State = require(Modules:WaitForChild("State"))
 local Settings = require(Modules:WaitForChild("Settings"))
@@ -149,6 +151,44 @@ local function movesTab()
 				end
 			end
 		end
+	end
+	-- the combinations: no keys of their own, only timing (Shared.Combos)
+	local function comboCard(c, sig)
+		order += 1
+		local owned = sig and Combos.SignatureUnlockedBy(c.id, info) ~= nil
+		local card = UI.Card(content, { order = order, pad = 10, gap = 4, stroke = owned and T.gold or nil, transparency = 0.25 })
+		local head = UI.Frame(card, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = 1 })
+		UI.Text(head, c.name, { Face = "displayMed", TextSize = small and 15 or 17, Size = UDim2.new(0.55, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
+			TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		local caps = UI.Frame(head, { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 1), Size = UDim2.fromOffset(0, 26), AutomaticSize = Enum.AutomaticSize.X })
+		UI.List(caps, 6, true, Enum.HorizontalAlignment.Right)
+		if sig then
+			keycap(caps, owned and "UNLOCKED" or "LOCKED", 0, owned and T.green or T.red)
+		end
+		keycap(caps, (c.patterns[1]:gsub(" ", " - ")), 1)
+		UI.Text(card, c.desc, { TextSize = 13, TextColor3 = T.text, LayoutOrder = 2 })
+		if sig then
+			UI.Text(card, owned and ("Unlocked: " .. tostring(Combos.SignatureUnlockedBy(c.id, info)) .. ". Lands harder and truer than a plain combination.")
+				or ("Unlock: " .. Combos.SignatureUnlockText(c.id, info)), { TextSize = 12, TextColor3 = owned and T.green or T.gold, LayoutOrder = 3 })
+		end
+	end
+	order += 1
+	local ch = UI.Header(content, "Combinations")
+	ch.Parent.LayoutOrder = order
+	order += 1
+	UI.Text(content, "No extra keys: throw the next punch as the last one comes back and they chain. A press a moment early is held for you; mashing throws your accuracy off. Every punch landed in a chain hits a little harder, a named combination harder still and some of its gas comes back; long flurries cost more and miss more, and two punches into his guard smother it and open his counter. Numbers: 1 jab, 2 cross, 3 lead hook, 4 rear hook, 5 / 6 lead / rear uppercut, O overhand, b to the body, H any hook, U any uppercut, B any body shot; s slip, w weave, d duck, p pull, t side-step, X any punch.",
+		{ TextSize = 13, TextColor3 = T.sub, LayoutOrder = order })
+	for _, c in ipairs(Combos.Named) do
+		comboCard(c, false)
+	end
+	order += 1
+	local sh = UI.Header(content, "Signature combos")
+	sh.Parent.LayoutOrder = order
+	order += 1
+	UI.Text(content, "Unlocked by your fights (every bout, win and KO of the career counts). Landed by a boxer who owns them they hit 15% harder and truer.",
+		{ TextSize = 13, TextColor3 = T.sub, LayoutOrder = order })
+	for _, c in ipairs(Combos.Signatures) do
+		comboCard(c, true)
 	end
 end
 

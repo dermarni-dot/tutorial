@@ -17,7 +17,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Builder = require(Shared:WaitForChild("Builder"))
-local Looks = require(Shared:WaitForChild("Looks"))
+local Officials = require(Shared:WaitForChild("Officials"))
 -- R-anim: how fighters go down (DownPose / DownDir / DownDist / KOKind), nil-safe if missing
 local FightMotion
 do
@@ -45,6 +45,9 @@ do
 		Tutorial = ok and type(mod) == "table" and mod or nil
 	end
 end
+-- combinations (the chain window, named combos, their rules) and the dodges (evade windows by punch type)
+local Combos = require(Shared:WaitForChild("Combos"))
+local Evasion = require(Shared:WaitForChild("Evasion"))
 local FightAI = require(script.Parent.FightAI)
 local Career = require(script.Parent.Career)
 -- fight spacing (FightMotion.Spacing; the round-1 numbers if that module is missing)
@@ -195,6 +198,17 @@ end
 ------------------------------------------------------------------------
 local MENTAL_DEFAULTS = { "Confidence", "Discipline", "Aggression", "Focus", "Composure" }
 
+-- an AI boxer's signature combos (Combos.ForAI): its tier as Moves.ForAI reads it (an overall of 55 is a Local
+-- Pro, 65 Regional, 75 Top 10, 85 a champion) and its record
+local function aiSignatures(data)
+	local tier = tonumber(data.tier)
+	if not tier then
+		local ov = Config.Overall(data.stats)
+		tier = ov >= 85 and 8 or (ov >= 75 and 6 or (ov >= 65 and 4 or (ov >= 55 and 2 or 1)))
+	end
+	return Combos.ForAI(tier, type(data.record) == "table" and data.record or nil)
+end
+
 local function makeFighter(data, model, player)
 	data.stats = type(data.stats) == "table" and data.stats or {}
 	data.mental = type(data.mental) == "table" and data.mental or {}
@@ -246,6 +260,13 @@ local function makeFighter(data, model, player)
 		moves = type(data.moves) == "table" and data.moves or (Moves and player == nil and Moves.ForAI(data)) or {},
 		special = nil, specialToken = 0, nextSpecial = 0, shellUntil = 0, shellKind = nil, shellHit = false, specialsUsed = 0,
 		lungeUntil = 0, lungeVel = nil,
+		-- combinations (Combos): the running chain, the buffered press, the signature combos owned (Main computes the
+		-- player's from the profile, an AI boxer's come from its tier and record), the fight's combo stats
+		chain = nil, buffered = false, comboStats = Combos.NewStats(),
+		sigs = type(data.sigs) == "table" and data.sigs or (player == nil and aiSignatures(data)) or {},
+		-- the dodges (Evasion): the one running, its evade window and its end (after the window and before the end a
+		-- punch CATCHES him), and the last defence's start / cost (a new dodge may cancel it: the pad's chords)
+		dodgeKind = nil, dodgeUntil = 0, dodgeEnd = 0, defAt = -10, defCost = 0, defCancelled = false, dodges = 0, evades = 0,
 		-- console aim assist level from the saved settings (0 off, 1 low, 2 high); the device the server holds
 		-- the fighter on ("kbd" until a rate-limited device message says pad), when it switched, how often it
 		-- switched lately, when the last input of each device arrived and when the server last saw the
@@ -402,7 +423,10 @@ function Fight:Comment(text, priority)
 	self:Send({ t = "comment", text = text })
 end
 
-function Fight:SetAct(F, act)
+-- chain = the punch's place in its combination (the model attribute Chain, set BEFORE Act / ActId so the
+-- Animator reads it with the act: Combos header); every other act sets it to 0
+function Fight:SetAct(F, act, chain)
+	setAttr(F.model, "Chain", chain or 0)
 	F.actId += 1
 	F.model:SetAttribute("Act", act)
 	F.model:SetAttribute("ActId", F.actId)
@@ -627,7 +651,7 @@ end
 local MENU_PAUSE = { cap = 60, gap = 3 }
 FightEngine.MENU_PAUSE = MENU_PAUSE
 local CARRY = { "hurtUntil", "stumbleUntil", "clinchUntil", "counterUntil", "angleUntil", "nextClinch", "nextSpecial", "nextPivot", "slipUntil",
-	"rollUntil", "parryUntil", "pivotEvadeUntil", "shellUntil", "lungeUntil", "busyUntil" }
+	"rollUntil", "parryUntil", "pivotEvadeUntil", "shellUntil", "lungeUntil", "busyUntil", "dodgeUntil", "dodgeEnd" }
 function Fight:MenuPause(F, on)
 	if self.pvp or not F.isPlayer or self.finished then
 		return
@@ -671,6 +695,9 @@ function Fight:UpdateMenuHold(now)
 			end
 			F.lastHitAt += dur
 			F.lastBodyHitAt += dur
+			if F.chain and not F.chain.closed then
+				F.chain.closeAt += dur -- (a combination's window waits over the pause too)
+			end
 		end
 		self.menuEndAt = now
 		self.resumedAt = now
@@ -689,8 +716,11 @@ function Fight:Sprinting(F)
 end
 
 -- counter = a counter jab / cross (Q + click, E + right click): the punch comes straight out of the slip
--- (the slip's recovery does not hold it) and counts as a counter when it catches the other man punching
-function Fight:Punch(F, ptype, body, counter)
+-- (the slip's recovery does not hold it) and counts as a counter when it catches the other man punching.
+-- Combinations (Shared.Combos): a punch thrown inside the last one's chain window continues its chain; a press
+-- up to Combos.BUFFER before the recovery ends is held and thrown on the frame it ends (fromBuffer); an earlier
+-- one is refused and counted against the chain as a mash
+function Fight:Punch(F, ptype, body, counter, fromBuffer)
 	local P = Config.Punches[ptype]
 	if not P or not self:CanAct(F) then
 		return
@@ -698,7 +728,21 @@ function Fight:Punch(F, ptype, body, counter)
 	local now = self:Now()
 	-- only the straight counters (jab / cross, all the keymap sends) skip the slip's recovery, once per slip
 	local outOfSlip = counter == true and (ptype == "jab" or ptype == "cross") and now - (F.slipAt or -10) < 0.6 and F.state ~= "punching"
-	if now < F.busyUntil and not outOfSlip then
+	if now < F.busyUntil and not outOfSlip and not (fromBuffer and now >= F.busyUntil - 0.03) then
+		if F.state == "punching" and not F.special and not fromBuffer then
+			if F.busyUntil - now <= Combos.BUFFER and not F.buffered then
+				F.buffered = true
+				local fightId = self.id
+				task.delay(F.busyUntil - now, function()
+					if self.id == fightId and not self.finished then
+						F.buffered = false
+						self:Punch(F, ptype, body, counter, true)
+					end
+				end)
+			elseif F.chain and not F.chain.closed then
+				F.chain.mash += 1 -- (a wild press: the chain's accuracy pays for it)
+			end
+		end
 		return
 	end
 	if outOfSlip then
@@ -714,26 +758,40 @@ function Fight:Punch(F, ptype, body, counter)
 	local s = F.data.stats
 	local stamPct = F.stamina / F.maxStam
 	local windup = P.windup * punchSpeed(F, stamPct)
-	if now - F.lastPunch < 0.7 then
-		F.combo += 1
-		windup *= 0.88
-	else
-		F.combo = 1
+	-- the chain: inside the window it goes on, else a new one starts (the old one is scored)
+	local chained = Combos.Continues(F.chain, now)
+	if not chained then
+		self:CloseChain(F)
+		F.chain = Combos.NewChain(now)
+	end
+	local chain = F.chain
+	F.combo = chain.punches + 1
+	if chained and chain.punches > 0 then
+		windup *= Combos.CHAIN_WINDUP
 	end
 	F.lastPunch = now
-	local cost = P.stam * (body and 1.1 or 1) * (1.2 - s.Endurance / 250) * (F.combo > 2 and 1.1 or 1)
+	local cost = P.stam * (body and 1.1 or 1) * (1.2 - s.Endurance / 250) * Combos.StamMul(F.combo)
 	F.stamina = math.max(0, F.stamina - cost)
 	F.blocking = false
 	F.state = "punching"
 	F.special = nil -- a plain punch replaces whatever special was still being thrown
-	F.busyUntil = now + windup + windup * 0.9
+	F.dodgeKind = nil
+	F.busyUntil = now + windup * Combos.RECOVERY_MUL
+	chain.closeAt = F.busyUntil + Combos.Window(windup)
 	F.assistNext = self:AssistBonus(F)
 	local hand = P.hand
 	if ptype == "uppercut" then
 		hand = (F.hand == "R" and F.combo > 1) and "L" or "R"
 	end
 	F.hand = hand
-	self:SetAct(F, string.format("%s|%s|%s|%.2f", ptype, hand, body and "body" or "head", windup))
+	local item = Combos.AddPunch(chain, { tok = Combos.Token(ptype, body, hand), p = ptype, body = body == true, cost = cost, at = now, windup = windup }, F.sigs)
+	-- (with the act flag the Animator reads, Combos header: the punch's place in the combination)
+	-- (a chained punch also carries its place as the act's sixth field, the Animator's format: "jab|L|head|0.16||2")
+	local act = string.format("%s|%s|%s|%.2f", ptype, hand, body and "body" or "head", windup)
+	if F.combo >= 2 then
+		act ..= "||" .. F.combo
+	end
+	self:SetAct(F, act, F.combo)
 	F.tally.thrown += 1
 	F.totals.thrown += 1
 	F.punchesUsed[ptype] = (F.punchesUsed[ptype] or 0) + 1
@@ -742,14 +800,72 @@ function Fight:Punch(F, ptype, body, counter)
 	end
 	if self.tutorial and F == self.P then
 		self:TutorialNote({ k = "punch", p = ptype, body = body == true })
+		if item.named then
+			self:TutorialNote({ k = "combo", id = item.named.id, counter = item.named.counter == true })
+		end
 	end
 	local fightId = self.id
-	local opts = outOfSlip and { counterPunch = true } or nil
+	local opts = { counterPunch = outOfSlip or nil, chain = item, chainRef = chain }
 	task.delay(windup, function()
 		if self.id == fightId and not self.finished then
 			self:Resolve(F, O, ptype, body, stamPct, opts)
 		end
 	end)
+end
+
+-- the end of a fighter's chain: scored into his combo stats, and the HUD's counter told it is over
+function Fight:CloseChain(F)
+	local chain = F.chain
+	if not chain or chain.closed then
+		return
+	end
+	local sum = Combos.Close(chain)
+	Combos.Record(F.comboStats, sum)
+	if sum.punches >= 2 then
+		self:Send({ t = "comboEnd", who = self:Who(F), hits = sum.landed, n = sum.punches, name = sum.named and sum.named.name or nil })
+	end
+end
+
+-- a punch of a chain has its result (res = "landed" | "blocked" | "miss"): the combo rules (Combos.Result) and
+-- the HUD's counter / call-outs
+function Fight:ChainResult(F, O, sp, res)
+	local it, chain = sp and sp.chain, sp and sp.chainRef
+	if not (it and chain) or it.res then
+		return
+	end
+	local ev = Combos.Result(chain, it, res)
+	if res == "miss" and chain.punches >= Combos.WHIFF_FROM then
+		F.stamina = math.max(0, F.stamina - Combos.WHIFF) -- a wild flurry's misses cost more
+	end
+	if ev.refund and ev.refund > 0 then
+		F.stamina = math.min(F.stamCap or F.maxStam, F.stamina + ev.refund)
+	end
+	local who = self:Who(F)
+	if ev.named then
+		self:Send({ t = "combo", who = who, hits = chain.landed, n = chain.punches, name = ev.named.name, id = ev.named.id, sig = ev.named.signature or nil })
+		if ev.named.signature or it.namedLen >= 3 then
+			self:Comment(string.format("%s lands the %s!", F.data.name, ev.named.signature and ev.named.name:lower() or ev.named.name), ev.named.signature)
+		end
+	elseif chain.punches >= 2 then
+		self:Send({ t = "combo", who = who, hits = chain.landed, n = chain.punches })
+	end
+	if ev.broken and F.chain == chain then
+		-- the second punch into the guard: the combination is smothered and the other man's counter is on
+		local now = self:Now()
+		O.counterUntil = math.max(O.counterUntil, now + Combos.BREAK_COUNTER)
+		F.busyUntil = math.max(F.busyUntil, now) + Combos.BREAK_STALL
+		self:CloseChain(F)
+		self:Send({ t = "comboBroken", who = who })
+	end
+end
+
+-- a dodge that made the punch miss opens a chain for the man who dodged: the counter thrown in its window
+-- continues it (SLIP-COUNTER, WEAVE-COUNTER...)
+function Fight:DodgeChain(F, kind, window)
+	self:CloseChain(F)
+	F.chain = Combos.NewChain(self:Now())
+	Combos.AddDodge(F.chain, kind, self:Now(), window)
+	F.evades += 1
 end
 
 -- the root travel of a special's set-up (a leap in, two steps back): the NPC glides on the server, the
@@ -812,7 +928,10 @@ function Fight:Special(F, id)
 	F.stamina = math.max(0, F.stamina - M.stam * (1.2 - F.data.stats.Endurance / 250))
 	F.blocking = false
 	F.state = "punching"
+	self:CloseChain(F) -- (a special is a combination of its own: it ends the chain)
+	F.chain = nil
 	F.combo = 1
+	F.dodgeKind = nil
 	F.lastPunch = now
 	-- the recovery of the last punch (the check hook's long pivot-out animates on its own; the next act
 	-- simply replaces it)
@@ -898,23 +1017,39 @@ function Fight:Evaded(F, O, ptype, body, now)
 	if now < O.pivotEvadeUntil and kind == "straight" then
 		O.counterUntil = now + 0.6
 		self:Send({ t = "defense", who = self:Who(O), move = "PIVOT" })
+		self:DodgeChain(O, "sidestep", 0.6)
 		return true
 	end
 	if now < O.slipUntil and not body then
 		if kind == "straight" or (kind == "hook" and self.rng:NextNumber() < 0.5) then
 			O.counterUntil = now + 0.85
-			self:Send({ t = "defense", who = self:Who(O), move = "SLIPPED" })
+			self:Send({ t = "defense", who = self:Who(O), move = "SLIPPED", dodge = "slip" })
 			self:Comment(O.data.name .. " slips it beautifully!")
+			self:DodgeChain(O, "slip", 0.85)
 			return true
 		end
 	end
 	if now < O.rollUntil and not body then
 		if kind == "hook" or kind == "overhand" or (kind == "straight" and self.rng:NextNumber() < 0.5) then
 			O.counterUntil = now + 0.8
-			self:Send({ t = "defense", who = self:Who(O), move = "ROLLED UNDER" })
+			self:Send({ t = "defense", who = self:Who(O), move = "ROLLED UNDER", dodge = "roll" })
 			self:Comment(O.data.name .. " rolls under it!")
+			self:DodgeChain(O, "roll", 0.8)
 			return true
 		end
+	end
+	-- the dodges of Shared.Evasion (weave, duck, pull, side-step): inside the window, when it beats the punch
+	local dk = O.dodgeKind
+	local E = dk and dk ~= "slip" and dk ~= "roll" and Evasion.Moves[dk]
+	if E and now < O.dodgeUntil and Evasion.Beats(dk, kind, body, self.rng:NextNumber()) then
+		O.dodgeUntil = 0
+		O.counterUntil = now + E.counter
+		self:Send({ t = "defense", who = self:Who(O), move = E.text, dodge = dk })
+		if self.rng:NextNumber() < 0.5 then
+			self:Comment(string.format("%s %s!", O.data.name, dk == "weave" and "weaves under it" or (dk == "duck" and "ducks it" or (dk == "pull" and "pulls back from it" or "steps off the line"))))
+		end
+		self:DodgeChain(O, dk, E.counter)
+		return true
 	end
 	return false
 end
@@ -1017,6 +1152,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	local dist = self:Distance(F, O)
 	sp = sp or {}
 	if dist > self:PunchRange(F, ptype, sp.range) then
+		self:ChainResult(F, O, sp, "miss")
 		self:Miss(F, O, ptype, "short")
 		return
 	end
@@ -1024,6 +1160,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		if F.ai then
 			F.ai.obs.slips += 1
 		end
+		self:ChainResult(F, O, sp, "miss")
 		self:Miss(F, O, ptype, "evaded")
 		return
 	end
@@ -1057,6 +1194,20 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		F.pivotEvadeUntil = now + 0.3 * self:DefenseMul(F)
 	end
 	chance += (sp.hit or 0)
+	-- the combination (Combos: a named combo's last punch, a level change, a long or predictable flurry, mashing)
+	local item = sp.chain
+	if item then
+		chance += item.hit or 0
+	end
+	-- a punch out of a dodge's counter window finds him off balance (Evasion.COUNTER_HIT); one that catches him
+	-- after his dodge's window but before he is set again lands easier and harder (Evasion: the timing)
+	if now < F.counterUntil then
+		chance += Evasion.COUNTER_HIT
+	end
+	local caught = O.dodgeKind ~= nil and now >= O.dodgeUntil and now < O.dodgeEnd
+	if caught then
+		chance += Evasion.CAUGHT_HIT
+	end
 	if (F.assistNext or 0) > 0 then
 		-- the console forgiveness never lifts a punch past the cap (and never lowers one that is already above it)
 		chance = math.max(chance, math.min(chance + F.assistNext, ASSIST.cap))
@@ -1070,6 +1221,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	if not O.blocking then
 		local roll = self.rng:NextNumber()
 		if roll > chance then
+			self:ChainResult(F, O, sp, "miss")
 			self:Miss(F, O, ptype, "miss")
 			return
 		end
@@ -1088,7 +1240,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	dmg *= self.damageScale
 	if self.tutorial and Tutorial then
 		-- the tutorial is forgiving: the player's shots land harder, the opponent's barely hurt
-		dmg *= O.isPlayer and Tutorial.DAMAGE_TAKEN or Tutorial.DAMAGE_DEALT
+		dmg *= Tutorial.DamageMul(self.tutorial, O.isPlayer)
 	end
 	if angled then
 		dmg *= 1.1
@@ -1102,6 +1254,14 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	end
 	if F.combo >= 2 then
 		dmg *= 1 + (F.style.fight.combo - 1) * 0.5
+	end
+	if item and sp.chainRef then
+		-- the landed-chain ramp and the named / signature combo's own bonus
+		dmg *= Combos.Ramp(sp.chainRef, item, F.style.fight.combo) * (item.dmg or 1)
+	end
+	if O.dodgeKind ~= nil and now < O.dodgeEnd then
+		-- caught in a dodge that does not beat this punch (an uppercut into a weave), or after its window
+		dmg *= Evasion.Punish(O.dodgeKind, P.kind) * (caught and Evasion.CAUGHT_DMG or 1)
 	end
 	dmg *= sp.dmg or 1
 	local counter = false
@@ -1144,6 +1304,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		end
 		self:SetAct(O, "blockhit")
 		self:CheckTier(O)
+		self:ChainResult(F, O, sp, "blocked")
 		return
 	elseif O.blocking and body then
 		dmg *= 0.75
@@ -1216,7 +1377,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 			})
 			p *= sp.kd or 1
 			if self.tutorial and Tutorial and not O.isPlayer then
-				p *= Tutorial.KO_MUL
+				p *= Tutorial.KoMul(self.tutorial)
 			end
 			if self.rng:NextNumber() < p then
 				kd = true
@@ -1252,8 +1413,12 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	self:Send({
 		t = "hit", who = self:Who(F), punch = ptype, body = body, dmg = math.floor(dmg * 10) / 10, counter = counter, heavy = heavy,
 		hand = F.hand, sev = math.floor(sev * 100) / 100, bleed = (O.dmg.cut > 0.35 or O.dmg.cut2 > 0.35 or O.dmg.noseBleed > 0.4),
-		special = sp.id, kind = P.kind,
+		special = sp.id, kind = P.kind, caught = caught or nil, chain = item and item.n or nil,
 	})
+	self:ChainResult(F, O, sp, "landed")
+	if caught and O.isPlayer then
+		self:SendTo(O, { t = "announce", text = "CAUGHT MID-DODGE!" })
+	end
 	if heavy then
 		local name = Config.PunchNames[ptype]
 		self:Comment(string.format("%s lands a %s%s%s!", F.data.name, counter and "counter " or "", body and "body " or "", name:lower()), counter)
@@ -1275,7 +1440,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	end
 
 	-- the tutorial: the player never goes down, the opponent only once the last step is up
-	if self.tutorial and Tutorial and (kd or liver) and (O.isPlayer or not Tutorial.CanDrop(self.tutorial)) then
+	if self.tutorial and Tutorial and (kd or liver) and self:Protected(O) then
 		kd, liver = false, nil
 		O.health = math.max(O.health, 25)
 		O.body = math.max(O.body, 25)
@@ -1384,27 +1549,44 @@ function Fight:SetBlock(F, on)
 	end
 end
 
-local function defenseReady(self, F, cost)
+-- cancel = a new dodge may replace a defence started less than Evasion.CANCEL ago (the pad's flick-then-button
+-- chords: the flick's slip, roll or parry turns into the weave, the duck, the pull or the side-step), with half
+-- the first one's stamina back; a punch's recovery is never cancelled
+local function defenseReady(self, F, cost, cancel)
 	if not self:CanAct(F) then
 		return false
 	end
 	local now = self:Now()
-	if now < F.busyUntil or F.stamina < cost then
+	local cancelling = false
+	if now < F.busyUntil then
+		if not (cancel and F.state ~= "punching" and not F.defCancelled and now - F.defAt < Evasion.CANCEL) then
+			return false
+		end
+		cancelling = true
+	end
+	if F.stamina + (cancelling and F.defCost * 0.5 or 0) < cost then
 		return false
+	end
+	if cancelling then
+		F.stamina += F.defCost * 0.5
+		F.slipUntil, F.rollUntil, F.parryUntil, F.pivotEvadeUntil, F.dodgeUntil = 0, 0, 0, 0, 0
 	end
 	F.stamina -= cost
 	F.blocking = false
 	F.state = "idle"
+	F.defAt, F.defCost, F.defCancelled = now, cost, cancelling
+	F.dodges += 1
 	return true
 end
 
 function Fight:Slip(F, dir)
-	if not defenseReady(self, F, 4) then
+	if not defenseReady(self, F, Evasion.Moves.slip.stam) then
 		return
 	end
 	local now = self:Now()
-	F.slipUntil = now + (0.26 + F.data.stats.Reflexes * 0.003 + F.data.stats.HeadMovement * 0.002) * self:DefenseMul(F)
-	F.busyUntil = now + 0.42
+	F.slipUntil = now + Evasion.Window("slip", F.data.stats, self:DefenseMul(F))
+	F.busyUntil = now + Evasion.Moves.slip.recover
+	F.dodgeKind, F.dodgeUntil, F.dodgeEnd = "slip", F.slipUntil, F.busyUntil
 	F.slipAt = now -- a counter jab / cross may come straight out of this slip (Punch)
 	self:SetAct(F, "slip|" .. (dir == -1 and "L" or "R"))
 	if self.tutorial and F == self.P then
@@ -1414,15 +1596,60 @@ end
 
 -- quick = the quick dodge (Shift + Space): a shorter window, a quicker recovery, cheaper
 function Fight:Roll(F, quick)
-	if not defenseReady(self, F, quick and 3 or 5) then
+	if not defenseReady(self, F, quick and 3 or Evasion.Moves.roll.stam) then
 		return
 	end
 	local now = self:Now()
-	F.rollUntil = now + ((quick and 0.2 or 0.3) + F.data.stats.HeadMovement * 0.003) * self:DefenseMul(F)
-	F.busyUntil = now + (quick and 0.36 or 0.55)
+	F.rollUntil = now + (quick and (Evasion.Window("roll", F.data.stats, self:DefenseMul(F)) - 0.1) or Evasion.Window("roll", F.data.stats, self:DefenseMul(F)))
+	F.busyUntil = now + (quick and 0.36 or Evasion.Moves.roll.recover)
+	F.dodgeKind, F.dodgeUntil, F.dodgeEnd = "roll", F.rollUntil, F.busyUntil
 	self:SetAct(F, "roll")
 	if self.tutorial and F == self.P then
 		self:TutorialNote({ k = "roll" })
+	end
+end
+
+-- the dodges of Shared.Evasion beyond the slip and the roll: weave (dir), duck, pull, side-step (dir). The act
+-- (Evasion.Act: weave|L, duck, pull, sidestep|R) is the Animator's; the evade window, the recovery (a punch that
+-- lands after the window but inside it CATCHES him) and the stamina are Evasion's; a side-step also moves him off
+-- the line (as the pivot does, sideways) and leaves him at an angle
+function Fight:Dodge(F, kind, dir)
+	if kind == "slip" then
+		return self:Slip(F, dir)
+	elseif kind == "roll" then
+		return self:Roll(F, false)
+	end
+	local E = Evasion.Moves[kind]
+	if not E or not defenseReady(self, F, E.stam, true) then
+		return
+	end
+	local now = self:Now()
+	dir = dir == -1 and -1 or 1
+	F.dodgeKind = kind
+	F.dodgeUntil = now + Evasion.Window(kind, F.data.stats, self:DefenseMul(F))
+	F.busyUntil = now + E.recover
+	F.dodgeEnd = F.busyUntil
+	if kind ~= "sidestep" then
+		F.slipAt = now -- (a counter jab / cross may come straight out of the head movement, as out of a slip)
+	else
+		F.angleUntil = now + E.angle
+		local O = self:Other(F)
+		if F.root and O.root then
+			local toward = unitOr(flat(O.root.Position - F.root.Position), flat(F.root.CFrame.LookVector))
+			local side = Vector3.new(-toward.Z, 0, toward.X) * dir
+			local goal = self:ClampToRing(F.root.Position + side * E.step)
+			local d = flat(goal - F.root.Position)
+			if d.Magnitude > 0.1 then
+				local dur = 0.22
+				F.lungeUntil = now + dur
+				F.lungeVel = d.Unit * (d.Magnitude / dur)
+				self:Send({ t = "lunge", who = self:Who(F), dir = { x = d.Unit.X, z = d.Unit.Z }, dur = dur, speed = d.Magnitude / dur })
+			end
+		end
+	end
+	self:SetAct(F, Evasion.Act(kind, dir, E.recover))
+	if self.tutorial and F == self.P then
+		self:TutorialNote({ k = "dodge", kind = kind })
 	end
 end
 
@@ -1598,12 +1825,10 @@ end
 
 function Fight:SpawnReferee()
 	local ok, model = pcall(function()
-		local seed = 9000 + self.rng:NextInteger(1, 50000)
-		local age = self.spar and self.rng:NextInteger(45, 62) or self.rng:NextInteger(38, 58)
-		local app = Looks.Random(seed, 1, {})
-		local build = Looks.RandomBuild(seed, self.spar and 0.35 or 0.2, age)
-		local outfit = self.spar and "cornerman" or "referee"
-		return Builder.CreateNPC(app, build, {}, "Referee", { detail = "medium", outfit = outfit, hands = "bare", age = age, name = "", nick = "", waistText = "" })
+		-- (Officials: the look, the drawn face, the venue's / a title fight's shirt; the mesh outfit is BuilderBody's)
+		local kind = self.spar and "cornerman" or "referee"
+		local app, build, gear, opts = Officials.Look(self.rng:NextInteger(1, 2 ^ 30), kind, { venue = self.venue, kind = self.offerKind })
+		return Builder.CreateNPC(app, build, gear, "Referee", opts)
 	end)
 	if not ok or not model then
 		warn("[Boxer] referee could not be built:", model)
@@ -1892,10 +2117,12 @@ function Fight:Knockdown(F, by, severity, fall, cause)
 		return
 	end
 	if self.tutorial and Tutorial then
-		if F.isPlayer or not Tutorial.CanDrop(self.tutorial) then
+		if self:Protected(F) then
 			return -- (the tutorial: see Resolve; a stray caller is refused here too)
 		end
-		self:TutorialNote({ k = "kd" })
+		if not F.isPlayer then
+			self:TutorialNote({ k = "kd" })
+		end
 	end
 	severity = severity or "normal"
 	fall = fall or "back"
@@ -2193,8 +2420,8 @@ function Fight:CheckStoppage(F)
 	if n >= 4 then
 		self:Comment(self:Other(F).data.name .. " is unloading a flurry!")
 	end
-	if self.tutorial and Tutorial and (F.isPlayer or not Tutorial.CanDrop(self.tutorial)) then
-		return -- the tutorial: nobody is waved off before the last step
+	if self.tutorial and Tutorial and self:Protected(F) then
+		return -- the tutorial: nobody is waved off before the last step (the debut's player: before the final round)
 	end
 	-- time since the fighter last threw, not counting a pause he could not punch through
 	local idle = now - math.max(F.lastPunch, self.resumedAt or 0)
@@ -2515,6 +2742,14 @@ function Fight:Update(dt)
 		if F.state == "clinch" and now >= F.clinchUntil then
 			F.state = "idle"
 		end
+		-- a combination whose window has run out (and whose last punch has its result) is over
+		if F.chain and not F.chain.closed and now > F.chain.closeAt and now >= F.busyUntil then
+			self:CloseChain(F)
+			F.chain = nil
+		end
+		if F.dodgeKind and now >= F.dodgeEnd then
+			F.dodgeKind = nil
+		end
 		local s = F.data.stats
 		-- stamina ceiling: body damage and the rounds wear the gas tank down
 		F.stamCap = math.clamp(F.maxStam * (0.72 + 0.28 * F.body / 100) - F.stamErosion, F.maxStam * 0.35, F.maxStam)
@@ -2612,6 +2847,39 @@ end
 -- The first-time tutorial (Tutorial.lua): what the player does moves the guided steps on; the client's
 -- prompt card follows the "tutorial" messages
 ------------------------------------------------------------------------
+-- the guided bout's protection: may F not be knocked down / stopped right now? (the practice round: the player
+-- never, the opponent until the last step is up; the debut: the player until the final round)
+function Fight:Protected(F)
+	local tr = self.tutorial
+	if not (tr and Tutorial) then
+		return false
+	end
+	if F.isPlayer then
+		return not Tutorial.PlayerCanDrop(tr, self.round)
+	end
+	return not Tutorial.CanDrop(tr)
+end
+
+-- the debut's step card: SKIP GUIDE (the Fight remote's tutorialSkip) ends the guidance, the bout goes on as a
+-- normal fight (the forgiving damage stays for this one night)
+function Fight:EndGuide()
+	local tr = self.tutorial
+	if not (tr and self.debut) or tr.done then
+		return
+	end
+	tr.done = true
+	tr.skipped = true
+	self.aiWork = Tutorial.AiWork(tr)
+	self.aiDefense = Tutorial.AiDefense(tr)
+	self:SendTo(self.P, Tutorial.View(tr))
+end
+FightEngine.EndGuide = function(player)
+	local fight = FightEngine.Active[player]
+	if fight then
+		fight:EndGuide()
+	end
+end
+
 function Fight:TutorialNote(ev)
 	local tr = self.tutorial
 	if not (tr and Tutorial) or tr.done then
@@ -2620,8 +2888,9 @@ function Fight:TutorialNote(ev)
 	ev.now = self:Now()
 	if Tutorial.Feed(tr, ev) then
 		self.aiWork = Tutorial.AiWork(tr)
+		self.aiDefense = Tutorial.AiDefense(tr)
 		self:SendTo(self.P, Tutorial.View(tr))
-		if tr.done and not self.tutorialEndAt then
+		if tr.done and not self.tutorialEndAt and not self.debut then
 			-- (a knockdown: the count plays out first; Update ends the bout once both men are up, or the
 			-- count ends it as a KO)
 			self.tutorialEndAt = ev.now + 1.5
@@ -2653,7 +2922,7 @@ function Fight:TutorialStep(dt, now)
 	else
 		self.tutorialPos = nil
 	end
-	if self.tutorialEndAt and now >= self.tutorialEndAt and not self.finished and P.state ~= "down" and self.O.state ~= "down" then
+	if self.tutorialEndAt and not self.debut and now >= self.tutorialEndAt and not self.finished and P.state ~= "down" and self.O.state ~= "down" then
 		self:End(P, "Tutorial", "Tutorial complete")
 	end
 end
@@ -3073,7 +3342,8 @@ function Fight:Run()
 			-- the special moves this viewer may throw (ids) and the aim-assist level the server will honour
 			moves = movesList(V), assist = V.assist,
 			-- the first-time tutorial: the client puts its step card up
-			tutorial = self.tutorial and Tutorial and { total = #Tutorial.STEPS, special = Tutorial.SPECIAL } or nil,
+			tutorial = self.tutorial and Tutorial and { total = #(self.tutorial.steps or Tutorial.STEPS), special = self.tutorial.special or (not self.debut and Tutorial.SPECIAL) or nil,
+				debut = self.debut or nil } or nil,
 		}
 	end)
 	if self.tutorial and Tutorial then
@@ -3083,7 +3353,7 @@ function Fight:Run()
 	-- (E's integration request; the later AddTag calls are harmless no-ops)
 	CollectionService:AddTag(P.model, "Fighter")
 	CollectionService:AddTag(O.model, "Fighter")
-	if self.spar or self.tutorial then
+	if self.spar or (self.tutorial and not self.debut) then
 		self:Place(O, self.anchors.BlueCorner.Position)
 		self:Place(P, self.anchors.RedCorner.Position)
 		task.wait(1.5)
@@ -3097,7 +3367,7 @@ function Fight:Run()
 	self:SetupFacing(O)
 	CollectionService:AddTag(P.model, "Fighter")
 	CollectionService:AddTag(O.model, "Fighter")
-	if not self.spar and not self.tutorial then
+	if not self.spar and (not self.tutorial or self.debut) then
 		self:Send({ t = "tape" })
 		self:Wait(5)
 	end
@@ -3121,7 +3391,8 @@ function Fight:Run()
 		P.sprintOn, O.sprintOn = false, false
 		self:Send({ t = "round", n = r, total = self.rounds })
 		if r == 1 then
-			self:Comment(self.spar and "Sparring session starts. Work on your craft." or (self.tutorial and "Your first fight. Follow the steps on screen." or "Here we go! Round one!"), true)
+			self:Comment(self.spar and "Sparring session starts. Work on your craft." or (self.debut and "The debut! Follow your coach's steps on screen."
+				or (self.tutorial and "Your first fight. Follow the steps on screen." or "Here we go! Round one!")), true)
 		elseif r == self.rounds then
 			self:Comment("Final round! Everything on the line!", true)
 		end
@@ -3168,17 +3439,20 @@ function Fight:Run()
 			break
 		end
 		local rc = self:ScoreRound()
+		-- (the bell ends every running combination)
+		self:CloseChain(P)
+		self:CloseChain(O)
 		self:Send({ t = "bell", n = r })
 		if self.tutorial then
 			self:TutorialNote({ k = "bell" })
-			if self.tutorial.done and not self.finished then
+			if self.tutorial.done and not self.finished and not self.debut then
 				self:End(P, "Tutorial", "Tutorial complete")
 				break
 			end
 		end
 		if r < self.rounds then
 			self:Rest()
-			if not self.tutorial then
+			if not self.tutorial or (self.debut and r + 1 >= self.rounds) then
 				self:DoctorCheck()
 			end
 			if self.finished then
@@ -3196,11 +3470,12 @@ function Fight:Run()
 				return {
 					t = "rest", n = r, advice = self:CornerAdvice(V), card = red and rc[1] or { rc[1][2], rc[1][1] },
 					unofficial = red and { uP, uO } or { uO, uP },
-					stats = { landed = V.totals.landed, thrown = V.totals.thrown, oppLanded = X.totals.landed, oppThrown = X.totals.thrown },
+					stats = { landed = V.totals.landed, thrown = V.totals.thrown, oppLanded = X.totals.landed, oppThrown = X.totals.thrown,
+						combos = V.comboStats.landed, oppCombos = X.comboStats.landed, bestCombo = V.comboStats.best, bestComboName = V.comboStats.bestName },
 					seconds = Config.RestSeconds, cond = self:ConditionReport(V),
 				}
 			end)
-			self:Wait(self.spar and 4 or (self.tutorial and Tutorial and Tutorial.REST_SECONDS) or Config.RestSeconds)
+			self:Wait(self.spar and 4 or (self.tutorial and Tutorial and not self.debut and Tutorial.REST_SECONDS) or Config.RestSeconds)
 		end
 	end
 	if self.aborted then
@@ -3213,7 +3488,7 @@ function Fight:Run()
 	else
 		res = Career.DecideCards(self.cards)
 		res.round = self.rounds
-		res.reason = self.spar and "Session complete" or (self.tutorial and "Tutorial complete" or "Decision")
+		res.reason = self.spar and "Session complete" or ((self.tutorial and not self.debut) and "Tutorial complete" or "Decision")
 	end
 	-- the winner celebrates, the loser slumps (the Animator reads Guard / Expr)
 	for _, F in ipairs({ P, O }) do
@@ -3274,10 +3549,18 @@ function Fight:ResultFor(F, base)
 	end
 	res.bodyTaken = math.floor(100 - F.bodyCap)
 	res.headTaken = math.floor(F.headTaken * 10) / 10 -- Training.AddTrauma prefers this over damageTaken
+	-- the combinations (Combos.Record: chains of 2+, named combos landed, the best chain and the best named one)
+	-- and the head movement (dodges tried, punches they made miss)
+	self:CloseChain(F)
+	self:CloseChain(O)
+	local cs = F.comboStats
+	res.combos = { chains = cs.chains, landed = cs.landed, best = cs.best, bestName = cs.bestName, named = table.clone(cs.named) }
+	res.oppCombos = { landed = O.comboStats.landed, best = O.comboStats.best, bestName = O.comboStats.bestName }
+	res.dodges, res.evades = F.dodges, F.evades
 	return res
 end
 
-local FIGHT_ATTRS = { "Guard", "Act", "HeadHP", "BodyHP", "Stam", "Daze", "Conc", "Strain", "DownPose", "DownDir", "DownDist", "KOKind", "Count", "Style", "Expr" }
+local FIGHT_ATTRS = { "Guard", "Act", "Chain", "HeadHP", "BodyHP", "Stam", "Daze", "Conc", "Strain", "DownPose", "DownDir", "DownDist", "KOKind", "Count", "Style", "Expr" }
 
 function Fight:Cleanup()
 	for _, F in ipairs({ self.P, self.O }) do
@@ -3380,8 +3663,25 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 		self.roundSeconds = Tutorial.ROUND_SECONDS
 		self.aiWork = Tutorial.AiWork(self.tutorial)
 		self.aiDefense = Tutorial.AI_DEFENSE
+	elseif opts.debut and Tutorial and not oppPlayer and not sp then
+		-- the guided debut (Tutorial.Debut): a real career bout, its own rounds, the same step card with the steps
+		-- this boxer has (his first special move, if any), forgiving only for this night
+		local special = nil
+		if Moves and type(pData.moves) == "table" then
+			for _, id in ipairs(Moves.List) do
+				if pData.moves[id] then
+					special = id
+					break
+				end
+			end
+		end
+		self.debut = true
+		self.tutorial = Tutorial.NewTracker({ debut = true, special = special, specialName = special and Moves.Data[special].name or nil, rounds = self.rounds })
+		self.aiWork = Tutorial.AiWork(self.tutorial)
+		self.aiDefense = Tutorial.AiDefense(self.tutorial)
 	end
 	self.venue = opts.spar and "Gym" or (offer.venue or "Arena")
+	self.offerKind = offer.kind -- (a title fight's referee wears white: Officials.Colors)
 	self.round = 0
 	self.rng = Random.new()
 	self.cards = { { 0, 0 }, { 0, 0 }, { 0, 0 } }
@@ -3556,6 +3856,8 @@ function FightEngine.Input(player, msg)
 		fight:SetBlock(F, msg.on == true)
 	elseif t == "slip" then
 		fight:Slip(F, msg.dir == -1 and -1 or 1)
+	elseif t == "dodge" and (msg.kind == "weave" or msg.kind == "duck" or msg.kind == "pull" or msg.kind == "sidestep") then
+		fight:Dodge(F, msg.kind, msg.dir == -1 and -1 or 1)
 	elseif t == "roll" then
 		fight:Roll(F, msg.quick == true)
 	elseif t == "parry" then
@@ -3620,5 +3922,9 @@ function FightEngine.Forfeit(player, ranked)
 	fight.finished = true
 	return "aborted"
 end
+
+-- (for tools/sim/test_combos: the fight's methods and the fighter constructor, driven on stub models)
+FightEngine._Fight = Fight
+FightEngine._makeFighter = makeFighter
 
 return FightEngine

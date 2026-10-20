@@ -1158,7 +1158,8 @@ local function screenSettings(layer)
 		Settings.Set("controlHints", on)
 	end)
 	add(hintsRow, nudge(hintsRow, true))
-	-- the first-time tutorial fight, again: a short practice bout as a random boxer (never the career)
+	-- the practice round: a short guided bout as a random boxer (never the career; the first-time flow is the
+	-- guided debut, the new boxer's own first fight)
 	local function replayTutorial()
 		if State.open.Tutorial then
 			MainMenu.Close(function()
@@ -1166,13 +1167,13 @@ local function screenSettings(layer)
 			end)
 		end
 	end
-	local tutBtn = UI.Button(body, "REPLAY THE TUTORIAL FIGHT", { Name = "ReplayTutorial", Size = UDim2.fromOffset(320, math.max(40, UI.MinHit(body))) }, replayTutorial)
+	local tutBtn = UI.Button(body, "PRACTICE ROUND", { Name = "ReplayTutorial", Size = UDim2.fromOffset(320, math.max(40, UI.MinHit(body))) }, replayTutorial)
 	add(tutBtn, function(dir)
 		if dir == 0 then
 			replayTutorial()
 		end
 	end)
-	add(UI.Text(body, "A short guided fight as a random boxer: moving, punching, defending, stamina and a special move. Your career is not touched.", { TextSize = 13, TextColor3 = T.sub }))
+	add(UI.Text(body, "A short guided fight as a random boxer: moving, punching, combinations, defending, dodging and countering, stamina and a special move. Your career is not touched.", { TextSize = 13, TextColor3 = T.sub }))
 	-- the boxer's hair & face from the player's Roblox avatar (saved with the boxer: appearance.avatar)
 	local P = State.P
 	if P and P.created and type(P.appearance) == "table" then

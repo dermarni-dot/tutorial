@@ -33,6 +33,7 @@ local CityMap = require(Modules.CityMap) -- same instance MapBuilder built the c
 local PvP = require(Modules.PvP)
 local TutorialFight = require(Modules.TutorialFight)
 local Tutorial = require(Shared.Tutorial)
+local Combos = require(Shared.Combos)
 -- controls job: special moves (unlocks per style / tier / training) and the control map's sanitizer; both
 -- optional (nil-safe) so an older Shared folder still boots
 local Moves, Keymap
@@ -58,6 +59,8 @@ local function fightExtras(profile, data)
 		return data
 	end
 	data.moves = Moves and Moves.Unlocked(Moves.Info(profile)) or {}
+	-- the signature combos the career's fight milestones have opened (Shared.Combos)
+	data.sigs = (Moves and Combos) and Combos.UnlockedSignatures(Moves.Info(profile)) or {}
 	local ui = type(profile.settings) == "table" and type(profile.settings.ui) == "table" and profile.settings.ui or {}
 	data.assist = ASSIST_LEVEL[ui.aimAssist] or 0
 	return data
@@ -203,6 +206,9 @@ local function summary(player)
 	s.studio = RunService:IsStudio()
 	-- the first-time tutorial fight: offered to a new player (no career behind him, not done or skipped yet)
 	s.tutorial = { offer = Tutorial.ShouldOffer(profile), done = profile.tutorialDone == true or profile.created == true }
+	-- the guided debut (a new boxer's first career fight): offered right after the creator until fought or skipped
+	local debutVenue = Config.Venues[Tutorial.Debut.VENUE]
+	s.debut = { offer = Tutorial.ShouldOfferDebut(profile), rounds = Config.Tiers[1].rounds, venue = debutVenue and debutVenue.name or nil }
 	-- PvP record / rating (read-only view; profile.pvp is created lazily by the first PvP bout)
 	s.pvp = PvP.View(profile)
 	-- R-ui: always a table (Settings.Supported() checks it); ui = the saved values, or nil before the first save
@@ -909,7 +915,18 @@ local function settleFight(player, watch, res)
 	return Career.ApplyResult(profile, res)
 end
 
-local function runFight(player, profile)
+-- opts (optional) = { debut = true }: the guided debut (Tutorial.Debut: the step card, the forgiving rules for the
+-- night). A debut left mid-bout (or reset, or crashed) counts as not fought: no forfeit, no loss, its camp is
+-- dropped and it is offered again (cancelDebut); a result the engine announced is recorded as usual.
+local function cancelDebut(profile, watch)
+	if profile.camp and profile.camp.offer == watch.offer then
+		profile.camp = nil
+		profile.offers = watch.prevOffers
+	end
+end
+
+local function runFight(player, profile, opts)
+	opts = type(opts) == "table" and opts or {}
 	local offer = profile.camp.offer
 	local b = profile.world.boxers[offer.oppId]
 	if not b then
@@ -930,6 +947,11 @@ local function runFight(player, profile)
 		-- how big a night it is (the house: Venues.Importance): the career tier, the purse, the opponent's best ranking
 		careerTier = profile.tier, purse = offer.purse,
 	}
+	if opts.debut then
+		-- a small house for a debut (the community centre, a modest crowd, some of the gym's own in the seats)
+		venueOpts.importance = Tutorial.Debut.IMPORTANCE
+		venueOpts.supporters = math.max(venueOpts.supporters, Tutorial.Debut.SUPPORTERS)
+	end
 	do
 		local best
 		for _, r in pairs(type(offer.opp) == "table" and type(offer.opp.ranks) == "table" and offer.opp.ranks or {}) do
@@ -948,9 +970,13 @@ local function runFight(player, profile)
 	local arena = Venues.New(offer.venue or "Arena", venueOpts)
 	local pData = Career.FighterFromProfile(profile)
 	local oData = Career.FighterFromBoxer(b)
+	if opts.debut then
+		-- (a weaker man for the debut, whatever the young world holds: his fight-night copy only)
+		Career.DebutOpponent(oData, profile.overall, Tutorial.Debut.OPP_BELOW[2])
+	end
 	local char = player.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	local watch = { profile = profile, offer = offer }
+	local watch = { profile = profile, offer = offer, debut = opts.debut == true, prevOffers = opts.prevOffers }
 	fightWatch[player] = watch
 	-- the engine announces its result ("final") a few seconds before Run returns: remember it, so a
 	-- player who leaves during the closing scene still gets the real result recorded
@@ -964,14 +990,14 @@ local function runFight(player, profile)
 	local diedConn
 	if hum then
 		diedConn = hum.Died:Connect(function()
-			if not watch.decided then
+			if not watch.decided and not watch.debut then
 				watch.quit = quitResult(player)
 			end
 			FightEngine.Abort(player)
 		end)
 	end
 	fightExtras(profile, pData)
-	local ok, res = pcall(FightEngine.Run, player, remote, offer, pData, oData, arena)
+	local ok, res = pcall(FightEngine.Run, player, remote, offer, pData, oData, arena, opts.debut and { debut = true } or nil)
 	if not ok then
 		warn("[Boxer] fight crashed:", res)
 		res = nil
@@ -995,9 +1021,19 @@ local function runFight(player, profile)
 	res = res or watch.quit
 	local out = settleFight(player, watch, res)
 	if out then
+		if watch.debut then
+			Tutorial.MarkDebut(profile, "completed")
+			table.insert(out.notes, 1, "YOUR DEBUT is on the record. The FIGHT BOARD (H) has your next fights.")
+		end
 		FightRemote:FireClient(player, { t = "result", result = res, notes = out.notes, earnings = out.earnings, opp = b.name, kind = offer.kind, venue = offer.venueName })
 		task.spawn(DataManager.Save, player, true)
 	else
+		if watch.debut then
+			-- (called off: nothing recorded, offered again)
+			cancelDebut(profile, watch)
+			FightRemote:FireClient(player, { t = "debutEnd", how = ok and "aborted" or "crashed", info = { rounds = Config.Tiers[1].rounds,
+				venue = Config.Venues[Tutorial.Debut.VENUE] and Config.Venues[Tutorial.Debut.VENUE].name or nil } })
+		end
 		FightRemote:FireClient(player, { t = "aborted" })
 	end
 	applyLook(player)
@@ -1554,6 +1590,9 @@ function handlers.CreateBoxer(player, profile, data)
 	end
 	-- a boxer of his own: the first-time tutorial is behind him (done, skipped or never needed)
 	newProfile.tutorialDone = true
+	-- a first-time player's new boxer gets the guided debut, offered right after the creator (Tutorial.NewBoxer:
+	-- not for a player with past careers)
+	Tutorial.NewBoxer(newProfile, profile.pastCareers)
 	DataManager.Set(player, newProfile)
 	customizing[player] = nil
 	applyLook(player)
@@ -2175,6 +2214,42 @@ function handlers.StartTutorial(player, profile)
 	return { ok = true }
 end
 
+-- the guided debut: the new boxer's first career fight (Career.DebutOffer, a real Amateur Bout run with the
+-- step card and the night's forgiving rules). SkipDebut: no guide, the career goes on as usual (nothing booked)
+function handlers.StartDebut(player, profile)
+	if not Tutorial.ShouldOfferDebut(profile) then
+		return { ok = false, err = profile.camp and "You already have a fight booked." or "Your debut is behind you." }
+	end
+	if busy[player] or customizing[player] or pvpWatch[player] or tutorialWatch[player] or FightEngine.Active[player] or player:GetAttribute("InFight") == true then
+		return { ok = false, err = "Finish what you're doing first." }
+	end
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not (char and char:FindFirstChild("HumanoidRootPart") and hum and hum.Health > 0) then
+		return { ok = false, err = "Your character isn't ready." }
+	end
+	local okOffer, offer = pcall(Career.DebutOffer, profile, { below = Tutorial.Debut.OPP_BELOW, venue = Tutorial.Debut.VENUE, rng = rng })
+	if not okOffer or not offer then
+		warn("[Boxer] debut offer:", offer)
+		return { ok = false, err = "Couldn't find you an opponent right now." }
+	end
+	PvP.LeaveQueue(player)
+	local prevOffers = profile.offers
+	-- fight night is tonight: no camp days (Backfill drops a debut camp a crashed session left behind)
+	profile.camp = { offer = offer, daysLeft = 0, daysTotal = 0, log = {}, debut = true }
+	profile.offers = nil
+	setBusy(player, "fight")
+	task.spawn(runFight, player, profile, { debut = true, prevOffers = prevOffers })
+	return { ok = true }
+end
+
+function handlers.SkipDebut(player, profile)
+	if Tutorial.ShouldOfferDebut(profile) and Tutorial.MarkDebut(profile, "skipped") then
+		task.spawn(DataManager.Save, player)
+	end
+	return { ok = true }
+end
+
 function handlers.SkipTutorial(player, profile)
 	if TutorialFight.Finish(profile, "skipped") then
 		task.spawn(DataManager.Save, player)
@@ -2328,6 +2403,9 @@ FightRemote.OnServerEvent:Connect(function(player, msg)
 		if w then
 			w.skipped = true
 			FightEngine.Abort(player)
+		elseif fightWatch[player] and fightWatch[player].debut then
+			-- the debut's SKIP GUIDE: the guide stops, the fight goes on
+			FightEngine.EndGuide(player)
 		end
 		return
 	end
@@ -2416,8 +2494,16 @@ Players.PlayerRemoving:Connect(function(player)
 	local watch = fightWatch[player]
 	if watch then
 		local ok, err = pcall(function()
-			local res = watch.decided or (not shuttingDown and quitResult(player)) or nil
+			-- (a debut left mid-bout is not fought: no forfeit, its camp dropped before the leave save)
+			local res = watch.decided or (not shuttingDown and not watch.debut and quitResult(player)) or nil
 			settleFight(player, watch, res)
+			if watch.debut then
+				if watch.settled then
+					Tutorial.MarkDebut(watch.profile, "completed")
+				else
+					cancelDebut(watch.profile, watch)
+				end
+			end
 		end)
 		if not ok then
 			warn("[Boxer] fight settle on leave:", err)

@@ -104,6 +104,11 @@ local function client(dev, opts)
 	opts = opts or {}
 	local S = GS.new(dev)
 	local P = profileFor(S)
+	if opts.debut then
+		-- a boxer just out of the creator: the guided debut is offered (Main's summary field)
+		P.debut = { offer = true, rounds = 3, venue = "Community Center" }
+		P.record = { w = 0, l = 0, d = 0, ko = 0 }
+	end
 	S.P = P
 	S.onInvokeServer = function(_, action)
 		if action == "GetProfile" then
@@ -223,6 +228,51 @@ local function tutorialFight(dev, stepId, strip)
 end
 screen("fight_tutorial", function(dev)
 	return tutorialFight(dev, "stamina")
+end)
+-- the fight HUD's combo counter: a named combo just landed (the counter and its call-out up)
+local function fireCombo(S)
+	local fire = S.remotes.FightEvent
+	fire:Fire({ t = "combo", who = "you", hits = 2, n = 2 })
+	fire:Fire({ t = "combo", who = "you", hits = 4, n = 4, name = "1-2-3-2", id = "onetwothreetwo" })
+	fire:Fire({ t = "combo", who = "opp", hits = 2, n = 2, name = "LEFT-RIGHT HOOKS", id = "hookhook" })
+	S.settle(0.3)
+end
+screen("fight_combo", function(dev)
+	local S = client(dev, { fightOnly = true })
+	startFight(S, S.require("Moves").List)
+	fireCombo(S)
+	local meter = find(S, "FightUI.HUDRoot.ComboMeter.Card")
+	check("fight_combo@" .. dev .. ": the combo counter is up", meter ~= nil and meter.Visible == true)
+	local callout = find(S, "FightUI.HUDRoot.ComboMeter.Card.Callout")
+	check("fight_combo@" .. dev .. ": the call-out", callout ~= nil and (callout.Text == "OPP  LEFT-RIGHT HOOKS" or callout.Text == "1-2-3-2!"), callout and callout.Text)
+	return S
+end)
+-- the guided debut's step card (the combo step) with the combo counter up beside it
+screen("fight_debut", function(dev)
+	local S = client(dev, { fightOnly = true })
+	local Steps = S.require("Tutorial")
+	S.require("Client/Tutorial").Start()
+	local fire = S.remotes.FightEvent
+	fire:Fire({ t = "start", rounds = 3, tape = TAPE, kind = "Amateur Bout", venue = "CommunityCenter", venueName = "Community Center", moves = { "overhand" },
+		tutorial = { total = 12, special = "overhand", debut = true } })
+	S.settle(0.2)
+	fire:Fire({ t = "round", n = 1, total = 3 })
+	fire:Fire({ t = "countdown", n = 0, round = 1 })
+	fire:Fire({ t = "state", time = 60, me = { hp = 95, cap = 100, body = 90, bodyCap = 100, stam = 70, max = 100, stamCap = 100, conc = 0, tier = 0, bal = 90 },
+		opp = { hp = 80, cap = 100, body = 80, bodyCap = 100, stam = 60, max = 100, stamCap = 100, conc = 0, tier = 0 } })
+	local tr = Steps.NewTracker({ debut = true, special = "overhand", specialName = "Loaded overhand", rounds = 3 })
+	tr.step = Steps.IndexOf(tr, "counter")
+	fire:Fire(Steps.View(tr))
+	fireCombo(S)
+	S.settle(1.2)
+	return S
+end)
+-- the debut's offer, right after the creator (ClientMain puts it up from the summary)
+screen("debut_offer", function(dev)
+	local S = client(dev, { debut = true })
+	S.settle(0.8)
+	check("debut_offer@" .. dev .. ": ClientMain offers the debut", find(S, "TutorialUI.Root.DebutOffer") ~= nil)
+	return S
 end)
 screen("fight_tutorial_keys", function(dev)
 	return tutorialFight(dev, "finish", true)
@@ -400,7 +450,8 @@ screen("result", function(dev)
 		venue = "Grand Arena", opp = "Dmitri Volkovsky", earnings = 250000,
 		notes = { "WORLD CHAMPION: you won the WBC belt", "NEW SPECIAL MOVE: Liver Shot" },
 		result = { outcome = "win", method = "KO", round = 7, reason = "Left hook to the liver", cards = { { 59, 55 }, { 58, 56 }, { 60, 54 } },
-			landed = 143, oppLanded = 88, thrown = 402, oppThrown = 377, kdFor = 2, kdAgainst = 0 },
+			landed = 143, oppLanded = 88, thrown = 402, oppThrown = 377, kdFor = 2, kdAgainst = 0,
+			combos = { chains = 31, landed = 12, best = 6, bestName = "DEMPSEY FINISH", named = {} }, oppCombos = { landed = 7, best = 4 } },
 	})
 	S.settle(0.6)
 	return S
@@ -458,12 +509,13 @@ for _, d in ipairs(DRILLS) do
 end
 
 local DEVICES = { "phone", "phone_small", "tablet", "desktop", "console" }
-local PAD_SELECT = { hub = true, hub_training = true, controls = true, result = true, menu_career = true, tutorial_offer = true, tutorial_done = true }
+local PAD_SELECT = { hub = true, hub_training = true, controls = true, result = true, menu_career = true, tutorial_offer = true, tutorial_done = true, debut_offer = true }
 -- (the tutorial's step card is checked with the fight HUD's pieces: on the screen, below the top bar, finger-sized
 -- on touch, apart from the scoreboard, the touch pads, the key strip and the stance chips)
 -- the fight HUD also on a phone with a controller and a short laptop window (the key strip on small canvases)
 local EXTRA = { drill_bench = { "laptop" }, drill_massage = { "laptop", "phone_pad" }, drill_bike = { "laptop" }, fight = { "phone_pad", "laptop" }, fight_strip = { "phone_pad", "laptop" }, fight_down = { "phone_pad" }, menu = { "laptop" }, gym = { "laptop" },
-	fight_tutorial = { "phone_pad", "laptop" }, fight_tutorial_keys = { "phone_pad", "laptop" }, tutorial_offer = { "phone_pad" } }
+	fight_tutorial = { "phone_pad", "laptop" }, fight_tutorial_keys = { "phone_pad", "laptop" }, tutorial_offer = { "phone_pad" },
+	fight_combo = { "phone_pad", "laptop" }, fight_debut = { "phone_pad", "laptop" }, debut_offer = { "phone_pad" } }
 
 ------------------------------------------------------------------------
 -- checks
@@ -539,7 +591,7 @@ local function run(name, dev)
 		local pieces = {
 			"FightUI.HUDRoot.Scoreboard", "FightUI.HUDRoot.TouchPad", "FightUI.HUDRoot.TouchPad.Specials", "FightUI.HUDRoot.DefencePad", "FightUI.HUDRoot.MovesPad", "FightUI.HUDRoot.SprintPad",
 			"FightUI.HUDRoot.Controls", "FightUI.HUDRoot.StanceChips", "FightUI.HUDRoot.Ticker", "FightUI.HUDRoot.Overlay", "FightUI.HUDRoot.Count",
-			"FightUI.HUDRoot.GetUp", "TutorialUI.Root.Prompt",
+			"FightUI.HUDRoot.GetUp", "TutorialUI.Root.Prompt", "FightUI.HUDRoot.ComboMeter",
 		}
 		-- a piece's extent: what it and its descendants draw (or take input with) on the screen
 		local function extent(path)
@@ -578,7 +630,7 @@ local function run(name, dev)
 			check(name .. "@" .. dev .. " special pads at most two rows", sp.h <= 2 * 57 * sp.unit + 6 * sp.unit + 2, describe(sp))
 		end
 		-- the tutorial's step card is up where the screen has one
-		if name:find("^fight_tutorial") then
+		if name:find("^fight_tutorial") or name == "fight_debut" then
 			local card = rectOf(S, "TutorialUI.Root.Prompt")
 			check(name .. "@" .. dev .. " the tutorial step card is shown", card ~= nil and card.visibleW > 1, card and describe(card))
 		end

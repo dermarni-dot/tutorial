@@ -224,7 +224,7 @@ check("leaving mid-tutorial aborts the bout", mainSrc:find("tw.left = true", 1, 
 ------------------------------------------------------------------------
 -- the steps
 ------------------------------------------------------------------------
-check("ten steps", #Tutorial.STEPS == 10)
+check("twelve steps", #Tutorial.STEPS == 12)
 local ids = {}
 for i, s in ipairs(Tutorial.STEPS) do
 	ids[i] = s.id
@@ -233,7 +233,7 @@ for i, s in ipairs(Tutorial.STEPS) do
 	end
 	check("step " .. s.id .. " has goals", #s.goals > 0)
 end
-check("the order", table.concat(ids, ",") == "move,jab,cross,power,body,block,slip,stamina,special,finish", table.concat(ids, ","))
+check("the order", table.concat(ids, ",") == "move,jab,cross,power,body,combo,block,slip,counter,stamina,special,finish", table.concat(ids, ","))
 check("the special exists", Moves.Data[Tutorial.SPECIAL] ~= nil and Keymap.ById["special_" .. Tutorial.SPECIAL] ~= nil)
 check("only the last step is final", Tutorial.STEPS[#Tutorial.STEPS].final == true)
 
@@ -265,15 +265,21 @@ check("cross -> power", at("power"))
 feed({ k = "punch", p = "leadhook" })
 check("a hook alone is not enough", at("power") and tr.goals.hook == true)
 local v = Tutorial.View(tr)
-check("the view shows the hook done", v.t == "tutorial" and v.goals.hook == true and v.id == "power" and v.total == 10)
+check("the view shows the hook done", v.t == "tutorial" and v.goals.hook == true and v.id == "power" and v.total == 12)
 feed({ k = "punch", p = "uppercut" })
 check("power -> body", at("body"))
 check("round 1 still held", Tutorial.Phase(tr, 1, now) == "hold")
 feed({ k = "punch", p = "jab", body = false })
 check("a head jab is no body shot", at("body"))
 feed({ k = "punch", p = "jab", body = true })
-check("body -> block", at("block"))
-check("round 1 breaks after the body shots", Tutorial.Phase(tr, 1, now) == "break")
+check("body -> combo", at("combo"))
+check("round 1 still held at the combo", Tutorial.Phase(tr, 1, now) == "hold")
+feed({ k = "punch", p = "jab" })
+feed({ k = "combo", id = "slipcounter", counter = true })
+check("a counter is not the combo step", at("combo"))
+feed({ k = "combo", id = "onetwo" })
+check("combo -> block", at("block"))
+check("round 1 breaks after the combinations", Tutorial.Phase(tr, 1, now) == "break")
 check("round 2 holds at block", Tutorial.Phase(tr, 2, now) == "hold")
 check("the opponent works harder for the block", Tutorial.AiWork(tr) > 1)
 feed({ k = "block", dt = 0.5 })
@@ -281,7 +287,12 @@ check("half a second of guard: not yet", at("block"))
 feed({ k = "block", dt = 0.6 })
 check("block -> slip", at("slip"))
 feed({ k = "roll" })
-check("slip / dodge -> stamina", at("stamina"))
+check("slip / dodge -> counter", at("counter"))
+feed({ k = "dodge", kind = "weave" })
+feed({ k = "combo", id = "onetwo" })
+check("a plain combo is no counter", at("counter"))
+feed({ k = "combo", id = "weavecounter", counter = true })
+check("counter -> stamina", at("stamina"))
 feed({ k = "stamina", pct = 0.9 })
 check("full tank: nothing", at("stamina") and not tr.goals.drain)
 feed({ k = "stamina", pct = 0.7 })
@@ -319,7 +330,7 @@ check("an idle player's bout ends", Tutorial.Phase(tr4, 1, 5 + Tutorial.MAX_HOLD
 -- the engine applies the rules (source checks: the round loop, the knockdowns, the stoppage)
 local feSrc = fs.readFile(H.src .. "/server/FightEngine.lua")
 check("FightEngine holds the clock", feSrc:find('tphase == "hold"', 1, true) ~= nil)
-check("FightEngine keeps the player up", feSrc:find("Tutorial.CanDrop(self.tutorial)", 1, true) ~= nil)
+check("FightEngine keeps the player up", feSrc:find("function Fight:Protected(F)", 1, true) ~= nil and feSrc:find("return not Tutorial.PlayerCanDrop(tr, self.round)", 1, true) ~= nil)
 check("FightEngine feeds the punches", feSrc:find('TutorialNote({ k = "punch"', 1, true) ~= nil)
 check("FightEngine aborts a held bout whose player left", feSrc:find("the player left: nothing would ever move a held clock on", 1, true) ~= nil)
 
@@ -349,6 +360,165 @@ local custom = Keymap.Resolve({ kbd = { jab = { "N" } }, pad = { jab = "ButtonY"
 check("a remapped jab follows (keyboard)", Tutorial.Caps("jab", "keyboard", custom, Keymap, nil)[1].key == "N")
 check("a remapped jab follows (pad)", Tutorial.Caps("jab", "gamepad", custom, Keymap, nil)[1].key == Keymap.ActionText(custom, "jab", "pad"))
 check("the special's chord", Tutorial.Caps("special", "keyboard", map, Keymap, nil)[1].key == "0")
+
+------------------------------------------------------------------------
+-- the guided debut: the trigger, the career bout, its steps and rules
+------------------------------------------------------------------------
+-- the trigger: a boxer CreateBoxer marked, no bout yet, nothing booked
+local function newBoxer(past)
+	local pr = Career.CreateProfile({ pastCareers = past or {} }, {
+		first = "Jo", last = "Novak", name = "Jo Novak", nickname = "Rookie", age = 19, nationality = "USA", weightClass = 4, style = "Swarmer", look = Looks.Defaults(1),
+	}, 7)
+	pr.tutorialDone = true
+	Tutorial.NewBoxer(pr, past or {})
+	return pr
+end
+local nb = newBoxer()
+check("debut: a first-timer's new boxer is offered it", nb.debut == "offer" and Tutorial.ShouldOfferDebut(nb) == true)
+check("debut: not for a player with past careers", newBoxer({ { name = "Old" } }).debut == nil and not Tutorial.ShouldOfferDebut(newBoxer({ { name = "Old" } })))
+check("debut: an old save (no field) is never forced into it", Tutorial.ShouldOfferDebut(career) == false)
+local fought = deepCopy(nb)
+fought.amateurRecord.w = 1
+check("debut: not after a bout", Tutorial.ShouldOfferDebut(fought) == false)
+local booked = deepCopy(nb)
+booked.camp = { offer = {} }
+check("debut: not with a fight booked", Tutorial.ShouldOfferDebut(booked) == false)
+local retiredB = deepCopy(nb)
+retiredB.retired = true
+check("debut: not while retired", Tutorial.ShouldOfferDebut(retiredB) == false)
+check("debut: no profile", Tutorial.ShouldOfferDebut(nil) == false)
+local sk = deepCopy(nb)
+check("debut: skipped ends the offer", Tutorial.MarkDebut(sk, "skipped") and sk.debut == "skipped" and not Tutorial.ShouldOfferDebut(sk))
+for _, how in ipairs({ "left", "aborted", "crashed" }) do
+	local x = deepCopy(nb)
+	check("debut: " .. how .. " keeps the offer", Tutorial.MarkDebut(x, how) == false and Tutorial.ShouldOfferDebut(x))
+end
+-- a session that ended mid-debut: the debut camp is dropped at the next load, the offer stays
+local crashedSave = deepCopy(nb)
+crashedSave.camp = { offer = { debut = true }, daysLeft = 0, daysTotal = 0, log = {}, debut = true }
+local back = Tutorial.Backfill(crashedSave, crashedSave, V)
+check("debut: Backfill drops a debut camp", back.camp == nil and back.debut == "offer" and Tutorial.ShouldOfferDebut(back))
+local normalCamp = deepCopy(nb)
+normalCamp.camp = { offer = {}, daysLeft = 2, daysTotal = 3, log = {} }
+check("debut: Backfill keeps a normal camp", Tutorial.Backfill(normalCamp, normalCamp, V).camp ~= nil)
+check("debut: Backfill sanitises the field", Tutorial.Backfill({ v = V, created = true }, { created = true, debut = 7 }, V).debut == nil)
+-- the career bout: a weak amateur from the player's world, in the community centre
+local dSeeds = 0
+for seed = 1, 25 do
+	local pr = newBoxer()
+	local off = Career.DebutOffer(pr, { below = Tutorial.Debut.OPP_BELOW, venue = Tutorial.Debut.VENUE, rng = Random.new(seed) })
+	local b = off and pr.world.boxers[off.oppId]
+	check("debut " .. seed .. ": an offer", off ~= nil and b ~= nil)
+	if off and b then
+		dSeeds += 1
+		check("debut " .. seed .. ": an amateur bout", off.kind == "Amateur Bout" and off.debut == true and off.rounds == Config.Tiers[1].rounds)
+		-- (a young world may hold nobody under a brand-new boxer: then the weakest there is, and his fight-night copy
+		-- is brought under the player's overall)
+		local weakest = math.huge
+		for _, id in ipairs(pr.world.classes[pr.physical.weightClass]) do
+			local x = pr.world.boxers[id]
+			if not x.retired and x.archetype ~= "Defensive" and x.archetype ~= "Counter" then
+				weakest = math.min(weakest, x.overall)
+			end
+		end
+		check("debut " .. seed .. ": a weaker opponent (or the weakest there is)", b.overall < pr.overall or b.overall <= weakest + 2, b.overall .. " vs " .. pr.overall)
+		local statsBefore = deepCopy(b.stats)
+		local od = Career.DebutOpponent(Career.FighterFromBoxer(b), pr.overall, Tutorial.Debut.OPP_BELOW[2])
+		check("debut " .. seed .. ": his fight-night copy is weaker", Config.Overall(od.stats) <= pr.overall - Tutorial.Debut.OPP_BELOW[2] or Config.Overall(od.stats) <= Config.Overall(b.stats) - 1
+			and Config.Overall(od.stats) < pr.overall, Config.Overall(od.stats) .. " vs " .. pr.overall)
+		check("debut " .. seed .. ": the world's boxer untouched", deepEq(statsBefore, b.stats))
+		check("debut " .. seed .. ": not a defensive / counter specialist", b.archetype ~= "Defensive" and b.archetype ~= "Counter", b.archetype)
+		check("debut " .. seed .. ": the small venue", off.venue == Tutorial.Debut.VENUE and off.venueName == Config.Venues[Tutorial.Debut.VENUE].name)
+		check("debut " .. seed .. ": his own boxer (the career's look)", Career.FighterFromProfile(pr).app == pr.appearance)
+	end
+end
+-- the result counts like any career bout (Career.ApplyResult: record, purse, history, the unlocks' counters)
+do
+	local pr = newBoxer()
+	local off = Career.DebutOffer(pr, { below = Tutorial.Debut.OPP_BELOW, venue = Tutorial.Debut.VENUE, rng = Random.new(3) })
+	local money0 = pr.money
+	local fights0 = Moves.Info(pr).fights
+	pr.camp = { offer = off, daysLeft = 0, daysTotal = 0, log = {}, debut = true }
+	local out = Career.ApplyResult(pr, { outcome = "win", method = "UD", round = 3, cards = { { 30, 27 }, { 29, 28 }, { 30, 27 } }, kdFor = 0, kdAgainst = 0,
+		landed = 40, thrown = 90, punches = { jab = 30 }, combos = { landed = 3, best = 4, bestName = "1-2-3" } })
+	Tutorial.MarkDebut(pr, "completed")
+	check("debut result: on the amateur record", pr.amateurRecord.w == 1 and pr.record.w == 0)
+	check("debut result: a purse paid", pr.money > money0 and out.earnings > 0)
+	check("debut result: in the history as an amateur bout", pr.history[#pr.history].amateur == true and pr.history[#pr.history].opp == pr.world.boxers[off.oppId].name)
+	check("debut result: counts for the fight milestones", Moves.Info(pr).fights == fights0 + 1)
+	check("debut result: the camp is over and the offer gone", pr.camp == nil and not Tutorial.ShouldOfferDebut(pr) and pr.debut == "done")
+end
+-- the steps: the debut's list (the special step only with an unlocked special)
+local dsteps = Tutorial.Steps({ debut = true })
+local dids = {}
+for _, st in ipairs(dsteps) do
+	table.insert(dids, st.id)
+end
+check("debut steps without a special", table.concat(dids, ",") == "move,jab,cross,power,body,combo,block,slip,counter,stamina,finish", table.concat(dids, ","))
+local dsp = Tutorial.Steps({ debut = true, special = "overhand", specialName = "Loaded overhand" })
+local spStep
+for _, st in ipairs(dsp) do
+	if st.id == "special" then
+		spStep = st
+	end
+end
+check("debut steps with his special", spStep ~= nil and spStep.actions[1] == "special_overhand" and spStep.text:find("Loaded overhand", 1, true) ~= nil and #dsp == 12)
+check("debut's last step: win it", dsteps[#dsteps].final == true and dsteps[#dsteps].title == "WIN IT")
+-- the rules and the clock
+local dt = Tutorial.NewTracker({ debut = true, rounds = 3 })
+check("debut: incoming damage halved, own punches as they are", Tutorial.DamageMul(dt, true) == 0.5 and Tutorial.DamageMul(dt, false) == 1)
+check("debut: the knockdown odds untouched", Tutorial.KoMul(dt) == 1)
+check("debut: the player safe before the final round", Tutorial.PlayerCanDrop(dt, 1) == false and Tutorial.PlayerCanDrop(dt, 2) == false and Tutorial.PlayerCanDrop(dt, 3) == true)
+check("practice: the player never drops", Tutorial.PlayerCanDrop(Tutorial.NewTracker(), 2) == false)
+check("debut: the opponent not droppable before the last step", Tutorial.CanDrop(dt) == false)
+check("debut: the clock held in round 1", Tutorial.Phase(dt, 1, 0) == "hold")
+check("debut: the final round always runs", Tutorial.Phase(dt, 3, 0) == "run")
+check("debut: a softer defence while learning", Tutorial.AiDefense(dt) == Tutorial.Debut.AI_DEFENSE and Tutorial.AiDefense(dt) < 1)
+-- step progression through the whole debut
+local dnow = 0
+local function dfeed(ev)
+	dnow += 0.1
+	ev.now = dnow
+	return Tutorial.Feed(dt, ev)
+end
+dfeed({ k = "move", dist = 5 })
+dfeed({ k = "punch", p = "jab" })
+dfeed({ k = "punch", p = "cross" })
+dfeed({ k = "punch", p = "rearhook" })
+dfeed({ k = "punch", p = "uppercut" })
+dfeed({ k = "punch", p = "leadhook", body = true })
+check("debut: at the combo step", Tutorial.Current(dt).id == "combo")
+dfeed({ k = "combo", id = "onetwothree" })
+check("debut: round 1 breaks after the combinations", Tutorial.Phase(dt, 1, dnow) == "break" and Tutorial.Current(dt).id == "block")
+dfeed({ k = "blocked" })
+dfeed({ k = "slip" })
+dfeed({ k = "combo", id = "slipcounter", counter = true })
+dfeed({ k = "stamina", pct = 0.6 })
+dfeed({ k = "stamina", pct = 0.8 })
+check("debut: no special step without a special: on to the finish", Tutorial.Current(dt).id == "finish" and Tutorial.Phase(dt, 2, dnow) == "run")
+check("debut: the opponent droppable now", Tutorial.CanDrop(dt) == true and Tutorial.AiDefense(dt) == Tutorial.Debut.AI_DEFENSE_DONE)
+dfeed({ k = "bell" })
+check("debut: the guide is done at the bell", dt.done == true and Tutorial.View(dt).debut == true)
+check("debut: the step a view names (client)", Tutorial.StepOf(Tutorial.View(dt)).id == "finish" and Tutorial.StepOf({ debut = true, step = 6 }).id == "combo")
+-- a combo / counter step that is never done moves on by itself
+local to = Tutorial.NewTracker({ debut = true, rounds = 3 })
+to.step = Tutorial.IndexOf(to, "counter")
+Tutorial.Feed(to, { k = "tick", now = 1 })
+Tutorial.Feed(to, { k = "tick", now = 1 + Tutorial.ById.counter.timeout + 0.1 })
+check("debut: the counter step times out", Tutorial.Current(to).id == "stamina" and to.timedOut == false)
+-- the server path (source checks: Main's runFight with the debut, the leave, the skip)
+check("Main: CreateBoxer marks the debut", mainSrc:find("Tutorial.NewBoxer(newProfile, profile.pastCareers)", 1, true) ~= nil)
+check("Main: the summary carries the debut offer", mainSrc:find("s.debut = { offer = Tutorial.ShouldOfferDebut(profile)", 1, true) ~= nil)
+check("Main: StartDebut books the debut and runs it as a career fight", mainSrc:find("task.spawn(runFight, player, profile, { debut = true, prevOffers = prevOffers })", 1, true) ~= nil)
+check("Main: the debut's opponent is weakened for the night", mainSrc:find("Career.DebutOpponent(oData, profile.overall, Tutorial.Debut.OPP_BELOW[2])", 1, true) ~= nil)
+check("Main: the debut runs FightEngine in debut mode", mainSrc:find("opts.debut and { debut = true } or nil", 1, true) ~= nil)
+check("Main: a recorded debut ends the offer", mainSrc:find('Tutorial.MarkDebut(profile, "completed")', 1, true) ~= nil)
+check("Main: a called-off debut is cancelled and offered again", mainSrc:find("cancelDebut(profile, watch)", 1, true) ~= nil and mainSrc:find('t = "debutEnd"', 1, true) ~= nil)
+check("Main: leaving mid-debut records no forfeit", mainSrc:find("not watch.debut and quitResult(player)", 1, true) ~= nil and mainSrc:find("cancelDebut(watch.profile, watch)", 1, true) ~= nil)
+check("Main: a reset mid-debut records no forfeit", mainSrc:find("if not watch.decided and not watch.debut then", 1, true) ~= nil)
+check("Main: SKIP GUIDE in the debut ends the guide only", mainSrc:find("FightEngine.EndGuide(player)", 1, true) ~= nil)
+check("FightEngine: the debut keeps its own rounds and ends as a fight", feSrc:find("elseif opts.debut and Tutorial and not oppPlayer and not sp then", 1, true) ~= nil
+	and feSrc:find("if tr.done and not self.tutorialEndAt and not self.debut then", 1, true) ~= nil)
 
 ------------------------------------------------------------------------
 -- skip, through the real client module (guisim)
@@ -419,7 +589,7 @@ S.settle(0.4)
 local promptCard = findIn(pg, "Prompt")
 check("the step card is up", promptCard ~= nil and promptCard.Visible)
 local stepLabel = promptCard and findIn(promptCard, "Step")
-check("the card names the step", stepLabel ~= nil and stepLabel.Text:find("STEP 1 OF 10", 1, true) ~= nil, stepLabel and stepLabel.Text)
+check("the card names the step", stepLabel ~= nil and stepLabel.Text:find("TUTORIAL  ·  STEP 1 OF 12", 1, true) ~= nil, stepLabel and stepLabel.Text)
 -- the next step's card
 Tutorial.Feed(t1, { k = "move", dist = 5, now = 1 })
 fight:Fire(Tutorial.View(t1))
@@ -466,6 +636,80 @@ if cont2 then
 	click(cont2)
 end
 check("then the main menu", menuOpened == 1)
+
+-- the debut through the real client module: the offer, its buttons, the step card in debut mode, a called-off debut
+do
+	local S2 = GS.new("tablet")
+	local P2 = { created = true, pastCareers = {}, debut = { offer = true, rounds = 3, venue = "Community Center" }, settings = {} }
+	local inv2, fired2 = {}, {}
+	S2.onInvokeServer = function(_, action)
+		table.insert(inv2, action)
+		if action == "GetProfile" then
+			return P2
+		end
+		return { ok = true }
+	end
+	S2.onFireServer = function(_, msg)
+		table.insert(fired2, msg)
+	end
+	local TC2 = S2.require("Client/Tutorial")
+	TC2.Start()
+	local pg2 = S2.playerGui
+	TC2.OfferDebut(P2.debut)
+	S2.settle(0.3)
+	check("debut offer: the card is up", findIn(pg2, "DebutOffer") ~= nil and TC2.Busy())
+	check("debut offer: names the venue", (function()
+		for _, d in ipairs(pg2:GetDescendants()) do
+			if d:IsA("TextLabel") and d.Text:find("3-round amateur bout", 1, true) and d.Text:find("Community Center", 1, true) then
+				return true
+			end
+		end
+		return false
+	end)())
+	S2.signal(findIn(pg2, "SkipDebut"), "MouseButton1Click"):Fire()
+	S2.settle(0.2)
+	check("debut offer: SKIP THE GUIDE asks SkipDebut", table.find(inv2, "SkipDebut") ~= nil and findIn(pg2, "DebutOffer") == nil and not TC2.Busy())
+	TC2.OfferDebut(P2.debut)
+	S2.settle(0.2)
+	S2.signal(findIn(pg2, "StartDebut"), "MouseButton1Click"):Fire()
+	S2.settle(0.2)
+	check("debut offer: FIGHT MY DEBUT asks StartDebut", table.find(inv2, "StartDebut") ~= nil and TC2.Busy())
+	S2.loadScript("client/FightClient.client.lua")
+	S2.settle(0.3)
+	local f2 = S2.remotes.FightEvent
+	f2:Fire({ t = "start", rounds = 3, tape = { you = { name = "Jo Novak", record = {} }, opp = { name = "Sam Doe", record = {} } }, kind = "Amateur Bout", venue = "CommunityCenter",
+		venueName = "Community Center", moves = {}, tutorial = { total = 11, debut = true } })
+	local dtr = Tutorial.NewTracker({ debut = true, rounds = 3 })
+	f2:Fire(Tutorial.View(dtr))
+	S2.settle(0.4)
+	local pc = findIn(pg2, "Prompt")
+	local stepL = pc and findIn(pc, "Step")
+	check("debut card: YOUR DEBUT, step 1 of 11", stepL ~= nil and stepL.Text == "YOUR DEBUT  ·  STEP 1 OF 11", stepL and stepL.Text)
+	local skipB = pc and findIn(pc, "Skip")
+	check("debut card: SKIP GUIDE (the fight goes on)", skipB ~= nil and skipB.Text == "SKIP GUIDE", skipB and skipB.Text)
+	if skipB then
+		S2.signal(skipB, "MouseButton1Click"):Fire()
+		S2.settle(0.1)
+	end
+	local sentSkip = false
+	for _, m in ipairs(fired2) do
+		if type(m) == "table" and m.t == "tutorialSkip" then
+			sentSkip = true
+		end
+	end
+	check("debut card: the skip tells the server", sentSkip)
+	-- the combo step's card (keys for the 1-2-3)
+	dtr.step = Tutorial.IndexOf(dtr, "combo")
+	f2:Fire(Tutorial.View(dtr))
+	S2.settle(0.3)
+	local t2 = findIn(findIn(pg2, "Prompt"), "Title")
+	check("debut card: the combo step", t2 ~= nil and t2.Text == "COMBINATIONS", t2 and t2.Text)
+	-- called off: the toast and the offer again
+	f2:Fire({ t = "debutEnd", how = "aborted", info = P2.debut })
+	f2:Fire({ t = "aborted" })
+	S2.settle(2.0)
+	check("debut called off: offered again", findIn(pg2, "DebutOffer") ~= nil)
+end
 
 print(string.format("test_tutorial: %d passed, %d failed", pass, fail))
 process.exit(fail == 0 and 0 or 1)
