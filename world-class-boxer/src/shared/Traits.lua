@@ -13,7 +13,7 @@
 --   IronChin           power head shots (cross, hooks, uppercut, overhand) -30% head damage, -35% knockdown odds.
 --                      Cracks as his body goes (the effect scales down with his body HP and his gas).
 --                      Counter: go to the body; jabs and volume still score.
---   BodyArmor          body shots -35% body damage and -35% of the stamina they drain. Counter: head-hunt,
+--   BodyArmor          body shots -28% body damage and -30% of the stamina they drain. Counter: head-hunt,
 --                      uppercuts and the jab up top.
 --   Slick              straights to the head -14 points of accuracy. Not for a moment after he bites on a feint.
 --                      Counter: hooks, body shots, feints.
@@ -54,7 +54,7 @@ Traits.Data = {
 		resists = { Power = true, HeadHunter = true },
 	},
 	BodyArmor = {
-		name = "Body Armor", short = "BODY ARMOR", max = { dmg = 0.35, drain = 0.35 },
+		name = "Body Armor", short = "BODY ARMOR", max = { dmg = 0.28, drain = 0.3 },
 		desc = "Body shots barely bother him.",
 		counter = "Head-hunt: the jab up top, uppercuts through the middle.",
 		hint = "Body shots aren't hurting him - go upstairs!",
