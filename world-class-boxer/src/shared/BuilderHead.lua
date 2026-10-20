@@ -1671,8 +1671,8 @@ Head.CAP_PARTS = { referee = { full = 6, medium = 5, low = 2 }, baseball = { ful
 -- referee cap geometry (fractions of the head size; y up from the head's centre, z: -0.5 = the forehead)
 Head.REFCAP = { crownBase = 0.215, crownH = 0.32, crownW = 1.065, bandY = 0.29, bandH = 0.09, visorY = 0.278, visorT = 0.034,
 	visorReach = 0.24, visorW = 0.76, visorTilt = 3 }
-Head.BALLCAP = { domeY = 0.315, domeH = 0.25, domeW = 1.06, domeD = 1.08, billY = 0.27, billT = 0.034, billReach = 0.3,
-	billW = 0.74, billTilt = 3 }
+Head.BALLCAP = { domeY = 0.33, domeH = 0.27, domeW = 1.07, domeD = 1.09, billY = 0.27, billT = 0.034, billReach = 0.36,
+	billW = 0.68, billTilt = 3 }
 
 -- colors = { cap, trim, badge } (Color3, all optional); style = "referee" | "baseball" | nil (none: the folder goes)
 function Head.SetCap(model, style, colors, detail)
@@ -1738,19 +1738,19 @@ function Head.SetCap(model, style, colors, detail)
 		return folder
 	end
 	local B = Head.BALLCAP
-	ell("BCCrown", V3(s.X * B.domeW, s.Y * B.domeH * 2, s.Z * B.domeD), hcf * CF(0, B.domeY * s.Y, 0.02 * s.Z), capC)
+	ell("BCCrown", V3(s.X * B.domeW, s.Y * B.domeH * 2, s.Z * B.domeD), hcf * CF(0, B.domeY * s.Y, 0.01 * s.Z), capC)
 	visor("BCBill", B.billY, B.billT, B.billReach, B.billW, B.billTilt, trimC)
 	if low then
 		return folder
 	end
-	ell("BCButton", V3(0.09 * s.X, 0.05 * s.Y, 0.09 * s.Z), hcf * CF(0, (B.domeY + B.domeH - 0.008) * s.Y, 0.02 * s.Z), capC)
+	ell("BCButton", V3(0.09 * s.X, 0.05 * s.Y, 0.09 * s.Z), hcf * CF(0, (B.domeY + B.domeH - 0.008) * s.Y, 0.01 * s.Z), capC)
 	-- the front panel's WCB (on the dome's front at y 0.4: inside the dome's skin there, the wordmark just out of it)
 	local ly = 0.41
-	local dz = 0.02 - B.domeD / 2 * math.sqrt(math.max(1 - ((ly - B.domeY) / B.domeH) ^ 2, 0))
+	local dz = 0.01 - B.domeD / 2 * math.sqrt(math.max(1 - ((ly - B.domeY) / B.domeH) ^ 2, 0))
 	Kit.textPatch(folder, head, "BCLogo", V3(0.2 * s.X, 0.08 * s.Y, 0.01), hcf * CF(0, ly * s.Y, (dz - 0.012) * s.Z)
 		* ANG(rad(22), 0, 0), "WCB", badgeC, Enum.NormalId.Front, "GothamBlack")
 	if full then
-		ell("BCSeam", V3(0.03 * s.X, s.Y * B.domeH * 2 + 0.006, s.Z * B.domeD + 0.006), hcf * CF(0, B.domeY * s.Y, 0.02 * s.Z), darken(capC, 0.8))
+		ell("BCSeam", V3(0.03 * s.X, s.Y * B.domeH * 2 + 0.006, s.Z * B.domeD + 0.006), hcf * CF(0, B.domeY * s.Y, 0.01 * s.Z), darken(capC, 0.8))
 	end
 	return folder
 end

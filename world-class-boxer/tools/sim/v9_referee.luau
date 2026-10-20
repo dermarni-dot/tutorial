@@ -404,9 +404,9 @@ local function boxer(tier, spec, at)
 end
 
 -- the official's look: the game's (Officials.Look) or FightEngine's SpawnReferee before it existed
-local function officialLook(seed, kind, champ)
+local function officialLook(seed, kind, champ, team)
 	if Officials and Officials.Look then
-		return Officials.Look(seed, kind, { championship = champ, venue = champ and "Stadium" or "ClubArena" })
+		return Officials.Look(seed, kind, { championship = champ, venue = champ and "Stadium" or "ClubArena", team = team })
 	end
 	local rng = (H.globals.Random or roblox.Random).new(seed)
 	local spar = kind == "cornerman"
@@ -609,8 +609,8 @@ local function shoot(id, label, figs, refRec)
 	print("shot", id)
 end
 
-local function official(seed, kind, champ, at, tier)
-	local app, b, gear, opts = officialLook(seed, kind, champ)
+local function official(seed, kind, champ, at, tier, team)
+	local app, b, gear, opts = officialLook(seed, kind, champ, team)
 	if tier then
 		b = buildFor(app, tier) -- (a forced muscle tier: the outfit is fitted per tier)
 	end
@@ -720,6 +720,16 @@ do
 	act(coach, "refcount|3", actId)
 	run(all, 0.33)
 	shoot("coachcount_s3", "spar coach, count", { { A, "boxer" }, { B, "boxer" }, { coach, "cornerman" } }, rec)
+	CS:RemoveTag(coach, "Referee")
+	coach:Destroy()
+	run({ A, B }, 0.1)
+end
+-- a cornerman in a corner's team colour (RingWalk's red corner): the polo and the team cap in red
+do
+	local coach, rec = official(6, "cornerman", false, CFrame.new(0, 0, 0), nil, { 196, 32, 38 })
+	local all = { A, B, coach }
+	run(all, 2.5)
+	shoot("coach_red", "cornerman in the red corner's colour, stance", { { A, "boxer" }, { B, "boxer" }, { coach, "cornerman" } }, rec)
 end
 Host.WriteJSON(OUT .. "/index.json", index, true)
 print("out:", OUT)
