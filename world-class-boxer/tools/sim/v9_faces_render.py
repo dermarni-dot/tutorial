@@ -82,6 +82,9 @@ def add_scene(sc, scene_dir, d):
         elif sh == "Wedge":
             P, T = V.wedge(sx, sy, sz)
             smooth = False
+        elif sh == "Head":
+            # a SpecialMesh Head (the classic head's shape at the part's size: the headgear shell / band)
+            P, T = V.classic_head(d["head"]["classic"], (sx, sy, sz))
         else:
             continue
         ob = sc.add_world(V.place(P, g["cf"], 0), T, g["name"], smooth=smooth,

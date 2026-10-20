@@ -1271,6 +1271,13 @@ Config.Expressions = { "neutral", "confident", "determined", "anger", "fear", "f
 
 -- true = draw no hair at all (the old hard-coded BALD MODE); kept as a one-line debug toggle
 Config.BaldMode = true -- every boxer is bald (the user's call: no hair; everyone wears headgear instead)
+-- true = every character wears boxing headgear all the time (Builder.Cosmetics builds it: rebuilds, respawns, tier
+-- swaps and clones keep it), in its own colour (Looks.HeadgearColor: attire.headgear, else the gloves'); sparring
+-- only recolours it to the corner's blue / red and gives the boxer's own colour back after. false = the old rule:
+-- headgear only while sparring (FightEngine / the Ambient sparring pair)
+Config.AlwaysHeadgear = true
+-- the referee and the cornermen (Builder opts.outfit) wear it too while AlwaysHeadgear is on ("all characters")
+Config.HeadgearOfficials = true
 
 -- daily growth of hair / beard (0..1.5 / 0..1) used by Training.dayTick
 Config.HairGrowthPerDay = 0.02

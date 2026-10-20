@@ -409,6 +409,8 @@ function Looks.Sanitize(input, old)
 	for _, k in ipairs({ "trunks", "trim", "socks", "shoes", "robe", "robeTrim", "wraps", "mouthguard", "laces" }) do
 		out.attire[k] = color(a[k], color(ba[k], out.attire[k]))
 	end
+	-- the headgear colour (optional: nil = the gloves' colour, Looks.HeadgearColor)
+	out.attire.headgear = color(a.headgear, color(ba.headgear, nil))
 	out.attire.trunkStyle = pick(a.trunkStyle, Looks.TrunkStyles, pick(ba.trunkStyle, Looks.TrunkStyles, out.attire.trunkStyle))
 	out.attire.shoeStyle = pick(a.shoeStyle, Looks.ShoeStyles, pick(ba.shoeStyle, Looks.ShoeStyles, out.attire.shoeStyle))
 	out.attire.wrapPattern = pick(a.wrapPattern, Looks.WrapPatterns, pick(ba.wrapPattern, Looks.WrapPatterns, "Solid"))
@@ -690,7 +692,29 @@ function Looks.Random(seed, gender, opts)
 	h.frizz = r4:NextNumber() * 0.6
 	h.volume = -0.4 + r4:NextNumber() * 0.8
 	h.curlSize = -0.6 + r4:NextNumber() * 1.2
+	-- the headgear every boxer wears (Config.AlwaysHeadgear): its own stream, so every trait above is unchanged.
+	-- Mostly the gloves' or the trunks' colour (a matched kit), else any palette colour
+	local r5 = Random.new(seed + 263)
+	local hk = r5:NextNumber()
+	app.attire.headgear = hk < 0.4 and table.clone(app.gloves.color) or (hk < 0.6 and table.clone(app.attire.trunks))
+		or rgb(Looks.Palette[r5:NextInteger(1, #Looks.Palette)])
 	return app
+end
+
+-- the headgear colour {r, g, b} a look wears: attire.headgear (the Creator / locker choice, an NPC's by seed), else
+-- the gloves' colour (WCB red on a new boxer)
+function Looks.HeadgearColor(app)
+	local a = type(app) == "table" and type(app.attire) == "table" and app.attire or {}
+	local g = type(app) == "table" and type(app.gloves) == "table" and app.gloves or {}
+	local c = a.headgear
+	if type(c) == "table" and type(c[1]) == "number" then
+		return c
+	end
+	c = g.color
+	if type(c) == "table" and type(c[1]) == "number" then
+		return c
+	end
+	return rgb(Looks.Palette[1])
 end
 
 -- Muscle development for an AI boxer (0..100 per group plus every sub-muscle part) based on

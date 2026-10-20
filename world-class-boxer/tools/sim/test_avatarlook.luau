@@ -515,6 +515,22 @@ do
 	Builder.Apply(model, app, build(45), nil, opts)
 	Builder.Cosmetics(model, app, build(45), nil, { hands = "gloves" })
 	check("avatar hair: no re-apply, still avatar hair", stats.applies == 1 and model:GetAttribute("AvatarHair") == true and hairParts(model) == 0)
+	-- every boxer's own headgear (Config.AlwaysHeadgear): the avatar hair stays under it, through a spar too
+	local function allHidden()
+		local hid = #accessories(model) > 0
+		for _, acc in ipairs(accessories(model)) do
+			hid = hid and acc.Handle.Transparency == 1 and acc.Handle:GetAttribute("HGHidden") == true
+		end
+		return hid
+	end
+	check("always headgear: avatar hair under it", Config.AlwaysHeadgear ~= true or allHidden())
+	Builder.SetHeadgear(model, roblox.Color3.new(0, 0, 1), true)
+	Builder.SetHeadgear(model, roblox.Color3.new(0, 0, 1), false)
+	check("always headgear: still under it after a spar", Config.AlwaysHeadgear ~= true or allHidden())
+	-- the old rule (Config.AlwaysHeadgear off: headgear only while sparring); a rebuild takes the boxer's own off
+	local always = Config.AlwaysHeadgear
+	Config.AlwaysHeadgear = false
+	Builder.Cosmetics(model, app, build(45), nil, { hands = "gloves" })
 	-- headgear: the accessories hide whole and come back with their own transparency
 	Builder.SetHeadgear(model, roblox.Color3.new(0, 0, 1), true)
 	local hidden = true
@@ -539,6 +555,7 @@ do
 	check("headgear: a hat accessory is left alone", hh.Transparency == 0 and h4001.Transparency == 1)
 	Builder.SetHairHidden(model, "headgear", false)
 	hat:Destroy()
+	Config.AlwaysHeadgear = always
 	-- the setting turned off: re-applied once without the avatar, the game hair back
 	Builder.Apply(model, app, build(45), nil, { hands = "wraps" })
 	check("setting off: re-applied once", stats.applies == 2 and (stats.last.HairAccessory or "") == "")

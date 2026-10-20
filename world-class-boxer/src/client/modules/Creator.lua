@@ -978,6 +978,14 @@ local function pageGear()
 	end, function(c)
 		g.color = c
 	end, pal, names)
+	-- the headgear every boxer wears (Config.AlwaysHeadgear); unset = the gloves' colour (Looks.HeadgearColor)
+	if Config.AlwaysHeadgear then
+		colorField(body, "Headgear", function()
+			return Looks.HeadgearColor(C.look)
+		end, function(c)
+			a.headgear = c
+		end, pal, names, false, true, "headgear")
+	end
 	UI.Cycler(body, "Trunk style", Catalog.TrunkStyles, a.trunkStyle, edit(nil, function(v)
 		a.trunkStyle = v
 		preview()

@@ -1308,6 +1308,321 @@ do
 	check("no built face part on any player / NPC boxer: one drawn face each", #bad == 0, table.concat(bad, "; "))
 end
 
+------------------------------------------------------------------------
+-- Headgear on every boxer (Config.AlwaysHeadgear): built by Cosmetics for players, NPCs, the Creator's head-only
+-- preview and kept by clones, tier swaps and the sparring recolour; the drawn face stays unobstructed
+------------------------------------------------------------------------
+do
+	local Builder = H.require("Builder")
+	local Looks = H.require("Looks")
+	local Head = H.require("BuilderHead")
+	local Config = H.require("Config")
+	local Color3 = roblox.Color3
+	BodyTiers.SetData(REAL)
+	check("headgear: Config.AlwaysHeadgear on", Config.AlwaysHeadgear == true)
+	local function rig()
+		BuilderTiers.Reset()
+		BuilderTiers.Services = { AssetService = fakeAssets(), Content = Content }
+		local model, hum = newRig(Vector3.new(1, 1, 1), "keep")
+		local head = E.new("MeshPart", model)
+		head.Name = "Head"
+		head.Size = Vector3.new(0.927, 0.927, 0.927)
+		head.CFrame = CFrame.new(0, 6, 0)
+		local na = E.new("Attachment", head)
+		na.Name = "NeckRigAttachment"
+		na.Position = Vector3.new(0, -0.46, 0)
+		local neck = E.new("Motor6D", head)
+		neck.Name = "Neck"
+		neck.Part0, neck.Part1 = model:FindFirstChild("UpperTorso"), head
+		neck.C0, neck.C1 = CFrame.new(0, 0.8, 0), CFrame.new(0, -0.46, 0)
+		hum.ReplaceBodyPartR15 = (function(inner)
+			return function(self, enum, part)
+				if enum.Name == "Head" then
+					local old = model:FindFirstChild("Head")
+					part.CFrame = old.CFrame
+					neck.Part1 = part
+					neck.Parent = part
+					part.Parent = model
+					old:Destroy()
+					return true
+				end
+				return inner(self, enum, part)
+			end
+		end)(hum.ReplaceBodyPartR15)
+		model.Parent = E.workspace
+		return model
+	end
+	local function hg(model)
+		local look = model:FindFirstChild("BoxerLook")
+		return look and look:FindFirstChild("Headgear")
+	end
+	local function hgParts(model)
+		local out = {}
+		for _, d in ipairs(hg(model) and hg(model):GetDescendants() or {}) do
+			if d:IsA("BasePart") then
+				table.insert(out, d)
+			end
+		end
+		return out
+	end
+	local function shellColor(model)
+		local f = hg(model)
+		local p = f and f:FindFirstChild("HGShell")
+		return p and p.Color
+	end
+	-- every part welded to the model's current head
+	local function welded(model)
+		local head = model:FindFirstChild("Head")
+		for _, p in ipairs(hgParts(model)) do
+			local w = p:FindFirstChildOfClass("WeldConstraint")
+			if not (w and w.Part0 == head and w.Part1 == p) then
+				return false, p.Name
+			end
+		end
+		return true
+	end
+	local function cnear(a, b)
+		return a ~= nil and b ~= nil and math.abs(a.R - b.R) + math.abs(a.G - b.G) + math.abs(a.B - b.B) < 0.01
+	end
+
+	-- the player: a new boxer at full detail (red gloves -> red headgear, hair hidden under it)
+	local app = Looks.Defaults(1)
+	local m = rig()
+	local ok, err = pcall(Builder.Cosmetics, m, app, build(30), nil, { hands = "gloves", detail = "full" })
+	check("headgear: player Cosmetics runs", ok, err)
+	check("headgear: player wears it (full set)", #hgParts(m) == Head.HEADGEAR_PARTS.full, #hgParts(m))
+	check("headgear: player colour = the gloves' (no attire.headgear)", cnear(shellColor(m), Looks.Color(app.gloves.color)))
+	check("headgear: HeadgearColor attribute + hair hidden", typeof(m:GetAttribute("HeadgearColor")) == "Color3" and m:GetAttribute("HairHiddenHeadgear") == true)
+	local okW, why = welded(m)
+	check("headgear: welded to the classic head", okW, why)
+	-- the creator's colour (attire.headgear, sanitised) wins
+	local picked = Looks.Sanitize({ attire = { headgear = { 20, 140, 60 } } }, app)
+	check("headgear: Sanitize keeps attire.headgear", picked.attire.headgear and picked.attire.headgear[2] == 140)
+	check("headgear: Sanitize leaves it unset (gloves' colour)", Looks.Sanitize({}, Looks.Defaults(1)).attire.headgear == nil)
+	pcall(Builder.Cosmetics, m, picked, build(30), nil, { hands = "gloves", detail = "full" })
+	check("headgear: the picked colour rebuilds it", cnear(shellColor(m), Color3.fromRGB(20, 140, 60)))
+	-- a rebuild with nothing changed keeps the parts (cache), a tier swap keeps it on the head
+	local before = hgParts(m)[1]
+	pcall(Builder.Cosmetics, m, picked, build(30), nil, { hands = "wraps", detail = "full" })
+	check("headgear: an unchanged rebuild keeps the same parts", hgParts(m)[1] == before)
+	pcall(Builder.Cosmetics, m, picked, build(95), nil, { hands = "gloves", detail = "full" })
+	okW, why = welded(m)
+	check("headgear: survives a tier swap", #hgParts(m) == Head.HEADGEAR_PARTS.full and okW, why)
+	-- sparring: the corner's colour over it, a Cosmetics mid-spar keeps the corner's, off = his own back, never stripped
+	local blue = Color3.fromRGB(30, 60, 160)
+	Builder.SetHeadgear(m, blue, true)
+	check("headgear: sparring on recolours it", cnear(shellColor(m), blue) and #hgParts(m) == Head.HEADGEAR_PARTS.full)
+	pcall(Builder.Cosmetics, m, picked, build(95), nil, { hands = "gloves", detail = "full" })
+	check("headgear: a rebuild mid-spar keeps the corner's colour", cnear(shellColor(m), blue))
+	Builder.SetHeadgear(m, Color3.new(), false)
+	check("headgear: sparring off gives his own colour back (still on)", cnear(shellColor(m), Color3.fromRGB(20, 140, 60)) and #hgParts(m) == Head.HEADGEAR_PARTS.full
+		and m:GetAttribute("HairHiddenHeadgear") == true)
+	check("headgear: fight cleanup keeps it (HasOwnHeadgear)", Builder.HasOwnHeadgear(m) == true)
+	-- a clone (FighterCard / GymMirror / the menu stage copy the model) carries it, welded to the clone's head
+	local c = m:Clone()
+	c.Parent = E.workspace
+	okW, why = welded(c)
+	check("headgear: a clone carries it", #hgParts(c) == Head.HEADGEAR_PARTS.full and okW, why)
+	c:Destroy()
+	-- the Creator's head-only preview (opts.only) builds it on a fresh rig and keeps it on the next one
+	local pm = rig()
+	pcall(Builder.Cosmetics, pm, app, build(30), nil, { hands = "wraps", detail = "full", only = { Face = true } })
+	check("headgear: the Creator's head-only preview wears it", #hgParts(pm) == Head.HEADGEAR_PARTS.full)
+	pcall(Builder.Cosmetics, pm, picked, build(30), nil, { hands = "wraps", detail = "full", only = { Hair = true } })
+	check("headgear: a preview colour change follows", cnear(shellColor(pm), Color3.fromRGB(20, 140, 60)))
+	pm:Destroy()
+	m:Destroy()
+
+	-- NPCs: varied colours from their seed, the medium / low sets, the referee too ("all characters")
+	local colours = {}
+	local nColours = 0
+	for seed = 1, 12 do
+		local a = Looks.Random(seed * 977, seed % 2 + 1, { age = 24, class = 5 })
+		local key = table.concat(Looks.HeadgearColor(a), ",")
+		if not colours[key] then
+			colours[key] = true
+			nColours += 1
+		end
+	end
+	check("headgear: NPC colours vary by seed", nColours >= 5, nColours)
+	check("headgear: Looks.Random is stable", table.concat(Looks.HeadgearColor(Looks.Random(4242, 1)), ",") == table.concat(Looks.HeadgearColor(Looks.Random(4242, 1)), ","))
+	for _, detail in ipairs({ "medium", "low" }) do
+		local nm = rig()
+		local a = Looks.Random(31337, 1, { age = 24, class = 5 })
+		pcall(Builder.Cosmetics, nm, a, build(30), nil, { hands = "wraps", detail = detail })
+		check("headgear: NPC at " .. detail .. " wears the " .. detail .. " set", #hgParts(nm) == Head.HEADGEAR_PARTS[detail], #hgParts(nm))
+		check("headgear: NPC colour from its seed", cnear(shellColor(nm), Looks.Color(Looks.HeadgearColor(a))))
+		nm:Destroy()
+	end
+	check("headgear: the sets shrink with detail", Head.HEADGEAR_PARTS.full > Head.HEADGEAR_PARTS.medium and Head.HEADGEAR_PARTS.medium > Head.HEADGEAR_PARTS.low)
+	local ref = rig()
+	pcall(Builder.Cosmetics, ref, Looks.Random(77, 1), build(10), nil, { hands = "bare", detail = "medium", outfit = "referee" })
+	check("headgear: the referee too (Config.HeadgearOfficials)", (#hgParts(ref) > 0) == (Config.HeadgearOfficials ~= false))
+	ref:Destroy()
+
+	-- the switch: off = no headgear after Cosmetics, the old sparring toggle (built on, removed off)
+	Config.AlwaysHeadgear = false
+	local om = rig()
+	pcall(Builder.Cosmetics, om, app, build(30), nil, { hands = "gloves", detail = "full" })
+	check("headgear: AlwaysHeadgear off -> none", #hgParts(om) == 0 and om:GetAttribute("HeadgearColor") == nil)
+	Builder.SetHeadgear(om, blue, true)
+	check("headgear: off: sparring builds it", #hgParts(om) > 0 and cnear(shellColor(om), blue))
+	Builder.SetHeadgear(om, Color3.new(), false)
+	check("headgear: off: sparring off removes it", #hgParts(om) == 0 and om:GetAttribute("HairHiddenHeadgear") == nil)
+	om:Destroy()
+	Config.AlwaysHeadgear = true
+	-- a boxer built while it was on keeps nothing stale when it goes off (and back on)
+	local sm = rig()
+	pcall(Builder.Cosmetics, sm, app, build(30), nil, { hands = "gloves", detail = "full" })
+	Config.AlwaysHeadgear = false
+	pcall(Builder.Cosmetics, sm, app, build(30), nil, { hands = "gloves", detail = "full" })
+	check("headgear: switched off since the last build -> removed", #hgParts(sm) == 0)
+	Config.AlwaysHeadgear = true
+	pcall(Builder.Cosmetics, sm, app, build(30), nil, { hands = "gloves", detail = "full" })
+	check("headgear: and back on", #hgParts(sm) == Head.HEADGEAR_PARTS.full)
+	sm:Destroy()
+
+	-- the drawn face stays unobstructed: rays from the drawn ink (Head.DECAL_INK, which covers every drawn face's
+	-- measured ink: |x| <= 0.237, y -0.231 .. 0.183 of the head) to the camera in front and at 3/4 (+-32 deg) hit no
+	-- headgear part, at every detail level, on the smallest / default / largest head; and no headgear part's
+	-- footprint reaches into the opening (Head.HEADGEAR_OPENING) round the ink
+	local INK_MEASURED = { x = 0.237, yLo = -0.231, yHi = 0.183 }
+	local inkCovers = false
+	for _, b in ipairs(Head.DECAL_INK) do
+		if b[2] >= INK_MEASURED.x - 0.03 and b[4] >= INK_MEASURED.yHi then
+			inkCovers = true
+		end
+	end
+	check("headgear: DECAL_INK covers the drawn faces' measured ink", inkCovers and Head.DECAL_INK[3][3] <= INK_MEASURED.yLo)
+	local O = Head.HEADGEAR_OPENING
+	check("headgear: the opening clears the padded ink", O.top >= 0.21 and O.side >= 0.285 and O.sideLow >= 0.2)
+	local CL = Head.CLASSIC
+	local function classicSdf(q)
+		local r, h, rr = CL.r, CL.h, CL.round
+		local qx = math.sqrt(q.X * q.X + q.Z * q.Z) - (r - rr)
+		local qy = math.abs(q.Y) - (h - rr)
+		return math.sqrt(math.max(qx, 0) ^ 2 + math.max(qy, 0) ^ 2) + math.min(math.max(qx, qy), 0) - rr
+	end
+	-- the first t in (0, tmax) where the ray o + t d (world) enters part p
+	local function hits(p, o, d, tmax)
+		local lo, ld = p.CFrame:PointToObjectSpace(o), p.CFrame:VectorToObjectSpace(d)
+		local sz = p.Size
+		local sm = p:FindFirstChildOfClass("SpecialMesh")
+		local mt = sm and tostring(sm.MeshType)
+		if mt and mt:find("Sphere") then
+			local k = Vector3.new(2 / sz.X, 2 / sz.Y, 2 / sz.Z)
+			local a, b = lo * k, ld * k
+			local A, B, C = b:Dot(b), 2 * a:Dot(b), a:Dot(a) - 1
+			local disc = B * B - 4 * A * C
+			if disc < 0 then
+				return false
+			end
+			local t1, t2 = (-B - math.sqrt(disc)) / (2 * A), (-B + math.sqrt(disc)) / (2 * A)
+			return (t1 > 0 and t1 < tmax) or (t2 > 0 and t1 < tmax)
+		elseif mt and mt:find("Head") then
+			local k = Vector3.new(1.2 / sz.X, 1.2 / sz.Y, 1.2 / sz.Z)
+			for t = 0, tmax, 0.004 do
+				if classicSdf((lo + ld * t) * k) < 0 then
+					return true
+				end
+			end
+			return false
+		end
+		local t0, t1 = 0, tmax
+		for _, ax in ipairs({ "X", "Y", "Z" }) do
+			local h = sz[ax] / 2
+			if math.abs(ld[ax]) < 1e-9 then
+				if math.abs(lo[ax]) > h then
+					return false
+				end
+			else
+				local ta, tb = (-h - lo[ax]) / ld[ax], (h - lo[ax]) / ld[ax]
+				if ta > tb then
+					ta, tb = tb, ta
+				end
+				t0, t1 = math.max(t0, ta), math.min(t1, tb)
+				if t0 > t1 then
+					return false
+				end
+			end
+		end
+		return true
+	end
+	local function blocked(model, hx, hy, views, label)
+		local head = model:FindFirstChild("Head")
+		local L = Head.FaceLayout(head, {})
+		local s = head.Size
+		local x, y = hx * s.X, hy * s.Y
+		local lp = Vector3.new(x, y, L.surf(x, y))
+		local n = L.normal(x, y)
+		for _, yaw in ipairs(views) do
+			local dirL = Vector3.new(math.sin(math.rad(yaw)), 0, -math.cos(math.rad(yaw)))
+			if n:Dot(dirL) > 0.25 then
+				local o = head.CFrame * (lp + n * 0.004)
+				local d = head.CFrame:VectorToWorldSpace(dirL)
+				for _, p in ipairs(hgParts(model)) do
+					if p.Transparency < 0.99 and hits(p, o, d, 3) then
+						return string.format("%s (%.3f, %.3f) yaw %d: %s", label, hx, hy, yaw, p.Name)
+					end
+				end
+			end
+		end
+		return nil
+	end
+	local bad = {}
+	for _, hd in ipairs({ { 2, "Lean", "smallest" }, { 1, "Athletic", "default" }, { 1, "Heavyweight Build", "largest" } }) do
+		for _, detail in ipairs({ "full", "medium", "low" }) do
+			local a = Looks.Defaults(hd[1])
+			a.body.frame = hd[2]
+			local fm = rig()
+			local sc = Builder.Scales(a, build(30))
+			local head = fm:FindFirstChild("Head")
+			head.Size = Vector3.new(1, 1, 1) * 1.2 * sc.head
+			pcall(Builder.Cosmetics, fm, a, build(30), nil, { hands = "gloves", detail = detail })
+			check("headgear: built (" .. hd[3] .. ", " .. detail .. ")", #hgParts(fm) == Head.HEADGEAR_PARTS[detail], #hgParts(fm))
+			for _, b in ipairs(Head.DECAL_INK) do
+				for i = 0, 6 do
+					for j = 0, 6 do
+						local ax = b[1] + (b[2] - b[1]) * i / 6
+						local ay = b[3] + (b[4] - b[3]) * j / 6
+						for _, sx in ipairs({ -1, 1 }) do
+							local w = blocked(fm, sx * ax, ay, { 0, 32, -32 }, hd[3] .. "/" .. detail)
+							if w then
+								table.insert(bad, w)
+							end
+						end
+					end
+				end
+			end
+			-- damage and sweat on the face show where they lie inside the opening
+			Builder.SetDamage(fm, a, { leftEye = 1, rightEye = 0.85, cut = 1.1, cutSide = -1, bruise = 0.9, lip = 1, noseBleed = 1, cheekL = 1, cheekR = 0.7 })
+			Builder.SetSweat(fm, a, 0.9)
+			local look = fm:FindFirstChild("BoxerLook")
+			local s = head.Size
+			local nMarks = 0
+			for _, fname in ipairs({ "Damage", "FaceSweat" }) do
+				local f = look and look:FindFirstChild(fname)
+				for _, p in ipairs(f and f:GetDescendants() or {}) do
+					if p:IsA("BasePart") and p.Transparency < 0.95 then
+						local lp = head.CFrame:PointToObjectSpace(p.Position)
+						local hx, hy = lp.X / s.X, lp.Y / s.Y
+						if lp.Z < 0 and math.abs(hx) < O.sideLow - 0.02 and hy > -0.3 and hy < O.top - 0.02 then
+							nMarks += 1
+							local w = blocked(fm, hx, hy, { 0 }, hd[3] .. "/" .. detail .. " " .. fname .. "." .. p.Name)
+							if w then
+								table.insert(bad, w)
+							end
+						end
+					end
+				end
+			end
+			check("headgear: face marks to check (" .. hd[3] .. ", " .. detail .. ")", nMarks >= 4, nMarks)
+			fm:Destroy()
+		end
+	end
+	check("headgear: the drawn face, its damage and sweat unobstructed", #bad == 0, table.concat(bad, "; ", 1, math.min(#bad, 8)))
+end
+
 print(string.format("test_bodytiers: %d passed, %d failed", pass, fail))
 if fail > 0 then
 	error("test_bodytiers failed")

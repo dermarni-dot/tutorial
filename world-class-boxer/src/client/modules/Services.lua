@@ -549,6 +549,14 @@ function Services.Locker()
 		end, function(c)
 			a.trim = c
 		end, pal)
+		-- the headgear every boxer wears (Config.AlwaysHeadgear); unset = the gloves' colour
+		if Config.AlwaysHeadgear then
+			colorField(s, body, "Headgear", function()
+				return Looks.HeadgearColor(s.look)
+			end, function(c)
+				a.headgear = c
+			end, pal)
+		end
 		UI.Cycler(body, "Trunk style", Catalog.TrunkStyles, a.trunkStyle, function(v)
 			a.trunkStyle = v
 			s.preview()

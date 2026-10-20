@@ -271,6 +271,10 @@ def add_boxer(sc, scene_dir, d, offset=(0, 0, 0)):
         elif sh == "Wedge":
             P, T = wedge(sx, sy, sz)
             smooth = False
+        elif sh == "Head":
+            # a SpecialMesh Head (the classic head's shape at the part's size: the headgear shell / band)
+            P, T = classic_head(d["head"]["classic"], (sx, sy, sz))
+            smooth = True
         else:
             print("unknown shape", sh, g["name"])
             continue

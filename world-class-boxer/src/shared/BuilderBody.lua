@@ -1407,7 +1407,9 @@ function Body.SetRobe(model, app, on, opts)
 			-- the head depth: in front of A's hidden-hair line (-0.36), behind the face (-0.5), so the face
 			-- stays open. The drape is the fabric falling from the hood onto the shoulders and upper back.
 			mk(folder, ut, "HoodDrape", V3(s.X * 0.62, s.Y * 0.3, s.Z * 0.75), ut.CFrame * CF(0, s.Y * 0.42, s.Z * 0.32), color, "Ellipsoid", mat)
-			local head = part(model, "Head")
+			-- (over a boxer's headgear, Builder HeadgearColor: the hood stays DOWN, only the drape. No ellipsoid hood can
+			-- close over the headgear's shell without reaching in front of the face)
+			local head = model:GetAttribute("HeadgearColor") == nil and part(model, "Head")
 			if head then
 				local hs = head.Size
 				-- keep the name "Hood": Builder.Cosmetics checks for it before restoring hidden hair

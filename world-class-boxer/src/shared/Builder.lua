@@ -6,6 +6,7 @@
 -- The layers live in sub-modules that share the part helpers in BuilderKit:
 -- * BuilderTiers: the 14 muscle-tier body parts (Humanoid:ReplaceBodyPartR15, only on a tier change)
 -- * BuilderHead: the classic head and the face built on it (Parts, a FaceFX rig), beard, fight damage, sweat, headgear
+--   (every boxer wears it while Config.AlwaysHeadgear: a Cosmetics step, recoloured by SetHeadgear while sparring)
 -- * BuilderHair: hair styles x hair types, strands, sway joints, hair under headgear / hoods, wet hair
 -- * BuilderBody: skin/trunks/shoe colours, attire, gloves and wraps, robe, body sweat / bruises
 -- FaceLayout, SetDamage, SetSweat, SetHeadgear, SetHairHidden and SetRobe are forwarded from them.
@@ -169,8 +170,64 @@ function Builder.SetSweat(model, app, level)
 	setAttr(model, "Sweat", math.floor(level * 20 + 0.5) / 20)
 end
 
+------------------------------------------------------------------------
+-- Headgear: every boxer's own (Config.AlwaysHeadgear), a Cosmetics step
+------------------------------------------------------------------------
+-- The model carries HeadgearColor (Color3: the boxer's own, Looks.HeadgearColor, written by Cosmetics) and, while
+-- sparring, HeadgearCorner (the corner's colour SetHeadgear put on). The folder is cached on its colour, the head's
+-- size and the detail level, so a rebuild, a tier swap or a respawn keeps (or rebuilds) it and a clone copies it.
+local function wantsHeadgear(opts)
+	return Config.AlwaysHeadgear == true and (opts == nil or opts.outfit == nil or Config.HeadgearOfficials ~= false)
+end
+Builder.WantsHeadgear = wantsHeadgear
+
+local function headgearStep(model, detail)
+	local corner, own = model:GetAttribute("HeadgearCorner"), model:GetAttribute("HeadgearColor")
+	local col = (typeof(corner) == "Color3" and corner) or (typeof(own) == "Color3" and own) or Looks.Color(Looks.Palette[1])
+	detail = Config.DetailLevel(detail)
+	local head = model:FindFirstChild("Head")
+	local key = Kit.sig("HG1", col, head and head.Size or false, detail)
+	if Kit.cached(model, "Headgear", key) then
+		return
+	end
+	local ok = step("Headgear", Head.SetHeadgear, model, col, true, detail)
+	if ok then
+		Kit.seal(model, "Headgear", key)
+	end
+end
+
+-- a boxer's headgear (own colour from the look; no headgear when Config.AlwaysHeadgear is off or he is an exempt
+-- official: the folder goes unless a spar put a corner's on)
+local function headgearLook(model, app, opts, detail)
+	if wantsHeadgear(opts) then
+		setAttr(model, "HeadgearColor", Looks.Color(Looks.HeadgearColor(app)))
+		headgearStep(model, detail)
+	elseif model:GetAttribute("HeadgearColor") ~= nil then
+		-- (switched off since the last build)
+		setAttr(model, "HeadgearColor", nil)
+		if model:GetAttribute("HeadgearCorner") == nil then
+			Head.SetHeadgear(model, nil, false)
+		end
+	end
+end
+
+-- Sparring: on = the corner's colour over the boxer's own headgear, off = his own colour back. A model without its
+-- own headgear (Config.AlwaysHeadgear off, an exempt official) gets the old toggle: built on, removed off
 function Builder.SetHeadgear(model, color, on)
-	step("SetHeadgear", Head.SetHeadgear, model, color, on)
+	if model:GetAttribute("HeadgearColor") ~= nil then
+		setAttr(model, "HeadgearCorner", (on and typeof(color) == "Color3") and color or nil)
+		local look = model:FindFirstChild("BoxerLook")
+		local f = look and look:FindFirstChild("Headgear")
+		step("Headgear", headgearStep, model, (f and f:GetAttribute("Detail")) or model:GetAttribute("Detail"))
+		return
+	end
+	setAttr(model, "HeadgearCorner", nil)
+	step("SetHeadgear", Head.SetHeadgear, model, color, on, model:GetAttribute("Detail"))
+end
+
+-- true while the model wears its own all-the-time headgear (fight cleanup keeps that folder)
+function Builder.HasOwnHeadgear(model)
+	return model:GetAttribute("HeadgearColor") ~= nil
 end
 
 -- region = "hood" | "headgear"
@@ -426,6 +483,8 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 		if opts.only.Face and type(opts.damage) == "table" then
 			Builder.SetDamage(model, app, opts.damage)
 		end
+		-- (the headgear follows the head: a head swap or a colour change in the Creator rebuilds it)
+		step("Headgear", headgearLook, model, app, opts, opts.detail)
 		Builder.SetSweat(model, app, opts.sweat or model:GetAttribute("Sweat") or 0)
 		-- previews (Creator / barber) change the look too: the meshes follow
 		step("LookData", publishLook, model, app, build, opts, nil)
@@ -449,6 +508,8 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	faceStep(model, app, build, opts)
 	headStep(model, app, build, opts, "Hair")
 	headStep(model, app, build, opts, "Beard")
+	-- the headgear every boxer wears (on the final head; its own cache)
+	step("Headgear", headgearLook, model, app, opts, sp.detail)
 	-- avatar hair accessories (re)attached by ApplyDescription stay hidden under a headgear / hood
 	if model:GetAttribute("AvatarHair") == true then
 		step("HairHidden", Hair.ApplyHairHidden, model)

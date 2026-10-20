@@ -3329,11 +3329,13 @@ function Fight:RestorePlayer(P)
 	if P.model and P.model.Parent then
 		-- put the hair back right away (Cosmetics would also reconcile it on the next applyLook)
 		pcall(Builder.SetRobe, P.model, P.data.app, false)
+		-- (the sparring corner's colour off: a boxer's own headgear, Config.AlwaysHeadgear, stays on in his colour)
 		pcall(Builder.SetHeadgear, P.model, Color3.new(), false)
 		local look = P.model:FindFirstChild("BoxerLook")
 		if look then
 			-- the next applyLook redraws the healing residual through opts.damage (Training.FaceView)
-			for _, n in ipairs({ "Damage", "Robe", "Headgear" }) do
+			local own = Builder.HasOwnHeadgear(P.model)
+			for _, n in ipairs(own and { "Damage", "Robe" } or { "Damage", "Robe", "Headgear" }) do
 				local f = look:FindFirstChild(n)
 				if f then
 					f:Destroy()
@@ -3439,6 +3441,7 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 	lookOpts.detail = "full"
 	Builder.Cosmetics(char, pData.app, pData.build, pData.gear, lookOpts)
 	if self.spar then
+		-- the corners' colours over each boxer's own headgear (RestorePlayer gives the player's back)
 		Builder.SetHeadgear(char, Color3.fromRGB(30, 60, 160), true)
 		Builder.SetHeadgear(npc, Color3.fromRGB(170, 25, 30), true)
 	end

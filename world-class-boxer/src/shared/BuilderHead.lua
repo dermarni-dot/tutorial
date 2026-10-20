@@ -249,11 +249,22 @@ function Head.FaceLayout(head, face)
 		local p = V3(r * hx * kx, yn * ky, r * hz * kz) + nn * (out or 0)
 		return CFrame.lookAt(p, p + nn, V3(0, 1, 0))
 	end
+	-- how far a head-local point lies outside the head (studs, radially; < 0 inside; above / below the head: its height
+	-- past the top / bottom)
+	local function outside(p)
+		local yn = p.Y / ky
+		if math.abs(yn) >= CLASSIC.h then
+			return (math.abs(yn) - CLASSIC.h) * ky
+		end
+		local r = rhoN(yn)
+		local k = math.sqrt((kx * kx + kz * kz) / 2)
+		return (math.sqrt((p.X / kx) ^ 2 + (p.Z / kz) ^ 2) - r) * k
+	end
 	local eyeX = (0.19 + 0.035 * (face.eyeDist or 0)) * s.X
 	local eyeY = 0.1 * s.Y
 	local mouthY = -0.215 * s.Y
 	local L = {
-		s = s, front = front, surf = surf, normal = normal, shellCF = shellCF, eyeX = eyeX, eyeY = eyeY, mouthY = mouthY,
+		s = s, front = front, surf = surf, normal = normal, shellCF = shellCF, outside = outside, eyeX = eyeX, eyeY = eyeY, mouthY = mouthY,
 		eyeSize = 1 + 0.25 * (face.eyeSize or 0),
 		eyeH = 1 - 0.45 * (face.eyeShape or 0.5),
 		browY = eyeY + (0.13 + 0.025 * (face.forehead or 0) + 0.03 * (face.browHeight or 0)) * s.Y,
@@ -296,6 +307,7 @@ local DECAL_INK = {
 	{ 0.02, 0.285, 0.065, 0.21 }, -- brows
 	{ 0, 0.2, -0.235, -0.105 }, -- mouth
 }
+Head.DECAL_INK = DECAL_INK
 
 -- a FaceLayout moved onto the drawn features (in place; returns L): the eyes, brows, mouth and a nose line between
 -- them (no nose is drawn: only the bleed and the sweat use it), no asymmetry or tilt
@@ -1537,9 +1549,23 @@ local function beardBuild(model, app, opts)
 end
 
 ------------------------------------------------------------------------
--- Headgear (toggled during sparring)
+-- Headgear (every boxer's, Config.AlwaysHeadgear; else only while sparring)
 ------------------------------------------------------------------------
-function Head.SetHeadgear(model, color, on)
+-- An open-face amateur headgear on the classic head. One padded shell wraps the sides and the back: the classic head's
+-- own shape (a Head SpecialMesh) scaled up and set back, so it stands ~0.1 off the ears and the back and sinks into the
+-- face in front of az +-44 deg (the face opening's sides); the crown caps the top, a brow roll rings the forehead just
+-- above the brows and a cheek bolster rolls each side of the opening.
+-- Ear holes, the chin strap and the crown seam at full detail (the chin cup from medium). The opening is cut round the
+-- drawn face's ink (Head.HEADGEAR_OPENING, checked against every drawn face by test_bodytiers): the band's lower edge
+-- stays above the brows, the shell and bolsters outside the eyes, brows and mouth, the chin open.
+-- detail = Config.DetailLevel: full 11 parts, medium 6, low 3 (the crowd).
+-- The opening in head-size fractions on the front: the band from y = top up, nothing at |x| < side above the mouth
+-- line (y > -0.1) or at |x| < sideLow below it
+Head.HEADGEAR_OPENING = { top = 0.225, side = 0.29, sideLow = 0.24 }
+local HG_PARTS = { full = 11, medium = 6, low = 3 }
+Head.HEADGEAR_PARTS = HG_PARTS
+
+function Head.SetHeadgear(model, color, on, detail)
 	local folder = getFolder(model, "Headgear")
 	Head.SetHairHidden(model, "headgear", on)
 	if not on then
@@ -1549,36 +1575,79 @@ function Head.SetHeadgear(model, color, on)
 	if not head then
 		return
 	end
+	detail = Config.DetailLevel(detail or model:GetAttribute("Detail"))
+	local full, low = detail == "full", detail == "low"
+	folder:SetAttribute("Detail", detail)
+	color = typeof(color) == "Color3" and color or Color3.fromRGB(200, 25, 30)
 	local s = head.Size
-	local mat = Enum.Material.Leather
+	local L = Head.FaceLayout(head, {})
 	local hcf = head.CFrame
-	mk(folder, head, "HGTop", V3(s.X * 1.18, s.Y * 0.62, s.Z * 1.18), hcf * CF(0, 0.36 * s.Y, 0.05 * s.Z), color, "Ellipsoid", mat)
-	-- padded brow bar over the eyes
-	mk(folder, head, "HGBrow", V3(s.X * 0.86, s.Y * 0.14, s.Z * 0.2), hcf * CF(0, 0.3 * s.Y, -0.5 * s.Z), darken(color, 0.92), "Ellipsoid", mat)
-	for side = -1, 1, 2 do
-		mk(folder, head, "HGCheek", V3(0.16 * s.X, 0.62 * s.Y, 0.75 * s.Z), hcf * CF(side * 0.52 * s.X, -0.08 * s.Y, 0.05 * s.Z), color, "Ellipsoid", mat)
+	local mat = Enum.Material.Leather
+	local function add(name, size, cf, c, shape, m)
+		return mk(folder, head, name, size, cf, c, shape or "Ellipsoid", m or mat)
 	end
-	mk(folder, head, "HGBack", V3(s.X * 1.1, s.Y * 0.7, 0.2 * s.Z), hcf * CF(0, 0.05 * s.Y, 0.55 * s.Z), color, "Ellipsoid", mat)
-	-- the chin strap: from the foot of each cheek pad along the underside of the jaw to a cup under the
-	-- chin (a strap straight across under the head would hang in front of the neck like a choker)
-	local strapC = darken(color, 0.6)
+	-- the classic head's shape at size k x the head's (per axis), centred at (x, y, z) fractions of the head
+	local function shell(name, kx, ky, kz, y, z, c)
+		local p = mk(folder, head, name, V3(s.X * kx, s.Y * ky, s.Z * kz), hcf * CF(0, y * s.Y, z * s.Z), c, "Block", mat)
+		local m = Instance.new("SpecialMesh")
+		m.MeshType = Enum.MeshType.Head
+		m.Parent = p
+		return p
+	end
+	-- a pad at azimuth az (degrees from the front, + toward +X), height y (fraction of s.Y): w x h along the skin
+	-- (fractions of s.X / s.Y), standing rise (fraction of s.Z) off it, rolled about its normal by roll degrees.
+	-- Sunk by the head's curve under its footprint (the sag) so the rim lies on the skin
+	local function pad(name, az, y, w, h, rise, c, roll)
+		local cf = L.shellCF(rad(az), y * s.Y, 0)
+		if roll and roll ~= 0 then
+			cf = cf * ANG(0, 0, rad(roll))
+		end
+		w, h, rise = w * s.X, h * s.Y, rise * s.Z
+		local p0 = cf.Position
+		local function sag(dx, dy)
+			return math.max(L.outside(p0 + cf.RightVector * dx + cf.UpVector * dy), 0)
+		end
+		local sg = math.max(sag(w / 2, 0), sag(-w / 2, 0), sag(0, h / 2), sag(0, -h / 2))
+		local ctr = sg * 1.15 + 0.002 * s.Z
+		local D = rise + ctr
+		local f = math.sqrt(math.max(1 - ((ctr - sg) / D) ^ 2, 0.3))
+		return add(name, V3(w / f, h / f, 2 * D), hcf * cf * CF(0, 0, ctr), c)
+	end
+	local O = Head.HEADGEAR_OPENING
+	local browC, seamC, strapC = darken(color, 0.9), darken(color, 0.72), darken(color, 0.55)
+	-- the shell (sides + back: 0.1 off at the ears, 0.09 at the back, into the face in front of az +-44)
+	shell("HGShell", 1.2, 1.1, 1.05, 0.05, 0.06, color)
+	-- the crown: over the top, its front sinking into the forehead behind the band
+	add("HGTop", V3(s.X * 1.16, s.Y * 0.6, s.Z * 1.16), hcf * CF(0, 0.34 * s.Y, 0.04 * s.Z), color)
+	-- the brow roll: a flat ellipsoid round the forehead whose rim meets the skin at O.top (above every drawn brow)
+	-- and bulges ~0.075 off it in front (its sides and back sink into the shell)
+	add("HGBrow", V3(s.X * 1.11, s.Y * 0.26, s.Z * 1.125), hcf * CF(0, (O.top + 0.066) * s.Y, 0), browC)
+	if low then
+		return folder
+	end
 	for side = -1, 1, 2 do
-		local a = hcf * V3(side * 0.43 * s.X, -0.32 * s.Y, -0.02 * s.Z)
-		local b = hcf * V3(side * 0.08 * s.X, -0.46 * s.Y, -0.29 * s.Z)
+		-- the cheek bolster rolling the opening's side edge (outside the eyes; its foot leans in beside the mouth)
+		pad("HGCheek", side * 50, -0.05, 0.15, 0.64, 0.065, color, -side * 5)
+	end
+	-- the chin cup under the chin (the strap meets it there)
+	add("HGChin", V3(0.24 * s.X, 0.09 * s.Y, 0.16 * s.Z), hcf * CF(0, -0.47 * s.Y, -0.3 * s.Z), strapC)
+	if not full then
+		return folder
+	end
+	for side = -1, 1, 2 do
+		-- the ear hole: a dark opening in the shell over the ear
+		local ecf = L.shellCF(rad(side * 90), 0.02 * s.Y, 0.09 * s.Z)
+		add("HGEarHole", V3(0.1 * s.Z, 0.15 * s.Y, 0.04 * s.X), hcf * ecf, darken(color, 0.35))
+		-- the chin strap: from the shell's lower edge behind the cheek along the underside of the jaw to the cup
+		local a = hcf * L.shellCF(rad(side * 66), -0.36 * s.Y, 0.03 * s.Z).Position
+		local b = hcf * V3(side * 0.08 * s.X, -0.47 * s.Y, -0.28 * s.Z)
 		local mid = (a + b) * 0.5
 		local out = mid - hcf * V3(0, -0.2 * s.Y, -0.1 * s.Z)
-		mk(folder, head, "HGStrap", V3(0.07 * s.Y, 0.025 * s.Y, (b - a).Magnitude), CFrame.lookAt(mid, b, out.Unit), strapC, "Block")
+		add("HGStrap", V3(0.07 * s.Y, 0.025 * s.Y, (b - a).Magnitude), CFrame.lookAt(mid, b, out.Unit), strapC, "Block", SMOOTH)
 	end
-	mk(folder, head, "HGChin", V3(0.24 * s.X, 0.09 * s.Y, 0.16 * s.Z), hcf * CF(0, -0.46 * s.Y, -0.31 * s.Z), strapC, "Ellipsoid", mat)
-	-- (v10 detail) the stitched seam over the crown (front to back), the brow pad's roll split from the crown, an ear
-	-- opening in each cheek pad and the chin strap's buckle at the cheek
-	local seamC = darken(color, 0.78)
-	mk(folder, head, "HGSeam", V3(0.05 * s.X, s.Y * 0.64, s.Z * 1.2), hcf * CF(0, 0.36 * s.Y, 0.05 * s.Z), seamC, "Ellipsoid", mat)
-	mk(folder, head, "HGBrowRoll", V3(s.X * 0.8, s.Y * 0.07, s.Z * 0.12), hcf * CF(0, 0.39 * s.Y, -0.53 * s.Z), darken(color, 0.86), "Ellipsoid", mat)
-	for side = -1, 1, 2 do
-		mk(folder, head, "HGEarHole", V3(0.04 * s.X, 0.2 * s.Y, 0.2 * s.Z), hcf * CF(side * 0.6 * s.X, 0.0, 0.06 * s.Z), darken(color, 0.45), "Ellipsoid", mat)
-	end
-	mk(folder, head, "HGBuckle", V3(0.03 * s.X, 0.07 * s.Y, 0.07 * s.Z), hcf * CF(0.5 * s.X, -0.3 * s.Y, -0.06 * s.Z), Color3.fromRGB(190, 190, 196), "Block", Enum.Material.Metal)
+	-- the stitched seam over the crown (front to back)
+	add("HGSeam", V3(0.045 * s.X, s.Y * 0.615, s.Z * 1.18), hcf * CF(0, 0.34 * s.Y, 0.04 * s.Z), seamC)
+	return folder
 end
 
 ------------------------------------------------------------------------

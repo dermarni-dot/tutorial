@@ -185,6 +185,49 @@ do
 		end
 	end
 end
+-- --set headgear: every boxer's own headgear (Config.AlwaysHeadgear, built by Cosmetics; previews/final/v9/headgear):
+-- tiers 1..5, light / mid / dark skin, the smallest / largest heads, the drawn faces with the widest ink (Grin, Shout,
+-- KO, Toothy, Wink, Focused, Smirk, Surprised), damage, the post-workout sweat, the medium / low detail sets, the
+-- sparring corners' colours, a hooded walkout robe over it and an NPC's seed colour
+local HG_ENTRIES = {}
+do
+	local HG = {
+		{ id = "hg_t1_light_grin", tier = 1, skin = 2, decal = "wcb_grin" },
+		{ id = "hg_t2_mid_shout", tier = 2, skin = 6, decal = "wcb_shout", gloves = { 25, 60, 200 } },
+		{ id = "hg_t3_dark_ko", tier = 3, skin = 11, decal = "wcb_ko", headgear = { 20, 20, 20 } },
+		{ id = "hg_t4_mid_toothy", tier = 4, skin = 8, decal = "wcb_toothy", headgear = { 240, 240, 240 } },
+		{ id = "hg_t5_dark_wink", tier = 5, skin = 9, decal = "wcb_wink", headgear = { 230, 180, 30 }, frame = "Heavyweight Build" },
+		{ id = "hg_f2_focused", tier = 2, skin = 4, decal = "wcb_focused", g = 2, frame = "Lean", headgear = { 240, 120, 170 } },
+		{ id = "hg_t3_smirk", tier = 3, skin = 5, decal = "wcb_smirk", headgear = { 20, 140, 60 } },
+		{ id = "hg_t2_surprised", tier = 2, skin = 10, decal = "wcb_surprised", headgear = { 0, 170, 190 } },
+	}
+	for _, r in ipairs(HG) do
+		local L = { id = r.id, label = r.id, g = r.g or 1, tier = r.tier, skin = r.skin, preset = "Classic", style = "wcb_neutral", bald = true,
+			frame = r.frame, headgearColor = r.headgear, glovesColor = r.gloves }
+		byId[L.id] = L
+		entry(L, "rest", { decalKey = r.decal })
+		HG_ENTRIES[ENTRIES[#ENTRIES].id] = true
+	end
+	local function more(look, state, extra)
+		entry(byId[look], state, extra)
+		HG_ENTRIES[ENTRIES[#ENTRIES].id] = true
+	end
+	more("hg_t2_mid_shout", "dmgSevere", { damage = "Severe", decalKey = "wcb_shout" })
+	more("hg_t1_light_grin", "dmgHeavy", { damage = "Heavy", decalKey = "wcb_grin" })
+	more("hg_t3_dark_ko", "dmgModerate", { damage = "Moderate", decalKey = "wcb_ko" })
+	more("hg_t4_mid_toothy", "workout", { workout = true, grime = 0.7, decalKey = "wcb_toothy" })
+	more("hg_t1_light_grin", "workout", { workout = true, decalKey = "wcb_grin" })
+	more("hg_t2_mid_shout", "medium", { detail = "medium", decalKey = "wcb_shout" })
+	more("hg_t2_mid_shout", "low", { detail = "low", decalKey = "wcb_shout" })
+	more("hg_t3_smirk", "sparBlue", { headgear = { 30, 60, 160 }, decalKey = "wcb_smirk" })
+	more("hg_t3_smirk", "sparOff", { headgear = { 30, 60, 160 }, sparOff = true, decalKey = "wcb_smirk" })
+	more("hg_t5_dark_wink", "sparRed", { headgear = { 170, 25, 30 }, decalKey = "wcb_wink" })
+	more("hg_t4_mid_toothy", "robe", { robe = "Hooded", decalKey = "wcb_toothy" })
+	local npc = { id = "hg_npc_seed", label = "hg_npc_seed", g = 1, tier = 3, skin = 7, preset = "Classic", style = "wcb_neutral", bald = true, npcSeed = 4242 }
+	byId[npc.id] = npc
+	entry(npc, "rest", { decalKey = "wcb_cool" })
+	HG_ENTRIES[ENTRIES[#ENTRIES].id] = true
+end
 -- the walkout robe on every tier, the frames and the heights (body views; clearance metrics in the report)
 local ROBES = {
 	{ id = "robe_t1_lean_62", g = 1, tier = 1, skin = 6, frame = "Lean", height = 62, robe = "Classic" },
@@ -507,6 +550,17 @@ local function appFor(L)
 	if L.height then
 		app.height = L.height
 	end
+	if L.npcSeed then
+		-- an NPC's look colours (the headgear by its seed: Looks.Random's own stream)
+		local r = Looks.Random(L.npcSeed, L.g, { age = 26, class = 5 })
+		app.attire, app.gloves = r.attire, r.gloves
+	end
+	if L.headgearColor then
+		app.attire.headgear = L.headgearColor
+	end
+	if L.glovesColor then
+		app.gloves.color = L.glovesColor
+	end
 	return app
 end
 
@@ -522,7 +576,7 @@ for _, e in ipairs(ENTRIES) do
 	if only and not only[e.id] and not only[e.look.id] then
 		continue
 	end
-	local inSet = (WCB_ENTRIES[e.id] and "wcb") or (WCB2_ENTRIES[e.id] and "wcb2") or nil
+	local inSet = (WCB_ENTRIES[e.id] and "wcb") or (WCB2_ENTRIES[e.id] and "wcb2") or (HG_ENTRIES[e.id] and "headgear") or nil
 	if args.set ~= inSet then
 		continue
 	end
@@ -537,7 +591,7 @@ for _, e in ipairs(ENTRIES) do
 	local model = newRig(Vector3.new(sc.width, sc.height, sc.depth), 1.2 * sc.head)
 	model.Parent = E.workspace
 	currentModel = model
-	local opts = { hands = "gloves", detail = args.detail or "full", age = L.age or 24 }
+	local opts = { hands = "gloves", detail = e.detail or args.detail or "full", age = L.age or 24 }
 	local ok, err = pcall(Builder.Cosmetics, model, app, b, nil, opts)
 	if not ok then
 		error(e.id .. ": Cosmetics failed: " .. tostring(err))
@@ -565,6 +619,11 @@ for _, e in ipairs(ENTRIES) do
 	if e.headgear then
 		Builder.SetHeadgear(model, roblox.Color3.fromRGB(e.headgear[1], e.headgear[2], e.headgear[3]), true)
 		solve(model)
+		if e.sparOff then
+			-- the spar is over (FightEngine RestorePlayer): the boxer's own colour back
+			Builder.SetHeadgear(model, roblox.Color3.new(), false)
+			solve(model)
+		end
 	end
 	local robeReport
 	if e.robe then
