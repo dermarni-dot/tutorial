@@ -2794,11 +2794,11 @@ function AnimFight.evadeTarget(rig, act, t, el)
 		-- out fast, a beat off the line, back a little slower; slipping right (outside the jab) turns the
 		-- shoulders right and sits on the rear leg, slipping left (inside the cross) turns them left over the lead
 		e = evEnv(u, 0.28, 0.42, 1)
-		x, y = sd * 0.3, -0.15
+		x, y = sd * 0.25, -0.2
 		z = sd > 0 and 0.09 or -0.07
 		ry = -sd * 0.1
 		rr = -sd * 0.05
-		wp, wy, wr = -0.08, -sd * 0.17, -sd * 0.34
+		wp, wy, wr = -0.08, -sd * 0.17, -sd * 0.3
 		if sd > 0 then
 			fL.heel += 0.1 * e * cut
 			fR.knee += 0.12 * e * cut
@@ -2815,8 +2815,8 @@ function AnimFight.evadeTarget(rig, act, t, el)
 		local dn = sin(PI * v) ^ 0.85
 		local ex = smooth(u / 0.2) * (1 - smooth((u - 0.7) / 0.3))
 		e = 1
-		x = 0.38 * c * dir * ex
-		y = -0.52 * dn
+		x = 0.45 * c * dir * ex
+		y = -0.8 * dn
 		z = 0.03 * dn
 		rr = -0.05 * c * dir * ex
 		wp = -0.12 * dn
@@ -2829,7 +2829,7 @@ function AnimFight.evadeTarget(rig, act, t, el)
 		off.heel += 0.08 * dn * cut
 	elseif k == "duck" then
 		e = evEnv(u, 0.32, 0.5, 1)
-		y, z = -0.5, 0.04
+		y, z = -0.78, 0.04
 		wp = -0.14
 	elseif k == "pull" then
 		-- the weight rocks back onto the rear foot, the trunk leans away, the chin stays down and the eyes on him
