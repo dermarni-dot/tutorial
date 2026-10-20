@@ -86,6 +86,46 @@ local function rollTable(out, pts, scale)
 end
 local BOX_PT = { { 0, 0 } }
 
+-- the shoe drawn over an R15 foot (BuilderGear's mesh boots / soles, or BuilderBody's part-built soles: everything in
+-- BoxerLook.Attire welded to the foot) in the foot's own space: its sole's underside (y), toe tip and heel ends (z,
+-- -Z = toes), or nil (the foot box draws the foot). The box roll model would pivot the heel rise about the box's ball,
+-- 0.2 studs behind the drawn sole's toe: the boot's toe sank into the floor on every push-off (and its heel at the
+-- heel strike); a rigid sole rolls over its own ends
+local function drawnShoe(model, foot)
+	local look = model:FindFirstChild("BoxerLook")
+	local attire = look and look:FindFirstChild("Attire")
+	if not (attire and foot) then
+		return nil
+	end
+	local inv = foot.CFrame:Inverse()
+	local lo, toe, heel, n = math.huge, math.huge, -math.huge, 0
+	for _, q in ipairs(attire:GetChildren()) do
+		if q:IsA("BasePart") and q.Transparency < 0.99 then
+			local w = q:FindFirstChildWhichIsA("JointInstance") or q:FindFirstChildWhichIsA("WeldConstraint")
+			if w and (w.Part0 == foot or w.Part1 == foot) and w.Part0 ~= w.Part1 then
+				local cf = inv * q.CFrame
+				local h = q.Size * 0.5
+				-- (the box's corners in the foot's space: the bottom face sets the sole, its ends the toe and heel)
+				for _, sx in ipairs({ -1, 1 }) do
+					for _, sy in ipairs({ -1, 1 }) do
+						for _, sz in ipairs({ -1, 1 }) do
+							local c = cf * V3(h.X * sx, h.Y * sy, h.Z * sz)
+							lo = min(lo, c.Y)
+							toe = min(toe, c.Z)
+							heel = max(heel, c.Z)
+						end
+					end
+				end
+				n += 1
+			end
+		end
+	end
+	if n == 0 then
+		return nil
+	end
+	return lo, toe, heel
+end
+
 ------------------------------------------------------------------------
 -- Joints
 ------------------------------------------------------------------------
@@ -200,6 +240,23 @@ function AnimRig.computeGeo(rig)
 		leg.toeX = max(0.15, (footCF:PointToWorldSpace(V3(0, -fs.Y / 2, -fs.Z * 0.5)) - ank):Dot(fwd))
 		leg.heelX = max(0.1, (ank - footCF:PointToWorldSpace(V3(0, -fs.Y / 2, fs.Z * 0.5))):Dot(fwd))
 		leg.soleY = sole
+		-- a drawn shoe over the box (no organic shoes): it rolls over its own sole's ends (a hair inside the
+		-- corners: a moulded sole's edge is rounded), and its underside - a little under the box's - stands on the
+		-- floor (the ankle carried that much higher: leg.ah)
+		leg.sink = 0
+		if not meshFeet then
+			local dLo, dToe, dHeel = drawnShoe(rig.model, foot)
+			if dLo then
+				local inset = 0.03
+				local tp = footCF:PointToWorldSpace(V3(0, dLo, dToe + inset))
+				local hp = footCF:PointToWorldSpace(V3(0, dLo, dHeel - inset))
+				leg.boxToe = max(leg.boxToe, (tp - ank):Dot(fwd))
+				leg.boxHeel = max(leg.boxHeel, (ank - hp):Dot(fwd))
+				leg.toeX = max(leg.toeX, leg.boxToe + inset)
+				leg.heelX = max(leg.heelX, leg.boxHeel + inset)
+				leg.sink = clamp(-fs.Y / 2 - dLo, 0, 0.08)
+			end
+		end
 	end
 	g.groundY = lowest
 	-- the feet's and thighs' widths (the walking track keeps the feet and the thighs from passing through each
@@ -228,7 +285,7 @@ function AnimRig.computeGeo(rig)
 	for _, s in ipairs(SIDES) do
 		local leg = g[s]
 		-- ankle height above the sole (flat foot), and the sole profile the foot rolls over
-		leg.ah = max(0.1, leg.ankle0.Y - lowest) + (FL and SHOE_SINK or 0)
+		leg.ah = max(0.1, leg.ankle0.Y - lowest) + (FL and SHOE_SINK or leg.sink or 0)
 		if FL then
 			leg.toe = rollTable(leg.toe or {}, SHOE_TOE, FL)
 			leg.heel = rollTable(leg.heel or {}, SHOE_HEEL, FL)

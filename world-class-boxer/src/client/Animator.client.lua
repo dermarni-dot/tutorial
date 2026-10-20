@@ -62,7 +62,7 @@ local KEYS, LEG_KEYS = R.KEYS, R.LEG_KEYS
 -- the arm joints a punch drives, and the fastest any of them may turn while it does (rad/s)
 local ARM_KEYS = { LS = true, LE = true, LW = true, RS = true, RE = true, RW = true }
 -- a walker's swinging arm joints and where their post-filter transform is kept
-local ARM_OUT = { LS = "lsOut", LE = "leOut", RS = "rsOut", RE = "reOut" }
+local ARM_OUT = { LS = "lsOut", LE = "leOut", RS = "rsOut", RE = "reOut", LW = "lwOut", RW = "rwOut" }
 local PUNCH_JOINT_RATE = 31
 local TAGS = { "Fighter", "Trainee", "Ambient", "Preview", "Referee" }
 -- player characters walk / run / jump with the procedural gait (false = Roblox's default Animate)
@@ -1019,13 +1019,16 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 	end
 	-- a walker's arm swing, in step with the legs (after the filters, like the pelvis): opposite the legs,
 	-- faded out while a gesture owns the arms
-	local sL, eL, zL, sR, eR, zR, yL, yR = Loco.armOffsets(rig, dt, rig.gesture ~= nil)
+	local sL, eL, zL, sR, eR, zR, yL, yR, wL, wR = Loco.armOffsets(rig, dt, rig.gesture ~= nil)
 	if sL and joints.LS and joints.LE and joints.RS and joints.RE then
 		rig.armOut = true
 		rig.lsOut = A(sL, yL, zL) * joints.LS.cur
 		rig.leOut = joints.LE.cur * A(eL, 0, 0)
 		rig.rsOut = A(sR, yR, zR) * joints.RS.cur
 		rig.reOut = joints.RE.cur * A(eR, 0, 0)
+		-- (the loose hands: AnimLoco's wrist flop)
+		rig.lwOut = joints.LW and joints.LW.cur * A(wL or 0, 0, 0) or nil
+		rig.rwOut = joints.RW and joints.RW.cur * A(wR or 0, 0, 0) or nil
 	else
 		rig.armOut = false
 	end
@@ -1082,7 +1085,7 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 				v = rig.wOut
 			elseif k == "Neck" and rig.nOut then
 				v = rig.nOut
-			elseif rig.armOut and ARM_OUT[k] then
+			elseif rig.armOut and ARM_OUT[k] and rig[ARM_OUT[k]] then
 				v = rig[ARM_OUT[k]]
 			end
 			if springs then

@@ -28,6 +28,7 @@ local FE = require("./fakeengine")
 local MeshV2 = require("./meshv2")
 
 local Vector3, CFrame = roblox.Vector3, roblox.CFrame
+local PI = math.pi
 local SCRATCH = "/tmp/claude-0/-home-user-tutorial/3e72dc83-9506-5d11-a575-9dd4f250e9a5/scratchpad"
 
 local args = {}
@@ -58,6 +59,10 @@ local NFRAMES = tonumber(args.frames) or 8
 local NOMESH = args["no-mesh"] == true
 local BARE = args.bare ~= nil and args.bare ~= "0" -- hide the gear (the body's own surfaces)
 local HANDS = args.hands or "gloves" -- gloves | wraps | bare
+-- --height IN: the boxer's height in inches (Looks: 60..84; Builder.Scales clamps the scale to 0.86..1.2); the clip
+-- ids carry it (walk_t3_h84)
+local HEIGHT = tonumber(args.height)
+local HTAG = HEIGHT and ("_h" .. tostring(HEIGHT)) or ""
 
 ------------------------------------------------------------------------
 -- host: fake engine, virtual clock, the asset simulator (Content)
@@ -409,6 +414,7 @@ local function makeBoxer(tier, spec)
 	app.attire.trim = pal(spec.trim or 1)
 	app.attire.trunkStyle = spec.trunkStyle or app.attire.trunkStyle
 	app.attire.shoeStyle = spec.shoeStyle or app.attire.shoeStyle
+	app.height = spec.height or HEIGHT or app.height
 	local _, b = buildFor(app, tier)
 	local sc = Builder.Scales(app, b)
 	local model, hum = newRig(Vector3.new(sc.width, sc.height, sc.depth), 1.2 * sc.head)
@@ -639,6 +645,168 @@ local metrics = {}
 local index = { about = "v9: the client Animator on tier boxers (Builder.Cosmetics, fake rig), world space, studs, +Y up, face -Z", clips = {} }
 Host.MkDir(OUT)
 
+------------------------------------------------------------------------
+-- gait numbers: joint angles from the solved parts, the soles against the floor, the planted feet's slide
+------------------------------------------------------------------------
+local deg, atan2 = math.deg, math.atan2
+-- the pieces drawn on a foot (the part itself and whatever is welded to it): part-space points relative to the foot
+local function footPoints(model, side)
+	local foot = model:FindFirstChild(side .. "Foot")
+	local pts = {}
+	local function add(p)
+		local rel = foot.CFrame:Inverse() * p.CFrame
+		local file = p.ClassName == "MeshPart" and fileOf(p)
+		if file then
+			local V = localTris(p)
+			for i = 1, #V, 7 do
+				table.insert(pts, rel * V[i])
+			end
+		else
+			local h = p.Size / 2
+			for _, sx in ipairs({ -1, 1 }) do
+				for _, sy in ipairs({ -1, 1 }) do
+					for _, sz in ipairs({ -1, 1 }) do
+						table.insert(pts, rel * Vector3.new(h.X * sx, h.Y * sy, h.Z * sz))
+					end
+				end
+			end
+		end
+	end
+	local drawn = false
+	for _, d in ipairs(model:GetDescendants()) do
+		local cls = d.ClassName
+		if (cls == "Weld" or cls == "WeldConstraint" or cls == "Motor6D") and d.Part0 == foot and d.Part1 and d.Part1 ~= foot
+			and (d.Part1.Transparency or 0) < 0.99 and d.Name ~= (side .. "Ankle") then
+			add(d.Part1)
+			drawn = true
+		end
+	end
+	if not drawn or (foot.Transparency or 0) < 0.99 then
+		add(foot)
+	end
+	return foot, pts
+end
+local function soleOf(foot, pts)
+	local cf = foot.CFrame
+	local lo, loPt, loI = math.huge, nil, 1
+	for i, q in ipairs(pts) do
+		local w = cf * q
+		if w.Y < lo then
+			lo, loPt, loI = w.Y, w, i
+		end
+	end
+	return lo, loPt, loI
+end
+-- the signed angle of a direction in a frame's sagittal plane (from straight down, + = forward / -Z)
+local function sag(cf, v)
+	local d = cf:VectorToObjectSpace(v)
+	return deg(atan2(-d.Z, -d.Y))
+end
+local function yawOf(cf)
+	local l = cf.LookVector
+	return deg(atan2(-l.X, -l.Z))
+end
+local function gaitSampler(model)
+	local P = {}
+	for _, n in ipairs({ "HumanoidRootPart", "LowerTorso", "UpperTorso", "Head", "LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg",
+		"RightLowerLeg", "LeftFoot", "RightFoot", "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm", "LeftHand", "RightHand" }) do
+		P[n] = model:FindFirstChild(n)
+	end
+	local feet = {}
+	for _, s in ipairs({ "Left", "Right" }) do
+		local f, pts = footPoints(model, s)
+		feet[s] = { foot = f, pts = pts }
+		if args.debugfoot then
+			local mn, mx = Vector3.new(1e9, 1e9, 1e9), Vector3.new(-1e9, -1e9, -1e9)
+			for _, q in ipairs(pts) do
+				mn, mx = mn:Min(q), mx:Max(q)
+			end
+			local an = f:FindFirstChild(s .. "Ankle")
+			print(string.format("foot %s size %s drawn min %s max %s ankle C1 %s", s, tostring(f.Size), tostring(mn), tostring(mx),
+				an and tostring(an.C1.Position) or "?"))
+		end
+	end
+	return function(t)
+		local hrp = P.HumanoidRootPart.CFrame
+		local lt, ut, head = P.LowerTorso.CFrame, P.UpperTorso.CFrame, P.Head.CFrame
+		local s = { t = t, rootY = hrp.Y, rootZ = hrp.Z, rootX = hrp.X, rootYaw = yawOf(hrp) }
+		s.pelvisY = lt.Y
+		s.headY = head.Y
+		s.headPitch = deg(math.asin(math.clamp(head.LookVector.Y, -1, 1)))
+		s.headRoll = deg(math.asin(math.clamp(head.RightVector.Y, -1, 1)))
+		s.pelvisYaw = ((yawOf(lt) - s.rootYaw + 540) % 360) - 180
+		s.chestYaw = ((yawOf(ut) - s.rootYaw + 540) % 360) - 180
+		s.trunkPitch = deg(math.asin(math.clamp(ut.LookVector.Y, -1, 1)))
+		for _, sd in ipairs({ "Left", "Right" }) do
+			local k = sd:sub(1, 1)
+			local th, sh, ft = P[sd .. "UpperLeg"].CFrame, P[sd .. "LowerLeg"].CFrame, P[sd .. "Foot"].CFrame
+			-- hip: the thigh against the pelvis (sagittal, + flexion) and against the vertical (the root's frame)
+			s["hip" .. k] = sag(lt, -th.UpVector)
+			s["thigh" .. k] = sag(hrp, -th.UpVector)
+			-- knee: the shank against the thigh (+ = flexed back)
+			s["knee" .. k] = -sag(th, -sh.UpVector)
+			-- the foot's pitch in the world (+ = toes up) and against the shank (+ dorsiflexion, the rest pose's offset kept)
+			s["footPitch" .. k] = deg(math.asin(math.clamp(ft.LookVector.Y, -1, 1)))
+			s["ankle" .. k] = sag(sh, ft.LookVector) - 90
+			local ua, la, hd = P[sd .. "UpperArm"].CFrame, P[sd .. "LowerArm"].CFrame, P[sd .. "Hand"].CFrame
+			s["shoulder" .. k] = sag(ut, -ua.UpVector)
+			s["elbow" .. k] = deg(math.acos(math.clamp(ua.UpVector:Dot(la.UpVector), -1, 1)))
+			s["wrist" .. k] = deg(math.acos(math.clamp(la.UpVector:Dot(hd.UpVector), -1, 1)))
+			s["handZ" .. k] = (hrp:PointToObjectSpace(hd.Position)).Z
+			local F = feet[sd]
+			local lo, pt, idx = soleOf(F.foot, F.pts)
+			s["sole" .. k] = lo
+			s["solePt" .. k] = pt
+			s["soleI" .. k] = idx
+			s["footCF" .. k] = ft
+			s["pts" .. k] = F.pts
+			s["ankleP" .. k] = ft.Position
+		end
+		return s
+	end
+end
+-- summary of a sample run: ranges, the planted feet's slide (the lowest sole point while it is within 0.02 of the
+-- floor, measured as the world travel of the foot's contact frame across consecutive frames), clearance
+local function gaitSummary(S)
+	local function range(key)
+		local lo, hi = math.huge, -math.huge
+		for _, s in ipairs(S) do
+			lo, hi = math.min(lo, s[key]), math.max(hi, s[key])
+		end
+		return { r4(lo), r4(hi) }
+	end
+	local out = {}
+	for _, k in ipairs({ "hipL", "hipR", "thighL", "kneeL", "kneeR", "ankleL", "footPitchL", "shoulderL", "shoulderR", "elbowL", "elbowR",
+		"wristL", "handZL", "pelvisYaw", "chestYaw", "pelvisY", "headY", "headPitch", "headRoll", "trunkPitch", "soleL", "soleR" }) do
+		out[k] = range(k)
+	end
+	-- the planted feet: each frame a foot's lowest point is on the floor (< 0.03), how far its ankle moved in the
+	-- world since the frame before (a planted, rolling foot's ankle moves; its contact must not: the sole
+	-- point that is lowest on both frames, i.e. the contact, is compared)
+	local slide, slideMax, contact = { L = 0, R = 0 }, 0, { L = 0, R = 0 }
+	local sink = 0
+	for i = 2, #S do
+		local a, b = S[i - 1], S[i]
+		for _, k in ipairs({ "L", "R" }) do
+			if a["sole" .. k] < 0.012 and b["sole" .. k] < 0.012 then
+				-- the material point of the sole that touched the floor on the frame before: where it is now (rolling
+				-- without slip leaves it where it was; a slide carries it along the floor)
+				local q = a["pts" .. k][a["soleI" .. k]]
+				local pa, pb = a["footCF" .. k] * q, b["footCF" .. k] * q
+				local d = pb.Y < 0.012 and Vector3.new(pb.X - pa.X, 0, pb.Z - pa.Z).Magnitude or 0
+				slide[k] += d
+				slideMax = math.max(slideMax, d / DT)
+				contact[k] += 1
+			end
+			sink = math.min(sink, b["sole" .. k])
+		end
+	end
+	out.slideL, out.slideR, out.slideMaxSpeed = r4(slide.L), r4(slide.R), r4(slideMax)
+	out.contactFramesL, out.contactFramesR = contact.L, contact.R
+	out.sinkMin = r4(sink)
+	return out
+end
+
 local function partPen(model, rec)
 	local lt = model:FindFirstChild("LowerTorso")
 	for _, s in ipairs({ "Left", "Right" }) do
@@ -650,10 +818,45 @@ local function partPen(model, rec)
 	end
 end
 
+-- per-frame series of a clip's samples (for plots / the report)
+local function seriesOf(SALL)
+	local keys = { "t", "v", "rootZ", "rootYaw", "pelvisY", "headY", "headPitch", "hipL", "hipR", "thighL", "thighR", "kneeL", "kneeR", "ankleL", "ankleR",
+		"footPitchL", "footPitchR", "shoulderL", "shoulderR", "elbowL", "elbowR", "wristL", "pelvisYaw", "chestYaw", "trunkPitch", "soleL",
+		"soleR", "handZL", "handZR" }
+	local ser = {}
+	for _, x in ipairs(SALL) do
+		local row = {}
+		for _, k in ipairs(keys) do
+			row[k] = r4(x[k])
+		end
+		row.ankleZL, row.ankleZR = r4(x.anklePL.Z), r4(x.anklePR.Z)
+		local pv = SALL[#ser]
+		for _, k in ipairs({ "L", "R" }) do
+			local slip = 0
+			if pv and pv["sole" .. k] < 0.012 and x["sole" .. k] < 0.012 then
+				local q = pv["pts" .. k][pv["soleI" .. k]]
+				local pa, pb = pv["footCF" .. k] * q, x["footCF" .. k] * q
+				slip = Vector3.new(pb.X - pa.X, 0, pb.Z - pa.Z).Magnitude
+			end
+			row["slip" .. k] = r4(slip)
+		end
+		table.insert(ser, row)
+	end
+	return ser
+end
+
 ------------------------------------------------------------------------
 -- walking clips
 ------------------------------------------------------------------------
-local SPEEDS = { walk = 5, jog = 11, run = 16 }
+-- walk = Config.TownWalkSpeed (StarterPlayer.CharacterWalkSpeed), jog = the ring's base pace, run = Config.TownRunSpeed
+-- (Shift), sprint = the roadwork pace (Main: 18 + Stamina x 0.06); --speeds walk=5,run=16 overrides
+local SPEEDS = { walk = 6.5, jog = 11, run = 16, sprint = 22 }
+for kv in (args.speeds or ""):gmatch("[^,]+") do
+	local k, v = kv:match("(%a+)=([%d%.]+)")
+	if k then
+		SPEEDS[k] = tonumber(v)
+	end
+end
 local function walkClip(clip, tier)
 	local model, hum = makeBoxer(tier)
 	model.Name = "Walker"
@@ -671,6 +874,8 @@ local function walkClip(clip, tier)
 	local total = 4.5
 	local nSteps = math.floor(total / DT)
 	local hist = {}
+	local sample = gaitSampler(model)
+	local S, SALL = {}, {}
 	for i = 1, nSteps do
 		local t = i * DT
 		if t > 1 then
@@ -681,6 +886,21 @@ local function walkClip(clip, tier)
 		hrp.AssemblyLinearVelocity = Vector3.new(0, 0, -v)
 		hum.MoveDirection = v > 0 and Vector3.new(0, 0, -1) or Vector3.zero
 		frame({ model })
+		local smp = sample(t)
+		smp.v = v
+		if args.debugrig and t > tonumber(args.debugrig) and t < tonumber(args.debugrig) + 0.4 then
+			local rg = H.require("AnimRig").rigs[model]
+			local f = rg and rg.foot.L
+			if f then
+				print(string.format("dbg %.3f L swing=%s plan=%s push=%s pushOn=%s u=%.2f kAct=%.1f kVel=%.1f sigma=%.2f pitch=%.2f knee=%.0f reachShort=%.3f k0=%s kpk?",
+					t, tostring(f.swing), tostring(f.plan), tostring(f.push), tostring(f.pushOn), f.planU or -1, math.deg(f.kAct or 0), math.deg(f.kVel or 0),
+					f.sigma or -1, f.pitchS or 0, smp.kneeL, f.reachShort or 0, tostring(f.k0 and math.deg(f.k0))))
+			end
+		end
+		table.insert(SALL, smp)
+		if t > 2.5 then
+			table.insert(S, smp)
+		end
 		if t > 2.5 then
 			local lt = model:FindFirstChild("LowerTorso")
 			local ut = model:FindFirstChild("UpperTorso")
@@ -763,14 +983,153 @@ local function walkClip(clip, tier)
 		end
 	end
 	rec.worstPen = worst
+	rec.gait = gaitSummary(S)
+	rec.start = gaitSummary((function()
+		local o = {}
+		for _, x in ipairs(SALL) do
+			if x.t > 0.9 and x.t <= 2.5 then
+				table.insert(o, x)
+			end
+		end
+		return o
+	end)())
+	do
+		local g = rec.gait
+		local function rg(k)
+			return g[k][2] - g[k][1]
+		end
+		print(string.format("      knee %.0f..%.0f  hip %.0f..%.0f  thigh %.0f..%.0f  ankle %.0f..%.0f  footPitch %.0f..%.0f", g.kneeL[1], g.kneeL[2],
+			g.hipL[1], g.hipL[2], g.thighL[1], g.thighL[2], g.ankleL[1], g.ankleL[2], g.footPitchL[1], g.footPitchL[2]))
+		print(string.format("      shoulder %.0f..%.0f  elbow %.0f..%.0f  wrist %.0f..%.0f  pelvisYaw %.1f..%.1f  chestYaw %.1f..%.1f  trunkPitch %.1f..%.1f",
+			g.shoulderL[1], g.shoulderL[2], g.elbowL[1], g.elbowL[2], g.wristL[1], g.wristL[2], g.pelvisYaw[1], g.pelvisYaw[2], g.chestYaw[1],
+			g.chestYaw[2], g.trunkPitch[1], g.trunkPitch[2]))
+		print(string.format("      bob pelvis %.3f head %.3f  head pitch %.1f..%.1f roll %.1f..%.1f  sole %.3f..%.3f  slide L %.3f R %.3f (max %.2f studs/s)  start slide %.3f/%.3f sink %.3f",
+			rg("pelvisY"), rg("headY"), g.headPitch[1], g.headPitch[2], g.headRoll[1], g.headRoll[2], g.soleL[1], g.soleL[2], g.slideL, g.slideR,
+			g.slideMaxSpeed, rec.start.slideL, rec.start.slideR, math.min(g.sinkMin, rec.start.sinkMin)))
+	end
+	do
+		local ser = seriesOf(SALL)
+		Host.WriteJSON(string.format("%s/gait_%s_t%d%s.json", OUT, clip, tier, HTAG), { clip = clip, tier = tier, speed = speed, height = HEIGHT,
+			period = rec.period, summary = rec.gait, start = rec.start, series = ser })
+	end
 	print(string.format("      hip flex %.0f..%.0f deg, abduction %.0f..%.0f deg", rec.hipFlexMin, rec.hipFlexMax, rec.hipAbdMin, rec.hipAbdMax))
-	local file = string.format("%s_t%d.json", clip, tier)
+	local file = string.format("%s_t%d%s.json", clip, tier, HTAG)
 	Host.WriteJSON(OUT .. "/" .. file, out)
-	table.insert(index.clips, { id = string.format("%s_t%d", clip, tier), file = file, clip = clip, tier = tier, n = #out.frames })
+	table.insert(index.clips, { id = string.format("%s_t%d%s", clip, tier, HTAG), file = file, clip = clip, tier = tier, n = #out.frames })
+	rec.height = HEIGHT
 	table.insert(metrics, rec)
 	print(string.format("%-5s T%d v=%4.1f period %.3f  pelvis sway %.3f  chest sway %.3f  head sway %.3f  pelvis roll %.1f deg  hip %.3f  worst pelvis-in-thigh %d verts %.3f (%s @%.2f)",
 		clip, tier, speed, period, rec.pelvisSwayX, rec.chestSwayX, rec.headSwayX, rec.pelvisRollDeg, rec.hipHeight, worst.n, worst.deep,
 		tostring(worst.key), worst.phase or 0))
+	player.Character = nil
+	model:Destroy()
+	for _ = 1, 3 do
+		frame({})
+	end
+end
+
+------------------------------------------------------------------------
+-- scripted clips: start / stop, turning in place, a walking turn. The root moves along its own facing at
+-- speed(t), turning at yawRate(t) (rad/s, + = left); every frame sampled, frames recorded at the given times
+------------------------------------------------------------------------
+local SCRIPTS = {
+	startstop = { total = 4.6, shots = { 0.95, 1.1, 1.25, 1.4, 1.55, 1.7, 1.85, 2.0, 3.05, 3.2, 3.35, 3.5, 3.65, 3.85, 4.1, 4.5 }, speed = function(t)
+		local W = SPEEDS.walk
+		if t < 1 then
+			return 0
+		elseif t < 1.4 then
+			return W * (t - 1) / 0.4
+		elseif t < 3 then
+			return W
+		elseif t < 3.3 then
+			return W * (1 - (t - 3) / 0.3)
+		end
+		return 0
+	end, yaw = function()
+		return 0
+	end },
+	turn = { total = 3.4, shots = { 0.95, 1.1, 1.25, 1.4, 1.55, 1.7, 1.85, 2.0, 2.2, 2.5, 2.9, 3.3 }, speed = function()
+		return 0
+	end, yaw = function(t)
+		return (t > 1 and t < 1 + PI / 3.5) and 3.5 or 0
+	end },
+	curve = { total = 4.4, shots = { 1.8, 1.95, 2.1, 2.25, 2.4, 2.55, 2.7, 2.85, 3.0, 3.15, 3.3, 3.45 }, speed = function(t)
+		return t < 1 and 0 or SPEEDS.walk * math.min(1, (t - 1) / 0.4)
+	end, yaw = function(t)
+		return (t > 1.8 and t < 1.8 + (PI / 2) / 1.6) and 1.6 or 0
+	end },
+}
+local function scriptClip(clip, tier)
+	local sc = SCRIPTS[clip]
+	local model, hum = makeBoxer(tier)
+	model.Name = "Walker"
+	player.Character = model
+	player.CharacterAdded:Fire(model)
+	local hrp = model:FindFirstChild("HumanoidRootPart")
+	local y0 = hrp.CFrame.Y
+	local sample = gaitSampler(model)
+	local x, z, yaw = 0, 0, 0
+	local S = {}
+	local out = { clip = clip, tier = tier, frames = {} }
+	local shot = 1
+	local maxJ = { knee = 0, hip = 0, shoulder = 0, elbow = 0, pelvisY = 0, headY = 0 }
+	for i = 1, math.floor(sc.total / DT) do
+		local t = i * DT
+		local v, yr = sc.speed(t), sc.yaw(t)
+		yaw += yr * DT
+		local fx, fz = -math.sin(yaw), -math.cos(yaw)
+		x += fx * v * DT
+		z += fz * v * DT
+		hrp.CFrame = CFrame.new(x, y0, z) * CFrame.Angles(0, yaw, 0)
+		hrp.AssemblyLinearVelocity = Vector3.new(fx * v, 0, fz * v)
+		hrp.AssemblyAngularVelocity = Vector3.new(0, yr, 0)
+		hum.MoveDirection = v > 0.05 and Vector3.new(fx, 0, fz) or Vector3.zero
+		frame({ model })
+		local smp = sample(t)
+		smp.v = v
+		if args.debugrig and t > tonumber(args.debugrig) and t < tonumber(args.debugrig) + 0.3 then
+			local rg = H.require("AnimRig").rigs[model]
+			for _, sd in ipairs({ "L", "R" }) do
+				local f = rg and rg.foot[sd]
+				if f then
+					print(string.format("dbg %.3f %s swing=%s push=%s sigma=%.2f pitch=%.2f knee=%.0f reachShort=%.3f excess=%.3f need=%.3f drop=%.3f run=%.2f",
+						t, sd, tostring(f.swing), tostring(f.push), f.sigma or -1, f.pitchS or 0, smp["knee" .. sd], f.reachShort or 0, f.excess or 0,
+						f.needDrop or -1, rg.loco.drop or 0, rg.loco.run))
+				end
+			end
+		end
+		local pv = S[#S]
+		if pv then
+			for k, key in pairs({ knee = "knee", hip = "hip", shoulder = "shoulder", elbow = "elbow" }) do
+				for _, sd in ipairs({ "L", "R" }) do
+					maxJ[k] = math.max(maxJ[k], math.abs(smp[key .. sd] - pv[key .. sd]))
+				end
+			end
+			maxJ.pelvisY = math.max(maxJ.pelvisY, math.abs(smp.pelvisY - pv.pelvisY))
+			maxJ.headY = math.max(maxJ.headY, math.abs(smp.headY - pv.headY))
+		end
+		table.insert(S, smp)
+		if sc.shots[shot] and t >= sc.shots[shot] - 1e-6 then
+			shot += 1
+			local fr = NOMESH and { t = r4(t) } or exportFrame(model, t)
+			fr.root = cfList(hrp.CFrame)
+			fr.label = string.format("%.2f s  v %.1f", t, v)
+			table.insert(out.frames, fr)
+		end
+	end
+	local g = gaitSummary(S)
+	local rec = { clip = clip, tier = tier, height = HEIGHT, gait = g, maxFrameStep = {} }
+	Host.WriteJSON(string.format("%s/gait_%s_t%d%s.json", OUT, clip, tier, HTAG), { clip = clip, tier = tier, height = HEIGHT, summary = g,
+		series = seriesOf(S) })
+	for k, v in pairs(maxJ) do
+		rec.maxFrameStep[k] = r4(v)
+	end
+	print(string.format("%-9s T%d  slide L %.3f R %.3f  sink %.3f  max per-frame step: knee %.1f hip %.1f shoulder %.1f elbow %.1f deg, pelvis %.3f head %.3f",
+		clip, tier, g.slideL, g.slideR, g.sinkMin, maxJ.knee, maxJ.hip, maxJ.shoulder, maxJ.elbow, maxJ.pelvisY, maxJ.headY))
+	local file = string.format("%s_t%d%s.json", clip, tier, HTAG)
+	Host.WriteJSON(OUT .. "/" .. file, out)
+	table.insert(index.clips, { id = string.format("%s_t%d%s", clip, tier, HTAG), file = file, clip = clip, tier = tier, n = #out.frames })
+	table.insert(metrics, rec)
 	player.Character = nil
 	model:Destroy()
 	for _ = 1, 3 do
@@ -893,6 +1252,15 @@ end
 
 local function restClip(tier)
 	local model = makeBoxer(tier)
+	if args.debugfoot then
+		gaitSampler(model)
+		for _, d in ipairs(model:GetDescendants()) do
+			if (d.ClassName == "Weld" or d.ClassName == "WeldConstraint") and d.Part0 and (d.Part0.Name == "LeftFoot") then
+				local rel = d.Part0.CFrame:Inverse() * d.Part1.CFrame
+				print("  on LeftFoot:", d.Part1.Name, d.Part1.ClassName, tostring(d.Part1.Size), tostring(rel.Position), d.Part1.Transparency)
+			end
+		end
+	end
 	model.Name = "Stander"
 	player.Character = model
 	player.CharacterAdded:Fire(model)
@@ -915,9 +1283,14 @@ for _, tier in ipairs(TIERS) do
 	if CLIPS.rest then
 		restClip(tier)
 	end
-	for _, clip in ipairs({ "walk", "jog", "run" }) do
+	for _, clip in ipairs({ "walk", "jog", "run", "sprint" }) do
 		if CLIPS[clip] then
 			walkClip(clip, tier)
+		end
+	end
+	for _, clip in ipairs({ "startstop", "turn", "curve" }) do
+		if CLIPS[clip] then
+			scriptClip(clip, tier)
 		end
 	end
 	if CLIPS.punch then

@@ -39,7 +39,7 @@ def render_clip(scene_dir, out_dir, clip, samples, views, tag):
     frames = data["frames"]
     n = len(frames)
     punch = clip["clip"] == "punch"
-    gap = 3.2 if punch else 2.7
+    gap = float(os.environ.get("V9_GAP") or (3.2 if punch else 2.7))
     paths = []
     for view in views:
         width = (n - 1) * gap + (3.4 if punch else 2.6)
@@ -85,7 +85,7 @@ def render_clip(scene_dir, out_dir, clip, samples, views, tag):
         tf = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
         f = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 15)
         title = f"{tag}: {clip['id']} ({view}, orthographic; red line = HumanoidRootPart centre line)"
-        if not punch:
+        if clip["clip"] in ("walk", "jog", "run", "sprint"):
             title += f", v = {data.get('speed')} studs/s, one gait cycle"
         dr.text((10, 9), title, fill=(235, 235, 235), font=tf)
         colw = im.width / n
@@ -100,6 +100,62 @@ def render_clip(scene_dir, out_dir, clip, samples, views, tag):
         paths.append(out)
         print("rendered", out, flush=True)
     return paths
+
+
+def render_gif(scene_dir, out_dir, clip, samples, view, tag, ms=None):
+    """every recorded frame on its own, the camera following the root (the boxer stays in the middle), as an animated
+    GIF: <OUT>/<tag>_<clip>_<view>.gif. Floor marks every stud stay put in the world, so a planted foot that slides
+    shows against them; the red line is the root's centre line. ms = the GIF's frame time (default: the clip's own
+    frame spacing, from the frames' t)"""
+    from PIL import Image, ImageDraw, ImageFont
+    data = json.load(open(os.path.join(scene_dir, clip["file"])))
+    frames = data["frames"]
+    imgs = []
+    f = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+    for i, fr in enumerate(frames):
+        root = fr.get("root") or [0, 0, 0]
+        rx, rz = root[0], root[2]
+        sc = v8.V8Scene(res=(420, 560), samples=samples, lens=50, bg=(0.11, 0.115, 0.125))
+        off = (-rx, 0, -rz)
+        v8.add_boxer(sc, scene_dir, frame_dict(fr), offset=off)
+        # floor marks (world-fixed): thin bars across the walking line every stud
+        for k in range(-6, 7):
+            if view == "side":
+                zz = math.floor(rz) + k - rz
+                P, T = v8.box(1.6, 0.012, 0.035)
+                P = P + np.array([-0.9, 0.006, zz])
+            else:
+                xx = math.floor(rx) + k - rx
+                P, T = v8.box(0.035, 0.012, 1.6)
+                P = P + np.array([xx, 0.006, 0.9])
+            sc.add_world(P, T, "mark", mat=sc.gear_mat((0.45, 0.45, 0.48), "SmoothPlastic", 0), smooth=False)
+        if view == "front":
+            add_line(sc, 0, 1.4)
+        else:
+            add_line(sc, -1.4, 0)
+        cam = sc.cam
+        cam.data.type = "ORTHO"
+        cam.data.ortho_scale = 7.4
+        focus = (0, 3.6, 0)
+        sc.rig(focus, 6.0)
+        p = os.path.join(out_dir, f"_{tag}_{clip['id']}_{view}_{i}.png")
+        sc.render(p, view=(0, 0.01, 1.0) if view == "front" else (90, 0.01, 1.0), dist=30, focus=focus)
+        im = Image.open(p).convert("RGB")
+        dr = ImageDraw.Draw(im)
+        lab = f"{tag}: {clip['id']} {view}  {fr.get('label') or f'{i + 1}/{len(frames)}'}"
+        dr.text((8, 8), lab, fill=(230, 230, 230), font=f)
+        imgs.append(im)
+        os.remove(p)
+    if ms is None:
+        ts = [fr.get("t") for fr in frames]
+        ms = 60
+        if len(ts) > 1 and all(t is not None for t in ts):
+            ms = max(20, int(round(1000 * (ts[-1] - ts[0]) / (len(ts) - 1))))
+    out = os.path.join(out_dir, f"{tag}_{clip['id']}_{view}.gif")
+    pal = [im.quantize(colors=128, method=Image.Quantize.MEDIANCUT) for im in imgs]
+    pal[0].save(out, save_all=True, append_images=pal[1:], duration=ms, loop=0, optimize=True)
+    print("rendered", out, flush=True)
+    return out
 
 
 def part_pos(fr, name):
@@ -244,5 +300,8 @@ if __name__ == "__main__":
             render_arm_closeups(scene_dir, out_dir, c, samples, tag)
         elif c["clip"] == "rest":
             render_rest(scene_dir, out_dir, c, samples, tag)
+        elif "--gif" in opts:
+            for v in views:
+                render_gif(scene_dir, out_dir, c, samples, v, tag, ms=int(opts["--ms"]) if "--ms" in opts else None)
         else:
             render_clip(scene_dir, out_dir, c, samples, views, tag)
