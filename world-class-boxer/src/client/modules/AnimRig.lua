@@ -244,10 +244,13 @@ function AnimRig.computeGeo(rig)
 		-- corners: a moulded sole's edge is rounded), and its underside - a little under the box's - stands on the
 		-- floor (the ankle carried that much higher: leg.ah)
 		leg.sink = 0
+		leg.ballX = nil
 		if not meshFeet then
 			local dLo, dToe, dHeel = drawnShoe(rig.model, foot)
 			if dLo then
 				local inset = 0.03
+				-- (spins and pivots still turn about the ball, under the box's toe edge: not the boot's tip)
+				leg.ballX = leg.boxToe
 				local tp = footCF:PointToWorldSpace(V3(0, dLo, dToe + inset))
 				local hp = footCF:PointToWorldSpace(V3(0, dLo, dHeel - inset))
 				leg.boxToe = max(leg.boxToe, (tp - ank):Dot(fwd))
@@ -297,7 +300,7 @@ function AnimRig.computeGeo(rig)
 			leg.heel[1][1], leg.heel[1][4] = leg.boxHeel, leg.boxHeel
 		end
 		-- (spins and pivots turn the foot about the front of its flat contact: the ball)
-		leg.bz = leg.toe[1][1]
+		leg.bz = leg.ballX or leg.toe[1][1]
 		leg.hz = leg.heel[1][1]
 		leg.ball = leg.bz -- legacy name
 	end

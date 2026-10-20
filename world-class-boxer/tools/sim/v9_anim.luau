@@ -895,6 +895,8 @@ local function walkClip(clip, tier)
 				print(string.format("dbg %.3f L swing=%s plan=%s push=%s pushOn=%s u=%.2f kAct=%.1f kVel=%.1f sigma=%.2f pitch=%.2f knee=%.0f reachShort=%.3f k0=%s kpk?",
 					t, tostring(f.swing), tostring(f.plan), tostring(f.push), tostring(f.pushOn), f.planU or -1, math.deg(f.kAct or 0), math.deg(f.kVel or 0),
 					f.sigma or -1, f.pitchS or 0, smp.kneeL, f.reachShort or 0, tostring(f.k0 and math.deg(f.k0))))
+				print(string.format("    curZ %.3f tgtZ %.3f PZ %.3f t0 %.3f dur %.3f uS %.3f kind %s", f.cur and f.cur.Z or 0, f.tgtW and f.tgtW.Z or 0,
+					f.P and f.P.Z or 0, f.t0, f.dur, (t - f.t0) / f.dur, tostring(f.stepKind)))
 			end
 		end
 		table.insert(SALL, smp)
@@ -1033,16 +1035,17 @@ end
 -- speed(t), turning at yawRate(t) (rad/s, + = left); every frame sampled, frames recorded at the given times
 ------------------------------------------------------------------------
 local SCRIPTS = {
-	startstop = { total = 4.6, shots = { 0.95, 1.1, 1.25, 1.4, 1.55, 1.7, 1.85, 2.0, 3.05, 3.2, 3.35, 3.5, 3.65, 3.85, 4.1, 4.5 }, speed = function(t)
+	startstop = { total = 4.6, shots = { 0.95, 1.05, 1.15, 1.25, 1.35, 1.45, 1.55, 1.7, 2.95, 3.05, 3.15, 3.25, 3.35, 3.5, 3.7, 4.0, 4.5 }, speed = function(t)
 		local W = SPEEDS.walk
 		if t < 1 then
 			return 0
-		elseif t < 1.4 then
-			return W * (t - 1) / 0.4
+		-- (a Humanoid on the ground gets to its WalkSpeed and back to rest in a few frames: a 0.12 s ramp)
+		elseif t < 1.12 then
+			return W * (t - 1) / 0.12
 		elseif t < 3 then
 			return W
-		elseif t < 3.3 then
-			return W * (1 - (t - 3) / 0.3)
+		elseif t < 3.12 then
+			return W * (1 - (t - 3) / 0.12)
 		end
 		return 0
 	end, yaw = function()
@@ -1054,7 +1057,7 @@ local SCRIPTS = {
 		return (t > 1 and t < 1 + PI / 3.5) and 3.5 or 0
 	end },
 	curve = { total = 4.4, shots = { 1.8, 1.95, 2.1, 2.25, 2.4, 2.55, 2.7, 2.85, 3.0, 3.15, 3.3, 3.45 }, speed = function(t)
-		return t < 1 and 0 or SPEEDS.walk * math.min(1, (t - 1) / 0.4)
+		return t < 1 and 0 or SPEEDS.walk * math.min(1, (t - 1) / 0.12)
 	end, yaw = function(t)
 		return (t > 1.8 and t < 1.8 + (PI / 2) / 1.6) and 1.6 or 0
 	end },
@@ -1109,7 +1112,16 @@ local function scriptClip(clip, tier)
 			maxJ.headY = math.max(maxJ.headY, math.abs(smp.headY - pv.headY))
 		end
 		table.insert(S, smp)
-		if sc.shots[shot] and t >= sc.shots[shot] - 1e-6 then
+		local every = tonumber(args.shotevery)
+		if every then
+			-- (--shotevery N: a frame every N frames from 0.9 s on - an even clock for a GIF)
+			if t > 0.9 and i % every == 0 then
+				local fr = NOMESH and { t = r4(t) } or exportFrame(model, t)
+				fr.root = cfList(hrp.CFrame)
+				fr.label = string.format("%.2f s  v %.1f", t, v)
+				table.insert(out.frames, fr)
+			end
+		elseif sc.shots[shot] and t >= sc.shots[shot] - 1e-6 then
 			shot += 1
 			local fr = NOMESH and { t = r4(t) } or exportFrame(model, t)
 			fr.root = cfList(hrp.CFrame)

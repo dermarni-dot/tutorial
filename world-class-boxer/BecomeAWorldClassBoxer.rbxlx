@@ -10697,6 +10697,7 @@ return BodyTiers
 -- The layers live in sub-modules that share the part helpers in BuilderKit:
 -- * BuilderTiers: the 14 muscle-tier body parts (Humanoid:ReplaceBodyPartR15, only on a tier change)
 -- * BuilderHead: the classic head and the face built on it (Parts, a FaceFX rig), beard, fight damage, sweat, headgear
+--   (every boxer wears it while Config.AlwaysHeadgear: a Cosmetics step, recoloured by SetHeadgear while sparring)
 -- * BuilderHair: hair styles x hair types, strands, sway joints, hair under headgear / hoods, wet hair
 -- * BuilderBody: skin/trunks/shoe colours, attire, gloves and wraps, robe, body sweat / bruises
 -- FaceLayout, SetDamage, SetSweat, SetHeadgear, SetHairHidden and SetRobe are forwarded from them.
@@ -10860,8 +10861,64 @@ function Builder.SetSweat(model, app, level)
 	setAttr(model, "Sweat", math.floor(level * 20 + 0.5) / 20)
 end
 
+------------------------------------------------------------------------
+-- Headgear: every boxer's own (Config.AlwaysHeadgear), a Cosmetics step
+------------------------------------------------------------------------
+-- The model carries HeadgearColor (Color3: the boxer's own, Looks.HeadgearColor, written by Cosmetics) and, while
+-- sparring, HeadgearCorner (the corner's colour SetHeadgear put on). The folder is cached on its colour, the head's
+-- size and the detail level, so a rebuild, a tier swap or a respawn keeps (or rebuilds) it and a clone copies it.
+local function wantsHeadgear(opts)
+	return Config.AlwaysHeadgear == true and (opts == nil or opts.outfit == nil or Config.HeadgearOfficials ~= false)
+end
+Builder.WantsHeadgear = wantsHeadgear
+
+local function headgearStep(model, detail)
+	local corner, own = model:GetAttribute("HeadgearCorner"), model:GetAttribute("HeadgearColor")
+	local col = (typeof(corner) == "Color3" and corner) or (typeof(own) == "Color3" and own) or Looks.Color(Looks.Palette[1])
+	detail = Config.DetailLevel(detail)
+	local head = model:FindFirstChild("Head")
+	local key = Kit.sig("HG1", col, head and head.Size or false, detail)
+	if Kit.cached(model, "Headgear", key) then
+		return
+	end
+	local ok = step("Headgear", Head.SetHeadgear, model, col, true, detail)
+	if ok then
+		Kit.seal(model, "Headgear", key)
+	end
+end
+
+-- a boxer's headgear (own colour from the look; no headgear when Config.AlwaysHeadgear is off or he is an exempt
+-- official: the folder goes unless a spar put a corner's on)
+local function headgearLook(model, app, opts, detail)
+	if wantsHeadgear(opts) then
+		setAttr(model, "HeadgearColor", Looks.Color(Looks.HeadgearColor(app)))
+		headgearStep(model, detail)
+	elseif model:GetAttribute("HeadgearColor") ~= nil then
+		-- (switched off since the last build)
+		setAttr(model, "HeadgearColor", nil)
+		if model:GetAttribute("HeadgearCorner") == nil then
+			Head.SetHeadgear(model, nil, false)
+		end
+	end
+end
+
+-- Sparring: on = the corner's colour over the boxer's own headgear, off = his own colour back. A model without its
+-- own headgear (Config.AlwaysHeadgear off, an exempt official) gets the old toggle: built on, removed off
 function Builder.SetHeadgear(model, color, on)
-	step("SetHeadgear", Head.SetHeadgear, model, color, on)
+	if model:GetAttribute("HeadgearColor") ~= nil then
+		setAttr(model, "HeadgearCorner", (on and typeof(color) == "Color3") and color or nil)
+		local look = model:FindFirstChild("BoxerLook")
+		local f = look and look:FindFirstChild("Headgear")
+		step("Headgear", headgearStep, model, (f and f:GetAttribute("Detail")) or model:GetAttribute("Detail"))
+		return
+	end
+	setAttr(model, "HeadgearCorner", nil)
+	step("SetHeadgear", Head.SetHeadgear, model, color, on, model:GetAttribute("Detail"))
+end
+
+-- true while the model wears its own all-the-time headgear (fight cleanup keeps that folder)
+function Builder.HasOwnHeadgear(model)
+	return model:GetAttribute("HeadgearColor") ~= nil
 end
 
 -- region = "hood" | "headgear"
@@ -11117,6 +11174,8 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 		if opts.only.Face and type(opts.damage) == "table" then
 			Builder.SetDamage(model, app, opts.damage)
 		end
+		-- (the headgear follows the head: a head swap or a colour change in the Creator rebuilds it)
+		step("Headgear", headgearLook, model, app, opts, opts.detail)
 		Builder.SetSweat(model, app, opts.sweat or model:GetAttribute("Sweat") or 0)
 		-- previews (Creator / barber) change the look too: the meshes follow
 		step("LookData", publishLook, model, app, build, opts, nil)
@@ -11140,6 +11199,8 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	faceStep(model, app, build, opts)
 	headStep(model, app, build, opts, "Hair")
 	headStep(model, app, build, opts, "Beard")
+	-- the headgear every boxer wears (on the final head; its own cache)
+	step("Headgear", headgearLook, model, app, opts, sp.detail)
 	-- avatar hair accessories (re)attached by ApplyDescription stay hidden under a headgear / hood
 	if model:GetAttribute("AvatarHair") == true then
 		step("HairHidden", Hair.ApplyHairHidden, model)
@@ -12658,7 +12719,9 @@ function Body.SetRobe(model, app, on, opts)
 			-- the head depth: in front of A's hidden-hair line (-0.36), behind the face (-0.5), so the face
 			-- stays open. The drape is the fabric falling from the hood onto the shoulders and upper back.
 			mk(folder, ut, "HoodDrape", V3(s.X * 0.62, s.Y * 0.3, s.Z * 0.75), ut.CFrame * CF(0, s.Y * 0.42, s.Z * 0.32), color, "Ellipsoid", mat)
-			local head = part(model, "Head")
+			-- (over a boxer's headgear, Builder HeadgearColor: the hood stays DOWN, only the drape. No ellipsoid hood can
+			-- close over the headgear's shell without reaching in front of the face)
+			local head = model:GetAttribute("HeadgearColor") == nil and part(model, "Head")
 			if head then
 				local hs = head.Size
 				-- keep the name "Hood": Builder.Cosmetics checks for it before restoring hidden hair
@@ -14913,11 +14976,22 @@ function Head.FaceLayout(head, face)
 		local p = V3(r * hx * kx, yn * ky, r * hz * kz) + nn * (out or 0)
 		return CFrame.lookAt(p, p + nn, V3(0, 1, 0))
 	end
+	-- how far a head-local point lies outside the head (studs, radially; < 0 inside; above / below the head: its height
+	-- past the top / bottom)
+	local function outside(p)
+		local yn = p.Y / ky
+		if math.abs(yn) >= CLASSIC.h then
+			return (math.abs(yn) - CLASSIC.h) * ky
+		end
+		local r = rhoN(yn)
+		local k = math.sqrt((kx * kx + kz * kz) / 2)
+		return (math.sqrt((p.X / kx) ^ 2 + (p.Z / kz) ^ 2) - r) * k
+	end
 	local eyeX = (0.19 + 0.035 * (face.eyeDist or 0)) * s.X
 	local eyeY = 0.1 * s.Y
 	local mouthY = -0.215 * s.Y
 	local L = {
-		s = s, front = front, surf = surf, normal = normal, shellCF = shellCF, eyeX = eyeX, eyeY = eyeY, mouthY = mouthY,
+		s = s, front = front, surf = surf, normal = normal, shellCF = shellCF, outside = outside, eyeX = eyeX, eyeY = eyeY, mouthY = mouthY,
 		eyeSize = 1 + 0.25 * (face.eyeSize or 0),
 		eyeH = 1 - 0.45 * (face.eyeShape or 0.5),
 		browY = eyeY + (0.13 + 0.025 * (face.forehead or 0) + 0.03 * (face.browHeight or 0)) * s.Y,
@@ -14960,6 +15034,7 @@ local DECAL_INK = {
 	{ 0.02, 0.285, 0.065, 0.21 }, -- brows
 	{ 0, 0.2, -0.235, -0.105 }, -- mouth
 }
+Head.DECAL_INK = DECAL_INK
 
 -- a FaceLayout moved onto the drawn features (in place; returns L): the eyes, brows, mouth and a nose line between
 -- them (no nose is drawn: only the bleed and the sweat use it), no asymmetry or tilt
@@ -16201,9 +16276,23 @@ local function beardBuild(model, app, opts)
 end
 
 ------------------------------------------------------------------------
--- Headgear (toggled during sparring)
+-- Headgear (every boxer's, Config.AlwaysHeadgear; else only while sparring)
 ------------------------------------------------------------------------
-function Head.SetHeadgear(model, color, on)
+-- An open-face amateur headgear on the classic head. One padded shell wraps the sides and the back: the classic head's
+-- own shape (a Head SpecialMesh) scaled up and set back, so it stands ~0.1 off the ears and the back and sinks into the
+-- face in front of az +-44 deg (the face opening's sides); the crown caps the top, a brow roll rings the forehead just
+-- above the brows and a cheek bolster rolls each side of the opening.
+-- Ear holes, the chin strap and the crown seam at full detail (the chin cup from medium). The opening is cut round the
+-- drawn face's ink (Head.HEADGEAR_OPENING, checked against every drawn face by test_bodytiers): the band's lower edge
+-- stays above the brows, the shell and bolsters outside the eyes, brows and mouth, the chin open.
+-- detail = Config.DetailLevel: full 11 parts, medium 6, low 3 (the crowd).
+-- The opening in head-size fractions on the front: the band from y = top up, nothing at |x| < side above the mouth
+-- line (y > -0.1) or at |x| < sideLow below it
+Head.HEADGEAR_OPENING = { top = 0.225, side = 0.29, sideLow = 0.24 }
+local HG_PARTS = { full = 11, medium = 6, low = 3 }
+Head.HEADGEAR_PARTS = HG_PARTS
+
+function Head.SetHeadgear(model, color, on, detail)
 	local folder = getFolder(model, "Headgear")
 	Head.SetHairHidden(model, "headgear", on)
 	if not on then
@@ -16213,36 +16302,79 @@ function Head.SetHeadgear(model, color, on)
 	if not head then
 		return
 	end
+	detail = Config.DetailLevel(detail or model:GetAttribute("Detail"))
+	local full, low = detail == "full", detail == "low"
+	folder:SetAttribute("Detail", detail)
+	color = typeof(color) == "Color3" and color or Color3.fromRGB(200, 25, 30)
 	local s = head.Size
-	local mat = Enum.Material.Leather
+	local L = Head.FaceLayout(head, {})
 	local hcf = head.CFrame
-	mk(folder, head, "HGTop", V3(s.X * 1.18, s.Y * 0.62, s.Z * 1.18), hcf * CF(0, 0.36 * s.Y, 0.05 * s.Z), color, "Ellipsoid", mat)
-	-- padded brow bar over the eyes
-	mk(folder, head, "HGBrow", V3(s.X * 0.86, s.Y * 0.14, s.Z * 0.2), hcf * CF(0, 0.3 * s.Y, -0.5 * s.Z), darken(color, 0.92), "Ellipsoid", mat)
-	for side = -1, 1, 2 do
-		mk(folder, head, "HGCheek", V3(0.16 * s.X, 0.62 * s.Y, 0.75 * s.Z), hcf * CF(side * 0.52 * s.X, -0.08 * s.Y, 0.05 * s.Z), color, "Ellipsoid", mat)
+	local mat = Enum.Material.Leather
+	local function add(name, size, cf, c, shape, m)
+		return mk(folder, head, name, size, cf, c, shape or "Ellipsoid", m or mat)
 	end
-	mk(folder, head, "HGBack", V3(s.X * 1.1, s.Y * 0.7, 0.2 * s.Z), hcf * CF(0, 0.05 * s.Y, 0.55 * s.Z), color, "Ellipsoid", mat)
-	-- the chin strap: from the foot of each cheek pad along the underside of the jaw to a cup under the
-	-- chin (a strap straight across under the head would hang in front of the neck like a choker)
-	local strapC = darken(color, 0.6)
+	-- the classic head's shape at size k x the head's (per axis), centred at (x, y, z) fractions of the head
+	local function shell(name, kx, ky, kz, y, z, c)
+		local p = mk(folder, head, name, V3(s.X * kx, s.Y * ky, s.Z * kz), hcf * CF(0, y * s.Y, z * s.Z), c, "Block", mat)
+		local m = Instance.new("SpecialMesh")
+		m.MeshType = Enum.MeshType.Head
+		m.Parent = p
+		return p
+	end
+	-- a pad at azimuth az (degrees from the front, + toward +X), height y (fraction of s.Y): w x h along the skin
+	-- (fractions of s.X / s.Y), standing rise (fraction of s.Z) off it, rolled about its normal by roll degrees.
+	-- Sunk by the head's curve under its footprint (the sag) so the rim lies on the skin
+	local function pad(name, az, y, w, h, rise, c, roll)
+		local cf = L.shellCF(rad(az), y * s.Y, 0)
+		if roll and roll ~= 0 then
+			cf = cf * ANG(0, 0, rad(roll))
+		end
+		w, h, rise = w * s.X, h * s.Y, rise * s.Z
+		local p0 = cf.Position
+		local function sag(dx, dy)
+			return math.max(L.outside(p0 + cf.RightVector * dx + cf.UpVector * dy), 0)
+		end
+		local sg = math.max(sag(w / 2, 0), sag(-w / 2, 0), sag(0, h / 2), sag(0, -h / 2))
+		local ctr = sg * 1.15 + 0.002 * s.Z
+		local D = rise + ctr
+		local f = math.sqrt(math.max(1 - ((ctr - sg) / D) ^ 2, 0.3))
+		return add(name, V3(w / f, h / f, 2 * D), hcf * cf * CF(0, 0, ctr), c)
+	end
+	local O = Head.HEADGEAR_OPENING
+	local browC, seamC, strapC = darken(color, 0.9), darken(color, 0.72), darken(color, 0.55)
+	-- the shell (sides + back: 0.1 off at the ears, 0.09 at the back, into the face in front of az +-44)
+	shell("HGShell", 1.2, 1.1, 1.05, 0.05, 0.06, color)
+	-- the crown: over the top, its front sinking into the forehead behind the band
+	add("HGTop", V3(s.X * 1.16, s.Y * 0.6, s.Z * 1.16), hcf * CF(0, 0.34 * s.Y, 0.04 * s.Z), color)
+	-- the brow roll: a flat ellipsoid round the forehead whose rim meets the skin at O.top (above every drawn brow)
+	-- and bulges ~0.075 off it in front (its sides and back sink into the shell)
+	add("HGBrow", V3(s.X * 1.11, s.Y * 0.26, s.Z * 1.125), hcf * CF(0, (O.top + 0.066) * s.Y, 0), browC)
+	if low then
+		return folder
+	end
 	for side = -1, 1, 2 do
-		local a = hcf * V3(side * 0.43 * s.X, -0.32 * s.Y, -0.02 * s.Z)
-		local b = hcf * V3(side * 0.08 * s.X, -0.46 * s.Y, -0.29 * s.Z)
+		-- the cheek bolster rolling the opening's side edge (outside the eyes; its foot leans in beside the mouth)
+		pad("HGCheek", side * 50, -0.05, 0.15, 0.64, 0.065, color, -side * 5)
+	end
+	-- the chin cup under the chin (the strap meets it there)
+	add("HGChin", V3(0.24 * s.X, 0.09 * s.Y, 0.16 * s.Z), hcf * CF(0, -0.47 * s.Y, -0.3 * s.Z), strapC)
+	if not full then
+		return folder
+	end
+	for side = -1, 1, 2 do
+		-- the ear hole: a dark opening in the shell over the ear
+		local ecf = L.shellCF(rad(side * 90), 0.02 * s.Y, 0.09 * s.Z)
+		add("HGEarHole", V3(0.1 * s.Z, 0.15 * s.Y, 0.04 * s.X), hcf * ecf, darken(color, 0.35))
+		-- the chin strap: from the shell's lower edge behind the cheek along the underside of the jaw to the cup
+		local a = hcf * L.shellCF(rad(side * 66), -0.36 * s.Y, 0.03 * s.Z).Position
+		local b = hcf * V3(side * 0.08 * s.X, -0.47 * s.Y, -0.28 * s.Z)
 		local mid = (a + b) * 0.5
 		local out = mid - hcf * V3(0, -0.2 * s.Y, -0.1 * s.Z)
-		mk(folder, head, "HGStrap", V3(0.07 * s.Y, 0.025 * s.Y, (b - a).Magnitude), CFrame.lookAt(mid, b, out.Unit), strapC, "Block")
+		add("HGStrap", V3(0.07 * s.Y, 0.025 * s.Y, (b - a).Magnitude), CFrame.lookAt(mid, b, out.Unit), strapC, "Block", SMOOTH)
 	end
-	mk(folder, head, "HGChin", V3(0.24 * s.X, 0.09 * s.Y, 0.16 * s.Z), hcf * CF(0, -0.46 * s.Y, -0.31 * s.Z), strapC, "Ellipsoid", mat)
-	-- (v10 detail) the stitched seam over the crown (front to back), the brow pad's roll split from the crown, an ear
-	-- opening in each cheek pad and the chin strap's buckle at the cheek
-	local seamC = darken(color, 0.78)
-	mk(folder, head, "HGSeam", V3(0.05 * s.X, s.Y * 0.64, s.Z * 1.2), hcf * CF(0, 0.36 * s.Y, 0.05 * s.Z), seamC, "Ellipsoid", mat)
-	mk(folder, head, "HGBrowRoll", V3(s.X * 0.8, s.Y * 0.07, s.Z * 0.12), hcf * CF(0, 0.39 * s.Y, -0.53 * s.Z), darken(color, 0.86), "Ellipsoid", mat)
-	for side = -1, 1, 2 do
-		mk(folder, head, "HGEarHole", V3(0.04 * s.X, 0.2 * s.Y, 0.2 * s.Z), hcf * CF(side * 0.6 * s.X, 0.0, 0.06 * s.Z), darken(color, 0.45), "Ellipsoid", mat)
-	end
-	mk(folder, head, "HGBuckle", V3(0.03 * s.X, 0.07 * s.Y, 0.07 * s.Z), hcf * CF(0.5 * s.X, -0.3 * s.Y, -0.06 * s.Z), Color3.fromRGB(190, 190, 196), "Block", Enum.Material.Metal)
+	-- the stitched seam over the crown (front to back)
+	add("HGSeam", V3(0.045 * s.X, s.Y * 0.615, s.Z * 1.18), hcf * CF(0, 0.34 * s.Y, 0.04 * s.Z), seamC)
+	return folder
 end
 
 ------------------------------------------------------------------------
@@ -19525,7 +19657,14 @@ Config.AvatarLook = {
 Config.Expressions = { "neutral", "confident", "determined", "anger", "fear", "fatigue", "pain", "dazed", "effort", "happy", "ko" }
 
 -- true = draw no hair at all (the old hard-coded BALD MODE); kept as a one-line debug toggle
-Config.BaldMode = false -- off: the asset hair (HairAssetData) is uploaded and drawn; true = every boxer bald
+Config.BaldMode = true -- every boxer is bald (the user's call: no hair; everyone wears headgear instead)
+-- true = every character wears boxing headgear all the time (Builder.Cosmetics builds it: rebuilds, respawns, tier
+-- swaps and clones keep it), in its own colour (Looks.HeadgearColor: attire.headgear, else the gloves'); sparring
+-- only recolours it to the corner's blue / red and gives the boxer's own colour back after. false = the old rule:
+-- headgear only while sparring (FightEngine / the Ambient sparring pair)
+Config.AlwaysHeadgear = true
+-- the referee and the cornermen (Builder opts.outfit) wear it too while AlwaysHeadgear is on ("all characters")
+Config.HeadgearOfficials = true
 
 -- daily growth of hair / beard (0..1.5 / 0..1) used by Training.dayTick
 Config.HairGrowthPerDay = 0.02
@@ -30571,6 +30710,8 @@ function Looks.Sanitize(input, old)
 	for _, k in ipairs({ "trunks", "trim", "socks", "shoes", "robe", "robeTrim", "wraps", "mouthguard", "laces" }) do
 		out.attire[k] = color(a[k], color(ba[k], out.attire[k]))
 	end
+	-- the headgear colour (optional: nil = the gloves' colour, Looks.HeadgearColor)
+	out.attire.headgear = color(a.headgear, color(ba.headgear, nil))
 	out.attire.trunkStyle = pick(a.trunkStyle, Looks.TrunkStyles, pick(ba.trunkStyle, Looks.TrunkStyles, out.attire.trunkStyle))
 	out.attire.shoeStyle = pick(a.shoeStyle, Looks.ShoeStyles, pick(ba.shoeStyle, Looks.ShoeStyles, out.attire.shoeStyle))
 	out.attire.wrapPattern = pick(a.wrapPattern, Looks.WrapPatterns, pick(ba.wrapPattern, Looks.WrapPatterns, "Solid"))
@@ -30852,7 +30993,29 @@ function Looks.Random(seed, gender, opts)
 	h.frizz = r4:NextNumber() * 0.6
 	h.volume = -0.4 + r4:NextNumber() * 0.8
 	h.curlSize = -0.6 + r4:NextNumber() * 1.2
+	-- the headgear every boxer wears (Config.AlwaysHeadgear): its own stream, so every trait above is unchanged.
+	-- Mostly the gloves' or the trunks' colour (a matched kit), else any palette colour
+	local r5 = Random.new(seed + 263)
+	local hk = r5:NextNumber()
+	app.attire.headgear = hk < 0.4 and table.clone(app.gloves.color) or (hk < 0.6 and table.clone(app.attire.trunks))
+		or rgb(Looks.Palette[r5:NextInteger(1, #Looks.Palette)])
 	return app
+end
+
+-- the headgear colour {r, g, b} a look wears: attire.headgear (the Creator / locker choice, an NPC's by seed), else
+-- the gloves' colour (WCB red on a new boxer)
+function Looks.HeadgearColor(app)
+	local a = type(app) == "table" and type(app.attire) == "table" and app.attire or {}
+	local g = type(app) == "table" and type(app.gloves) == "table" and app.gloves or {}
+	local c = a.headgear
+	if type(c) == "table" and type(c[1]) == "number" then
+		return c
+	end
+	c = g.color
+	if type(c) == "table" and type(c[1]) == "number" then
+		return c
+	end
+	return rgb(Looks.Palette[1])
 end
 
 -- Muscle development for an AI boxer (0..100 per group plus every sub-muscle part) based on
@@ -45821,11 +45984,13 @@ function Fight:RestorePlayer(P)
 	if P.model and P.model.Parent then
 		-- put the hair back right away (Cosmetics would also reconcile it on the next applyLook)
 		pcall(Builder.SetRobe, P.model, P.data.app, false)
+		-- (the sparring corner's colour off: a boxer's own headgear, Config.AlwaysHeadgear, stays on in his colour)
 		pcall(Builder.SetHeadgear, P.model, Color3.new(), false)
 		local look = P.model:FindFirstChild("BoxerLook")
 		if look then
 			-- the next applyLook redraws the healing residual through opts.damage (Training.FaceView)
-			for _, n in ipairs({ "Damage", "Robe", "Headgear" }) do
+			local own = Builder.HasOwnHeadgear(P.model)
+			for _, n in ipairs(own and { "Damage", "Robe" } or { "Damage", "Robe", "Headgear" }) do
 				local f = look:FindFirstChild(n)
 				if f then
 					f:Destroy()
@@ -45931,6 +46096,7 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 	lookOpts.detail = "full"
 	Builder.Cosmetics(char, pData.app, pData.build, pData.gear, lookOpts)
 	if self.spar then
+		-- the corners' colours over each boxer's own headgear (RestorePlayer gives the player's back)
 		Builder.SetHeadgear(char, Color3.fromRGB(30, 60, 160), true)
 		Builder.SetHeadgear(npc, Color3.fromRGB(170, 25, 30), true)
 	end
@@ -57489,7 +57655,7 @@ local KEYS, LEG_KEYS = R.KEYS, R.LEG_KEYS
 -- the arm joints a punch drives, and the fastest any of them may turn while it does (rad/s)
 local ARM_KEYS = { LS = true, LE = true, LW = true, RS = true, RE = true, RW = true }
 -- a walker's swinging arm joints and where their post-filter transform is kept
-local ARM_OUT = { LS = "lsOut", LE = "leOut", RS = "rsOut", RE = "reOut" }
+local ARM_OUT = { LS = "lsOut", LE = "leOut", RS = "rsOut", RE = "reOut", LW = "lwOut", RW = "rwOut" }
 local PUNCH_JOINT_RATE = 31
 local TAGS = { "Fighter", "Trainee", "Ambient", "Preview", "Referee" }
 -- player characters walk / run / jump with the procedural gait (false = Roblox's default Animate)
@@ -58446,13 +58612,16 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 	end
 	-- a walker's arm swing, in step with the legs (after the filters, like the pelvis): opposite the legs,
 	-- faded out while a gesture owns the arms
-	local sL, eL, zL, sR, eR, zR, yL, yR = Loco.armOffsets(rig, dt, rig.gesture ~= nil)
+	local sL, eL, zL, sR, eR, zR, yL, yR, wL, wR = Loco.armOffsets(rig, dt, rig.gesture ~= nil)
 	if sL and joints.LS and joints.LE and joints.RS and joints.RE then
 		rig.armOut = true
 		rig.lsOut = A(sL, yL, zL) * joints.LS.cur
 		rig.leOut = joints.LE.cur * A(eL, 0, 0)
 		rig.rsOut = A(sR, yR, zR) * joints.RS.cur
 		rig.reOut = joints.RE.cur * A(eR, 0, 0)
+		-- (the loose hands: AnimLoco's wrist flop)
+		rig.lwOut = joints.LW and joints.LW.cur * A(wL or 0, 0, 0) or nil
+		rig.rwOut = joints.RW and joints.RW.cur * A(wR or 0, 0, 0) or nil
 	else
 		rig.armOut = false
 	end
@@ -58509,7 +58678,7 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 				v = rig.wOut
 			elseif k == "Neck" and rig.nOut then
 				v = rig.nOut
-			elseif rig.armOut and ARM_OUT[k] then
+			elseif rig.armOut and ARM_OUT[k] and rig[ARM_OUT[k]] then
 				v = rig[ARM_OUT[k]]
 			end
 			if springs then
@@ -75321,6 +75490,8 @@ local LREF, VH = 3.06, 0.2793
 -- pace held inside it settles on the nearer gait within RUN_SETTLE s (the gait is a function of the speed:
 -- never a jog stuck on after a sprint)
 local RUN_ON, RUN_OFF, RUN_SETTLE = 2.12, 1.98, 0.35
+-- the switch's default scale (rig.walkMax overrides: the ring walk's 1.45)
+local WALK_MAX = 1.15
 -- pulling up out of a run: the fastest the run -> walk blend may move while he still moves (per second: the
 -- handover takes about a sixth of a second, never a frame or two - the pelvis, the head and the knees would
 -- pop), and how quickly the braking follows the deceleration (1/s: from the frame's raw deceleration it would
@@ -75330,6 +75501,8 @@ local RUN_BLEND_MAX, BRAKE_RATE = 6, 12
 local GRAV = 8.829 / (VH * VH * LREF)
 -- a pushing foot (AnimLoco.feet): the most it rolls up onto the toes (rad), and how fast
 local PUSH_MAX, PUSH_RATE = 1.1, 20
+-- a walker's push-off rolls the boot up to WALK_TOE (rad, ~57 deg: a person's toe-off) and no further
+local WALK_TOE = 1.0
 local RAD = PI / 180
 -- a ground ray under a landing walker's foot: from STEP_UP above the root's floor down to STEP_DOWN under it
 local STEP_UP, STEP_DOWN = 1.7, 2.2
@@ -75712,8 +75885,10 @@ local function updateGait(rig, t, dt)
 		local fx = v > 0.3 and abs(lx) / v or 0
 		lo.side += (fx - lo.side) * (1 - exp(-dt * 8))
 		-- walk or run: people switch at about Froude 0.5; hysteresis so a speed near it never flickers
-		-- (a ring walk may stride out further before it breaks into a jog: rig.walkMax)
-		local wm = rig.walkMax or 1
+		-- (a ring walk may stride out further before it breaks into a jog: rig.walkMax; anyone else a little past
+		-- Froude 0.5 - WALK_MAX: the town's walking pace, 6.5 studs/s, is Froude ~0.5 for the shortest boxer's legs,
+		-- and a 5 ft man pressing W jogged)
+		local wm = rig.walkMax or WALK_MAX
 		if vh >= RUN_ON * wm then
 			lo.runMode, lo.bandT = true, 0
 		elseif vh <= RUN_OFF * wm then
@@ -75784,8 +75959,16 @@ local function updateGait(rig, t, dt)
 		lo.phase = (first == "L" and lo.offL or lo.offR) - 0.001
 		for _, s in ipairs(SIDES) do
 			local off = s == "L" and lo.offL or lo.offR
-			rig.foot[s].cycle = floor(lo.phase - off)
-			rig.foot[s].want = false
+			local ft = rig.foot[s]
+			ft.cycle = floor(lo.phase - off)
+			ft.want = false
+			-- (a foot that stood since he stopped counts its stance from where the schedule has it - not as a stance
+			-- long over: it would be rolled straight up onto its toes, the knee bent 25 degrees in one frame)
+			if not ft.swing then
+				local sw = s == "L" and lo.swL or lo.swR
+				local sg = (((lo.phase - off) % 1) - sw) % 1 / max(0.05, 1 - sw)
+				ft.sigT = t - clamp(sg, 0.3, 0.9) * (1 - sw) * lo.T
+			end
 		end
 	end
 	lo.phase += dt / lo.T
@@ -75846,7 +76029,9 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 			local c1 = cos(2 * PI * (ph - landL)) * fw
 			local pyA = lerp(0.075, 0.13, run) * amp * prof.pelvis
 			yawP = -pyA * c1 * w
-			wYaw = pyA * lerp(1.45, 1.7, run) * c1 * w
+			-- (the thorax turns against the pelvis about as far again in the world: ~4 degrees each way at a walk, the
+			-- shoulders' swing with the arms - a chest held square over a turning pelvis reads as a mannequin's)
+			wYaw = pyA * lerp(1.95, 1.85, run) * c1 * w
 			-- the swing side's hip drops (pelvic obliquity: ~4 degrees, the stance hip takes the weight)
 			-- (the spine bends back over it: the chest stays level, so the obliquity rolls the pelvis only and never
 			-- rocks the shoulders and head side to side about the hips)
@@ -75916,8 +76101,9 @@ local function armShape(lo, prof)
 	-- in a few frames never throws them)
 	local run = lo.armRun or lo.run
 	local swing = prof.swing
-	local cw, aw = -(5 + 2 * vh), 4 + 8.5 * vh
-	local ebw, efw = 6 + 4 * vh, 12 + 12 * vh
+	local cw, aw = -(5 + 2 * vh), 5 + 9 * vh
+	-- (a relaxed walker's elbow never hangs locked: ~15 at the back of the swing, ~45 at the front at the town pace)
+	local ebw, efw = 9 + 3.5 * vh, 16 + 15 * vh
 	local cr, ar = -(15 + 0.5 * vh), 27 + 5 * min(vh, 5)
 	local ebr, efr = 67 - vh, 86 + vh
 	local c = lerp(cw, cr, run) * RAD
@@ -75951,6 +76137,32 @@ function AnimLoco.armSwing(p, rig, k)
 	p.RE = p.RE:Lerp(A(em, 0, 0), k)
 end
 
+-- a walker's loose wrist (AnimLoco.armOffsets): the hand's flex against the forearm as a damped spring (~2 Hz) driven
+-- by the forearm's swing (th = its swing angle, rad): the hand lags the forearm's acceleration. Sub-stepped so a long
+-- frame never throws it; w = the swing's weight (the flop fades with it)
+local WRIST_W, WRIST_Z, WRIST_MAX = 2 * PI * 2.1, 0.45, 0.32
+local function wristFlop(lo, s, th, dt, w)
+	local kT, kV, kH, kHV = "wT" .. s, "wTV" .. s, "wH" .. s, "wHV" .. s
+	local th0 = lo[kT]
+	if th0 == nil or dt <= 0 then
+		lo[kT], lo[kV], lo[kH], lo[kHV] = th, 0, 0, 0
+		return 0
+	end
+	local v = (th - th0) / dt
+	local acc = clamp((v - lo[kV]) / dt, -400, 400)
+	lo[kT], lo[kV] = th, v
+	local h, hv = lo[kH], lo[kHV]
+	local n = math.ceil(dt / (1 / 120))
+	local sdt = dt / n
+	for _ = 1, n do
+		hv += (-WRIST_W * WRIST_W * h - 2 * WRIST_Z * WRIST_W * hv - 0.8 * acc) * sdt
+		h += hv * sdt
+	end
+	h = clamp(h, -WRIST_MAX, WRIST_MAX)
+	lo[kH], lo[kHV] = h, hv
+	return h * min(1, w * 1.5)
+end
+
 -- the arm swing, applied by the Animator after the joint filters (in step with the legs, never lagging
 -- them): shoulder pitch / elbow flex / shoulder roll deltas for the left and right arm, or nil.
 -- Opposite the legs: the left arm is furthest back at the left heel strike (walking backward the other
@@ -75963,6 +76175,7 @@ function AnimLoco.armOffsets(rig, dt, hold)
 	lo.armRun = (lo.armRun or lo.run) + (lo.run - (lo.armRun or lo.run)) * (1 - exp(-dt * 6))
 	if w < 0.005 then
 		lo.pSL, lo.pSR, lo.pEL, lo.pER = nil, nil, nil, nil
+		lo.wTL, lo.wTR = nil, nil
 		return nil
 	end
 	local prof = profileOf(rig)
@@ -76023,7 +76236,10 @@ function AnimLoco.armOffsets(rig, dt, hold)
 	eL = (lo.pEL or eL) + clamp(eL - (lo.pEL or eL), -m, m)
 	eR = (lo.pER or eR) + clamp(eR - (lo.pER or eR), -m, m)
 	lo.pSL, lo.pSR, lo.pEL, lo.pER = sL, sR, eL, eR
-	return sL, eL, inK * max(0, sL) + sway, sR, eR, -inK * max(0, sR) + sway, yL, yR
+	-- the hands ride the swing loosely: each wrist a damped spring the forearm's swing drives (the hand trails the
+	-- forearm as it changes direction, follows through as it stops), a few degrees in a glove, never stiff
+	local wL, wR = wristFlop(lo, "L", sL + eL, dt, w), wristFlop(lo, "R", sR + eR, dt, w)
+	return sL, eL, inK * max(0, sL) + sway, sR, eR, -inK * max(0, sR) + sway, yL, yR, wL, wR
 end
 
 ------------------------------------------------------------------------
@@ -76064,6 +76280,7 @@ local function startSwing(f, t, dur, liftH, kind)
 	-- (a walker's swing is planned from the push-off's last frame when its ankle is first wanted: rebaseSwing)
 	f.planNew = true
 	f.pushOn = false
+	f.retimed = false
 end
 
 -- a walker's swing (walk pace) is planned as the ankle's own path, carried on from the push-off's last frame:
@@ -76146,7 +76363,14 @@ local function planAnkle(rig, f, s, t, trueCF, rootT, hipP, A1, soft, kpk, kEnd)
 	local P = f.aP0 * (2 * u3 - 3 * u2 + 1) + V3(v0.X, 0, v0.Z) * (D * (u3 - 2 * u2 + u)) + A1 * (3 * u2 - 2 * u3)
 	local yb = A1.Y + (f.aP0.Y - A1.Y) * (1 - smooth(u / 0.5))
 	local gY = lerp(f.fromP.Y, f.tgtW.Y, smooth(u))
-	local yf = gY + R.ankleOf(leg, ZERO, fwdOf(f.curYaw or 0), f.curPitch or 0).Y + 0.05 * K.skewBump(u, 1.2, 1.6)
+	-- (the heel comes down onto the floor as the foot arrives, on a glide of about 14 degrees: it touches at the
+	-- landing spot, never skims the last of the step along the floor - a heel skid of a quarter stud over the
+	-- four frames before the plant)
+	local rx, rz = A1.X - P.X, A1.Z - P.Z
+	local glide = min(0.12, 0.25 * sqrt(rx * rx + rz * rz)) * smooth(u / 0.35)
+	-- (and the toe comes up off the floor as it leaves - never scuffs forward along it for the first frames)
+	local leave = 0.08 * smooth(min(1, u / 0.12)) * (1 - smooth((u - 0.25) / 0.25))
+	local yf = gY + R.ankleOf(leg, ZERO, fwdOf(f.curYaw or 0), f.curPitch or 0).Y + max(0.05 * K.skewBump(u, 1.2, 1.6), glide, leave)
 	P = V3(P.X, max(yb, yf), P.Z)
 	-- (a quick step - hurried, or a short one - folds the knee less)
 	kpk = max(f.k0 or 0, kpk * clamp(D / 0.3, 0.45, 1))
@@ -76638,7 +76862,10 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			if am > 30 then
 				acc = acc * (30 / am)
 			end
-			local tgt = f.home + vel * remain + V3(acc.X, 0, acc.Z) * (0.5 * remain * remain) + d * lead
+			-- (the landing frame overshoots the touchdown by up to a frame: the spot is where home was AT the touchdown,
+			-- not a frame's travel further on - the foot would land and jump a quarter stud ahead at a run, every step)
+			local remS = max(-dt, f.t0 + f.dur - t)
+			local tgt = f.home + vel * remS + V3(acc.X, 0, acc.Z) * (0.5 * remS * abs(remS)) + d * lead
 			-- (pulling up: a braking step lands where he will come to rest - ahead of the pelvis as it touches down, under
 			-- it once he has stopped: the feet end side by side, no shuffle after)
 			-- (never further ahead of where the pelvis will be at the touchdown than a braking step's ~25 cm)
@@ -76699,12 +76926,13 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			-- (where a planned swing's ankle is headed: planAnkle)
 			f.tgtW = V3(tgt.X, gy, tgt.Z)
 			-- the touchdown spot as seen from where the body is now (for the pelvis height)
-			f.landRel = tgt - vel * remain - V3(acc.X, 0, acc.Z) * (0.5 * remain * remain)
+			f.landRel = tgt - vel * remS - V3(acc.X, 0, acc.Z) * (0.5 * remS * abs(remS))
 			f.landRel = V3(f.landRel.X, gy, f.landRel.Z)
 			f.landYaw = landYaw
 			if u >= 1 then
 				f.swing, f.P, f.yawW, f.lastStep, f.curLift = false, V3(tgt.X, gy, tgt.Z), landYaw, t, 0
 				f.landT = t
+				f.sigT = t
 				f.dropH = nil
 				f.pitchS = f.curPitch
 				f.slopeP = walking and (f.gY and f.landSlope or 0) or 0
@@ -76769,7 +76997,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				local sigma = ((lo.phase - off - sw) % 1) / lo.duty -- 0 at landing .. 1 at lift-off
 				-- (a foot that landed off its schedule - a pace change, a step out of turn - counts its stance
 				-- from its own touchdown; it never jumps back to an earlier part of the stance)
-				local sa = (t - f.landT) / max(0.05, lo.duty * lo.T)
+				local sa = (t - (f.sigT or f.landT)) / max(0.05, lo.duty * lo.T)
 				sigma = sigma <= 1.02 and max(sigma, min(sa, 1)) or min(sa, 1)
 				f.sigma = sigma
 				want = stancePitch(sigma, run, back)
@@ -77158,6 +77386,22 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 					-- (the stance's own heel rise is the least it rolls to - taken up at a heel's pace, never in a frame)
 					local a = max(0, min(f.pitchLo or 0, (f.pitchF or cur) + 6 * dt))
 					local b = PUSH_MAX + 0.25 * smooth((f.sigma - 0.85) / 0.15)
+					-- (a walker's rigid boot never stands up on its tip: past WALK_TOE it toes off instead - below - once
+					-- the other foot is down; until then it rolls on as far as it must: the leg never pulled straight)
+					local o2 = rig.foot[s == "L" and "R" or "L"]
+					if run < 0.5 then
+						if not o2.swing then
+							-- (never unrolled back to it either: a foot already further over goes as it is)
+							b = min(b, max(lerp(WALK_TOE, b, run * 2), f.pitchF or cur))
+						elseif (f.pitchF or cur) >= WALK_TOE - 0.15 and not o2.retimed then
+							-- (the other foot still in the air as this one runs out of roll: it is brought down now)
+							local rem = o2.t0 + o2.dur - t
+							if rem > 0.034 then
+								retime(o2, t, 0.034)
+								o2.retimed = true
+							end
+						end
+					end
 					if ankleDist(leg, P, F, lf, trueCF, hip, a, sl) <= want then
 						th = a
 					elseif ankleDist(leg, P, F, lf, trueCF, hip, b, sl) >= want then
@@ -77213,6 +77457,16 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				-- (pulling up, a walker's too, once even its toes are out of reach: it is never dragged)
 				local brk = (lo.brake or 0) > 0.3
 				local goes = f.reachShort > 0.005 and f.push and moving and (run > 0.5 or (brk and f.reachShort > 0.04))
+				-- (a walker's push rolled as far as the boot goes: this is the toe-off - the knee bent ~25-30 and folding
+				-- on into the swing - never a leg pulled straight behind him on the tip of the shoe for the last frames of
+				-- the stance, the next frame; the other foot has taken the weight)
+				if not goes and f.push and moving and run < 0.5 and not brk and (f.sigma or 0) > 0.5
+					and (not oth.swing or oth.t0 + oth.dur - t < 0.035) and not f.swing
+					and th + max(0, th - (f.pitchF or th)) >= WALK_TOE - 1e-3 then
+					-- (at the rate it rolls it reaches the boot's limit by the next frame: it leaves now, while the knee
+					-- still has its bend - one frame later the leg would already be pulled straight)
+					goes = true
+				end
 				local hold = goes and brk and oth.swing and f.reachShort <= 0.04
 				if hold and oth.t0 + oth.dur - t > 0.04 then
 					retime(oth, t, 0.04)
@@ -77490,6 +77744,46 @@ local function rollTable(out, pts, scale)
 end
 local BOX_PT = { { 0, 0 } }
 
+-- the shoe drawn over an R15 foot (BuilderGear's mesh boots / soles, or BuilderBody's part-built soles: everything in
+-- BoxerLook.Attire welded to the foot) in the foot's own space: its sole's underside (y), toe tip and heel ends (z,
+-- -Z = toes), or nil (the foot box draws the foot). The box roll model would pivot the heel rise about the box's ball,
+-- 0.2 studs behind the drawn sole's toe: the boot's toe sank into the floor on every push-off (and its heel at the
+-- heel strike); a rigid sole rolls over its own ends
+local function drawnShoe(model, foot)
+	local look = model:FindFirstChild("BoxerLook")
+	local attire = look and look:FindFirstChild("Attire")
+	if not (attire and foot) then
+		return nil
+	end
+	local inv = foot.CFrame:Inverse()
+	local lo, toe, heel, n = math.huge, math.huge, -math.huge, 0
+	for _, q in ipairs(attire:GetChildren()) do
+		if q:IsA("BasePart") and q.Transparency < 0.99 then
+			local w = q:FindFirstChildWhichIsA("JointInstance") or q:FindFirstChildWhichIsA("WeldConstraint")
+			if w and (w.Part0 == foot or w.Part1 == foot) and w.Part0 ~= w.Part1 then
+				local cf = inv * q.CFrame
+				local h = q.Size * 0.5
+				-- (the box's corners in the foot's space: the bottom face sets the sole, its ends the toe and heel)
+				for _, sx in ipairs({ -1, 1 }) do
+					for _, sy in ipairs({ -1, 1 }) do
+						for _, sz in ipairs({ -1, 1 }) do
+							local c = cf * V3(h.X * sx, h.Y * sy, h.Z * sz)
+							lo = min(lo, c.Y)
+							toe = min(toe, c.Z)
+							heel = max(heel, c.Z)
+						end
+					end
+				end
+				n += 1
+			end
+		end
+	end
+	if n == 0 then
+		return nil
+	end
+	return lo, toe, heel
+end
+
 ------------------------------------------------------------------------
 -- Joints
 ------------------------------------------------------------------------
@@ -77604,6 +77898,26 @@ function AnimRig.computeGeo(rig)
 		leg.toeX = max(0.15, (footCF:PointToWorldSpace(V3(0, -fs.Y / 2, -fs.Z * 0.5)) - ank):Dot(fwd))
 		leg.heelX = max(0.1, (ank - footCF:PointToWorldSpace(V3(0, -fs.Y / 2, fs.Z * 0.5))):Dot(fwd))
 		leg.soleY = sole
+		-- a drawn shoe over the box (no organic shoes): it rolls over its own sole's ends (a hair inside the
+		-- corners: a moulded sole's edge is rounded), and its underside - a little under the box's - stands on the
+		-- floor (the ankle carried that much higher: leg.ah)
+		leg.sink = 0
+		leg.ballX = nil
+		if not meshFeet then
+			local dLo, dToe, dHeel = drawnShoe(rig.model, foot)
+			if dLo then
+				local inset = 0.03
+				-- (spins and pivots still turn about the ball, under the box's toe edge: not the boot's tip)
+				leg.ballX = leg.boxToe
+				local tp = footCF:PointToWorldSpace(V3(0, dLo, dToe + inset))
+				local hp = footCF:PointToWorldSpace(V3(0, dLo, dHeel - inset))
+				leg.boxToe = max(leg.boxToe, (tp - ank):Dot(fwd))
+				leg.boxHeel = max(leg.boxHeel, (ank - hp):Dot(fwd))
+				leg.toeX = max(leg.toeX, leg.boxToe + inset)
+				leg.heelX = max(leg.heelX, leg.boxHeel + inset)
+				leg.sink = clamp(-fs.Y / 2 - dLo, 0, 0.08)
+			end
+		end
 	end
 	g.groundY = lowest
 	-- the feet's and thighs' widths (the walking track keeps the feet and the thighs from passing through each
@@ -77632,7 +77946,7 @@ function AnimRig.computeGeo(rig)
 	for _, s in ipairs(SIDES) do
 		local leg = g[s]
 		-- ankle height above the sole (flat foot), and the sole profile the foot rolls over
-		leg.ah = max(0.1, leg.ankle0.Y - lowest) + (FL and SHOE_SINK or 0)
+		leg.ah = max(0.1, leg.ankle0.Y - lowest) + (FL and SHOE_SINK or leg.sink or 0)
 		if FL then
 			leg.toe = rollTable(leg.toe or {}, SHOE_TOE, FL)
 			leg.heel = rollTable(leg.heel or {}, SHOE_HEEL, FL)
@@ -77644,7 +77958,7 @@ function AnimRig.computeGeo(rig)
 			leg.heel[1][1], leg.heel[1][4] = leg.boxHeel, leg.boxHeel
 		end
 		-- (spins and pivots turn the foot about the front of its flat contact: the ball)
-		leg.bz = leg.toe[1][1]
+		leg.bz = leg.ballX or leg.toe[1][1]
 		leg.hz = leg.heel[1][1]
 		leg.ball = leg.bz -- legacy name
 	end
@@ -84077,6 +84391,14 @@ local function pageGear()
 	end, function(c)
 		g.color = c
 	end, pal, names)
+	-- the headgear every boxer wears (Config.AlwaysHeadgear); unset = the gloves' colour (Looks.HeadgearColor)
+	if Config.AlwaysHeadgear then
+		colorField(body, "Headgear", function()
+			return Looks.HeadgearColor(C.look)
+		end, function(c)
+			a.headgear = c
+		end, pal, names, false, true, "headgear")
+	end
 	UI.Cycler(body, "Trunk style", Catalog.TrunkStyles, a.trunkStyle, edit(nil, function(v)
 		a.trunkStyle = v
 		preview()
@@ -105061,6 +105383,14 @@ function Services.Locker()
 		end, function(c)
 			a.trim = c
 		end, pal)
+		-- the headgear every boxer wears (Config.AlwaysHeadgear); unset = the gloves' colour
+		if Config.AlwaysHeadgear then
+			colorField(s, body, "Headgear", function()
+				return Looks.HeadgearColor(s.look)
+			end, function(c)
+				a.headgear = c
+			end, pal)
+		end
 		UI.Cycler(body, "Trunk style", Catalog.TrunkStyles, a.trunkStyle, function(v)
 			a.trunkStyle = v
 			s.preview()

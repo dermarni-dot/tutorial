@@ -80,6 +80,8 @@ local LREF, VH = 3.06, 0.2793
 -- pace held inside it settles on the nearer gait within RUN_SETTLE s (the gait is a function of the speed:
 -- never a jog stuck on after a sprint)
 local RUN_ON, RUN_OFF, RUN_SETTLE = 2.12, 1.98, 0.35
+-- the switch's default scale (rig.walkMax overrides: the ring walk's 1.45)
+local WALK_MAX = 1.15
 -- pulling up out of a run: the fastest the run -> walk blend may move while he still moves (per second: the
 -- handover takes about a sixth of a second, never a frame or two - the pelvis, the head and the knees would
 -- pop), and how quickly the braking follows the deceleration (1/s: from the frame's raw deceleration it would
@@ -473,8 +475,10 @@ local function updateGait(rig, t, dt)
 		local fx = v > 0.3 and abs(lx) / v or 0
 		lo.side += (fx - lo.side) * (1 - exp(-dt * 8))
 		-- walk or run: people switch at about Froude 0.5; hysteresis so a speed near it never flickers
-		-- (a ring walk may stride out further before it breaks into a jog: rig.walkMax)
-		local wm = rig.walkMax or 1
+		-- (a ring walk may stride out further before it breaks into a jog: rig.walkMax; anyone else a little past
+		-- Froude 0.5 - WALK_MAX: the town's walking pace, 6.5 studs/s, is Froude ~0.5 for the shortest boxer's legs,
+		-- and a 5 ft man pressing W jogged)
+		local wm = rig.walkMax or WALK_MAX
 		if vh >= RUN_ON * wm then
 			lo.runMode, lo.bandT = true, 0
 		elseif vh <= RUN_OFF * wm then
@@ -954,7 +958,9 @@ local function planAnkle(rig, f, s, t, trueCF, rootT, hipP, A1, soft, kpk, kEnd)
 	-- four frames before the plant)
 	local rx, rz = A1.X - P.X, A1.Z - P.Z
 	local glide = min(0.12, 0.25 * sqrt(rx * rx + rz * rz)) * smooth(u / 0.35)
-	local yf = gY + R.ankleOf(leg, ZERO, fwdOf(f.curYaw or 0), f.curPitch or 0).Y + max(0.05 * K.skewBump(u, 1.2, 1.6), glide)
+	-- (and the toe comes up off the floor as it leaves - never scuffs forward along it for the first frames)
+	local leave = 0.08 * smooth(min(1, u / 0.12)) * (1 - smooth((u - 0.25) / 0.25))
+	local yf = gY + R.ankleOf(leg, ZERO, fwdOf(f.curYaw or 0), f.curPitch or 0).Y + max(0.05 * K.skewBump(u, 1.2, 1.6), glide, leave)
 	P = V3(P.X, max(yb, yf), P.Z)
 	-- (a quick step - hurried, or a short one - folds the knee less)
 	kpk = max(f.k0 or 0, kpk * clamp(D / 0.3, 0.45, 1))
@@ -1446,7 +1452,10 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			if am > 30 then
 				acc = acc * (30 / am)
 			end
-			local tgt = f.home + vel * remain + V3(acc.X, 0, acc.Z) * (0.5 * remain * remain) + d * lead
+			-- (the landing frame overshoots the touchdown by up to a frame: the spot is where home was AT the touchdown,
+			-- not a frame's travel further on - the foot would land and jump a quarter stud ahead at a run, every step)
+			local remS = max(-dt, f.t0 + f.dur - t)
+			local tgt = f.home + vel * remS + V3(acc.X, 0, acc.Z) * (0.5 * remS * abs(remS)) + d * lead
 			-- (pulling up: a braking step lands where he will come to rest - ahead of the pelvis as it touches down, under
 			-- it once he has stopped: the feet end side by side, no shuffle after)
 			-- (never further ahead of where the pelvis will be at the touchdown than a braking step's ~25 cm)
@@ -1507,7 +1516,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			-- (where a planned swing's ankle is headed: planAnkle)
 			f.tgtW = V3(tgt.X, gy, tgt.Z)
 			-- the touchdown spot as seen from where the body is now (for the pelvis height)
-			f.landRel = tgt - vel * remain - V3(acc.X, 0, acc.Z) * (0.5 * remain * remain)
+			f.landRel = tgt - vel * remS - V3(acc.X, 0, acc.Z) * (0.5 * remS * abs(remS))
 			f.landRel = V3(f.landRel.X, gy, f.landRel.Z)
 			f.landYaw = landYaw
 			if u >= 1 then
@@ -2041,7 +2050,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				-- (a walker's push rolled as far as the boot goes: this is the toe-off - the knee bent ~25-30 and folding
 				-- on into the swing - never a leg pulled straight behind him on the tip of the shoe for the last frames of
 				-- the stance, the next frame; the other foot has taken the weight)
-				if not goes and f.push and moving and run < 0.5 and not brk and (f.sigma or 0) > 0.75
+				if not goes and f.push and moving and run < 0.5 and not brk and (f.sigma or 0) > 0.5
 					and (not oth.swing or oth.t0 + oth.dur - t < 0.035) and not f.swing
 					and th + max(0, th - (f.pitchF or th)) >= WALK_TOE - 1e-3 then
 					-- (at the rate it rolls it reaches the boot's limit by the next frame: it leaves now, while the knee

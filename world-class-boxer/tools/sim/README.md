@@ -135,22 +135,38 @@ server's `Builder.Cosmetics` (v8_scene's fake rig: the tier swap, the classic he
 floor at Y = 0); the joints are solved from the Motor6D Transforms the Animator writes, every frame.
 
 ```sh
-lune run tools/sim/v9_anim.luau [--out DIR] [--tiers 1,3,5] [--clips rest,walk,jog,run,punch] [--frames 8]
+lune run tools/sim/v9_anim.luau [--out DIR] [--tiers 1,3,5] [--clips rest,walk,jog,run,sprint,startstop,turn,curve,punch]
+         [--frames 8] [--height IN] [--speeds walk=6.5,run=16] [--shotevery N]
+         [--debugrig T] [--debugfoot 1]                 # foot state per frame from T s / the drawn boot's bounds
          [--bare 1] [--hands gloves|wraps|bare] [--gap 4.0] [--no-mesh]
          [--body BodyLocal.lua --gear GearLocal.lua]   # publish_body.py / publish_gear.py --local manifests
          [--src DIR --meshroot DIR]                     # another commit's src and its tools/body/out copy
 /opt/bpyenv/bin/python tools/sim/v9_render.py SCENE_DIR OUT_DIR [--tag after] [--samples 20] [--only id,id]
+         [--views front,side] [--gif 1 [--ms 50]]
 ```
 
-- walk / jog / run: `Players.LocalPlayer.Character` glides along -Z at 5 / 11 / 16 studs/s; one gait cycle recorded
+- walk / jog / run / sprint: `Players.LocalPlayer.Character` glides along -Z at 6.5 / 11 / 16 / 22 studs/s (the town
+  walk, the ring's pace, Shift's run, the roadwork pace; `--speeds walk=5,run=16` overrides); one gait cycle recorded
   (`--frames`), and printed: the pelvis / chest / head sway across the HumanoidRootPart's line, the pelvis roll, the
-  hip flexion range, the LowerTorso surface the thighs cover (pelvis-in-thigh)
+  hip flexion range, the LowerTorso surface the thighs cover (pelvis-in-thigh), and the gait numbers: knee / hip /
+  thigh / ankle / foot pitch, shoulder / elbow / wrist ranges, pelvis and chest yaw, trunk pitch, the pelvis and head
+  bob, the soles' lowest point against the floor (sink / clearance, over the drawn boot meshes), and the planted feet's
+  slide (the sole point that touched the floor on one frame, where it is on the next: zero for a foot that rolls
+  without slipping), for the steady pace and for the start. Per clip `gait_<clip>_t<tier>[_h<in>].json`: the summary
+  and the per-frame series
+- startstop / turn / curve (`--clips`): scripted clips - a 0.12 s ramp to the walk, 1.9 s of walking, a 0.12 s stop
+  (a Humanoid's own pick-up); a 180 degree turn in place at 3.5 rad/s; a 90 degree walking turn. Printed: the slide,
+  the sink and the largest one-frame change of the knee / hip / shoulder / elbow (snaps) and the pelvis / head
+  height; `--shotevery N` records every Nth frame (an even clock for a GIF) instead of the clip's shots
+- `--height IN` (60..84, Builder.Scales' 0.86..1.2) builds the boxer at that height; the clip ids carry `_h<IN>`
 - punch: two "Fighter" models `--gap` studs apart; jab, cross, lead / rear hook, uppercut and a body jab (Act / ActId as
   FightEngine sends them), 6 frames each (start .. peak .. return); printed: the glove's reach, its distance and height
   to the target, the elbow angle, the waist's turn
 - rest: one standing frame (front / 3/4 / side / back and close-ups of the arm, the hand, the hips)
-- v9_render: walk clips as orthographic filmstrips (front, side; the red line = the root's centre line), punches as
-  panels (side, 3/4 front) plus arm close-ups, rest as a sheet
+- v9_render: walk clips as orthographic filmstrips (front, side; the red line = the root's centre line; `V9_GAP` = the
+  spacing in studs), punches as panels (side, 3/4 front) plus arm close-ups, rest as a sheet; `--gif 1` renders every
+  frame of a walking / scripted clip on its own, the camera following the root over world-fixed floor marks (a sliding
+  foot shows against them), as an animated GIF (`--ms` = frame time; default the clip's own spacing)
 
 `tools/body/check_joints.py` (each joint of the tier bodies through the Animator's ranges: the parent's surface the child
 covers / the parent's end it uncovers) and `tools/body/check_gear.py` (the trunks over the body, the thighs swung) are
