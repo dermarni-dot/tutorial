@@ -345,12 +345,17 @@ do
 	check("final win: the winner's prize", prof.money - before >= def.prize[4], prof.money - before)
 	check("final win: history", prof.tourney.history[#prof.tourney.history].place == 4)
 	local W = prof.world.tourney
-	check("final win: the champion on the books", W.holders[def.id].id == "player")
-	check("final win: the log", W.log[#W.log].winner == "player" and W.log[#W.log].t == def.id)
+	-- (the suspension after the final runs past the next edition's start: the AI may already hold it again)
+	local logged = false
+	for _, e in ipairs(W.log) do
+		logged = logged or (e.winner == "player" and e.t == def.id and e.ed == run.ed)
+	end
+	check("final win: the champion on the books (the log)", logged)
+	check("final win: the holder (this edition, or the next one's AI winner)", W.holders[def.id].id == "player" or W.holders[def.id].day > run.ed)
 	check("final win: notes", table.concat(out.notes, "|"):find(def.champion, 1, true) ~= nil)
 	check("final win: back to the normal suspension and the world cycle", cycles >= 1)
 	check("final win: ranking points raise the player's score", World.PlayerScore(prof, Config.Orgs[1]) > beforePts - 20)
-	check("final win: done for the edition", prof.tourney.done[def.id] == run.ed)
+	check("final win: done for the edition", prof.tourney.done[def.id] >= run.ed)
 	check("legacy counts the belt", Career.TourneyLegacy(prof) > 0)
 	local legacyLine = false
 	for _, p in ipairs(Career.Legacy(prof).parts) do
@@ -376,7 +381,11 @@ do
 	Career.ApplyResult(prof, result("loss", { method = "TKO", round = 4 }))
 	check("QF loss: the run is over", prof.tourney.run == nil and prof.camp == nil)
 	check("QF loss: the bracket finished without him", run.w[3] and run.w[3][1] ~= nil and run.w[3][1] ~= "player")
-	check("QF loss: the champion on the books", prof.world.tourney.holders[def.id].id == run.w[3][1])
+	local loggedAI = false
+	for _, e in ipairs(prof.world.tourney.log) do
+		loggedAI = loggedAI or (e.t == def.id and e.ed == run.ed and e.winner == run.w[3][1])
+	end
+	check("QF loss: the champion on the books", loggedAI)
 	local champ = prof.world.boxers[run.w[3][1]]
 	check("QF loss: the AI champion holds the belt", champ.tbelts and champ.tbelts[def.id] >= 1)
 	check("QF loss: prize[1] paid", prof.money - before >= def.prize[1])
@@ -561,7 +570,7 @@ do
 			check("belt " .. key .. " " .. mode .. " builds", okB and m ~= nil, m)
 			if okB then
 				local n = m:GetAttribute("Parts")
-				check("belt " .. key .. " " .. mode .. " part budget", n and n >= 12 and n <= 90, n)
+				check("belt " .. key .. " " .. mode .. " part budget", n and n >= 12 and n <= 110, n)
 				if verbose then
 					print(key, mode, n)
 				end

@@ -24,6 +24,7 @@ local DataManager = require(Modules.DataManager)
 local World = require(Modules.World)
 local Training = require(Modules.Training)
 local Career = require(Modules.Career)
+local Tourney = require(Modules.Tourney) -- the tournaments (Career calls it on results; the Hub's requests here)
 local FightEngine = require(Modules.FightEngine)
 local MapBuilder = require(Modules.MapBuilder)
 local Venues = require(Modules.Venues)
@@ -997,7 +998,15 @@ local function runFight(player, profile, opts)
 		end)
 	end
 	fightExtras(profile, pData)
-	local ok, res = pcall(FightEngine.Run, player, remote, offer, pData, oData, arena, opts.debut and { debut = true } or nil)
+	-- the celebration cutscene (FightEngine plays it in the ring when he wins): a tournament final or a new title
+	local runOpts = opts.debut and { debut = true } or nil
+	if not opts.debut then
+		local okCer, cer = pcall(Tourney.CeremonyFor, profile, offer)
+		if okCer and cer then
+			runOpts = { ceremony = cer }
+		end
+	end
+	local ok, res = pcall(FightEngine.Run, player, remote, offer, pData, oData, arena, runOpts)
 	if not ok then
 		warn("[Boxer] fight crashed:", res)
 		res = nil
@@ -1736,6 +1745,12 @@ function handlers.StartFight(player, profile, mode)
 	if busy[player] then
 		return { ok = false, err = "Finish what you're doing first." }
 	end
+	-- a tournament bout is on its day: the bracket does not move for one boxer
+	local campOffer = profile.camp.offer
+	if type(campOffer) == "table" and type(campOffer.tourney) == "table" and (tonumber(profile.camp.daysLeft) or 0) > 0 then
+		return { ok = false, err = string.format("The %s is on its day: %d more day%s. Train, eat and sleep.", tostring(campOffer.tourney.roundName or "bout"):lower(),
+			profile.camp.daysLeft, profile.camp.daysLeft == 1 and "" or "s") }
+	end
 	if mode == "sim" then
 		local camp = profile.camp
 		local total = tonumber(camp.daysTotal) or 0
@@ -1762,6 +1777,38 @@ function handlers.StartFight(player, profile, mode)
 	end
 	task.spawn(runFight, player, profile)
 	return { ok = true }
+end
+
+-- the tournaments (Hub Tournaments tab): enter the event that is open, pull out between rounds, the belt worn in
+-- ring walks. The bracket's bouts are camps fought through StartFight like any other.
+function handlers.EnterTournament(player, profile, id)
+	if busy[player] then
+		return { ok = false, err = "Finish what you're doing first." }
+	end
+	local ok, info = Tourney.Enter(profile, tostring(id))
+	if not ok then
+		return { ok = false, err = info }
+	end
+	task.spawn(DataManager.Save, player)
+	return { ok = true, info = info }
+end
+
+function handlers.WithdrawTournament(player, profile)
+	if busy[player] then
+		return { ok = false, err = "Finish what you're doing first." }
+	end
+	local notes = {}
+	local ok, err = Tourney.Withdraw(profile, notes)
+	if not ok then
+		return { ok = false, err = err }
+	end
+	task.spawn(DataManager.Save, player)
+	return { ok = true, notes = notes }
+end
+
+function handlers.WearBelt(player, profile, id)
+	local ok, err = Tourney.SetWear(profile, id ~= nil and tostring(id) or nil)
+	return { ok = ok, err = err }
 end
 
 function handlers.StartActivity(player, profile, actId)
@@ -1894,6 +1941,8 @@ function handlers.Sleep(player, profile)
 		return { ok = false, err = "Finish what you're doing first." }
 	end
 	local res = Training.Sleep(profile)
+	-- the calendar moved on a day: tournaments the player sat out are settled by the AI
+	pcall(Tourney.Tick, profile)
 	-- a new day starts showered: no sweat, no road dirt (the rebuild below draws the clean body)
 	local char = player.Character
 	if char then

@@ -1053,6 +1053,10 @@ function Fight:CloseChain(F)
 	end
 	local sum = Combos.Close(chain)
 	Combos.Record(F.comboStats, sum)
+	local O = self:Other(F)
+	if O and O.ai and O.ai.OnOppComboEnd then
+		O.ai:OnOppComboEnd(sum.punches or 0)
+	end
 	if sum.punches >= 2 then
 		self:Send({ t = "comboEnd", who = self:Who(F), hits = sum.landed, n = sum.punches, name = sum.named and sum.named.name or nil })
 	end
@@ -1074,6 +1078,7 @@ function Fight:ChainResult(F, O, sp, res)
 	end
 	local who = self:Who(F)
 	if ev.named then
+		self:Swing(F, 0.03 + 0.01 * (it.namedLen or 2))
 		self:Send({ t = "combo", who = who, hits = chain.landed, n = chain.punches, name = ev.named.name, id = ev.named.id, sig = ev.named.signature or nil })
 		if ev.named.signature or it.namedLen >= 3 then
 			self:Comment(string.format("%s lands the %s!", F.data.name, ev.named.signature and ev.named.name:lower() or ev.named.name), ev.named.signature)
@@ -1086,6 +1091,7 @@ function Fight:ChainResult(F, O, sp, res)
 		local now = self:Now()
 		O.counterUntil = math.max(O.counterUntil, now + Combos.BREAK_COUNTER)
 		F.busyUntil = math.max(F.busyUntil, now) + Combos.BREAK_STALL
+		self:Swing(O, 0.04)
 		self:CloseChain(F)
 		self:Send({ t = "comboBroken", who = who })
 	end
@@ -1225,6 +1231,13 @@ end
 
 function Fight:Evaded(F, O, ptype, body, now)
 	local kind = Config.Punches[ptype].kind
+	-- a punch from the side of a closing eye (or a cut bleeding into it) is one he never saw: a dodge beats it
+	-- only part of the time (Config.FightDepth.blindDodge). F's left hand lands on O's right side.
+	local landSide = F.hand == "L" and 1 or -1
+	local blind = self:Blind(O, landSide)
+	if blind > 0 and self.rng:NextNumber() < blind * DEPTH.blindDodge then
+		return false
+	end
 	-- a special's set-up: the shoulder roll and the weave take head shots (not uppercuts), the pull takes
 	-- straights, the step back takes everything; what it makes miss turns the move's punch into a counter
 	if now < O.shellUntil then
@@ -1254,7 +1267,18 @@ function Fight:Evaded(F, O, ptype, body, now)
 		return true
 	end
 	if now < O.slipUntil and not body then
-		if kind == "straight" or (kind == "hook" and self.rng:NextNumber() < 0.5) then
+		-- a hook against a slip: slipping AWAY from the hand it comes from (to his left away from a left hook,
+		-- which lands on his right) makes it miss; slipping into it walks onto it (Resolve: a little harder).
+		-- No side recorded (an old caller): the coin, as before
+		local hookAway
+		if kind == "hook" then
+			if O.slipDir == -1 or O.slipDir == 1 then
+				hookAway = O.slipDir == -landSide
+			else
+				hookAway = self.rng:NextNumber() < 0.5
+			end
+		end
+		if kind == "straight" or hookAway then
 			O.counterUntil = now + 0.85
 			self:Send({ t = "defense", who = self:Who(O), move = "SLIPPED", dodge = "slip" })
 			self:Comment(O.data.name .. " slips it beautifully!")
@@ -1393,6 +1417,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		if F.ai then
 			F.ai.obs.slips += 1
 		end
+		self:Swing(O, 0.025)
 		self:ChainResult(F, O, sp, "miss")
 		self:Miss(F, O, ptype, "evaded")
 		return
@@ -1441,19 +1466,61 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	if caught then
 		chance += Evasion.CAUGHT_HIT
 	end
+	-- the deeper fight (Config.FightDepth): the side of a closing eye, the momentum, being walked down (a
+	-- Pressure-proof man doesn't wilt), the ropes (a Ring General slides off them), a feint he bit on, a raw
+	-- boxer's hands hanging after his combination
+	chance += DEPTH.blindHit * self:Blind(O, F.hand == "L" and 1 or -1)
+	chance += DEPTH.momHit * self:Mom(F)
+	local proofF = self:Trait(F, "PressureProof")
+	if F.pressured and proofF <= 0 then
+		chance -= DEPTH.pressHit
+	end
+	if O.onRopes then
+		chance += DEPTH.ropeHit * self:RopeMul(O)
+	end
+	local opened = now < F.feintOpenUntil
+	if opened then
+		chance += DEPTH.feint.hit
+		F.feintOpenUntil = 0
+	end
+	if now < O.guardDropUntil then
+		chance += Config.FightAI.dropHit
+	end
+	-- the ring traits on the punches they read (Shared.Traits): a Slick man's straights, a Weaver's hooks (his
+	-- dip meets the uppercut); none of it right after he bit on a feint. A Pressure-proof man counters a swarmer.
+	local traitCut, traitId = 0, nil
+	if not body and not opened then
+		if P.kind == "straight" then
+			traitCut, traitId = Traits.Effect("Slick", "hit", self:Trait(O, "Slick")), "Slick"
+		elseif P.kind == "hook" or P.kind == "overhand" then
+			traitCut, traitId = Traits.Effect("Weaver", "hit", self:Trait(O, "Weaver")), "Weaver"
+		elseif P.kind == "uppercut" then
+			chance += Traits.Effect("Weaver", "upper", self:Trait(O, "Weaver"))
+		end
+		chance -= traitCut
+	end
+	if proofF > 0 and F.pressured and (now < F.counterUntil or O.state == "punching") then
+		chance += Traits.Effect("PressureProof", "hit", proofF)
+	end
 	if (F.assistNext or 0) > 0 then
 		-- the console forgiveness never lifts a punch past the cap (and never lowers one that is already above it)
 		chance = math.max(chance, math.min(chance + F.assistNext, ASSIST.cap))
 	end
 	F.assistNext = 0
-	-- concussion and daze cost accuracy
+	-- concussion and daze cost accuracy; so do a tired body and a damaged head, and the eyes he still has
 	chance *= (1 - CONC.hitChance * F.conc) * (1 - CONC.tierHitChance * F.tier)
+	chance *= 1 - DEPTH.fatigueHit * math.max(0, DEPTH.fatigueAt - stamPct) / DEPTH.fatigueAt
+	chance *= 1 - DEPTH.damageHit * math.max(0, DEPTH.damageAt - F.health) / DEPTH.damageAt
+	vision = math.min(vision, 1 - DEPTH.visionHit * math.max(F.dmg.leftEye, F.dmg.rightEye))
 	chance = math.clamp(chance * vision, 0.15, 0.95)
 	-- clean = how cleanly it landed (feeds the knockdown odds); 0.5 when it comes through a guard
 	local clean = 0.5
 	if not O.blocking then
 		local roll = self.rng:NextNumber()
 		if roll > chance then
+			if traitId and traitCut > 0 and roll <= chance + traitCut then
+				self:TraitFired(O, traitId) -- (the trait made it miss)
+			end
 			self:ChainResult(F, O, sp, "miss")
 			self:Miss(F, O, ptype, "miss")
 			return
@@ -1776,10 +1843,22 @@ function Fight:SetBlock(F, on)
 	if on and self:IsStumbling(F) then
 		return
 	end
+	local was = F.blocking
 	F.blocking = on and true or false
 	if F.state ~= "punching" then
 		F.state = on and "blocking" or "idle"
 	end
+	if F.blocking and not was then
+		self:NoteDefense(F, "block", 0)
+	end
+end
+
+-- a dodge window's share for F right now: pinned on the ropes he has less room (a Ring General slides off them)
+function Fight:EvadeMul(F)
+	if F.onRopes then
+		return 1 - 0.15 * self:RopeMul(F)
+	end
+	return 1
 end
 
 -- cancel = a new dodge may replace a defence started less than Evasion.CANCEL ago (the pad's flick-then-button
@@ -1817,10 +1896,12 @@ function Fight:Slip(F, dir)
 		return
 	end
 	local now = self:Now()
-	F.slipUntil = now + Evasion.Window("slip", F.data.stats, self:DefenseMul(F))
+	F.slipUntil = now + Evasion.Window("slip", F.data.stats, self:DefenseMul(F)) * self:EvadeMul(F)
 	F.busyUntil = now + Evasion.Moves.slip.recover
 	F.dodgeKind, F.dodgeUntil, F.dodgeEnd = "slip", F.slipUntil, F.busyUntil
 	F.slipAt = now -- a counter jab / cross may come straight out of this slip (Punch)
+	F.slipDir = dir == -1 and -1 or 1
+	self:NoteDefense(F, "slip", F.slipDir)
 	self:SetAct(F, "slip|" .. (dir == -1 and "L" or "R"))
 	if self.tutorial and F == self.P then
 		self:TutorialNote({ k = "slip" })
@@ -1833,9 +1914,10 @@ function Fight:Roll(F, quick)
 		return
 	end
 	local now = self:Now()
-	F.rollUntil = now + (quick and (Evasion.Window("roll", F.data.stats, self:DefenseMul(F)) - 0.1) or Evasion.Window("roll", F.data.stats, self:DefenseMul(F)))
+	F.rollUntil = now + (quick and (Evasion.Window("roll", F.data.stats, self:DefenseMul(F)) - 0.1) or Evasion.Window("roll", F.data.stats, self:DefenseMul(F))) * self:EvadeMul(F)
 	F.busyUntil = now + (quick and 0.36 or Evasion.Moves.roll.recover)
 	F.dodgeKind, F.dodgeUntil, F.dodgeEnd = "roll", F.rollUntil, F.busyUntil
+	self:NoteDefense(F, "roll", 0)
 	self:SetAct(F, "roll")
 	if self.tutorial and F == self.P then
 		self:TutorialNote({ k = "roll" })
@@ -1859,9 +1941,10 @@ function Fight:Dodge(F, kind, dir)
 	local now = self:Now()
 	dir = dir == -1 and -1 or 1
 	F.dodgeKind = kind
-	F.dodgeUntil = now + Evasion.Window(kind, F.data.stats, self:DefenseMul(F))
+	F.dodgeUntil = now + Evasion.Window(kind, F.data.stats, self:DefenseMul(F)) * self:EvadeMul(F)
 	F.busyUntil = now + E.recover
 	F.dodgeEnd = F.busyUntil
+	self:NoteDefense(F, kind, dir)
 	if kind ~= "sidestep" then
 		F.slipAt = now -- (a counter jab / cross may come straight out of the head movement, as out of a slip)
 	else
@@ -1891,8 +1974,9 @@ function Fight:Parry(F)
 		return
 	end
 	local now = self:Now()
-	F.parryUntil = now + (0.18 + F.data.stats.Reflexes * 0.002) * self:DefenseMul(F)
+	F.parryUntil = now + (0.18 + F.data.stats.Reflexes * 0.002) * self:DefenseMul(F) * self:EvadeMul(F)
 	F.busyUntil = now + 0.32
+	self:NoteDefense(F, "parry", 0)
 	self:SetAct(F, "parry|" .. (F.hand == "L" and "R" or "L"))
 end
 
@@ -1904,6 +1988,7 @@ function Fight:Pivot(F, dir)
 	F.nextPivot = now + 1.2
 	F.busyUntil = now + 0.35
 	F.pivotEvadeUntil = now + 0.25 * self:DefenseMul(F)
+	self:NoteDefense(F, "pivot", dir == -1 and -1 or 1)
 	F.angleUntil = now + 1.1
 	local O = self:Other(F)
 	if F.root and O.root then
