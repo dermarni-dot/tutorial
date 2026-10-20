@@ -4,8 +4,8 @@
 --   * builds the world three times (world_scene.luau --level 1 / 2 / 3) and reads the dumps
 --   * every detail part: no collision, no queries, no touches (walking, the camera, mouse and fight rays pass through)
 --   * keep-outs: no detail part (thicker than a floor decal) inside a station's use / equipment volume, a prompt,
---     an Ambient member's spot, the spawn pad, the gym doors, the entrance path, the lounge stair, the gym ring's
---     canvas, the venue rings' canvas and walkways, Main Street's pedestrian and traffic lanes
+--     an Ambient member's spot, a station camera's sight line to the athlete, the spawn pad, the gym doors, the
+--     entrance path, the lounge stair, the gym ring's canvas and apron, the zone doorways and walkways, the venue rings' canvas and walkways, Main Street's pedestrian and traffic lanes
 --   * budgets: detail parts per level (Low < Medium < High, High under the caps below)
 --   * reports (not failures): detail parts overlapping a solid server prop by more than 0.3 studs on every axis
 --   lune run tools/sim/test_worlddetail.luau [--keep]   (--keep leaves the dumps in tools/sim/out/wd_test)
@@ -80,9 +80,28 @@ end
 -- stations (MapBuilder.StationDefs: pos = equipment, use = where the boxer trains)
 do
 	local src = fs.readFile(ROOT .. "/src/server/MapBuilder.lua")
-	for id, px, pz, ux, uz in src:gmatch('id = "(%w+)",[^\n]-pos = V3%(([%-%d%.]+), [%-%d%.]+, ([%-%d%.]+)%), use = V3%(([%-%d%.]+), [%-%d%.]+, ([%-%d%.]+)%)') do
-		cyl("station use " .. id, tonumber(ux), tonumber(uz), 2.6)
-		cyl("station " .. id, tonumber(px), tonumber(pz), 2.2)
+	for line in src:gmatch("[^\n]+") do
+		local id, px, pz, ux, uz = line:match('id = "(%w+)",.-pos = V3%(([%-%d%.]+), [%-%d%.]+, ([%-%d%.]+)%), use = V3%(([%-%d%.]+), [%-%d%.]+, ([%-%d%.]+)%)')
+		if id then
+			ux, uz = tonumber(ux), tonumber(uz)
+			cyl("station use " .. id, ux, uz, 2.6)
+			cyl("station " .. id, tonumber(px), tonumber(pz), 2.2)
+			-- the station camera (Activities.stationCamera): over the right shoulder, or from the side (low / side
+			-- poses); facing = yaw (0 = -Z). The sight line from each camera spot to the athlete stays clear.
+			local yaw = math.rad(tonumber(line:match("yaw = (%-?[%d%.]+)")) or 0)
+			local lx, lz = -math.sin(yaw), -math.cos(yaw)
+			local rx, rz = math.cos(yaw), -math.sin(yaw)
+			local py = 3.4
+			for _, v in ipairs({ { 3.8, -6, 3.2 }, { 10, 2.5, 2.2 }, { 7.5, 1.5, 5 } }) do
+				local cx, cz, cy = ux + rx * v[1] + lx * v[2], uz + rz * v[1] + lz * v[2], py + v[3]
+				local pad = 0.6
+				keep(
+					"station camera " .. id,
+					{ math.min(cx, ux) - pad, math.min(cy, py) - pad, math.min(cz, uz) - pad },
+					{ math.max(cx, ux) + pad, math.max(cy, py) + pad, math.max(cz, uz) + pad }
+				)
+			end
+		end
 	end
 	-- Ambient members' spots
 	local amb = fs.readFile(ROOT .. "/src/server/Ambient.lua")
@@ -101,6 +120,11 @@ keep("elite door", { 106, 0.6, 44 }, { 114, 13, 56 })
 keep("entrance path", { -5, 0.6, 84 }, { 5, 7, 115 })
 keep("lounge stair", { 15.8, 0.6, 40 }, { 20.2, 13, 64 })
 keep("gym ring canvas", { -10.4, 2.9, -60.4 }, { 10.4, 9, -39.6 })
+keep("gym ring apron", { -13.2, 2.6, -63.2 }, { 13.2, 9, -36.8 }) -- the cornermen and the ringside members stand on it
+keep("weight-room doorway", { -52, 0.6, -17.5 }, { -48, 9, 18 }) -- the gaps between the x = +-50 dividers and z = 20
+keep("cardio doorway", { 48, 0.6, -17.5 }, { 52, 9, 18 })
+keep("boxing-lobby walkway", { -45, 0.6, 5 }, { 45, 8, 18 }) -- the open floor between the boxing area and the lobby
+keep("services walkway", { -66, 0.6, 33 }, { -50, 8, 60 }) -- from the lobby to the lockers, barber and bar
 -- Main Street lanes (CityVisuals: pedestrians at z 166.3 / 184.6, cars at 169.6 / 174.8)
 keep("north pedestrian lane", { -330, 0.65, 165.95 }, { 330, 3.2, 166.65 })
 keep("south pedestrian lane", { -330, 0.65, 184.25 }, { 330, 3.2, 184.95 })

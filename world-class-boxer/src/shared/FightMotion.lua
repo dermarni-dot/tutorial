@@ -247,7 +247,12 @@ function FightMotion.ChooseFall(info: FallInfo): FallChoice
 	if sev == "out" then
 		-- knockouts: rare and memorable
 		local hurt = (info.tier or 0) >= 2
-		if hurt and roll < 0.3 then
+		if info.body or info.cause == "liver" then
+			-- a body shot that ends it: he folds onto his knees over it, then goes down onto his side (the
+			-- Animator's koKnee: the fall's room is a kneel's, KOFallWall's crumple time)
+			choice.ko, choice.pose, choice.dir = "crumple", "knee", 0
+			return choice
+		elseif hurt and roll < 0.3 then
 			-- out on his feet: the referee catches him
 			choice.ko = "standing"
 			choice.pose = "standing"

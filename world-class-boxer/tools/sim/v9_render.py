@@ -276,6 +276,95 @@ def render_rest(scene_dir, out_dir, clip, samples, tag):
     return [out]
 
 
+FIGHT_VIEWS = {
+    # side: from the puncher's (A's) right, both men in profile; 34: behind A's right shoulder, the punch going away
+    "side": dict(view=(90, 3, 1.0), dist=30, ortho=8.8, focus=(0, 3.25, 0.0)),
+    "34": dict(view=(142, 12, 1.0), dist=16.5, ortho=None, focus=(0, 3.1, 0.2)),
+}
+
+
+def fight_scene(scene_dir, fr, samples, view, res):
+    vw = FIGHT_VIEWS[view]
+    sc = v8.V8Scene(res=res, samples=samples, lens=50, bg=(0.11, 0.115, 0.125))
+    v8.add_boxer(sc, scene_dir, frame_dict(fr))
+    if fr.get("opp"):
+        v8.add_boxer(sc, scene_dir, frame_dict(fr["opp"]))
+    if fr.get("ref"):
+        v8.add_boxer(sc, scene_dir, frame_dict(fr["ref"]))
+    # floor marks every stud along both axes (world-fixed: a skating foot shows against them)
+    for k in range(-5, 6):
+        P, T = v8.box(0.03, 0.012, 9.0)
+        sc.add_world(P + np.array([k, 0.006, 0]), T, "markx", mat=sc.gear_mat((0.42, 0.42, 0.45), "SmoothPlastic", 0), smooth=False)
+        P, T = v8.box(9.0, 0.012, 0.03)
+        sc.add_world(P + np.array([0, 0.006, k]), T, "markz", mat=sc.gear_mat((0.42, 0.42, 0.45), "SmoothPlastic", 0), smooth=False)
+    # (motion previews: fewer bounces and samples - a GIF frame is on screen for 50 ms)
+    if os.environ.get("V9_FAST", "1") == "1":
+        sc.sc.cycles.max_bounces = 3
+        sc.sc.cycles.transparent_max_bounces = 8
+    cam = sc.cam
+    if vw["ortho"]:
+        cam.data.type = "ORTHO"
+        cam.data.ortho_scale = vw["ortho"]
+    sc.rig(vw["focus"], 5.0)
+    return sc, vw
+
+
+def render_fight(scene_dir, out_dir, clip, samples, views, tag, gif=False, ms=None, strip=8):
+    """a fight scenario (both fighters, the referee when he is in it): a GIF of every recorded frame and / or a
+    filmstrip of `strip` frames spread over it, per view (side, 3/4)"""
+    from PIL import Image, ImageDraw, ImageFont
+    data = json.load(open(os.path.join(scene_dir, clip["file"])))
+    frames = data["frames"]
+    f = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+    outs = []
+    for view in views:
+        if gif:
+            imgs = []
+            # (the GIF plays the action window, a little either side: --window 0 = every frame)
+            fo = data.get("focus")
+            if fo and os.environ.get("V9_WINDOW", "1") == "1":
+                gframes = [fr for fr in frames if fo[0] - 0.25 <= fr.get("t", 0) <= fo[1] + 0.35] or frames
+            else:
+                gframes = frames
+            for i, fr in enumerate(gframes):
+                sc, vw = fight_scene(scene_dir, fr, samples, view, (400, 333))
+                p = os.path.join(out_dir, f"_{tag}_{clip['id']}_{view}_{i}.png")
+                sc.render(p, view=vw["view"], dist=vw["dist"], focus=vw["focus"])
+                im = Image.open(p).convert("RGB")
+                ImageDraw.Draw(im).text((8, 8), f"{tag}: {data.get('id')} {view}  {fr.get('label') or ''}", fill=(230, 230, 230), font=f)
+                imgs.append(im)
+                os.remove(p)
+            if ms is None:
+                ts = [fr.get("t") for fr in gframes]
+                ms = max(20, int(round(1000 * (ts[-1] - ts[0]) / max(1, len(ts) - 1)))) if len(ts) > 1 else 60
+            out = os.path.join(out_dir, f"{tag}_{clip['id']}_{view}.gif")
+            pal = [im.quantize(colors=128, method=Image.Quantize.MEDIANCUT) for im in imgs]
+            pal[0].save(out, save_all=True, append_images=pal[1:], duration=ms, loop=0, optimize=True)
+            print("rendered", out, flush=True)
+            outs.append(out)
+        else:
+            # (the strip spreads over the scenario's action window: the harness's focus [t0, t1])
+            fo = data.get("focus")
+            idx = [i for i, fr in enumerate(frames) if not fo or fo[0] - 1e-6 <= fr.get("t", 0) <= fo[1] + 1e-6] or list(range(len(frames)))
+            n = len(idx)
+            pick = sorted(set(idx[int(round(i * (n - 1) / max(1, strip - 1)))] for i in range(strip)))
+            paths, labels = [], []
+            for i in pick:
+                fr = frames[i]
+                sc, vw = fight_scene(scene_dir, fr, samples, view, (420, 360))
+                p = os.path.join(out_dir, f"_{tag}_{clip['id']}_{view}_s{i}.png")
+                sc.render(p, view=vw["view"], dist=vw["dist"], focus=vw["focus"])
+                paths.append(p)
+                labels.append(fr.get("label") or str(i))
+            out = os.path.join(out_dir, f"{tag}_{clip['id']}_{view}.jpg")
+            render.sheet(paths, out, cols=len(paths), labels=labels, title=f"{tag}: {data.get('id')} ({view})", cell=(300, 257))
+            for p in paths:
+                os.remove(p)
+            print("rendered", out, flush=True)
+            outs.append(out)
+    return outs
+
+
 if __name__ == "__main__":
     argv = sys.argv[1:]
     if "--" in sys.argv:
@@ -295,7 +384,11 @@ if __name__ == "__main__":
     for c in idx["clips"]:
         if only and c["id"] not in only:
             continue
-        if c["clip"] == "punch":
+        if c["clip"] == "fight":
+            fv = [v for v in views if v in FIGHT_VIEWS] or ["side", "34"]
+            render_fight(scene_dir, out_dir, c, samples, fv, tag, gif="--gif" in opts, ms=int(opts["--ms"]) if "--ms" in opts else None,
+                         strip=int(opts.get("--strip", 8)))
+        elif c["clip"] == "punch":
             render_punches(scene_dir, out_dir, c, samples, tag)
             render_arm_closeups(scene_dir, out_dir, c, samples, tag)
         elif c["clip"] == "rest":

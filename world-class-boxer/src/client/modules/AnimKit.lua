@@ -99,15 +99,17 @@ end
 ------------------------------------------------------------------------
 -- Act strings: "kind|f2|f3|f4|f5". Returns the five fields (missing ones are "").
 ------------------------------------------------------------------------
+-- (a sixth field is optional: a punch's combination position, "jab|L|head|0.16||2" = the second punch of a
+-- chain - AnimFight blends it out of the last one instead of from the guard; see AnimFight.startPunch)
 function AnimKit.parseAct(s)
 	if type(s) ~= "string" or s == "" then
 		return nil
 	end
-	local a, b, c, d, e = string.match(s, "^([^|]*)|?([^|]*)|?([^|]*)|?([^|]*)|?([^|]*)")
+	local a, b, c, d, e, f = string.match(s, "^([^|]*)|?([^|]*)|?([^|]*)|?([^|]*)|?([^|]*)|?([^|]*)")
 	if not a or a == "" then
 		return nil
 	end
-	return a, b or "", c or "", d or "", e or ""
+	return a, b or "", c or "", d or "", e or "", f or ""
 end
 
 ------------------------------------------------------------------------
@@ -399,6 +401,32 @@ end
 function AnimKit.spring2(x, v, target, freq, zeta, dt)
 	local k = freq * freq
 	return AnimKit.spring(x, v, target, k, 2 * zeta * freq, dt)
+end
+
+-- a soft rate limit: x (>= 0) passes unchanged up to `knee` x lim, then bends smoothly (C1) towards lim - a
+-- joint slowed by it eases into its top speed instead of hitting a wall and travelling at one constant rate
+function AnimKit.softLimit(x, lim, knee)
+	knee = knee or 0.7
+	local k = lim * knee
+	if x <= k then
+		return x
+	end
+	local band = lim - k
+	return k + band * math.tanh((x - k) / band)
+end
+
+-- the step response of a damped spring (0 -> 1, overshooting by about exp(-pi zeta / sqrt(1 - zeta^2))):
+-- t in seconds, w = natural frequency (rad/s), zeta < 1 = underdamped. A settle with a little life in it
+function AnimKit.settle(t, w, zeta)
+	if t <= 0 then
+		return 0
+	end
+	zeta = zeta or 0.7
+	if zeta >= 1 then
+		return 1 - (1 + w * t) * math.exp(-w * t)
+	end
+	local wd = w * sqrt(1 - zeta * zeta)
+	return 1 - math.exp(-zeta * w * t) * (cos(wd * t) + zeta / sqrt(1 - zeta * zeta) * sin(wd * t))
 end
 
 -- deterministic 0..1 from (seed, a, b): per-boxer / per-punch choices that are stable

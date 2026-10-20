@@ -189,13 +189,28 @@ local function shoeOf(gear)
 	return Catalog.Find(Catalog.Shoes, gear.shoes) or Catalog.Shoes[1]
 end
 
-local function outfitColors(app, outfit)
-	if outfit == "referee" then
-		return Color3.fromRGB(242, 242, 240), Color3.fromRGB(24, 24, 28)
-	elseif outfit == "cornerman" then
-		return Looks.Color(app.attire and app.attire.trim, Color3.fromRGB(30, 30, 34)), Color3.fromRGB(44, 44, 50)
+-- an official's outfit colours: opts.officialColors (Officials.Colors: the venue's / a title fight's shirt) or the
+-- defaults. -> shirt, trousers, the whole table (Color3 values) or nil for a boxer
+local OFFICIAL_DEFAULTS = {
+	referee = { shirt = { 150, 190, 226 }, trousers = { 22, 22, 26 }, shoes = { 14, 14, 16 } },
+	cornerman = { shirt = nil, trousers = { 38, 38, 44 }, shoes = { 236, 236, 232 } },
+}
+local function outfitColors(app, outfit, opts)
+	local def = OFFICIAL_DEFAULTS[outfit or ""]
+	if not def then
+		return nil
 	end
-	return nil
+	local oc = (opts and type(opts.officialColors) == "table") and opts.officialColors or {}
+	local out = {}
+	for k, v in pairs(oc) do
+		out[k] = rgb(v, nil)
+	end
+	local fallbackShirt = outfit == "cornerman" and Looks.Color(app.attire and app.attire.trim, Color3.fromRGB(30, 30, 34))
+		or rgb(def.shirt, WHITE)
+	out.shirt = out.shirt or fallbackShirt
+	out.trousers = out.trousers or rgb(def.trousers, Color3.fromRGB(24, 24, 28))
+	out.shoes = out.shoes or rgb(def.shoes, Color3.fromRGB(20, 20, 22))
+	return out.shirt, out.trousers, out
 end
 
 -- the R15 parts the retired hull hid (Transparency 1): shown again when an older build's folder is cleared
@@ -247,7 +262,7 @@ local function colorBody(model, app, gear, opts)
 	local shoeColor = shoeColorOf(app, gear)
 	local trainer = shoeOf(gear).style == "trainer"
 	local trunks = Looks.Color(a.trunks, Color3.fromRGB(200, 25, 30))
-	local shirt, trousers = outfitColors(app, opts.outfit)
+	local shirt, trousers, oc = outfitColors(app, opts.outfit, opts)
 	local bc = model:FindFirstChildOfClass("BodyColors")
 	if bc then
 		bc:Destroy()
@@ -261,8 +276,8 @@ local function colorBody(model, app, gear, opts)
 				p.Material = trousers and FABRIC or SMOOTH -- satin trunks (the Fabric texture reads as noise at play distance)
 			elseif n:find("Foot") then
 				if trousers then
-					-- officials wear polished black shoes, cornermen black trainers
-					p.Color = Color3.fromRGB(20, 20, 22)
+					-- (under the officials' mesh shoes: their colour)
+					p.Color = oc and oc.shoes or Color3.fromRGB(20, 20, 22)
 					p.Material = SMOOTH
 				else
 					p.Color = shoeColor
@@ -545,9 +560,50 @@ local function shoesMesh(folder, app, gear, pieces)
 	end)
 end
 
+-- the officials' mesh outfit (BuilderGear group "official", tools/body/build_official.py): the referee's button shirt,
+-- bow tie, belted dress trousers and leather shoes; the coach's polo, towel, trousers and white shoes. Painted per
+-- slot from outfitColors (the venue's shirt)
+local OFFICIAL_SLOTS = {
+	shirt = { "shirt", FABRIC }, shirtTrim = { "trim", FABRIC }, buttons = { "buttons", SMOOTH }, badge = { "badge", Enum.Material.Metal },
+	bowtie = { "bowtie", SMOOTH }, trousers = { "trousers", FABRIC }, belt = { "belt", LEATHER }, buckle = { "buckle", Enum.Material.Metal },
+	dressShoes = { "shoes", SMOOTH }, dressSoles = { "soles", RUBBER }, dressLaces = { "laces", FABRIC }, towel = { "towel", FABRIC },
+}
+local function officialStyle(outfit)
+	return outfit == "referee" and "Referee" or "Coach"
+end
+local function outfitMesh(folder, model, app, opts, sp, pieces)
+	local shirt, trousers, oc = outfitColors(app, sp.outfit, opts)
+	local made = Gear.Build(folder, pieces, function(slot)
+		local e = OFFICIAL_SLOTS[slot]
+		local c = e and oc[e[1]]
+		if not c then
+			c = (slot == "shirtTrim" and darken(shirt, 0.93)) or (slot == "buttons" and WHITE) or (slot == "towel" and WHITE)
+				or (slot == "dressSoles" and Color3.fromRGB(30, 26, 24)) or (slot == "badge" and GOLD) or trousers
+		end
+		-- (polished leather shoes: a little sheen)
+		return c, e and e[2] or FABRIC, slot == "dressShoes" and 0.06 or (slot == "buckle" and 0.2 or 0)
+	end)
+	for _, p in pairs(made) do
+		if p:GetAttribute("GearSlot") ~= "buttons" and p:GetAttribute("GearSlot") ~= "buckle" then
+			p:SetAttribute("Wet", "cloth")
+			p:SetAttribute("BaseColor", p.Color)
+			p:SetAttribute("BaseRefl", p.Reflectance)
+		end
+	end
+	-- the coach's team lettering on the polo's back
+	local back = made.OffShirt
+	local ut = part(model, "UpperTorso")
+	if sp.outfit == "cornerman" and back and ut and sp.cfg.wordmarks then
+		local bs = back.Size
+		textPatch(folder, ut, "TeamText", V3(bs.X * 0.5, bs.Y * 0.09, 0.02), back.CFrame * CF(0, bs.Y * 0.2, bs.Z * 0.5 + 0.01), "CORNER",
+			contrast(shirt), Enum.NormalId.Back, "Oswald")
+	end
+	return made
+end
+
 local function outfitBuild(folder, model, app, opts, sp)
 	local outfit = sp.outfit
-	local shirt = outfitColors(app, outfit)
+	local shirt = outfitColors(app, outfit, opts)
 	local lod = sp.lod
 	local ut, lt, head = part(model, "UpperTorso"), part(model, "LowerTorso"), part(model, "Head")
 	local black = Color3.fromRGB(16, 16, 18)
@@ -655,21 +711,27 @@ local function attireBuild(model, app, opts, gear, sp, env)
 	local spT, spF, spB = sponsorOf(opts.sponsorTrunks)
 	-- the Blender-modelled gear for the tiers the parts show (BuilderGear); nil = the part-built gear below
 	local official = sp.outfit == "referee" or sp.outfit == "cornerman"
-	local meshTrunks, meshShoes, meshTop
-	if not official then
+	local meshTrunks, meshShoes, meshTop, meshOutfit
+	if official then
+		meshOutfit = Gear.Resolve(model, "official", officialStyle(sp.outfit))
+	else
 		meshTrunks = Gear.Resolve(model, "trunks", table.find(Looks.TrunkStyles, a.trunkStyle) and a.trunkStyle or "Classic")
 		meshShoes = Gear.Resolve(model, "shoes", a.shoeStyle == "Low-Top" and "Low-Top" or "High-Top")
 		meshTop = app.gender == 2 and Gear.Resolve(model, "top", "Top") or nil
 	end
 	local key = Kit.sig("A4", a, opts.waistText or "", spT or "", spF or "", spB or "", sp.outfit, sp.detail, gear.shoes, shoeCond(gear), gear.shoesCond >= 60, gear.shoesCond >= 40,
 		eUL, a.trunkStyle == "Long" and eLL or false, topRel, opts.name or "", app.gender, sizesOf(model, ATTIRE_PARTS),
-		Gear.Key(meshTrunks), Gear.Key(meshShoes), Gear.Key(meshTop))
+		Gear.Key(meshTrunks), Gear.Key(meshShoes), Gear.Key(meshTop), Gear.Key(meshOutfit), official and Kit.sig("OC", outfitColors(app, sp.outfit, opts)) or "")
 	if Kit.cached(model, "Attire", key) then
 		return
 	end
 	local folder = getFolder(model, "Attire")
 	if official then
-		outfitBuild(folder, model, app, opts, sp)
+		if meshOutfit then
+			outfitMesh(folder, model, app, opts, sp, meshOutfit)
+		else
+			outfitBuild(folder, model, app, opts, sp)
+		end
 		Kit.seal(model, "Attire", key)
 		return
 	end

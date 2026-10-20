@@ -47,6 +47,22 @@ MANIFEST = os.path.join(ROOT, "src", "shared", "GearAssetData.lua")
 LOCAL_DEFAULT = "/tmp/claude-0/GearAssetData_local.lua"
 
 
+def merge_extra(gj, path):
+    """adds another builder's gear.json-format file (pieces, sets, slots, tiers) to gj"""
+    if not os.path.exists(path):
+        return
+    with open(path) as f:
+        ex = json.load(f)
+    for sl in ex.get("slots", []):
+        if sl not in gj["slots"]:
+            gj["slots"].append(sl)
+    gj["pieces"].update(ex["pieces"])
+    for g, styles in ex["sets"].items():
+        gj["sets"].setdefault(g, {}).update(styles)
+    for n, rec in ex["tiers"].items():
+        gj["tiers"].setdefault(n, {}).update(rec)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -67,6 +83,10 @@ def main():
     if os.path.exists(lite_path):
         with open(lite_path) as f:
             lite_gj = json.load(f)
+    # the ring officials' clothes (build_official.py): merged in as more pieces, sets and slots
+    merge_extra(gj, os.path.join(GEAR, "official.json"))
+    if lite_gj is not None:
+        merge_extra(lite_gj, os.path.join(pb.LITE, "gear", "official.json"))
     tiers = []
     for n in sorted(gj["tiers"], key=int):
         rec = {}
@@ -76,8 +96,9 @@ def main():
                 shared = e["file"].startswith("shared/")
                 label = key if shared else f"T{n} {key}"
                 ids[e["file"]] = hp.ensure(cache, path, "Mesh", f"WCB Gear {label}",
-                                           "Become a World Class Boxer: boxing gear piece %s (%s)"
-                                           % (key, "every tier" if shared else "muscle tier %s" % n),
+                                           "Become a World Class Boxer: %s piece %s (%s)"
+                                           % ("official's clothing" if key.startswith("Off") else "boxing gear", key,
+                                              "every tier" if shared else "muscle tier %s" % n),
                                            "model/x-file-mesh-data", dry, local)
             rec[key] = {"mesh": ids[e["file"]], "offset": e["offset"], "size": e["size"], "nt": e["nt"]}
             # the lite detail set (the v9 piece fitted to the v9 body: tools/body/out/lite/gear; cached ids)
@@ -88,8 +109,9 @@ def main():
                     shared = le["file"].startswith("shared/")
                     label = key if shared else f"T{n} {key}"
                     ids[lf] = hp.ensure(cache, os.path.join(pb.LITE, "gear", le["file"]), "Mesh",
-                                        f"WCB Gear {label} lite", "Become a World Class Boxer: boxing gear piece %s "
-                                        "(%s), the light detail set" % (key, "every tier" if shared else "muscle tier %s" % n),
+                                        f"WCB Gear {label} lite", "Become a World Class Boxer: %s piece %s "
+                                        "(%s), the light detail set" % ("official's clothing" if key.startswith("Off") else "boxing gear",
+                                                                       key, "every tier" if shared else "muscle tier %s" % n),
                                         "model/x-file-mesh-data", dry, local)
                 rec[key]["lite"] = {"mesh": ids[lf], "offset": le["offset"], "size": le["size"], "nt": le["nt"]}
         tiers.append(rec)

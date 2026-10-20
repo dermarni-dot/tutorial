@@ -715,6 +715,27 @@ end
 -- Returns the ankle joint position.
 ------------------------------------------------------------------------
 local UP = Vector3.yAxis
+local function smoothK(x)
+	return x * x * (3 - 2 * x)
+end
+-- how far ahead of P (the flat foot's ground point under the ankle) a foot pitched heel-up by `th` touches
+-- the floor: the ball while it is flat, blending onto the roll profile's toe contact as the heel comes up
+-- (the point a pivot on a raised heel must turn about)
+function AnimRig.toeContact(leg, th)
+	local bz = leg.bz or 0
+	if th <= 0.005 or not leg.toe then
+		return bz
+	end
+	local tab = leg.toe
+	local n = #tab
+	local i = 1
+	while i < n and th >= tab[i + 1][3] do
+		i += 1
+	end
+	local touch = tab[i][4] or bz
+	return bz + (touch - bz) * smoothK(clamp(th / 0.12, 0, 1))
+end
+
 function AnimRig.ankleOf(leg, P, F, th, sl)
 	sl = sl or 0
 	th += sl
@@ -960,6 +981,25 @@ local HEAD_GAIN = { math.sqrt(900 / 170), math.sqrt(800 / 150), math.sqrt(700 / 
 AnimRig.HEAD_GAIN = HEAD_GAIN
 
 function AnimRig.stepSprings(rig, dt)
+	-- the impulses queued by kickAt: each one's share of its window that falls in this frame
+	local q = rig.kq
+	if q and #q > 0 then
+		local now = rig.clock or 0
+		local a = now - dt
+		for i = #q, 1, -1 do
+			local e = q[i]
+			local lo, hi = max(a, e.t0), min(now, e.t1)
+			if hi > lo then
+				local f = (hi - lo) / max(1e-4, e.t1 - e.t0)
+				local m = e.imp
+				AnimRig.kick(rig, m[1] * f, m[2] * f, m[3] * f, m[4] * f, m[5] * f, m[6] * f, m[7] * f, m[8] * f, m[9] * f, m[10] * f,
+					m[11] * f, m[12] * f, m[13] * f, m[14] * f)
+			end
+			if now >= e.t1 then
+				table.remove(q, i)
+			end
+		end
+	end
 	local x, v = rig.sx, rig.sv
 	local daze = rig.a.Daze
 	local soft = 1 - 0.15 * (type(daze) == "number" and daze or 0) -- a hurt neck is a weak neck
@@ -1034,6 +1074,29 @@ function AnimRig.applySprings(rig, p)
 	end
 	for _, k in ipairs({ "Neck", "W", "LS", "RS" }) do
 		p[k] = AnimRig.springOut(rig, k, p[k])
+	end
+end
+
+-- the same impulses, delivered `delay` seconds from now and spread over `spread` seconds (a blow travels:
+-- the head snaps, the chest follows a beat later, the hips and knees after that; and a glove takes a frame or
+-- two to deliver its push - an impulse all in one frame starts the head at full speed from a standstill)
+function AnimRig.kickAt(rig, delay, spread, hp, hy, hr, tp, ty, tr, back, side, drop, cover, lDrop, rDrop, lOut, rOut)
+	local now = rig.clock or 0
+	local q = rig.kq
+	if not q then
+		q = {}
+		rig.kq = q
+	end
+	local t0 = now + max(0, delay or 0)
+	table.insert(q, { t0 = t0, t1 = t0 + max(1 / 240, spread or 0), imp = { hp or 0, hy or 0, hr or 0, tp or 0, ty or 0, tr or 0, back or 0,
+		side or 0, drop or 0, cover or 0, lDrop or 0, rDrop or 0, lOut or 0, rOut or 0 } })
+	-- (a resting spring is woken now: stepSprings integrates the queue)
+	if rig.sx then
+		for i = 1, NSPR do
+			if rig.sx[i] == 0 and rig.sv[i] == 0 then
+				rig.sx[i] = 1e-4
+			end
+		end
 	end
 end
 

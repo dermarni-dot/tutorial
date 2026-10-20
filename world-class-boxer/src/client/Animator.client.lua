@@ -63,7 +63,7 @@ local KEYS, LEG_KEYS = R.KEYS, R.LEG_KEYS
 local ARM_KEYS = { LS = true, LE = true, LW = true, RS = true, RE = true, RW = true }
 -- a walker's swinging arm joints and where their post-filter transform is kept
 local ARM_OUT = { LS = "lsOut", LE = "leOut", RS = "rsOut", RE = "reOut", LW = "lwOut", RW = "rwOut" }
-local PUNCH_JOINT_RATE = 31
+local PUNCH_JOINT_RATE = 38
 local TAGS = { "Fighter", "Trainee", "Ambient", "Preview", "Referee" }
 -- player characters walk / run / jump with the procedural gait (false = Roblox's default Animate)
 local DRIVE_PLAYERS = true
@@ -320,7 +320,7 @@ end
 -- Acts: Act / ActId (server), PredAct (local prediction), AutoAct (re-synthesized)
 ------------------------------------------------------------------------
 onAct = function(rig, s, now, predicted)
-	local k, f2, f3, f4, f5 = K.parseAct(s)
+	local k, f2, f3, f4, f5, f6 = K.parseAct(s)
 	if not k then
 		return
 	end
@@ -355,6 +355,10 @@ onAct = function(rig, s, now, predicted)
 		act.windup = clamp(tonumber(f4) or 0.2, 0.08, 0.9)
 		act.power = clamp(tonumber(f5) or 0.6, 0, 1.5)
 		act.dur = act.windup * 2.05 + 0.045
+		-- (the optional sixth field: the punch's place in a chain - 2 and up flow out of the last punch)
+		-- (or the model's Chain attribute, which FightEngine sets just before the act: the same number)
+		local ch = rig.model:GetAttribute("Chain")
+		act.chain = f6 ~= "" and f6 or ((type(ch) == "number" and ch >= 2) and ch or nil)
 		if predicted then
 			rig.predKind, rig.predHand, rig.predT = k, act.hand, now
 		end
@@ -379,8 +383,17 @@ onAct = function(rig, s, now, predicted)
 		act.dur = 0.25
 	elseif k == "slip" then
 		act.dur = 0.42
-	elseif k == "roll" then
-		act.dur = 0.55
+	elseif k == "roll" or k == "weave" then
+		-- (roll = the bob and weave: weave|L / weave|R, the side he comes up on; f3 = its length, optional)
+		act.dur = clamp(tonumber(f3) or 0.55, 0.3, 1.2)
+	elseif k == "duck" then
+		act.dur = clamp(tonumber(f3) or tonumber(f2) or 0.45, 0.25, 1)
+	elseif k == "pull" then
+		act.dur = clamp(tonumber(f3) or tonumber(f2) or 0.5, 0.25, 1.2)
+	elseif k == "sidestep" then
+		act.dur = clamp(tonumber(f3) or 0.5, 0.3, 1.2)
+	elseif k == "shoulderroll" then
+		act.dur = clamp(tonumber(f3) or 0.6, 0.3, 1.5)
 	elseif k == "parry" then
 		act.dur = 0.3
 	elseif k == "pivot" then
@@ -973,11 +986,14 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 			if punching and ARM_KEYS[k] then
 				-- (and the punching arms never turn faster than PUNCH_JOINT_RATE: where the body's turn and
 				-- the fist's path add up, the arm lags its target by a hair instead of whipping round)
+				-- (a soft limit: a joint eases into its top speed - a hard cap held the arm at one constant rate
+				-- through the middle of a hook and stopped it dead on the cap's edges)
 				local nxt = j.cur:Lerp(p[k], aoPunch)
 				local _, ang = (j.cur:Inverse() * nxt):ToAxisAngle()
 				local maxA = PUNCH_JOINT_RATE * dt
-				if ang > maxA then
-					nxt = j.cur:Lerp(nxt, maxA / ang)
+				local lim = K.softLimit(ang, maxA, 0.6)
+				if lim < ang then
+					nxt = j.cur:Lerp(nxt, lim / ang)
 				end
 				j.cur = nxt
 			else
@@ -1068,6 +1084,9 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 		Loco.release(rig)
 	end
 	rig.keyedLegs = not plantOn and joints.Root ~= nil
+	if plantOn then
+		rig.footLocks = nil
+	end
 	rig.wasPlant = plantOn
 	-- the output: filtered pose + gait offsets, the reaction snaps composed on top (never low-passed)
 	local out = rig.outT
@@ -1098,6 +1117,10 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 	end
 	-- a body on the canvas (keyed legs: a fall, the get-up) never sinks into it, whatever the springs do
 	if not plantOn and (rig.down or (rig.act and rig.act.kind == "getup")) and joints.Root then
+		-- (feet that touch the canvas stay where they touched, with a little friction: no skating)
+		if lod >= 2 then
+			Down.footLock(rig, out, dt)
+		end
 		local co = rig.clampOut
 		if not co then
 			co = {}

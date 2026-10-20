@@ -37,7 +37,7 @@ do
 	local i = 1
 	while i <= #a do
 		local k = a[i]
-		if k == "--no-regen" or k == "--no-mesh" then
+		if k == "--no-regen" or k == "--no-mesh" or k == "--dbgfoot" then
 			args[k:gsub("^%-%-", "")] = true
 			i += 1
 		else
@@ -1262,6 +1262,528 @@ local function punchClip(tier)
 	end
 end
 
+------------------------------------------------------------------------
+-- fight scenarios (--clips fight [--only id,id] [--every N]): two Fighters in an arena (a corner stool behind A,
+-- a referee off to the side), every scenario scripted on the server's own act strings and attributes; per frame the
+-- Motor6D Transforms the Animator wrote (the snaps: the largest one-frame turn of a joint and the largest one-frame
+-- change of its turning speed, per joint group), the planted feet's slide, the joint-angle curves; at each punch's
+-- contact (act start + windup, when the server lands it) the glove against the target
+------------------------------------------------------------------------
+local FIGHT_ONLY
+if args.only then
+	FIGHT_ONLY = {}
+	for s in args.only:gmatch("[^,]+") do
+		FIGHT_ONLY[s] = true
+	end
+end
+local FIGHT_EVERY = tonumber(args.every) or 3
+local MOTORS = { Root = "Root", W = "Waist", Neck = "Neck", LS = "LeftShoulder", LE = "LeftElbow", LW = "LeftWrist", RS = "RightShoulder",
+	RE = "RightElbow", RW = "RightWrist", LH = "LeftHip", LK = "LeftKnee", LA = "LeftAnkle", RH = "RightHip", RK = "RightKnee", RA = "RightAnkle" }
+local GROUP = { Root = "trunk", W = "trunk", Neck = "neck", LS = "arms", LE = "arms", LW = "arms", RS = "arms", RE = "arms", RW = "arms",
+	LH = "legs", LK = "legs", LA = "legs", RH = "legs", RK = "legs", RA = "legs" }
+local WIND = { jab = 0.16, cross = 0.24, leadhook = 0.26, rearhook = 0.3, uppercut = 0.3, overhand = 0.42 }
+local function P(kind, hand, zone, w, pow, extra)
+	return string.format("%s|%s|%s|%.2f|%s%s", kind, hand, zone or "head", w or WIND[kind], pow and string.format("%.2f", pow) or "", extra or "")
+end
+-- events: { t, who ("A" / "B" / "ref"), what, value }; what = "act" (Act + ActId), an attribute name, "move" (the
+-- root glides: value = { dx, dz, dur, dyaw }), "hitA" (B's punch lands on A at t: value = the hit act)
+local function punchAt(t, who, kind, hand, zone, w)
+	return { t, who, "act", P(kind, hand, zone, w), punch = { kind = kind, hand = hand, zone = zone or "head", w = w or WIND[kind] } }
+end
+local SCEN = {}
+local function scen(id, dur, ev, opt)
+	opt = opt or {}
+	opt.id, opt.dur, opt.ev = id, dur, ev
+	table.insert(SCEN, opt)
+end
+-- guard and stance life
+scen("guard", 4, {}, { subject = "A" })
+scen("guard_outboxer", 3, {}, { style = "OutBoxer" })
+scen("guard_swarmer", 3, {}, { style = "Swarmer" })
+scen("guard_counter", 3, {}, { style = "CounterPuncher" })
+scen("guard_tired", 3, { { 0, "A", "Stam", 0.15 } })
+-- footwork
+scen("footwork", 3.6, { { 0.3, "A", "move", { 0, -1.0, 0.45 } }, { 1.1, "A", "move", { 0, 1.0, 0.5 } }, { 1.9, "A", "move", { -1.0, 0, 0.45 } },
+	{ 2.7, "A", "move", { 1.0, 0, 0.45 } } })
+scen("pivot", 2.2, { { 0.4, "A", "act", "pivot|L" }, { 0.4, "A", "move", { 0, 0, 0.05, -0.6, pivot = true } } })
+scen("clinch", 2.8, { { 0.2, "A", "Guard", "clinch" }, { 0.2, "B", "Guard", "clinch" }, { 0.2, "A", "move", { 0, -0.9, 0.3 } },
+	{ 2.2, "A", "Guard", "stance" }, { 2.2, "B", "Guard", "stance" }, { 2.2, "A", "move", { 0, 0.9, 0.4 } } })
+-- punches
+for _, pk in ipairs({ { "jab", "L" }, { "cross", "R" }, { "leadhook", "L" }, { "rearhook", "R" }, { "uppercut", "R" }, { "overhand", "R" } }) do
+	scen(pk[1], 1.5, { punchAt(0.4, "A", pk[1], pk[2]) })
+end
+scen("bodyjab", 1.5, { punchAt(0.4, "A", "jab", "L", "body") })
+scen("bodycross", 1.5, { punchAt(0.4, "A", "cross", "R", "body") })
+scen("bodyhook", 1.5, { punchAt(0.4, "A", "leadhook", "L", "body") })
+scen("bodyuppercut", 1.5, { punchAt(0.4, "A", "uppercut", "R", "body") })
+-- combos (the server's 0.88 windup inside 0.7 s)
+scen("combo12", 1.8, { punchAt(0.4, "A", "jab", "L"), punchAt(0.62, "A", "cross", "R", "head", 0.21) })
+scen("combo123", 2.2, { punchAt(0.4, "A", "jab", "L"), punchAt(0.62, "A", "cross", "R", "head", 0.21), punchAt(0.92, "A", "leadhook", "L", "head", 0.23) })
+scen("combo1234", 2.6, { punchAt(0.4, "A", "jab", "L"), punchAt(0.62, "A", "cross", "R", "head", 0.21), punchAt(0.92, "A", "leadhook", "L", "head", 0.23),
+	punchAt(1.25, "A", "rearhook", "R", "head", 0.26) })
+scen("combo_body_head", 2.0, { punchAt(0.4, "A", "leadhook", "L", "body"), punchAt(0.78, "A", "leadhook", "L", "head", 0.23) })
+-- specials
+for _, id in ipairs({ "checkhook", "phillyshell", "pullcounter", "livershot", "gazelle", "peekaboo", "stepback", "overhand", "leaduppercut",
+	"doublejab", "feintcross", "bodyhead", "onetwothree", "shovelhook" }) do
+	scen("sp_" .. id, 2.6, { { 0.3, "A", "act", string.format("special|%s||0.24|1.00", id), special = id } })
+end
+-- defence (B throws, A defends)
+scen("slipL", 1.4, { punchAt(0.3, "B", "jab", "L"), { 0.32, "A", "act", "slip|L" } })
+scen("slipR", 1.4, { punchAt(0.3, "B", "cross", "R"), { 0.34, "A", "act", "slip|R" } })
+scen("roll", 1.5, { punchAt(0.3, "B", "leadhook", "L"), { 0.33, "A", "act", "roll" } })
+scen("parry", 1.3, { punchAt(0.3, "B", "jab", "L"), { 0.36, "A", "act", "parry|R" }, { 0.46, "B", "act", "parryhit" } })
+scen("block", 2.2, { { 0.2, "A", "Guard", "block" }, punchAt(0.5, "B", "cross", "R"), { 0.74, "A", "act", "blockhit" }, punchAt(1.0, "B", "leadhook", "L"),
+	{ 1.26, "A", "act", "blockhit" }, { 1.8, "A", "Guard", "stance" } })
+scen("shoulderroll", 2.0, { { 0, "A", "Style", "CounterPuncher" }, punchAt(0.5, "B", "cross", "R"), { 0.52, "A", "act", "slip|R" } }, { style = "CounterPuncher" })
+scen("pull", 1.6, { punchAt(0.3, "B", "jab", "L"), { 0.28, "A", "act", "special|pullcounter||0.24|1.00", special = "pullcounter" } })
+-- being hit (B's punch lands on A at its contact)
+local function hitScen(id, kind, hand, zone, sev, flag, extra)
+	local w = WIND[kind]
+	local ev = { punchAt(0.3, "B", kind, hand, zone) }
+	local s
+	if zone == "body" then
+		s = string.format("hitbody|%s|%s|%.2f", kind, hand == "L" and "R" or "L", sev)
+	else
+		s = string.format("hit|%s|%s|%.2f|%s", kind, flag or "head", sev, hand)
+	end
+	table.insert(ev, { 0.3 + w, "A", "act", s })
+	for _, e in ipairs(extra or {}) do
+		table.insert(ev, e)
+	end
+	scen(id, 1.9, ev)
+end
+hitScen("hit_light_jab", "jab", "L", "head", 0.25)
+hitScen("hit_med_cross", "cross", "R", "head", 0.6)
+hitScen("hit_heavy_hook", "leadhook", "L", "head", 1.0, "heavy")
+hitScen("hit_heavy_rearhook", "rearhook", "R", "head", 0.95, "heavy")
+hitScen("hit_crit_uppercut", "uppercut", "R", "head", 1.25, "heavy")
+hitScen("hit_body_light", "jab", "L", "body", 0.3)
+hitScen("hit_liver", "leadhook", "L", "body", 0.9)
+scen("stagger", 2.0, { punchAt(0.3, "B", "rearhook", "R"), { 0.6, "A", "act", "hit|rearhook|heavy|0.90|R" }, { 0.75, "A", "act", "stumble|B|0.80|0.90" },
+	{ 0.75, "A", "move", { 0.2, 1.1, 0.6 } } })
+scen("hurt_wobbly", 3.0, { { 0, "A", "Daze", 2 }, { 0, "A", "Guard", "hurt" } })
+scen("dazed3", 3.0, { { 0, "A", "Daze", 3 }, { 0, "A", "Guard", "dazed" } })
+-- knockdowns: the server's order (DownPose & co, then Guard = down), the count, the get-up act, Guard back to stance
+local function kdScen(id, pose, kind, hand, sev, getup, count, ko)
+	local w = WIND[kind]
+	local tc = 0.3 + w
+	local ev = { punchAt(0.3, "B", kind, hand) }
+	table.insert(ev, { tc, "A", "act", string.format("hit|%s|heavy|%.2f|%s", kind, sev, hand) })
+	table.insert(ev, { tc, "A", "DownPose", pose })
+	table.insert(ev, { tc, "A", "DownDir", (pose == "face" or pose == "forward" or pose == "knee") and 0.7 or math.pi })
+	table.insert(ev, { tc, "A", "KOKind", ko or false })
+	table.insert(ev, { tc, "A", "Count", 0 })
+	table.insert(ev, { tc + 0.001, "A", "Guard", "down" })
+	local dur
+	if ko then
+		local wall = ({ oneshot = 1.75, crumple = 1.75, delayed = 2.6, standing = 0.6 })[ko] or 1.75
+		if ko == "crumple" and pose == "back" then
+			wall += 0.2
+		end
+		table.insert(ev, { tc + wall, "B", "Guard", "win" })
+		table.insert(ev, { tc + wall, "ref", "act", "waveoff" })
+		dur = tc + wall + 2.4
+	else
+		for n = 1, count do
+			table.insert(ev, { tc + 0.9 + n, "ref", "act", "refcount|" .. n })
+			table.insert(ev, { tc + 0.9 + n, "A", "Count", n })
+		end
+		local up = tc + 0.9 + count + 0.3
+		table.insert(ev, { up, "A", "act", string.format("getup|%s|0|%.2f", pose, getup) })
+		table.insert(ev, { up + 0.02, "A", "Guard", "stance" })
+		table.insert(ev, { up, "A", "KOKind", false })
+		dur = up + getup + 1.2
+	end
+	scen(id, dur, ev, { ref = true, every = 4 })
+end
+kdScen("kd_back", "back", "cross", "R", 1.1, 2.4, 4)
+kdScen("kd_sit", "sit", "jab", "L", 0.9, 1.3, 3)
+kdScen("kd_side", "side", "leadhook", "L", 1.1, 2.3, 4)
+kdScen("kd_face", "face", "overhand", "R", 1.2, 2.2, 4)
+kdScen("kd_knee", "knee", "leadhook", "L", 1.0, 1.4, 3)
+kdScen("ko_oneshot_back", "back", "cross", "R", 1.4, nil, nil, "oneshot")
+kdScen("ko_oneshot_face", "face", "rearhook", "R", 1.4, nil, nil, "oneshot")
+kdScen("ko_crumple_side", "side", "leadhook", "L", 1.4, nil, nil, "crumple")
+kdScen("ko_crumple_back", "back", "uppercut", "R", 1.4, nil, nil, "crumple")
+kdScen("ko_delayed_face", "face", "overhand", "R", 1.4, nil, nil, "delayed")
+kdScen("ko_body", "knee", "leadhook", "L", 1.4, nil, nil, "crumple")
+-- between rounds and after
+scen("rest_stool", 4, { { 0.2, "A", "Guard", "rest" }, { 0.2, "A", "Stam", 0.4 } }, { stool = true, every = 4 })
+scen("win_lose", 5, { { 0.2, "A", "Guard", "win" }, { 0.2, "B", "Guard", "lose" } }, { every = 4 })
+
+local function fightClip(tier)
+	local arena = E.new("Model", E.workspace)
+	arena.Name = "Arena"
+	local a, humA = makeBoxer(tier)
+	a.Name = "BoxerA"
+	local b, humB = makeBoxer(3, { gloves = 2, trunks = 4 })
+	b.Name = "BoxerB"
+	local refM = makeBoxer(2, { gloves = 3, trunks = 5 })
+	refM.Name = "RefereeM"
+	a.Parent, b.Parent, refM.Parent = arena, arena, arena
+	local GAP = tonumber(args.gap) or 4.0
+	local ha, hb, hr = a:FindFirstChild("HumanoidRootPart"), b:FindFirstChild("HumanoidRootPart"), refM:FindFirstChild("HumanoidRootPart")
+	local yA, yB, yR = ha.CFrame.Y, hb.CFrame.Y, hr.CFrame.Y
+	local homeA = CFrame.new(0, yA, GAP / 2)
+	local homeB = CFrame.new(0, yB, -GAP / 2) * CFrame.Angles(0, math.pi, 0)
+	local homeR = CFrame.new(-4.2, yR, -0.6) * CFrame.Angles(0, -math.pi / 2, 0)
+	-- the corner stool behind A
+	local stool = E.new("Model", arena)
+	stool.Name = "CornerStool"
+	local seat = E.new("Part", stool)
+	seat.Name = "Seat"
+	seat.Size = Vector3.new(1.4, 0.25, 1.4)
+	seat.CFrame = CFrame.new(0, 1.55, GAP / 2 + 1.0)
+	local metricsF = {}
+	local summary = {}
+	for _, sc in ipairs(SCEN) do
+		if FIGHT_ONLY and not FIGHT_ONLY[sc.id] then
+			continue
+		end
+		-- reset: home, stance, the default attributes; settle
+		ha.CFrame, hb.CFrame, hr.CFrame = homeA, homeB, homeR
+		for _, m in ipairs({ a, b }) do
+			m:SetAttribute("Guard", "stance")
+			m:SetAttribute("Style", "BoxerPuncher")
+			m:SetAttribute("Stam", 1)
+			m:SetAttribute("Daze", 0)
+			m:SetAttribute("Conc", 0)
+			m:SetAttribute("KOKind", nil)
+			m:SetAttribute("DownPose", nil)
+			m:SetAttribute("Count", 0)
+			if not CS:HasTag(m, "Fighter") then
+				CS:AddTag(m, "Fighter")
+			end
+		end
+		a:SetAttribute("Style", sc.style or "BoxerPuncher")
+		if sc.ref and not CS:HasTag(refM, "Referee") then
+			CS:AddTag(refM, "Referee")
+		end
+		seat.Parent = sc.stool and stool or nil
+		for _ = 1, 90 do
+			frame({ a, b, refM })
+		end
+		local moves = {}
+		local function step(model, hrp)
+			local mv = moves[model]
+			if not mv then
+				hrp.AssemblyLinearVelocity = Vector3.zero
+				return
+			end
+			local u = math.clamp((VT - mv.t0) / mv.dur, 0, 1)
+			local e = u * u * (3 - 2 * u)
+			local du = (u - mv.u) / DT
+			mv.u = u
+			local cf = mv.from * CFrame.new(mv.dx * e, 0, mv.dz * e) * CFrame.Angles(0, (mv.dyaw or 0) * e, 0)
+			hrp.CFrame = cf
+			local v = (mv.from:VectorToWorldSpace(Vector3.new(mv.dx, 0, mv.dz))) * (6 * u * (1 - u)) / mv.dur
+			hrp.AssemblyLinearVelocity = mv.pivot and Vector3.zero or v
+			if u >= 1 then
+				moves[model] = nil
+			end
+			_ = du
+		end
+		local ids = { A = 0, B = 0, ref = 0 }
+		local who = { A = a, B = b, ref = refM }
+		local roots = { A = ha, B = hb, ref = hr }
+		local ev = table.clone(sc.ev)
+		table.sort(ev, function(x, y)
+			return x[1] < y[1]
+		end)
+		local ei = 1
+		local t0 = VT
+		local out = { clip = "fight", id = sc.id, tier = tier, frames = {}, ref = sc.ref or false }
+		do
+			-- the action window (the filmstrip's frames): from just before the first event to well after the last
+			local lo, hi = math.huge, 0
+			for _, e in ipairs(ev) do
+				lo, hi = math.min(lo, e[1]), math.max(hi, e[1] + (e.punch and e.punch.w or 0))
+			end
+			out.focus = sc.focus or (lo < math.huge and { math.max(0, lo - 0.1), math.min(sc.dur, hi + 0.75) } or { 0, sc.dur })
+		end
+		local sampleA = gaitSampler(a)
+		local S = {}
+		local prevT, prevW = {}, {}
+		local snap = { arms = { step = 0, acc = 0, pops = 0 }, trunk = { step = 0, acc = 0, pops = 0 }, neck = { step = 0, acc = 0, pops = 0 },
+			legs = { step = 0, acc = 0, pops = 0 }, rootMove = { step = 0, acc = 0, pops = 0 } }
+		local motorsA = {}
+		for k, n in pairs(MOTORS) do
+			for _, d in ipairs(a:GetDescendants()) do
+				if d.ClassName == "Motor6D" and d.Name == n then
+					motorsA[k] = d
+				end
+			end
+		end
+		local impacts = {}
+		local pendingImpact = {}
+		local series = {}
+		local every = sc.every or FIGHT_EVERY
+		local nF = math.floor(sc.dur / DT)
+		local prevRootP, prevRootV
+		for i = 1, nF do
+			local t = VT - t0 + DT
+			while ev[ei] and ev[ei][1] <= t + 1e-6 do
+				local e = ev[ei]
+				ei += 1
+				local m = who[e[2]]
+				if e[3] == "act" then
+					ids[e[2]] += 1
+					m:SetAttribute("Act", e[4])
+					m:SetAttribute("ActId", (m:GetAttribute("ActId") or 0) + 1)
+					if e.punch and e[2] == "A" then
+						table.insert(pendingImpact, { at = t + e.punch.w, p = e.punch })
+					elseif e.special and e[2] == "A" then
+						local FM = H.require("FightMotion")
+						local hits = FM.SpecialHits(e.special, 0.24)
+						local def = FM.Specials[FM.SpecialId(e.special)]
+						for hi, ht in ipairs(hits) do
+							local pu = def.punches[hi]
+							table.insert(pendingImpact, { at = t + ht, p = { kind = pu.kind, hand = pu.hand or def.hand, zone = pu.zone or def.zone, special = e.special } })
+						end
+					end
+				elseif e[3] == "move" then
+					local v = e[4]
+					moves[m] = { t0 = VT + DT, dur = v[3], dx = v[1], dz = v[2], dyaw = v[4], from = roots[e[2]].CFrame, u = 0, pivot = v.pivot }
+				else
+					m:SetAttribute(e[3], e[4] ~= false and e[4] or nil)
+				end
+			end
+			step(a, ha)
+			step(b, hb)
+			frame({ a, b, refM })
+			-- the Animator's output transforms: the largest one-frame turn and change of turning speed per group
+			local curW = {}
+			for k, mo in pairs(motorsA) do
+				local T = mo.Transform
+				local pT = prevT[k]
+				if pT then
+					local ax, ang = (pT:Inverse() * T):ToAxisAngle()
+					local w = ax * ang
+					local g = snap[GROUP[k]]
+					local dg = math.deg(ang)
+					curW[k] = dg
+					if dg > g.step then
+						g.step, g.stepAt, g.stepJ = dg, t, k
+					end
+					local pw = prevW[k]
+					if pw then
+						local acc = math.deg((w - pw).Magnitude)
+						if acc > g.acc then
+							g.acc, g.accAt, g.accJ = acc, t, k
+						end
+						if acc > 4 then
+							g.pops += 1
+						end
+					end
+					prevW[k] = w
+				end
+				prevT[k] = T
+				if k == "Root" then
+					local p = T.Position
+					if prevRootP then
+						local v = p - prevRootP
+						local g = snap.rootMove
+						g.step = math.max(g.step, v.Magnitude)
+						if prevRootV then
+							local acc = (v - prevRootV).Magnitude
+							if acc > g.acc then
+								g.acc, g.accAt = acc, t
+							end
+							if acc > 0.02 then
+								g.pops += 1
+							end
+						end
+						prevRootV = v
+					end
+					prevRootP = p
+				end
+			end
+			local smp = sampleA(t)
+			table.insert(S, smp)
+			if args.dbgfoot then
+				local rg = H.require("AnimRig").rigs[a]
+				local fl, fr2 = rg.foot.L, rg.foot.R
+				rg.dbgLock = true
+				if not rg.dbgOnce then
+					rg.dbgOnce = true
+					for _, sd in ipairs({ "L", "R" }) do
+						local lg = rg.geo[sd]
+						local tt = {}
+						for _, q in ipairs(lg.toe) do
+							table.insert(tt, string.format("[%.3f %.3f %.3f %.3f]", q[1], q[2], q[3], q[4]))
+						end
+						print("dbg geo", sd, "bz", lg.bz, "boxToe", lg.boxToe, "toeX", lg.toeX, table.concat(tt, " "))
+					end
+				end
+				local fls = rg.footLocks
+				if fls then
+					print(string.format("dbg3 %.3f lockL on=%s w=%.2f lockR on=%s w=%.2f", t, tostring(fls.L.on), fls.L.w, tostring(fls.R.on), fls.R.w))
+				end
+				print(string.format("dbg2 %.3f pitchS L %.3f R %.3f spinL %.2f spinR %.2f", t, fl.pitchS or -1, fr2.pitchS or -1, fl.spinT or -1, fr2.spinT or -1))
+				print(string.format("dbg %.3f L heel %.3f piv %.3f knee %.3f sw %s | R heel %.3f piv %.3f knee %.3f sw %s | ankL %.1f ankR %.1f fpL %.1f fpR %.1f",
+					t, fl.heel, fl.pivot, fl.knee, tostring(fl.swing), fr2.heel, fr2.pivot, fr2.knee, tostring(fr2.swing), smp.ankleL, smp.ankleR,
+					smp.footPitchL, smp.footPitchR))
+			end
+			-- contact: the glove against the target the server lands it on
+			for pi = #pendingImpact, 1, -1 do
+				local pe = pendingImpact[pi]
+				if t >= pe.at - 1e-6 then
+					table.remove(pendingImpact, pi)
+					local p = pe.p
+					local glove
+					for _, d in ipairs(a:GetDescendants()) do
+						if (d.ClassName == "MeshPart" or d.ClassName == "Part") and d.Name == "Glove" .. p.hand then
+							glove = d
+						end
+					end
+					glove = glove or a:FindFirstChild(p.hand == "L" and "LeftHand" or "RightHand")
+					local tgt = p.zone == "body" and b:FindFirstChild("UpperTorso") or b:FindFirstChild("Head")
+					local other = a:FindFirstChild(p.hand == "L" and "RightHand" or "LeftHand")
+					local headA = a:FindFirstChild("Head")
+					table.insert(impacts, { kind = p.kind, hand = p.hand, zone = p.zone, special = p.special, t = r4(t),
+						toTarget = r4((glove.Position - tgt.Position).Magnitude), dy = r4(glove.Position.Y - tgt.Position.Y),
+						reachZ = r4(-(glove.Position.Z - ha.Position.Z)),
+						guardHandY = r4(other.Position.Y - headA.Position.Y),
+						headOffX = r4(ha.CFrame:PointToObjectSpace(headA.Position).X) })
+				end
+			end
+			local row = { t = r4(t) }
+			for _, k in ipairs({ "pelvisY", "headY", "headPitch", "headRoll", "pelvisYaw", "chestYaw", "trunkPitch", "kneeL", "kneeR", "hipL", "hipR",
+				"shoulderL", "shoulderR", "elbowL", "elbowR", "footPitchL", "footPitchR", "soleL", "soleR", "handZL", "handZR" }) do
+				row[k] = r4(smp[k])
+			end
+			do
+				local pv = S[#S - 1]
+				for _, k in ipairs({ "L", "R" }) do
+					local slip = 0
+					if pv and pv["sole" .. k] < 0.012 and smp["sole" .. k] < 0.012 then
+						local q = pv["pts" .. k][pv["soleI" .. k]]
+						local pa, pb = pv["footCF" .. k] * q, smp["footCF" .. k] * q
+						slip = pb.Y < 0.012 and Vector3.new(pb.X - pa.X, 0, pb.Z - pa.Z).Magnitude or 0
+					end
+					row["slip" .. k] = r4(slip)
+				end
+			end
+			local hp = ha.CFrame:PointToObjectSpace(a:FindFirstChild("Head").Position)
+			row.headX, row.headZ = r4(hp.X), r4(hp.Z)
+			for _, s in ipairs({ "L", "R" }) do
+				local hd = a:FindFirstChild(s == "L" and "LeftHand" or "RightHand")
+				local q = ha.CFrame:PointToObjectSpace(hd.Position)
+				row["hand" .. s .. "x"], row["hand" .. s .. "y"] = r4(q.X), r4(q.Y)
+			end
+			for k, dg in pairs(curW) do
+				row["w" .. k] = r4(dg)
+			end
+			table.insert(series, row)
+			if (not NOMESH) and (i % every == 0 or i == 1) then
+				local fr = exportFrame(a, VT)
+				if sc.stool and seat.Parent then
+					table.insert(fr.parts, { name = "Seat", shape = "Block", cf = cfList(seat.CFrame), size = { 1.4, 0.25, 1.4 }, color = { 0.55, 0.12, 0.1 },
+						material = "SmoothPlastic", reflectance = 0, transparency = 0 })
+				end
+				fr.opp = exportFrame(b, VT)
+				if sc.ref then
+					fr.ref = exportFrame(refM, VT)
+				end
+				fr.root = cfList(ha.CFrame)
+				fr.t = r4(t)
+				fr.label = string.format("%.2f s", t)
+				table.insert(out.frames, fr)
+			end
+		end
+		local g = gaitSummary(S)
+		-- the slide while he is on his feet (the pelvis within 0.6 studs of the stance's height): a body lying or
+		-- kneeling on the canvas drags its feet by design, a standing one must not skate
+		local stand = {}
+		local y0 = S[1] and S[1].pelvisY or 0
+		for _, x in ipairs(S) do
+			if x.pelvisY > y0 - 0.6 then
+				table.insert(stand, x)
+			elseif #stand > 0 and stand[#stand] ~= false then
+				table.insert(stand, false)
+			end
+		end
+		local runs, cur = {}, {}
+		for _, x in ipairs(stand) do
+			if x == false then
+				table.insert(runs, cur)
+				cur = {}
+			else
+				table.insert(cur, x)
+			end
+		end
+		table.insert(runs, cur)
+		local sL, sR = 0, 0
+		for _, rn in ipairs(runs) do
+			if #rn > 1 then
+				local gs = gaitSummary(rn)
+				sL += gs.slideL
+				sR += gs.slideR
+			end
+		end
+		g.slideL, g.slideR = r4(sL), r4(sR)
+		local rec = { id = sc.id, tier = tier, slideL = g.slideL, slideR = g.slideR, slideMaxSpeed = g.slideMaxSpeed, sinkMin = g.sinkMin, snap = {},
+			impacts = impacts, ranges = {} }
+		for k, v in pairs(snap) do
+			rec.snap[k] = { step = r4(v.step), acc = r4(v.acc), pops = v.pops, stepJ = v.stepJ, accJ = v.accJ, accAt = v.accAt and r4(v.accAt) }
+		end
+		for _, k in ipairs({ "pelvisYaw", "chestYaw", "headPitch", "headRoll", "pelvisY", "kneeL", "kneeR", "trunkPitch" }) do
+			rec.ranges[k] = g[k]
+		end
+		table.insert(metricsF, rec)
+		Host.WriteJSON(string.format("%s/fightseries_%s_t%d.json", OUT, sc.id, tier), { id = sc.id, series = series })
+		if not NOMESH then
+			local file = string.format("fight_%s_t%d.json", sc.id, tier)
+			Host.WriteJSON(OUT .. "/" .. file, out)
+			table.insert(index.clips, { id = string.format("fight_%s_t%d", sc.id, tier), file = file, clip = "fight", tier = tier, n = #out.frames,
+				ref = sc.ref or false })
+		end
+		local imp = ""
+		for _, im in ipairs(impacts) do
+			imp ..= string.format(" [%s%s %.2f dy%+.2f]", im.kind, im.zone == "body" and "/b" or "", im.toTarget, im.dy)
+		end
+		print(string.format("fight %-18s slide %.3f/%.3f  snap step arms %.1f trunk %.1f neck %.1f legs %.1f | acc arms %.1f trunk %.1f neck %.1f legs %.1f root %.3f | pops %d/%d/%d/%d%s",
+			sc.id, g.slideL, g.slideR, snap.arms.step, snap.trunk.step, snap.neck.step, snap.legs.step, snap.arms.acc, snap.trunk.acc, snap.neck.acc,
+			snap.legs.acc, snap.rootMove.acc, snap.arms.pops, snap.trunk.pops, snap.neck.pops, snap.legs.pops, imp))
+		-- clear the scenario's state
+		for _, m in ipairs({ a, b }) do
+			m:SetAttribute("Guard", "stance")
+			m:SetAttribute("KOKind", nil)
+			m:SetAttribute("DownPose", nil)
+			m:SetAttribute("Daze", 0)
+		end
+		if CS:HasTag(refM, "Referee") then
+			CS:RemoveTag(refM, "Referee")
+		end
+		for _ = 1, 30 do
+			frame({ a, b, refM })
+		end
+		-- (a fall leaves the rig down: rebuild the rigs' state by re-tagging)
+		for _, m in ipairs({ a, b }) do
+			CS:RemoveTag(m, "Fighter")
+		end
+		for _ = 1, 3 do
+			frame({ a, b, refM })
+		end
+		for _, m in ipairs({ a, b }) do
+			CS:AddTag(m, "Fighter")
+		end
+		for _ = 1, 3 do
+			frame({ a, b, refM })
+		end
+		_ = summary
+	end
+	Host.WriteJSON(string.format("%s/fight_metrics_t%d.json", OUT, tier), metricsF, true)
+	table.insert(metrics, { clip = "fight", tier = tier, scenarios = metricsF })
+	for _, m in ipairs({ a, b }) do
+		CS:RemoveTag(m, "Fighter")
+	end
+	arena:Destroy()
+	for _ = 1, 3 do
+		frame({})
+	end
+end
+
 local function restClip(tier)
 	local model = makeBoxer(tier)
 	if args.debugfoot then
@@ -1307,6 +1829,9 @@ for _, tier in ipairs(TIERS) do
 	end
 	if CLIPS.punch then
 		punchClip(tier)
+	end
+	if CLIPS.fight then
+		fightClip(tier)
 	end
 end
 Host.WriteJSON(OUT .. "/index.json", index, true)

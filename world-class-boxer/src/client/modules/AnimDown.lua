@@ -531,10 +531,14 @@ local FALLS = {
 	corner = { { 0.45, "stagger", SMOOTH }, { 0.6, "cornerHit", OUT, 0.7 }, { 1.05, "cornerSlide", SMOOTH }, { 1.55, "cornerSit", GRAV, 0.8 } },
 	-- knockouts: the backward collapse (crumple + back) goes at the knees first, then folds back
 	koBack = { { 0.2, "kneesGo", GRAV }, { 0.46, "sitSlump", GRAV, 0.8 }, { 0.8, "onBackLimp", GRAV, 1.3 } },
+	-- a body shot that ends it (crumple + knee): he folds onto his knees over the punch, a beat there, then tips
+	-- over onto his side
+	koKnee = { { 0.22, "buckleF", SMOOTH }, { 0.52, "kneel", GRAV, 0.7 }, { 0.84, "kneelFold", SMOOTH }, { 1.16, "onSide", GRAV, 1.1 } },
 }
 FALLS.standing = FALLS.knee -- unknown use of "standing" without a KO: treat as a sagging knee
 -- until when (same units) the feet stay planted: the knees give on planted feet, then the fall leaves them
-local PLANT = { flash = 0.14, sit = 0.16, knee = 0.25, forward = 0.15, face = 0.15, back = 0.16, side = 0.18, ropes = 0.92, corner = 0.6, koBack = 0.2 }
+local PLANT = { flash = 0.14, sit = 0.16, knee = 0.25, forward = 0.15, face = 0.15, back = 0.16, side = 0.18, ropes = 0.92, corner = 0.6, koBack = 0.2,
+	koKnee = 0.22 }
 
 local GETUPS = {
 	back = { { 0.22, "backStir", SMOOTH }, { 0.42, "rollSide", SMOOTH }, { 0.6, "handsKnees", SMOOTH }, { 0.78, "kneelPush", SMOOTH } },
@@ -685,6 +689,29 @@ function AnimDown.start(rig, t)
 	if ko and pose == "forward" then
 		-- knockouts do not catch themselves: the forward fall goes all the way down onto the face
 		d.keys, d.plantT = FALLS.face, PLANT.face
+	elseif ko and pose == "knee" then
+		d.keys, d.plantT = FALLS.koKnee, PLANT.koKnee
+	end
+	-- the knockout punch flavours the fall (AnimFight.react remembers the last blow): a hook or an overhand spins
+	-- him round as the lights go out, an uppercut lifts him onto his toes before he goes, a body shot folds him
+	-- first (its own timeline above); straights go as they are
+	local lh = rig.lastHit
+	if ko and lh and t - lh.t < 0.8 and not lh.body and ko ~= "standing" then
+		local k = lh.kind
+		if k == "leadhook" or k == "rearhook" or k == "hook" or k == "overhand" then
+			-- (a hook from the puncher's left lands on his right side and turns him to his left)
+			local sgn = (lh.hand == "L") and 1 or -1
+			if k == "overhand" then
+				sgn = -sgn
+			end
+			d.spin = sgn * (0.55 + 0.35 * rig.rng:NextNumber())
+		elseif k == "uppercut" then
+			d.lift = 0.14 + 0.06 * rig.rng:NextNumber()
+			if d.timber then
+				-- (the timber fall starts from the lift: slower off the mark, gravity does the rest)
+				d.omega *= 0.35
+			end
+		end
 	end
 	-- the fall direction relative to the authored one (authored falls go back / forward / to a side)
 	local auth = (pose == "face" or pose == "forward" or pose == "knee" or pose == "flash") and 0 or PI
@@ -698,6 +725,7 @@ function AnimDown.start(rig, t)
 		d.yaw = clamp(yaw, -0.8, 0.8) -- a little variety (and past the attacker), never a different fall
 	end
 	rig.down = d
+	rig.ev, rig.evT = nil, nil
 	if rig.act and rig.act.kind == "getup" then
 		rig.act = nil -- down again before he was all the way up
 	end
@@ -1191,6 +1219,181 @@ local function onCanvas(rig, p)
 end
 
 ------------------------------------------------------------------------
+-- Feet on the canvas: a fall's and a get-up's legs are keyed poses, so the feet go wherever the pelvis takes
+-- them - in a backward fall they shot out along the canvas at 12 studs/s. A foot that touches the canvas is held
+-- where it touched (the leg's IK takes the difference, the foot keeps the keyed pose's turn and pitch) with
+-- friction: it gives at most FOOT_DRAG studs/s, and fully once the leg cannot reach (a body lying out flat pulls
+-- its feet with it), and it lets go as it lifts. Blended in and out, never a pop. On the final Transforms
+-- (Animator, after the filters, before floorClamp).
+------------------------------------------------------------------------
+local FOOT_DRAG = 0.5
+-- (held further than this from where the pose has it, the foot comes up off the canvas and goes there through
+-- the air - a man going over backwards kicks his feet up, they do not plough along the canvas)
+local FOOT_HOLD_MAX, FOOT_FLY = 0.3, 0.2
+local FOOT_NEAR = 0.07
+local FOOT_REACH = 0.985
+local CORNERS = {}
+for _, sx in ipairs({ -1, 1 }) do
+	for _, sy in ipairs({ -1, 1 }) do
+		for _, sz in ipairs({ -1, 1 }) do
+			table.insert(CORNERS, V3(sx, sy, sz) * 0.5)
+		end
+	end
+end
+function AnimDown.footLock(rig, out, dt)
+	local g = rig.geo
+	if not (g.ok and g.jc0 and g.jc0.LA and g.jc0.RA and rig.root) then
+		return
+	end
+	local fk = R.fk(rig, out, rig.flFk or {})
+	rig.flFk = fk
+	local rc = rig.root.CFrame
+	local locks = rig.footLocks
+	if not locks then
+		locks = { L = { w = 0 }, R = { w = 0 } }
+		rig.footLocks = locks
+	end
+	local pTmp = rig.flP or {}
+	rig.flP = pTmp
+	for _, s in ipairs(R.SIDES) do
+		local kH, kK, kA = s .. "H", s .. "K", s .. "A"
+		local foot, knee = fk[kA], fk[kK]
+		local st = locks[s]
+		if foot and knee then
+			-- the foot's corners (shrunk a little: the boot's rounded edges) in the world; the lowest touches
+			-- (the boot over the foot box: a little longer and its sole a little under the box's)
+			local fs = g.sz[kA]
+			local sz = V3(fs.X * 0.95, fs.Y + 2 * ((g[s] and g[s].sink) or 0) + 0.04, fs.Z * 1.12)
+			local cw = st.cw or {}
+			st.cw = cw
+			local low, li = math.huge, 1
+			for i, c in ipairs(CORNERS) do
+				local q = rc:PointToWorldSpace(foot:PointToWorldSpace(c * sz))
+				cw[i] = q
+				if q.Y < low then
+					low, li = q.Y, i
+				end
+			end
+			local lowH = foot:PointToWorldSpace(CORNERS[li] * sz).Y
+			if lowH - g.groundY < FOOT_NEAR then
+				if not st.on then
+					-- (touching down: held where it is, the correction carried on from the last hold as it fades)
+					st.on, st.ci = true, li
+					st.anchor = V3(cw[li].X, 0, cw[li].Z) - (st.off or Vector3.zero)
+				elseif st.ci ~= li and cw[st.ci].Y > cw[li].Y + 0.03 then
+					-- (it rolls onto another edge - the heel to the toe: the hold moves onto that point, with the same
+					-- correction, so the foot never jumps)
+					st.ci = li
+					st.anchor = V3(cw[li].X, 0, cw[li].Z) - (st.off or Vector3.zero)
+				end
+				st.w = min(1, st.w + dt / 0.08)
+			else
+				st.on = false
+				st.w = max(0, st.w - dt / 0.12)
+				if st.w <= 0 then
+					st.off, st.anchor, st.ci = nil, nil, nil
+				end
+			end
+			if st.w > 0.001 and st.anchor and st.ci then
+				-- friction: the spot gives way slowly to where the pose wants the foot
+				local q = cw[st.ci]
+				local free = V3(q.X, 0, q.Z)
+				local d = free - st.anchor
+				local m = d.Magnitude
+				local give = FOOT_DRAG * dt
+				if m > give then
+					st.anchor += d * (give / m)
+				else
+					st.anchor = free
+				end
+				st.off = free - st.anchor
+				local liftY = 0
+				if not st.fly and st.off.Magnitude > FOOT_HOLD_MAX then
+					st.fly = { t = 0, off = st.off }
+				end
+				if st.fly then
+					local fl = st.fly
+					fl.t += dt
+					local e = smooth(fl.t / FOOT_FLY)
+					st.off = fl.off * (1 - e)
+					st.anchor = free - st.off
+					liftY = 0.22 * sin(PI * e) * min(1, fl.off.Magnitude / 0.6)
+					if e >= 1 then
+						-- (landed where the pose has it: held there from now on)
+						st.fly, st.off, st.anchor = nil, Vector3.zero, free
+					end
+				end
+				local ank = (knee * g.jc0[kA]).Position
+				local want = ank - rc:VectorToObjectSpace(st.off or Vector3.zero) + V3(0, liftY, 0)
+				-- (and never into the canvas: a boot rolled onto its edge is lifted out of it)
+				local lowAll = math.huge
+				for _, c in ipairs(CORNERS) do
+					lowAll = min(lowAll, foot:PointToWorldSpace(c * sz).Y)
+				end
+				if lowAll < g.groundY then
+					want += V3(0, g.groundY - lowAll, 0)
+				end
+				-- (never further than the leg reaches: the anchor is dragged along instead)
+				local leg = g[s]
+				local hip = (g.rootC0 * out.Root * leg.rootHip).Position
+				local reach = (leg.l1 + leg.l2) * FOOT_REACH
+				local v = want - hip
+				if v.Magnitude > reach then
+					local fit = hip + v.Unit * reach
+					if st.anchor then
+						st.anchor += rc:VectorToWorldSpace(fit - want) * V3(1, 0, 1)
+						st.off = free - st.anchor
+					end
+					want = fit
+				end
+				do
+					-- (no twist of its own: the knee stays in the hip's plane, as the keyed pose has it - a heading
+					-- taken from a foot pointing at the sky flips)
+					local hl = (g.rootC0 * out.Root * leg.rootHip).LookVector
+					R.solveLeg(rig, pTmp, s, out.Root, want, math.atan2(-hl.X, -hl.Z), 0, 0, 0.02)
+					local w = smooth(st.w)
+					out[kH] = w < 1 and out[kH]:Lerp(pTmp[kH], w) or pTmp[kH]
+					out[kK] = w < 1 and out[kK]:Lerp(pTmp[kK], w) or pTmp[kK]
+					-- (the foot keeps the keyed pose's turn and pitch in the world)
+					local thigh = fk[s == "L" and "LH" or "RH"]
+					local parH = fk.Root
+					local nThigh = parH * g.jc0[kH] * out[kH] * g.jc1i[kH]
+					local nKnee = nThigh * g.jc0[kK] * out[kK] * g.jc1i[kK]
+					out[kA] = (g.jc0[kA]:Inverse() * nKnee:Inverse() * foot * g.jc1i[kA]:Inverse()).Rotation
+					_ = thigh
+				end
+			end
+		end
+	end
+end
+
+-- the knockout punch's mark on the fall (d.spin / d.lift, AnimDown.start): `el` = time since the legs went
+function AnimDown.flavour(p, rig, d, el)
+	if el < 0 then
+		return
+	end
+	if d.spin then
+		-- spun by the hook: the hips come round first and the chest lags them a little, then all of him
+		local e = smooth(el / 0.55)
+		p.Root = A(0, d.spin * e, 0) * p.Root
+		p.W = p.W * A(0, -d.spin * 0.25 * K.bump(el, 0, 0.5), d.spin * 0.12 * K.bump(el, 0.05, 0.6))
+	end
+	if d.lift then
+		-- lifted by the uppercut: up onto the toes and arched back, chin up, before the legs give
+		local up = d.lift * K.bump(el, 0, 0.34)
+		if up > 1e-3 then
+			p.Root = CF(0, up, 0.15 * up) * p.Root * A(0.7 * up, 0, 0)
+			p.W = p.W * A(0.9 * up, 0, 0)
+			p.Neck = p.Neck * A(1.4 * up, 0, 0)
+			if rig.plant then
+				rig.foot.L.heel = max(rig.foot.L.heel, up * 2.2)
+				rig.foot.R.heel = max(rig.foot.R.heel, up * 2.6)
+			end
+		end
+	end
+end
+
+------------------------------------------------------------------------
 -- The full down pose for this frame
 ------------------------------------------------------------------------
 -- the referee standing within catching distance of a man out on his feet (nil when he is not there)
@@ -1326,6 +1529,7 @@ function AnimDown.pose(p, rig, t, dt)
 		local k = smooth(el / ((d.pose == "ropes" or d.pose == "corner") and 0.6 or 0.3))
 		p.Root = A(0, yaw * k, 0) * p.Root
 	end
+	AnimDown.flavour(p, rig, d, el - (d.delay or 0))
 	if ko then
 		-- out cold: limp, head lolled to one side, arms wider
 		local lim = smooth((el - d.delay - 0.6) / 0.6)

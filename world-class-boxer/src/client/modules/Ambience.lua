@@ -3,6 +3,8 @@
 --  * RoundTimer  - gym round clocks run a shared 3:00 round / 1:00 rest cycle with their lamps,
 --                  and the nearest one rings the bell (three dings) when a round starts or ends
 --  * TVTicker    - TV screens scroll their headline ticker
+--  * TVLoop      - an ImageLabel showing a sprite sheet (attributes Cols, Rows, FrameW, FrameH, Period) steps
+--                  through its frames: the fight broadcast on the gym's detail TVs
 --  * NeonFlicker - neon signs flicker now and then (a tagged Model blinks only its Neon parts and
 --                  switches its lights with them: failing pendant tubes in a Beginner gym)
 --  * NightLight / NightLens - street, shop and monument lights switch on at dusk
@@ -264,6 +266,40 @@ local function updateTickers(dt, cam)
 			if w > 0 and tw > 0 then
 				e.offset = (e.offset + 70 * dt) % (tw + w)
 				e.text.Position = UDim2.new(0, math.floor(w - e.offset), 0, 0)
+			end
+		end
+	end
+end
+
+------------------------------------------------------------------------
+-- TV loops (a sprite sheet stepped frame by frame through ImageRectOffset)
+------------------------------------------------------------------------
+local tvLoops = {}
+
+local function addTVLoop(label)
+	if not label:IsA("ImageLabel") or tvLoops[label] then
+		return
+	end
+	local cols = math.max(1, tonumber(label:GetAttribute("Cols")) or 1)
+	local rows = math.max(1, tonumber(label:GetAttribute("Rows")) or 1)
+	tvLoops[label] = {
+		cols = cols, rows = rows, n = cols * rows, k = 0, t = math.random() * 2,
+		w = tonumber(label:GetAttribute("FrameW")) or 0, h = tonumber(label:GetAttribute("FrameH")) or 0,
+		period = math.max(0.3, tonumber(label:GetAttribute("Period")) or 2),
+	}
+end
+
+local function updateTVLoops(dt, cam)
+	for label, e in pairs(tvLoops) do
+		local part = label:FindFirstAncestorWhichIsA("BasePart")
+		if not (part and label:IsDescendantOf(workspace)) then
+			tvLoops[label] = nil
+		elseif (part.Position - cam).Magnitude < nearNow then
+			e.t += dt
+			if e.t >= e.period then
+				e.t = 0
+				e.k = (e.k + 1) % e.n
+				label.ImageRectOffset = Vector2.new((e.k % e.cols) * e.w, math.floor(e.k / e.cols) * e.h)
 			end
 		end
 	end
@@ -1101,6 +1137,9 @@ function Ambience.Start()
 	watch("SpinFan", addFan)
 	watch("RoundTimer", addTimer)
 	watch("TVTicker", addTicker)
+	watch("TVLoop", addTVLoop, function(l)
+		tvLoops[l] = nil
+	end)
 	watch("NeonFlicker", addNeon, removeNeon)
 	watch("LightZone", addZone, function(p)
 		zones[p] = nil
@@ -1167,6 +1206,7 @@ function Ambience.Start()
 		nearNow = lodPick(100, 130, NEAR)
 		updateFans(step, cam)
 		updateTickers(step, cam)
+		updateTVLoops(step, cam)
 		-- (at 30 Hz so treadmill strides and rope ticks keep their real cadence)
 		safe(updateMemberSounds, cam, os.clock())
 		if slowAcc >= 0.25 then

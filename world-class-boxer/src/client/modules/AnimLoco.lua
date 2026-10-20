@@ -1282,9 +1282,13 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				if yerr > 0.08 and err < rig.stepDist * 0.8 and (not moving or (lo.turnK or 0) > 0.3) then
 					local want = K.wrap(f.homeYaw - f.yawW)
 					local step = clamp(want, -dt * 3.2, dt * 3.2)
-					local B = f.P + fwdOf(f.yawW) * leg.bz
+					-- (about the ball while the foot is flat; once the heel is up the weight is on the sole's toe
+					-- where the roll model has it touching - a fighter's pivot turns on that, or the boot's tip
+					-- skated round 0.6 studs out from the ball: AnimRig.toeContact)
+					local bz = R.toeContact(leg, f.pitchS or 0)
+					local B = f.P + fwdOf(f.yawW) * bz
 					f.yawW += step
-					f.P = B - fwdOf(f.yawW) * leg.bz
+					f.P = B - fwdOf(f.yawW) * bz
 					f.spinT = t
 					yerr = abs(K.wrap(f.yawW - f.homeYaw))
 				end
@@ -1646,9 +1650,13 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 		-- pivot on the ball: rotate the ground point about the ball by the act's pivot
 		local pv = f.pivA or 0
 		if abs(pv) > 1e-3 and not f.swing then
-			local B = P + fwdOf(yawW) * leg.bz
+			-- (about the ball while the foot is flat; with the heel up the weight is on the sole's toe, where the
+			-- roll model has it touching - a punch's pivot turns on that point, or the boot's tip skated round the
+			-- ball: AnimRig.toeContact)
+			local bz = R.toeContact(leg, f.curPitch or 0)
+			local B = P + fwdOf(yawW) * bz
 			yawW += pv
-			P = B - fwdOf(yawW) * leg.bz
+			P = B - fwdOf(yawW) * bz
 			f.visP, f.visYaw = P, yawW
 		elseif not f.swing then
 			f.visP, f.visYaw = nil, nil

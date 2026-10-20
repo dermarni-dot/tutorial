@@ -955,6 +955,17 @@ function GymDetail.Register(streamer)
 	streamer:Add("GymRecovery", V3(79, 8, 50), 40, { nil, recovery2 })
 	streamer:Add("GymCeiling", V3(0, 26, 0), 110, { nil, blinds, ceiling3 })
 	streamer:Add("GymCeilingWalls", V3(0, 22, 0), 110, { nil, nil, ceiling3b })
+	-- the second pass (GymDetail2: walls of print, wall kit, the weigh-in corner, wear) on the same streamer
+	local m2 = script.Parent:FindFirstChild("GymDetail2")
+	local ok, mod = false, nil
+	if m2 then
+		ok, mod = pcall(require, m2)
+	end
+	if ok and type(mod) == "table" and mod.Register then
+		mod.Register(streamer, GymDetail)
+	elseif m2 then
+		warn("[GymDetail] GymDetail2: " .. tostring(mod))
+	end
 end
 
 GymDetail.WALLS = WALLS

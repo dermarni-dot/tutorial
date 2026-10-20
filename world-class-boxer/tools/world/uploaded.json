@@ -5,11 +5,23 @@
   "moderation": "Approved",
   "uploaded": "2026-10-20 00:36:04"
  },
+ "14f80ab1b8271f17532cd02b28508b8896517348f6e8fe600c50ec77667a7423": {
+  "file": "tools/world/out/block_wall.png",
+  "id": 117714311190683,
+  "moderation": "Approved",
+  "uploaded": "2026-10-20 15:05:26"
+ },
  "21930ce99a4c072303892a0154584bcfd02e7a6cff72407928a5c3e8301fdcae": {
   "file": "tools/world/out/rubber_tiles.png",
   "id": 79299624000420,
   "moderation": "Approved",
   "uploaded": "2026-10-20 00:35:56"
+ },
+ "258b57047e1362ccbd0573d2e8ad5c2edc17d3d0572c4153f5799aac2e8f51f1": {
+  "file": "tools/world/out/paint_chips.png",
+  "id": 98717427233414,
+  "moderation": "Approved",
+  "uploaded": "2026-10-20 15:05:42"
  },
  "3b3b78a438f08536b392b9834b62fb1a4f9e85fe84e8127971d7c2b24bb922b8": {
   "file": "tools/world/out/poster_undisputed.png",
@@ -23,11 +35,23 @@
   "moderation": "Approved",
   "uploaded": "2026-10-20 00:36:07"
  },
+ "49ca4a9b825b4427a63f40f105d96e123ac326a7e9c1a222dfc873e126c68ed6": {
+  "file": "tools/world/out/tv_fight.png",
+  "id": 123910563958362,
+  "moderation": "Approved",
+  "uploaded": "2026-10-20 15:05:31"
+ },
  "4c64787bc2dd316add9b4ae6efdc32b890482594cf6ed0ff3732bc560466a21c": {
   "file": "tools/world/out/banner_wcb.png",
   "id": 83117239938671,
   "moderation": "Approved",
   "uploaded": "2026-10-20 00:36:23"
+ },
+ "514a71bdb6ab5b682e1a27213a2c242bcd6782accdc245feb6ff0dcbddb6aca4": {
+  "file": "tools/world/out/floor_wear.png",
+  "id": 124971627234868,
+  "moderation": "Approved",
+  "uploaded": "2026-10-20 15:05:47"
  },
  "51a563448f054a1715d49d37aaf4d8cdae2ed8f78600b785da9a655ef3f1a6d2": {
   "file": "tools/world/out/poster_rules.png",
@@ -35,17 +59,41 @@
   "moderation": "Approved",
   "uploaded": "2026-10-20 00:36:17"
  },
+ "536ca93f7941123abc2fcd2bb5b758f97bf9592ae0bb47265bc18150c4cf8b05": {
+  "file": "tools/world/out/stencil_nodays.png",
+  "id": 91302526610320,
+  "moderation": "Approved",
+  "uploaded": "2026-10-20 15:05:39"
+ },
  "54ccdcc89694f741ad69bb0b55ee8bb9d931fda18798b0864b6668d41a81e12e": {
   "file": "tools/world/out/sidewalk.png",
   "id": 96277741067518,
   "moderation": "Approved",
   "uploaded": "2026-10-20 00:56:52"
  },
+ "5af39c7c7fe49d8dcad93e0345c46c840def5a5aab09b20574ff3348866d88f1": {
+  "file": "tools/world/out/stencil_outwork.png",
+  "id": 108795967040824,
+  "moderation": "Approved",
+  "uploaded": "2026-10-20 15:05:34"
+ },
  "661b1ab7d6ba39641e7f40e555bad161f3093c2397c47ce28c8f602975e5f5a1": {
   "file": "tools/world/out/scuffs.png",
   "id": 103496133174397,
   "moderation": "Approved",
   "uploaded": "2026-10-20 00:36:01"
+ },
+ "664de44d7634eecbe457103f4f12a79b1f00a26d3d2b92216d189b2ba73ffebc": {
+  "file": "tools/world/out/clippings.png",
+  "id": 127901093058689,
+  "moderation": "Approved",
+  "uploaded": "2026-10-20 15:05:20"
+ },
+ "68830e19ae90cde5afc57fb0e08e2d74f7e75aef8d4786469d4ddbe9b76af9b5": {
+  "file": "tools/world/out/hall_champions.png",
+  "id": 108887565354401,
+  "moderation": "Approved",
+  "uploaded": "2026-10-20 15:05:23"
  },
  "881d19a939fee85fab59aae3b26f9ed3d1e745b2e49ca3def0875b3f5590eae8": {
   "file": "tools/world/out/poster_fightnight.png",
@@ -59,16 +107,46 @@
   "moderation": "Approved",
   "uploaded": "2026-10-20 00:36:09"
  },
+ "c9ae54cb0f39f3d146ab27a07ce8d4c5dfa0271d35e9213aa54732083d4f3b3d": {
+  "file": "tools/world/out/stencil_shortcuts.png",
+  "id": 76488842982988,
+  "moderation": "Approved",
+  "uploaded": "2026-10-20 15:05:37"
+ },
+ "ca56c6c5ca5dd9989b961d9d3176e6fee23651c87e8618f2fdd30f2cb9b236db": {
+  "file": "tools/world/out/whiteboard.png",
+  "id": 115330022535189,
+  "moderation": "Approved",
+  "uploaded": "2026-10-20 15:05:29"
+ },
  "e115c5b1200b53b533da7241c6c104ce00f626f9879751aac06010f1974bbe52": {
   "file": "tools/world/out/canvas_weave.png",
   "id": 94420382152682,
   "moderation": "Approved",
   "uploaded": "2026-10-20 00:35:59"
  },
+ "e1f03458e152b228a165328f73598eddc13281c2a83c2a5a29875b750eeb5196": {
+  "file": "tools/world/out/puddle.png",
+  "id": 128046126769237,
+  "moderation": "Approved",
+  "uploaded": "2026-10-20 15:05:45"
+ },
  "f1d37955c4e9f5a745a71cd96ad73d4995192b667e79060659815c650162290c": {
   "file": "tools/world/out/poster_champion.png",
   "id": 140268837353194,
   "moderation": "Approved",
   "uploaded": "2026-10-20 00:36:20"
+ },
+ "f38514835a4e5e9663810c3bce324cf220572dd7b83b322e887e6000238217f0": {
+  "file": "tools/world/out/backdrop_wcb.png",
+  "id": 98275743627420,
+  "moderation": "Approved",
+  "uploaded": "2026-10-20 15:05:50"
+ },
+ "fb0f1265d9fbae20cf58369afb63bd3cd2194ddede8c1d0b5b9e38d15b83567c": {
+  "file": "tools/world/out/poster_wall.png",
+  "id": 118640714362799,
+  "moderation": "Approved",
+  "uploaded": "2026-10-20 15:05:18"
  }
 }

@@ -512,8 +512,499 @@ def banner_wcb():
     save(Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGBA").convert("RGB"), "banner_wcb.png")
 
 
+# ---------------------------------------------------------------------------------------------------- gym, second pass
+# (every name, headline and poster bout below is made up: no real fighters, papers or brands)
+SERIF = "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf"
+SERIF_REG = "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf"
+SERIF_IT = "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf"
+COND = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+CARL = "/usr/share/fonts/truetype/crosextra/Carlito-Bold.ttf"
+CARL_IT = "/usr/share/fonts/truetype/crosextra/Carlito-BoldItalic.ttf"
+
+CHAMPS = [
+    ("OLD PETE", "FOUNDER", "1987"), ("SONNY VARGA", "MIDDLEWEIGHT", "1989"), ("ROCCO BELLINI", "HEAVYWEIGHT", "1994"),
+    ("DEE HART", "LIGHTWEIGHT", "1998"), ("MARCUS OKOYE", "CRUISERWEIGHT", "2003"), ("LENA KROSS", "FEATHERWEIGHT", "2008"),
+    ("TITO ALVARADO", "WELTERWEIGHT", "2011"), ("JAMAL PRYCE", "HEAVYWEIGHT", "2015"), ("NADIA SORELL", "BANTAMWEIGHT", "2019"),
+    ("VIKTOR HALE", "LIGHT HEAVY", "2022"),
+]
+
+
+def wobble(img, amp, period, seed):
+    """a hand-drawn waver: rows and columns shifted by a slow sine (marker / brush text)"""
+    a = np.array(img)
+    h, w = a.shape[:2]
+    rng = np.random.default_rng(seed)
+    ph = rng.random(2) * 6.28
+    out = np.zeros_like(a)
+    ys = np.arange(h)
+    xs = np.arange(w)
+    dx = (amp * np.sin(ys / period + ph[0])).astype(int)
+    dy = (amp * np.sin(xs / (period * 1.3) + ph[1])).astype(int)
+    for y in range(h):
+        out[y] = np.roll(a[y], dx[y], axis=0)
+    a = out.copy()
+    for x in range(w):
+        out[:, x] = np.roll(a[:, x], dy[x], axis=0)
+    return Image.fromarray(out, img.mode)
+
+
+def paper_tex(w, h, base, seed, grain=7, stain=0.12):
+    im = grad_bg(w, h, base, tuple(int(c * 0.93) for c in base), seed, grain=grain)
+    arr = np.array(im).astype(np.float64)
+    n = max(w, h)
+    nz = tile_noise(n, 4, seed + 1, 5)[:h, :w]
+    arr[..., 0:3] *= (1 - stain + stain * 2 * nz)[..., None]
+    return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGBA")
+
+
+def tape(im, x, y, w, h, ang, seed):
+    t = Image.new("RGBA", (int(w), int(h)), (236, 226, 190, 170))
+    td = ImageDraw.Draw(t)
+    rng = np.random.default_rng(seed)
+    for k in range(0, int(w), 6):
+        td.line([k, 0, k + rng.integers(-3, 4), h], fill=(255, 255, 240, 40), width=1)
+    t = t.rotate(ang, expand=True, resample=Image.BICUBIC)
+    im.alpha_composite(t, (int(x - t.size[0] / 2), int(y - t.size[1] / 2)))
+
+
+def drop_shadow(im, card, x, y, blur=6, off=(5, 7), alpha=0.55):
+    a = card.split()[3].filter(ImageFilter.GaussianBlur(blur)).point(lambda v: int(v * alpha))
+    sh = Image.new("RGBA", card.size, (0, 0, 0, 255))
+    sh.putalpha(a)
+    im.alpha_composite(sh, (int(x + off[0]), int(y + off[1])))
+    im.alpha_composite(card, (int(x), int(y)))
+
+
+def vintage_poster(w, h, top, names, sub, venue, palette, seed):
+    """an old letterpress fight bill: paper, two-colour blocks, big condensed names, worn"""
+    bg, ink, accent = palette
+    im = paper_tex(w, h, bg, seed, grain=6, stain=0.16)
+    d = ImageDraw.Draw(im)
+    d.rectangle([8, 8, w - 8, h - 8], outline=ink, width=4)
+    d.rectangle([8, 8, w - 8, int(h * 0.16)], fill=ink)
+    text_center(d, w / 2, int(h * 0.035), top, fit(d, top, COND, int(h * 0.1), w - 30), bg)
+    boxer_silhouette(d, w * 0.3, h * 0.2, h * 0.3, 1, accent)
+    boxer_silhouette(d, w * 0.7, h * 0.2, h * 0.3, -1, ink)
+    a, b = names
+    y = int(h * 0.6)
+    text_center(d, w / 2, y, a, fit(d, a, COND, int(h * 0.11), w - 24), ink)
+    text_center(d, w / 2, y + int(h * 0.105), "vs", font(SERIF_IT, int(h * 0.06)), accent)
+    text_center(d, w / 2, y + int(h * 0.165), b, fit(d, b, COND, int(h * 0.11), w - 24), ink)
+    d.rectangle([8, int(h * 0.88), w - 8, h - 8], fill=accent)
+    text_center(d, w / 2, int(h * 0.895), sub, fit(d, sub, COND, int(h * 0.045), w - 30), bg)
+    text_center(d, w / 2, int(h * 0.94), venue, fit(d, venue, SERIF, int(h * 0.04), w - 30), bg)
+    # wear: faded patches, folds, a torn corner
+    arr = np.array(im).astype(np.float64)
+    nz = tile_noise(max(w, h), 6, seed + 9, 5)[:h, :w]
+    fade = np.clip((nz - 0.55) * 3, 0, 0.45)
+    arr[..., 0:3] = arr[..., 0:3] * (1 - fade[..., None]) + np.array(bg)[None, None, :] * fade[..., None]
+    im = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGBA")
+    d = ImageDraw.Draw(im)
+    d.line([0, h * 0.5, w, h * 0.52], fill=(0, 0, 0, 40), width=2)
+    d.line([w * 0.5, 0, w * 0.48, h], fill=(0, 0, 0, 30), width=2)
+    rng = np.random.default_rng(seed)
+    cx = rng.choice([0, 1])
+    cut = [(w - 1, 0), (w - 1, int(h * 0.09)), (int(w * 0.86), 0)] if cx else [(0, h - 1), (0, int(h * 0.9)), (int(w * 0.12), h - 1)]
+    d.polygon(cut, fill=(0, 0, 0, 0))
+    return im
+
+
+def poster_wall():
+    """a 4 : 1 strip of old fight bills pasted edge to edge on the boxing area's north wall, taped and overlapping"""
+    W, H = 1024, 256
+    im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    bills = [
+        ("FRIDAY FIGHTS", ("VARGA", "BELLINI"), "10 ROUNDS - MIDDLEWEIGHT", "CITY COMMUNITY HALL", ((232, 220, 190), (24, 22, 26), (170, 30, 34))),
+        ("CHAMPIONSHIP", ("HART", "OKOYE"), "FOR THE WCB TITLE", "WCB ARENA", ((240, 226, 176), (20, 40, 90), (200, 60, 30))),
+        ("THE RECKONING", ("KROSS", "SORELL"), "12 ROUNDS - FEATHERWEIGHT", "RIVERSIDE ARMORY", ((226, 216, 200), (30, 30, 30), (210, 160, 40))),
+        ("SATURDAY NIGHT", ("PRYCE", "MALDEN"), "HEAVYWEIGHT ELIMINATOR", "WCB ARENA", ((236, 210, 170), (110, 20, 24), (24, 24, 30))),
+        ("HOMECOMING", ("ALVARADO", "QUINN"), "WELTERWEIGHT - 10 ROUNDS", "OLD PETE'S GYM PRESENTS", ((228, 226, 210), (20, 60, 50), (180, 40, 40))),
+        ("FIGHT NIGHT", ("HALE", "DUBOIS"), "LIGHT HEAVYWEIGHT", "WCB STADIUM", ((240, 232, 214), (40, 20, 60), (226, 150, 30))),
+    ]
+    rng = np.random.default_rng(301)
+    x = 4
+    for i, (top, names, sub, venue, pal) in enumerate(bills):
+        bw = 168 + int(rng.integers(-8, 10))
+        bh = 238 + int(rng.integers(-10, 4))
+        card = vintage_poster(bw, bh, top, names, sub, venue, pal, 310 + i)
+        ang = float(rng.uniform(-2.5, 2.5))
+        card = card.rotate(ang, expand=True, resample=Image.BICUBIC)
+        drop_shadow(im, card, x, (H - card.size[1]) / 2 + rng.integers(-4, 5), blur=4, off=(3, 4), alpha=0.5)
+        tape(im, x + card.size[0] * 0.5, 10 + rng.integers(0, 6), 46, 14, float(rng.uniform(-8, 8)), 320 + i)
+        x += bw - 6
+    save(im, "poster_wall.png")
+
+
+def clipping(w, h, paper, headline, lines, seed, photo=False):
+    im = paper_tex(w, h, paper, seed, grain=5, stain=0.1)
+    d = ImageDraw.Draw(im)
+    d.text((10, 6), "THE CITY LEDGER  -  SPORTS", font=font(SERIF_IT, 13), fill=(80, 70, 60))
+    d.line([10, 24, w - 10, 24], fill=(60, 54, 46), width=1)
+    y = 30
+    words = headline.split()
+    line = ""
+    fh = font(SERIF, int(min(34, w / 9)))
+    for wd in words:
+        t = (line + " " + wd).strip()
+        if d.textlength(t, font=fh) > w - 20:
+            d.text((10, y), line, font=fh, fill=(22, 20, 18))
+            y += fh.size + 2
+            line = wd
+        else:
+            line = t
+    d.text((10, y), line, font=fh, fill=(22, 20, 18))
+    y += fh.size + 6
+    if photo:
+        ph = (w - 20, int(h * 0.36))
+        pim = grad_bg(ph[0], ph[1], (150, 146, 138), (70, 66, 60), seed + 2, grain=18)
+        pd = ImageDraw.Draw(pim)
+        boxer_silhouette(pd, ph[0] * 0.35, ph[1] * 0.12, ph[1] * 0.75, 1, (30, 28, 26))
+        boxer_silhouette(pd, ph[0] * 0.68, ph[1] * 0.16, ph[1] * 0.7, -1, (50, 46, 42))
+        im.alpha_composite(pim, (10, y))
+        y += ph[1] + 6
+    fb = font(SERIF_REG, 12)
+    rng = np.random.default_rng(seed)
+    col_w = (w - 30) / 2
+    for c in range(2):
+        yy = y
+        while yy < h - 14:
+            lw = col_w * float(rng.uniform(0.7, 1.0))
+            d.line([10 + c * (col_w + 10), yy + 6, 10 + c * (col_w + 10) + lw, yy + 6], fill=(110, 102, 92), width=3)
+            yy += 11
+    for k, t in enumerate(lines):
+        d.text((10, y - 2 + k * 0), "", font=fb)
+    # yellowed edges
+    arr = np.array(im).astype(np.float64)
+    yy, xx = np.mgrid[0:h, 0:w]
+    e = np.minimum(np.minimum(xx, w - 1 - xx), np.minimum(yy, h - 1 - yy)) / 18.0
+    e = np.clip(e, 0, 1)
+    arr[..., 2] *= 0.82 + 0.18 * e
+    arr[..., 1] *= 0.92 + 0.08 * e
+    return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGBA")
+
+
+def clippings_board():
+    """a cork board of yellowed newspaper clippings pinned up by the boxing area's door (2 : 1)"""
+    W, H = 1024, 512
+    nz = tile_noise(1024, 40, 330, 3)[:H, :W]
+    cork = np.zeros((H, W, 4))
+    cork[..., 0] = 172 + 40 * (nz - 0.5)
+    cork[..., 1] = 128 + 34 * (nz - 0.5)
+    cork[..., 2] = 82 + 26 * (nz - 0.5)
+    cork[..., 3] = 255
+    rng = np.random.default_rng(331)
+    for _ in range(9000):
+        x, y = rng.integers(0, W), rng.integers(0, H)
+        cork[y, x, 0:3] *= rng.uniform(0.6, 1.2)
+    im = Image.fromarray(np.clip(cork, 0, 255).astype(np.uint8), "RGBA")
+    d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, W - 1, H - 1], outline=(92, 62, 36), width=18)
+    d.rectangle([16, 16, W - 17, H - 17], outline=(60, 40, 22), width=3)
+    items = [
+        (40, 40, 300, 230, "VARGA STUNS CHAMP IN THE NINTH", True),
+        (360, 34, 250, 170, "LOCAL GYM TURNS OUT ANOTHER CHAMPION", False),
+        (640, 50, 330, 200, "HART TAKES IT UNANIMOUS", True),
+        (380, 230, 220, 240, "OLD PETE: THIRTY YEARS OF GRIT", True),
+        (40, 290, 300, 180, "KROSS KEEPS HER BELT", False),
+        (630, 280, 180, 190, "CITY AMATEUR CROWN FOR TEEN", False),
+        (830, 270, 160, 200, "PRYCE CALLS OUT THE WORLD", False),
+    ]
+    papers = [(232, 224, 200), (226, 218, 192), (238, 230, 206), (220, 210, 182)]
+    for i, (x, y, w, h, head, ph) in enumerate(items):
+        card = clipping(w, h, papers[i % 4], head, [], 340 + i, photo=ph)
+        card = card.rotate(float(rng.uniform(-5, 5)), expand=True, resample=Image.BICUBIC)
+        drop_shadow(im, card, x, y, blur=5, off=(4, 5), alpha=0.5)
+        d = ImageDraw.Draw(im)
+        px, py = x + card.size[0] / 2 + rng.integers(-20, 20), y + 10
+        col = [(200, 30, 40), (40, 90, 200), (230, 190, 40), (40, 150, 70)][i % 4]
+        d.ellipse([px - 7, py - 7, px + 7, py + 7], fill=col)
+        d.ellipse([px - 3, py - 4, px + 1, py], fill=(255, 255, 255, 160))
+    save(im.convert("RGB"), "clippings.png")
+
+
+def hall_of_champions():
+    """the Hall of Champions photo wall: a dark title band, ten framed b/w photos with brass nameplates (2 : 1)"""
+    W, H = 1024, 512
+    im = grad_bg(W, H, (40, 30, 26), (24, 18, 16), 350, grain=5)
+    d = ImageDraw.Draw(im)
+    # wood panelling
+    for x in range(0, W, 64):
+        d.line([x, 0, x, H], fill=(16, 12, 10), width=2)
+    d.rectangle([0, 0, W, 76], fill=INK)
+    d.rectangle([0, 72, W, 76], fill=GOLD)
+    im.alpha_composite(emblem(60), (16, 8))
+    im.alpha_composite(emblem(60), (W - 76, 8))
+    gold_text(im, W / 2, 6, "HALL OF CHAMPIONS", fit(d, "HALL OF CHAMPIONS", BLACK, 60, W - 200))
+    d = ImageDraw.Draw(im)
+    cols, rows = 5, 2
+    cw, chh = 172, 190
+    gx = (W - cols * cw) / (cols + 1)
+    for i, (name, div, yr) in enumerate(CHAMPS):
+        c, r = i % cols, i // cols
+        x = int(gx + c * (cw + gx))
+        y = int(94 + r * (chh + 20))
+        frame = Image.new("RGBA", (cw, chh - 34), (0, 0, 0, 0))
+        fd = ImageDraw.Draw(frame)
+        fd.rectangle([0, 0, cw - 1, chh - 35], fill=(14, 12, 10))
+        fd.rectangle([6, 6, cw - 7, chh - 41], fill=(232, 226, 210))
+        pw, ph = cw - 28, chh - 62
+        rng = np.random.default_rng(360 + i)
+        tone = (int(rng.integers(150, 190)),) * 3
+        photo = grad_bg(pw, ph, tone, (60, 58, 54), 370 + i, grain=14)
+        pd = ImageDraw.Draw(photo)
+        # the champion holding a belt up over his / her head (silhouette)
+        cx, s = pw / 2, ph * 0.8
+        pd.ellipse([cx - 0.12 * s, ph * 0.22, cx + 0.12 * s, ph * 0.22 + 0.27 * s], fill=(28, 26, 24))
+        pd.polygon([(cx - 0.32 * s, ph * 0.52), (cx + 0.32 * s, ph * 0.52), (cx + 0.24 * s, ph), (cx - 0.24 * s, ph)], fill=(28, 26, 24))
+        pd.line([(cx - 0.3 * s, ph * 0.56), (cx - 0.36 * s, ph * 0.28), (cx - 0.3 * s, ph * 0.08)], fill=(28, 26, 24), width=int(0.12 * s), joint="curve")
+        pd.line([(cx + 0.3 * s, ph * 0.56), (cx + 0.36 * s, ph * 0.28), (cx + 0.3 * s, ph * 0.08)], fill=(28, 26, 24), width=int(0.12 * s), joint="curve")
+        pd.rounded_rectangle([cx - 0.42 * s, ph * 0.02, cx + 0.42 * s, ph * 0.12], 6, fill=(36, 34, 30))
+        pd.ellipse([cx - 0.12 * s, ph * 0.0, cx + 0.12 * s, ph * 0.15], fill=(205, 200, 186))
+        if i % 3 == 1:
+            pd.rectangle([0, ph * 0.85, pw, ph], fill=(90, 86, 80))  # ring ropes
+            pd.line([0, ph * 0.7, pw, ph * 0.68], fill=(210, 206, 196), width=3)
+        frame.alpha_composite(photo, (14, 12))
+        drop_shadow(im, frame, x, y, blur=5, off=(4, 6), alpha=0.6)
+        d = ImageDraw.Draw(im)
+        # brass nameplate
+        ny = y + chh - 30
+        d.rounded_rectangle([x + 8, ny, x + cw - 8, ny + 30], 4, fill=GOLD_DEEP)
+        d.rounded_rectangle([x + 10, ny + 2, x + cw - 10, ny + 28], 3, fill=(222, 178, 82))
+        text_center(d, x + cw / 2, ny + 3, name, fit(d, name, COND, 14, cw - 26), (40, 26, 10))
+        text_center(d, x + cw / 2, ny + 17, div + "  " + yr, fit(d, div + "  " + yr, COND, 10, cw - 26), (70, 46, 18))
+    save(im.convert("RGB"), "hall_champions.png")
+
+
+def block_wall():
+    """painted concrete block (CMU) wall: 2 x 4 blocks in running bond per tile, mortar joints, pits; mid-grey,
+    tinted in game to the wall colour"""
+    n = 512
+    base = 0.6 + 0.06 * (tile_noise(n, 8, 380) - 0.5) + 0.04 * (tile_noise(n, 40, 381, 2) - 0.5)
+    img = np.stack([base] * 3, axis=-1)
+    rows, bw = 4, n // 2
+    bh = n // rows
+    yy, xx = np.mgrid[0:n, 0:n]
+    joint = np.zeros((n, n))
+    for r in range(rows):
+        y0 = r * bh
+        joint[(yy >= y0) & (yy < y0 + 5)] = 1
+        off = (bw // 2) * (r % 2)
+        for c in range(3):
+            x0 = (off + c * bw) % n
+            m = (yy >= y0) & (yy < y0 + bh) & (((xx - x0) % n) < 5)
+            joint[m] = 1
+    img[joint > 0] *= 0.72
+    # each block a slightly different shade, soft bevel under the joint
+    rng = np.random.default_rng(382)
+    for r in range(rows):
+        off = (bw // 2) * (r % 2)
+        for c in range(2):
+            x0 = (off + c * bw) % n
+            k = rng.uniform(0.95, 1.05)
+            m = (yy >= r * bh + 5) & (yy < (r + 1) * bh) & (((xx - x0) % n) >= 5) & (((xx - x0) % n) < bw)
+            img[m] *= k
+            sh = (yy >= r * bh + 5) & (yy < r * bh + 9) & (((xx - x0) % n) < bw)
+            img[sh] *= 0.9
+    for _ in range(2600):
+        x, y = rng.integers(0, n, 2)
+        img[y, x] *= rng.uniform(0.55, 0.85)
+    save(Image.fromarray(np.clip(img * 255, 0, 255).astype(np.uint8), "RGB"), "block_wall.png")
+
+
+def whiteboard():
+    """a whiteboard with a hand-drawn weekly training schedule in marker (2 : 1)"""
+    W, H = 1024, 512
+    im = grad_bg(W, H, (246, 248, 250), (230, 233, 236), 390, grain=2)
+    # ghosts of old wiped notes
+    ghost = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(ghost)
+    rng = np.random.default_rng(391)
+    for _ in range(14):
+        x, y = rng.integers(40, W - 200), rng.integers(60, H - 40)
+        gd.text((x, y), "".join(rng.choice(list("ABCDEFGHJKLMNPRSTW 0123456789"), 12)), font=font(CARL, 30), fill=(120, 130, 150, 14))
+    im.alpha_composite(ghost.filter(ImageFilter.GaussianBlur(2)))
+    ink = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(ink)
+    BLK, BLU, RD, GRN = (24, 28, 40, 255), (30, 70, 190, 255), (200, 30, 40, 255), (30, 130, 70, 255)
+    d.text((40, 18), "FIGHT CAMP - 6 WEEKS OUT!", font=font(CARL_IT, 52), fill=RD)
+    d.line([40, 82, 640, 86], fill=RD, width=4)
+    days = [("MON", "ROADWORK 5K  /  PADS  /  BAG 6x3", BLK), ("TUE", "SPARRING 6 RDS  -  KEEP THAT JAB", BLU),
+            ("WED", "STRENGTH  +  CORE  /  ROPE 15 MIN", BLK), ("THU", "TECHNIQUE  /  SPEED BAG", BLU),
+            ("FRI", "SPARRING 8 RDS  !!", RD), ("SAT", "ROADWORK  (WEIGH-IN 10AM)", BLK), ("SUN", "REST.  EAT.  SLEEP.", GRN)]
+    for i, (dname, txt, col) in enumerate(days):
+        y = 104 + i * 54
+        d.text((48, y), dname, font=font(CARL, 40), fill=col)
+        d.line([140, y + 6, 140, y + 44], fill=BLK, width=3)
+        d.text((158, y + 2), txt, font=fit(d, txt, CARL, 36, 560), fill=col)
+    d.line([30, 100, 30, 486], fill=BLK, width=3)
+    # side notes
+    d.text((760, 110), "WEIGHT", font=font(CARL, 34), fill=BLK)
+    for k, (wk, lb) in enumerate([("WK1", "168"), ("WK2", "166"), ("WK3", "165"), ("WK4", "163")]):
+        d.text((760, 150 + k * 38), wk + "  " + lb, font=font(CARL, 30), fill=BLU)
+    d.line([752, 104, 752, 310], fill=BLK, width=3)
+    d.ellipse([744, 330, 990, 470], outline=RD, width=4)
+    d.text((772, 356), "HANDS UP!", font=font(CARL_IT, 40), fill=RD)
+    d.text((786, 404), "- COACH", font=font(CARL, 28), fill=RD)
+    ink = wobble(ink, 2, 23, 392)
+    im.alpha_composite(ink.filter(ImageFilter.GaussianBlur(0.6)))
+    d = ImageDraw.Draw(im)
+    # aluminium frame and the marker tray shadow
+    d.rectangle([0, 0, W - 1, H - 1], outline=(170, 174, 180), width=10)
+    d.rectangle([10, 10, W - 11, H - 11], outline=(205, 208, 212), width=2)
+    save(im.convert("RGB"), "whiteboard.png")
+
+
+def tv_fight():
+    """a fight broadcast on the gym TVs: four frames (2 x 2 of 512 x 256) cycled by the client (ImageRectOffset)"""
+    W, H = 1024, 512
+    im = Image.new("RGBA", (W, H), (0, 0, 0, 255))
+    poses = [(0.38, 0.62, 1, -1, "RD 4", "2:31"), (0.42, 0.58, 1, -1, "RD 4", "1:58"), (0.30, 0.66, 1, -1, "RD 4", "1:12"), (0.45, 0.6, 1, -1, "RD 5", "2:59")]
+    for f, (ax, bx, fa, fb, rd, clk) in enumerate(poses):
+        fw, fh = 512, 256
+        fr = grad_bg(fw, fh, (18, 14, 30), (6, 6, 10), 400 + f, grain=4)
+        d = ImageDraw.Draw(fr)
+        # crowd: dark heads with flash bulbs
+        rng = np.random.default_rng(410 + f)
+        for _ in range(240):
+            x, y = rng.integers(0, fw), rng.integers(10, 110)
+            r = rng.integers(4, 8)
+            d.ellipse([x - r, y - r, x + r, y + r], fill=(30 + rng.integers(0, 20), 26, 34))
+        for _ in range(10):
+            x, y = rng.integers(0, fw), rng.integers(10, 100)
+            d.ellipse([x - 2, y - 2, x + 2, y + 2], fill=(255, 255, 240))
+        # ring: canvas, ropes, posts, a light pool
+        d.polygon([(40, 250), (472, 250), (420, 150), (92, 150)], fill=(206, 200, 190))
+        glow = Image.new("RGBA", (fw, fh), (0, 0, 0, 0))
+        ImageDraw.Draw(glow).ellipse([130, 140, 380, 250], fill=(255, 240, 210, 70))
+        fr.alpha_composite(glow.filter(ImageFilter.GaussianBlur(20)))
+        d = ImageDraw.Draw(fr)
+        for k, col in enumerate([(230, 200, 60), (240, 240, 240), (200, 40, 40)]):
+            y = 128 + k * 14
+            d.line([70, y + 20, 442, y + 20], fill=col, width=3)
+        d.rectangle([66, 110, 76, 250], fill=(200, 40, 40))
+        d.rectangle([436, 110, 446, 250], fill=(40, 80, 200))
+        boxer_silhouette(d, fw * ax, 112, 100, fa, (150, 30, 36))
+        boxer_silhouette(d, fw * bx, 116, 96, fb, (36, 60, 150))
+        # broadcast graphics: the WCB bug, score strip, round and clock
+        fr.alpha_composite(emblem(40), (8, 8))
+        d.rectangle([90, 214, 422, 246], fill=(11, 15, 23, 230))
+        d.rectangle([90, 214, 96, 246], fill=RED)
+        d.rectangle([416, 214, 422, 246], fill=(58, 142, 255))
+        d.text((104, 219), "HART", font=font(XBOLD, 20), fill=WHITE)
+        tw = d.textlength("OKOYE", font=font(XBOLD, 20))
+        d.text((408 - tw, 219), "OKOYE", font=font(XBOLD, 20), fill=WHITE)
+        text_center(d, 256, 216, rd, font(BLACK, 14), GOLD)
+        text_center(d, 256, 230, clk, font(XBOLD, 14), WHITE)
+        d.rectangle([fw - 64, 10, fw - 8, 30], fill=RED)
+        text_center(d, fw - 36, 12, "LIVE", font(BLACK, 15), WHITE)
+        # scanlines
+        sl = Image.new("RGBA", (fw, fh), (0, 0, 0, 0))
+        sd = ImageDraw.Draw(sl)
+        for y in range(0, fh, 3):
+            sd.line([0, y, fw, y], fill=(0, 0, 0, 26))
+        fr.alpha_composite(sl)
+        im.alpha_composite(fr, ((f % 2) * fw, (f // 2) * fh))
+    save(im.convert("RGB"), "tv_fight.png")
+
+
+def stencil(text, name, seed):
+    """a spray-painted stencil slogan: white on transparent (8 : 1), stencil bridges, overspray and a few drips"""
+    W, H = 1024, 128
+    mask = Image.new("L", (W, H), 0)
+    md = ImageDraw.Draw(mask)
+    f = fit(md, text, BLACK, 104, W - 40)
+    tw = md.textlength(text, font=f)
+    md.text(((W - tw) / 2, 6), text, font=f, fill=255)
+    # stencil bridges: thin vertical gaps through every letter
+    a = np.array(mask).astype(np.float64)
+    for x in range(0, W, 37):
+        a[:, x:x + 4] *= 0.0 if (x // 37) % 2 == 0 else 1.0
+    rng = np.random.default_rng(seed)
+    # drips below some letters
+    for _ in range(9):
+        x = int(rng.integers(40, W - 40))
+        col = a[:, x]
+        ys = np.nonzero(col > 128)[0]
+        if len(ys):
+            y0 = ys.max()
+            ln = int(rng.integers(6, 20))
+            a[y0:min(H, y0 + ln), x:x + 3] = 220
+    soft = Image.fromarray(a.astype(np.uint8), "L")
+    over = soft.filter(ImageFilter.GaussianBlur(6)).point(lambda v: int(v * 0.35))
+    core = soft.filter(ImageFilter.GaussianBlur(0.8))
+    al = np.maximum(np.array(over), np.array(core)).astype(np.float64)
+    nz = tile_noise(1024, 30, seed + 1, 3)[:H, :W]
+    al *= 0.7 + 0.3 * nz
+    im = Image.new("RGBA", (W, H), (255, 255, 255, 0))
+    im.putalpha(Image.fromarray(np.clip(al, 0, 255).astype(np.uint8), "L"))
+    save(im, name)
+
+
+def paint_chips():
+    """chipped paint: flakes of the bare grey surface showing through, light grey on transparent (wall decal)"""
+    n = 512
+    nz = tile_noise(n, 9, 420, 5)
+    nz2 = tile_noise(n, 30, 421, 3)
+    a = np.clip((nz * 0.7 + nz2 * 0.3 - 0.62) * 9, 0, 1)
+    im = np.zeros((n, n, 4))
+    im[..., 0:3] = 200 + 30 * (nz2[..., None] - 0.5)
+    im[..., 3] = a * 255 * edge_fade(n)
+    save(Image.fromarray(np.clip(im, 0, 255).astype(np.uint8), "RGBA"), "paint_chips.png")
+
+
+def puddle():
+    """a water puddle on the floor: a dark wet patch with a light rim and a sheen (floor decal)"""
+    n = 512
+    yy, xx = np.mgrid[0:n, 0:n] / (n - 1) - 0.5
+    r = np.sqrt(xx * xx * 1.0 + yy * yy * 1.6)
+    a = np.clip((tile_noise(n, 3, 430, 5) * 0.5 + (0.5 - r) * 1.6 - 0.32) / 0.05, 0, 1)
+    im = np.zeros((n, n, 4))
+    nz = tile_noise(n, 12, 431, 3)
+    im[..., 0] = 40 + 30 * nz
+    im[..., 1] = 48 + 34 * nz
+    im[..., 2] = 60 + 40 * nz
+    rim = np.clip(a - np.array(Image.fromarray((a * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(5))) / 255.0, 0, 1)
+    im[..., 0:3] += (rim * 400)[..., None]
+    im[..., 3] = np.clip(a * 150 + rim * 200, 0, 255)
+    save(Image.fromarray(np.clip(im, 0, 255).astype(np.uint8), "RGBA"), "puddle.png")
+
+
+def floor_wear():
+    """a worn path: rubbed, lighter floor where feet keep landing (white, low alpha; floor decal)"""
+    n = 512
+    nz = tile_noise(n, 5, 440, 5)
+    streak = tile_noise(n, 60, 441, 2)
+    a = np.clip((nz - 0.35) * 1.6, 0, 1) * (0.6 + 0.4 * streak)
+    a *= edge_fade(n, 0.3)
+    im = np.zeros((n, n, 4))
+    im[..., 0:3] = 236
+    im[..., 3] = a * 120
+    save(Image.fromarray(np.clip(im, 0, 255).astype(np.uint8), "RGBA"), "floor_wear.png")
+
+
+def backdrop_wcb():
+    """a weigh-in step-and-repeat backdrop: the emblem and WCB in a staggered grid on ink (tileable)"""
+    n = 512
+    big = Image.new("RGBA", (n + 256, n), INK + (255,))
+    em = emblem(140)
+    d = ImageDraw.Draw(big)
+    for r in range(2):
+        for c in range(3):
+            x = c * 256 + (128 if r % 2 else 0)
+            y = r * 256
+            if x >= n + 256 - 10:
+                continue
+            big.alpha_composite(em, (x + 58, y + 22))
+            text_center(d, x + 128, y + 178, "WCB", font(BLACK, 46), GOLD)
+    im = big.crop((0, 0, n, n))
+    im.alpha_composite(big.crop((n, 0, n + 256, n)), (0, 0))
+    save(im.convert("RGB"), "backdrop_wcb.png")
+
+
 ALL = [rubber_tiles, sidewalk, canvas_weave, scuffs, grime, cracks, manhole, poster_fight_night, poster_undisputed, poster_gym_rules,
-       poster_champion, banner_wcb]
+       poster_champion, banner_wcb, poster_wall, clippings_board, hall_of_champions, block_wall, whiteboard, tv_fight,
+       lambda: stencil("OUTWORK EVERYONE", "stencil_outwork.png", 450), lambda: stencil("NO SHORTCUTS", "stencil_shortcuts.png", 451),
+       lambda: stencil("NO DAYS OFF", "stencil_nodays.png", 452), paint_chips, puddle, floor_wear, backdrop_wcb]
 
 if __name__ == "__main__":
     for fn in ALL:
