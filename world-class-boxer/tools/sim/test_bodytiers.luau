@@ -1468,10 +1468,75 @@ do
 		nm:Destroy()
 	end
 	check("headgear: the sets shrink with detail", Head.HEADGEAR_PARTS.full > Head.HEADGEAR_PARTS.medium and Head.HEADGEAR_PARTS.medium > Head.HEADGEAR_PARTS.low)
-	local ref = rig()
-	pcall(Builder.Cosmetics, ref, Looks.Random(77, 1), build(10), nil, { hands = "bare", detail = "medium", outfit = "referee" })
-	check("headgear: the referee too (Config.HeadgearOfficials)", (#hgParts(ref) > 0) == (Config.HeadgearOfficials ~= false))
-	ref:Destroy()
+	-- the officials: no headgear (Config.HeadgearOfficials off), their caps instead (BoxerLook/Hat, Head.SetCap)
+	local function hatParts(model)
+		local look = model:FindFirstChild("BoxerLook")
+		local f = look and look:FindFirstChild("Hat")
+		local out = {}
+		for _, d in ipairs(f and f:GetDescendants() or {}) do
+			if d:IsA("BasePart") then
+				table.insert(out, d)
+			end
+		end
+		return out
+	end
+	local function hatWelded(model)
+		local head = model:FindFirstChild("Head")
+		for _, p in ipairs(hatParts(model)) do
+			local w = p:FindFirstChildOfClass("WeldConstraint")
+			if not (w and w.Part0 == head and w.Part1 == p) then
+				return false, p.Name
+			end
+		end
+		return true
+	end
+	check("headgear: officials wear none (Config.HeadgearOfficials off)", Config.HeadgearOfficials == false)
+	for _, o in ipairs({ { "referee", "referee" }, { "cornerman", "baseball" } }) do
+		for _, detail in ipairs({ "full", "medium", "low" }) do
+			local ref = rig()
+			pcall(Builder.Cosmetics, ref, Looks.Random(77, 1), build(10), nil, { hands = "bare", detail = detail, outfit = o[1] })
+			check("headgear: the " .. o[1] .. " has none (" .. detail .. ")", #hgParts(ref) == 0 and ref:GetAttribute("HeadgearColor") == nil)
+			check("cap: the " .. o[1] .. " wears the " .. o[2] .. " cap, " .. detail .. " set", #hatParts(ref) == Head.CAP_PARTS[o[2]][detail], #hatParts(ref))
+			local okH, whyH = hatWelded(ref)
+			check("cap: welded to the " .. o[1] .. "'s head (" .. detail .. ")", okH, whyH)
+			if detail == "medium" then
+				-- an unchanged rebuild keeps the parts; a tier swap (a new head) rebuilds it on the new head
+				local first = hatParts(ref)[1]
+				pcall(Builder.Cosmetics, ref, Looks.Random(77, 1), build(10), nil, { hands = "bare", detail = detail, outfit = o[1] })
+				check("cap: an unchanged rebuild keeps the " .. o[1] .. "'s cap", hatParts(ref)[1] == first)
+				local oldHead = ref:FindFirstChild("Head")
+				pcall(Builder.Cosmetics, ref, Looks.Random(77, 1), build(95), nil, { hands = "bare", detail = detail, outfit = o[1] })
+				okH, whyH = hatWelded(ref)
+				check("cap: survives a tier swap (" .. o[1] .. ")", #hatParts(ref) == Head.CAP_PARTS[o[2]][detail] and okH, whyH)
+				-- a respawn: a fresh head (the old one gone) rebuilds it, welded to the new head
+				local nh = oldHead and ref:FindFirstChild("Head")
+				if nh then
+					local fresh = nh:Clone()
+					for _, ch in ipairs(fresh:GetChildren()) do
+						if ch.ClassName ~= "SpecialMesh" and ch.ClassName ~= "Attachment" then
+							ch:Destroy()
+						end
+					end
+					fresh.Parent = ref
+					nh:Destroy()
+				end
+				pcall(Builder.Cosmetics, ref, Looks.Random(77, 1), build(95), nil, { hands = "bare", detail = detail, outfit = o[1] })
+				okH, whyH = hatWelded(ref)
+				check("cap: a new head rebuilds it on that head (" .. o[1] .. ")", #hatParts(ref) == Head.CAP_PARTS[o[2]][detail] and okH, whyH)
+				local c = ref:Clone()
+				c.Parent = E.workspace
+				okH, whyH = hatWelded(c)
+				check("cap: a clone carries it (" .. o[1] .. ")", #hatParts(c) == Head.CAP_PARTS[o[2]][detail] and okH, whyH)
+				c:Destroy()
+				-- a boxer built on the same rig afterwards: the cap goes, the headgear comes back
+				pcall(Builder.Cosmetics, ref, Looks.Random(77, 1), build(95), nil, { hands = "gloves", detail = detail })
+				check("cap: a boxer has none and wears his headgear again", #hatParts(ref) == 0 and #hgParts(ref) == Head.HEADGEAR_PARTS[detail], #hatParts(ref))
+			end
+			ref:Destroy()
+		end
+	end
+	check("cap: the sets shrink with detail", Head.CAP_PARTS.referee.full > Head.CAP_PARTS.referee.low and Head.CAP_PARTS.referee.low <= 2
+		and Head.CAP_PARTS.baseball.low <= 2)
 
 	-- the switch: off = no headgear after Cosmetics, the old sparring toggle (built on, removed off)
 	Config.AlwaysHeadgear = false
@@ -1561,7 +1626,8 @@ do
 		end
 		return true
 	end
-	local function blocked(model, hx, hy, views, label)
+	local function blocked(model, hx, hy, views, label, partsOf, pitch)
+		partsOf = partsOf or hgParts
 		local head = model:FindFirstChild("Head")
 		local L = Head.FaceLayout(head, {})
 		local s = head.Size
@@ -1569,13 +1635,14 @@ do
 		local lp = Vector3.new(x, y, L.surf(x, y))
 		local n = L.normal(x, y)
 		for _, yaw in ipairs(views) do
-			local dirL = Vector3.new(math.sin(math.rad(yaw)), 0, -math.cos(math.rad(yaw)))
+			local cp = math.cos(math.rad(pitch or 0))
+			local dirL = Vector3.new(math.sin(math.rad(yaw)) * cp, math.sin(math.rad(pitch or 0)), -math.cos(math.rad(yaw)) * cp)
 			if n:Dot(dirL) > 0.25 then
 				local o = head.CFrame * (lp + n * 0.004)
 				local d = head.CFrame:VectorToWorldSpace(dirL)
-				for _, p in ipairs(hgParts(model)) do
+				for _, p in ipairs(partsOf(model)) do
 					if p.Transparency < 0.99 and hits(p, o, d, 3) then
-						return string.format("%s (%.3f, %.3f) yaw %d: %s", label, hx, hy, yaw, p.Name)
+						return string.format("%s (%.3f, %.3f) yaw %d pitch %d: %s", label, hx, hy, yaw, pitch or 0, p.Name)
 					end
 				end
 			end
@@ -1634,6 +1701,73 @@ do
 		end
 	end
 	check("headgear: the drawn face, its damage and sweat unobstructed", #bad == 0, table.concat(bad, "; ", 1, math.min(#bad, 8)))
+
+	-- the officials' caps leave the drawn face unobstructed: the same rays from the drawn ink to a camera in front and
+	-- at 3/4, level and 10 deg above, hit no cap part (every style, detail and head size), and no visible cap part
+	-- comes down below Head.CAP_CLEAR in front of the face (|x| < 0.3), which is above the padded brow ink
+	check("cap: the clearance sits above the padded brow ink", Head.CAP_CLEAR > Head.DECAL_INK[2][4] + 0.02)
+	local capBad, low = {}, {}
+	for _, hd in ipairs({ { 2, "Lean", "smallest" }, { 1, "Athletic", "default" }, { 1, "Heavyweight Build", "largest" } }) do
+		for _, outfit in ipairs({ "referee", "cornerman" }) do
+			for _, detail in ipairs({ "full", "medium", "low" }) do
+				local a = Looks.Defaults(hd[1])
+				a.body.frame = hd[2]
+				local fm = rig()
+				local sc = Builder.Scales(a, build(30))
+				local head = fm:FindFirstChild("Head")
+				head.Size = Vector3.new(1, 1, 1) * 1.2 * sc.head
+				pcall(Builder.Cosmetics, fm, a, build(30), nil, { hands = "bare", detail = detail, outfit = outfit })
+				head = fm:FindFirstChild("Head")
+				local label = hd[3] .. "/" .. outfit .. "/" .. detail
+				check("cap: built (" .. label .. ")", #hatParts(fm) > 0, #hatParts(fm))
+				for _, b in ipairs(Head.DECAL_INK) do
+					for i = 0, 6 do
+						for j = 0, 6 do
+							local ax = b[1] + (b[2] - b[1]) * i / 6
+							local ay = b[3] + (b[4] - b[3]) * j / 6
+							for _, sx in ipairs({ -1, 1 }) do
+								for _, pitch in ipairs({ 0, 10 }) do
+									local w = blocked(fm, sx * ax, ay, { 0, 32, -32 }, label, hatParts, pitch)
+									if w then
+										table.insert(capBad, w)
+									end
+								end
+							end
+						end
+					end
+				end
+				-- the lowest visible point of every cap part in front of the face (sampled over the part's box, outside
+				-- the head)
+				local s = head.Size
+				local L = Head.FaceLayout(head, {})
+				for _, p in ipairs(hatParts(fm)) do
+					if p.Transparency < 0.99 then
+						local sz = p.Size
+						local sm = p:FindFirstChildOfClass("SpecialMesh")
+						local isEll = sm and tostring(sm.MeshType):find("Sphere")
+						local isHead = sm and tostring(sm.MeshType):find("Head")
+						for i = -4, 4 do
+							for j = -4, 4 do
+								for k = -4, 4 do
+									local q = Vector3.new(i / 8, j / 8, k / 8)
+									if (isEll and q.Magnitude <= 0.5) or (isHead and classicSdf(q * 1.2) <= 0) or not (isEll or isHead) then
+										local hp = head.CFrame:PointToObjectSpace(p.CFrame * Vector3.new(q.X * sz.X, q.Y * sz.Y, q.Z * sz.Z))
+										if hp.Z < 0 and math.abs(hp.X) < 0.3 * s.X and L.outside(hp) > 0.002 and hp.Y / s.Y < Head.CAP_CLEAR - 0.012 then
+											table.insert(low, string.format("%s %s y %.3f", label, p.Name, hp.Y / s.Y))
+										end
+									end
+								end
+							end
+						end
+					end
+				end
+				fm:Destroy()
+			end
+		end
+	end
+	check("cap: the drawn face's brows and eyes unobstructed (front, 3/4, level and from above)", #capBad == 0,
+		#capBad .. ": " .. table.concat(capBad, "; ", 1, math.min(#capBad, 8)))
+	check("cap: nothing visible below Head.CAP_CLEAR in front of the face", #low == 0, table.concat(low, "; ", 1, math.min(#low, 8)))
 end
 
 print(string.format("test_bodytiers: %d passed, %d failed", pass, fail))

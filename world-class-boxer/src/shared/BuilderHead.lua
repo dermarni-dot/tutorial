@@ -1651,6 +1651,111 @@ function Head.SetHeadgear(model, color, on, detail)
 end
 
 ------------------------------------------------------------------------
+-- Officials' caps (the referee's peaked cap, the spar coach's team cap): Builder's "Hat" Cosmetics step
+------------------------------------------------------------------------
+-- Parts and SpecialMeshes on the classic head (no uploaded mesh), welded to the head and sized from it, so they scale
+-- with the head; BoxerLook/Hat is cached by Builder on the style, colours, head size and detail.
+-- * "referee": a black flat-topped peaked cap: a short crown (the classic head's own shape, a Head SpecialMesh, a
+--   little wider than the head, its foot at y = REFCAP.crownBase), a band round its base in the venue shirt's colour
+--   (light blue at the clubs, white for a title fight), a short stiff visor (a flat ellipsoid) and a gold WCB badge
+--   over the band (a gold disc and the "WCB" wordmark, GothamBlack in ink, as UI.Brand's); full adds the cord over
+--   the visor's root
+-- * "baseball": the coach's team cap: a domed six-panel crown (an ellipsoid) in his team colour, a longer bill in its
+--   darker shade, the top button and a white "WCB" on the front; full adds the front seam
+-- Nothing reaches the drawn face: every part stays above Head.CAP_CLEAR (fractions of the head height, the drawn
+-- ink's padded brow top Head.DECAL_INK is 0.21, the measured ink 0.183) in front of the face, so the brows and eyes
+-- show from the front, the 3/4 and a camera up to ~10 deg above (test_bodytiers casts the rays).
+-- detail = Config.DetailLevel: referee full 6 parts, medium 5, low 2; baseball full 5, medium 4, low 2.
+Head.CAP_CLEAR = 0.235
+Head.CAP_PARTS = { referee = { full = 6, medium = 5, low = 2 }, baseball = { full = 5, medium = 4, low = 2 } }
+-- referee cap geometry (fractions of the head size; y up from the head's centre, z: -0.5 = the forehead)
+Head.REFCAP = { crownBase = 0.215, crownH = 0.32, crownW = 1.065, bandY = 0.29, bandH = 0.09, visorY = 0.278, visorT = 0.034,
+	visorReach = 0.24, visorW = 0.76, visorTilt = 3 }
+Head.BALLCAP = { domeY = 0.315, domeH = 0.25, domeW = 1.06, domeD = 1.08, billY = 0.27, billT = 0.034, billReach = 0.3,
+	billW = 0.74, billTilt = 3 }
+
+-- colors = { cap, trim, badge } (Color3, all optional); style = "referee" | "baseball" | nil (none: the folder goes)
+function Head.SetCap(model, style, colors, detail)
+	local folder = getFolder(model, "Hat")
+	if style ~= "referee" and style ~= "baseball" then
+		folder:Destroy()
+		return nil
+	end
+	local head = part(model, "Head")
+	if not head then
+		return folder
+	end
+	detail = Config.DetailLevel(detail or model:GetAttribute("Detail"))
+	local full, low = detail == "full", detail == "low"
+	folder:SetAttribute("Detail", detail)
+	folder:SetAttribute("Style", style)
+	colors = type(colors) == "table" and colors or {}
+	local ref = style == "referee"
+	local capC = typeof(colors.cap) == "Color3" and colors.cap or (ref and Color3.fromRGB(18, 18, 21) or Color3.fromRGB(30, 30, 34))
+	local trimC = typeof(colors.trim) == "Color3" and colors.trim or (ref and Color3.fromRGB(150, 190, 226) or darken(capC, 0.75))
+	local badgeC = typeof(colors.badge) == "Color3" and colors.badge or (ref and Color3.fromRGB(212, 172, 64) or Color3.fromRGB(238, 238, 232))
+	local s = head.Size
+	local hcf = head.CFrame
+	local function shape(name, size, cf, c, meshType, m)
+		local p = mk(folder, head, name, size, cf, c, "Block", m or FABRIC)
+		local sm = Instance.new("SpecialMesh")
+		sm.MeshType = meshType
+		sm.Parent = p
+		return p
+	end
+	local function ell(name, size, cf, c, m)
+		return mk(folder, head, name, size, cf, c, "Ellipsoid", m or FABRIC)
+	end
+	-- a flat ellipsoid visor reaching `reach` (fraction of s.Z) ahead of the forehead, its root under the crown,
+	-- pitched down by tilt degrees about its root
+	-- (its back end 0.1 behind the forehead, inside the crown; the tip at 0.5 + reach in front of the head's centre)
+	local function visor(name, y, t, reach, w, tilt, c)
+		local hl = (0.4 + reach) / 2
+		local root = hcf * CF(0, y * s.Y, -0.5 * s.Z) * ANG(rad(-tilt), 0, 0)
+		return ell(name, V3(w * s.X, t * s.Y, 2 * hl * s.Z), root * CF(0, 0, (0.4 - hl) * s.Z), c, SMOOTH)
+	end
+	if ref then
+		local R = Head.REFCAP
+		local cy = (R.crownBase + R.crownH / 2) * s.Y
+		shape("RCCrown", V3(s.X * R.crownW, s.Y * R.crownH, s.Z * R.crownW), hcf * CF(0, cy, 0.01 * s.Z), capC, Enum.MeshType.Head)
+		visor("RCVisor", R.visorY, R.visorT, R.visorReach, R.visorW, R.visorTilt, darken(capC, 0.8))
+		if low then
+			return folder
+		end
+		local bw = R.crownW + 0.012
+		shape("RCBand", V3(s.X * bw, s.Y * R.bandH, s.Z * bw), hcf * CF(0, R.bandY * s.Y, 0.01 * s.Z), trimC, Enum.MeshType.Head)
+		-- the WCB badge on the crown's front, above the band
+		local fz = (0.006 - R.crownW / 2) * s.Z
+		local by = (R.bandY + R.bandH / 2 + 0.055) * s.Y
+		ell("RCBadge", V3(0.15 * s.X, 0.1 * s.Y, 0.03 * s.Z), hcf * CF(0, by, fz), badgeC, Enum.Material.Metal)
+		Kit.textPatch(folder, head, "RCBadgeText", V3(0.12 * s.X, 0.05 * s.Y, 0.01), hcf * CF(0, by, fz - 0.016 * s.Z), "WCB",
+			Color3.fromRGB(20, 22, 30), Enum.NormalId.Front, "GothamBlack")
+		if full then
+			-- the chin cord across the front, over the visor's root (the badge's gold)
+			local cyc = (R.visorY + R.visorT / 2 + 0.018) * s.Y
+			ell("RCCord", V3(s.X * 0.78, 0.022 * s.Y, s.Z * 0.2), hcf * CF(0, cyc, -0.47 * s.Z), badgeC, Enum.Material.Metal)
+		end
+		return folder
+	end
+	local B = Head.BALLCAP
+	ell("BCCrown", V3(s.X * B.domeW, s.Y * B.domeH * 2, s.Z * B.domeD), hcf * CF(0, B.domeY * s.Y, 0.02 * s.Z), capC)
+	visor("BCBill", B.billY, B.billT, B.billReach, B.billW, B.billTilt, trimC)
+	if low then
+		return folder
+	end
+	ell("BCButton", V3(0.09 * s.X, 0.05 * s.Y, 0.09 * s.Z), hcf * CF(0, (B.domeY + B.domeH - 0.008) * s.Y, 0.02 * s.Z), capC)
+	-- the front panel's WCB (on the dome's front at y 0.4: inside the dome's skin there, the wordmark just out of it)
+	local ly = 0.41
+	local dz = 0.02 - B.domeD / 2 * math.sqrt(math.max(1 - ((ly - B.domeY) / B.domeH) ^ 2, 0))
+	Kit.textPatch(folder, head, "BCLogo", V3(0.2 * s.X, 0.08 * s.Y, 0.01), hcf * CF(0, ly * s.Y, (dz - 0.012) * s.Z)
+		* ANG(rad(22), 0, 0), "WCB", badgeC, Enum.NormalId.Front, "GothamBlack")
+	if full then
+		ell("BCSeam", V3(0.03 * s.X, s.Y * B.domeH * 2 + 0.006, s.Z * B.domeD + 0.006), hcf * CF(0, B.domeY * s.Y, 0.02 * s.Z), darken(capC, 0.8))
+	end
+	return folder
+end
+
+------------------------------------------------------------------------
 -- Damage
 ------------------------------------------------------------------------
 -- bruise colour by age (Config.FaceDamage.bruiseColors: fresh red-purple, blue-purple, yellow-green,

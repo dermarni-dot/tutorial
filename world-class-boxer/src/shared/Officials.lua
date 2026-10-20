@@ -7,7 +7,9 @@
 -- * Colors(kind, o) -> { shirt, trim, trousers, ... } as {r, g, b}: the venue picks the referee's shirt (light blue at
 --   the clubs, a paler blue-grey at the Grand Arena), a title fight / the stadium puts him in white; the coach wears
 --   his team colour (o.team) or a dark polo
--- Bald (Config.BaldMode) and the headgear (Config.AlwaysHeadgear with Config.HeadgearOfficials) are Builder's.
+--   (cap / capTrim / capBadge: the officials' caps, Config.OfficialCaps: the referee's black peaked cap with its band in
+--   the shirt colour and a gold badge, the coach's team-colour baseball cap with a darker bill and a white logo)
+-- Bald (Config.BaldMode), the headgear (Config.AlwaysHeadgear with Config.HeadgearOfficials) and the caps are Builder's.
 local Officials = {}
 
 local Shared = script.Parent
@@ -45,7 +47,7 @@ function Officials.Colors(kind, o)
 		return {
 			shirt = rgb(team), trim = darker(team, 0.86), buttons = { 236, 236, 232 }, trousers = { 38, 38, 44 },
 			belt = { 30, 30, 34 }, shoes = { 236, 236, 232 }, soles = { 225, 225, 220 }, laces = { 240, 240, 240 },
-			towel = { 238, 238, 232 },
+			towel = { 238, 238, 232 }, cap = rgb(team), capTrim = darker(team, 0.72), capBadge = { 238, 238, 232 },
 		}
 	end
 	local title = o.championship == true or (o.kind ~= nil and Officials.TITLE_KINDS[o.kind] == true)
@@ -54,6 +56,7 @@ function Officials.Colors(kind, o)
 		shirt = rgb(shirt), trim = darker(shirt, 0.93), buttons = { 240, 240, 236 }, badge = { 212, 172, 64 },
 		bowtie = { 16, 16, 18 }, trousers = { 22, 22, 26 }, belt = { 18, 18, 20 }, buckle = { 200, 200, 206 },
 		shoes = { 14, 14, 16 }, soles = { 30, 26, 24 }, laces = { 16, 16, 18 },
+		cap = { 18, 18, 21 }, capTrim = rgb(shirt), capBadge = { 212, 172, 64 },
 	}
 end
 

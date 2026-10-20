@@ -1322,8 +1322,13 @@ Config.BaldMode = true -- every boxer is bald (the user's call: no hair; everyon
 -- only recolours it to the corner's blue / red and gives the boxer's own colour back after. false = the old rule:
 -- headgear only while sparring (FightEngine / the Ambient sparring pair)
 Config.AlwaysHeadgear = true
--- the referee and the cornermen (Builder opts.outfit) wear it too while AlwaysHeadgear is on ("all characters")
-Config.HeadgearOfficials = true
+-- true = the referee and the cornermen (Builder opts.outfit) wear it too while AlwaysHeadgear is on. false (the
+-- user's "give the ref a referee hat"): the officials wear their caps instead (Config.OfficialCaps)
+Config.HeadgearOfficials = false
+-- the officials' caps (Builder's Hat step, BuilderHead.SetCap) while they wear no headgear: the referee a black
+-- peaked referee cap (band in the venue shirt's colour, gold WCB badge), the spar coach (outfit "cornerman") a
+-- baseball cap in his team colour. false = bare-headed
+Config.OfficialCaps = true
 
 -- daily growth of hair / beard (0..1.5 / 0..1) used by Training.dayTick
 Config.HairGrowthPerDay = 0.02

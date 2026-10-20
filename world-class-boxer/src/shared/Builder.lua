@@ -6,7 +6,8 @@
 -- The layers live in sub-modules that share the part helpers in BuilderKit:
 -- * BuilderTiers: the 14 muscle-tier body parts (Humanoid:ReplaceBodyPartR15, only on a tier change)
 -- * BuilderHead: the classic head and the face built on it (Parts, a FaceFX rig), beard, fight damage, sweat, headgear
---   (every boxer wears it while Config.AlwaysHeadgear: a Cosmetics step, recoloured by SetHeadgear while sparring)
+--   (every boxer wears it while Config.AlwaysHeadgear: a Cosmetics step, recoloured by SetHeadgear while sparring),
+--   and the officials' caps instead of it (Config.OfficialCaps: the Hat step, Head.SetCap)
 -- * BuilderHair: hair styles x hair types, strands, sway joints, hair under headgear / hoods, wet hair
 -- * BuilderBody: skin/trunks/shoe colours, attire, gloves and wraps, robe, body sweat / bruises
 -- FaceLayout, SetDamage, SetSweat, SetHeadgear, SetHairHidden and SetRobe are forwarded from them.
@@ -208,6 +209,50 @@ local function headgearLook(model, app, opts, detail)
 		if model:GetAttribute("HeadgearCorner") == nil then
 			Head.SetHeadgear(model, nil, false)
 		end
+	end
+end
+
+------------------------------------------------------------------------
+-- Officials' caps (Config.OfficialCaps): a Cosmetics step after the headgear
+------------------------------------------------------------------------
+-- the referee (opts.outfit "referee") wears his peaked referee cap, the spar coach ("cornerman") a team baseball cap,
+-- whenever he wears no headgear (Config.HeadgearOfficials off). Colours from opts.officialColors (Officials.Colors:
+-- cap / capTrim / capBadge). BoxerLook/Hat is cached on the style, colours, head size and detail (Kit.cached checks
+-- the welds still hold the current head), so a rebuild, a tier swap or a respawn keeps or rebuilds it, a clone
+-- copies it; anyone else (a boxer, a switched-off flag) has the folder removed.
+local CAP_STYLE = { referee = "referee", cornerman = "baseball" }
+local function capStyle(opts)
+	if Config.OfficialCaps == false or type(opts) ~= "table" or wantsHeadgear(opts) then
+		return nil
+	end
+	return CAP_STYLE[opts.outfit or ""]
+end
+Builder.CapStyle = capStyle
+
+local function capLook(model, opts, detail)
+	local style = capStyle(opts)
+	local look = model:FindFirstChild("BoxerLook")
+	if not style then
+		local f = look and look:FindFirstChild("Hat")
+		if f then
+			f:Destroy()
+		end
+		return
+	end
+	local oc = type(opts.officialColors) == "table" and opts.officialColors or {}
+	local function col(t)
+		return type(t) == "table" and Looks.Color(t) or nil
+	end
+	local colors = { cap = col(oc.cap), trim = col(oc.capTrim), badge = col(oc.capBadge) }
+	detail = Config.DetailLevel(detail)
+	local head = model:FindFirstChild("Head")
+	local key = Kit.sig("CAP1", style, colors, head and head.Size or false, detail)
+	if Kit.cached(model, "Hat", key) then
+		return
+	end
+	local ok = step("Hat", Head.SetCap, model, style, colors, detail)
+	if ok then
+		Kit.seal(model, "Hat", key)
 	end
 end
 
@@ -485,6 +530,7 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 		end
 		-- (the headgear follows the head: a head swap or a colour change in the Creator rebuilds it)
 		step("Headgear", headgearLook, model, app, opts, opts.detail)
+		step("Hat", capLook, model, opts, opts.detail)
 		Builder.SetSweat(model, app, opts.sweat or model:GetAttribute("Sweat") or 0)
 		-- previews (Creator / barber) change the look too: the meshes follow
 		step("LookData", publishLook, model, app, build, opts, nil)
@@ -510,6 +556,8 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	headStep(model, app, build, opts, "Beard")
 	-- the headgear every boxer wears (on the final head; its own cache)
 	step("Headgear", headgearLook, model, app, opts, sp.detail)
+	-- the officials' caps (the referee's, the coach's) when they wear no headgear
+	step("Hat", capLook, model, opts, sp.detail)
 	-- avatar hair accessories (re)attached by ApplyDescription stay hidden under a headgear / hood
 	if model:GetAttribute("AvatarHair") == true then
 		step("HairHidden", Hair.ApplyHairHidden, model)

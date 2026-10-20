@@ -8,7 +8,9 @@
 --     body part, painted from the colours; NO boxing gear anywhere (no gloves, wraps, trunks, boots, mouthguard); one
 --     face decal on the head; the same at every muscle tier, on mixed tiers and on the lite detail set
 --   * the coach: the Coach set (polo, towel), no bow tie / badge
---   * the headgear follows Config.HeadgearOfficials; ids 0 -> the part-built outfit, still no boxing gear
+--   * no headgear on the officials (Config.HeadgearOfficials off): the referee's black peaked cap (band in the shirt
+--     colour, gold WCB badge; welded, cached, cloned), the coach's team baseball cap; ids 0 -> the part-built outfit,
+--     still no boxing gear
 --   * FightEngine builds its referee through Officials.Look
 --   lune run tools/sim/test_referee.luau
 local fs = require("@lune/fs")
@@ -347,20 +349,71 @@ do
 	local hands = model:FindFirstChild("BoxerLook") and model.BoxerLook:FindFirstChild("Hands")
 	check("referee: bare hands (nothing on them)", hands == nil or #hands:GetChildren() == 0, hands and #hands:GetChildren())
 	check("referee: the hands are shown", model.LeftHand.Transparency < 0.5 and model.RightHand.Transparency < 0.5)
-	-- the headgear: Config.HeadgearOfficials (the user's "all characters have the boxing headgear on")
+	-- no headgear on the officials (Config.HeadgearOfficials off): the referee's cap instead (Config.OfficialCaps)
+	check("Config: officials wear no headgear, their caps instead", Config.HeadgearOfficials == false and Config.OfficialCaps == true)
 	local hg = model.BoxerLook:FindFirstChild("Headgear")
-	check("referee: headgear as Config.HeadgearOfficials says", (hg ~= nil and #hg:GetChildren() > 0) == (Config.AlwaysHeadgear == true and Config.HeadgearOfficials ~= false))
+	check("referee: no headgear", hg == nil or #hg:GetChildren() == 0)
+	check("referee: no HeadgearColor / hidden-hair flag", model:GetAttribute("HeadgearColor") == nil and model:GetAttribute("HairHiddenHeadgear") == nil)
+	local hat = model.BoxerLook:FindFirstChild("Hat")
+	local Head = H.require("BuilderHead")
+	local function hatParts(m)
+		local f = m.BoxerLook:FindFirstChild("Hat")
+		local out = {}
+		for _, d in ipairs(f and f:GetDescendants() or {}) do
+			if d:IsA("BasePart") then
+				out[d.Name] = d
+				out[#out + 1] = d
+			end
+		end
+		return out
+	end
+	local hp = hatParts(model)
+	check("referee: wears his cap (the medium set)", hat ~= nil and hat:GetAttribute("Style") == "referee" and #hp == Head.CAP_PARTS.referee.medium, #hp)
+	check("referee: crown, band, visor, WCB badge", hp.RCCrown and hp.RCBand and hp.RCVisor and hp.RCBadge and hp.RCBadgeText)
+	check("referee: a black cap", hp.RCCrown and hp.RCCrown.Color.R < 0.12 and hp.RCCrown.Color.B < 0.12)
+	check("referee: the band in the club's blue shirt colour", hp.RCBand and cnear(hp.RCBand.Color, Color3.fromRGB(oc.shirt[1], oc.shirt[2], oc.shirt[3])))
+	check("referee: the gold badge", hp.RCBadge and hp.RCBadge.Color.R > 0.7 and hp.RCBadge.Color.B < 0.4)
+	local txt = hp.RCBadgeText and hp.RCBadgeText:FindFirstChildOfClass("SurfaceGui")
+	local lbl = txt and txt:FindFirstChildOfClass("TextLabel")
+	check("referee: the badge reads WCB", lbl ~= nil and lbl.Text == "WCB")
+	local badW = {}
+	for _, p in ipairs(hp) do
+		local w = p:FindFirstChildOfClass("WeldConstraint")
+		if not (w and w.Part0 == model.Head and w.Part1 == p) then
+			table.insert(badW, p.Name)
+		end
+	end
+	check("referee: every cap part welded to his head", #badW == 0, table.concat(badW, ","))
+	check("referee: cap parts massless, no collisions", hp.RCCrown and hp.RCCrown.Massless and not hp.RCCrown.CanCollide)
+	-- a rebuild with nothing changed keeps the same parts (cache); a new head (respawn / head swap) rebuilds it on that head
+	local crown = hp.RCCrown
+	local app0, b0, gear0, opts0 = Officials.Look(3, "referee", { venue = "ClubArena" })
+	pcall(Builder.Cosmetics, model, app0, b0, gear0, opts0)
+	check("referee: an unchanged rebuild keeps the cap", hatParts(model).RCCrown == crown)
+	local c = model:Clone()
+	c.Parent = E.workspace
+	local cp = hatParts(c)
+	local cw = cp.RCCrown and cp.RCCrown:FindFirstChildOfClass("WeldConstraint")
+	check("referee: a clone carries the cap, welded to the clone's head", #cp == #hp and cw and cw.Part0 == c:FindFirstChild("Head"))
+	c:Destroy()
 	-- a title fight: white
 	local m2 = official("referee", { kind = "World Title", seed = 3 })
 	local w2 = worn(m2)
 	check("title fight: a white shirt", w2.OffShirt and w2.OffShirt.Color.R > 0.94 and w2.OffShirt.Color.B > 0.94)
-	-- the flag off: no headgear on officials
+	local hp2 = hatParts(m2)
+	check("title fight: the black cap with a white band", hp2.RCCrown and hp2.RCCrown.Color.R < 0.12 and hp2.RCBand and hp2.RCBand.Color.R > 0.94)
+	-- the headgear flag back on: headgear, no cap (never both)
 	local was = Config.HeadgearOfficials
-	Config.HeadgearOfficials = false
+	Config.HeadgearOfficials = true
 	local m3 = official("referee", { seed = 3 })
 	local hg3 = m3.BoxerLook:FindFirstChild("Headgear")
-	check("HeadgearOfficials = false: no headgear on the referee", hg3 == nil or #hg3:GetChildren() == 0)
+	check("HeadgearOfficials = true: headgear, no cap", hg3 ~= nil and #hg3:GetChildren() > 0 and #hatParts(m3) == 0)
 	Config.HeadgearOfficials = was
+	local wasC = Config.OfficialCaps
+	Config.OfficialCaps = false
+	local m4 = official("referee", { seed = 3 })
+	check("OfficialCaps = false: bare-headed", #hatParts(m4) == 0 and (m4.BoxerLook:FindFirstChild("Headgear") == nil or #m4.BoxerLook.Headgear:GetChildren() == 0))
+	Config.OfficialCaps = wasC
 end
 
 ------------------------------------------------------------------------
@@ -411,6 +464,21 @@ do
 	check("coach: polo + towel, no bow tie / badge / belt", w.OffPolo and w.OffTowel and not w.OffBowTie and not w.OffBadge and not w.OffBelt)
 	check("coach: no boxing gear", #boxing == 0, table.concat(boxing, ","))
 	check("coach: one face decal", faceDecals(model) == 1)
+	local look = model:FindFirstChild("BoxerLook")
+	local hg = look and look:FindFirstChild("Headgear")
+	check("coach: no headgear", hg == nil or #hg:GetChildren() == 0)
+	local hat = look and look:FindFirstChild("Hat")
+	local n, crown, bill = 0, hat and hat:FindFirstChild("BCCrown"), hat and hat:FindFirstChild("BCBill")
+	for _, d in ipairs(hat and hat:GetDescendants() or {}) do
+		if d:IsA("BasePart") then
+			n += 1
+		end
+	end
+	local _, _, _, copts = Officials.Look(4, "cornerman", {})
+	local team = copts.officialColors.shirt
+	check("coach: a team baseball cap (the medium set)", hat and hat:GetAttribute("Style") == "baseball" and n == H.require("BuilderHead").CAP_PARTS.baseball.medium, n)
+	check("coach: the cap in his team colour, a darker bill", crown and cnear(crown.Color, Color3.fromRGB(team[1], team[2], team[3])) and bill
+		and bill.Color.R <= crown.Color.R + 1e-3)
 end
 
 ------------------------------------------------------------------------
