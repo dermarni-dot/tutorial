@@ -1,6 +1,6 @@
 -- WorldLOD: the Graphics level (Perf) applied to the world's own lights, signs, particles and shadow
 -- casters - the server-built gym and city (workspace.Gym), your client-side gym and city dressing
--- (LocalGym, LocalCity) and, during a fight, the arena (signs and shadow casters only: VenueFX drives
+-- (LocalGym, LocalCity, WorldDetail) and, during a fight, the arena (signs and shadow casters only: VenueFX drives
 -- the arena's lights and effects itself). Ambience keeps its dust and sun shafts (GymAmbienceFX).
 --   High    today's look. The only change: lights far beyond any view switch off (a fight venue is
 --           ~5,700 studs from the gym, whose 90-200 lights otherwise stay on through the whole fight)
@@ -531,7 +531,7 @@ end
 ------------------------------------------------------------------------
 -- start: the named world roots, now and whenever they appear
 ------------------------------------------------------------------------
-local ROOT_NAMES = { Gym = { keep = true }, LocalGym = { keep = true }, LocalCity = { keep = true } }
+local ROOT_NAMES = { Gym = { keep = true }, LocalGym = { keep = true }, LocalCity = { keep = true }, WorldDetail = { keep = true } }
 local started = false
 
 function WorldLOD.Start()

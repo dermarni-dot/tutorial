@@ -16,7 +16,8 @@
 -- between rounds, the ring announcer, panning TV cameras, a swinging jib and a gliding skycam with
 -- on-air tally, canvas marks after knockdowns, window god-rays and dust in the sparring room,
 -- crowd / bell audio (Config.SoundId, routed through SoundService.FightMix for concussion muffling).
--- Nothing here replicates: other players never pay for it.
+-- Nothing here replicates: other players never pay for it. The extra set dressing (banners, aisle steps,
+-- tunnels, rig speakers, ...) is VenueDetail's, built last at the Graphics level in force (setupDetail).
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
@@ -41,6 +42,17 @@ do
 end
 local function lodPick(low, medium, high)
 	return WorldLOD and WorldLOD.Pick(low, medium, high) or high
+end
+-- the venue's extra set dressing (banners, aisles, tunnels, rig speakers ...; optional: without it the venue is
+-- the server's template as it was)
+local VenueDetail
+do
+	local m = script.Parent:FindFirstChild("VenueDetail")
+	local ok, mod = false, nil
+	if m then
+		ok, mod = pcall(require, m)
+	end
+	VenueDetail = (ok and type(mod) == "table") and mod or nil
 end
 -- particle counts / rates for the level (at least one particle for a burst that asked for some)
 local function lodCount(n)
@@ -1882,6 +1894,17 @@ end
 ------------------------------------------------------------------------
 -- Sparring room: window god-rays, dust, round timer, telemetry
 ------------------------------------------------------------------------
+-- the detail layer, built last so no setup scan above ever sees its parts (they are named VD*), at the level in force
+local function setupDetail()
+	if not VenueDetail then
+		return
+	end
+	local model = VenueDetail.Build(S.arena, { venue = S.venue, level = WorldLOD and WorldLOD.Level() or 3 })
+	if model then
+		table.insert(S.created, model)
+	end
+end
+
 local function setupGym()
 	S.gymTimer = nil
 	S.telemetry = nil
@@ -2093,7 +2116,7 @@ function VenueFX.Start(arena, info)
 		for _, piece in ipairs({
 			{ "keys", setupKeys }, { "ropes", setupRopes }, { "spots", setupSpots }, { "crowd", setupCrowd }, { "bowl", setupBowl }, { "particles", setupParticles },
 			{ "screens", setupScreens }, { "people", setupPeople }, { "broadcast", setupBroadcast }, { "gym", setupGym },
-			{ "impostors", applyImpostors },
+			{ "impostors", applyImpostors }, { "detail", setupDetail },
 		}) do
 			step(piece[1], piece[2])
 		end

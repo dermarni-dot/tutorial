@@ -16,6 +16,8 @@
 --   Medium  shadows from the key and the lamp over the boxer only (WorldLOD keeps two casters too),
 --           dust at about half rate, signs at 3/4 resolution
 --   Low     no light shadows (as in the gym), no dust, signs at half resolution
+-- The extra dressing (MenuDetail) follows the same level: textures and print on Low, lockers, a round timer, the
+-- bags' hardware and more on Medium, pipes, scuffs and the small kit on High.
 local CollectionService = game:GetService("CollectionService")
 
 -- Perf is the core module; without it the level passed to Build stands
@@ -27,6 +29,16 @@ do
 		ok, mod = pcall(require, m)
 	end
 	Perf = (ok and type(mod) == "table") and mod or nil
+end
+-- the set's extra dressing by level (MenuDetail: textures, lockers, timer, bag hardware, pipes ...); optional
+local MenuDetail
+do
+	local m = script.Parent:FindFirstChild("MenuDetail")
+	local ok, mod = false, nil
+	if m then
+		ok, mod = pcall(require, m)
+	end
+	MenuDetail = (ok and type(mod) == "table") and mod or nil
 end
 
 local MenuStage = {}
@@ -316,6 +328,13 @@ function MenuStage.SetLevel(st, level)
 			sg.PixelsPerStud = pps
 		end
 	end
+	if MenuDetail then
+		local ok, err = pcall(MenuDetail.Apply, st, level)
+		if not ok and not st.detailWarned then
+			st.detailWarned = true
+			warn("[MenuStage] detail:", err)
+		end
+	end
 end
 
 -- builds the set; detail = the Graphics level's name ("Low" | "Medium" | "High"; Perf's level when
@@ -568,6 +587,9 @@ function MenuStage.Step(st, t)
 	end
 	if st.rim then
 		st.rim.Brightness = 4.2 + math.sin(t * 0.7) * 0.6
+	end
+	if MenuDetail and st.extra then
+		MenuDetail.Step(st)
 	end
 end
 

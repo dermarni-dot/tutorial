@@ -46,6 +46,17 @@ else
 	warn("[ClientMain] CityVisuals unavailable:", CityVisuals)
 	CityVisuals = nil
 end
+-- the gym's and the city's extra detail layer (WorldDetail: streamed by Graphics level and distance): optional too
+task.spawn(function()
+	local ok, WorldDetail = pcall(function()
+		return require(Modules:WaitForChild("WorldDetail", 10))
+	end)
+	if ok and type(WorldDetail) == "table" then
+		pcall(WorldDetail.Start)
+	else
+		warn("[ClientMain] WorldDetail unavailable:", WorldDetail)
+	end
+end)
 -- anatomy meshes (EditableMesh characters, ANATOMY_CONTRACTS.md): optional; any failure keeps the
 -- part-built look
 local okAnatomy, AnatomyClient = pcall(function()
