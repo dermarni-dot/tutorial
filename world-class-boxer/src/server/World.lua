@@ -205,7 +205,10 @@ function World.PlayerScore(profile, org)
 			belts += 1
 		end
 	end
-	return base + belts * 40 + (hash("player" .. org) % 30) - 15
+	-- tournament ranking points (Tourney: the rounds won in brackets)
+	local tpoints = type(profile.tourney) == "table" and tonumber(profile.tourney.points) or 0
+	tpoints = (tpoints and tpoints == tpoints) and math.clamp(tpoints, 0, 2000) or 0
+	return base + belts * 40 + tpoints + (hash("player" .. org) % 30) - 15
 end
 
 function World.Rankings(profile, ci, org)
@@ -283,14 +286,19 @@ function World.RankOf(profile, id, org)
 	return nil
 end
 
-local function aiBout(a, b, rng)
+-- noDraw (a tournament bracket): a near-even bout still goes to the better night's work, never a draw.
+-- Returns winner, loser, ko (nil on a draw)
+local function aiBout(a, b, rng, noDraw)
 	local pa = a.overall + rng:NextNumber(-12, 12)
 	local pb = b.overall + rng:NextNumber(-12, 12)
 	local ko = rng:NextNumber() < 0.4
-	if math.abs(pa - pb) < 1.5 then
+	if math.abs(pa - pb) < 1.5 and not noDraw then
 		a.record.d += 1
 		b.record.d += 1
 		return nil
+	end
+	if pa == pb then
+		pa += rng:NextNumber() - 0.5
 	end
 	local winner, loser = a, b
 	if pb > pa then
@@ -301,8 +309,9 @@ local function aiBout(a, b, rng)
 	if ko then
 		winner.record.ko += 1
 	end
-	return winner, loser
+	return winner, loser, ko
 end
+World.AIBout = aiBout
 
 -- AI boxers keep fighting and developing between the player's fights
 function World.SimulateCycle(profile, rng)
@@ -428,6 +437,14 @@ function World.Prune(profile)
 		for _, byClass in pairs(world.champions) do
 			markAll(byClass)
 		end
+	end
+	-- the tournaments: the bracket being fought and every event's belt holder
+	local tr = type(profile.tourney) == "table" and profile.tourney.run
+	if type(tr) == "table" then
+		markAll(tr.field)
+	end
+	if type(world.tourney) == "table" and type(world.tourney.holders) == "table" then
+		markAll(world.tourney.holders, "id")
 	end
 	local rivals = {}
 	for id, b in pairs(world.boxers) do

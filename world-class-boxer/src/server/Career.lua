@@ -23,6 +23,9 @@ do
 end
 local World = require(script.Parent.World)
 local Training = require(script.Parent.Training)
+-- the tournaments (Shared.Tournaments: the events; Tourney: the brackets, the belts, the calendar)
+local Tourney = require(script.Parent.Tourney)
+local Tournaments = require(Shared:WaitForChild("Tournaments"))
 
 local Career = {}
 local rng = Random.new()
@@ -154,7 +157,23 @@ function Career.OppView(profile, b)
 		id = b.id, name = b.name, nick = b.nick, nat = b.nat, style = style and style.name or b.style,
 		archetype = arch and arch.name or "", overall = b.overall, record = b.record, age = b.age,
 		personality = b.personality, h2h = b.h2h, heat = b.heat, belts = b.belts, ranks = ranks,
+		tbelts = Career.TourneyBelts(b),
 	}
+end
+
+-- an AI boxer's tournament belts as display names ("City Championship x2"), nil for none
+function Career.TourneyBelts(b)
+	if type(b) ~= "table" or type(b.tbelts) ~= "table" then
+		return nil
+	end
+	local out = {}
+	for _, def in ipairs(Tournaments.List) do
+		local n = tonumber(b.tbelts[def.id]) or 0
+		if n > 0 then
+			table.insert(out, def.name .. (n > 1 and (" x" .. n) or ""))
+		end
+	end
+	return #out > 0 and out or nil
 end
 
 local function pickTalk(profile, b)
@@ -200,6 +219,8 @@ local function makeOffer(profile, b, kind, extra)
 		opp = Career.OppView(profile, b), talk = pickTalk(profile, b),
 	}
 end
+
+Tourney.makeOffer = makeOffer
 
 local function playerBelts(profile)
 	local list = {}
@@ -746,6 +767,9 @@ function Career.FighterFromProfile(profile)
 		injuryCut = safe(Training.HasInjury, profile, "cut") == true,
 		concussed = safe(Training.HasInjury, profile, "concussion") == true,
 		age = profile.identity.age,
+		-- a tournament: what the last round took out of him (FightEngine caps head / body health), the belt he
+		-- wears in the ring walk
+		carry = safe(Tourney.Carry, profile), walkBelt = safe(Tourney.WornBelt, profile),
 	}
 end
 
@@ -843,6 +867,10 @@ function Career.SimFight(profile, offer)
 	local fatPen = math.max(0, p.fatigue - 50) / 8 + (1 - p.mods.staminaMul) * 20
 	local cards = { { 0, 0 }, { 0, 0 }, { 0, 0 } }
 	local pDmg, oDmg, kdFor, kdAg = 0, 0, 0, 0
+	-- a tournament's later rounds: he starts with what the earlier ones took out of him
+	if type(p.carry) == "table" then
+		pDmg = (2 - (tonumber(p.carry.head) or 1) - (tonumber(p.carry.body) or 1)) * 50
+	end
 	local landed, oLanded = 0, 0
 	local punches = { jab = 5, cross = 3, leadhook = 2, rearhook = 1, uppercut = 1 }
 	for r = 1, offer.rounds do
@@ -1018,7 +1046,8 @@ function Career.ApplyResult(profile, res)
 
 	local m = profile.mental
 	if win then
-		profile.popularity = math.clamp(profile.popularity + 2 + (isKO and 2 or 0) + (offer.kind ~= "Pro Fight" and offer.kind ~= "Amateur Bout" and 6 or 0), 0, 100)
+		-- (a tournament's fame comes per round from Tourney.AfterResult, not the big-night bonus)
+		profile.popularity = math.clamp(profile.popularity + 2 + (isKO and 2 or 0) + (offer.kind ~= "Pro Fight" and offer.kind ~= "Amateur Bout" and not offer.tourney and 6 or 0), 0, 100)
 		m.Confidence = math.clamp(m.Confidence + 4 + (isKO and 2 or 0), 25, 100)
 	elseif loss then
 		profile.popularity = math.clamp(profile.popularity - 1, 0, 100)
@@ -1093,12 +1122,19 @@ function Career.ApplyResult(profile, res)
 		table.insert(notes, "You're a former champion. Climb back to a title shot.")
 	end
 
+	-- a tournament bout: the bracket moves on (the AI side of the round, the next round booked, or the run's end:
+	-- prize money, the belt, the champion on the world's books)
+	local trn = offer.tourney and safe(Tourney.AfterResult, profile, offer, res, notes) or nil
 	-- time passes: medical suspension / recovery
 	local suspension = 21
 	if loss and isKO then
 		suspension = 45
 	elseif loss or (res.kdAgainst or 0) > 0 then
 		suspension = 28
+	end
+	if trn and trn.continuing then
+		-- (the next round is days away, not weeks: no suspension, the recovery days the bracket allows)
+		suspension = trn.recovery
 	end
 	for _, n in ipairs(Training.PassDays(profile, suspension)) do
 		table.insert(notes, n)
@@ -1110,8 +1146,20 @@ function Career.ApplyResult(profile, res)
 	for _, n in ipairs(safe(Training.AddTrauma, profile, res, suspension) or {}) do
 		table.insert(notes, n)
 	end
-	table.insert(notes, string.format("%d days of recovery before your next camp.", suspension))
-	World.SimulateCycle(profile, rng)
+	if trn and trn.continuing and safe(Training.HasInjury, profile, "concussion") == true then
+		-- the doctor's look before the next round: a concussion is a medical withdrawal
+		safe(Tourney.MedicalCheck, profile, true, notes)
+		trn.continuing, trn.nextCamp = false, nil
+	end
+	if trn and trn.continuing then
+		table.insert(notes, string.format("%d day%s of recovery before the next round.", suspension, suspension == 1 and "" or "s"))
+	else
+		table.insert(notes, string.format("%d days of recovery before your next camp.", suspension))
+		-- (the world goes on between camps; a bracket's rounds are only days apart)
+		World.SimulateCycle(profile, rng)
+	end
+	-- the calendar moved on: tournaments the player sat out are settled by the AI
+	safe(Tourney.Tick, profile)
 	for _, id in ipairs(world.classes[ci]) do
 		local x = world.boxers[id]
 		x.heat = math.max(0, x.heat - 4)
@@ -1174,12 +1222,27 @@ function Career.ApplyResult(profile, res)
 	end
 	profile.camp = nil
 	profile.offers = nil
-	return { notes = notes, earnings = total, entry = entry }
+	if trn and trn.continuing and trn.nextCamp then
+		-- the next round of the bracket is booked as a camp of its own
+		profile.camp = trn.nextCamp
+		entry.tourney = offer.tourney.id
+	end
+	return { notes = notes, earnings = total, entry = entry, tourney = trn }
 end
 
 ------------------------------------------------------------------------
 -- Legacy
 ------------------------------------------------------------------------
+-- tournament belts count toward the legacy: 4 / 8 / 14 / 22 / 40 a win, by the event's level
+local TOURNEY_LEGACY = { novice = 4, city = 8, regional = 14, national = 22, world = 40 }
+function Career.TourneyLegacy(profile)
+	local s = type(profile.tourney) == "table" and profile.tourney
+	local total = 0
+	for id, b in pairs(s and type(s.belts) == "table" and s.belts or {}) do
+		total += (TOURNEY_LEGACY[id] or 0) * math.max(0, math.floor(tonumber(type(b) == "table" and b.n) or 0))
+	end
+	return total
+end
 local function legacyParts(profile)
 	local r = profile.record
 	local parts = {
@@ -1191,6 +1254,7 @@ local function legacyParts(profile)
 		{ "Undisputed reigns", profile.undisputedReigns * 80 },
 		{ "Elite wins", profile.qualityWins * 6 },
 		{ "Regional & national titles", (profile.regional.regional and 10 or 0) + (profile.regional.national and 20 or 0) },
+		{ "Tournament belts", Career.TourneyLegacy(profile) },
 		{ "Legend status", profile.tier >= 10 and 100 or 0 },
 	}
 	local score = 0
@@ -1244,6 +1308,9 @@ function Career.Retire(profile)
 	end
 	profile.camp = nil
 	profile.retired = true
+	if type(profile.tourney) == "table" then
+		profile.tourney.run = nil
+	end
 	local lg = Career.Legacy(profile)
 	profile.final = lg
 	table.insert(profile.pastCareers, 1, {
@@ -1414,6 +1481,11 @@ function Career.Summary(profile, storeOk)
 		settings = { wakeAt = type(profile.settings) == "table" and profile.settings.wakeAt or nil },
 		autographReady = profile.lastAutographDay ~= profile.day and (profile.popularity or 0) >= 3,
 		lastFightDay = tonumber(profile.lastFightDay),
+		-- the tournaments: the calendar, the rules, the bracket being fought, the belts won (Hub Tournaments tab)
+		tourney = (function()
+			safe(Tourney.Tick, profile) -- (idempotent: a new career gets last season's champions on its first summary)
+			return safe(Tourney.View, profile)
+		end)(),
 	}
 end
 

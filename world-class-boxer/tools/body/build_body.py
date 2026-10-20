@@ -163,8 +163,10 @@ HEAD_SIZE = 1.2 * HEAD_FRAME * RTHRO["Head"][0]  # 0.927: today's head; the game
 ANCHOR = {"UpperTorso": "Waist", "LowerTorso": "Root", "UpperArm": "Elbow", "LowerArm": "Elbow",
           "Hand": "Wrist", "UpperLeg": "Hip", "LowerLeg": "Knee", "Foot": "Ankle"}
 # per tier: the arm axis' extra x in game space so the upper arm's inner side rests on the torso's side
-# (the arm fix, re-measured at the new proportions; see arm_gap() in the build log)
-ARM_DX = {0: 0.0, 1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0}
+# (the arm fix, re-measured at the new proportions; see arm_gap() in the build log). v11 slim pass: the arm comes in by
+# what the slimmer torso side and upper arm opened between them (the mean gap over the arm's resting contact, game
+# y 4.25-4.65, kept where it was), so the arms do not stand out from the body
+ARM_DX = {0: 0.0, 1: -0.085, 2: -0.098, 3: -0.11, 4: -0.122, 5: -0.13}
 
 
 def game_scale(base):
@@ -588,7 +590,8 @@ def rotx(deg):
 
 
 def amp(tr, f=0.0, m=0.0, d=0.0):
-    return f * tr["f"] + m * tr["m"] + d * tr["d"]
+    # (v11 slim) the muscle bells' MASS term is cut to BULK (the definition terms stay: leaner, not softer)
+    return f * tr["f"] + m * tr["m"] * (BULK if m > 0 else 1.0) + d * tr["d"]
 
 
 def Bp(c, ext, a, rot=None, p=2.0, flat=0.0):
@@ -605,6 +608,71 @@ def sym(bumps):
             rot2 = None if rot is None else M @ np.asarray(rot) @ M
             out.append(((-c[0], c[1], c[2]), (ext[1], ext[0]) + tuple(ext[2:]), a, rot2, p, flat))
     return out
+
+
+# ------------------------------------------------------------------------------------------ the slim pass (v11)
+# "slim down the body a little": every part's cross-section (the profile's half width ax in local x, its half depths
+# af / ab in z) is narrowed by a factor along the bone, more at the waist and mid limbs, less at the ends, and more
+# with the tier's mass (tiers 4-5 lose the most bulk); the muscle bells' mass term is cut to BULK, the definition
+# (separation) terms are kept. Every factor is the same on both sides of a joint (the waist, elbow and knee: the tucked
+# seams and the domes keep their fit), and 1 at the wrist and ankle (the hand and foot, and the glove / boot fitted
+# to them, are shared over tiers). The limb domes (JOINT_DOME) shrink with their section, so they stay near-spheres
+# about the pivots. The pivots do not move; the arm axis comes in by ARM_DX (the slimmer torso).
+# per part base: knots (prototype s), (reduction at m = 0, its extra at m = 1) for x and for z
+SLIM = {
+    "Torso": dict(s=[1.58, 1.80, 2.00, 2.21, 2.45, 2.75, 3.05, 3.30, 3.48, 3.60],
+                  x=([0.05, 0.05, 0.05, 0.07, 0.10, 0.10, 0.09, 0.08, 0.05, 0.04],
+                     [0.00, 0.005, 0.01, 0.02, 0.03, 0.035, 0.045, 0.05, 0.03, 0.015]),
+                  z=([0.05, 0.05, 0.05, 0.08, 0.10, 0.10, 0.10, 0.09, 0.06, 0.05],
+                     [0.00, 0.005, 0.01, 0.02, 0.03, 0.035, 0.045, 0.05, 0.03, 0.015])),
+    "UpperArm": dict(s=[2.846, 3.00, 3.20, 3.40, 3.53],
+                     x=([0.06, 0.09, 0.10, 0.09, 0.06], [0.01, 0.05, 0.065, 0.05, 0.02]),
+                     z=([0.06, 0.09, 0.10, 0.09, 0.06], [0.01, 0.05, 0.065, 0.05, 0.02])),
+    "LowerArm": dict(s=[2.153, 2.30, 2.50, 2.70, 2.846],
+                     x=([0.0, 0.04, 0.08, 0.08, 0.06], [0.0, 0.01, 0.025, 0.02, 0.01]),
+                     z=([0.0, 0.04, 0.08, 0.08, 0.06], [0.0, 0.01, 0.025, 0.02, 0.01])),
+    "UpperLeg": dict(s=[0.982, 1.15, 1.40, 1.65, 1.811],
+                     x=([0.05, 0.07, 0.09, 0.07, 0.05], [0.01, 0.02, 0.03, 0.02, 0.01]),
+                     z=([0.05, 0.07, 0.09, 0.07, 0.05], [0.01, 0.02, 0.03, 0.02, 0.01])),
+    "LowerLeg": dict(s=[0.235, 0.35, 0.55, 0.75, 0.90, 0.982],
+                     x=([0.0, 0.02, 0.06, 0.07, 0.06, 0.05], [0.0, 0.005, 0.02, 0.025, 0.015, 0.01]),
+                     z=([0.0, 0.02, 0.06, 0.07, 0.06, 0.05], [0.0, 0.005, 0.02, 0.025, 0.015, 0.01])),
+}
+BULK = 0.82
+
+
+def slim_k(base, s, m):
+    """(kx, kz): the slim factors along the part's bone at prototype heights s, for tier mass m"""
+    sp = SLIM.get(base)
+    s = np.asarray(s, float)
+    if sp is None:
+        return np.ones_like(s), np.ones_like(s)
+    out = []
+    for ax in ("x", "z"):
+        a, b = sp[ax]
+        out.append(1.0 - (pchip(sp["s"], a, s) + m * pchip(sp["s"], b, s)))
+    return out[0], out[1]
+
+
+class Slim:
+    """a Prof narrowed by the slim pass (ax by kx, af / ab by kz)"""
+
+    def __init__(self, prof, base):
+        self.prof, self.base = prof, base
+
+    def __call__(self, s, m):
+        out = dict(self.prof(s, m))
+        kx, kz = slim_k(self.base, s, m)
+        out["ax"] = out["ax"] * kx
+        out["af"] = out["af"] * kz
+        out["ab"] = out["ab"] * kz
+        return out
+
+
+def dome(key, base, s, tr):
+    """a limb's joint dome height, shrunk with its section at the joint (it stays a near-sphere about the pivot)"""
+    kx, kz = slim_k(base, [s], tr["m"])
+    return JOINT_DOME[key] * float((kx[0] + kz[0]) / 2)
 
 
 # ------------------------------------------------------------------------------------------ joints
@@ -683,7 +751,7 @@ def upper_torso(tr):
     for k, (yy, zz) in enumerate(((3.04, -0.27), (2.94, -0.25), (2.84, -0.22), (2.75, -0.19))):
         b.append(Bp((0.76 - 0.012 * k, yy, zz), (0.07, 0.07, 0.035, 0.035, 0.1, 0.12), amp(tr, 0, 0.008, 0.012), rotz(-28)))
     sd = ([YW, 2.32, 2.36, 3.36, 3.42, 3.54], [0.6, 0.6, 1.3, 1.3, 0.8, 0.8])
-    return loft(torso_prof(), tr["m"], YW, 3.54, (0.22, 1.0, 2, 0.88), (0.33, 0.85, 6), nb=30, nseg=42, bias=0.5,
+    return loft(Slim(torso_prof(), "Torso"), tr["m"], YW, 3.54, (0.22, 1.0, 2, 0.88), (0.33, 0.85, 6), nb=30, nseg=42, bias=0.5,
                 sdens=sd, bumps=sym(b))
 
 
@@ -699,7 +767,7 @@ def lower_torso(tr):
         Bp((0.24, 2.10, -0.40), (0.05, 0.05, 0.16, 0.14, 0.25, 0.25), amp(tr, 0, -0.0028, -0.0084), rotz(-38)),  # V-line
     ]
     # the child of the waist joint: a touch thinner near it so the UpperTorso's dome dives cleanly under
-    return loft(torso_prof(), tr["m"], 1.82, 2.30, (0.26, 1.0, 5, 0.9), (0.18, 1.0, 2), nb=9, nseg=32, bias=0.2,
+    return loft(Slim(torso_prof(), "Torso"), tr["m"], 1.82, 2.30, (0.26, 1.0, 5, 0.9), (0.18, 1.0, 2), nb=9, nseg=32, bias=0.2,
                 shrink=[(YW, 0.10, 0.04)], bumps=sym(b))
 
 
@@ -730,7 +798,8 @@ def upper_arm(tr):
     ]
     # (both ends are ball joints: the elbow dome and the shoulder dome are near-spheres about their pivots in game
     # space - JOINT_DOME - so the arm turns in place at both)
-    return loft(pr, tr["m"], YE, YS_PIVOT, (JOINT_DOME["elbow"], 1.0, 2, 0.88), (JOINT_DOME["shoulder"], 1.0, 4), nb=11,
+    return loft(Slim(pr, "UpperArm"), tr["m"], YE, YS_PIVOT, (dome("elbow", "UpperArm", YE, tr), 1.0, 2, 0.88),
+                (dome("shoulder", "UpperArm", YS_PIVOT, tr), 1.0, 4), nb=11,
                 nseg=22, frame=VERT(X), bumps=b)
 
 
@@ -751,7 +820,8 @@ def lower_arm(tr):
         Bp((X - 0.13, 2.25, -0.04), (0.06, 0.06, 0.14, 0.12, 0.035, 0.035), amp(tr, 0.003, 0.0, 0.005)),  # wrist tendons
         Bp((X + 0.11, 2.21, 0.10), (0.05, 0.05, 0.05, 0.05, 0.08, 0.08), amp(tr, 0.006, 0.0, 0.0)),  # ulna's knob
     ]
-    return loft(pr, tr["m"], YWR, YE, (JOINT_DOME["wrist"], 1.0, 2, 0.9), (JOINT_DOME["elbow"], 1.0, 2), nb=10, nseg=20,
+    return loft(Slim(pr, "LowerArm"), tr["m"], YWR, YE, (dome("wrist", "LowerArm", YWR, tr), 1.0, 2, 0.9),
+                (dome("elbow", "LowerArm", YE, tr), 1.0, 2), nb=10, nseg=20,
                 frame=VERT(X), shrink=[(YE, 0.10, 0.06)], bumps=b)
 
 
@@ -821,7 +891,8 @@ def upper_leg(tr):
     ]
     # (the top is a ball joint centred on the hip pivot - JOINT_DOME: the thigh turns inside the pelvis without its
     # top swinging out through the seat; the knee end the same)
-    return loft(pr, tr["m"], YK, YH, (JOINT_DOME["knee"], 1.0, 2, 0.88), (JOINT_DOME["hip"], 1.0, 3), nb=14, nseg=20,
+    return loft(Slim(pr, "UpperLeg"), tr["m"], YK, YH, (dome("knee", "UpperLeg", YK, tr), 1.0, 2, 0.88),
+                (dome("hip", "UpperLeg", YH, tr), 1.0, 3), nb=14, nseg=20,
                 frame=VERT(X), shrink=[(YH, 0.16, 0.06)], bumps=b)
 
 
@@ -845,7 +916,8 @@ def lower_leg(tr):
         Bp((X - 0.17, 0.385, -0.01), (0.05, 0.05, 0.05, 0.045, 0.06, 0.06), 0.022 * tr["f"]),  # inner ankle bone
         Bp((X + 0.175, 0.36, 0.03), (0.05, 0.05, 0.045, 0.045, 0.06, 0.06), 0.02 * tr["f"]),  # outer ankle bone
     ]
-    return loft(pr, tr["m"], YA, YK, (0.18, 1.0, 3), (JOINT_DOME["knee"], 1.0, 2), nb=11, nseg=18, frame=VERT(X),
+    return loft(Slim(pr, "LowerLeg"), tr["m"], YA, YK, (0.18, 1.0, 3), (dome("knee", "LowerLeg", YK, tr), 1.0, 2), nb=11,
+                nseg=18, frame=VERT(X),
                 shrink=[(YK, 0.10, 0.06)], bumps=b)
 
 

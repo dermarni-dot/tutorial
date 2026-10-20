@@ -241,10 +241,37 @@ def backdrop(w, h, kind):
     return im
 
 
+def apply_post(canvas, post, h):
+    """the camera's post effects on the 3D stand-in only (the engine draws the GUI over them, sharp): a JSON
+    `post` {blur (BlurEffect Size, px at 1080), sat, bri, con, tint} as tools/sim/v9_hud.luau writes it."""
+    blur = float(post.get("blur") or 0)
+    if blur > 0.05:
+        # BlurEffect.Size is roughly a gaussian radius in screen px at 1080 lines
+        canvas = canvas.filter(ImageFilter.GaussianBlur(blur * 0.5 * h / 1080))
+    arr = np.asarray(canvas).astype(np.float32)
+    rgb = arr[..., :3] / 255.0
+    sat, bri, con = float(post.get("sat") or 0), float(post.get("bri") or 0), float(post.get("con") or 0)
+    if abs(sat) > 1e-3:
+        grey = (rgb * np.array([0.299, 0.587, 0.114])).sum(-1, keepdims=True)
+        rgb = grey + (rgb - grey) * (1 + sat)
+    if abs(con) > 1e-3:
+        rgb = (rgb - 0.5) * (1 + con) + 0.5
+    if abs(bri) > 1e-3:
+        rgb = rgb + bri
+    tint = post.get("tint")
+    if tint:
+        rgb = rgb * np.array(tint, dtype=np.float32) / 255.0
+    arr[..., :3] = np.clip(rgb, 0, 1) * 255
+    return Image.fromarray(arr.astype(np.uint8), "RGBA")
+
+
 def render(doc, out_path, label=True):
     w, h = int(doc["w"]), int(doc["h"])
     name = (doc.get("title") or "").split("  ")[0]
     canvas = backdrop(w * SS, h * SS, "menu" if name.startswith("menu") else "x")
+    post = doc.get("post")
+    if post:
+        canvas = apply_post(canvas, post, h * SS)
     # draw order: ScreenGui DisplayOrder, then the gui's order of appearance, then the Sibling paint key
     gui_first = {}
     for i, it in enumerate(doc["items"]):

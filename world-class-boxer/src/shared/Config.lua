@@ -551,6 +551,51 @@ Config.Concussion = {
 }
 Config.ScreenFX = 1 -- accessibility scale for blur / shake / colour effects (0 disables)
 
+-- The deeper fight (FightEngine; tools/sim/test_fightai checks them):
+--   feint       a fake jab (the `feint` input): cost stamina, takes `busy` seconds; a defence the other man starts
+--               within `bite` seconds of it is a bite: for `open` seconds the feinter's next punch is +`hit`
+--               more accurate (and a Slick / Counter Specialist's trait is off). Every feint in the last `spamWin`
+--               seconds past `spamFree` costs `spamStam` more.
+--   fatigue     own accuracy x (1 - fatigueHit x how far under fatigueAt of the tank he is, as a share of it)
+--   damage      own accuracy x (1 - damageHit x how far under damageAt head HP he is, as a share of it)
+--   vision      own accuracy x (1 - visionHit x his worse eye); a punch from the side of a swollen eye (or a cut
+--               bleeding into it) is +blindHit x that side's blindness more accurate and beats a dodge
+--               blindDodge x blindness of the time (he never saw it)
+--   wind        second wind: gassed (under windAt of the tank) for windAfter seconds and not punching -> regen x
+--               windRegen for windTime seconds and windGive of the tank at once; once a fight (twice with
+--               Stamina 75+ or Discipline 80+). breathe: regen x breatheRegen after breatheAfter s without a punch
+--               at range
+--   momentum    -1..1, toward whoever does the better work (Fight:Momentum); at m the man it favours gets +momHit
+--               x m accuracy, x (1 + momDmg x m) damage and x (1 + momRegen x m) stamina regen; it drifts back
+--               momDecay a second; the judges see a little of it (momScore points a round)
+--   pressure    a man the other one is walking down (pressWin seconds: pressPunches+ thrown at him from inside
+--               pressRange x the jab range) wilts: his regen x pressRegen, his accuracy -pressHit. On the ropes
+--               (ropeDist studs from them with the other man inside) +ropeHit to be hit, his regen x ropeRegen
+--   clinch      inside work: a punch in a clinch is a short body shot (clinchDmg of a punch, at most clinchMax a
+--               clinch, one every clinchGap s; a guard up in the clinch smothers clinchSmother of it); the
+--               clinch key in a clinch breaks it (after clinchMinHold s): a shove (the other man busy
+--               breakBusy s, balance -breakBalance) and an angle for breakAngle s
+Config.FightDepth = {
+	feint = { stam = 1.5, busy = 0.22, bite = 0.4, open = 0.7, hit = 0.12, spamWin = 6, spamFree = 2, spamStam = 1.5, windup = 0.12 },
+	fatigueAt = 0.4, fatigueHit = 0.2, damageAt = 60, damageHit = 0.12, visionHit = 0.1, blindHit = 0.14, blindDodge = 0.6,
+	windAt = 0.2, windAfter = 2.5, windRegen = 2.4, windTime = 6, windGive = 0.12, breatheAfter = 1.5, breatheRegen = 1.3,
+	momHit = 0.04, momDmg = 0.05, momRegen = 0.1, momDecay = 0.03, momScore = 1.2,
+	pressWin = 4, pressPunches = 5, pressRange = 1.0, pressRegen = 0.8, pressHit = 0.03, ropeDist = 2.2, ropeHit = 0.05, ropeRegen = 0.85,
+	clinchDmg = 0.35, clinchMax = 4, clinchGap = 0.45, clinchSmother = 0.7, clinchMinHold = 0.4, breakBusy = 0.3, breakBalance = 12, breakAngle = 0.7,
+}
+
+-- FightAI's fairness and skill: what it can see and how fast it can do something about it (seconds). skill =
+-- 0 (a raw amateur) .. 1 (an elite champion): perception = lerp(perceive) (+ concussion / daze), motor = the
+-- move itself (by Reflexes); a confident read of the next punch (FightRead.Predict) lets it start predictCut of
+-- the perception early, but then it defends against the punch it EXPECTED (a wrong read is a wrong defence).
+-- mistake = the share of its defences that are the wrong one at skill 0 (none at 1); drop = how long a raw
+-- boxer's hands hang after its combinations (skill 0); pace = how far under its pace line its stamina may dip
+-- before it slows down.
+Config.FightAI = {
+	perceive = { 0.24, 0.12 }, motor = { 0.11, 0.05 }, predictCut = 0.6, predictFrom = 0.45,
+	mistake = 0.35, drop = 0.45, dropHit = 0.06, paceSlack = 0.08,
+}
+
 -- Facial damage. The dmg table (fight and persistent) uses these numeric fields, 0..1 unless noted:
 --   leftEye, rightEye (swelling), cut (0..1.2), cutSide (-1|1), cut2, cutSide2, noseBleed, nose (bool: broken),
 --   bruise, lip, cheekL, cheekR, forehead (lump), earL, earR, redness, ribsL, ribsR, age (days since the fight)

@@ -1063,6 +1063,19 @@ do
 	check("drawn face: every control the Creator hides (built-face only) changes nothing on it", #liveHidden == 0, table.concat(liveHidden, ", "))
 	check("drawn face: the built-only controls are hidden", not LookKit.FaceShown("eyeSize") and not LookKit.FaceShown("browStyle")
 		and not LookKit.FaceShown("eyeColor") and LookKit.FaceShown("jawWidth") and LookKit.FaceShown("freckles") and LookKit.FaceShown("shape"))
+	-- the hair-only controls (BodyTiers.HAIR_ONLY: the forehead places the generated hairline): hidden while every boxer is
+	-- bald (Config.BaldMode, when they change nothing visible), shown again with hair on, when they move it
+	do
+		local Config = H.require("Config")
+		local wasBald = Config.BaldMode
+		Config.BaldMode = true
+		check("drawn face, BaldMode: the hair-only forehead control is hidden", not LookKit.FaceShown("forehead") and BodyTiers.HAIR_ONLY.forehead == true)
+		check("drawn face, BaldMode: the forehead changes nothing on it", not changes("forehead", -1, 1))
+		Config.BaldMode = false
+		check("drawn face, hair on: the forehead control is shown", LookKit.FaceShown("forehead"))
+		check("drawn face, hair on: the forehead moves the hair", changes("forehead", -1, 1))
+		Config.BaldMode = wasBald
+	end
 	BodyTiers.SetData(NODRAWN)
 	check("built fallback (no drawn face uploaded): the controls show again", LookKit.FaceShown("eyeSize") and LookKit.FaceShown("browStyle"))
 	BodyTiers.SetData(REAL)

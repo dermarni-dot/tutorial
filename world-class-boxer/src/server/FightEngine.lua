@@ -48,6 +48,8 @@ end
 -- combinations (the chain window, named combos, their rules) and the dodges (evade windows by punch type)
 local Combos = require(Shared:WaitForChild("Combos"))
 local Evasion = require(Shared:WaitForChild("Evasion"))
+-- the AI boxers' ring traits (resistances, scouting) and the player's fighting type
+local Traits = require(Shared:WaitForChild("Traits"))
 local FightAI = require(script.Parent.FightAI)
 local Career = require(script.Parent.Career)
 -- fight spacing (FightMotion.Spacing; the round-1 numbers if that module is missing)
@@ -76,6 +78,7 @@ local STUN_QUIET = 2.5 -- seconds without a landed head shot before it starts to
 local KO = Config.KO
 local CONC = Config.Concussion
 local FACE = Config.FaceDamage
+local DEPTH = Config.FightDepth
 
 -- work = how busy the gym partner is (FightAI multiplies its punch rate; a fight-night opponent is 1)
 -- and range = how close he stays (a share of his normal distance). A sparring partner's job is to give
@@ -229,6 +232,8 @@ local function makeFighter(data, model, player)
 	-- AI boxers carry the raw Training.FightModifiersFromBuild output: fold the neck's chin bonus in
 	-- here (once). The player's Training.FightModifiers already added it through mods.stats.Chin, which
 	-- Career.FighterFromProfile applied to the stats.
+	-- (the level the ring traits scale with: the overall the world and the offer card show, before the chin fold)
+	local overall = Config.Overall(s)
 	if data.isPlayer ~= true and type(mods.chinAdd) == "number" and not data.chinApplied then
 		data.chinApplied = true
 		s.Chin = math.clamp(s.Chin + mods.chinAdd, 10, Config.StatCap)
@@ -273,6 +278,19 @@ local function makeFighter(data, model, player)
 		-- analog stick in Humanoid.MoveDirection (Fight:AssistBonus)
 		assist = math.clamp(math.floor(tonumber(data.assist) or 0), 0, 2), padAt = -10, kbdAt = -10, assistNext = 0,
 		device = "kbd", deviceAt = -10, deviceSwitches = 0, deviceWindow = -100, assistLockUntil = 0, analogAt = -100, moveSeen = false,
+		-- the deeper fight (Config.FightDepth): the feint (when, the bite's opening, the recent ones), the second
+		-- wind (left, running until, time spent gassed), the punches of the last seconds (pressure), being walked
+		-- down / on the ropes, a raw AI's dropped hands, the slip's side, the clinch's inside work, the stats of
+		-- the fighting type (Traits.FightingType)
+		feintAt = -10, feintOpenUntil = 0, feintTimes = {}, feints = 0, feintBites = 0,
+		windLeft = ((s.Stamina >= 75 or (data.mental.Discipline or 50) >= 80) and 2 or 1), windUntil = 0, gassedFor = 0, winds = 0,
+		throwTimes = {}, pressured = false, onRopes = false, guardDropUntil = 0, slipDir = 0,
+		clinchHits = 0, clinchNext = 0, clinchAt = 0,
+		typeStats = { thrown = 0, body = 0, heavy = 0, counters = 0, landed = 0, pressT = 0, liveT = 0 },
+		-- the ring traits (Shared.Traits): every AI boxer's from his seed, style and level (traitsAll); the fight
+		-- switches them on (traits) only for a career bout; traitSeen = the ones revealed / hinted so far
+		traitsAll = (player == nil and data.isPlayer ~= true) and Traits.ForBoxer({ id = data.id, style = data.style, archetype = data.archetype, overall = overall }) or {},
+		traits = {}, traitSeen = {}, traitHints = {},
 	}
 	-- what the fighter walked in with, so the result reports only what happened in THIS fight
 	-- (an old, healing broken nose or half-closed cut must not be "news" that restarts the healing clock)
@@ -360,6 +378,138 @@ end
 -- how much a dazed / concussed fighter's defensive windows shrink (slip, roll, parry, pivot)
 function Fight:DefenseMul(F)
 	return math.max(0.35, (1 - CONC.tierDefense * F.tier) * (1 - CONC.defense * F.conc))
+end
+
+------------------------------------------------------------------------
+-- The deeper fight: ring traits, momentum, ring position, vision (Config.FightDepth, Shared.Traits)
+------------------------------------------------------------------------
+-- the strength of one of F's ring traits tonight (0 = he doesn't have it, or this bout has none)
+function Fight:Trait(F, id)
+	return Traits.Strength(F.traits, id)
+end
+
+-- trait id of D's just made a difference against A: the first time it is revealed (if it was hidden) and A's
+-- corner calls it, after that a hint now and then (at most 4 a fight, 9 s apart); the AI never needs telling
+function Fight:TraitFired(D, id)
+	local A = self:Other(D)
+	local now = self:Now()
+	local h = D.traitHints[id]
+	if not h then
+		h = { n = 0, at = -100 }
+		D.traitHints[id] = h
+	end
+	h.fired = (h.fired or 0) + 1
+	local reveal = not D.traitSeen[id]
+	if not reveal and (h.n >= 4 or now - h.at < 9) then
+		return
+	end
+	D.traitSeen[id] = true
+	h.n += 1
+	h.at = now
+	local T = Traits.Data[id]
+	if A.player then
+		self:SendTo(A, { t = "trait", id = id, name = T.name, hint = T.hint, counter = T.counter, reveal = reveal or nil })
+	end
+end
+
+-- momentum: -1..1, positive = the red corner (P). Mom(F) = from F's side; Swing(F, x) moves it toward F
+function Fight:Mom(F)
+	local m = self.mom or 0
+	return F == self.P and m or -m
+end
+function Fight:Swing(F, x)
+	if self.tutorial then
+		return
+	end
+	local m = (self.mom or 0) + (F == self.P and x or -x)
+	self.mom = math.clamp(m, -1, 1)
+end
+
+-- how far F stands from the ropes (studs; the ring's usable square, ClampToRing) and whether he is on them with
+-- the other man inside him (between him and the ring centre)
+function Fight:RopeDist(F)
+	if not (F.root and self.anchors) then
+		return 99
+	end
+	local off = flat(F.root.Position - self.anchors.RingCenter.Position)
+	local half = self.ringHalf - 1.5
+	return half - math.max(math.abs(off.X), math.abs(off.Z))
+end
+function Fight:OnRopes(F)
+	local O = self:Other(F)
+	if not (F.root and O.root and self.anchors) or self:RopeDist(F) > DEPTH.ropeDist then
+		return false
+	end
+	local c = self.anchors.RingCenter.Position
+	local toC = flat(c - F.root.Position)
+	local toO = flat(O.root.Position - F.root.Position)
+	return toC.Magnitude < 0.5 or (toO.Magnitude > 0.05 and toC.Unit:Dot(toO.Unit) > 0.2)
+end
+-- the share of the ropes' penalty that applies to F (a Ring General slides off them; the body work slows his legs)
+function Fight:RopeMul(F)
+	local s = self:Trait(F, "RingGeneral")
+	if s <= 0 then
+		return 1
+	end
+	return 1 - Traits.Effect("RingGeneral", "corner", s) * math.clamp(F.body / 100 + 0.2, 0.3, 1)
+end
+
+-- how blind F is on one side (side 1 = his right, -1 = his left): the swollen eye, a cut bleeding into it
+function Fight:Blind(F, side)
+	local d = F.dmg
+	local eye = side == 1 and d.rightEye or d.leftEye
+	local cut = 0
+	if d.cut > 0.4 and d.cutSide == side then
+		cut = d.cut * 0.35
+	end
+	if d.cut2 > 0.4 and d.cutSide2 == side then
+		cut = math.max(cut, d.cut2 * 0.35)
+	end
+	return math.clamp(math.max(0, eye - 0.25) / 0.75 + cut, 0, 1)
+end
+
+-- the punches F threw in the last `win` seconds (the ring buffer is trimmed as it is read)
+function Fight:RecentThrows(F, win)
+	local now = self:Now()
+	local t = F.throwTimes
+	local n = 0
+	for i = #t, 1, -1 do
+		if now - t[i] <= win then
+			n += 1
+		elseif now - t[i] > 8 then
+			table.remove(t, i)
+		end
+	end
+	return n
+end
+
+-- F's fighting type tonight (Traits.FightingType over what he has done)
+function Fight:FightingType(F)
+	local st = F.typeStats
+	return Traits.FightingType({
+		style = F.style.id, thrown = st.thrown, minutes = math.max(0.25, st.liveT / 60), body = st.body, heavy = st.heavy,
+		counters = st.counters, landed = st.landed, pressing = st.liveT > 0 and st.pressT / st.liveT or 0,
+	})
+end
+
+-- a defence F just started (a dodge, a slip, a block going up...): if the other man feinted a moment ago, F
+-- bit on it (the feinter's next punch is open); the AI's read learns the player's defences
+function Fight:NoteDefense(F, kind, dir)
+	local O = self:Other(F)
+	local now = self:Now()
+	if now - O.feintAt <= DEPTH.feint.bite and now > O.feintOpenUntil then
+		O.feintOpenUntil = now + DEPTH.feint.open
+		O.feintBites += 1
+		-- (the counter he was saving is gone: he spent it on air)
+		F.counterUntil = math.min(F.counterUntil, now)
+		self:Swing(O, 0.03)
+		if O.player then
+			self:SendTo(O, { t = "intel", hint = "He bit on the feint! Fire now!", tone = "good" })
+		end
+	end
+	if O.ai and O.ai.read and kind ~= "block" then
+		O.ai.read:Dodge(kind, dir)
+	end
 end
 
 ------------------------------------------------------------------------
@@ -722,6 +872,10 @@ end
 -- one is refused and counted against the chain as a mash
 function Fight:Punch(F, ptype, body, counter, fromBuffer)
 	local P = Config.Punches[ptype]
+	if P and F.state == "clinch" and not self.finished and self.live and not self.paused then
+		-- in the clinch a punch is inside work: a short shot to the body (Fight:ClinchWork)
+		return self:ClinchWork(F, ptype)
+	end
 	if not P or not self:CanAct(F) then
 		return
 	end
@@ -758,6 +912,8 @@ function Fight:Punch(F, ptype, body, counter, fromBuffer)
 	local s = F.data.stats
 	local stamPct = F.stamina / F.maxStam
 	local windup = P.windup * punchSpeed(F, stamPct)
+	-- (Granite: almost impossible to drop, but slow)
+	windup *= 1 + Traits.Effect("Granite", "windup", self:Trait(F, "Granite"))
 	-- the chain: inside the window it goes on, else a new one starts (the old one is scored)
 	local chained = Combos.Continues(F.chain, now)
 	if not chained then
@@ -795,8 +951,9 @@ function Fight:Punch(F, ptype, body, counter, fromBuffer)
 	F.tally.thrown += 1
 	F.totals.thrown += 1
 	F.punchesUsed[ptype] = (F.punchesUsed[ptype] or 0) + 1
+	self:NoteThrow(F, ptype, body)
 	if O.ai then
-		O.ai:OnOppPunch(ptype, body, windup)
+		O.ai:OnOppPunch(ptype, body, windup, { hand = hand, chainPos = F.combo })
 	end
 	if self.tutorial and F == self.P then
 		self:TutorialNote({ k = "punch", p = ptype, body = body == true })
@@ -811,6 +968,81 @@ function Fight:Punch(F, ptype, body, counter, fromBuffer)
 			self:Resolve(F, O, ptype, body, stamPct, opts)
 		end
 	end)
+end
+
+-- a punch thrown (plain or a special's): the pressure clock, the fighting type's stats, the AI's read of him
+function Fight:NoteThrow(F, ptype, body)
+	local now = self:Now()
+	table.insert(F.throwTimes, now)
+	if #F.throwTimes > 24 then
+		table.remove(F.throwTimes, 1)
+	end
+	local st = F.typeStats
+	st.thrown += 1
+	if body then
+		st.body += 1
+	end
+	local kind = Config.Punches[ptype] and Config.Punches[ptype].kind
+	if kind ~= "straight" then
+		st.heavy += 1
+	end
+	local O = self:Other(F)
+	if O.ai and O.ai.read then
+		O.ai.read:Punch(ptype, body == true, F.combo, self:Distance(F, O), F.stamina < F.maxStam * 0.3)
+	end
+end
+
+-- The feint (the `feint` input; Config.FightDepth.feint): a fake jab - the shoulder and the lead hand jump, no
+-- punch comes. Cheap, quick, and if the other man reacts to it (a block, a slip, a dodge within `bite` s) he
+-- bit: the next punch is open (Fight:NoteDefense). The AI sees it as it would see a jab (it cannot know); a feint
+-- spammed costs more stamina and the AI's read learns to stop biting. A flick-then-button on a pad may turn the
+-- flick's parry into the feint (Evasion.CANCEL), as the dodges do.
+function Fight:Feint(F)
+	local FT = DEPTH.feint
+	if not self:CanAct(F) or self:Other(F).state == "down" then
+		return false
+	end
+	local now = self:Now()
+	if now < F.busyUntil then
+		if not (F.state ~= "punching" and not F.defCancelled and now - F.defAt < Evasion.CANCEL) then
+			return false
+		end
+		-- (the flick's parry / slip turns into the feint: half its stamina back, its window off)
+		F.stamina += F.defCost * 0.5
+		F.slipUntil, F.rollUntil, F.parryUntil, F.pivotEvadeUntil, F.dodgeUntil = 0, 0, 0, 0, 0
+		F.dodgeKind = nil
+		F.defCancelled = true
+	end
+	local recent = 0
+	for i = #F.feintTimes, 1, -1 do
+		if now - F.feintTimes[i] <= FT.spamWin then
+			recent += 1
+		else
+			table.remove(F.feintTimes, i)
+		end
+	end
+	local cost = FT.stam + math.max(0, recent - FT.spamFree) * FT.spamStam
+	if F.stamina < cost then
+		return false
+	end
+	F.stamina -= cost
+	table.insert(F.feintTimes, now)
+	F.feints += 1
+	F.feintAt = now
+	F.blocking = false
+	F.state = "idle"
+	F.busyUntil = now + FT.busy
+	F.hand = "L"
+	-- (the Animator plays it as a short, light jab: the act's power field keeps it a pump, not a punch)
+	self:SetAct(F, string.format("jab|L|head|%.2f|0.20", FT.windup))
+	local O = self:Other(F)
+	if O.ai then
+		O.ai:OnOppPunch("jab", false, Config.Punches.jab.windup * punchSpeed(F, F.stamina / F.maxStam), { feint = true, hand = "L", chainPos = 1 })
+		if O.ai.read then
+			O.ai.read:Feint()
+		end
+	end
+	return true
 end
 
 -- the end of a fighter's chain: scored into his combo stats, and the HUD's counter told it is over
@@ -981,6 +1213,7 @@ function Fight:Special(F, id)
 				-- listed: Moves.Data hands)
 				F.hand = (M.hands and M.hands[i]) or ((i % 2 == 0) and (M.hand == "L" and "R" or "L") or M.hand)
 				F.punchesUsed[kind] = (F.punchesUsed[kind] or 0) + 1
+				self:NoteThrow(F, kind, bodyOf(i))
 				self:Resolve(F, O, kind, bodyOf(i), stamPct, M)
 				if i == #hits and F.special and F.special.token == token then
 					F.special = nil

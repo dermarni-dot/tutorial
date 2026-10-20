@@ -303,12 +303,25 @@ end)
 screen("gym", function(dev)
 	return client(dev)
 end)
--- the gym with the "Detailed characters are off" notice up (AnatomyStatus: the sim has no Editable APIs; shown at
--- once here instead of after its 6 s, which on a slow run lands on whatever screen is being built then)
+-- the gym with the "Detailed characters are off" notice up (AnatomyStatus; shown at once here instead of after
+-- its 6 s, which on a slow run lands on whatever screen is being built then). The notice is only for a fault (the
+-- engine refusing the Editable APIs, no generators): with every boxer bald (Config.BaldMode) AnatomyClient reports
+-- meshes OFF as a setting and no notice shows, so the fault is forced (AnatomyClient.MeshState stubbed as the
+-- API refusal) to keep checking the notice's layout and its 44 px close button
 screen("anatomy_notice", function(dev)
 	local S = client(dev)
 	local Status = S.require("Client/AnatomyStatus")
+	local AC = S.require("Client/AnatomyClient")
 	Status.NOTICE_DELAY = 0
+	if S.require("Config").BaldMode then
+		S.settle(1.2)
+		local line, up, shown = Status.Last()
+		check("anatomy_notice@" .. dev .. ": BaldMode is a setting, not a fault (no notice)",
+			not up and not shown and tostring(line):find("BaldMode", 1, true) ~= nil, tostring(line))
+	end
+	AC.MeshState = function()
+		return "off", "EditableMesh is not enabled for this experience", "api"
+	end
 	for _ = 1, 8 do
 		S.settle(0.6)
 		if find(S, "AnatomyStatusNotice.Notice.Close") then

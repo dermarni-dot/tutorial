@@ -478,8 +478,24 @@ BodyTiers.BUILT_ONLY = {
 	marks = true,
 	browStyle = true, eyeColor = true, eyeColor2 = true, undertone = true, noseType = true,
 }
+-- the face keys that, on the drawn face, only place the hair (the forehead moves the generated hairline and the
+-- built face's brow): with every boxer bald (Config.BaldMode) they change nothing the player can see, so the look
+-- editors hide them too
+BodyTiers.HAIR_ONLY = { forehead = true }
+local function bald()
+	local here = script and script.Parent
+	local m = here and here:FindFirstChild("Config")
+	local ok, cfg = false, nil
+	if m then
+		ok, cfg = pcall(require, m)
+	end
+	return ok and type(cfg) == "table" and cfg.BaldMode == true
+end
 function BodyTiers.FaceControlShown(key, d)
-	return not (BodyTiers.BUILT_ONLY[key] and BodyTiers.DrawnFaces(d))
+	if not BodyTiers.DrawnFaces(d) then
+		return true
+	end
+	return not (BodyTiers.BUILT_ONLY[key] or (BodyTiers.HAIR_ONLY[key] and bald()))
 end
 
 -- the moods (BodyAssetData.expressions' names, MoodOf, plus FaceFX's "guard" / "train") -> a drawn face; nil = the

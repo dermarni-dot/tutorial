@@ -191,6 +191,10 @@ python3 tools/sim/v9_fight_plot.py OUT.png BEFORE/fightseries_<id>_t3.json AFTER
   wall time until the client-local KOLanded (against FightMotion.KOFallWall). `fight_metrics_t<tier>.json` holds it all,
   `fightseries_<id>_t<tier>.json` the per-frame curves (joint angles, the hands and head in the root's frame, every
   joint's per-frame turn `w<key>`, the feet's slip).
+- Swing styles: `sty_<id>` (boxerpuncher, outboxer, swarmer, slugger, counter, outboxer_heavy) throw the same jab, cross,
+  lead hook, uppercut and overhand one second apart with their own Style, seed (the AnimSeed attribute) and PunchStyle;
+  `python3 tools/sim/v9_style_sheet.py GIFS OUT` cuts the six 3/4 GIFs (`--tag style --views 34 --gif 1`,
+  `V9_WINDOW=0`) into one side-by-side GIF per punch.
 - With meshes, `fight_<id>_t<tier>.json` keeps every `--every`-th frame (both fighters and the referee) and its action
   window (`focus`): v9_render draws filmstrips over the window (side: from A's right; 34: behind A's rear shoulder) and,
   with `--gif 1`, a GIF of the window (`V9_WINDOW=0`: every frame) with world-fixed floor marks.
