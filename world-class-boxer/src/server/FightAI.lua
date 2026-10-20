@@ -83,8 +83,8 @@ local MODES = {
 	finish = { aggr = 0.45, range = 0.7, cut = 0.7 },
 	gamble = { aggr = 0.35, range = 0.75, cut = 0.6 },
 	cruise = { aggr = -0.2, range = 0.98, cut = 0 },
-	reset = { aggr = -0.3, range = 1.15, cut = 0 },
-	survive = { aggr = -0.45, range = 1.9, cut = 0 },
+	reset = { aggr = -0.25, range = 1.3, cut = 0 },
+	survive = { aggr = -0.4, range = 1.6, cut = 0, work = 1.2 },
 }
 FightAI.MODES = MODES
 

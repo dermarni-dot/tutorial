@@ -131,7 +131,8 @@ Config.Styles = {
 	{
 		id = "OutBoxer", name = "Out-Boxer", desc = "Fast movement, strong jab, high stamina",
 		mods = { PunchSpeed = 5, Footwork = 8, Stamina = 6, Endurance = 3, Power = -6 },
-		fight = { jab = 1.3, combo = 1.0, inside = 0.9, power = 0.92, counter = 1.0, move = 1.2 },
+		-- (power 0.92 -> 1.0, jab 1.3 -> 1.4: the balance sims had the out-boxer losing 4 of 5 to every style)
+		fight = { jab = 1.4, combo = 1.0, inside = 0.9, power = 1.0, counter = 1.0, move = 1.2 },
 		ai = { range = 0.94, aggression = 0.35, jabRate = 0.55 },
 	},
 	{
