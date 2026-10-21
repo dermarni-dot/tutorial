@@ -223,6 +223,19 @@ Each screen x device runs in its own lune process (four at a time). The previews
 box (buttons blue, flagged ones red, the top bar hatched, the safe insets orange), not a render: the preview's
 font is scaled to the width guisim measured, so text that looks cut there is cut by the layout.
 
+### How much UI a screen builds: tools/ui/ui_profile.luau
+
+```sh
+lune run tools/ui/ui_profile.luau [--device desktop] [--tabs Career,Training] [--json OUT]
+```
+
+Opens the Career Hub on guisim and prints, per tab, the GUI objects it builds, the UI.Icon frames, text labels and
+images, the change in live signal connections (fakeengine's `FE.Connections`: instance-owned signals drop their
+connections on Destroy as the engine does, so what remains is a real leak) and the build time; then how many
+rebuilds a burst of six profile pushes in one frame causes, and what three open / close cycles leave behind.
+Numbers, not pass / fail (the Training tab's exercise cards build their body-map thumbnails only as they scroll
+into the view: 4702 -> ~2100 objects on a desktop).
+
 ### Mock screenshots: tools/ui/render_mock.py
 
 `GS.WriteBoxes` also writes each object's look (`style`: paint order key, colours, corner radius, stroke, gradient,
@@ -305,6 +318,10 @@ lune run tools/sim/test_worlddetail.luau [--keep]      # ~1 min: builds the worl
   colour, material, transparency, SpecialMesh, tags, collision flags), lights, SurfaceGuis laid out to face
   fractions, decals / textures and beams; `counts` (instances, parts, lights, guis, decals, beams, particles) and
   `cells` (parts per detail cell tier). `--src` builds another commit's `src` (a `git archive` of it): the "before".
+- The signage (Shared.Signage: every place's lockup - the icon tile, the wordmark, the sub line - on the shop
+  fronts, the gym's entrance sign and lobby banner, the venue banners, and the same lockup as a badge in the menus)
+  has its own views: `city_signs_day` / `city_signs_night` / `city_signs_east` (the shop fronts, close),
+  `gym_banner` / `gym_motto` (the lobby's +Z wall and the north wall, from inside).
 - `world_render.py` renders the views in its `VIEWS` table with Cycles: parts merged by material class with their
   colours, SurfaceGuis rasterised with PIL (frames, gradients, text, the uploaded images by id), decals / textures
   from the upload caches (`tools/world/uploaded.json`, `tools/ui/uploaded.json`), Point / Spot / Surface lights, Neon
@@ -356,6 +373,18 @@ round, a draw through on punches landed, a loss / a withdrawal / a concussion en
 points and the belt (worn in ring walks), AI editions (`Tourney.Tick`: holders, `b.tbelts`, the log), saves (an old
 save without `profile.tourney`, the JSON round trip, corrupt pieces), the cutscene spec and every `BeltModel` design.
 `test_ui_layout` lays out `hub_tournaments`, `hub_bracket`, `hub_bracket_card`, `hub_tourney_belts` and `ceremony`.
+
+## Places and their lockups: Shared.Signage
+
+`src/shared/Signage.lua` lists every place (the gym, Main Street's shops by their CityMap sign text, the fight venues
+by kind, the places you travel to) with its wordmark, sub line, icon (the `places` cells of the icon sheets:
+burger, cup, washer, needle, bread, ticket, pizza, building, columns, bed, pump, arena, stadium, mountain) and colours.
+`Signage.Board(part, face, loc, opts)` puts the lockup on a part's face (the pixel density follows the face's height:
+the engine draws text at 100 px at most, so a tall board at 40 px per stud kept its name small), `Signage.Badge` /
+`UI.LocationBadge` is the same lockup in the menus (the Life tab's shop guide and trips, the fight offers' venue, the
+tournament cards, the city counters' header, the result window, the debut offer). `test_ui_layout` lays out
+`hub_life`, `city_store` and `fight_busy` (the fight HUD with the step card, the combo counter, the momentum strip
+and the live score up at once); the FightIntel pieces are in the HUD's keep-apart list.
 
 ```sh
 lune run tools/sim/v9_ceremony.luau [--out DIR] [--times 1.3,2.9,4.3,5.0,6.6,9.4]

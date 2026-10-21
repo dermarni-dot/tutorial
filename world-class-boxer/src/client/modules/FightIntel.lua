@@ -22,8 +22,10 @@ local FightIntel = {}
 
 local HINT_W, HINT_H = 300, 46
 local MOM_W, MOM_H = 220, 5
+local COMBO_W = 176 -- the combo counter's width (ComboHud): on a phone the hint takes its slot
 local root, hint, hintKicker, hintText, momBar, momFill, score, scoreTop, scoreCards
 local token = 0
+local hintInComboSlot = false -- a phone: the hint sits where the combo counter is and gives way to it
 local revealed = {} -- trait id -> its name, for the tale of the tape / the corner (this fight)
 
 local function liveScoreOn()
@@ -53,13 +55,14 @@ function FightIntel.Mount(hud)
 	hintText = UI.Text(hint, "", { Name = "Text", Face = "displayMed", TextSize = 14, TextColor3 = T.text, Position = UDim2.fromOffset(10, 19),
 		Size = UDim2.new(1, -20, 0, 22), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 13 })
 	-- the momentum strip: a track, the fill grows from the centre (the viewer's way gold, the other way red)
+	-- (shown from the first reading of a fight; hidden again by Reset)
 	momBar = UI.Frame(root, { Name = "Momentum", AnchorPoint = Vector2.new(0.5, 0), Size = UDim2.fromOffset(MOM_W, MOM_H), Position = UDim2.new(0.5, 0, 0, 120),
-		BackgroundColor3 = T.ink, BackgroundTransparency = 0.45, ZIndex = 12 })
+		BackgroundColor3 = T.ink, BackgroundTransparency = 0.45, ZIndex = 12, Visible = false })
 	UI.Corner(momBar, 3)
 	momFill = UI.Frame(momBar, { Name = "Fill", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 0, 1, 0),
 		BackgroundColor3 = T.gold, ZIndex = 13 })
 	UI.Corner(momFill, 3)
-	UI.Frame(momBar, { Name = "Mid", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 2, 1, 4), BackgroundColor3 = T.sub,
+	UI.Frame(momBar, { Name = "Mid", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 2, 1, 0), BackgroundColor3 = T.sub,
 		BackgroundTransparency = 0.3, ZIndex = 14 })
 	-- the live score chip
 	score = UI.Frame(root, { Name = "LiveScore", AnchorPoint = Vector2.new(1, 0), Size = UDim2.fromOffset(210, 40), Position = UDim2.new(1, -20, 0, 130), Visible = false, ZIndex = 12 })
@@ -78,20 +81,55 @@ function FightIntel.Layout(hudTop, compact, touch, padH)
 		return
 	end
 	local comboTop = touch and (hudTop + 8 + (tonumber(padH) or 44) + (compact and 6 or 10)) or (hudTop + (compact and 8 or 12))
-	hint.Position = UDim2.fromOffset(touch and 132 or 20, comboTop + 60 + 8)
-	hint.Size = UDim2.fromOffset(compact and 260 or HINT_W, HINT_H)
+	hintInComboSlot = compact == true
+	if hintInComboSlot then
+		-- a phone has no room under the counter (the key strip, the touch pads): the hint takes the counter's
+		-- slot while the counter is down
+		hint.Position = UDim2.fromOffset(touch and 132 or 20, comboTop)
+		hint.Size = UDim2.fromOffset(COMBO_W, HINT_H)
+	else
+		hint.Position = UDim2.fromOffset(touch and 132 or 20, comboTop + 60 + 8)
+		hint.Size = UDim2.fromOffset(HINT_W, HINT_H)
+	end
+	-- (the strip and its centre tick stay inside the gap under the scoreboard, above where the tutorial's step
+	-- card and the hit markers start: hudTop + 2 .. + 7)
 	momBar.Position = UDim2.new(0.5, 0, 0, hudTop + 2)
 	momBar.Size = UDim2.fromOffset(compact and 160 or MOM_W, MOM_H)
 	score.Position = UDim2.new(1, -20, 0, hudTop + (compact and 8 or 12))
 	score.Size = UDim2.fromOffset(compact and 180 or 210, 40)
 end
 
+-- the combo counter's card (ComboHud, mounted in the same HUD root)
+local function comboCard()
+	local meter = root and root.Parent and root.Parent:FindFirstChild("ComboMeter")
+	return meter and meter:FindFirstChild("Card") or nil
+end
+
 local function showHint(kicker, text, color, sec)
 	if not hint or stepCardUp() then
 		return
 	end
+	local combo = hintInComboSlot and comboCard() or nil
+	if combo and combo.Visible then
+		return -- the counter is up in the slot: it wins
+	end
 	token += 1
 	local my = token
+	if combo then
+		-- the counter coming up takes the slot back
+		local conn
+		conn = combo:GetPropertyChangedSignal("Visible"):Connect(function()
+			if combo.Visible then
+				conn:Disconnect()
+				if token == my and hint then
+					hint.Visible = false
+				end
+			end
+		end)
+		task.delay(sec or 4, function()
+			conn:Disconnect()
+		end)
+	end
 	hintKicker.Text = kicker
 	hintKicker.TextColor3 = color
 	hintText.Text = text
@@ -125,6 +163,7 @@ function FightIntel.On(msg)
 		showHint(good and "CORNER" or "WATCH OUT", tostring(msg.hint or ""), good and T.green or T.orange, 2.5)
 	elseif msg.t == "mom" then
 		local m = math.clamp(tonumber(msg.m) or 0, -1, 1)
+		momBar.Visible = true
 		local w = (momBar.AbsoluteSize.X > 0 and momBar.AbsoluteSize.X or MOM_W) / 2
 		momFill.BackgroundColor3 = m >= 0 and T.gold or T.red
 		momFill.AnchorPoint = Vector2.new(m >= 0 and 0 or 1, 0.5)
@@ -181,6 +220,7 @@ function FightIntel.Reset(all)
 		table.clear(revealed)
 		if momFill then
 			momFill.Size = UDim2.new(0, 0, 1, 0)
+			momBar.Visible = false
 		end
 		if score then
 			score.Visible = false

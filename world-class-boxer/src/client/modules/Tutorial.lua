@@ -144,9 +144,9 @@ local function estimate(step, w, tight)
 end
 
 -- the fight HUD's pieces the card keeps clear of, as design-px rects in this root's space
--- (a dotted name is a piece inside another: FightIntel's momentum strip and live-score chip; its hint chip is
--- left out - it comes and goes within seconds and the card would chase it)
-local OBSTACLES = { "Scoreboard", "TouchPad", "DefencePad", "MovesPad", "SprintPad", "StanceChips", "Controls", "Ticker", "ComboMeter", "FightIntel.Momentum", "FightIntel.LiveScore" }
+-- (a dotted name is a piece inside another: FightIntel's live-score chip. Its momentum strip sits in the gap
+-- right under the scoreboard, above where the card starts; its hint chip waits while the card is up)
+local OBSTACLES = { "Scoreboard", "TouchPad", "DefencePad", "MovesPad", "SprintPad", "StanceChips", "Controls", "Ticker", "ComboMeter", "FightIntel.LiveScore" }
 local function rectOf(obj, s, origin)
 	local p, z = obj.AbsolutePosition, obj.AbsoluteSize
 	return { x0 = (p.X - origin.X) / s, y0 = (p.Y - origin.Y) / s, x1 = (p.X + z.X - origin.X) / s, y1 = (p.Y + z.Y - origin.Y) / s }
@@ -191,16 +191,9 @@ local function obstacles()
 			end
 			if r and r.x1 - r.x0 > 1 and r.y1 - r.y0 > 1 then
 				r.name = name
-				if name == "FightIntel.Momentum" then
-					-- the thin strip under the scoreboard: the band the card starts under reaches past it
-					if board then
-						board.y1 = math.max(board.y1, r.y1 - 5)
-					end
-				else
-					table.insert(out, r)
-					if name == "Scoreboard" then
-						board = r
-					end
+				table.insert(out, r)
+				if name == "Scoreboard" then
+					board = r
 				end
 			end
 		end

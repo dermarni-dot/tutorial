@@ -345,12 +345,25 @@ local function fireCombo(S)
 	fire:Fire({ t = "combo", who = "opp", hits = 2, n = 2, name = "LEFT-RIGHT HOOKS", id = "hookhook" })
 	S.settle(0.3)
 end
+-- (with the corner's trait call, the momentum strip and the live score up beside it)
 screen("fight_combo", function(dev)
 	local S = client(dev, { fightOnly = true })
+	S.host.Service("Players").LocalPlayer:SetAttribute("LiveScore", true)
 	startFight(S, S.require("Moves").List)
 	fireCombo(S)
+	local fire = S.remotes.FightEvent
+	fire:Fire({ t = "trait", id = "ironchin", name = "Iron Chin", hint = "He's walking through your hooks! Go to the body!", reveal = true })
+	fire:Fire({ t = "mom", m = -0.4, d = -1, cards = { { 9, 10 }, { 10, 9 }, { 9, 10 } }, round = 3 })
+	S.settle(0.3)
 	local meter = find(S, "FightUI.HUDRoot.ComboMeter.Card")
 	check("fight_combo@" .. dev .. ": the combo counter is up", meter ~= nil and meter.Visible == true)
+	-- (a phone's hint takes the counter's slot and gives way to it while the counter is up)
+	local hint = find(S, "FightUI.HUDRoot.FightIntel.Hint")
+	local phone = dev:find("^phone") ~= nil
+	check("fight_combo@" .. dev .. ": the trait call is up" .. (phone and " (or the counter holds its slot)" or ""),
+		hint ~= nil and (hint.Visible == true or (phone and meter ~= nil and meter.Visible == true)))
+	local ls = find(S, "FightUI.HUDRoot.FightIntel.LiveScore")
+	check("fight_combo@" .. dev .. ": the live score is up", ls ~= nil and ls.Visible == true)
 	local callout = find(S, "FightUI.HUDRoot.ComboMeter.Card.Callout")
 	check("fight_combo@" .. dev .. ": the call-out", callout ~= nil and (callout.Text == "OPP  LEFT-RIGHT HOOKS" or callout.Text == "1-2-3-2!"), callout and callout.Text)
 	return S
@@ -397,8 +410,11 @@ screen("fight_busy", function(dev)
 	fire:Fire({ t = "trait", id = "ironchin", name = "Iron Chin", hint = "He's walking through your hooks! Go to the body!", reveal = true })
 	fire:Fire({ t = "mom", m = 0.6, d = 2, cards = { { 10, 9 }, { 10, 9 }, { 9, 10 } }, round = 2 })
 	S.settle(0.6)
-	check("fight_busy@" .. dev .. ": the trait call is up", named(S, "Hint") ~= nil)
-	check("fight_busy@" .. dev .. ": the live score is up", named(S, "LiveScore") ~= nil)
+	-- (the corner's call waits while the step card is up: the card does not chase a chip that comes and goes)
+	local hint = find(S, "FightUI.HUDRoot.FightIntel.Hint")
+	check("fight_busy@" .. dev .. ": the trait call waits for the step card", hint ~= nil and hint.Visible == false)
+	local ls = find(S, "FightUI.HUDRoot.FightIntel.LiveScore")
+	check("fight_busy@" .. dev .. ": the live score is up", ls ~= nil and ls.Visible == true)
 	return S
 end)
 -- the debut's offer, right after the creator (ClientMain puts it up from the summary)
@@ -501,15 +517,12 @@ screen("hub_life", function(dev)
 	return S
 end)
 -- a Main Street counter (Champ's Diner, CityStores): the shop's lockup heads the window
-screen("store", function(dev)
+screen("city_store", function(dev)
 	local S = client(dev)
-	S.require("Client/CityStores")
-	local State = S.require("Client/State")
-	assert(State.open.Store("Diner", "CHAMP'S DINER"), "the store did not open")
+	local CityStores = S.require("Client/CityStores")
+	assert(CityStores.Open("Diner", "CHAMP'S DINER"), "the store did not open")
 	S.settle(0.6)
-	check("store@" .. dev .. ": the shop's badge heads the window", named(S, "Badge_diner") ~= nil)
-	local selDbg = rawget(S.host.Service("GuiService"), "SelectedObject")
-	check("DBG store selected: " .. tostring(selDbg and S.pathOf(selDbg) or "nil"), false)
+	check("city_store@" .. dev .. ": the shop's badge heads the window", named(S, "Badge_diner") ~= nil)
 	return S
 end)
 -- the Tournaments tab: the calendar (an open entry, the rules, prizes, holders), the belts won with WEAR IN RING
@@ -736,7 +749,8 @@ screen("creator_skin", function(dev)
 	check("creator_skin@" .. dev .. ": no eye / brow / undertone control", hidden)
 	return S
 end)
-for _, svc in ipairs({ "Barber", "Locker", "Nutrition", "Sleep", "Store" }) do
+-- (the city's counters: city_store above)
+for _, svc in ipairs({ "Barber", "Locker", "Nutrition", "Sleep" }) do
 	screen(string.lower(svc), function(dev)
 		local S = client(dev)
 		S.require("Client/State").open[svc]()
@@ -894,7 +908,7 @@ screen("drill_report", function(dev)
 end)
 
 local DEVICES = { "phone", "phone_small", "tablet", "desktop", "console" }
-local PAD_SELECT = { entrance = true, hub = true, hub_life = true, store = true, hub_training = true, hub_plan = true, hub_tournaments = true, hub_bracket = true, controls = true, result = true, menu_career = true, tutorial_offer = true, tutorial_done = true, debut_offer = true }
+local PAD_SELECT = { entrance = true, hub = true, hub_life = true, city_store = true, hub_training = true, hub_plan = true, hub_tournaments = true, hub_bracket = true, controls = true, result = true, menu_career = true, tutorial_offer = true, tutorial_done = true, debut_offer = true }
 -- (the tutorial's step card is checked with the fight HUD's pieces: on the screen, below the top bar, finger-sized
 -- on touch, apart from the scoreboard, the touch pads, the key strip and the stance chips)
 -- the fight HUD also on a phone with a controller and a short laptop window (the key strip on small canvases)

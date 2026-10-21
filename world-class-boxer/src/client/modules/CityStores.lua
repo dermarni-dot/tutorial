@@ -71,7 +71,15 @@ end
 
 local function renderMenu(body, menu)
 	local P = State.P
+	-- (the shop's header lockup stays through the re-renders every purchase brings)
+	local head = body:FindFirstChild("ShopHeader")
+	if head then
+		head.Parent = nil
+	end
 	UI.Clear(body)
+	if head then
+		head.Parent = body
+	end
 	local head = UI.Card(body)
 	UI.Line(head, menu.blurb, { TextSize = 13, TextColor3 = T.sub })
 	UI.Line(head, string.format("Money %s   -   Nutrition %d   Hydration %d   Energy %d", money(P.money), P.condition.nutrition, P.condition.hydration, P.condition.energy), { TextSize = 13, Font = T.semi })
@@ -105,8 +113,9 @@ local function openWindow(title, w, h)
 	shade = s
 	State.windows.Store = close
 	if loc then
-		local head = UI.Frame(body, { Name = "ShopHeader", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 48), LayoutOrder = -10 })
-		Signage.Badge(head, loc, 44, { Position = UDim2.fromOffset(0, 2) })
+		local bh = UI.LocationBadgeHeight(body, 44)
+		local head = UI.Frame(body, { Name = "ShopHeader", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, bh + 4), LayoutOrder = -10 })
+		UI.LocationBadge(head, loc, 44, { Position = UDim2.fromOffset(0, 2) })
 	end
 	return body
 end
@@ -281,5 +290,6 @@ function CityStores.Open(kind, store)
 	return true
 end
 
+-- (CityVisuals dispatches the shop prompts to CityStores.Open; the slot stays for older callers)
 State.open.Store = CityStores.Open
 return CityStores

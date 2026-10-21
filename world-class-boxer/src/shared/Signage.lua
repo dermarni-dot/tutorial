@@ -178,7 +178,7 @@ end
 local function naturalUnits(loc, opts)
 	local words = opts.text or loc.short
 	local sub = opts.sub ~= false and (opts.subText or loc.sub) or nil
-	local wordH = sub and 0.52 or 0.62
+	local wordH = sub and 0.56 or 0.66
 	local subH = 0.2
 	local w = #words * wordH * 0.74
 	if sub then
@@ -223,15 +223,15 @@ function Signage.Lockup(parent, loc, opts)
 		Position = UDim2.fromScale(opts.centre == false and 0 or 0.5, 0), AnchorPoint = Vector2.new(opts.centre == false and 0 or 0.5, 0), ZIndex = z }, holder)
 	local ga = aspect * groupW -- the group's own aspect
 	local hasSub = subLine ~= nil
-	tile(group, loc, UDim2.fromScale(0.72 / ga, 0.72), UDim2.fromScale(0.14 / ga, 0.14), nil, z)
+	tile(group, loc, UDim2.fromScale(0.76 / ga, 0.76), UDim2.fromScale(0.12 / ga, 0.12), nil, z)
 	local x0 = 1.06 / ga
-	local tw = 1 - x0 - 0.16 / ga
-	text(group, opts.text or loc.short, { Name = "Wordmark", Size = UDim2.fromScale(tw, hasSub and 0.5 or 0.6), Position = UDim2.fromScale(x0, hasSub and 0.1 or 0.2), TextColor3 = fg,
+	local tw = 1 - x0 - 0.14 / ga
+	text(group, opts.text or loc.short, { Name = "Wordmark", Size = UDim2.fromScale(tw, hasSub and 0.56 or 0.66), Position = UDim2.fromScale(x0, hasSub and 0.06 or 0.17), TextColor3 = fg,
 		TextXAlignment = Enum.TextXAlignment.Left, ZIndex = z + 1 })
 	if hasSub then
 		-- a hairline in the accent, then the sub line
-		new("Frame", { Name = "Rule", BackgroundColor3 = loc.accent or fg, BackgroundTransparency = 0.35, BorderSizePixel = 0, Size = UDim2.fromScale(tw, 0.035), Position = UDim2.fromScale(x0, 0.63), ZIndex = z + 1 }, group)
-		text(group, subLine, { Name = "Sub", Size = UDim2.fromScale(tw, 0.2), Position = UDim2.fromScale(x0, 0.69), TextColor3 = fg, TextTransparency = 0.15, Font = Enum.Font.GothamBold,
+		new("Frame", { Name = "Rule", BackgroundColor3 = loc.accent or fg, BackgroundTransparency = 0.35, BorderSizePixel = 0, Size = UDim2.fromScale(tw, 0.035), Position = UDim2.fromScale(x0, 0.655), ZIndex = z + 1 }, group)
+		text(group, subLine, { Name = "Sub", Size = UDim2.fromScale(tw, 0.2), Position = UDim2.fromScale(x0, 0.72), TextColor3 = fg, TextTransparency = 0.15, Font = Enum.Font.GothamBold,
 			TextXAlignment = Enum.TextXAlignment.Left, ZIndex = z + 1 })
 	end
 	return holder
@@ -310,7 +310,7 @@ function Signage.BadgeMetrics(h, minText, text, sub)
 	if m.sub then
 		wordW = math.max(wordW, #tostring(sub) * m.sub * 0.62)
 	end
-	m.width = pad + ts + m.gap + math.ceil(wordW) + pad + 2
+	m.width = pad + ts + m.gap + math.ceil(wordW) + pad * 2 + 2
 	return m
 end
 
@@ -366,7 +366,7 @@ function Signage.Badge(parent, loc, h, opts)
 	if not opts.w then
 		-- the hug: the wordmark's right edge plus the padding (AutomaticSize X on the badge ends at the
 		-- widest child; the padding is a spacer so the words never touch the edge)
-		new("UIPadding", { PaddingRight = UDim.new(0, pad + 2) }, f)
+		new("UIPadding", { PaddingRight = UDim.new(0, pad * 2 + 2) }, f)
 	end
 	f.Parent = parent
 	return f, wm, m
