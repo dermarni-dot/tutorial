@@ -1,7 +1,8 @@
 """Approximate screenshots of the game's 2D UI from guisim's layout dumps (tools/sim/test_ui_layout.luau --previews,
 or any GS.WriteBoxes JSON): every object drawn with its real colour, transparency, corner radius, stroke, gradient,
-text (Inter standing in for Gotham, Inter Display squeezed to Oswald's width) and image (the icon sheets / logo
-from tools/ui/out, looked up by their asset ids). The 3D world behind the UI is a dark arena gradient.
+text (the real faces of Shared.Typography from tools/ui/fonts: Bangers, Oswald, Montserrat; Inter standing in for
+the legacy Gotham enums) and image (the icon sheets / logo from tools/ui/out, looked up by their asset ids). The
+3D world behind the UI is a dark arena gradient.
 
     python3 tools/ui/render_mock.py tools/sim/out/ui/menu_desktop.json [...] --out previews/final/v9/ui2
     python3 tools/ui/render_mock.py --all tools/sim/out/ui --only menu,hub,creator --out DIR
@@ -22,19 +23,54 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 OUT = os.path.join(HERE, "out")
 FONTS = "/usr/share/fonts/opentype/inter"
+GAME_FONTS = os.path.join(HERE, "fonts")  # the real TTFs (OFL): Bangers, Montserrat[wght], Oswald[wght]
 SS = 2  # supersampling of each object's tile (smooth corners and text)
+
+# face key (guisim's style.face) -> (file, named instance of a variable font or None, cap height in em)
+FACES = {
+    "bangers": (os.path.join(GAME_FONTS, "Bangers-Regular.ttf"), None, 0.721),
+    "oswald": (os.path.join(GAME_FONTS, "Oswald[wght].ttf"), "Bold", 0.810),
+    "mont": (os.path.join(GAME_FONTS, "Montserrat[wght].ttf"), "Medium", 0.700),
+    "gotham": (os.path.join(FONTS, "Inter-Medium.otf"), None, 0.728),
+    "gothamHeavy": (os.path.join(FONTS, "Inter-Bold.otf"), None, 0.728),
+    "mono": ("/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf", None, 0.729),
+}
+WEIGHTS = ("Thin", "ExtraLight", "Light", "Regular", "Medium", "SemiBold", "Bold", "ExtraBold", "Black")
 
 _font_cache = {}
 
 
-def font(kind, px):
+def font(kind, px, var=None):
+    """kind: a FACES key; var: a weight name for a variable font (else the face's default)"""
     px = max(6, int(round(px)))
-    key = (kind, px)
+    path, dvar, _cap = FACES.get(kind) or FACES["gotham"]
+    var = var if (var in WEIGHTS and dvar) else dvar
+    key = (path, var, px)
     if key not in _font_cache:
-        f = {"display": "InterDisplay-Black.otf", "displayMed": "InterDisplay-Bold.otf", "heavy": "Inter-Bold.otf",
-             "body": "Inter-Medium.otf"}[kind]
-        _font_cache[key] = ImageFont.truetype(os.path.join(FONTS, f), px)
+        f = ImageFont.truetype(path, px)
+        if var:
+            try:
+                f.set_variation_by_name(var)
+            except Exception:
+                pass
+        _font_cache[key] = f
     return _font_cache[key]
+
+
+def face_of(st):
+    """(FACES key, weight) of a text item's style: guisim's face / wt, else the older cond / heavy flags"""
+    face = st.get("face")
+    wt = st.get("wt")
+    heavy = st.get("heavy")
+    if not face:
+        face = "oswald" if st.get("cond") else "gotham"
+    if face == "gotham":
+        return ("gothamHeavy" if heavy else "gotham"), None
+    if face == "oswald" and not wt:
+        wt = "Bold" if heavy else "SemiBold"
+    if face == "mont" and not wt:
+        wt = "Bold" if heavy else "Medium"
+    return face, wt
 
 
 # asset id -> image file (the icon sheets and logo, from publish_icons.py's cache)
@@ -126,22 +162,26 @@ def draw_text(tile, it, st, W, H):
     if not text.strip():
         return
     size = (it.get("textSize") or 14) * SS
-    cond = st.get("cond")
-    kind = ("display" if (st.get("heavy") and size >= 22 * SS) else "displayMed") if cond else ("heavy" if st.get("heavy") else "body")
-    sx = 0.78 if cond else 1.0
+    kind, wt = face_of(st)
+    sx = 1.0
     tmp = Image.new("RGBA", (1, 1))
     d0 = ImageDraw.Draw(tmp)
     if st.get("scaled"):
-        size = min(H * 0.86, size if size > 0 else H)
+        # TextScaled: the engine fits the em box to the label's height, then narrows to its width
+        size = min(H * 0.96, size if size > 0 else H)
         while size > 8:
-            fnt = font(kind, size)
+            fnt = font(kind, size, wt)
             if d0.textlength(text, font=fnt) * sx <= W * 0.98:
                 break
             size -= 1
-    fnt = font(kind, size)
+    fnt = font(kind, size, wt)
     lines = wrap(d0, text, fnt, W, sx) if it.get("wrapped") else text.split("\n")
     asc, desc = fnt.getmetrics()
-    lh = (asc + desc) * (1.0 if cond else 1.05)
+    # the engine's line is one em (TextSize) tall whatever the family's own ascent; the capitals sit in the
+    # middle of it, so the glyphs are drawn where their cap band centres on the line
+    cap = FACES.get(kind, FACES["gotham"])[2] * size
+    lh = size
+    cap_shift = (lh - cap) / 2 - (asc - cap)
     total = lh * len(lines)
     ya = st.get("ya") or "Center"
     y0 = 0 if ya == "Top" else (H - total if ya == "Bottom" else (H - total) / 2)
@@ -150,7 +190,8 @@ def draw_text(tile, it, st, W, H):
     align = it.get("align") or "Left"
     for i, ln in enumerate(lines):
         tw = d0.textlength(ln, font=fnt)
-        lw, lh_i = max(1, int(tw + 4)), max(1, int(lh + 4))
+        pad_y = int(max(0, asc + desc - lh)) + 4
+        lw, lh_i = max(1, int(tw + 4)), max(1, int(asc + desc + pad_y))
         li = Image.new("RGBA", (lw, lh_i), (0, 0, 0, 0))
         dl = ImageDraw.Draw(li)
         sT = st.get("strokeT")
@@ -162,7 +203,7 @@ def draw_text(tile, it, st, W, H):
             li = li.resize((max(1, int(lw * sx)), lh_i), Image.LANCZOS)
         ww = li.size[0] - 4
         x = 0 if align == "Left" else (W - ww if align == "Right" else (W - ww) / 2)
-        tile.alpha_composite(li, (int(x) - 2, int(y0 + i * lh) - 2 + int(lh * 0.04)))
+        tile.alpha_composite(li, (int(x) - 2, int(y0 + i * lh + cap_shift) - 2))
 
 
 def draw_image(tile, st, W, H):
@@ -309,7 +350,7 @@ def render(doc, out_path, label=True):
         x0 = sl + 12 + i * 52
         d.rounded_rectangle((x0, 10, x0 + 44, 54), radius=22, fill=(18, 18, 22, 170))
     if label:
-        d.text((w - 8, h - 6), doc.get("title") or "", font=font("heavy", 12), fill=(255, 255, 255, 120), anchor="rd")
+        d.text((w - 8, h - 6), doc.get("title") or "", font=font("gothamHeavy", 12), fill=(255, 255, 255, 120), anchor="rd")
     canvas.convert("RGB").save(out_path, quality=92)
 
 

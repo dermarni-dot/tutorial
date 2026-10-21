@@ -9,6 +9,7 @@
 --     distance (see Streamer below), built lazily the first time they are wanted and kept for re-use
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Typography = require(Shared:WaitForChild("Typography"))
 
 local function optionalShared(name)
 	local m = Shared:FindFirstChild(name)
@@ -196,12 +197,16 @@ function K.Text(parent, text, props)
 	t.BackgroundTransparency = 1
 	t.BorderSizePixel = 0
 	t.Size = UDim2.fromScale(1, 1)
-	t.Font = Enum.Font.GothamBlack
+	Typography.Apply(t, "sign")
 	t.TextScaled = true
 	t.TextColor3 = C.white
 	t.Text = text
 	for k, v in pairs(props or {}) do
-		t[k] = v
+		if k == "Face" then
+			Typography.Apply(t, v)
+		else
+			t[k] = v
+		end
 	end
 	t.Parent = parent
 	return t
@@ -213,7 +218,7 @@ function K.Sign(p, face, text, fg, bg, pps, font, light)
 	if bg then
 		K.Frame(sg, { BackgroundColor3 = bg })
 	end
-	K.Text(sg, text, { TextColor3 = fg or C.white, Font = font or Enum.Font.GothamBlack, Size = UDim2.fromScale(0.9, 0.8), Position = UDim2.fromScale(0.05, 0.1) })
+	K.Text(sg, text, { TextColor3 = fg or C.white, Face = font or "sign", Size = UDim2.fromScale(0.9, 0.8), Position = UDim2.fromScale(0.05, 0.1) })
 	return sg
 end
 
@@ -298,7 +303,7 @@ function K.Poster(parent, key, w, h, cf, fallback, frameColor)
 	local p = Part(parent, "DetailPoster", V3(w, h, 0.06), cf, C.paper, Enum.Material.SmoothPlastic, { shadow = false })
 	if not K.Decal(p, Enum.NormalId.Front, key) then
 		local fb = fallback or {}
-		K.Sign(p, Enum.NormalId.Front, fb.text or "WCB", fb.fg or C.gold, fb.bg or C.ink, 24, Enum.Font.GothamBlack)
+		K.Sign(p, Enum.NormalId.Front, fb.text or "WCB", fb.fg or C.gold, fb.bg or C.ink, 24, "sign")
 	end
 	if frameColor then
 		Part(parent, "PosterFrame", V3(w + 0.3, h + 0.3, 0.05), cf * CF(0, 0, 0.05), frameColor, Enum.Material.Metal, { shadow = false })

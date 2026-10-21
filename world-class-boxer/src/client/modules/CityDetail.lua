@@ -102,7 +102,7 @@ local NEWSBOX = K.Template("NewsBox", function(t)
 	local sg = K.Gui(w, FACE.Front, 60, 1)
 	K.Frame(sg, { BackgroundColor3 = C.paper })
 	K.Text(sg, "WCB DAILY", { TextColor3 = C.ink, Size = UDim2.fromScale(0.9, 0.3), Position = UDim2.fromScale(0.05, 0.05) })
-	K.Text(sg, "TITLE FIGHT\nSATURDAY", { TextColor3 = C.redDeep, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.5), Position = UDim2.fromScale(0.05, 0.42) })
+	K.Text(sg, "TITLE FIGHT\nSATURDAY", { TextColor3 = C.redDeep, Face = "signSub", Size = UDim2.fromScale(0.9, 0.5), Position = UDim2.fromScale(0.05, 0.42) })
 	Part(t, "NewsHandle", V3(0.6, 0.12, 0.1), CF(0, 1.35, -0.74), C.chrome, M.Metal)
 end)
 
@@ -172,7 +172,7 @@ local function aFrame(m, cf, text)
 	local front = Part(m, "BoardFront", V3(1.6, 2.4, 0.1), cf * CF(0, 1.2, -0.3) * A(RAD(10), 0, 0), C.ink2, M.Wood)
 	Part(m, "BoardBack", V3(1.6, 2.4, 0.1), cf * CF(0, 1.2, 0.3) * A(RAD(-10), 0, 0), C.ink2, M.Wood)
 	local sg = K.Gui(front, FACE.Front, 40, 1)
-	K.Text(sg, text, { TextColor3 = C.white, Font = Enum.Font.PermanentMarker, Size = UDim2.fromScale(0.86, 0.8), Position = UDim2.fromScale(0.07, 0.1) })
+	K.Text(sg, text, { TextColor3 = C.white, Face = "marker", Size = UDim2.fromScale(0.86, 0.8), Position = UDim2.fromScale(0.07, 0.1) })
 end
 
 ------------------------------------------------------------------------
@@ -222,8 +222,8 @@ local function signal(m, base, dir, reach, face, streetName)
 	Part(m, "WalkLens", V3(0.8, 0.8, 0.04), ped * CF(0, 0, -0.32), rgb(230, 230, 220), M.Neon, { t = 0.2 })
 	if streetName then
 		local blade = Part(m, "StreetBlade", V3(5.2, 0.9, 0.1), CFrame.lookAt(base + V3(0, 13.2, 0), base + V3(0, 13.2, 0) + face) * CF(1.8, 0, 0), rgb(30, 110, 60), M.SmoothPlastic)
-		K.Sign(blade, FACE.Front, streetName, C.white, rgb(30, 110, 60), 40, Enum.Font.GothamBold)
-		K.Sign(blade, FACE.Back, streetName, C.white, rgb(30, 110, 60), 40, Enum.Font.GothamBold)
+		K.Sign(blade, FACE.Front, streetName, C.white, rgb(30, 110, 60), 40, "signSub")
+		K.Sign(blade, FACE.Back, streetName, C.white, rgb(30, 110, 60), 40, "signSub")
 	end
 	-- a push button box
 	Part(m, "WalkButton", V3(0.4, 0.6, 0.3), CFrame.lookAt(base + V3(0, 3.6, 0), base + V3(0, 3.6, 0) - face) * CF(0, 0, -0.42), C.gold, M.Metal)
@@ -749,7 +749,7 @@ local function campus2(m)
 	K.Frame(sg, { BackgroundColor3 = C.ink })
 	K.Emblem(sg, 0.2, 0.04, 0.6, 0.3)
 	K.Text(sg, "OPEN 24/7", { TextColor3 = C.gold, Size = UDim2.fromScale(0.9, 0.14), Position = UDim2.fromScale(0.05, 0.38) })
-	K.Text(sg, "MEMBERS\nALWAYS WELCOME", { TextColor3 = C.white, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.86, 0.24), Position = UDim2.fromScale(0.07, 0.56) })
+	K.Text(sg, "MEMBERS\nALWAYS WELCOME", { TextColor3 = C.white, Face = "signSub", Size = UDim2.fromScale(0.86, 0.24), Position = UDim2.fromScale(0.07, 0.56) })
 	K.Frame(sg, { BackgroundColor3 = C.red, Size = UDim2.fromScale(0.9, 0.04), Position = UDim2.fromScale(0.05, 0.88) })
 end
 

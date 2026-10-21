@@ -16,6 +16,8 @@
 --      follows. Non-colliding, non-querying, massless.
 local BeltModel = {}
 
+local Typography = require(script.Parent:WaitForChild("Typography"))
+
 local V3 = Vector3.new
 local CF = CFrame.new
 local ANG = CFrame.Angles
@@ -181,7 +183,7 @@ function Builder:centre(design, c, d, t, cf)
 			local tl = Instance.new("TextLabel")
 			tl.BackgroundTransparency = 1
 			tl.Size = UDim2.fromScale(1, 1)
-			tl.Font = Enum.Font.GothamBlack
+			Typography.Apply(tl, "plate")
 			tl.TextScaled = true
 			tl.TextColor3 = c.plate
 			tl.Text = tostring(design.label)

@@ -26,6 +26,7 @@ local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
+local Typography = require(Shared:WaitForChild("Typography"))
 local LightLevels = require(script.Parent:WaitForChild("LightLevels"))
 local CharacterLight = require(script.Parent:WaitForChild("CharacterLight"))
 -- the Graphics level (WorldLOD over Perf; optional: without it everything runs at the High look).
@@ -1075,7 +1076,7 @@ local function setupBowl()
 				l.BackgroundTransparency = 1
 				l.RichText = true
 				l.TextScaled = true
-				l.Font = Enum.Font.Arial
+				Typography.Apply(l, "glyph")
 				l.TextColor3 = WHITE
 				l.Text = table.concat(parts)
 				l.Size = UDim2.fromScale(1, 1 / rows)

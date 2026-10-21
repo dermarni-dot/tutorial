@@ -94,14 +94,14 @@ local function lockers(m, b)
 		end
 		Part(m, "MDLockerHandle", V3(0.14, 0.8, 0.14), cf * CF(0.85, 0.2, -1.08), C.chrome, M.Metal, { shadow = false })
 		local num = Part(m, "MDLockerNumber", V3(0.7, 0.35, 0.04), cf * CF(0, 3.2, -1.02), C.chrome, M.Metal, { shadow = false })
-		K.Sign(num, FACE.Front, string.format("%02d", 11 + i), C.ink, C.chrome, 40, Enum.Font.GothamBold)
+		K.Sign(num, FACE.Front, string.format("%02d", 11 + i), C.ink, C.chrome, 40, "signSub")
 	end
 	-- the round timer over the lockers
 	local t = b * back(24, GYM_Y + 11.6, 0.35)
 	local box = Part(m, "MDTimerBox", V3(6.4, 2.4, 0.7), t, C.ink, M.SmoothPlastic)
 	local sg = K.Gui(box, FACE.Front, 30, 0)
 	K.Frame(sg, { BackgroundColor3 = rgb(8, 8, 10) })
-	K.Text(sg, "3:00", { TextColor3 = rgb(255, 60, 50), Font = Enum.Font.Code, Size = UDim2.fromScale(0.6, 0.8), Position = UDim2.fromScale(0.36, 0.1) })
+	K.Text(sg, "3:00", { TextColor3 = rgb(255, 60, 50), Face = "screen", Size = UDim2.fromScale(0.6, 0.8), Position = UDim2.fromScale(0.36, 0.1) })
 	for k, col in ipairs({ rgb(60, 255, 120), rgb(255, 200, 40), rgb(255, 60, 50) }) do
 		Part(m, "MDTimerLamp", V3(0.5, 0.5, 0.1), t * CF(-2.7 + (k - 1) * 0.7, 0, -0.38), col, k == 1 and M.Neon or M.SmoothPlastic, { shadow = false })
 	end

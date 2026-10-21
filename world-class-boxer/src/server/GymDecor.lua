@@ -10,6 +10,7 @@
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Signage = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Signage"))
+local Typography = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Typography"))
 
 local GymDecor = {}
 
@@ -141,13 +142,17 @@ local function label(parent, text, props)
 	local t = Instance.new("TextLabel")
 	t.BackgroundTransparency = 1
 	t.Size = UDim2.fromScale(1, 1)
-	t.Font = Enum.Font.GothamBlack
+	Typography.Apply(t, "sign")
 	t.TextScaled = true
 	t.TextWrapped = true
 	t.TextColor3 = Color3.new(1, 1, 1)
 	t.Text = text
 	for k, v in pairs(props or {}) do
-		t[k] = v
+		if k == "Face" then
+			Typography.Apply(t, v)
+		else
+			t[k] = v
+		end
 	end
 	t.Parent = parent
 	return t
@@ -171,7 +176,7 @@ local function sign(p, face, text, fg, bg, ppu, light, font)
 	if bg then
 		frame(sg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = bg })
 	end
-	label(sg, text, { TextColor3 = fg or Color3.new(1, 1, 1), Font = font or Enum.Font.GothamBlack, Size = UDim2.new(0.94, 0, 0.86, 0), Position = UDim2.fromScale(0.03, 0.07) })
+	label(sg, text, { TextColor3 = fg or Color3.new(1, 1, 1), Face = font or "sign", Size = UDim2.new(0.94, 0, 0.86, 0), Position = UDim2.fromScale(0.03, 0.07) })
 	return sg
 end
 
@@ -273,8 +278,8 @@ local function posterGui(p, face, d)
 	frame(sg, { Size = UDim2.new(1, 0, 0.02, 0), Position = UDim2.fromScale(0, 0.8), BackgroundColor3 = d.accent })
 	label(sg, d.top, { TextColor3 = d.dark and C.gold or d.bg, Size = UDim2.new(0.92, 0, 0.11, 0), Position = UDim2.fromScale(0.04, 0.02) })
 	label(sg, d.title, { TextColor3 = fg, Size = UDim2.new(0.9, 0, 0.44, 0), Position = UDim2.fromScale(0.05, 0.19) })
-	label(sg, d.sub, { TextColor3 = d.accent, Font = Enum.Font.GothamBold, Size = UDim2.new(0.9, 0, 0.09, 0), Position = UDim2.fromScale(0.05, 0.66) })
-	label(sg, d.foot, { TextColor3 = fg, Font = Enum.Font.GothamBold, Size = UDim2.new(0.9, 0, 0.08, 0), Position = UDim2.fromScale(0.05, 0.86) })
+	label(sg, d.sub, { TextColor3 = d.accent, Face = "signSub", Size = UDim2.new(0.9, 0, 0.09, 0), Position = UDim2.fromScale(0.05, 0.66) })
+	label(sg, d.foot, { TextColor3 = fg, Face = "signSub", Size = UDim2.new(0.9, 0, 0.08, 0), Position = UDim2.fromScale(0.05, 0.86) })
 	return sg
 end
 
@@ -292,7 +297,7 @@ end
 local function wallText(parent, wallId, along, y, w, h, text, color, font)
 	local p, face = onWall(parent, "WallText", wallId, along, y, w, h, 0.05, Color3.new(), M.SmoothPlastic, { transparency = 1 }, 0.01)
 	local sg = gui(p, face, 30, 0.6)
-	label(sg, text, { TextColor3 = color or Color3.new(1, 1, 1), Font = font or Enum.Font.GothamBlack, TextStrokeTransparency = 0.7 })
+	label(sg, text, { TextColor3 = color or Color3.new(1, 1, 1), Face = font or "sign", TextStrokeTransparency = 0.7 })
 	return p
 end
 
@@ -602,8 +607,8 @@ local function buildLobby(root)
 	local ringInner = frame(sg, { Size = UDim2.fromScale(0.9, 0.9), Position = UDim2.fromScale(0.05, 0.05), BackgroundColor3 = Color3.fromRGB(150, 20, 26) })
 	Instance.new("UICorner", ringInner).CornerRadius = UDim.new(0.5, 0)
 	label(sg, "WCB", { TextColor3 = C.gold, Size = UDim2.fromScale(0.6, 0.34), Position = UDim2.fromScale(0.2, 0.3) })
-	label(sg, "WORLD CLASS BOXING", { TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.66, 0.08), Position = UDim2.fromScale(0.17, 0.66) })
-	label(sg, "EST. 1987", { TextColor3 = C.gold, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.3, 0.06), Position = UDim2.fromScale(0.35, 0.2) })
+	label(sg, "WORLD CLASS BOXING", { TextColor3 = Color3.new(1, 1, 1), Face = "signSub", Size = UDim2.fromScale(0.66, 0.08), Position = UDim2.fromScale(0.17, 0.66) })
+	label(sg, "EST. 1987", { TextColor3 = C.gold, Face = "signSub", Size = UDim2.fromScale(0.3, 0.06), Position = UDim2.fromScale(0.35, 0.2) })
 
 	-- reception desk (L-shaped) with a monitor, keyboard, bell and sign-in sheet
 	part(f, "DeskFront", V3(11.8, 3.6, 2.4), CF(27.9, 2.2, 70.2), C.woodDark, M.Wood, { collide = true })
@@ -731,8 +736,8 @@ local function buildLobby(root)
 			Instance.new("UICorner", g).CornerRadius = UDim.new(0.4, 0)
 		end
 		label(sgp, entry[1], { TextColor3 = C.gold, Size = UDim2.fromScale(0.92, 0.18), Position = UDim2.fromScale(0.04, 0.5) })
-		label(sgp, entry[2], { TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.12), Position = UDim2.fromScale(0.05, 0.69) })
-		label(sgp, entry[3], { TextColor3 = Color3.fromRGB(190, 190, 200), Font = Enum.Font.Gotham, Size = UDim2.fromScale(0.9, 0.1), Position = UDim2.fromScale(0.05, 0.84) })
+		label(sgp, entry[2], { TextColor3 = Color3.new(1, 1, 1), Face = "signSub", Size = UDim2.fromScale(0.9, 0.12), Position = UDim2.fromScale(0.05, 0.69) })
+		label(sgp, entry[3], { TextColor3 = Color3.fromRGB(190, 190, 200), Face = "body", Size = UDim2.fromScale(0.9, 0.1), Position = UDim2.fromScale(0.05, 0.84) })
 	end
 
 	-- plants by the entrance and in the lounge
@@ -818,7 +823,7 @@ local function buildBoxing(root)
 	-- painted wall text behind the ring
 	wallText(f, "N", -30, 10, 22, 2.4, "DISCIPLINE BEATS TALENT", Color3.new(1, 1, 1))
 	wallText(f, "N", 30, 10, 22, 2.4, "HANDS UP.  CHIN DOWN.", C.gold)
-	wallText(f, "N", -30, 7.6, 18, 1.4, "- OLD PETE, FOUNDER", Color3.fromRGB(200, 200, 205), Enum.Font.GothamBold)
+	wallText(f, "N", -30, 7.6, 18, 1.4, "- OLD PETE, FOUNDER", Color3.fromRGB(200, 200, 205), "signSub")
 	-- round timers: one hanging over the station row, one on the wall behind the ring
 	GymDecor.RoundTimer(f, CF(0, 15.5, -24), 10, true)
 	GymDecor.RoundTimer(f, CF(-30, 15.2, -78.4) * ANG(0, RAD(180), 0), 8, false, true)
@@ -996,7 +1001,7 @@ local function buildWeights(root)
 	local bsg = gui(board, bface, 40, 0.6)
 	frame(bsg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = C.white })
 	label(bsg, "WORKOUT OF THE DAY", { TextColor3 = C.red, Size = UDim2.fromScale(0.92, 0.18), Position = UDim2.fromScale(0.04, 0.04) })
-	label(bsg, "A  BACK SQUAT  5 x 5\nB  BENCH PRESS  4 x 8\nC  PULL-UPS  3 x MAX\nD  KB SWINGS  50\nFINISHER: TIRE FLIPS x 10", { TextColor3 = Color3.fromRGB(30, 50, 140), Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.fromScale(0.9, 0.72), Position = UDim2.fromScale(0.06, 0.25) })
+	label(bsg, "A  BACK SQUAT  5 x 5\nB  BENCH PRESS  4 x 8\nC  PULL-UPS  3 x MAX\nD  KB SWINGS  50\nFINISHER: TIRE FLIPS x 10", { TextColor3 = Color3.fromRGB(30, 50, 140), Face = "signSub", TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.fromScale(0.9, 0.72), Position = UDim2.fromScale(0.06, 0.25) })
 	fan(f, wallPoint("W", 8, 13, 1.2), V3(1, 0, 0), 5, C.steelLight)
 	part(f, "FlatBench", V3(1.4, 0.35, 4.2), CF(-62, 2.0, -48), C.black, M.Leather, { collide = true })
 	for _, zz in ipairs({ -49.5, -46.5 }) do
@@ -1040,7 +1045,7 @@ local function buildCardio(root)
 	label(csg, "HEART RATE ZONES", { TextColor3 = C.black, Size = UDim2.fromScale(0.9, 0.12), Position = UDim2.fromScale(0.05, 0.02) })
 	for i, z in ipairs(zones) do
 		local band = frame(csg, { Size = UDim2.fromScale(0.9, 0.15), Position = UDim2.fromScale(0.05, 0.16 + (i - 1) * 0.165), BackgroundColor3 = z[2] })
-		label(band, z[1], { TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold })
+		label(band, z[1], { TextColor3 = Color3.new(1, 1, 1), Face = "signSub" })
 	end
 	-- towel rack by the water cooler
 	local tr = V3(106.2, 0.5, -4)
@@ -1086,7 +1091,7 @@ local function buildRecovery(root)
 	end
 	wallText(f, "S", 90, 10, 26, 2.6, "RECOVERY IS PART OF TRAINING", Color3.fromRGB(120, 230, 210))
 	-- (moved north of the Elite wing doorway)
-	wallText(f, "E", 33, 7.5, 16, 1.6, "BREATHE  -  RESET  -  REBUILD", Color3.fromRGB(220, 220, 230), Enum.Font.GothamBold)
+	wallText(f, "E", 33, 7.5, 16, 1.6, "BREATHE  -  RESET  -  REBUILD", Color3.fromRGB(220, 220, 230), "signSub")
 end
 
 ------------------------------------------------------------------------
@@ -1120,7 +1125,7 @@ local function buildServices(root)
 	local psg = gui(price, pface, 40, 0.3)
 	frame(psg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(18, 18, 22) })
 	label(psg, "BIG LOU'S CUTS", { TextColor3 = C.gold, Size = UDim2.fromScale(0.9, 0.24), Position = UDim2.fromScale(0.05, 0.04) })
-	label(psg, "FRESH CUT ........ $30\nBEARD / SHAVE ... $20\nCOLOR & DYE ...... $60", { TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.fromScale(0.86, 0.62), Position = UDim2.fromScale(0.07, 0.32) })
+	label(psg, "FRESH CUT ........ $30\nBEARD / SHAVE ... $20\nCOLOR & DYE ...... $60", { TextColor3 = Color3.new(1, 1, 1), Face = "signSub", TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.fromScale(0.86, 0.62), Position = UDim2.fromScale(0.07, 0.32) })
 	local rng = Random.new(77)
 	for _ = 1, 9 do
 		part(f, "HairClipping", V3(0.35, 0.03, 0.12), CF(-95 + rng:NextNumber(-2.5, 2.5), 0.515, 38 + rng:NextNumber(-2.5, 2.5)) * ANG(0, rng:NextNumber(0, 3), 0), Color3.fromRGB(25, 20, 18), M.SmoothPlastic)
@@ -1422,8 +1427,8 @@ function GymDecor.RoundTimer(parent, cf, width, doubleSided, wallMounted)
 	for _, face in ipairs(faces) do
 		local sg = gui(box, face, 30, 0)
 		frame(sg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(8, 8, 10) })
-		label(sg, "ROUND 1", { Name = "Phase", TextColor3 = C.gold, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.5, 0.26), Position = UDim2.fromScale(0.25, 0.04) })
-		label(sg, "3:00", { Name = "Time", TextColor3 = Color3.fromRGB(255, 60, 50), Font = Enum.Font.Code, Size = UDim2.fromScale(0.86, 0.66), Position = UDim2.fromScale(0.07, 0.3) })
+		label(sg, "ROUND 1", { Name = "Phase", TextColor3 = C.gold, Face = "signSub", Size = UDim2.fromScale(0.5, 0.26), Position = UDim2.fromScale(0.25, 0.04) })
+		label(sg, "3:00", { Name = "Time", TextColor3 = Color3.fromRGB(255, 60, 50), Face = "screen", Size = UDim2.fromScale(0.86, 0.66), Position = UDim2.fromScale(0.07, 0.3) })
 	end
 	for i, colr in ipairs({ Color3.fromRGB(40, 220, 80), Color3.fromRGB(250, 200, 40), Color3.fromRGB(240, 50, 40) }) do
 		local lamp = part(m, ({ "LampGo", "LampWarn", "LampRest" })[i], V3(0.8, 0.8, 0.8), cf * CF((i - 2) * 1.1, h / 2 + 0.45, 0), colr, M.Neon, { shape = Enum.PartType.Ball, shadow = false })
@@ -1465,7 +1470,7 @@ function GymDecor.Ticker(screenPart, face, title)
 		Instance.new("UICorner", glove).CornerRadius = UDim.new(0.5, 0)
 	end
 	local ticker = frame(sg, { Name = "Ticker", Size = UDim2.fromScale(1, 0.2), Position = UDim2.fromScale(0, 0.8), BackgroundColor3 = Color3.fromRGB(240, 240, 245), ClipsDescendants = true })
-	label(ticker, table.concat(HEADLINES, "     *     "), { Name = "Text", TextScaled = false, TextSize = 26, TextWrapped = false, Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(16, 16, 22), TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(0, 4000, 1, 0) })
+	label(ticker, table.concat(HEADLINES, "     *     "), { Name = "Text", TextScaled = false, TextSize = 26, TextWrapped = false, Face = "signSub", TextColor3 = Color3.fromRGB(16, 16, 22), TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(0, 4000, 1, 0) })
 	tag(screenPart, "TVTicker")
 	return sg
 end

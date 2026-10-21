@@ -681,7 +681,7 @@ local function lockerDetail(m)
 		Part(m, "LockerHandle", V3(0.14, 0.9, 0.14), CF(x + 1.0, 4.2, 26.1), C.chrome, M.Metal)
 		local plate = Part(m, "LockerNumber", V3(0.8, 0.4, 0.04), CF(x, 7.3, 26.04), C.chrome, M.Metal)
 		local sg = K.Gui(plate, FACE.Back, 40, 1)
-		K.Text(sg, string.format("%02d", i + 1), { TextColor3 = C.ink, Font = Enum.Font.GothamBold })
+		K.Text(sg, string.format("%02d", i + 1), { TextColor3 = C.ink, Face = "signSub" })
 		for k = 0, 2 do
 			Part(m, "LockerSlot", V3(2.0, 0.08, 0.04), CF(x, 1.2 + k * 0.3, 26.04), rgb(20, 20, 26), M.SmoothPlastic)
 		end
@@ -750,7 +750,7 @@ local function photoWall(m)
 		g.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(80, 70, 60))
 		g.Rotation = 90
 		g.Parent = f
-		K.Text(sg, txt, { TextColor3 = rgb(240, 230, 210), Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.8, 0.5), Position = UDim2.fromScale(0.1, 0.4) })
+		K.Text(sg, txt, { TextColor3 = rgb(240, 230, 210), Face = "signSub", Size = UDim2.fromScale(0.8, 0.5), Position = UDim2.fromScale(0.1, 0.4) })
 	end
 end
 
@@ -779,7 +779,7 @@ local function merchWall(m, cf)
 		Part(m, "TeeSleeves", V3(2.8, 0.7, 0.1), t * CF(0, 0.7, 0), tees[k + 1], M.Fabric, { shadow = false })
 		local logo = Part(m, "TeeLogo", V3(0.9, 0.6, 0.02), t * CF(0, 0.2, -0.07), C.gold, M.SmoothPlastic, { shadow = false })
 		local sg = K.Gui(logo, FACE.Front, 40, 1)
-		K.Text(sg, "WCB", { TextColor3 = k == 2 and C.redDeep or C.gold, Font = Enum.Font.GothamBlack })
+		K.Text(sg, "WCB", { TextColor3 = k == 2 and C.redDeep or C.gold, Face = "sign" })
 		logo.Transparency = 1
 	end
 	for k = 0, 3 do
@@ -788,7 +788,7 @@ local function merchWall(m, cf)
 		Part(m, "MerchGloveCuff", V3(0.65, 0.4, 0.7), g * CF(0, -0.6, 0), C.white, M.Leather)
 	end
 	local strip = Part(m, "PriceStrip", V3(8, 0.6, 0.05), cf * CF(0, -2.75, -0.15), C.gold, M.SmoothPlastic, { shadow = false })
-	K.Sign(strip, FACE.Front, "WCB PRO SHOP  -  ASK AT THE DESK", C.ink, C.gold, 30, Enum.Font.GothamBold)
+	K.Sign(strip, FACE.Front, "WCB PRO SHOP  -  ASK AT THE DESK", C.ink, C.gold, 30, "signSub")
 end
 
 local function lobby2(m)

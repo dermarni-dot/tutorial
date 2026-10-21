@@ -7,6 +7,7 @@
 -- while nothing changes). Owns nothing else: no other UI module is touched.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local Typography = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Typography"))
 
 local AnatomyStatus = {}
 
@@ -97,7 +98,7 @@ local function showNotice(reason, memory)
 		title.BackgroundTransparency = 1
 		title.Position = UDim2.new(0, 12, 0, 7)
 		title.Size = UDim2.new(1, -52, 0, 18)
-		title.Font = Enum.Font.GothamBold
+		Typography.Apply(title, "label")
 		title.TextSize = 14
 		title.TextXAlignment = Enum.TextXAlignment.Left
 		title.TextColor3 = Color3.fromRGB(240, 200, 110)
@@ -109,7 +110,7 @@ local function showNotice(reason, memory)
 		body.BackgroundTransparency = 1
 		body.Position = UDim2.new(0, 12, 0, 26)
 		body.Size = UDim2.new(1, -52, 0, 44)
-		body.Font = Enum.Font.Gotham
+		Typography.Apply(body, "body")
 		body.TextSize = 12
 		body.TextWrapped = true
 		body.TextXAlignment = Enum.TextXAlignment.Left
@@ -147,7 +148,7 @@ local function showNotice(reason, memory)
 		key.Size = UDim2.new(0, 28, 0, 28)
 		key.BackgroundColor3 = Color3.fromRGB(60, 56, 50)
 		key.BorderSizePixel = 0
-		key.Font = Enum.Font.GothamBold
+		Typography.Apply(key, "label")
 		key.TextSize = 14
 		key.TextColor3 = Color3.fromRGB(240, 236, 228)
 		key.Text = "X"

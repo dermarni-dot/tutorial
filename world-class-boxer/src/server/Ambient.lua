@@ -9,6 +9,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Looks = require(Shared:WaitForChild("Looks"))
 local Builder = require(Shared:WaitForChild("Builder"))
 local Config = require(Shared:WaitForChild("Config"))
+local Typography = require(Shared:WaitForChild("Typography"))
 local Poser = require(script.Parent.Poser)
 local okDecor, GymDecor = pcall(require, script.Parent.GymDecor)
 
@@ -95,7 +96,7 @@ local function nameTag(model, name, tag)
 	t.Size = UDim2.new(1, 0, 0.6, 0)
 	t.BackgroundTransparency = 1
 	t.Text = name
-	t.Font = Enum.Font.GothamBold
+	Typography.Apply(t, "label")
 	t.TextScaled = true
 	t.TextColor3 = Color3.new(1, 1, 1)
 	t.TextStrokeTransparency = 0.4
@@ -106,7 +107,7 @@ local function nameTag(model, name, tag)
 	s.Position = UDim2.fromScale(0, 0.6)
 	s.BackgroundTransparency = 1
 	s.Text = tag
-	s.Font = Enum.Font.Gotham
+	Typography.Apply(s, "body")
 	s.TextScaled = true
 	s.TextColor3 = Color3.fromRGB(255, 210, 90)
 	s.TextStrokeTransparency = 0.5

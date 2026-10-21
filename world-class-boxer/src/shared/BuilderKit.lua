@@ -9,6 +9,15 @@
 -- Requires none of the other builder modules, so they can all require it without a cycle.
 local Kit = {}
 
+-- the game's faces (the default text of a patch is the sign face; a Catalog brand names its own Enum.Font)
+local Typography
+do
+	local ok, m = pcall(function()
+		return require(script.Parent:WaitForChild("Typography", 5))
+	end)
+	Typography = ok and type(m) == "table" and m or nil
+end
+
 local V3 = Vector3.new
 local CF = CFrame.new
 local ANG = CFrame.Angles
@@ -156,7 +165,13 @@ local function textPatch(folder, anchor, name, size, cf, text, textColor, face, 
 	end
 	t.Text = text
 	t.TextScaled = true
-	t.Font = fontName and font(fontName) or Enum.Font.GothamBlack
+	if fontName then
+		t.Font = font(fontName)
+	elseif Typography then
+		Typography.Apply(t, "sign")
+	else
+		t.Font = Enum.Font.GothamBlack
+	end
 	t.TextColor3 = textColor
 	t.Parent = sg
 	sg.Parent = p

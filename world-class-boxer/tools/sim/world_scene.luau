@@ -488,6 +488,12 @@ local function gui2d(sg, part)
 					it.tt = r3(c.TextTransparency or 0)
 					it.ts = c.TextScaled and 0 or (c.TextSize or 14) / canvas[2]
 					it.font = enumName(c.Font)
+					-- a FontFace (Shared.Typography) names its family: "Bangers", "Montserrat", "Oswald"...
+					local ff = c.FontFace
+					if ff ~= nil and tostring(ff.Family or ""):find("families/") then
+						it.font = tostring(ff.Family):match("families/([%w_]+)%.json") or it.font
+						it.wt = tostring(ff.Weight or ""):match("(%a+)$")
+					end
 				end
 				if c:IsA("ImageLabel") then
 					it.img = tostring(c.Image or "")

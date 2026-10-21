@@ -6,6 +6,8 @@ local CollectionService = game:GetService("CollectionService")
 
 local CityProps = {}
 
+local Typography = require(script.Parent:WaitForChild("Typography"))
+
 local V3 = Vector3.new
 local CF = CFrame.new
 local ANG = CFrame.Angles
@@ -87,13 +89,17 @@ local function label(parent, text, props)
 	local t = Instance.new("TextLabel")
 	t.BackgroundTransparency = 1
 	t.Size = UDim2.fromScale(1, 1)
-	t.Font = Enum.Font.GothamBlack
+	Typography.Apply(t, "sign")
 	t.TextScaled = true
 	t.TextWrapped = true
 	t.TextColor3 = Color3.new(1, 1, 1)
 	t.Text = text
 	for k, v in pairs(props or {}) do
-		t[k] = v
+		if k == "Face" then
+			Typography.Apply(t, v)
+		else
+			t[k] = v
+		end
 	end
 	t.Parent = parent
 	return t
@@ -212,7 +218,7 @@ function CityProps.SportsCar(parent, cf, kind, color, plate)
 	local pl = part(m, "Plate", V3(1.5, 0.45, 0.06), cf * CF(0, 0.55 + B * 0.28, tailEnd + 0.08), Color3.fromRGB(240, 240, 235), M.SmoothPlastic)
 	if plate and plate ~= "" then
 		local sg = gui(pl, Enum.NormalId.Back, 60, 0, 60)
-		label(sg, plate, { TextColor3 = Color3.fromRGB(20, 20, 60), Font = Enum.Font.GothamBold })
+		label(sg, plate, { TextColor3 = Color3.fromRGB(20, 20, 60), Face = "signSub" })
 	end
 	m.Parent = parent
 	return m
@@ -251,7 +257,7 @@ function CityProps.Star(parent, cf, title, name, gold)
 		label(sg, "STAR", { TextColor3 = gold or Color3.fromRGB(255, 200, 60), Size = UDim2.fromScale(0.7, 0.5), Position = UDim2.fromScale(0.15, 0.02) })
 	end
 	label(sg, name or "", { TextColor3 = Color3.fromRGB(255, 230, 170), Size = UDim2.fromScale(0.9, 0.2), Position = UDim2.fromScale(0.05, 0.54) })
-	label(sg, title or "", { TextColor3 = Color3.fromRGB(230, 210, 200), Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.16), Position = UDim2.fromScale(0.05, 0.78) })
+	label(sg, title or "", { TextColor3 = Color3.fromRGB(230, 210, 200), Face = "signSub", Size = UDim2.fromScale(0.9, 0.16), Position = UDim2.fromScale(0.05, 0.78) })
 	return tile
 end
 

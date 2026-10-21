@@ -26,6 +26,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Looks = require(Shared:WaitForChild("Looks"))
 local Config = require(Shared:WaitForChild("Config"))
 local Signage = require(Shared:WaitForChild("Signage"))
+local Typography = require(Shared:WaitForChild("Typography"))
 -- Catalog is only needed for sponsor logos: a broken Catalog must never stop fights
 local Catalog
 do
@@ -155,12 +156,16 @@ local function label(parent, props)
 	local t = Instance.new("TextLabel")
 	t.BackgroundTransparency = 1
 	t.BorderSizePixel = 0
-	t.Font = Enum.Font.GothamBlack
+	Typography.Apply(t, "sign")
 	t.TextScaled = true
 	t.TextColor3 = WHITE
 	t.Text = ""
 	for k, v in pairs(props) do
-		t[k] = v
+		if k == "Face" then
+			Typography.Apply(t, v)
+		else
+			t[k] = v
+		end
 	end
 	t.Parent = parent
 	return t
@@ -198,7 +203,7 @@ local function sign(p, face, text, bg, fg, pps, font, light)
 	local sg = gui(p, face, pps or 14, light or 0, 1)
 	label(sg, {
 		Name = "ScreenText", Size = UDim2.fromScale(1, 1), BackgroundColor3 = bg or BLACK, BackgroundTransparency = bg and 0 or 1,
-		TextColor3 = fg or GOLD, Font = font or Enum.Font.GothamBlack, Text = text,
+		TextColor3 = fg or GOLD, Face = font or "sign", Text = text,
 	})
 	return sg
 end
@@ -232,7 +237,7 @@ local SPECS = {
 	CommunityCenter = {
 		tier = 1, size = 110, height = 24, roof = true, half = 10, ringH = 2, rows = 2, rowStart = 18, rowGap = 4.5, rowRise = 0,
 		floor = rgb(150, 110, 70), floorMat = M.WoodPlanks, wall = rgb(190, 190, 175), wallMat = M.Brick,
-		canvas = rgb(214, 210, 198), banner = "COMMUNITY BOXING NIGHT", bannerFont = Enum.Font.PermanentMarker, lights = "fluorescent", fill = 0.55, chairs = true,
+		canvas = rgb(214, 210, 198), banner = "COMMUNITY BOXING NIGHT", bannerFont = "marker", lights = "fluorescent", fill = 0.55, chairs = true,
 		pads = "pillow", sag = 0.3, wear = 0.8, apron = rgb(150, 24, 28), skirt = rgb(26, 32, 70), print = rgb(150, 24, 28),
 		ads = { "COMMUNITY BOXING", "AMATEUR NIGHT", "PAL BOXING CLUB", "AMATEUR NIGHT" }, court = true, bunting = true, pa = true, scoreboard = true,
 	},
@@ -405,7 +410,7 @@ local function ringTable(parent, name, cf, len, cloth, text)
 	prop(m, "TableTop", V3(len, 0.18, 2.3), cf * CF(0, 2.5, 0), rgb(46, 42, 40), M.Wood)
 	local skirt = prop(m, "TableSkirt", V3(len, 2.45, 0.1), cf * CF(0, 1.25, -1.12), cloth, M.Fabric, { CastShadow = false })
 	if text then
-		sign(skirt, FACE.Front, text, cloth, rgb(240, 240, 240), 14, Enum.Font.GothamBold, 1)
+		sign(skirt, FACE.Front, text, cloth, rgb(240, 240, 240), 14, "signSub", 1)
 	end
 	m.Parent = parent
 	return m
@@ -635,7 +640,7 @@ local function canvasPrint(canvas, spec, ads, seed)
 		label(sg, {
 			Name = "Edge", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5 + math.sin(a) * edge, 0.5 + math.cos(a) * edge),
 			Size = UDim2.fromScale(inner * 0.75, 1.1 / N), Rotation = -rot, Text = string.upper(spec.displayName or ""), TextColor3 = spec.print:Lerp(Color3.new(), 0.25), TextTransparency = 0.3,
-			Font = Enum.Font.GothamBold,
+			Face = "signSub",
 		})
 	end
 	local rng = Random.new(seed)
@@ -688,7 +693,7 @@ local function skirtPrint(skirt, text, sub, bg, fg, led)
 		g.Parent = back
 	end
 	label(back, { Name = "Main", Size = UDim2.fromScale(0.62, 0.62), Position = UDim2.fromScale(0.19, 0.12), Text = text, TextColor3 = fg })
-	label(back, { Name = "Sub", Size = UDim2.fromScale(0.62, 0.2), Position = UDim2.fromScale(0.19, 0.74), Text = sub or "", TextColor3 = fg, TextTransparency = 0.25, Font = Enum.Font.GothamBold })
+	label(back, { Name = "Sub", Size = UDim2.fromScale(0.62, 0.2), Position = UDim2.fromScale(0.19, 0.74), Text = sub or "", TextColor3 = fg, TextTransparency = 0.25, Face = "signSub" })
 	return sg
 end
 
@@ -1232,7 +1237,7 @@ local function buildScreens(arena, spec, kind)
 		local sg = screenGui(board, FACE.Back, 20, "HOME  -  GUEST")
 		for _, d in ipairs(sg:GetDescendants()) do
 			if d:IsA("TextLabel") then
-				d.Font = Enum.Font.Arcade
+				Typography.Apply(d, "led")
 			end
 		end
 	end
@@ -1534,7 +1539,7 @@ local function buildCharacter(arena, spec, rng)
 			local x = -S / 2 + 25 + (i - 1) * 50
 			local p = prop(arena, "NeonSign", V3(14, 3.2, 0.2), CF(x, H * 0.6, z), BLACK, M.SmoothPlastic, { Transparency = 1 })
 			local sg = gui(p, FACE.Back, 20, 0, 2.5)
-			label(sg, { Size = UDim2.fromScale(1, 1), Text = s[1], TextColor3 = s[2], Font = Enum.Font.Bangers, TextStrokeTransparency = 0.4, TextStrokeColor3 = s[2] })
+			label(sg, { Size = UDim2.fromScale(1, 1), Text = s[1], TextColor3 = s[2], Face = "display", TextStrokeTransparency = 0.4, TextStrokeColor3 = s[2] })
 			local tube = prop(arena, "NeonTube", V3(14.4, 0.12, 0.12), CF(x, H * 0.6 - 1.9, z + 0.2), s[2], M.Neon, { CastShadow = false })
 			pointLight(tube, s[2], 14, 0.6, false)
 			if i == 2 then
@@ -1559,8 +1564,8 @@ local function poster(parent, cf, w, h, top, mid, bottom, bg, fg, rng)
 	local sg = gui(p, FACE.Front, 20, 1, 1)
 	local back = frame(sg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = bg })
 	label(back, { Size = UDim2.fromScale(0.9, 0.16), Position = UDim2.fromScale(0.05, 0.06), Text = top, TextColor3 = fg })
-	label(back, { Size = UDim2.fromScale(0.9, 0.3), Position = UDim2.fromScale(0.05, 0.3), Text = mid, TextColor3 = WHITE, Font = Enum.Font.Bangers })
-	label(back, { Size = UDim2.fromScale(0.9, 0.12), Position = UDim2.fromScale(0.05, 0.75), Text = bottom, TextColor3 = fg, Font = Enum.Font.GothamBold })
+	label(back, { Size = UDim2.fromScale(0.9, 0.3), Position = UDim2.fromScale(0.05, 0.3), Text = mid, TextColor3 = WHITE, Face = "display" })
+	label(back, { Size = UDim2.fromScale(0.9, 0.12), Position = UDim2.fromScale(0.05, 0.75), Text = bottom, TextColor3 = fg, Face = "signSub" })
 	-- age: a yellowed overlay
 	frame(back, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(200, 170, 110), BackgroundTransparency = 0.75 + rng:NextNumber() * 0.2 })
 	return p
@@ -1702,8 +1707,8 @@ local function buildGymRoom(arena, spec, rng)
 	timer.Name = "GymTimer"
 	local box = prop(timer, "TimerBox", V3(5, 2.6, 0.6), CF(0, 15, half - 1.4), rgb(16, 16, 18), M.Metal)
 	local sg = gui(box, FACE.Front, 30, 0, 1.6)
-	label(sg, { Name = "Phase", Size = UDim2.fromScale(1, 0.32), Text = "SPARRING", TextColor3 = WHITE, Font = Enum.Font.GothamBold })
-	label(sg, { Name = "Time", Size = UDim2.fromScale(1, 0.66), Position = UDim2.fromScale(0, 0.32), Text = "3:00", TextColor3 = rgb(255, 60, 50), Font = Enum.Font.Arcade })
+	label(sg, { Name = "Phase", Size = UDim2.fromScale(1, 0.32), Text = "SPARRING", TextColor3 = WHITE, Face = "signSub" })
+	label(sg, { Name = "Time", Size = UDim2.fromScale(1, 0.66), Position = UDim2.fromScale(0, 0.32), Text = "3:00", TextColor3 = rgb(255, 60, 50), Face = "led" })
 	for i, n in ipairs({ "LampGo", "LampWarn", "LampRest" }) do
 		local l = prop(timer, n, V3(0.6, 0.6, 0.3), CF(-1 + (i - 1), 13.3, half - 1.3), ({ rgb(60, 220, 80), rgb(255, 200, 40), rgb(80, 180, 255) })[i], M.Neon, { Transparency = 0.65 })
 		l.Shape = Enum.PartType.Ball
@@ -1841,7 +1846,7 @@ local function logoGui(p, face, logo, pps)
 	local bg = frame(sg, { Size = UDim2.fromScale(0.94, 0.36), Position = UDim2.fromScale(0.03, 0.32), BackgroundColor3 = c3(logo.bg, BLACK) })
 	round(bg, 0.12)
 	label(bg, { Size = UDim2.fromScale(0.92, 0.62), Position = UDim2.fromScale(0.04, 0.06), Text = tostring(logo.text or ""), TextColor3 = c3(logo.fg, WHITE) })
-	label(bg, { Size = UDim2.fromScale(0.92, 0.26), Position = UDim2.fromScale(0.04, 0.7), Text = tostring(logo.glyph or ""), TextColor3 = c3(logo.fg, WHITE), Font = Enum.Font.GothamBold, TextTransparency = 0.2 })
+	label(bg, { Size = UDim2.fromScale(0.92, 0.26), Position = UDim2.fromScale(0.04, 0.7), Text = tostring(logo.glyph or ""), TextColor3 = c3(logo.fg, WHITE), Face = "signSub", TextTransparency = 0.2 })
 	return sg
 end
 
@@ -1922,7 +1927,7 @@ local function applyTitle(arena, spec, stakes, rng)
 		local b = prop(arena, "OrgBanner", V3(6, 12, 0.15), CFrame.lookAt(pos, V3(0, y, 0)), oc.strap, M.Fabric, { CastShadow = false })
 		local sg = gui(b, FACE.Front, 12, 1, 1)
 		label(sg, { Size = UDim2.fromScale(0.86, 0.24), Position = UDim2.fromScale(0.07, 0.12), Text = org, TextColor3 = oc.accent })
-		label(sg, { Size = UDim2.fromScale(0.86, 0.1), Position = UDim2.fromScale(0.07, 0.42), Text = "WORLD CHAMPIONSHIP", TextColor3 = WHITE, Font = Enum.Font.GothamBold })
+		label(sg, { Size = UDim2.fromScale(0.86, 0.1), Position = UDim2.fromScale(0.07, 0.42), Text = "WORLD CHAMPIONSHIP", TextColor3 = WHITE, Face = "signSub" })
 		local disc = frame(sg, { Size = UDim2.fromScale(0.5, 0.25), Position = UDim2.fromScale(0.25, 0.6), BackgroundColor3 = oc.accent })
 		round(disc, 0.5)
 		local top = spec.roof and spec.height - 1 or rigBottom
@@ -2038,7 +2043,7 @@ local function applyCrowd(arena, spec, share, supporters, nick, seed)
 		local s = prop(fan, "FanSign", V3(2.6, 1.5, 0.1), fan.CFrame * CF(0, 3.3, -0.3), rgb(250, 250, 245), M.SmoothPlastic, { CastShadow = false })
 		for _, face in ipairs({ FACE.Front, FACE.Back }) do
 			local sg = gui(s, face, 30, 1, 1)
-			label(sg, { Size = UDim2.fromScale(0.92, 0.8), Position = UDim2.fromScale(0.04, 0.1), Text = string.format(texts[(i - 1) % #texts + 1], who), TextColor3 = rgb(190, 20, 26), Font = Enum.Font.PermanentMarker })
+			label(sg, { Size = UDim2.fromScale(0.92, 0.8), Position = UDim2.fromScale(0.04, 0.1), Text = string.format(texts[(i - 1) % #texts + 1], who), TextColor3 = rgb(190, 20, 26), Face = "marker" })
 		end
 		if i % 2 == 0 then
 			s.Color = rgb(255, 220, 60)
@@ -2115,9 +2120,9 @@ local function applyGymTier(arena, spec, tier, rng)
 		local sg = gui(tele, FACE.Front, 24, 0, 1.4)
 		sg.Name = "Screen"
 		local bg = frame(sg, { Name = "Bg", Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(8, 12, 22) })
-		label(bg, { Name = "Header", Size = UDim2.fromScale(1, 0.16), Text = "SPORTS SCIENCE  -  LIVE TRACKING", TextColor3 = rgb(0, 200, 220), Font = Enum.Font.GothamBold })
+		label(bg, { Name = "Header", Size = UDim2.fromScale(1, 0.16), Text = "SPORTS SCIENCE  -  LIVE TRACKING", TextColor3 = rgb(0, 200, 220), Face = "signSub" })
 		for i, n in ipairs({ "PUNCHES", "HEAD", "BODY", "STAMINA" }) do
-			label(bg, { Name = "Key" .. i, Size = UDim2.fromScale(0.4, 0.15), Position = UDim2.fromScale(0.05, 0.2 + (i - 1) * 0.19), Text = n, TextColor3 = rgb(160, 180, 200), TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.GothamBold })
+			label(bg, { Name = "Key" .. i, Size = UDim2.fromScale(0.4, 0.15), Position = UDim2.fromScale(0.05, 0.2 + (i - 1) * 0.19), Text = n, TextColor3 = rgb(160, 180, 200), TextXAlignment = Enum.TextXAlignment.Left, Face = "signSub" })
 			label(bg, { Name = "Val" .. i, Size = UDim2.fromScale(0.45, 0.15), Position = UDim2.fromScale(0.5, 0.2 + (i - 1) * 0.19), Text = "--", TextColor3 = WHITE, TextXAlignment = Enum.TextXAlignment.Right })
 		end
 		for _, d in ipairs(arena:GetChildren()) do

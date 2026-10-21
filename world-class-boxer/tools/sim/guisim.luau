@@ -18,8 +18,9 @@
 -- UIScale (scales the object about its anchor, and everything under it), UIPadding, UIListLayout (fill
 -- direction, padding, alignment, LayoutOrder / Name sort), UIGridLayout, AutomaticSize (children's extents,
 -- list content and text bounds), UISizeConstraint, UIAspectRatioConstraint, ScrollingFrame canvases (their
--- content is clipped, not off-screen) and ClipsDescendants. Text is measured with per-glyph widths for Gotham
--- and the condensed Oswald (close to the engine's, a little generous). Tweens land on their goal at once.
+-- content is clipped, not off-screen) and ClipsDescendants. Text is measured with per-glyph widths per face
+-- (Bangers, Oswald, Montserrat, Gotham, RobotoMono: close to the engine's, a little generous). Tweens land on
+-- their goal at once.
 -- Rotation is ignored.
 local roblox = require("@lune/roblox")
 local ltask = require("@lune/task")
@@ -53,55 +54,94 @@ GS.DEVICES = {
 ------------------------------------------------------------------------
 -- text metrics
 ------------------------------------------------------------------------
--- em widths of Gotham Bold-ish glyphs (generous: a check that passes here passes in the engine)
-local function glyphW(c)
+-- em widths per glyph class and face (generous: a check that passes here passes in the engine), measured
+-- on the families' TTFs (tools/ui/fonts): Bangers (the display face), Oswald Bold (numbers), Montserrat
+-- Bold (labels / body), Gotham (the legacy enums, a little broader than Inter), RobotoMono
+local GLYPHS = {
+	--          space   I     MW    caps  ilj   mw    lower digits punct other
+	bangers = { 0.20, 0.21, 0.64, 0.43, 0.27, 0.64, 0.44, 0.46, 0.235, 0.50 },
+	oswald = { 0.265, 0.31, 0.72, 0.545, 0.28, 0.70, 0.47, 0.52, 0.255, 0.51 },
+	mont = { 0.29, 0.34, 1.09, 0.75, 0.31, 1.03, 0.63, 0.63, 0.28, 0.58 },
+	gotham = { 0.28, 0.30, 0.86, 0.68, 0.26, 0.84, 0.56, 0.60, 0.26, 0.50 },
+	mono = { 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6 },
+}
+local function glyphW(c, face)
+	local g = GLYPHS[face] or GLYPHS.gotham
 	if c == " " then
-		return 0.28
+		return g[1]
 	elseif c:match("%u") then
 		if c == "I" then
-			return 0.3
+			return g[2]
 		elseif c == "M" or c == "W" then
-			return 0.86
+			return g[3]
 		end
-		return 0.68
+		return g[4]
 	elseif c:match("%l") then
 		if c == "i" or c == "l" or c == "j" then
-			return 0.26
+			return g[5]
 		elseif c == "m" or c == "w" then
-			return 0.84
+			return g[6]
 		end
-		return 0.56
+		return g[7]
 	elseif c:match("%d") then
-		return 0.6
+		return g[8]
 	elseif c == "." or c == "," or c == ":" or c == ";" or c == "'" or c == "!" or c == "|" then
-		return 0.26
+		return g[9]
 	end
-	return 0.5
+	return g[10]
 end
 
-local function isCondensed(obj)
-	local ok, ff = pcall(function()
-		return rawget(obj, "_props").FontFace
-	end)
-	if ok and ff and tostring(ff.Family or ""):find("Oswald") then
-		return true
+-- the face key of a family / enum name
+local function faceKey(s)
+	s = tostring(s or "")
+	if s:find("Bangers") then
+		return "bangers"
+	elseif s:find("Oswald") then
+		return "oswald"
+	elseif s:find("Montserrat") then
+		return "mont"
+	elseif s:find("RobotoMono") or s:find("Inconsolata") or s:find("%.Code$") then
+		return "mono"
 	end
-	local f = rawget(obj, "_props").Font
-	return f ~= nil and tostring(f):find("Oswald") ~= nil
+	return "gotham"
+end
+GS.FaceKey = faceKey
+
+-- the face a text object draws with (its FontFace's family, else its Font enum)
+local function faceOf(obj)
+	local pr = rawget(obj, "_props")
+	local ok, ff = pcall(function()
+		return pr.FontFace
+	end)
+	if ok and ff then
+		return faceKey(ff.Family)
+	end
+	return faceKey(pr.Font)
+end
+GS.FaceOf = faceOf
+local function isCondensed(obj)
+	local f = faceOf(obj)
+	return f == "bangers" or f == "oswald"
 end
 
 -- width (px) of one line of text at `size`
-function GS.LineWidth(text, size, condensed)
+-- (face: a face key of GLYPHS; true = the condensed Oswald, nil / false = Gotham)
+function GS.LineWidth(text, size, face)
+	if face == true then
+		face = "oswald"
+	elseif not face then
+		face = "gotham"
+	end
 	local w = 0
 	for _, cp in utf8.codes(text) do
 		local ch = utf8.char(cp)
-		w += glyphW(ch)
+		w += glyphW(ch, face)
 	end
-	return w * size * (condensed and 0.72 or 1)
+	return w * size
 end
 
 -- the text's bounds: (w, h) at `size`, wrapped at maxW when given
-function GS.TextBounds(text, size, condensed, maxW)
+function GS.TextBounds(text, size, face, maxW)
 	text = tostring(text or "")
 	if text == "" then
 		return 0, 0
@@ -114,18 +154,18 @@ function GS.TextBounds(text, size, condensed, maxW)
 			local paraLines = 0
 			for word in para:gmatch("%S+") do
 				local try = cur == "" and word or (cur .. " " .. word)
-				if cur ~= "" and GS.LineWidth(try, size, condensed) > maxW then
-					widest = math.max(widest, GS.LineWidth(cur, size, condensed))
+				if cur ~= "" and GS.LineWidth(try, size, face) > maxW then
+					widest = math.max(widest, GS.LineWidth(cur, size, face))
 					paraLines += 1
 					cur = word
 				else
 					cur = try
 				end
 			end
-			widest = math.max(widest, GS.LineWidth(cur, size, condensed))
+			widest = math.max(widest, GS.LineWidth(cur, size, face))
 			lines += paraLines + 1
 		else
-			widest = math.max(widest, GS.LineWidth(para, size, condensed))
+			widest = math.max(widest, GS.LineWidth(para, size, face))
 			lines += 1
 		end
 	end
@@ -477,7 +517,7 @@ function GS.new(device, opts)
 		elseif k == "TextBounds" and TEXT[cls] then
 			local r = rectOf(o)
 			local size = rawget(o, "_props").TextSize or 14
-			local w, h = GS.TextBounds(rawget(o, "_props").Text or "", size, isCondensed(o), (rawget(o, "_props").TextWrapped and r) and (r.w / math.max(r.unit, 1e-6)) or nil)
+			local w, h = GS.TextBounds(rawget(o, "_props").Text or "", size, faceOf(o), (rawget(o, "_props").TextWrapped and r) and (r.w / math.max(r.unit, 1e-6)) or nil)
 			local u = r and r.unit or 1
 			return Vector2.new(w * u, h * u)
 		elseif k == "TextFits" and TEXT[cls] then
@@ -676,11 +716,11 @@ function GS.new(device, opts)
 	-- (a write to a host node lands as a raw field and reads back as one)
 	H.Service("TextService")._props = permissive({
 		GetTextSize = function(_, text, size, font, frame)
-			local w, h = GS.TextBounds(text, size, font ~= nil and tostring(font):find("Oswald") ~= nil, frame and frame.X < 9999 and frame.X or nil)
+			local w, h = GS.TextBounds(text, size, faceKey(font), frame and frame.X < 9999 and frame.X or nil)
 			return Vector2.new(math.ceil(w), math.ceil(h))
 		end,
 		GetTextBoundsAsync = function(_, params)
-			local w, h = GS.TextBounds(params.Text, params.Size, false, params.Width)
+			local w, h = GS.TextBounds(params.Text, params.Size, params.Font and faceKey(params.Font.Family) or "gotham", params.Width)
 			return Vector2.new(math.ceil(w), math.ceil(h))
 		end,
 	})
@@ -1024,7 +1064,7 @@ function GS.new(device, opts)
 			end
 			if text ~= "" and not P(o, "TextScaled") then
 				local wrapAt = (P(o, "TextWrapped") and not isAuto(o, "X")) and iw or nil
-				cw, ch = GS.TextBounds(text, P(o, "TextSize") or 14, isCondensed(o), wrapAt)
+				cw, ch = GS.TextBounds(text, P(o, "TextSize") or 14, faceOf(o), wrapAt)
 			end
 		end
 		local list, grid = comp(o, "UIListLayout"), comp(o, "UIGridLayout")
@@ -1433,7 +1473,7 @@ function GS.new(device, opts)
 				if it.text and it.text ~= "" and it.draws and it.class ~= "TextBox" then
 					local o = it.obj
 					if not P(o, "TextScaled") and not P(o, "TextWrapped") and P(o, "TextTruncate") == Enum.TextTruncate.None and not P(o, "RichText") then
-						local tw = GS.LineWidth(it.text:match("^[^\n]*"), it.textSize, isCondensed(o)) * it.unit
+						local tw = GS.LineWidth(it.text:match("^[^\n]*"), it.textSize, faceOf(o)) * it.unit
 						local l, rr = 0, 0
 						local pad = comp(o, "UIPadding")
 						if pad then
@@ -1541,6 +1581,7 @@ local function styleOf(it)
 	if it.text then
 		st.tc = c3(pr.TextColor3)
 		st.tt = pr.TextTransparency or 0
+		st.face = faceOf(o)
 		st.cond = isCondensed(o) or nil
 		local heavy = false
 		local ok, ff = pcall(function()
@@ -1549,6 +1590,7 @@ local function styleOf(it)
 		if ok and ff then
 			local wn = tostring(ff.Weight or "")
 			heavy = wn:find("Bold") ~= nil or wn:find("Heavy") ~= nil or wn:find("Black") ~= nil or wn:find("SemiBold") ~= nil
+			st.wt = wn:match("(%a+)$")
 		end
 		local fe = tostring(pr.Font or "")
 		heavy = heavy or fe:find("Bold") ~= nil or fe:find("Black") ~= nil
@@ -1582,7 +1624,7 @@ function GS.WriteBoxes(path, S, items, extra)
 				bgT = rawget(it.obj, "_props").BackgroundTransparency,
 				align = it.text and tostring(rawget(it.obj, "_props").TextXAlignment):match("(%a+)$") or nil,
 				-- the width the text takes on the screen (as measured here) and whether it is cut short
-				textW = (it.text and it.text ~= "" and it.textSize) and math.floor(GS.LineWidth(it.text:match("^[^\n]*"), it.textSize, isCondensed(it.obj)) * it.unit) or nil,
+				textW = (it.text and it.text ~= "" and it.textSize) and math.floor(GS.LineWidth(it.text:match("^[^\n]*"), it.textSize, faceOf(it.obj)) * it.unit) or nil,
 				truncate = it.text and rawget(it.obj, "_props").TextTruncate ~= Enum.TextTruncate.None or nil,
 				wrapped = it.text and (rawget(it.obj, "_props").TextWrapped == true) or nil,
 				style = styleOf(it),

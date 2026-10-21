@@ -25,6 +25,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
+local Typography = require(Shared:WaitForChild("Typography"))
 local GymSound = require(script.Parent:WaitForChild("GymSound"))
 -- the tournament belts in the trophy case (Shared.Tournaments' designs, built by Shared.BeltModel): optional
 local Tournaments, BeltModel
@@ -144,13 +145,17 @@ local function label(parent, text, props)
 	local t = Instance.new("TextLabel")
 	t.BackgroundTransparency = 1
 	t.Size = UDim2.fromScale(1, 1)
-	t.Font = Enum.Font.GothamBlack
+	Typography.Apply(t, "sign")
 	t.TextScaled = true
 	t.TextWrapped = true
 	t.TextColor3 = Color3.new(1, 1, 1)
 	t.Text = text
 	for k, v in pairs(props or {}) do
-		t[k] = v
+		if k == "Face" then
+			Typography.Apply(t, v)
+		else
+			t[k] = v
+		end
 	end
 	t.Parent = parent
 	return t
@@ -171,7 +176,7 @@ local function sign(p, face, text, fg, bg, ppu, font)
 	if bg then
 		frame(sg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = bg })
 	end
-	label(sg, text, { TextColor3 = fg or Color3.new(1, 1, 1), Font = font or Enum.Font.GothamBlack, Size = UDim2.fromScale(0.92, 0.84), Position = UDim2.fromScale(0.04, 0.08) })
+	label(sg, text, { TextColor3 = fg or Color3.new(1, 1, 1), Face = font or "sign", Size = UDim2.fromScale(0.92, 0.84), Position = UDim2.fromScale(0.04, 0.08) })
 	return sg
 end
 
@@ -378,8 +383,8 @@ local function roundTimer(parent, cf, width)
 	local box = part(m, "TimerBox", V3(width, h, 0.9), cf, BLACK, M.SmoothPlastic)
 	local sg = gui(box, Enum.NormalId.Front, 30, 0)
 	frame(sg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(8, 8, 10) })
-	label(sg, "ROUND 1", { Name = "Phase", TextColor3 = GOLD, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.5, 0.26), Position = UDim2.fromScale(0.25, 0.04) })
-	label(sg, "3:00", { Name = "Time", TextColor3 = rgb(255, 60, 50), Font = Enum.Font.Code, Size = UDim2.fromScale(0.86, 0.66), Position = UDim2.fromScale(0.07, 0.3) })
+	label(sg, "ROUND 1", { Name = "Phase", TextColor3 = GOLD, Face = "signSub", Size = UDim2.fromScale(0.5, 0.26), Position = UDim2.fromScale(0.25, 0.04) })
+	label(sg, "3:00", { Name = "Time", TextColor3 = rgb(255, 60, 50), Face = "screen", Size = UDim2.fromScale(0.86, 0.66), Position = UDim2.fromScale(0.07, 0.3) })
 	for i, colr in ipairs({ rgb(40, 220, 80), rgb(250, 200, 40), rgb(240, 50, 40) }) do
 		local lamp = part(m, ({ "LampGo", "LampWarn", "LampRest" })[i], V3(0.8, 0.8, 0.8), cf * CF((i - 2) * 1.1, h / 2 + 0.45, 0), colr, M.Neon, { shape = Enum.PartType.Ball, shadow = false })
 		lamp.Transparency = 0.6
@@ -400,7 +405,7 @@ local function sponsorBanner(parent, cf, sp)
 		frame(sg, { Size = UDim2.new(1, 0, 0.04, 0), Position = UDim2.fromScale(0, 0.9), BackgroundColor3 = fg })
 		label(sg, logo.glyph or "WCB", { TextColor3 = fg, Size = UDim2.fromScale(0.8, 0.3), Position = UDim2.fromScale(0.1, 0.16) })
 		label(sg, logo.text or (sp and sp.name) or "WORLD CLASS BOXING", { TextColor3 = fg, Size = UDim2.fromScale(0.86, 0.22), Position = UDim2.fromScale(0.07, 0.5) })
-		label(sg, "OFFICIAL PARTNER", { TextColor3 = fg, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.8, 0.07), Position = UDim2.fromScale(0.1, 0.78) })
+		label(sg, "OFFICIAL PARTNER", { TextColor3 = fg, Face = "signSub", Size = UDim2.fromScale(0.8, 0.07), Position = UDim2.fromScale(0.1, 0.78) })
 	end
 	cyl(parent, "BannerPole", 5.4, 0.16, cf * CF(0, 4.6, 0), STEEL, M.Metal)
 	part(parent, "BannerWeight", V3(5.1, 0.18, 0.18), cf * CF(0, -4.55, 0), fg, M.Metal)
@@ -464,9 +469,9 @@ local function buildDressing(m, idx, P)
 		end
 		-- hand-written cardboard signs taped to the walls
 		local c1 = onWall(m, "Cardboard", "N", 10, 5.6, 3.6, 2.2, rgb(180, 150, 110), M.Fabric, { depth = 0.06 }, 0.05)
-		sign(c1, Enum.NormalId.Front, "DUES: $20 / MONTH\nPAY OLD PETE", rgb(40, 30, 25), nil, 40, Enum.Font.Cartoon)
+		sign(c1, Enum.NormalId.Front, "DUES: $20 / MONTH\nPAY OLD PETE", rgb(40, 30, 25), nil, 40, "hand")
 		local c2 = onWall(m, "Cardboard", "W", -30, 5.2, 3, 1.8, rgb(185, 155, 112), M.Fabric, { depth = 0.06 }, 0.05)
-		sign(c2, Enum.NormalId.Front, "RE-RACK YOUR\nWEIGHTS!!", rgb(160, 20, 20), nil, 40, Enum.Font.Cartoon)
+		sign(c2, Enum.NormalId.Front, "RE-RACK YOUR\nWEIGHTS!!", rgb(160, 20, 20), nil, 40, "hand")
 		for _, cdata in ipairs({ { c1, 1.6 }, { c2, 1.3 } }) do
 			local cp, half = cdata[1], cdata[2]
 			for _, s in ipairs({ -1, 1 }) do
@@ -612,11 +617,11 @@ function GymFacility.AnalyticsScreen(_m, screen, face, P, title, list)
 	for i, id in ipairs(ids) do
 		local act = Config.FindById and Config.FindById(Config.Activities, id)
 		local y = 0.2 + (i - 1) * (0.76 / n)
-		label(sg, (act and act.name or id):upper(), { TextColor3 = rgb(200, 210, 225), Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.fromScale(0.3, 0.6 / n), Position = UDim2.fromScale(0.04, y) })
+		label(sg, (act and act.name or id):upper(), { TextColor3 = rgb(200, 210, 225), Face = "signSub", TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.fromScale(0.3, 0.6 / n), Position = UDim2.fromScale(0.04, y) })
 		local track = frame(sg, { Size = UDim2.fromScale(0.5, 0.45 / n), Position = UDim2.fromScale(0.36, y + 0.08 / n), BackgroundColor3 = rgb(30, 40, 56) })
 		local row = { id = id }
 		row.fill = frame(track, { Size = UDim2.fromScale(0, 1) })
-		row.value = label(sg, "--", { TextColor3 = WHITE, Font = Enum.Font.Code, Size = UDim2.fromScale(0.1, 0.55 / n), Position = UDim2.fromScale(0.88, y) })
+		row.value = label(sg, "--", { TextColor3 = WHITE, Face = "screen", Size = UDim2.fromScale(0.1, 0.55 / n), Position = UDim2.fromScale(0.88, y) })
 		setBar(row, bestOf(recs, id), i)
 		rows[i] = row
 	end
@@ -819,7 +824,7 @@ local function buildWing(m, idx, P, frac, needs)
 		for _, a in ipairs({ 18, -18 }) do
 			local tape = part(m, "CautionTape", V3(0.04, 0.5, 13), CF(108.85, 7, 50) * ANG(RAD(a), 0, 0), rgb(250, 210, 30), M.SmoothPlastic, { shadow = false })
 			local sg = gui(tape, Enum.NormalId.Left, 40, 0.5)
-			label(sg, "DO NOT ENTER  -  DO NOT ENTER  -  DO NOT ENTER", { TextColor3 = BLACK, Font = Enum.Font.GothamBold })
+			label(sg, "DO NOT ENTER  -  DO NOT ENTER  -  DO NOT ENTER", { TextColor3 = BLACK, Face = "signSub" })
 		end
 		local easel = CF(105.5, 0.5, 42.2) * ANG(0, RAD(105), 0) -- faces the people walking over from the recovery area
 		local board = part(m, "WingSign", V3(4.2, 3.2, 0.15), easel * CF(0, 3.6, 0) * ANG(RAD(-8), 0, 0), DARK, M.SmoothPlastic)
@@ -886,7 +891,7 @@ local function buildWing(m, idx, P, frac, needs)
 	local charts = { "POWER CURVE\n▁▂▄▆█▆▄", "HEART RATE\n142 bpm  Z4", "REACTION\n0.21 s  ▲" }
 	for i, x in ipairs({ 120.4, 123, 125.6 }) do
 		local mon = part(m, "LabMonitor", V3(2.2, 1.4, 0.12), CF(x, 4.55, 32.0) * ANG(RAD(-6), 0, 0), DARK, M.SmoothPlastic)
-		sign(mon, Enum.NormalId.Back, charts[i], rgb(110, 220, 255), rgb(8, 12, 20), 50, Enum.Font.Code)
+		sign(mon, Enum.NormalId.Back, charts[i], rgb(110, 220, 255), rgb(8, 12, 20), 50, "screen")
 	end
 	-- force plates with glowing edges
 	for _, x in ipairs({ 122, 126.5 }) do
@@ -1012,7 +1017,7 @@ local function poster(parent, cf, w, h, e, style, P)
 		-- a printed results sheet pinned to the corkboard
 		local p = part(parent, "ResultSheet", V3(w, h, 0.03), cf * ANG(0, 0, RAD(math.random(-4, 4))), rgb(238, 234, 222), M.SmoothPlastic, { shadow = false })
 		local sg = gui(p, Enum.NormalId.Back, 40, 0.8)
-		label(sg, string.format("DAY %s\n%s\nvs %s\n%s %s", tostring(e.day or "?"), tostring(e.kind or "BOUT"):upper(), opp, out, how), { TextColor3 = rgb(40, 40, 50), Font = Enum.Font.Code, Size = UDim2.fromScale(0.9, 0.86), Position = UDim2.fromScale(0.05, 0.07) })
+		label(sg, string.format("DAY %s\n%s\nvs %s\n%s %s", tostring(e.day or "?"), tostring(e.kind or "BOUT"):upper(), opp, out, how), { TextColor3 = rgb(40, 40, 50), Face = "screen", Size = UDim2.fromScale(0.9, 0.86), Position = UDim2.fromScale(0.05, 0.07) })
 		part(parent, "Pin", V3(0.2, 0.2, 0.2), cf * CF(0, h / 2 - 0.25, 0.08), win and rgb(40, 150, 70) or RED, M.SmoothPlastic, { shape = Enum.PartType.Ball, shadow = false })
 		return
 	end
@@ -1027,11 +1032,11 @@ local function poster(parent, cf, w, h, e, style, P)
 	frame(sg, { Size = UDim2.new(1, 0, 0.13, 0), BackgroundColor3 = accent })
 	label(sg, tostring(e.kind or "FIGHT NIGHT"):upper(), { TextColor3 = bg, Size = UDim2.fromScale(0.9, 0.1), Position = UDim2.fromScale(0.05, 0.015) })
 	label(sg, string.format("%s\n\"%s\"", me, tostring(nick):upper()), { TextColor3 = WHITE, Size = UDim2.fromScale(0.9, 0.22), Position = UDim2.fromScale(0.05, 0.16) })
-	label(sg, "vs", { TextColor3 = accent, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.3, 0.08), Position = UDim2.fromScale(0.35, 0.39) })
+	label(sg, "vs", { TextColor3 = accent, Face = "signSub", Size = UDim2.fromScale(0.3, 0.08), Position = UDim2.fromScale(0.35, 0.39) })
 	label(sg, opp, { TextColor3 = WHITE, Size = UDim2.fromScale(0.9, 0.14), Position = UDim2.fromScale(0.05, 0.48) })
 	local stamp = frame(sg, { Size = UDim2.fromScale(0.62, 0.14), Position = UDim2.fromScale(0.19, 0.66), BackgroundColor3 = win and rgb(30, 140, 70) or (e.outcome == "loss" and rgb(170, 30, 30) or rgb(90, 90, 100)), Rotation = -6 })
 	label(stamp, out .. (how ~= "" and ("  " .. how) or ""), { TextColor3 = WHITE })
-	label(sg, string.format("%s  -  DAY %s", tostring(e.venue or "WCB ARENA"):upper(), tostring(e.day or "?")), { TextColor3 = rgb(190, 190, 200), Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.07), Position = UDim2.fromScale(0.05, 0.88) })
+	label(sg, string.format("%s  -  DAY %s", tostring(e.venue or "WCB ARENA"):upper(), tostring(e.day or "?")), { TextColor3 = rgb(190, 190, 200), Face = "signSub", Size = UDim2.fromScale(0.9, 0.07), Position = UDim2.fromScale(0.05, 0.88) })
 end
 
 local function buildCareer(m, P, idx)
@@ -1045,7 +1050,7 @@ local function buildCareer(m, P, idx)
 			part(m, "PanelLeg", V3(0.3, 1.1, 0.6), base * CF(sx, 0.55, 0), BLACK, M.Metal)
 		end
 		local head = part(m, "PanelHeader", V3(8, 0.9, 0.1), base * CF(0, 10.1, -0.12), idx <= 1 and rgb(240, 236, 225) or DARK, M.SmoothPlastic)
-		sign(head, Enum.NormalId.Front, i == 1 and (idx <= 1 and "FIGHT RESULTS" or "FIGHT HISTORY") or (idx <= 1 and "MEMBER NEWS" or "CAREER HIGHLIGHTS"), idx <= 1 and rgb(40, 40, 50) or GOLD, nil, 40, idx <= 1 and Enum.Font.Code or Enum.Font.GothamBlack)
+		sign(head, Enum.NormalId.Front, i == 1 and (idx <= 1 and "FIGHT RESULTS" or "FIGHT HISTORY") or (idx <= 1 and "MEMBER NEWS" or "CAREER HIGHLIGHTS"), idx <= 1 and rgb(40, 40, 50) or GOLD, nil, 40, idx <= 1 and "screen" or "sign")
 		for k = 1, 4 do
 			local e = hist[(i - 1) * 4 + k]
 			local cx = (k % 2 == 1) and -1.95 or 1.95
@@ -1123,15 +1128,15 @@ local function buildRecords(m, P, idx)
 	label(sg, "PERSONAL RECORDS", { TextColor3 = idx <= 1 and WHITE or DARK, Size = UDim2.fromScale(0.9, 0.08), Position = UDim2.fromScale(0.05, 0.015) })
 	local rows = recordRows(P)
 	if #rows == 0 then
-		label(sg, "TRAIN ANY STATION\nYOUR BEST SESSIONS GO UP HERE", { TextColor3 = ink, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.86, 0.2), Position = UDim2.fromScale(0.07, 0.4) })
+		label(sg, "TRAIN ANY STATION\nYOUR BEST SESSIONS GO UP HERE", { TextColor3 = ink, Face = "signSub", Size = UDim2.fromScale(0.86, 0.2), Position = UDim2.fromScale(0.07, 0.4) })
 		return
 	end
 	for i, r in ipairs(rows) do
 		local y = 0.14 + (i - 1) * 0.105
 		label(sg, r.grade, { TextColor3 = accent, Size = UDim2.fromScale(0.1, 0.08), Position = UDim2.fromScale(0.04, y) })
-		label(sg, string.format("%s  %d%%", r.name, r.pct), { TextColor3 = ink, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.fromScale(0.8, 0.045), Position = UDim2.fromScale(0.16, y) })
+		label(sg, string.format("%s  %d%%", r.name, r.pct), { TextColor3 = ink, Face = "signSub", TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.fromScale(0.8, 0.045), Position = UDim2.fromScale(0.16, y) })
 		if r.nums ~= "" then
-			label(sg, r.nums, { TextColor3 = idx <= 1 and rgb(90, 90, 100) or rgb(170, 180, 195), Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.fromScale(0.8, 0.035), Position = UDim2.fromScale(0.16, y + 0.048) })
+			label(sg, r.nums, { TextColor3 = idx <= 1 and rgb(90, 90, 100) or rgb(170, 180, 195), Face = "body", TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.fromScale(0.8, 0.035), Position = UDim2.fromScale(0.16, y + 0.048) })
 		end
 	end
 end
@@ -1427,10 +1432,10 @@ local function buildChampion(m, P, idx)
 		local sg = gui(b, face, 24, 0.5)
 		frame(sg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(18, 14, 10) })
 		frame(sg, { Size = UDim2.new(0.96, 0, 0.94, 0), Position = UDim2.fromScale(0.02, 0.03), BackgroundTransparency = 1 })
-		label(sg, "HOME OF THE CHAMPION", { TextColor3 = GOLD, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.12), Position = UDim2.fromScale(0.05, 0.05) })
+		label(sg, "HOME OF THE CHAMPION", { TextColor3 = GOLD, Face = "signSub", Size = UDim2.fromScale(0.9, 0.12), Position = UDim2.fromScale(0.05, 0.05) })
 		label(sg, name, { TextColor3 = WHITE, Size = UDim2.fromScale(0.9, 0.26), Position = UDim2.fromScale(0.05, 0.2) })
 		label(sg, "\"" .. nick .. "\"", { TextColor3 = GOLD, Size = UDim2.fromScale(0.9, 0.16), Position = UDim2.fromScale(0.05, 0.47) })
-		label(sg, (#belts > 0 and table.concat(belts, "  -  ") or "WORLD CHAMPION") .. string.format("\n%d-%d-%d", rec.w or 0, rec.l or 0, rec.d or 0), { TextColor3 = WHITE, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.22), Position = UDim2.fromScale(0.05, 0.68) })
+		label(sg, (#belts > 0 and table.concat(belts, "  -  ") or "WORLD CHAMPION") .. string.format("\n%d-%d-%d", rec.w or 0, rec.l or 0, rec.d or 0), { TextColor3 = WHITE, Face = "signSub", Size = UDim2.fromScale(0.9, 0.22), Position = UDim2.fromScale(0.05, 0.68) })
 	end
 	cyl(m, "BannerPole", 14.6, 0.2, CF(0, 27.1, 20), GOLD, M.Metal)
 	part(m, "BannerFringe", V3(14, 0.3, 0.14), CF(0, 18.9, 20), GOLD, M.Fabric)
@@ -1457,7 +1462,7 @@ local function buildChampion(m, P, idx)
 	end
 	for k = 1, 20 do
 		local nm = names[(k - 1) % #names + 1]
-		local cell = label(sg, nm, { TextColor3 = (k % 3 == 0) and RED or (k % 3 == 1 and DARK or rgb(30, 60, 160)), Font = Enum.Font.GothamBlack, LayoutOrder = k, Size = UDim2.fromScale(0.25, 0.2) })
+		local cell = label(sg, nm, { TextColor3 = (k % 3 == 0) and RED or (k % 3 == 1 and DARK or rgb(30, 60, 160)), Face = "sign", LayoutOrder = k, Size = UDim2.fromScale(0.25, 0.2) })
 		cell.TextScaled = true
 	end
 	for _, sx in ipairs({ -5.5, 5.5 }) do
@@ -1542,7 +1547,7 @@ local function buildChampion(m, P, idx)
 		local entry = { parts = { body, headP }, base = { body.CFrame, headP.CFrame }, phase = rng:NextNumber(0, 6.28), speed = rng:NextNumber(2.5, 5) }
 		if i % 4 == 0 then
 			local signP = part(m, "FanSign", V3(1.8, 1.2, 0.06), baseCF * CF(0, 4.2, -0.3), WHITE, M.SmoothPlastic)
-			sign(signP, Enum.NormalId.Front, ({ "CHAMP!", nick .. "!", "GOAT", "#1 FAN", "SIGN MY GLOVE" })[(i // 4 - 1) % 5 + 1], RED, nil, 40, Enum.Font.Cartoon)
+			sign(signP, Enum.NormalId.Front, ({ "CHAMP!", nick .. "!", "GOAT", "#1 FAN", "SIGN MY GLOVE" })[(i // 4 - 1) % 5 + 1], RED, nil, 40, "hand")
 			table.insert(entry.parts, signP)
 			table.insert(entry.base, signP.CFrame)
 		elseif i % 3 == 0 then
@@ -1648,10 +1653,10 @@ local function buildGallery(m, P, idx)
 	local scr = part(m, "LoungeScreen", V3(8, 3.6, 0.3), CF(40.5, DECK_Y + 2.3, z1 - 0.2), BLACK, M.SmoothPlastic)
 	local sg = gui(scr, Enum.NormalId.Front, 24, 0)
 	frame(sg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(10, 10, 14) })
-	label(sg, "CHAMPION'S LOUNGE", { TextColor3 = GOLD, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.22), Position = UDim2.fromScale(0.05, 0.06) })
+	label(sg, "CHAMPION'S LOUNGE", { TextColor3 = GOLD, Face = "signSub", Size = UDim2.fromScale(0.9, 0.22), Position = UDim2.fromScale(0.05, 0.06) })
 	label(sg, name, { TextColor3 = WHITE, Size = UDim2.fromScale(0.9, 0.36), Position = UDim2.fromScale(0.05, 0.3) })
 	local rec = P.record or {}
-	label(sg, string.format("%d-%d-%d  |  %d KO", rec.w or 0, rec.l or 0, rec.d or 0, rec.ko or 0), { TextColor3 = GOLD, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.2), Position = UDim2.fromScale(0.05, 0.7) })
+	label(sg, string.format("%d-%d-%d  |  %d KO", rec.w or 0, rec.l or 0, rec.d or 0, rec.ko or 0), { TextColor3 = GOLD, Face = "signSub", Size = UDim2.fromScale(0.9, 0.2), Position = UDim2.fromScale(0.05, 0.7) })
 	-- two floor lamps light the deck itself (the east one beside the screen, not in front of it)
 	for _, pos in ipairs({ V3(x0 + 2.5, FLOOR, z0 + 3), V3(x1 - 1.5, FLOOR, z1 - 4.5) }) do
 		vcyl(m, "GalleryLampPost", 5.2, 0.14, CF(pos), GOLD, M.Metal)
@@ -2030,13 +2035,13 @@ local function revealTier(idx, def)
 	stroke.Color = GOLD
 	stroke.Thickness = 2
 	stroke.Parent = band
-	label(band, "FACILITY UPGRADE", { TextColor3 = GOLD, Font = Enum.Font.GothamBold, Size = UDim2.new(1, -40, 0, 26), Position = UDim2.fromOffset(20, 10) })
+	label(band, "FACILITY UPGRADE", { TextColor3 = GOLD, Face = "signSub", Size = UDim2.new(1, -40, 0, 26), Position = UDim2.fromOffset(20, 10) })
 	label(band, (def.name or "NEW TIER"):upper(), { TextColor3 = WHITE, Size = UDim2.new(1, -40, 0, 50), Position = UDim2.fromOffset(20, 38) })
 	local fac = {}
 	for _, f in ipairs(def.facilities or {}) do
 		table.insert(fac, Config.FacilityNames and Config.FacilityNames[f] or f)
 	end
-	label(band, (def.desc or "") .. (#fac > 0 and ("\nNEW: " .. table.concat(fac, "  -  ")) or ""), { TextColor3 = rgb(200, 205, 215), Font = Enum.Font.GothamMedium, Size = UDim2.new(1, -40, 0, 48), Position = UDim2.fromOffset(20, 92) })
+	label(band, (def.desc or "") .. (#fac > 0 and ("\nNEW: " .. table.concat(fac, "  -  ")) or ""), { TextColor3 = rgb(200, 205, 215), Face = "body", Size = UDim2.new(1, -40, 0, 48), Position = UDim2.fromOffset(20, 92) })
 	TweenService:Create(band, TweenInfo.new(0.55, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.new(0.62, 0, 0, 150) }):Play()
 	local cam = workspace.CurrentCamera
 	local pos = cam and cam.CFrame.Position or Vector3.zero

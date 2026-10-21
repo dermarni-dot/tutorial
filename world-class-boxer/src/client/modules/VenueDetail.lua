@@ -81,7 +81,7 @@ local function banner(m, cf, w, h, kind, org)
 			K.Frame(sg, { BackgroundColor3 = fg, Size = UDim2.fromScale(0.9, 0.012), Position = UDim2.fromScale(0.05, 0.955) })
 			if org then
 				K.Text(sg, org[1], { TextColor3 = fg, Size = UDim2.fromScale(0.86, 0.16), Position = UDim2.fromScale(0.07, 0.08) })
-				K.Text(sg, "WORLD\nCHAMPION", { TextColor3 = C.white, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.86, 0.14), Position = UDim2.fromScale(0.07, 0.27) })
+				K.Text(sg, "WORLD\nCHAMPION", { TextColor3 = C.white, Face = "signSub", Size = UDim2.fromScale(0.86, 0.14), Position = UDim2.fromScale(0.07, 0.27) })
 				-- the belt: strap and plate
 				K.Frame(sg, { BackgroundColor3 = rgb(16, 16, 18), Size = UDim2.fromScale(0.9, 0.07), Position = UDim2.fromScale(0.05, 0.52) })
 				local plate = K.Frame(sg, { BackgroundColor3 = fg, Size = UDim2.fromScale(0.42, 0.13), Position = UDim2.fromScale(0.29, 0.49) })
@@ -337,7 +337,7 @@ local function judgesKit(m, b, sp)
 			VCyl(m, "VDBottleCap", 0.14, 0.2, cf * CF(sx + 1.0, 3.35, -0.5), C.white, M.Plastic)
 			local tent = Part(m, "VDNameCard", V3(1.4, 0.5, 0.05), cf * CF(sx + 0.1, 2.85, -1.06) * A(RAD(-15), 0, 0), C.white, M.SmoothPlastic, { shadow = false })
 			local sg = K.Gui(tent, FACE.Front, 60, 1)
-			K.Text(sg, t[3][i] or "JUDGE", { TextColor3 = C.ink, Font = Enum.Font.GothamBold })
+			K.Text(sg, t[3][i] or "JUDGE", { TextColor3 = C.ink, Face = "signSub" })
 			Part(m, "VDPen", V3(0.06, 0.06, 0.6), cf * CF(sx - 0.8, 2.62, -0.1) * A(0, RAD(30), 0), C.ink, M.SmoothPlastic, { shadow = false })
 		end
 	end

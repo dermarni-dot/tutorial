@@ -58,6 +58,14 @@ def asset_image(tex):
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_COND = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
 FONT_SERIF = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
+# the game's own families (Shared.Typography), the real TTFs (tools/ui/fonts, OFL): Bangers for the signs,
+# Montserrat for their second lines, Oswald for numbers; (family, named instance of a variable font)
+FONT_DIR = os.path.join(ROOT, "tools", "ui", "fonts")
+FAMILY_TTF = {
+    "Bangers": (os.path.join(FONT_DIR, "Bangers-Regular.ttf"), None),
+    "Montserrat": (os.path.join(FONT_DIR, "Montserrat[wght].ttf"), "Bold"),
+    "Oswald": (os.path.join(FONT_DIR, "Oswald[wght].ttf"), "Bold"),
+}
 
 
 def srgb2lin(c):
@@ -257,11 +265,33 @@ def face_dims(size, face):
 _font_cache = {}
 
 
-def font(path, px):
-    key = (path, px)
+def font(path, px, var=None):
+    key = (path, px, var)
     if key not in _font_cache:
-        _font_cache[key] = ImageFont.truetype(path, max(6, int(px)))
+        f = ImageFont.truetype(path, max(6, int(px)))
+        if var:
+            try:
+                f.set_variation_by_name(var)
+            except Exception:
+                pass
+        _font_cache[key] = f
     return _font_cache[key]
+
+
+def face_for(it):
+    """(ttf path, variation) of a SurfaceGui text item: its FontFace family (it.font + it.wt), else the enum"""
+    fam = it.get("font")
+    if fam in FAMILY_TTF and os.path.exists(FAMILY_TTF[fam][0]):
+        path, var = FAMILY_TTF[fam]
+        wt = it.get("wt")
+        if var and wt in ("Thin", "ExtraLight", "Light", "Regular", "Medium", "SemiBold", "Bold", "ExtraBold", "Black"):
+            var = wt
+        return path, var
+    if fam in ("Garamond", "Antique", "Bodoni"):
+        return FONT_SERIF, None
+    if fam in ("Oswald", "Bangers", "Michroma", "GothamBlack", "FredokaOne"):
+        return FONT_COND, None
+    return FONT_BOLD, None
 
 
 def c255(c, a=255):
@@ -324,8 +354,7 @@ def draw_gui(g, W, Hh):
         txt = it.get("text")
         if txt and it.get("tt", 0) < 0.99:
             lines = txt.replace("<br/>", "\n").split("\n")
-            fpath = FONT_SERIF if it.get("font") in ("Garamond", "Antique", "Bodoni") else (
-                FONT_COND if it.get("font") in ("Oswald", "Bangers", "Michroma", "GothamBlack", "FredokaOne") else FONT_BOLD)
+            fpath, fvar = face_for(it)
             bw, bh = x1 - x0, y1 - y0
             if it.get("ts", 0) and it["ts"] > 0:
                 px = it["ts"] * Hh
@@ -333,12 +362,12 @@ def draw_gui(g, W, Hh):
                 px = bh / max(1, len(lines)) * 0.8
             # shrink to fit the width
             for _ in range(12):
-                f = font(fpath, px)
+                f = font(fpath, px, fvar)
                 wmax = max(d.textlength(ln, font=f) for ln in lines) if lines else 0
                 if wmax <= bw * 0.96 or px < 7:
                     break
                 px *= 0.85
-            f = font(fpath, px)
+            f = font(fpath, px, fvar)
             lh = px * 1.1
             ty = y0 + (bh - lh * len(lines)) / 2
             for ln in lines:

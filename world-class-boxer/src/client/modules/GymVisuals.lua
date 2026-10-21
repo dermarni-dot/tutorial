@@ -20,6 +20,7 @@ local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Catalog = require(Shared:WaitForChild("Catalog"))
+local Typography = require(Shared:WaitForChild("Typography"))
 local GymSound = require(script.Parent:WaitForChild("GymSound"))
 
 local GymVisuals = {}
@@ -133,7 +134,7 @@ local function surfaceText(p, face, text, fg, bg, ppu)
 	t.BackgroundColor3 = bg or Color3.new(0, 0, 0)
 	t.BackgroundTransparency = bg and 0 or 1
 	t.TextColor3 = fg or Color3.new(1, 1, 1)
-	t.Font = Enum.Font.GothamBlack
+	Typography.Apply(t, "sign")
 	t.TextScaled = true
 	t.TextWrapped = true
 	t.Text = text
@@ -222,7 +223,7 @@ local function tag(p, face, text, fg, w, h, x, y)
 	t.Size = UDim2.fromScale(w or 0.9, h or 0.8)
 	t.BackgroundTransparency = 1
 	t.TextColor3 = fg
-	t.Font = Enum.Font.GothamBlack
+	Typography.Apply(t, "sign")
 	t.TextScaled = true
 	t.Text = text
 	t.Parent = sg
@@ -2913,7 +2914,7 @@ local function reveal(m, O, title, levelDef)
 	local t = Instance.new("TextLabel")
 	t.BackgroundTransparency = 1
 	t.Size = UDim2.fromScale(1, 1)
-	t.Font = Enum.Font.GothamBlack
+	Typography.Apply(t, "sign")
 	t.TextScaled = true
 	t.TextColor3 = GOLD
 	t.TextStrokeTransparency = 0.2

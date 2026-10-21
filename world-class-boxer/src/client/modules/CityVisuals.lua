@@ -470,7 +470,7 @@ local function villaBuild(f, P, base)
 	if gate then
 		local pl = part(f, "GatePlaque", V3(4.6, 1.4, 0.1), gate * CF(-9.2, 5.4, -8.6), GOLD, M.Metal, { reflect = 0.2 })
 		local sg = gui(pl, Enum.NormalId.Front, 50, 0.3, 80)
-		label(sg, "THE " .. surnameOf(P):upper() .. " ESTATE", { TextColor3 = Color3.fromRGB(40, 28, 10), Font = Enum.Font.Garamond })
+		label(sg, "THE " .. surnameOf(P):upper() .. " ESTATE", { TextColor3 = Color3.fromRGB(40, 28, 10), Face = "serif" })
 	end
 	-- garage with every car you own
 	local gcf = siteCF("MansionGarage")
@@ -683,7 +683,7 @@ local function updateBillboards(P)
 					silhouette(sg, c.fg, 0.04, 0.2, 1.3)
 					label(sg, c.top, { TextColor3 = c.fg, Size = UDim2.fromScale(0.66, 0.2), Position = UDim2.fromScale(0.3, 0.06) })
 					label(sg, c.title, { TextColor3 = WHITE, Size = UDim2.fromScale(0.66, 0.36), Position = UDim2.fromScale(0.3, 0.3) })
-					label(sg, c.sub, { TextColor3 = c.fg, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.66, 0.16), Position = UDim2.fromScale(0.3, 0.72) })
+					label(sg, c.sub, { TextColor3 = c.fg, Face = "signSub", Size = UDim2.fromScale(0.66, 0.16), Position = UDim2.fromScale(0.3, 0.72) })
 				end or nil)
 			end
 		end
@@ -795,7 +795,7 @@ local function updateMedia(P)
 				label(sg, camp and tostring(camp.kind or "FIGHT NIGHT"):upper() or "CHAMPION", { TextColor3 = WHITE, Size = UDim2.fromScale(0.9, 0.11), Position = UDim2.fromScale(0.05, 0.015) })
 				silhouette(sg, Color3.fromRGB(60, 60, 70), 0.33, 0.18, 1.9)
 				label(sg, camp and (surnameOf(P):upper() .. "\nvs\n" .. opp:upper()) or name, { TextColor3 = GOLD, Size = UDim2.fromScale(0.9, 0.36), Position = UDim2.fromScale(0.05, 0.4) })
-				label(sg, camp and string.format("%s - %d DAYS", tostring(camp.venueName or ""):upper(), P.camp.daysLeft or 0) or (title or ""), { TextColor3 = WHITE, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.08), Position = UDim2.fromScale(0.05, 0.86) })
+				label(sg, camp and string.format("%s - %d DAYS", tostring(camp.venueName or ""):upper(), P.camp.daysLeft or 0) or (title or ""), { TextColor3 = WHITE, Face = "signSub", Size = UDim2.fromScale(0.9, 0.08), Position = UDim2.fromScale(0.05, 0.86) })
 			end or nil)
 		end
 	end
@@ -1331,7 +1331,7 @@ local function updateTags()
 						bb.AlwaysOnTop = false
 						bb.Parent = head
 						label(bb, "", { Name = "Nick", TextColor3 = WHITE, Size = UDim2.fromScale(1, 0.55), TextStrokeTransparency = 0.4 })
-						label(bb, "", { Name = "Title", TextColor3 = GOLD, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(1, 0.4), Position = UDim2.fromScale(0, 0.58), TextStrokeTransparency = 0.4 })
+						label(bb, "", { Name = "Title", TextColor3 = GOLD, Face = "signSub", Size = UDim2.fromScale(1, 0.4), Position = UDim2.fromScale(0, 0.58), TextStrokeTransparency = 0.4 })
 					end
 					local nick = tostring(pl:GetAttribute("Nick") or pl.DisplayName)
 					bb.Nick.Text = "\"" .. nick .. "\""

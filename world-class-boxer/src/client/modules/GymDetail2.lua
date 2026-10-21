@@ -52,7 +52,7 @@ local function wallPrint(m, name, id, along, y, w, h, key, fallback, out)
 	local p = Part(m, name, V3(w, h, 0.08), onWall(id, along, y, (out or 0.06) + 0.04), C.paper, M.SmoothPlastic, { shadow = false })
 	if not K.Decal(p, FACE.Front, key) then
 		local fb = fallback or {}
-		K.Sign(p, FACE.Front, fb.text or "WCB", fb.fg or C.gold, fb.bg or C.ink, 16, Enum.Font.GothamBlack)
+		K.Sign(p, FACE.Front, fb.text or "WCB", fb.fg or C.gold, fb.bg or C.ink, 16, "sign")
 	end
 	return p
 end
@@ -232,7 +232,7 @@ local GLOVE_COLS = { C.red, C.blue, C.black, C.gold, C.white, rgb(240, 120, 170)
 local function gloveWall(m, cf)
 	Part(m, "GlovePegboard", V3(6.6, 4.6, 0.15), cf * CF(0, 0, -0.08), rgb(150, 120, 86), M.Wood)
 	local hdr = Part(m, "GloveHeader", V3(6.6, 0.6, 0.06), cf * CF(0, 2.6, -0.1), C.ink, M.SmoothPlastic, { shadow = false })
-	K.Sign(hdr, FACE.Front, "GLOVES - PUT THEM BACK", C.gold, C.ink, 30, Enum.Font.GothamBold)
+	K.Sign(hdr, FACE.Front, "GLOVES - PUT THEM BACK", C.gold, C.ink, 30, "signSub")
 	local i = 0
 	for r = 0, 2 do
 		for c = 0, 3 do
@@ -414,7 +414,7 @@ local function weighIn(m, along)
 	local head = Part(m, "ScaleHead", V3(1.1, 0.7, 0.4), sc * CF(0, 4.5, 1.0), C.ink2, M.Metal)
 	local hgui = K.Gui(head, FACE.Front, 60, 0)
 	K.Frame(hgui, { BackgroundColor3 = rgb(16, 30, 20), Size = UDim2.fromScale(0.86, 0.6), Position = UDim2.fromScale(0.07, 0.2) })
-	K.Text(hgui, "160.4", { TextColor3 = rgb(120, 255, 140), Font = Enum.Font.Code, Size = UDim2.fromScale(0.8, 0.5), Position = UDim2.fromScale(0.1, 0.25) })
+	K.Text(hgui, "160.4", { TextColor3 = rgb(120, 255, 140), Face = "screen", Size = UDim2.fromScale(0.8, 0.5), Position = UDim2.fromScale(0.1, 0.25) })
 	-- the officials' table and chair to the left
 	local tb = onWall("DZn", along - 5.6, FLOOR_Y, 2.6)
 	Part(m, "WeighTable", V3(3.2, 0.15, 1.6), tb * CF(0, 2.9, 0), C.wood, M.Wood)
@@ -449,7 +449,7 @@ local function drinksMachine(m, id, along)
 		end
 	end
 	local hdr = Part(m, "DrinksHeader", V3(3.4, 1.0, 0.05), cf * CF(0, 6.7, -1.32), C.ink, M.SmoothPlastic, { shadow = false })
-	K.Sign(hdr, FACE.Front, "COLD DRINKS", C.white, C.ink, 30, Enum.Font.GothamBlack, 0)
+	K.Sign(hdr, FACE.Front, "COLD DRINKS", C.white, C.ink, 30, "sign", 0)
 	Part(m, "DrinksPanel", V3(0.7, 1.6, 0.06), cf * CF(1.25, 4.6, -1.32), C.steelLight, M.Metal, { shadow = false })
 	Part(m, "DrinksSlot", V3(2.4, 0.6, 0.06), cf * CF(-0.45, 0.9, -1.32), C.black, M.SmoothPlastic, { shadow = false })
 end

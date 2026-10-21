@@ -14,8 +14,12 @@
 --   * Signage.Lockup(parent, loc, opts) - the same lockup inside any GuiObject (opts.aspect = width / height).
 --   * Signage.Badge(parent, loc, h, opts) - a menu badge h px tall: the tile, the wordmark, the sub line.
 -- Icons come from the uploaded sheets (ImageLabel + ImageRectOffset); an icon that is not uploaded is drawn
--- as its initial in a ring, so the layout never changes.
+-- as its initial in a ring, so the layout never changes. The faces are Shared.Typography's: the wordmark in
+-- the sign face (Bangers), the sub line in the label face (Montserrat Bold).
 local Signage = {}
+
+local Typography = require(script.Parent:WaitForChild("Typography"))
+Signage.Typography = Typography
 
 local IconData
 do
@@ -38,7 +42,7 @@ local CREAM = rgb(235, 232, 220)
 -- The places
 ------------------------------------------------------------------------
 -- kind: gym | place | shop | venue. shop = the CityMap shop front's sign text (its Store key);
--- venue = the Venues kind. font: the wordmark's face (default GothamBlack, the game's sign face).
+-- venue = the Venues kind. font: the wordmark's face (default Typography's sign face, Bangers).
 Signage.Locations = {
 	-- the gym and the places you travel to
 	{ id = "gym", kind = "gym", name = "WORLD CLASS BOXING GYM", short = "WORLD CLASS BOXING GYM", sub = "CHAMPIONS ARE MADE HERE  ·  EST. 1987", icon = "glove", bg = rgb(18, 18, 22), fg = GOLD, accent = GOLD },
@@ -148,8 +152,8 @@ function Signage.Glyph(parent, name, color, props)
 		local ring = new("Frame", { Name = "Ring", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(0.84, 0.84), Position = UDim2.fromScale(0.08, 0.08), ZIndex = f.ZIndex }, f)
 		new("UICorner", { CornerRadius = UDim.new(0.5, 0) }, ring)
 		new("UIStroke", { Color = color, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, ring)
-		new("TextLabel", { Name = "Letter", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = string.upper(string.sub(tostring(name), 1, 1)), TextColor3 = color,
-			Font = Enum.Font.GothamBlack, TextScaled = true, ZIndex = f.ZIndex }, ring)
+		Typography.Apply(new("TextLabel", { Name = "Letter", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = string.upper(string.sub(tostring(name), 1, 1)), TextColor3 = color,
+			TextScaled = true, ZIndex = f.ZIndex }, ring), "heading")
 	end
 	f.Parent = parent
 	return f
@@ -164,25 +168,30 @@ local function tile(parent, loc, size, pos, anchor, z)
 	return t
 end
 
+-- a TextScaled label in a Typography role (props.Face, default the sign face)
 local function text(parent, str, props)
-	local t = new("TextLabel", { BackgroundTransparency = 1, BorderSizePixel = 0, Font = Enum.Font.GothamBlack, TextScaled = true, TextWrapped = false, Text = str, TextColor3 = WHITE })
+	local t = new("TextLabel", { BackgroundTransparency = 1, BorderSizePixel = 0, TextScaled = true, TextWrapped = false, Text = str, TextColor3 = WHITE })
+	Typography.Apply(t, props.Face or "sign")
 	for k, v in pairs(props) do
-		t[k] = v
+		if k ~= "Face" then
+			t[k] = v
+		end
 	end
 	t.Parent = parent
 	return t
 end
 
 -- the lockup's natural width in height units (1 = the lockup's height): the tile, the gap and the wordmark
--- (GothamBlack caps run about 0.72 em; the wordmark is 0.56 of the height when a sub line is shown)
+-- (Typography.Em: Bangers caps run about 0.46 em with their spaces, Montserrat Bold 0.76; the wordmark is
+-- 0.56 of the height when a sub line is shown)
 local function naturalUnits(loc, opts)
 	local words = opts.text or loc.short
 	local sub = opts.sub ~= false and (opts.subText or loc.sub) or nil
 	local wordH = sub and 0.56 or 0.66
 	local subH = 0.2
-	local w = #words * wordH * 0.74
+	local w = #words * wordH * Typography.Em.sign
 	if sub then
-		w = math.max(w, #sub * subH * 0.76)
+		w = math.max(w, #sub * subH * Typography.Em.signSub)
 	end
 	return 0.14 + 0.72 + 0.2 + w + 0.16
 end
@@ -212,7 +221,7 @@ function Signage.Lockup(parent, loc, opts)
 			AnchorPoint = Vector2.new(0.5, 0), TextColor3 = fg, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = z + 1 })
 		if hasSub then
 			text(holder, subLine, { Name = "Sub", Size = UDim2.fromScale(0.86, 0.11), Position = UDim2.fromScale(0.5, 0.8), AnchorPoint = Vector2.new(0.5, 0), TextColor3 = fg,
-				TextTransparency = 0.2, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = z + 1 })
+				TextTransparency = 0.2, Face = "signSub", TextXAlignment = Enum.TextXAlignment.Center, ZIndex = z + 1 })
 		end
 		return holder
 	end
@@ -231,7 +240,7 @@ function Signage.Lockup(parent, loc, opts)
 	if hasSub then
 		-- a hairline in the accent, then the sub line
 		new("Frame", { Name = "Rule", BackgroundColor3 = loc.accent or fg, BackgroundTransparency = 0.35, BorderSizePixel = 0, Size = UDim2.fromScale(tw, 0.035), Position = UDim2.fromScale(x0, 0.655), ZIndex = z + 1 }, group)
-		text(group, subLine, { Name = "Sub", Size = UDim2.fromScale(tw, 0.2), Position = UDim2.fromScale(x0, 0.72), TextColor3 = fg, TextTransparency = 0.15, Font = Enum.Font.GothamBold,
+		text(group, subLine, { Name = "Sub", Size = UDim2.fromScale(tw, 0.2), Position = UDim2.fromScale(x0, 0.72), TextColor3 = fg, TextTransparency = 0.15, Face = "signSub",
 			TextXAlignment = Enum.TextXAlignment.Left, ZIndex = z + 1 })
 	end
 	return holder
@@ -296,7 +305,8 @@ end
 
 -- the badge's layout for a height h: pad, the tile's side, the gap to the words, the wordmark's and the sub
 -- line's text sizes (sub = nil when the badge is too short for a readable second line), and the width the
--- badge takes with the words `text` (an estimate: bold capitals run about 0.72 em)
+-- badge takes with the words `text` (an estimate from Typography.Em: the sign face's capitals and spaces run
+-- about 0.46 em, the sub line's 0.76)
 function Signage.BadgeMetrics(h, minText, text, sub)
 	h = h or 28
 	minText = minText or 9
@@ -306,9 +316,9 @@ function Signage.BadgeMetrics(h, minText, text, sub)
 	local subSize = math.floor(h * 0.26)
 	m.sub = (sub and h >= 40 and subSize >= minText) and subSize or nil
 	m.word = math.max(minText, math.floor(h * (m.sub and 0.42 or 0.46)))
-	local wordW = #tostring(text or "") * m.word * 0.72
+	local wordW = #tostring(text or "") * m.word * Typography.Em.sign
 	if m.sub then
-		wordW = math.max(wordW, #tostring(sub) * m.sub * 0.62)
+		wordW = math.max(wordW, #tostring(sub) * m.sub * Typography.Em.signSub)
 	end
 	m.width = pad + ts + m.gap + math.ceil(wordW) + pad * 2 + 2
 	return m
@@ -353,15 +363,15 @@ function Signage.Badge(parent, loc, h, opts)
 	local fg = opts.plain and (opts.fg or WHITE) or loc.fg
 	local wordSize = m.word
 	local right = opts.w and UDim2.new(1, -(x + pad), 0, 0) or nil
-	local wm = new("TextLabel", { Name = "Wordmark", BackgroundTransparency = 1, BorderSizePixel = 0, Font = Enum.Font.GothamBlack, TextSize = wordSize, Text = words, TextColor3 = fg,
+	local wm = new("TextLabel", Typography.Props("sign", { Name = "Wordmark", BackgroundTransparency = 1, BorderSizePixel = 0, TextSize = wordSize, Text = words, TextColor3 = fg,
 		TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center, TextWrapped = false, TextTruncate = opts.w and Enum.TextTruncate.AtEnd or Enum.TextTruncate.None,
 		Position = UDim2.fromOffset(x, hasSub and pad - 1 or 0), Size = right and UDim2.new(1, -(x + pad + 2), 0, hasSub and wordSize + 2 or h) or UDim2.fromOffset(0, hasSub and wordSize + 2 or h),
-		AutomaticSize = right and Enum.AutomaticSize.None or Enum.AutomaticSize.X, ZIndex = f.ZIndex + 1 }, f)
+		AutomaticSize = right and Enum.AutomaticSize.None or Enum.AutomaticSize.X, ZIndex = f.ZIndex + 1 }), f)
 	if hasSub then
-		new("TextLabel", { Name = "Sub", BackgroundTransparency = 1, BorderSizePixel = 0, Font = Enum.Font.GothamBold, TextSize = m.sub, Text = subLine, TextColor3 = fg,
+		new("TextLabel", Typography.Props("signSub", { Name = "Sub", BackgroundTransparency = 1, BorderSizePixel = 0, TextSize = m.sub, Text = subLine, TextColor3 = fg,
 			TextTransparency = 0.25, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd,
 			Position = UDim2.fromOffset(x, pad + wordSize), Size = right and UDim2.new(1, -(x + pad + 2), 0, h - pad * 2 - wordSize) or UDim2.fromOffset(0, h - pad * 2 - wordSize),
-			AutomaticSize = right and Enum.AutomaticSize.None or Enum.AutomaticSize.X, ZIndex = f.ZIndex + 1 }, f)
+			AutomaticSize = right and Enum.AutomaticSize.None or Enum.AutomaticSize.X, ZIndex = f.ZIndex + 1 }), f)
 	end
 	if not opts.w then
 		-- the hug: the wordmark's right edge plus the padding (AutomaticSize X on the badge ends at the

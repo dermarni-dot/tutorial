@@ -15,6 +15,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
 local CityProps = require(Shared:WaitForChild("CityProps"))
 local Signage = require(Shared:WaitForChild("Signage"))
+local Typography = require(Shared:WaitForChild("Typography"))
 
 local CityMap = {}
 
@@ -187,7 +188,7 @@ local function billboard(parent, cf, w, h, slot, ad, legH)
 	sg.Name = "Ad"
 	frame(sg, { Name = "Bg", Size = UDim2.fromScale(1, 1), BackgroundColor3 = ad.bg })
 	label(sg, ad.title, { Name = "Title", TextColor3 = ad.fg, Size = UDim2.fromScale(0.9, 0.5), Position = UDim2.fromScale(0.05, 0.08) })
-	label(sg, ad.sub, { Name = "Sub", TextColor3 = ad.fg, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.26), Position = UDim2.fromScale(0.05, 0.64) })
+	label(sg, ad.sub, { Name = "Sub", TextColor3 = ad.fg, Face = "signSub", Size = UDim2.fromScale(0.9, 0.26), Position = UDim2.fromScale(0.05, 0.64) })
 	face:SetAttribute("Slot", slot)
 	tag(face, "CityBillboard")
 	return m, face
@@ -500,7 +501,7 @@ local function productRow(parent, cf, w, h, colors, labels, face)
 		Instance.new("UICorner", box).CornerRadius = UDim.new(0.15, 0)
 		local txt = labels and labels[k % #labels + 1]
 		if txt then
-			label(box, txt, { TextColor3 = Color3.new(1, 1, 1), Size = UDim2.fromScale(0.9, 0.3), Position = UDim2.fromScale(0.05, 0.35), Font = Enum.Font.GothamBold })
+			label(box, txt, { TextColor3 = Color3.new(1, 1, 1), Size = UDim2.fromScale(0.9, 0.3), Position = UDim2.fromScale(0.05, 0.35), Face = "signSub" })
 		end
 	end
 	return p
@@ -594,8 +595,8 @@ INTERIOR.proshop = function(f, d, c)
 		local fontOk, font = pcall(function()
 			return Enum.Font[b.font]
 		end)
-		GymDecor.Sign(ban, Enum.NormalId.Front, word, CityProps.RGB(b.wordColor), col, 30, 0.4, fontOk and font or Enum.Font.GothamBlack)
-		GymDecor.Sign(ban, Enum.NormalId.Back, word, CityProps.RGB(b.wordColor), col, 30, 0.4, fontOk and font or Enum.Font.GothamBlack)
+		GymDecor.Sign(ban, Enum.NormalId.Front, word, CityProps.RGB(b.wordColor), col, 30, 0.4, fontOk and font or "sign")
+		GymDecor.Sign(ban, Enum.NormalId.Back, word, CityProps.RGB(b.wordColor), col, 30, 0.4, fontOk and font or "sign")
 	end
 	-- boot wall on the left, robe mannequin, a hanging test bag and the belt case
 	productRow(f, CF(c.x0 + 0.5, y + 2.2, c.z0 + 9) * ANG(0, RAD(90), 0), 8, 1.2, { Color3.fromRGB(20, 20, 24), Color3.fromRGB(240, 240, 240), Color3.fromRGB(200, 30, 36), Color3.fromRGB(230, 180, 40) }, { "BOOT", "PRO", "ELITE" }, Enum.NormalId.Back)
@@ -642,7 +643,7 @@ INTERIOR.diner = function(f, d, c)
 			table.insert(lines, string.format("%s  %s", meal.name:upper(), Config.Money(meal.price)))
 		end
 	end
-	label(msg, table.concat(lines, "\n"), { TextColor3 = Color3.fromRGB(240, 240, 235), Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.7), Position = UDim2.fromScale(0.05, 0.27) })
+	label(msg, table.concat(lines, "\n"), { TextColor3 = Color3.fromRGB(240, 240, 235), Face = "signSub", Size = UDim2.fromScale(0.9, 0.7), Position = UDim2.fromScale(0.05, 0.27) })
 	for k = 0, 2 do
 		local bz = c.z0 + 2.2 + k * 4.2 -- a booth is 3.7 deep back to back
 		local bx = c.x1 - 3.2
@@ -711,7 +712,7 @@ INTERIOR.museum = function(f, d, c)
 	-- era banners and the HALL OF FAME wall at the back. Your own exhibit appears (CityVisuals) at
 	-- Site_MuseumExhibit once you hold a title.
 	local hof = part(f, "HallSign", V3(16, 3, 0.2), CF(c.cx, y + c.h - 2.6, c.z1 - 0.15), Color3.fromRGB(20, 20, 24), M.SmoothPlastic)
-	GymDecor.Sign(hof, Enum.NormalId.Front, "HALL OF FAME", C.gold, Color3.fromRGB(20, 20, 24), 30, 0, Enum.Font.Garamond)
+	GymDecor.Sign(hof, Enum.NormalId.Front, "HALL OF FAME", C.gold, Color3.fromRGB(20, 20, 24), 30, 0, "serif")
 	-- era banners flank the sign on the back wall
 	for k, era in ipairs({ "THE BARE-KNUCKLE ERA", "THE GOLDEN AGE", "THE TELEVISION ERA", "THE MODERN GREATS" }) do
 		local bx = c.cx + ({ -15, -10.5, 10.5, 15 })[k]
@@ -767,7 +768,7 @@ INTERIOR.motors = function(f, d, c)
 		spot(emitter(f, CF(st[1], y + c.h - 0.6, st[2])), Enum.NormalId.Bottom, Color3.fromRGB(240, 245, 255), 16, 1.6, 60)
 	end
 	local wall = part(f, "BrandWall", V3(c.x1 - c.x0 - 2, 3, 0.2), CF(c.cx, y + c.h - 2.6, c.z1 - 0.15), Color3.fromRGB(14, 14, 18), M.SmoothPlastic)
-	GymDecor.Sign(wall, Enum.NormalId.Front, "PRESTIGE MOTORS", Color3.fromRGB(220, 220, 230), Color3.fromRGB(14, 14, 18), 30, 0, Enum.Font.Michroma)
+	GymDecor.Sign(wall, Enum.NormalId.Front, "PRESTIGE MOTORS", Color3.fromRGB(220, 220, 230), Color3.fromRGB(14, 14, 18), 30, 0, "tech")
 	local desk = CF(c.x0 + 4, y, c.z1 - 2.5)
 	part(f, "SalesDesk", V3(5, 2.8, 2), desk * CF(0, 1.4, 0), Color3.fromRGB(230, 230, 232), M.Marble, { collide = true })
 	part(f, "DeskScreen", V3(1.6, 1.1, 0.1), desk * CF(0.8, 3.4, 0.3), Color3.fromRGB(20, 30, 50), M.Glass)
@@ -982,7 +983,7 @@ local function gasStation(f)
 		local psg = gui(pylon, face, 20, 0, 700)
 		frame(psg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(200, 30, 36) })
 		label(psg, "GAS", { TextColor3 = Color3.new(1, 1, 1), Size = UDim2.fromScale(0.8, 0.4), Position = UDim2.fromScale(0.1, 0.05) })
-		label(psg, "3.49", { TextColor3 = C.gold, Font = Enum.Font.Code, Size = UDim2.fromScale(0.8, 0.45), Position = UDim2.fromScale(0.1, 0.5) })
+		label(psg, "3.49", { TextColor3 = C.gold, Face = "screen", Size = UDim2.fromScale(0.8, 0.45), Position = UDim2.fromScale(0.1, 0.5) })
 	end
 end
 
@@ -1441,7 +1442,7 @@ local function buildArena(root)
 	frame(sg, { Size = UDim2.fromScale(1, 0.22), BackgroundColor3 = Color3.fromRGB(190, 20, 30) })
 	label(sg, "WCB ARENA", { Name = "ScreenTop", TextColor3 = Color3.new(1, 1, 1), Size = UDim2.fromScale(0.9, 0.18), Position = UDim2.fromScale(0.05, 0.02) })
 	label(sg, "FIGHT NIGHT", { Name = "ScreenHeadline", TextColor3 = C.gold, Size = UDim2.fromScale(0.9, 0.38), Position = UDim2.fromScale(0.05, 0.26) })
-	label(sg, "SATURDAY  -  WORLD TITLE ON THE LINE", { Name = "ScreenSub", TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.16), Position = UDim2.fromScale(0.05, 0.7) })
+	label(sg, "SATURDAY  -  WORLD TITLE ON THE LINE", { Name = "ScreenSub", TextColor3 = Color3.new(1, 1, 1), Face = "signSub", Size = UDim2.fromScale(0.9, 0.16), Position = UDim2.fromScale(0.05, 0.7) })
 	-- CityVisuals puts your next fight / your title win on the big screen (text only, locally)
 	screen:SetAttribute("Kind", "ArenaScreen")
 	tag(screen, "CityScreen")
@@ -2094,14 +2095,14 @@ local function tvWall(f, cf, w, profile)
 	r = type(r) == "table" and r or { w = 0, l = 0, d = 0, ko = 0 }
 	label(sg, string.format("%s \"%s\"", tostring(id.name or ""), tostring(id.nickname or "")), { TextColor3 = C.gold, Size = UDim2.fromScale(0.9, 0.18), Position = UDim2.fromScale(0.05, 0.24) })
 	local tier = Config.Tiers[profile.tier]
-	label(sg, string.format("%s  -  %d-%d-%d (%d KO)", tier and tier.name or "", r.w or 0, r.l or 0, r.d or 0, r.ko or 0), { TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.12), Position = UDim2.fromScale(0.05, 0.46) })
+	label(sg, string.format("%s  -  %d-%d-%d (%d KO)", tier and tier.name or "", r.w or 0, r.l or 0, r.d or 0, r.ko or 0), { TextColor3 = Color3.new(1, 1, 1), Face = "signSub", Size = UDim2.fromScale(0.9, 0.12), Position = UDim2.fromScale(0.05, 0.46) })
 	local nextLine = "NEXT FIGHT: TO BE ANNOUNCED"
 	local camp = profile.camp
 	if type(camp) == "table" and type(camp.offer) == "table" and type(camp.offer.opp) == "table" then
 		nextLine = string.format("NEXT: vs %s  -  %d DAYS", tostring(camp.offer.opp.name or "?"):upper(), tonumber(camp.daysLeft) or 0)
 	end
-	label(sg, nextLine, { TextColor3 = Color3.fromRGB(150, 210, 255), Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.12), Position = UDim2.fromScale(0.05, 0.64) })
-	label(sg, "FANS: " .. tostring(math.floor((profile.popularity or 0) ^ 2 * 950 + (r.w or 0) * 120)), { TextColor3 = Color3.fromRGB(200, 200, 210), Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.1), Position = UDim2.fromScale(0.05, 0.82) })
+	label(sg, nextLine, { TextColor3 = Color3.fromRGB(150, 210, 255), Face = "signSub", Size = UDim2.fromScale(0.9, 0.12), Position = UDim2.fromScale(0.05, 0.64) })
+	label(sg, "FANS: " .. tostring(math.floor((profile.popularity or 0) ^ 2 * 950 + (r.w or 0) * 120)), { TextColor3 = Color3.fromRGB(200, 200, 210), Face = "signSub", Size = UDim2.fromScale(0.9, 0.1), Position = UDim2.fromScale(0.05, 0.82) })
 	local glow = Instance.new("PointLight")
 	glow.Color, glow.Range, glow.Brightness, glow.Shadows = Color3.fromRGB(150, 180, 255), 10, 0.6, false
 	glow.Parent = scr

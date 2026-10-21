@@ -19,6 +19,7 @@
 -- The extra dressing (MenuDetail) follows the same level: textures and print on Low, lockers, a round timer, the
 -- bags' hardware and more on Medium, pipes, scuffs and the small kit on High.
 local CollectionService = game:GetService("CollectionService")
+local Typography = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Typography"))
 
 -- Perf is the core module; without it the level passed to Build stands
 local Perf
@@ -111,7 +112,7 @@ local function sign(st, p, text, fg, bg, bgT, font, face)
 	t.Text = text
 	t.TextColor3 = fg
 	t.TextScaled = true
-	t.Font = font or Enum.Font.Oswald
+	Typography.Apply(t, font or "display")
 	t.Parent = sg
 	sg.Parent = p
 	table.insert(st.signs, sg)
@@ -137,7 +138,7 @@ local function buildRing(st)
 	canvas.CastShadow = false
 	-- the ring logo printed on the canvas in front of the boxer (worn, low contrast)
 	local logo = part(st, "CanvasLogo", V3(9, 0.02, 3.4), CF(0, CANVAS_Y + 0.011, 7), rgb(150, 30, 36), Enum.Material.Fabric, { Transparency = 0.5, CastShadow = false })
-	sign(st, logo, "WCB", rgb(232, 210, 160), nil, 1, Enum.Font.Oswald, Enum.NormalId.Top)
+	sign(st, logo, "WCB", rgb(232, 210, 160), nil, 1, "display", Enum.NormalId.Top)
 	-- corner posts + pads: your red corner behind-left, the neutral white one behind-right
 	local corners = {
 		{ -ROPE_X, ROPE_BACK, rgb(176, 22, 32) }, { ROPE_X, ROPE_BACK, rgb(226, 226, 230) },
@@ -211,7 +212,7 @@ local function buildGym(st)
 	}
 	for i, ps in ipairs(posters) do
 		local p = part(st, "Poster" .. i, V3(4.6, 6.4, 0.08), ps[1], ps[3], Enum.Material.Fabric)
-		sign(st, p, ps[2], ps[4], nil, 1, Enum.Font.Oswald)
+		sign(st, p, ps[2], ps[4], nil, 1, "display")
 		part(st, "PosterFrame" .. i, V3(5, 6.8, 0.06), ps[1] * CF(0, 0, 0.04), rgb(24, 20, 18), Enum.Material.Wood)
 	end
 	-- a high window (cold daylight) on the back wall with a shaft of light falling into the gym

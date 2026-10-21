@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Signage = require(Shared:WaitForChild("Signage"))
+local Typography = require(Shared:WaitForChild("Typography"))
 local GymDecor = require(script.Parent:WaitForChild("GymDecor"))
 local CityMap = require(script.Parent:WaitForChild("CityMap"))
 
@@ -52,7 +53,7 @@ local function label(adornee, text, color, offsetY, maxDist)
 	t.Size = UDim2.fromScale(1, 1)
 	t.BackgroundTransparency = 1
 	t.Text = text
-	t.Font = Enum.Font.GothamBlack
+	Typography.Apply(t, "sign")
 	t.TextScaled = true
 	t.TextColor3 = color or Color3.new(1, 1, 1)
 	t.TextStrokeTransparency = 0.3
@@ -75,7 +76,7 @@ local function sign(p, face, text, bg, fg)
 	t.BackgroundColor3 = bg or Color3.fromRGB(15, 15, 18)
 	t.BackgroundTransparency = bg and 0 or 1
 	t.TextColor3 = fg or Color3.fromRGB(255, 200, 40)
-	t.Font = Enum.Font.GothamBlack
+	Typography.Apply(t, "sign")
 	t.TextScaled = true
 	t.Text = text
 	t.Parent = sg

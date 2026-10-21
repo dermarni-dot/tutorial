@@ -1,7 +1,8 @@
 -- UI: the game's design system - "fight night broadcast", championship-belt finish.
 -- Near-black glass panels lit from the top, championship gold (with a metallic sheen on titles, the
--- primary button and lit bars) and fight red accents, a condensed display face (Oswald) for titles and
--- every number, Gotham for body copy, a 4 px spacing grid, tight corners, hairline strokes, soft stacked
+-- primary button and lit bars) and fight red accents, a sports-poster display face (Bangers) for titles,
+-- buttons and call-outs, condensed Oswald for every number, Montserrat for body copy (Shared.Typography
+-- holds the faces), a 4 px spacing grid, tight corners, hairline strokes, soft stacked
 -- shadows and quick ease-out motion. Icons come from the game's own icon set (tools/ui -> Shared.IconData:
 -- flat white glyphs tinted per use, no emoji): UI.Icon, UI.IconTile, and an `icon` option on buttons,
 -- chips, stat tiles, kickers, section headers, tabs, windows and toasts. Every button has hover, press,
@@ -80,26 +81,13 @@ UI.Hair = { faint = 0.93, soft = 0.88, strong = 0.75 }
 -- the championship gold as a metallic ramp (top to bottom): titles, the primary button, lit bars
 UI.GoldRamp = { Color3.fromRGB(255, 244, 205), Color3.fromRGB(255, 212, 92), Color3.fromRGB(226, 160, 40), Color3.fromRGB(255, 214, 110) }
 
--- typography: Font objects for the built-in families (nil when Font.new is unavailable)
-local function face(family, weight)
-	local ok, f = pcall(function()
-		return Font.new("rbxasset://fonts/families/" .. family .. ".json", weight or Enum.FontWeight.Regular, Enum.FontStyle.Normal)
-	end)
-	return ok and f or nil
-end
-UI.Fonts = {
-	display = face("Oswald", Enum.FontWeight.Bold), -- titles, the logo, big labels
-	displayMed = face("Oswald", Enum.FontWeight.SemiBold), -- buttons, tabs, section heads
-	number = face("Oswald", Enum.FontWeight.Bold), -- stats, clocks, records, money
-	heading = face("GothamSSm", Enum.FontWeight.Heavy),
-	label = face("GothamSSm", Enum.FontWeight.Bold),
-	body = face("GothamSSm", Enum.FontWeight.Medium),
-	mono = face("RobotoMono", Enum.FontWeight.Medium),
-}
-local FONT_FALLBACK = {
-	display = Enum.Font.Oswald, displayMed = Enum.Font.Oswald, number = Enum.Font.Oswald, heading = Enum.Font.GothamBlack,
-	label = Enum.Font.GothamBold, body = Enum.Font.GothamMedium, mono = Enum.Font.RobotoMono,
-}
+-- typography: the faces by design role (Shared.Typography: display / displayMed = Bangers, number = Oswald
+-- Bold, heading / label / body = Montserrat, mono = RobotoMono; Font objects, nil where Font.new is
+-- unavailable, with an Enum.Font fallback per role). Every label built here goes through them: a legacy
+-- T.font / T.semi / T.bold is read as body / label / heading (and a heavy face at title size as display).
+local Typography = require(script.Parent:WaitForChild("Typography"))
+UI.Type = Typography
+UI.Fonts = Typography.Fonts
 
 -- motion
 UI.Motion = {
@@ -244,16 +232,7 @@ end
 ------------------------------------------------------------------------
 -- resolves a design font role ("display", "number", ...) onto a text object
 function UI.SetFace(obj, role)
-	local f = UI.Fonts[role]
-	if f then
-		local ok = pcall(function()
-			obj.FontFace = f
-		end)
-		if ok then
-			return
-		end
-	end
-	obj.Font = FONT_FALLBACK[role] or T.font
+	Typography.Apply(obj, role or "body")
 end
 
 -- applies props.Face (a design role) or the typographic rule "heavy and big = display face"
@@ -273,19 +252,30 @@ function UI.Frame(parent, props)
 	return UI.New("Frame", props)
 end
 
-local function textRole(props)
+-- the design role of a label's props: props.Face, else the role its legacy Enum.Font stands for (T.bold at
+-- title size is a title -> the display face; T.bold under it a heading, T.semi a label, T.font body), else
+-- `default`; nil keeps a flavour enum (Code, PermanentMarker...) as given. The display roles draw a little
+-- larger than asked (Typography.Scale: Bangers' capitals are shorter than Oswald's).
+local function textRole(props, default)
 	local role = props.Face
 	props.Face = nil
+	if not role then
+		local f = props.Font
+		if f == T.bold and (props.TextSize or 16) >= 18 and not props.TextScaled then
+			role = "display"
+		elseif f ~= nil then
+			role = Typography.RoleOf[f]
+		else
+			role = default
+		end
+	end
 	if role then
 		props.Font = nil
-		return role
+		if not props.TextScaled and props.TextSize then
+			props.TextSize = Typography.SizeOf(role, props.TextSize)
+		end
 	end
-	-- the type hierarchy: a heavy face at heading sizes is a title -> the condensed display face
-	if props.Font == T.bold and (props.TextSize or 16) >= 18 and not props.TextScaled then
-		props.Font = nil
-		return "display"
-	end
-	return nil
+	return role
 end
 
 ------------------------------------------------------------------------
@@ -303,16 +293,19 @@ function UI.TextFloor(scale)
 	return math.ceil(UI.MinTextPx / math.max(scale, 0.1) - 1e-6)
 end
 
--- the width (px) a line of body text (Gotham) takes at `size`: never less than a broad 0.6 em per
--- character (TextService's metrics can differ from the font face a label really draws with), so a
--- layout chosen with it keeps its captions whole
+-- the width (px) a line of text takes at `size` in `font` (a role name, a legacy Enum.Font or nil = body):
+-- never less than a broad 0.64 em per character (TextService measures Enum fonts only, and Montserrat has
+-- none: Gotham's measure runs about 8% short of it), so a layout chosen with it keeps its captions whole
 function UI.TextWidth(text, size, font)
 	text = tostring(text or "")
-	local w = (utf8.len(text) or #text) * size * 0.6
+	local role = type(font) == "string" and font or (font ~= nil and Typography.RoleOf[font]) or "body"
+	local k = (role == "body" or role == "label" or role == "heading" or role == "signSub") and 1.08 or 1
+	local w = (utf8.len(text) or #text) * size * 0.6 * (k > 1 and 1.07 or 1)
+	local enum = Typography.Enum(type(font) == "string" and font or (font or role))
 	local ok, v = pcall(function()
-		return TextService:GetTextSize(text, size, font or T.font, Vector2.new(10000, 10000))
+		return TextService:GetTextSize(text, size, enum, Vector2.new(10000, 10000))
 	end)
-	return math.ceil(ok and typeof(v) == "Vector2" and math.max(w, v.X) or w)
+	return math.ceil(ok and typeof(v) == "Vector2" and math.max(w, v.X * k) or w)
 end
 
 -- columns for a grid of picture cards (LookKit preset grids: a caption over an optional small second
@@ -398,11 +391,11 @@ function UI.Text(parent, text, props)
 	props.BackgroundTransparency = props.BackgroundTransparency or 1
 	props.BorderSizePixel = 0
 	props.TextColor3 = props.TextColor3 or T.text
-	local role = textRole(props)
+	props.TextSize = props.TextSize or 16
+	local role = textRole(props, "body")
 	if not role then
 		props.Font = props.Font or T.font
 	end
-	props.TextSize = props.TextSize or 16
 	props.TextWrapped = props.TextWrapped ~= false
 	props.TextXAlignment = props.TextXAlignment or Enum.TextXAlignment.Left
 	props.RichText = props.RichText or false
@@ -658,8 +651,8 @@ function UI.Icon(parent, kind, size, color, props)
 		local ring = UI.New("Frame", { Name = "Glyph", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = f.ZIndex, Parent = f })
 		UI.Corner(ring, size)
 		UI.New("UIStroke", { Color = color, Thickness = math.max(1, math.floor(size / 12)), Parent = ring })
-		UI.New("TextLabel", { Name = "Letter", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = string.upper(string.sub(tostring(kind), 1, 1)), TextColor3 = color,
-			Font = Enum.Font.GothamBlack, TextScaled = true, ZIndex = f.ZIndex, Parent = ring })
+		Typography.Apply(UI.New("TextLabel", { Name = "Letter", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = string.upper(string.sub(tostring(kind), 1, 1)), TextColor3 = color,
+			TextScaled = true, ZIndex = f.ZIndex, Parent = ring }), "heading")
 	end
 	return f
 end
@@ -903,13 +896,12 @@ function UI.Button(parent, text, props, onClick)
 	props.AutoButtonColor = false
 	props.BackgroundColor3 = props.BackgroundColor3 or T.panel2
 	props.TextColor3 = props.TextColor3 or VARIANT_TEXT[variant] or T.text
-	local role = textRole(props)
-	local explicitFont = props.Font ~= nil
 	props.TextSize = props.TextSize or 16
-	if not explicitFont and not role then
-		-- buttons speak in the condensed display face (a touch larger: it is narrow)
+	local role = textRole(props)
+	if not role and props.Font == nil then
+		-- buttons speak in the display face (a touch larger: it is narrow)
 		role = "displayMed"
-		props.TextSize += 2
+		props.TextSize = Typography.SizeOf(role, props.TextSize + 2)
 	end
 	props.Font = props.Font or T.bold
 	props.TextWrapped = true

@@ -630,7 +630,7 @@ do
 	function KM.roundFits(text, size, room)
 		local w = #text * size * 0.47
 		local ok, v = pcall(function()
-			return game:GetService("TextService"):GetTextSize(text, size, Enum.Font.Oswald, Vector2.new(10000, 10000))
+			return game:GetService("TextService"):GetTextSize(text, size, UI.Type.Enum("numberMed"), Vector2.new(10000, 10000))
 		end)
 		return math.max(w, (ok and typeof(v) == "Vector2") and v.X * 1.05 or 0) <= room
 	end
