@@ -136,6 +136,11 @@ def render_heads(scene_dir, out_dir, shots, tag, samples, views, boxers=False):
             figs += [f for f in shot["figures"] if f["role"] == "boxer"][:1]
         for fig in figs:
             sc = v8.V8Scene(res=(420, 420), samples=samples, lens=85, bg=(0.11, 0.115, 0.125))
+            if fig["role"] == "boxer":
+                # his guard would hide the head: no arms, hands or gloves in the close-up
+                arm = ("Arm", "Hand", "Glove", "Wrap", "Cuff", "Knuckle")
+                fig = dict(fig, meshes=[m for m in fig["meshes"] if not any(k in m["name"] for k in arm)],
+                           parts=[g for g in fig.get("parts", []) if not any(k in g["name"] for k in arm)])
             add_fig(sc, scene_dir, fig)
             hp = np.array(fig["head"]["cf"][:3])
             f = hp + np.array([0, -0.05, 0])

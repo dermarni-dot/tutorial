@@ -31,7 +31,7 @@ end
 -- lune itself (the one running this test, when it is on the PATH; else cargo's)
 local function luneBin()
 	for _, cand in ipairs({ "lune", (process.env.HOME or "/root") .. "/.cargo/bin/lune", "/root/.cargo/bin/lune" }) do
-		local ok, r = pcall(process.spawn, cand, { "--version" }, { stdio = "default" })
+		local ok, r = pcall(process.exec, cand, { "--version" })
 		if ok and r.ok then
 			return cand
 		end
@@ -42,7 +42,7 @@ end
 local TIMINGS = { "steady", "studio", "wander", "hz240", "spike" }
 local args = { "run", "tools/sim/v9_anim.luau", "--tiers", "3", "--clips", "walk,snapturn,turn,curve,startstop", "--no-mesh", "--nopen",
 	"--frames", "1", "--timing", table.concat(TIMINGS, ","), "--out", OUT }
-local r = process.spawn(luneBin(), args, { cwd = root, stdio = "default" })
+local r = process.exec(luneBin(), args, { cwd = root })
 check("v9_anim runs", r.ok, (r.stderr or "") .. (r.stdout or ""):sub(-600))
 if not r.ok then
 	print(string.format("test_walkstable: %d passed, %d failed", pass, fail))

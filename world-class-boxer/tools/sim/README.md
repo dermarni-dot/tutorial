@@ -367,3 +367,32 @@ lune run tools/sim/v9_ceremony.luau [--out DIR] [--times 1.3,2.9,4.3,5.0,6.6,9.4
 the belt placed as BoxerClient.Ceremony places it, the camera from `Tournaments.CeremonyShot`. The render draws them in a
 stand-in arena with the frame's confetti / streamers / pyro / spotlights and the cutscene's 2D layer (letterbox, banner,
 SKIP) composited.
+
+## The body in Studio: test_charphysics, test_walkstable
+
+What the Humanoid's physics and Roblox's own animation do to a walking boxer, which the clips above do not model.
+
+```sh
+lune run tools/sim/test_charphysics.luau     # under a second
+lune run tools/sim/test_walkstable.luau      # ~15 s; the clips land in tools/sim/out/walkstable
+lune run tools/sim/v9_anim.luau --tiers 3 --clips walk,snapturn --no-mesh --nopen --timing steady,studio,hz240,spike
+```
+
+- `test_charphysics.luau`: `Builder.Cosmetics` on the fake rig at tiers 1 / 3 / 5, heights 60 / 70 / 84 in, both genders:
+  every part the Builder welds on (gear, attire, headgear / caps, face, hair, belts, sweat) is Massless and never
+  collides / queries / touches; the body parts keep their mass and the limbs never collide; the centre of mass of the
+  R15 parts (box volumes x density) sits on the root's axis; `Humanoid.HipHeight` is exactly the tier legs' length
+  (root -> hip -> knee -> ankle -> sole) and is put back after the engine's rescale (ApplyDescription) even when no
+  tier changed.
+- `v9_anim.luau --timing MODE,...`: the walk / jog / run clips under a frame timing - `steady` (60 Hz, the root gliding
+  exactly dt x v), `studio` (frame times wandering +-15 % while the physics advances in whole 240 Hz steps, as a Studio
+  client), `wander` (the same frame times with exact travel), `hz240`, `spike` (0.1 s / 0.25 s hitches) - with the
+  frame-to-frame roughness of the trunk, head and pelvis in the metrics (`jitter`), and a fake Animate script / Animator
+  on the walker (`animate`). `--nopen` skips the slow mesh interpenetration pass. The `snapturn` scripted clip is a
+  player on WASD: the Humanoid's AutoRotate snapping the root a quarter turn at 18 rad/s and a reversal, with the trunk
+  roll, head yaw, chest / pelvis twist and pelvis lag in the metrics.
+- `test_walkstable.luau`: runs those through the real Animator and checks: no NaN; head / pelvis sway small and the
+  roughness within caps and near the steady walk's at every timing; the Animate script switched off, every track it
+  starts stopped, `ProcAnim` on the model, back on while the rig is released (climbing) and off again on the ground;
+  snap turns without a bank, with the head's lead, the twist and the pelvis' lag bounded; a held curve still banked, the
+  head still leading a turn in place, a start's forward lean bounded.
