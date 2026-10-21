@@ -1551,10 +1551,11 @@ end
 ------------------------------------------------------------------------
 -- Headgear (every boxer's, Config.AlwaysHeadgear; else only while sparring)
 ------------------------------------------------------------------------
--- An open-face amateur headgear on the classic head. One padded shell wraps the sides and the back: the classic head's
--- own shape (a Head SpecialMesh) scaled up and set back, so it stands ~0.1 off the ears and the back and sinks into the
--- face in front of az +-44 deg (the face opening's sides); the crown caps the top, a brow roll rings the forehead just
--- above the brows and a cheek bolster rolls each side of the opening.
+-- An open-face amateur headgear on the classic head. One padded shell wraps the sides, the back and the top: the
+-- classic head's own shape (a Head SpecialMesh) a little larger than the head, set back and lifted, so it stands off
+-- the ears and the back and the head's own face comes through it in front (the shell's front lies inside the head
+-- in front of az +-HG.openAz: the face opening). The crown pad caps the forehead's top, a brow roll rings the forehead
+-- just above the brows and a cheek bolster rolls each side of the opening.
 -- Ear holes, the chin strap and the crown seam at full detail (the chin cup from medium). The opening is cut round the
 -- drawn face's ink (Head.HEADGEAR_OPENING, checked against every drawn face by test_bodytiers): the band's lower edge
 -- stays above the brows, the shell and bolsters outside the eyes, brows and mouth, the chin open.
@@ -1564,6 +1565,22 @@ end
 Head.HEADGEAR_OPENING = { top = 0.225, side = 0.29, sideLow = 0.24 }
 local HG_PARTS = { full = 11, medium = 6, low = 3 }
 Head.HEADGEAR_PARTS = HG_PARTS
+
+-- The engine's Head SpecialMesh is NOT stretched by the part's Size per axis (unlike the Sphere mesh): it is the one
+-- head shape, scaled uniformly by the part's smallest axis (an R6 head is a 2 x 1 x 1 part that shows 1.25 wide).
+-- A Head-mesh part is therefore always given a CUBE Size (Head.HeadMeshSize), and the head itself is taken as
+-- uniform at its smallest axis (Head.HeadSpan). test_bodytiers / test_referee model the mesh the same way.
+function Head.HeadSpan(head)
+	local s = head.Size
+	return math.min(s.X, s.Y, s.Z)
+end
+function Head.HeadMeshSize(span)
+	return V3(span, span, span)
+end
+
+-- the shell: a uniform classic head k x the head's, its centre (0, y0, z0) head sizes from the head's centre; the head's
+-- round front comes through it inside az +-openAz (deg from the front: cos openAz = (k^2 / 4 - 1 / 4 - z0^2) / z0)
+Head.HG = { k = 1.18, y0 = 0.06, z0 = 0.117, openAz = 44 }
 
 function Head.SetHeadgear(model, color, on, detail)
 	local folder = getFolder(model, "Headgear")
@@ -1579,16 +1596,18 @@ function Head.SetHeadgear(model, color, on, detail)
 	local full, low = detail == "full", detail == "low"
 	folder:SetAttribute("Detail", detail)
 	color = typeof(color) == "Color3" and color or Color3.fromRGB(200, 25, 30)
-	local s = head.Size
+	local hs = Head.HeadSpan(head)
+	local s = V3(hs, hs, hs)
 	local L = Head.FaceLayout(head, {})
 	local hcf = head.CFrame
 	local mat = Enum.Material.Leather
 	local function add(name, size, cf, c, shape, m)
 		return mk(folder, head, name, size, cf, c, shape or "Ellipsoid", m or mat)
 	end
-	-- the classic head's shape at size k x the head's (per axis), centred at (x, y, z) fractions of the head
-	local function shell(name, kx, ky, kz, y, z, c)
-		local p = mk(folder, head, name, V3(s.X * kx, s.Y * ky, s.Z * kz), hcf * CF(0, y * s.Y, z * s.Z), c, "Block", mat)
+	-- the classic head's shape at k x the head (uniform: the engine scales the Head mesh by the smallest axis),
+	-- centred at (y, z) fractions of the head
+	local function shell(name, k, y, z, c)
+		local p = mk(folder, head, name, Head.HeadMeshSize(hs * k), hcf * CF(0, y * hs, z * hs), c, "Block", mat)
 		local m = Instance.new("SpecialMesh")
 		m.MeshType = Enum.MeshType.Head
 		m.Parent = p
@@ -1614,11 +1633,14 @@ function Head.SetHeadgear(model, color, on, detail)
 		return add(name, V3(w / f, h / f, 2 * D), hcf * cf * CF(0, 0, ctr), c)
 	end
 	local O = Head.HEADGEAR_OPENING
+	local G = Head.HG
 	local browC, seamC, strapC = darken(color, 0.9), darken(color, 0.72), darken(color, 0.55)
-	-- the shell (sides + back: 0.1 off at the ears, 0.09 at the back, into the face in front of az +-44)
-	shell("HGShell", 1.2, 1.1, 1.05, 0.05, 0.06, color)
-	-- the crown: over the top, its front sinking into the forehead behind the band
-	add("HGTop", V3(s.X * 1.16, s.Y * 0.6, s.Z * 1.16), hcf * CF(0, 0.34 * s.Y, 0.04 * s.Z), color)
+	-- the shell (sides, back and top: ~0.08 off at the ears, 0.2 at the back, 0.15 over the top; the head's front
+	-- comes through it inside az +-44: the face opening)
+	shell("HGShell", G.k, G.y0, G.z0, color)
+	-- the crown pad: over the forehead's top, where the head's own curve would graze the shell's front; its front
+	-- sinks into the forehead behind the brow roll, its sides and back inside the shell (0.03 clear of its wall)
+	add("HGTop", V3(s.X * 1.12, s.Y * 0.6, s.Z * 1.12), hcf * CF(0, 0.34 * s.Y, 0.04 * s.Z), color)
 	-- the brow roll: a flat ellipsoid round the forehead whose rim meets the skin at O.top (above every drawn brow)
 	-- and bulges ~0.075 off it in front (its sides and back sink into the shell)
 	add("HGBrow", V3(s.X * 1.11, s.Y * 0.26, s.Z * 1.125), hcf * CF(0, (O.top + 0.066) * s.Y, 0), browC)
@@ -1634,9 +1656,11 @@ function Head.SetHeadgear(model, color, on, detail)
 	if not full then
 		return folder
 	end
+	-- how far the shell stands off the skin at the ears (az 90, z ~ 0): the ear hole is centred on its surface
+	local earOut = math.sqrt((G.k / 2) ^ 2 - G.z0 ^ 2) - 0.5
 	for side = -1, 1, 2 do
 		-- the ear hole: a dark opening in the shell over the ear
-		local ecf = L.shellCF(rad(side * 90), 0.02 * s.Y, 0.09 * s.Z)
+		local ecf = L.shellCF(rad(side * 90), 0.02 * s.Y, earOut * s.Z)
 		add("HGEarHole", V3(0.1 * s.Z, 0.15 * s.Y, 0.04 * s.X), hcf * ecf, darken(color, 0.35))
 		-- the chin strap: from the shell's lower edge behind the cheek along the underside of the jaw to the cup
 		local a = hcf * L.shellCF(rad(side * 66), -0.36 * s.Y, 0.03 * s.Z).Position
@@ -1645,21 +1669,22 @@ function Head.SetHeadgear(model, color, on, detail)
 		local out = mid - hcf * V3(0, -0.2 * s.Y, -0.1 * s.Z)
 		add("HGStrap", V3(0.07 * s.Y, 0.025 * s.Y, (b - a).Magnitude), CFrame.lookAt(mid, b, out.Unit), strapC, "Block", SMOOTH)
 	end
-	-- the stitched seam over the crown (front to back)
-	add("HGSeam", V3(0.045 * s.X, s.Y * 0.615, s.Z * 1.18), hcf * CF(0, 0.34 * s.Y, 0.04 * s.Z), seamC)
+	-- the stitched seam over the crown (front to back), riding the shell's top
+	add("HGSeam", V3(0.045 * s.X, s.Y * (G.k + 0.01), s.Z * (G.k + 0.01)), hcf * CF(0, G.y0 * s.Y, G.z0 * s.Z), seamC)
 	return folder
 end
 
 ------------------------------------------------------------------------
 -- Officials' caps (the referee's peaked cap, the spar coach's team cap): Builder's "Hat" Cosmetics step
 ------------------------------------------------------------------------
--- Parts and SpecialMeshes on the classic head (no uploaded mesh), welded to the head and sized from it, so they scale
--- with the head; BoxerLook/Hat is cached by Builder on the style, colours, head size and detail.
--- * "referee": a black flat-topped peaked cap: a short crown (the classic head's own shape, a Head SpecialMesh, a
---   little wider than the head, its foot at y = REFCAP.crownBase), a band round its base in the venue shirt's colour
---   (light blue at the clubs, white for a title fight), a short stiff visor (a flat ellipsoid) and a gold WCB badge
---   over the band (a gold disc and the "WCB" wordmark, GothamBlack in ink, as UI.Brand's); full adds the cord over
---   the visor's root
+-- Parts on the classic head (no uploaded mesh), welded to the head and sized from it (Head.HeadSpan), so they scale
+-- with the head; BoxerLook/Hat is cached by Builder on the style, colours, head size and detail. Only shapes the
+-- engine sizes from the part (Cylinder parts, Sphere meshes = ellipsoids): no Head mesh, which it never stretches.
+-- * "referee": a black flat-topped peaked cap: a band hugging the head just above the brows (a Cylinder standing
+--   on end, a little wider than the head) in the venue shirt's colour (light blue at the clubs, white for a title
+--   fight), the crown over it (a wider, taller Cylinder: the flat top overhangs the band), a short stiff visor (a
+--   flat ellipsoid rooted under the band, pitched down a little) and a gold WCB badge on the crown's front (a gold
+--   disc and the "WCB" wordmark, GothamBlack in ink, as UI.Brand's); full adds the gold cord across the band
 -- * "baseball": the coach's team cap: a domed six-panel crown (an ellipsoid) in his team colour, a longer bill in its
 --   darker shade, the top button and a white "WCB" on the front; full adds the front seam
 -- Nothing reaches the drawn face: every part stays above Head.CAP_CLEAR (fractions of the head height, the drawn
@@ -1668,9 +1693,11 @@ end
 -- detail = Config.DetailLevel: referee full 6 parts, medium 5, low 2; baseball full 5, medium 4, low 2.
 Head.CAP_CLEAR = 0.235
 Head.CAP_PARTS = { referee = { full = 6, medium = 5, low = 2 }, baseball = { full = 5, medium = 4, low = 2 } }
--- referee cap geometry (fractions of the head size; y up from the head's centre, z: -0.5 = the forehead)
-Head.REFCAP = { crownBase = 0.215, crownH = 0.32, crownW = 1.065, bandY = 0.29, bandH = 0.09, visorY = 0.278, visorT = 0.034,
-	visorReach = 0.24, visorW = 0.76, visorTilt = 3 }
+-- referee cap geometry (fractions of the head span; y up from the head's centre, z: -0.5 = the forehead). The band
+-- from bandLo up bandH (its diameter bandW: the head is 1.0 wide there), the crown from crownBase (inside the band's
+-- top) up crownH at crownW; the visor's root centre at visorY, visorT thick, reaching visorReach ahead of the forehead
+Head.REFCAP = { bandLo = 0.25, bandH = 0.12, bandW = 1.04, crownBase = 0.36, crownH = 0.3, crownW = 1.08,
+	visorY = 0.268, visorT = 0.034, visorReach = 0.24, visorW = 0.78, visorTilt = 3, badgeY = 0.46 }
 Head.BALLCAP = { domeY = 0.33, domeH = 0.27, domeW = 1.07, domeD = 1.09, billY = 0.27, billT = 0.034, billReach = 0.36,
 	billW = 0.68, billTilt = 3 }
 
@@ -1694,63 +1721,61 @@ function Head.SetCap(model, style, colors, detail)
 	local capC = typeof(colors.cap) == "Color3" and colors.cap or (ref and Color3.fromRGB(18, 18, 21) or Color3.fromRGB(30, 30, 34))
 	local trimC = typeof(colors.trim) == "Color3" and colors.trim or (ref and Color3.fromRGB(150, 190, 226) or darken(capC, 0.75))
 	local badgeC = typeof(colors.badge) == "Color3" and colors.badge or (ref and Color3.fromRGB(212, 172, 64) or Color3.fromRGB(238, 238, 232))
-	local s = head.Size
+	local hs = Head.HeadSpan(head)
 	local hcf = head.CFrame
-	local function shape(name, size, cf, c, meshType, m)
-		local p = mk(folder, head, name, size, cf, c, "Block", m or FABRIC)
-		local sm = Instance.new("SpecialMesh")
-		sm.MeshType = meshType
-		sm.Parent = p
-		return p
-	end
 	local function ell(name, size, cf, c, m)
 		return mk(folder, head, name, size, cf, c, "Ellipsoid", m or FABRIC)
 	end
-	-- a flat ellipsoid visor reaching `reach` (fraction of s.Z) ahead of the forehead, its root under the crown,
-	-- pitched down by tilt degrees about its root
-	-- (its back end 0.1 behind the forehead, inside the crown; the tip at 0.5 + reach in front of the head's centre)
+	-- a round, flat-topped drum standing on end: diameter d, height h (fractions of the head span), its centre y up
+	-- from the head's centre (a Cylinder part's axis is its X: stood up with a 90 deg roll)
+	local function drum(name, d, h, y, c, m)
+		return mk(folder, head, name, V3(h * hs, d * hs, d * hs), hcf * CF(0, y * hs, 0) * ANG(0, 0, math.pi / 2), c, "Cylinder", m or FABRIC)
+	end
+	-- a flat ellipsoid visor reaching `reach` ahead of the forehead, its root under the band, pitched down by tilt
+	-- degrees about its root (its back end 0.1 behind the forehead, inside the head; the tip at 0.5 + reach in front
+	-- of the head's centre)
 	local function visor(name, y, t, reach, w, tilt, c)
 		local hl = (0.4 + reach) / 2
-		local root = hcf * CF(0, y * s.Y, -0.5 * s.Z) * ANG(rad(-tilt), 0, 0)
-		return ell(name, V3(w * s.X, t * s.Y, 2 * hl * s.Z), root * CF(0, 0, (0.4 - hl) * s.Z), c, SMOOTH)
+		local root = hcf * CF(0, y * hs, -0.5 * hs) * ANG(rad(-tilt), 0, 0)
+		return ell(name, V3(w * hs, t * hs, 2 * hl * hs), root * CF(0, 0, (0.4 - hl) * hs), c, SMOOTH)
 	end
 	if ref then
 		local R = Head.REFCAP
-		local cy = (R.crownBase + R.crownH / 2) * s.Y
-		shape("RCCrown", V3(s.X * R.crownW, s.Y * R.crownH, s.Z * R.crownW), hcf * CF(0, cy, 0.01 * s.Z), capC, Enum.MeshType.Head)
+		-- the crown (at low detail, without the band, it comes down to the band's foot)
+		local base = low and R.bandLo or R.crownBase
+		local top = R.crownBase + R.crownH
+		drum("RCCrown", R.crownW, top - base, (base + top) / 2, capC)
 		visor("RCVisor", R.visorY, R.visorT, R.visorReach, R.visorW, R.visorTilt, darken(capC, 0.8))
 		if low then
 			return folder
 		end
-		local bw = R.crownW + 0.012
-		shape("RCBand", V3(s.X * bw, s.Y * R.bandH, s.Z * bw), hcf * CF(0, R.bandY * s.Y, 0.01 * s.Z), trimC, Enum.MeshType.Head)
-		-- the WCB badge on the crown's front, above the band
-		local fz = (0.006 - R.crownW / 2) * s.Z
-		local by = (R.bandY + R.bandH / 2 + 0.055) * s.Y
-		ell("RCBadge", V3(0.15 * s.X, 0.1 * s.Y, 0.03 * s.Z), hcf * CF(0, by, fz), badgeC, Enum.Material.Metal)
-		Kit.textPatch(folder, head, "RCBadgeText", V3(0.12 * s.X, 0.05 * s.Y, 0.01), hcf * CF(0, by, fz - 0.016 * s.Z), "WCB",
+		drum("RCBand", R.bandW, R.bandH, R.bandLo + R.bandH / 2, trimC)
+		-- the WCB badge on the crown's front, above the band: a gold disc standing 0.02 proud, the wordmark on it
+		local fz = -R.crownW / 2 * hs
+		local by = R.badgeY * hs
+		ell("RCBadge", V3(0.2 * hs, 0.14 * hs, 0.05 * hs), hcf * CF(0, by, fz - 0.005 * hs), badgeC, Enum.Material.Metal)
+		Kit.textPatch(folder, head, "RCBadgeText", V3(0.16 * hs, 0.07 * hs, 0.01), hcf * CF(0, by, fz - 0.034 * hs), "WCB",
 			Color3.fromRGB(20, 22, 30), Enum.NormalId.Front, "GothamBlack")
 		if full then
-			-- the chin cord across the front, over the visor's root (the badge's gold)
-			local cyc = (R.visorY + R.visorT / 2 + 0.018) * s.Y
-			ell("RCCord", V3(s.X * 0.78, 0.022 * s.Y, s.Z * 0.2), hcf * CF(0, cyc, -0.47 * s.Z), badgeC, Enum.Material.Metal)
+			-- the gold cord across the band's front, over the visor's root
+			ell("RCCord", V3(0.78 * hs, 0.022 * hs, 0.2 * hs), hcf * CF(0, (R.bandLo + 0.04) * hs, -0.47 * hs), badgeC, Enum.Material.Metal)
 		end
 		return folder
 	end
 	local B = Head.BALLCAP
-	ell("BCCrown", V3(s.X * B.domeW, s.Y * B.domeH * 2, s.Z * B.domeD), hcf * CF(0, B.domeY * s.Y, 0.01 * s.Z), capC)
+	ell("BCCrown", V3(hs * B.domeW, hs * B.domeH * 2, hs * B.domeD), hcf * CF(0, B.domeY * hs, 0.01 * hs), capC)
 	visor("BCBill", B.billY, B.billT, B.billReach, B.billW, B.billTilt, trimC)
 	if low then
 		return folder
 	end
-	ell("BCButton", V3(0.09 * s.X, 0.05 * s.Y, 0.09 * s.Z), hcf * CF(0, (B.domeY + B.domeH - 0.008) * s.Y, 0.01 * s.Z), capC)
-	-- the front panel's WCB (on the dome's front at y 0.4: inside the dome's skin there, the wordmark just out of it)
+	ell("BCButton", V3(0.09 * hs, 0.05 * hs, 0.09 * hs), hcf * CF(0, (B.domeY + B.domeH - 0.008) * hs, 0.01 * hs), capC)
+	-- the front panel's WCB (on the dome's front at y 0.41: inside the dome's skin there, the wordmark just out of it)
 	local ly = 0.41
 	local dz = 0.01 - B.domeD / 2 * math.sqrt(math.max(1 - ((ly - B.domeY) / B.domeH) ^ 2, 0))
-	Kit.textPatch(folder, head, "BCLogo", V3(0.2 * s.X, 0.08 * s.Y, 0.01), hcf * CF(0, ly * s.Y, (dz - 0.012) * s.Z)
+	Kit.textPatch(folder, head, "BCLogo", V3(0.2 * hs, 0.08 * hs, 0.01), hcf * CF(0, ly * hs, (dz - 0.012) * hs)
 		* ANG(rad(22), 0, 0), "WCB", badgeC, Enum.NormalId.Front, "GothamBlack")
 	if full then
-		ell("BCSeam", V3(0.03 * s.X, s.Y * B.domeH * 2 + 0.006, s.Z * B.domeD + 0.006), hcf * CF(0, B.domeY * s.Y, 0.01 * s.Z), darken(capC, 0.8))
+		ell("BCSeam", V3(0.03 * hs, hs * B.domeH * 2 + 0.006, hs * B.domeD + 0.006), hcf * CF(0, B.domeY * hs, 0.01 * hs), darken(capC, 0.8))
 	end
 	return folder
 end

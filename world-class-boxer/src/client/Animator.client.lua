@@ -215,8 +215,81 @@ local function watchAnatomy(rig, folder)
 	rig.geoNow = true
 end
 
+------------------------------------------------------------------------
+-- Roblox's own animation on player characters. The Animate script (walk / run / idle / jump tracks) is a second
+-- writer on the same joints: the engine applies its tracks to Transform in the animation step just before
+-- PreSimulation, this script overwrites them right after, and on any frame we miss (an error in updateRig, a far rig's
+-- skipped frame, the second between a part swap and the next resolve) Roblox's walk flashes through between two of
+-- our poses - a shake. Other players' tracks replicate into their Animator here and are the same second writer. So for
+-- every character we drive: its playing tracks are stopped as they start (AnimationPlayed), the local character's
+-- Animate script is disabled (it would only start them again), and the model carries ProcAnim = true so the other
+-- client scripts (State.SetAnimate, FightClient) leave it that way. Both come back while the rig is released
+-- (climbing, swimming, dead: the default animation shows) and when the rig is torn down.
+------------------------------------------------------------------------
+local function stopTracks(rig)
+	local an = rig.animator
+	if an and an.Parent then
+		local ok, tracks = pcall(an.GetPlayingAnimationTracks, an)
+		if ok then
+			for _, tr in ipairs(tracks) do
+				pcall(tr.Stop, tr, 0)
+			end
+		end
+	end
+end
+
+local function applyAnimate(rig)
+	local drive = rig.isPlayer and not rig.released
+	local s = rig.animateScript
+	if s and s.Parent and s.Disabled ~= drive then
+		s.Disabled = drive
+	end
+	if rig.model.Parent and (rig.model:GetAttribute("ProcAnim") == true) ~= drive then
+		rig.model:SetAttribute("ProcAnim", drive or nil)
+	end
+	if drive then
+		stopTracks(rig)
+	end
+end
+
+local function hookAnimate(rig)
+	if not rig.isPlayer then
+		return
+	end
+	local hum = rig.hum
+	local an = hum and hum:FindFirstChildOfClass("Animator")
+	if an ~= rig.animator then
+		if rig.animConn then
+			rig.animConn:Disconnect()
+		end
+		rig.animator = an
+		rig.animConn = an and an.AnimationPlayed:Connect(function(track)
+			if not rig.released then
+				pcall(track.Stop, track, 0)
+			end
+		end) or nil
+	end
+	local s = rig.model:FindFirstChild("Animate")
+	if not (s and s:IsA("LuaSourceContainer")) then
+		s = nil
+	end
+	if s ~= rig.animateScript then
+		if rig.animateConn then
+			rig.animateConn:Disconnect()
+		end
+		rig.animateScript = s
+		-- (re-enabled by someone else while we drive: off again, on the next step)
+		rig.animateConn = s and s:GetPropertyChangedSignal("Disabled"):Connect(function()
+			if not rig.released and s.Disabled == false and rigs[rig.model] == rig then
+				task.defer(applyAnimate, rig)
+			end
+		end) or nil
+	end
+	applyAnimate(rig)
+end
+
 local function dropConns(rig)
-	for _, k in ipairs({ "conn", "hipConn", "childConn" }) do
+	for _, k in ipairs({ "conn", "hipConn", "childConn", "humChildConn", "animConn", "animateConn" }) do
 		if rig[k] then
 			rig[k]:Disconnect()
 			rig[k] = nil
@@ -262,7 +335,7 @@ local function setup(model)
 		guardT = 0, prevGuard = nil, poseT = 0, countT = 0,
 		breathPhase = 0, nextAuto = 0, autoId = 0, sbCount = 0, combo = nil, comboI = 0,
 		gesture = nil, nextGesture = 3, watch = nil, watchAct = nil,
-		lastT = os.clock(), clock = 0, timeScale = 1, nextGeo = 0, nextResolve = 0, frameSkip = 0, slot = 0, impactT = -10,
+		accDt = 0, clock = 0, timeScale = 1, nextGeo = 0, nextResolve = 0, frameSkip = 0, slot = 0, impactT = -10,
 		koTilt = (seed % 7) / 7 - 0.5, partner = nil, nextPartner = 0, curlCycle = 0, lod = 3,
 		guardL = nil, guardR = nil, guardSink = 0, gl = { 0, 0, 0 }, gr = { 0, 0, 0 },
 	}
@@ -283,18 +356,30 @@ local function setup(model)
 			rig.geoNow = true
 		end)
 	end
+	rig.isPlayer = Players:GetPlayerFromCharacter(model) ~= nil
 	rig.childConn = model.ChildAdded:Connect(function(c)
 		if c.Name == "Anatomy" and c:IsA("Folder") then
 			watchAnatomy(rig, c)
+		elseif rig.isPlayer and (c.Name == "Animate" or c:IsA("Humanoid")) then
+			-- (a character's children arrive after CharacterAdded on a client: the Animate script and the Humanoid
+			-- with its Animator come in later)
+			if c:IsA("Humanoid") then
+				rig.hum = c
+			end
+			task.defer(function()
+				if rigs[model] == rig then
+					hookAnimate(rig)
+				end
+			end)
 		end
 	end)
 	local af = model:FindFirstChild("Anatomy")
 	if af and af:IsA("Folder") then
 		watchAnatomy(rig, af)
 	end
-	rig.isPlayer = Players:GetPlayerFromCharacter(model) ~= nil
 	R.resolveJoints(rig)
 	R.computeGeo(rig)
+	hookAnimate(rig)
 	-- (its turn when it is a still figure drawn at a reduced rate: a crowd that streamed in together spreads
 	-- evenly over the frames instead of updating all on one - an even cost, not a spike every other frame)
 	nextSlot += 1
@@ -316,6 +401,9 @@ local function teardown(model)
 			j.motor.Transform = I
 		end
 	end
+	-- Roblox's animation back on the character
+	rig.released = true
+	applyAnimate(rig)
 	if rig.rope then
 		rig.rope.beam:Destroy()
 		rig.rope.a0:Destroy()
@@ -793,6 +881,10 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 			end
 		end
 		rig.head = model:FindFirstChild("Head")
+		if rig.isPlayer then
+			-- (a late Animator / Animate script, a replaced Humanoid; and any track that slipped past AnimationPlayed)
+			hookAnimate(rig)
+		end
 	end
 	if (t >= rig.nextGeo and lod >= 2) or rig.geoNow then
 		rig.nextGeo = rig.geoNow and t + 0.5 or t + 2.5
@@ -851,10 +943,14 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 			if not rig.released then
 				rig.released = true
 				Loco.release(rig)
+				applyAnimate(rig)
 			end
 			return
 		end
-		rig.released = false
+		if rig.released then
+			rig.released = false
+			applyAnimate(rig)
+		end
 	else
 		local name = pose or loop or (rig.isPreview and "preview") or "idle"
 		local w = num(a.PoseSpeed, 1)
@@ -1227,10 +1323,10 @@ end
 local stats = { frames = 0, total = 0, max = 0, rigs = 0 }
 R.stats = stats
 local frameNo = 0
-RunService.PreSimulation:Connect(function(dt)
+RunService.PreSimulation:Connect(function(rawDt)
 	local t = os.clock()
 	frameNo += 1
-	dt = min(dt, 0.1)
+	local dt = min(rawDt, 0.1)
 	cam = workspace.CurrentCamera
 	local camPos = cam and cam.CFrame.Position or Vector3.zero
 	local localChar = player.Character
@@ -1251,6 +1347,12 @@ RunService.PreSimulation:Connect(function(dt)
 			rig.nextGeo = 0
 		end
 		rig.isLocal = model == localChar
+		-- the rig's own frame time: the engine's dt summed over the frames since its last update (a culled, skipped
+		-- or slowed rig catches up on the whole span). The wall clock (os.clock between two PreSimulations) is NOT
+		-- the time the simulation advanced: it wanders with where in the frame the Lua step lands, and read as the
+		-- root's travel over it the sensed speed jittered by 10-20 % a frame in Studio. (The whole hitch, uncapped: the
+		-- root travelled all of it, the feet must know; the rig's update clamps it)
+		rig.accDt += rawDt
 		local pos = root.Position
 		local dist = (pos - camPos).Magnitude
 		-- (camDist for every rig, culled or not: the FX modules below cull by it without reading the parts again)
@@ -1307,8 +1409,8 @@ RunService.PreSimulation:Connect(function(dt)
 			end
 			continue
 		end
-		local rdt = clamp(t - rig.lastT, 1 / 240, 0.25)
-		rig.lastT = t
+		local rdt = clamp(rig.accDt, 1 / 240, 0.25)
+		rig.accDt = 0
 		-- the rig's own clock: a knockout plays its key moment in slow motion (a real-time envelope that
 		-- both fighters share); a rig whose root is travelling is never slowed (its feet must keep up)
 		local ts = Down.timeScale(rig, t)
@@ -1322,6 +1424,17 @@ RunService.PreSimulation:Connect(function(dt)
 		updated += 1
 		local ok, err = pcall(updateRig, rig, model, rig.clock, sdt, lod, rdt)
 		if not ok then
+			-- the last good pose stays on the joints (never a frame of Roblox's own animation, or of the bind
+			-- pose, between two of ours)
+			if rig.outT and not rig.released then
+				local out = rig.outT
+				for k, j in pairs(rig.joints) do
+					local v = out[k]
+					if v and j.motor.Parent then
+						j.motor.Transform = v
+					end
+				end
+			end
 			-- (a different error on the same rig is reported too: at most 3 per rig, never every frame)
 			local w = warned[rig]
 			err = tostring(err)

@@ -482,6 +482,188 @@ do
 end
 
 ------------------------------------------------------------------------
+-- the caps and the headgear on the head, as the engine renders them
+------------------------------------------------------------------------
+-- The engine scales a Head SpecialMesh uniformly by the part's smallest axis (it stretches a Sphere mesh to the
+-- part's Size, never the Head mesh): every Head-mesh part must be a cube. Each cap / headgear part's CFrame and Size
+-- relative to the head (in head spans: y up from the head's centre, -z the face) is dumped and checked against the
+-- intended geometry: the referee's crown centred above the head's top, the band round the head just above the brows
+-- and inside the crown, the visor ahead of the forehead (-z) from under the band and pitched down, the badge proud of
+-- the crown's front, every part welded to the head, massless, no collisions / queries, nothing visible below
+-- Head.CAP_CLEAR in front of the face; the coach's dome and bill the same way; the headgear shell a cube standing off
+-- the ears and the back with the head's own front coming through it inside az +-44 (the face opening).
+do
+	setup()
+	local Head = H.require("BuilderHead")
+	local function geom(model, folderName)
+		local head = model:FindFirstChild("Head")
+		local hs = Head.HeadSpan(head)
+		local f = model.BoxerLook:FindFirstChild(folderName)
+		local out = {}
+		for _, p in ipairs(f and f:GetDescendants() or {}) do
+			if p:IsA("BasePart") then
+				local rel = head.CFrame:ToObjectSpace(p.CFrame)
+				local sm = p:FindFirstChildOfClass("SpecialMesh")
+				local shape = sm and tostring(sm.MeshType):match("(%w+)$") or (p.Shape and tostring(p.Shape):match("(%w+)$")) or "Block"
+				local g = { part = p, name = p.Name, pos = rel.Position / hs, cf = rel, size = p.Size / hs, shape = shape }
+				out[p.Name] = g
+				out[#out + 1] = g
+			end
+		end
+		return out, hs, head
+	end
+	local function dump(label, parts)
+		print(label)
+		for _, g in ipairs(parts) do
+			local l = g.cf.LookVector
+			print(string.format("  %-12s %-9s at (%6.3f %6.3f %6.3f)  size (%5.3f %5.3f %5.3f)  look (%5.2f %5.2f %5.2f)", g.name, g.shape,
+				g.pos.X, g.pos.Y, g.pos.Z, g.size.X, g.size.Y, g.size.Z, l.X, l.Y, l.Z))
+		end
+	end
+	local function flags(label, parts, head)
+		local bad = {}
+		for _, g in ipairs(parts) do
+			local p = g.part
+			local w = p:FindFirstChildOfClass("WeldConstraint")
+			if not (w and w.Part0 == head and w.Part1 == p) then
+				table.insert(bad, g.name .. ":weld")
+			end
+			if p.Massless ~= true then
+				table.insert(bad, g.name .. ":massless")
+			end
+			if p.CanCollide ~= false or p.CanQuery ~= false or p.Anchored then
+				table.insert(bad, g.name .. ":collide")
+			end
+			if g.shape == "Head" and (math.abs(g.size.X - g.size.Y) > 1e-6 or math.abs(g.size.X - g.size.Z) > 1e-6) then
+				table.insert(bad, g.name .. ":Head mesh not a cube")
+			end
+		end
+		check(label .. ": welded to the head, massless, no collisions, every Head mesh a cube", #bad == 0, table.concat(bad, ","))
+	end
+	-- the lowest visible point of the parts in front of the face (|x| < 0.3, outside the head), sampled over each
+	-- part's shape (an ellipsoid, a drum, a box) in head spans
+	local function lowest(parts, hs, head)
+		local L = Head.FaceLayout(head, {})
+		local worst, who = 10, nil
+		for _, g in ipairs(parts) do
+			if g.part.Transparency < 0.99 then
+				local sz = g.part.Size
+				for i = -5, 5 do
+					for j = -5, 5 do
+						for k = -5, 5 do
+							local q = Vector3.new(i / 10, j / 10, k / 10)
+							local inside = (g.shape == "Sphere" and q.Magnitude <= 0.5) or (g.shape == "Cylinder" and q.Y * q.Y + q.Z * q.Z <= 0.25)
+								or (g.shape == "Block")
+							if inside then
+								local hp = head.CFrame:PointToObjectSpace(g.part.CFrame * Vector3.new(q.X * sz.X, q.Y * sz.Y, q.Z * sz.Z))
+								if hp.Z < 0 and math.abs(hp.X) < 0.3 * hs and L.outside(hp) > 0.002 and hp.Y / hs < worst then
+									worst, who = hp.Y / hs, g.name
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+		return worst, who
+	end
+
+	-- the referee's cap (full: every part)
+	local model = official("referee", { venue = "ClubArena", seed = 3 }, nil, "full")
+	local parts, hs, head = geom(model, "Hat")
+	dump("referee cap (full) relative to the head, in head spans (y up from its centre, -z the face):", parts)
+	flags("cap", parts, head)
+	local crown, band, visor, badge, text, cord = parts.RCCrown, parts.RCBand, parts.RCVisor, parts.RCBadge, parts.RCBadgeText, parts.RCCord
+	check("cap: the full set", #parts == Head.CAP_PARTS.referee.full and crown and band and visor and badge and text and cord, #parts)
+	check("cap: crown and band are drums (Cylinder parts stood on end), no Head mesh anywhere", crown.shape == "Cylinder" and band.shape == "Cylinder"
+		and math.abs(crown.cf.RightVector.Y) > 0.999 and math.abs(band.cf.RightVector.Y) > 0.999 and crown.size.Y == crown.size.Z and band.size.Y == band.size.Z)
+	local crownTop, crownBot = crown.pos.Y + crown.size.X / 2, crown.pos.Y - crown.size.X / 2
+	check("cap: the crown's centre above the head's top, its flat top 0.1 .. 0.2 above it, a little wider than the head, centred",
+		crown.pos.Y > 0.5 and crownTop > 0.6 and crownTop < 0.7 and crown.size.Y > 1.02 and crown.size.Y < 1.15
+		and math.abs(crown.pos.X) < 1e-3 and math.abs(crown.pos.Z) < 1e-3, string.format("centre %.3f top %.3f dia %.3f", crown.pos.Y, crownTop, crown.size.Y))
+	local bandTop, bandBot = band.pos.Y + band.size.X / 2, band.pos.Y - band.size.X / 2
+	check("cap: the band round the head above the brows: its foot above CAP_CLEAR, its top inside the crown (no shared face), wider than the head (1.0 there), narrower than the crown",
+		bandBot >= Head.CAP_CLEAR and bandBot < 0.3 and bandTop > crownBot + 0.005 and bandTop < crownBot + 0.03 and band.size.Y > 1.0 and band.size.Y < crown.size.Y,
+		string.format("band %.3f .. %.3f dia %.3f, crown foot %.3f", bandBot, bandTop, band.size.Y, crownBot))
+	-- the visor: an ellipsoid along its z; the tip = its centre + LookVector x half its length
+	local function tipOf(g)
+		return g.pos + g.cf.LookVector * (g.size.Z / 2)
+	end
+	local tip = tipOf(visor)
+	check("cap: the visor is an ellipsoid reaching 0.15 .. 0.4 ahead of the forehead (-z) from under the band, below the crown, its tip pitched down and clear of the brows",
+		visor.shape == "Sphere" and tip.Z < -0.65 and tip.Z > -0.9 and math.abs(tip.X) < 1e-3 and visor.pos.Y + visor.size.Y / 2 < bandTop
+		and tip.Y < visor.pos.Y and tip.Y - visor.size.Y / 2 > Head.CAP_CLEAR - 0.012 and visor.cf.LookVector.Y < -0.02 and visor.cf.LookVector.Y > -0.15,
+		string.format("tip (%.3f %.3f %.3f) root y %.3f look y %.3f", tip.X, tip.Y, tip.Z, visor.pos.Y, visor.cf.LookVector.Y))
+	local sg = text.part:FindFirstChildOfClass("SurfaceGui")
+	check("cap: the gold badge on the crown's front and proud of it, above the band, the WCB wordmark just in front of it facing the front",
+		badge.shape == "Sphere" and badge.pos.Z < -crown.size.Y / 2 and badge.pos.Z - badge.size.Z / 2 < -crown.size.Y / 2 - 0.01 and badge.pos.Y > bandTop
+		and badge.pos.Y + badge.size.Y / 2 < crownTop and text.pos.Z < badge.pos.Z - badge.size.Z / 2 and text.pos.Z > badge.pos.Z - badge.size.Z / 2 - 0.03
+		and text.cf.LookVector.Z < -0.99 and sg and sg.Face == Enum.NormalId.Front and text.size.X <= badge.size.X and text.size.Y <= badge.size.Y,
+		string.format("badge z %.3f (crown front %.3f) y %.3f, text z %.3f", badge.pos.Z, -crown.size.Y / 2, badge.pos.Y, text.pos.Z))
+	check("cap: the gold cord across the band's front", cord.pos.Z < -0.4 and cord.pos.Y > bandBot and cord.pos.Y < bandTop and cord.size.X > 0.6)
+	local lowY, lowWho = lowest(parts, hs, head)
+	check("cap: nothing visible below Head.CAP_CLEAR in front of the face", lowY >= Head.CAP_CLEAR - 0.012, string.format("%s at y %.3f", tostring(lowWho), lowY))
+	-- medium (the officials' detail) and low
+	local mp = geom(official("referee", { venue = "ClubArena", seed = 3 }), "Hat")
+	check("cap: medium: crown, band, visor, badge and wordmark (no cord)", #mp == Head.CAP_PARTS.referee.medium and mp.RCCrown and mp.RCBand and mp.RCVisor and mp.RCBadge and mp.RCBadgeText and not mp.RCCord, #mp)
+	local lp = geom(official("referee", { venue = "ClubArena", seed = 3 }, nil, "low"), "Hat")
+	check("cap: low: crown and visor, the crown coming down to the band's foot", #lp == 2 and lp.RCCrown and lp.RCVisor
+		and math.abs((lp.RCCrown.pos.Y - lp.RCCrown.size.X / 2) - bandBot) < 1e-3, lp.RCCrown and (lp.RCCrown.pos.Y - lp.RCCrown.size.X / 2))
+
+	-- the coach's ball cap (full)
+	local coach = official("cornerman", { seed = 4 }, nil, "full")
+	local cp, chs, chead = geom(coach, "Hat")
+	dump("coach's ball cap (full) relative to the head:", cp)
+	flags("ball cap", cp, chead)
+	local dome, bill, logo, button = cp.BCCrown, cp.BCBill, cp.BCLogo, cp.BCButton
+	check("ball cap: the full set", #cp == Head.CAP_PARTS.baseball.full and dome and bill and logo and button and cp.BCSeam, #cp)
+	check("ball cap: the dome an ellipsoid (a Sphere mesh, which the engine stretches) over the head's top, wider than the head, centred",
+		dome.shape == "Sphere" and dome.pos.Y + dome.size.Y / 2 > 0.55 and dome.pos.Y + dome.size.Y / 2 < 0.7 and dome.size.X > 1.0 and dome.size.Z > 1.0
+		and dome.pos.Y > 0.25 and math.abs(dome.pos.X) < 1e-3)
+	local btip = tipOf(bill)
+	check("ball cap: the bill ahead of the forehead under the dome, pitched down, clear of the brows", bill.shape == "Sphere" and btip.Z < -0.75 and btip.Z > -1.0
+		and bill.pos.Y < dome.pos.Y and btip.Y - bill.size.Y / 2 > Head.CAP_CLEAR - 0.012 and bill.cf.LookVector.Y < -0.02,
+		string.format("tip (%.3f %.3f %.3f)", btip.X, btip.Y, btip.Z))
+	check("ball cap: the WCB on the dome's front facing forward, the button on top", logo.pos.Z < -0.45 and logo.cf.LookVector.Z < -0.9 and logo.pos.Y > 0.3
+		and button.pos.Y > dome.pos.Y + dome.size.Y / 2 - 0.06 and math.abs(button.pos.X) < 1e-3)
+	local clowY, clowWho = lowest(cp, chs, chead)
+	check("ball cap: nothing visible below Head.CAP_CLEAR in front of the face", clowY >= Head.CAP_CLEAR - 0.012, string.format("%s at y %.3f", tostring(clowWho), clowY))
+
+	-- a boxer's headgear (full): the shell as the engine draws it
+	local bm = newRig(Vector3.new(1, 1, 1))
+	local bapp = Looks.Defaults(1)
+	local okB, errB = pcall(Builder.Cosmetics, bm, bapp, buildOf(40), nil, { hands = "gloves", detail = "full" })
+	check("headgear: a boxer builds (Config.AlwaysHeadgear)", okB and Config.AlwaysHeadgear == true, errB)
+	local hg, _, bhead = geom(bm, "Headgear")
+	dump("boxer's headgear (full) relative to the head:", hg)
+	flags("headgear", hg, bhead)
+	local shell = hg.HGShell
+	check("headgear: the full set, the shell a Head-mesh cube 1.1 .. 1.3 heads, set back and lifted", #hg == Head.HEADGEAR_PARTS.full and shell and shell.shape == "Head"
+		and shell.size.X == shell.size.Y and shell.size.X == shell.size.Z and shell.size.X > 1.1 and shell.size.X < 1.3 and shell.pos.Z > 0.05 and shell.pos.Y > 0
+		and math.abs(shell.pos.X) < 1e-3, shell and string.format("size %.3f at (%.3f %.3f %.3f)", shell.size.X, shell.pos.X, shell.pos.Y, shell.pos.Z))
+	-- as the engine draws it: a classic head of radius k / 2 centred (y0, z0); the head's own round front (radius 0.5)
+	-- comes through it where cos az > (k^2 / 4 - 1 / 4 - z0^2) / z0: the face opening
+	local k, z0 = shell.size.X, shell.pos.Z
+	local az = math.deg(math.acos(math.clamp((k * k / 4 - 0.25 - z0 * z0) / z0, -1, 1)))
+	check("headgear: the face opening: the head comes through the shell inside az +-40 .. 48 (eyes, brows and mouth clear, the shell from the cheeks back)",
+		az > 40 and az < 48 and math.abs(az - Head.HG.openAz) < 1.5, az)
+	check("headgear: the shell stands >= 0.06 off the ears and >= 0.1 off the back; the forehead comes >= 0.02 through its front",
+		math.sqrt((k / 2) ^ 2 - z0 * z0) - 0.5 >= 0.06 and k / 2 + z0 - 0.5 >= 0.1 and 0.5 - (k / 2 - z0) >= 0.02,
+		string.format("ears %.3f back %.3f front %.3f", math.sqrt((k / 2) ^ 2 - z0 * z0) - 0.5, k / 2 + z0 - 0.5, 0.5 - (k / 2 - z0)))
+	check("headgear: the shell over the head's top (>= 0.1), its foot about the chin", shell.pos.Y + k / 2 >= 0.6 and shell.pos.Y - k / 2 > -0.6 and shell.pos.Y - k / 2 < -0.45,
+		string.format("top %.3f foot %.3f", shell.pos.Y + k / 2, shell.pos.Y - k / 2))
+	-- the brow roll (an ellipsoid sunk into the forehead): its rim meets the skin (the forehead at z = -0.5) at
+	-- y = cy - hy sqrt(1 - (0.5 / hz)^2), which is HEADGEAR_OPENING.top (above every drawn brow)
+	local br = hg.HGBrow
+	local rim = br and (br.pos.Y - br.size.Y / 2 * math.sqrt(math.max(1 - (0.5 / (br.size.Z / 2)) ^ 2, 0)))
+	check("headgear: the brow roll's rim meets the forehead at HEADGEAR_OPENING.top, the crown pad over the forehead's top",
+		rim and rim >= Head.HEADGEAR_OPENING.top - 1e-3 and rim <= Head.HEADGEAR_OPENING.top + 0.02 and hg.HGTop and hg.HGTop.pos.Y + hg.HGTop.size.Y / 2 > 0.55, rim)
+	for _, m in ipairs({ model, coach, bm }) do
+		m:Destroy()
+	end
+end
+
+------------------------------------------------------------------------
 -- ids 0: the part-built outfit
 ------------------------------------------------------------------------
 do

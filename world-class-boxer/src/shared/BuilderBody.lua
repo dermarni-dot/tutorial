@@ -712,12 +712,30 @@ local function attireBuild(model, app, opts, gear, sp, env)
 	-- the Blender-modelled gear for the tiers the parts show (BuilderGear); nil = the part-built gear below
 	local official = sp.outfit == "referee" or sp.outfit == "cornerman"
 	local meshTrunks, meshShoes, meshTop, meshOutfit
+	local whyTrunks, whyShoes, whyTop, whyOutfit
 	if official then
-		meshOutfit = Gear.Resolve(model, "official", officialStyle(sp.outfit))
+		meshOutfit, whyOutfit = Gear.Resolve(model, "official", officialStyle(sp.outfit))
 	else
-		meshTrunks = Gear.Resolve(model, "trunks", table.find(Looks.TrunkStyles, a.trunkStyle) and a.trunkStyle or "Classic")
-		meshShoes = Gear.Resolve(model, "shoes", a.shoeStyle == "Low-Top" and "Low-Top" or "High-Top")
-		meshTop = app.gender == 2 and Gear.Resolve(model, "top", "Top") or nil
+		meshTrunks, whyTrunks = Gear.Resolve(model, "trunks", table.find(Looks.TrunkStyles, a.trunkStyle) and a.trunkStyle or "Classic")
+		meshShoes, whyShoes = Gear.Resolve(model, "shoes", a.shoeStyle == "Low-Top" and "Low-Top" or "High-Top")
+		if app.gender == 2 then
+			meshTop, whyTop = Gear.Resolve(model, "top", "Top")
+		end
+	end
+	-- (what each group is, readable on the folder in Studio: "mesh", or "blocks: <why the mesh gear was not built>")
+	local function record(folder)
+		local function state(pieces, why)
+			return pieces and "mesh" or ("blocks: " .. tostring(why))
+		end
+		if official then
+			folder:SetAttribute("Outfit", state(meshOutfit, whyOutfit))
+		else
+			folder:SetAttribute("Trunks", state(meshTrunks, whyTrunks))
+			folder:SetAttribute("Shoes", state(meshShoes, whyShoes))
+			if app.gender == 2 then
+				folder:SetAttribute("Top", state(meshTop, whyTop))
+			end
+		end
 	end
 	local key = Kit.sig("A4", a, opts.waistText or "", spT or "", spF or "", spB or "", sp.outfit, sp.detail, gear.shoes, shoeCond(gear), gear.shoesCond >= 60, gear.shoesCond >= 40,
 		eUL, a.trunkStyle == "Long" and eLL or false, topRel, opts.name or "", app.gender, sizesOf(model, ATTIRE_PARTS),
@@ -726,6 +744,7 @@ local function attireBuild(model, app, opts, gear, sp, env)
 		return
 	end
 	local folder = getFolder(model, "Attire")
+	record(folder)
 	if official then
 		if meshOutfit then
 			outfitMesh(folder, model, app, opts, sp, meshOutfit)

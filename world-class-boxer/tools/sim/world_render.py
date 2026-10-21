@@ -737,6 +737,12 @@ VIEWS = {
     "gym_whiteboard": {"roots": GYM, "eye": (-90, 7, -4), "target": (-109, 5, 11), "fov": 55, "mode": "interior", "cull": ((-100, 8, 6), 40)},
     "gym_weighin": {"roots": GYM, "eye": (86, 7, -4), "target": (103, 4.5, 16), "fov": 52, "mode": "interior", "cull": ((98, 8, 8), 50)},
     # the city
+    # the signage: the gym's front banner (+Z wall, seen from the lobby) and the motto (north wall), the shop fronts
+    "gym_banner": {"roots": GYM, "eye": (0, 9, 30), "target": (0, 20, 79), "fov": 55, "mode": "interior", "cull": ((0, 14, 60), 90)},
+    "gym_motto": {"roots": GYM, "eye": (0, 9, -30), "target": (0, 23, -79), "fov": 55, "mode": "interior", "cull": ((0, 14, -60), 90)},
+    "city_signs_day": {"roots": CITY, "eye": (-230, 9, 170), "target": (-180, 10, 187), "fov": 48, "mode": "day", "cull": ((-200, 10, 185), 160)},
+    "city_signs_night": {"roots": CITY, "eye": (-230, 9, 170), "target": (-180, 10, 187), "fov": 48, "mode": "night", "cull": ((-200, 10, 185), 160), "exposure": 1.0},
+    "city_signs_east": {"roots": CITY, "eye": (40, 9, 170), "target": (100, 10, 187), "fov": 48, "mode": "day", "cull": ((80, 10, 185), 160)},
     "city_main_day": {"roots": CITY, "eye": (-75, 7, 174), "target": (20, 5, 182), "fov": 50, "mode": "day", "cull": ((0, 10, 180), 260)},
     "city_main_night": {"roots": CITY, "eye": (-75, 7, 174), "target": (20, 5, 182), "fov": 50, "mode": "night", "cull": ((0, 10, 180), 260), "exposure": 1.0},
     "city_front_day": {"roots": CITY, "eye": (28, 7, 138), "target": (-2, 7, 84), "fov": 50, "mode": "day", "cull": ((0, 10, 110), 220)},

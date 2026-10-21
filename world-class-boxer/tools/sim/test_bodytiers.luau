@@ -1598,7 +1598,8 @@ do
 			local t1, t2 = (-B - math.sqrt(disc)) / (2 * A), (-B + math.sqrt(disc)) / (2 * A)
 			return (t1 > 0 and t1 < tmax) or (t2 > 0 and t1 < tmax)
 		elseif mt and mt:find("Head") then
-			local k = Vector3.new(1.2 / sz.X, 1.2 / sz.Y, 1.2 / sz.Z)
+			-- the engine scales the Head mesh uniformly by the part's smallest axis (it never stretches it per axis)
+			local k = Vector3.new(1, 1, 1) * (1.2 / math.min(sz.X, sz.Y, sz.Z))
 			for t = 0, tmax, 0.004 do
 				if classicSdf((lo + ld * t) * k) < 0 then
 					return true
@@ -1750,6 +1751,10 @@ do
 						local sm = p:FindFirstChildOfClass("SpecialMesh")
 						local isEll = sm and tostring(sm.MeshType):find("Sphere")
 						local isHead = sm and tostring(sm.MeshType):find("Head")
+						if isHead then
+							-- the engine's Head mesh: uniform at the part's smallest axis
+							sz = Vector3.new(1, 1, 1) * math.min(sz.X, sz.Y, sz.Z)
+						end
 						for i = -4, 4 do
 							for j = -4, 4 do
 								for k = -4, 4 do

@@ -672,6 +672,360 @@ end
 BodyTiers.SetData(REAL)
 BuilderGear.SetData(nil)
 
+------------------------------------------------------------------------
+-- the engine's own semantics (what the fake rig above simplifies): Humanoid:ReplaceBodyPartR15 scales the new part
+-- "as normal" - from its OriginalSize by the humanoid's scale values, and not necessarily in the call itself but in the
+-- engine's own scaling pass; it makes an OriginalSize for a part that has none; it re-aims the joints on the new part's
+-- rig attachments; a character the engine never scaled has no OriginalSize values at all; AutomaticScalingEnabled = false
+-- leaves the new part at the size it came in; a later ApplyDescription (the creator's height / frame) rescales every body
+-- part from its OriginalSize under gear that was welded to the old sizes. The gear must end at the manifest's size x the
+-- part's final Size / OriginalSize and at offset x that ratio in every case, and an engine pass after the swap must find
+-- nothing to change (the part is scaled once, never twice)
+------------------------------------------------------------------------
+local Serde = require("@lune/serde")
+local MeshV2 = require("./meshv2")
+
+-- a rig with the engine's semantics. opts: noOriginal (a never-scaled character: parts at size x scale with no
+-- OriginalSize values), deferred (ReplaceBodyPartR15 scales nothing itself; engine.rescale() is the engine's pass),
+-- autoScale = false (the engine never scales the swapped part)
+local function newEngineRig(scale, opts)
+	opts = opts or {}
+	local model = E.new("Model")
+	model.Name = "Boxer"
+	local hrp = E.new("Part", model)
+	hrp.Name = "HumanoidRootPart"
+	hrp.Size = Vector3.new(2, 2, 1) * scale
+	local ra = E.new("Attachment", hrp)
+	ra.Name = "RootRigAttachment"
+	ra.Position = Vector3.new(0, -1, 0) * scale -- (R15: the root sits at the LowerTorso's bottom)
+	local function addPart(name, size, orig, atts)
+		local p = E.new("MeshPart", model)
+		p.Name = name
+		p.Size = size
+		p.Color = Color3.new(1, 1, 1)
+		if not opts.noOriginal then
+			local o = E.new("Vector3Value", p)
+			o.Name = "OriginalSize"
+			o.Value = orig
+		end
+		for an, pos in pairs(atts) do
+			local a = E.new("Attachment", p)
+			a.Name = an
+			a.Position = pos.cur
+			if not opts.noOriginal then
+				local op = E.new("Vector3Value", a)
+				op.Name = "OriginalPosition"
+				op.Value = pos.orig
+			end
+		end
+		return p
+	end
+	for name, b in pairs(BLOCK) do
+		local atts = {}
+		for an, pos in pairs(b.att) do
+			atts[an] = { cur = v3(pos) * scale, orig = v3(pos) }
+		end
+		addPart(name, v3(b.size) * scale, v3(b.size), atts)
+	end
+	addPart("Head", Vector3.new(0.927, 0.927, 0.927), Vector3.new(1.2, 1.2, 1.2),
+		{ NeckRigAttachment = { cur = Vector3.new(0, -0.46, 0), orig = Vector3.new(0, -0.6, 0) } })
+	for jn, pp in pairs(JOINTS) do
+		local p0, p1 = model:FindFirstChild(pp[1]), model:FindFirstChild(pp[2])
+		local m = E.new("Motor6D", p1)
+		m.Name = jn
+		m.Part0, m.Part1 = p0, p1
+		m.C0 = p0:FindFirstChild(jn .. "RigAttachment").CFrame
+		m.C1 = p1:FindFirstChild(jn .. "RigAttachment").CFrame
+	end
+	local hum = E.new("Humanoid", model)
+	hum.HipHeight = 2 * scale.Y
+	local engine = { scale = scale, auto = opts.autoScale ~= false, passes = 0, changed = 0 }
+	-- the engine's scaling pass: every body part from its OriginalSize (made from the part's Size when missing),
+	-- every attachment from its OriginalPosition. Counts the parts it had to change
+	local function scalePart(p)
+		local o = p:FindFirstChild("OriginalSize")
+		if not o then
+			o = E.new("Vector3Value", p)
+			o.Name = "OriginalSize"
+			o.Value = p.Size
+		end
+		local want = o.Value * engine.scale
+		if (p.Size - want).Magnitude > 1e-6 then
+			p.Size = want
+			engine.changed += 1
+		end
+		for _, a in ipairs(p:GetChildren()) do
+			if a.ClassName == "Attachment" then
+				local op = a:FindFirstChild("OriginalPosition")
+				if not op then
+					op = E.new("Vector3Value", a)
+					op.Name = "OriginalPosition"
+					op.Value = a.Position
+				end
+				local wa = op.Value * engine.scale
+				if (a.Position - wa).Magnitude > 1e-6 then
+					a.Position = wa
+					engine.changed += 1
+				end
+			end
+		end
+	end
+	function engine.rescale()
+		engine.passes += 1
+		for _, p in ipairs(model:GetChildren()) do
+			if p.ClassName == "MeshPart" and p.Name ~= "Head" and p.Name ~= "HumanoidRootPart" then
+				scalePart(p)
+			end
+		end
+	end
+	hum.ReplaceBodyPartR15 = function(_, enum, part)
+		local name = enum.Name
+		local old = model:FindFirstChild(name)
+		if name ~= "Head" and engine.auto and not opts.deferred then
+			scalePart(part)
+		end
+		for _, m in ipairs(model:GetDescendants()) do
+			if m.ClassName == "Motor6D" then
+				local an = m.Name .. "RigAttachment"
+				if m.Part0 == old then
+					m.Part0 = part
+					local a = part:FindFirstChild(an)
+					if a then
+						m.C0 = a.CFrame
+					end
+				end
+				if m.Part1 == old then
+					m.Part1 = part
+					m.Parent = part
+					local a = part:FindFirstChild(an)
+					if a then
+						m.C1 = a.CFrame
+					end
+				end
+			end
+		end
+		part.Parent = model
+		old:Destroy()
+		return true
+	end
+	model.Parent = E.workspace
+	return model, hum, engine
+end
+
+local function dressEngine(opts, scale, app, b)
+	local model, hum, engine = newEngineRig(scale or SCALE, opts)
+	local ok, err = pcall(Builder.Cosmetics, model, app or Looks.Defaults(1), b or build(50), { shoes = "Boots" }, { hands = "gloves" })
+	check("engine rig (" .. (opts.tag or "plain") .. "): Cosmetics runs", ok, err)
+	return model, hum, engine
+end
+
+local function allPlaced(model)
+	local bad, n = {}, 0
+	for _, f in ipairs({ "Attire", "Hands" }) do
+		for _, p in pairs(meshes(folder(model, f))) do
+			n += 1
+			local ok, why = placed(p, model)
+			if not ok then
+				table.insert(bad, why)
+			end
+		end
+	end
+	return #bad == 0 and n > 0, table.concat(bad, "; ") .. " (" .. n .. " pieces)"
+end
+
+local function tierBody(model)
+	for _, name in ipairs(BodyTiers.PARTS) do
+		if model:FindFirstChild(name):GetAttribute("BodyTier") == nil then
+			return false
+		end
+	end
+	return true
+end
+
+-- (1) the engine scales in its own pass, after the swap: that pass must find the parts already at the size the swap
+-- left them (scaled once), and the gear welded in between must still be at size x ratio / offset x ratio
+do
+	setup()
+	local model, _, engine = dressEngine({ deferred = true, tag = "deferred scaling" })
+	check("deferred: every part a tier part", tierBody(model))
+	local ok, why = allPlaced(model)
+	check("deferred: the gear at size x ratio, offset x ratio", ok, why)
+	local sizes = {}
+	for _, name in ipairs(BodyTiers.PARTS) do
+		sizes[name] = model:FindFirstChild(name).Size
+	end
+	engine.rescale()
+	check("deferred: the engine's pass changes nothing (scaled once)", engine.changed == 0, engine.changed)
+	local moved = {}
+	for _, name in ipairs(BodyTiers.PARTS) do
+		if (model:FindFirstChild(name).Size - sizes[name]).Magnitude > 1e-6 then
+			table.insert(moved, name)
+		end
+	end
+	check("deferred: no body part moved under the gear", #moved == 0, table.concat(moved, ","))
+	ok, why = allPlaced(model)
+	check("deferred: the gear still fits after the engine's pass", ok, why)
+	check("deferred: the LowerTorso's ratio is the description's", vnear(BuilderTiers.RatioOf(model.LowerTorso), SCALE, 1e-3))
+	local att = folder(model, "Attire")
+	check("the Attire folder says the trunks and shoes are mesh", att:GetAttribute("Trunks") == "mesh" and att:GetAttribute("Shoes") == "mesh",
+		tostring(att:GetAttribute("Trunks")) .. " / " .. tostring(att:GetAttribute("Shoes")))
+end
+
+-- (2) a character the engine never scaled (no OriginalSize anywhere): the swap takes the description's scale
+-- (such a character stands at the description's scale, which is what the swap then takes: the rig is built at it)
+do
+	setup()
+	local app = Looks.Defaults(1)
+	local sc = Builder.Scales(app, build(50))
+	local DESC = Vector3.new(sc.width, sc.height, sc.depth)
+	local model = dressEngine({ noOriginal = true, tag = "no OriginalSize" }, DESC, app)
+	check("no OriginalSize: every part a tier part", tierBody(model))
+	check("no OriginalSize: the ratio is the description's scale", vnear(BuilderTiers.RatioOf(model.LowerTorso), DESC, 1e-3)
+		and vnear(BuilderTiers.RatioOf(model.RightUpperLeg), DESC, 1e-3), tostring(BuilderTiers.RatioOf(model.LowerTorso)) .. " vs " .. tostring(DESC))
+	local ok, why = allPlaced(model)
+	check("no OriginalSize: the gear fits", ok, why)
+end
+
+-- (3) AutomaticScalingEnabled = false: the engine leaves the new part at the size it came in; the swap scales it
+do
+	setup()
+	local model, _, engine = dressEngine({ autoScale = false, tag = "no automatic scaling" })
+	check("no auto scaling: the ratio is the description's scale", vnear(BuilderTiers.RatioOf(model.LowerTorso), SCALE, 1e-3))
+	local ok, why = allPlaced(model)
+	check("no auto scaling: the gear fits", ok, why)
+	check("no auto scaling: the engine never scaled", engine.changed == 0)
+end
+
+-- (4) a rescale mid-session (ApplyDescription with a new height / frame): the engine rescales every body part from its
+-- OriginalSize; the next Cosmetics rebuilds the gear for the new sizes (nothing of the old sizes stays)
+do
+	setup()
+	local app, b = Looks.Defaults(1), build(50)
+	local model, _, engine = dressEngine({ deferred = true, tag = "rescale" }, SCALE, app, b)
+	local before = {}
+	for n, p in pairs(meshes(folder(model, "Attire"))) do
+		before[n] = p.Size
+	end
+	local SCALE2 = Vector3.new(1.1, 1.2, 1.06)
+	engine.scale = SCALE2
+	engine.rescale()
+	check("rescale: the engine resized the body", engine.changed > 0 and vnear(BuilderTiers.RatioOf(model.LowerTorso), SCALE2, 1e-3))
+	-- (the attire is still welded at the old sizes until the next Cosmetics: what a look change or a profile push triggers)
+	local okR, errR = pcall(Builder.Cosmetics, model, app, b, { shoes = "Boots" }, { hands = "gloves" })
+	check("rescale: Cosmetics runs again", okR, errR)
+	local ok, why = allPlaced(model)
+	check("rescale: the gear rebuilt at the new ratio", ok, why)
+	local same, n = 0, 0
+	for name, p in pairs(meshes(folder(model, "Attire"))) do
+		n += 1
+		if before[name] and vnear(p.Size, before[name], 1e-5) then
+			same += 1
+		end
+	end
+	check("rescale: every piece resized, the same pieces", same == 0 and n == count(before), same .. "/" .. n)
+end
+
+-- (5) the uploaded meshes are what the manifest measured: each trunks mesh file (by its id, through the upload cache)
+-- has the manifest's size as its bounding box and is centred on it (Roblox draws a mesh recentred on its box: an
+-- off-centre file would land the piece off its offset)
+do
+	local cachePath = root .. "/tools/body/uploaded.json"
+	if fs.isFile(cachePath) and not args.gear then
+		local cache = Serde.decode("json", fs.readFile(cachePath))
+		local files = {}
+		for _, v in pairs(cache) do
+			if v.id and v.file then
+				files[v.id] = root .. "/tools/body/" .. v.file
+			end
+		end
+		local bad, n = {}, 0
+		for tier = 1, 5 do
+			for name, p in pairs(GEAR.pieces) do
+				if p.group == "trunks" then
+					for _, lite in ipairs({ false, true }) do
+						local e = BuilderGear.Entry(tier, name, GEAR, lite)
+						local file = e and files[e.id]
+						if e and (lite == e.lite) then
+							if not (file and fs.isFile(file)) then
+								table.insert(bad, string.format("T%d %s%s: id %d not in the upload cache", tier, name, lite and " lite" or "", e.id))
+							else
+								n += 1
+								local m = MeshV2.Read(file)
+								local cx, cy, cz, sx, sy, sz = MeshV2.Bounds(m)
+								if (Vector3.new(sx, sy, sz) - e.size).Magnitude > 2e-3 then
+									table.insert(bad, string.format("T%d %s%s: file box %.4f %.4f %.4f ~= manifest %s", tier, name, lite and " lite" or "", sx, sy, sz, tostring(e.size)))
+								elseif Vector3.new(cx, cy, cz).Magnitude > 1e-3 then
+									table.insert(bad, string.format("T%d %s%s: not centred (%.4f %.4f %.4f)", tier, name, lite and " lite" or "", cx, cy, cz))
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+		-- (12 trunks pieces x 5 tiers x the full and the lite set)
+		check("manifest: every trunks mesh's file has the manifest's box and is centred (" .. n .. " files)", #bad == 0 and n == 120, table.concat(bad, "; "))
+	end
+end
+
+-- (6) the engine's box for a loaded mesh (CreateMeshPartAsync's Size) is kept on the template, and a box that is not
+-- the manifest's size is reported (the part is still drawn at the manifest's size)
+do
+	local AS = setup()
+	local real = AS.CreateMeshPartAsync
+	AS.CreateMeshPartAsync = function(self, content)
+		local mp = real(self, content)
+		local id = tonumber(tostring(content):match("(%d+)%s*$"))
+		local e = BuilderGear.Entry(3, "Waistband")
+		if id == e.id then
+			mp.Size = e.size * 1.1
+		end
+		return mp
+	end
+	local e = BuilderGear.Entry(3, "Waistband")
+	local t = BuilderGear.Template(e.id, e.size)
+	check("template keeps the engine's box", t and typeof(t:GetAttribute("GearBBox")) == "Vector3" and vnear(t:GetAttribute("GearBBox"), e.size * 1.1, 1e-4))
+	check("template drawn at the manifest's size", t and vnear(t.Size, e.size, 1e-6))
+	local model = dressEngine({ tag = "audit" })
+	local lines = BuilderGear.Audit(model)
+	local hit = false
+	for _, l in ipairs(lines) do
+		if l:find("Attire/Waistband", 1, true) and l:find("UPLOADED BOX", 1, true) then
+			hit = true
+		end
+	end
+	check("Audit names the piece whose upload differs from the manifest", hit, table.concat(lines, "\n"))
+	local trunksLine = false
+	for _, l in ipairs(lines) do
+		if l == "Attire.Trunks = mesh" then
+			trunksLine = true
+		end
+	end
+	check("Audit lists the folder records", trunksLine)
+	setup()
+end
+
+-- (7) the Attire folder says why the part-built gear was built
+do
+	local body0 = table.clone(REAL)
+	body0.tiers = {}
+	for i, t in ipairs(REAL.tiers) do
+		local parts = {}
+		for k, e2 in pairs(t.parts) do
+			local c = table.clone(e2)
+			c.mesh = 0
+			parts[k] = c
+		end
+		body0.tiers[i] = { parts = parts, fit = t.fit, name = t.name }
+	end
+	setup(nil, nil, body0)
+	local model = dress(Looks.Defaults(1), build(50))
+	local att = folder(model, "Attire")
+	check("Attire records the fallback's reason", tostring(att:GetAttribute("Trunks")):find("^blocks: not a tier part") ~= nil, att:GetAttribute("Trunks"))
+	BodyTiers.SetData(REAL)
+	BuilderGear.SetData(nil)
+end
+
 print(string.format("test_gear: %d passed, %d failed", pass, fail))
 if fail > 0 then
 	error("test_gear failed")

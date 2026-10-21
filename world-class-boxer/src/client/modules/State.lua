@@ -103,6 +103,11 @@ function State.SetAnimate(on)
 	if not char then
 		return
 	end
+	-- (ProcAnim: the Animator drives this character's joints and keeps Roblox's own tracks off it; they never come back
+	-- on behind it - it re-enables them itself while the rig is released)
+	if on and char:GetAttribute("ProcAnim") == true then
+		return
+	end
 	local animate = char:FindFirstChild("Animate")
 	if animate then
 		animate.Disabled = not on

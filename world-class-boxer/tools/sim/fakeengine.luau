@@ -22,6 +22,7 @@ local SUPER = {
 	Part = { "BasePart", "PVInstance" }, MeshPart = { "BasePart", "PVInstance" }, BasePart = { "PVInstance" },
 	Model = { "PVInstance" }, Folder = {}, Weld = { "JointInstance" }, Motor6D = { "JointInstance" },
 	Humanoid = {}, Decal = {}, SurfaceGui = { "LayerCollector" }, BillboardGui = { "LayerCollector" },
+	Animator = {}, LocalScript = { "BaseScript", "LuaSourceContainer" }, Script = { "BaseScript", "LuaSourceContainer" },
 	Workspace = { "Model", "PVInstance" }, Camera = {},
 	-- 2D GUI (guisim lays these out)
 	ScreenGui = { "LayerCollector", "GuiBase2d" }, LayerCollector = { "GuiBase2d" },
@@ -37,13 +38,31 @@ local SUPER = {
 }
 FE.SUPER = SUPER
 
-function FE.Signal()
+FE.Connections = 0 -- live connections on every signal (diagnostics: tools/ui/ui_profile.luau)
+-- owner: the instance the signal belongs to; Destroy drops its connections (as the engine does), so a count of
+-- live connections after a Destroy is what really leaks (connections on services and module-level signals)
+function FE.Signal(owner)
 	local handlers = {}
 	local sig = {}
+	if owner then
+		local list = rawget(owner, "_sigs")
+		if list then
+			table.insert(list, sig)
+		end
+	end
+	function sig:DisconnectAll()
+		for c in pairs(handlers) do
+			c:Disconnect()
+		end
+	end
 	function sig:Connect(fn)
 		local c = { Connected = true }
 		handlers[c] = fn
+		FE.Connections += 1
 		function c:Disconnect()
+			if self.Connected then
+				FE.Connections -= 1
+			end
 			self.Connected = false
 			handlers[self] = nil
 		end
@@ -107,10 +126,11 @@ function FE.new()
 	local function new(className, parent)
 		local raw = {
 			_class = className, _name = className, _kids = {}, _attr = {}, _attrSig = {}, _props = {},
-			_parent = nil, _destroyed = false,
-			AncestryChanged = Signal(), DescendantAdded = Signal(), Destroying = Signal(), ChildAdded = Signal(),
-			ChildRemoved = Signal(), Changed = Signal(), AttributeChanged = Signal(),
+			_parent = nil, _destroyed = false, _sigs = {},
 		}
+		for _, k in ipairs({ "AncestryChanged", "DescendantAdded", "Destroying", "ChildAdded", "ChildRemoved", "Changed", "AttributeChanged" }) do
+			raw[k] = Signal(raw)
+		end
 		local o = setmetatable(raw, Inst)
 		instSet[o] = true
 		if className == "Part" or className == "MeshPart" then
@@ -342,11 +362,11 @@ function FE.new()
 	end
 	function methods.GetAttributeChangedSignal(o, k)
 		local t = rawget(o, "_attrSig")
-		t[k] = t[k] or Signal()
+		t[k] = t[k] or Signal(o)
 		return t[k]
 	end
-	function methods.GetPropertyChangedSignal(_o, _k)
-		return Signal()
+	function methods.GetPropertyChangedSignal(o, _k)
+		return Signal(o)
 	end
 	function methods.GetPivot(o)
 		local cf = rawget(o, "_props").CFrame
@@ -366,6 +386,9 @@ function FE.new()
 		end
 		setParent(o, nil)
 		rawset(o, "_destroyed", true)
+		for _, sig in ipairs(rawget(o, "_sigs")) do
+			sig:DisconnectAll()
+		end
 	end
 	function methods.ClearAllChildren(o)
 		for _, c in ipairs(table.clone(rawget(o, "_kids"))) do

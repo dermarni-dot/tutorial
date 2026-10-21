@@ -358,8 +358,10 @@ function BuilderTiers.Apply(model, tiers, scale, lite)
 		shown[name] = p and tonumber(p:GetAttribute("BodyTier")) or 0
 	end
 	local key = BodyTiers.Key(shown)
-	-- (a body of default parts keeps the engine's HipHeight)
-	if n > 0 or (model:GetAttribute("BodyTiers") ~= key and string.find(key, "[1-9]") ~= nil) then
+	-- the tier legs' own HipHeight, on every run (change-only inside): a body of default parts keeps the engine's; a
+	-- rescale between runs (ApplyDescription: a new height, the avatar look on / off) puts the engine's value back on
+	-- a body whose tiers did not change, and the soles would stand off the floor (or in it) until the next swap
+	if string.find(key, "[1-9]") ~= nil then
 		fixHipHeight(model, hum)
 	end
 	if model:GetAttribute("BodyTiers") ~= key then

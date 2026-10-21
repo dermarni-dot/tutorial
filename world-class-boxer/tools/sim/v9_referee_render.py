@@ -2,11 +2,12 @@
 
     /opt/bpyenv/bin/python tools/sim/v9_referee_render.py SCENE_DIR OUT_DIR [--tag before] [--only id,id]
                                                           [--samples N] [--views front,34,side,back] [--ring 1]
-                                                          [--closeups 1] [--heads 0]
+                                                          [--closeups 1] [--heads 0|1|2]
 
 Per shot: the official in front / 3/4 / side (and back) views framed on him, the two boxers behind him for scale, in a
 simple ring (canvas, corner posts, three ropes; half 12); a sheet <tag>_<shot>.jpg. Then <tag>_closeup.jpg: the stance shots'
-upper body (shirt, collar, bow tie, badge) and shoes; with --heads 1, <tag>_heads.jpg: the stand shots' heads (the caps). Geometry, materials, the classic head and its decal: v8_render.py.
+upper body (shirt, collar, bow tie, badge) and shoes; with --heads 1, <tag>_heads.jpg: the stand shots' heads (the caps;
+--heads 2 adds a boxer's head in his headgear). Geometry, materials, the classic head and its decal: v8_render.py.
 """
 import json
 import math
@@ -125,21 +126,25 @@ def render_closeups(scene_dir, out_dir, shots, tag, samples):
     print("rendered", out, flush=True)
 
 
-def render_heads(scene_dir, out_dir, shots, tag, samples, views):
-    """<tag>_heads.jpg: each stand shot's head and shoulders (the officials' cap on the drawn face) in the given views"""
+def render_heads(scene_dir, out_dir, shots, tag, samples, views, boxers=False):
+    """<tag>_heads.jpg: each stand shot's head and shoulders (the officials' cap on the drawn face) in the given views;
+    boxers=True adds the first boxer of each shot (his headgear)"""
     paths, labels = [], []
     for shot in shots:
-        sc = v8.V8Scene(res=(420, 420), samples=samples, lens=85, bg=(0.11, 0.115, 0.125))
-        ref = official_of(shot)
-        add_fig(sc, scene_dir, ref)
-        hp = np.array(ref["head"]["cf"][:3])
-        f = hp + np.array([0, -0.05, 0])
-        for v in views:
-            p = os.path.join(out_dir, f"_{tag}_{shot['id']}_h_{v}.png")
-            sc.rig(tuple(f), 1.2)
-            sc.render(p, view=VIEWS[v], dist=1.5 / math.tan(math.atan(18 / 85)) / 2.2, focus=tuple(f))
-            paths.append(p)
-            labels.append(f"{shot['id']} {LABEL[v]}")
+        figs = [official_of(shot)]
+        if boxers:
+            figs += [f for f in shot["figures"] if f["role"] == "boxer"][:1]
+        for fig in figs:
+            sc = v8.V8Scene(res=(420, 420), samples=samples, lens=85, bg=(0.11, 0.115, 0.125))
+            add_fig(sc, scene_dir, fig)
+            hp = np.array(fig["head"]["cf"][:3])
+            f = hp + np.array([0, -0.05, 0])
+            for v in views:
+                p = os.path.join(out_dir, f"_{tag}_{shot['id']}_{fig['role']}_h_{v}.png")
+                sc.rig(tuple(f), 1.2)
+                sc.render(p, view=VIEWS[v], dist=1.5 / math.tan(math.atan(18 / 85)) / 2.2, focus=tuple(f))
+                paths.append(p)
+                labels.append(f"{shot['id']} {fig['role']} {LABEL[v]}")
     out = os.path.join(out_dir, f"{tag}_heads.jpg")
     render.sheet(paths, out, cols=len(views), labels=labels, title=f"{tag}: head close-ups (the officials' caps)")
     for p in paths:
@@ -176,4 +181,4 @@ if __name__ == "__main__":
     if stands and opts.get("--closeups", "1") != "0":
         render_closeups(scene_dir, out_dir, stands, tag, samples)
     if stands and opts.get("--heads", "0") != "0":
-        render_heads(scene_dir, out_dir, stands, tag, samples, views)
+        render_heads(scene_dir, out_dir, stands, tag, samples, views, boxers=opts.get("--heads") == "2")

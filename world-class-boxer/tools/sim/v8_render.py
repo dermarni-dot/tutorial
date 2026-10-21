@@ -272,8 +272,12 @@ def add_boxer(sc, scene_dir, d, offset=(0, 0, 0)):
             P, T = wedge(sx, sy, sz)
             smooth = False
         elif sh == "Head":
-            # a SpecialMesh Head (the classic head's shape at the part's size: the headgear shell / band)
-            P, T = classic_head(d["head"]["classic"], (sx, sy, sz))
+            # a SpecialMesh Head (the headgear shell): the engine does not stretch it to the part's Size per axis as it
+            # does a Sphere mesh; it is the one classic head shape scaled uniformly by the part's smallest axis (times
+            # the mesh's Scale, exported when set)
+            u = min(sx, sy, sz)
+            msc = g.get("meshScale", (1, 1, 1))
+            P, T = classic_head(d["head"]["classic"], (u * msc[0], u * msc[1], u * msc[2]))
             smooth = True
         else:
             print("unknown shape", sh, g["name"])

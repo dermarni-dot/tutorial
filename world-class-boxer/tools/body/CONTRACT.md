@@ -101,6 +101,16 @@ The glove, wrap, boot foot, sole and instep laces are one mesh at every tier (th
 a per-tier offset. An id of 0 = not uploaded: `BuilderGear.Resolve` returns nil and BuilderBody builds the
 part-built gear for that group.
 
+The engine's side of this contract (what `tools/sim/test_gear.luau`'s "engine semantics" section pins down): the
+MeshPart `CreateMeshPartAsync` returns has the mesh's bounding box as its Size, the mesh is drawn recentred on that box
+and scaled to the part's Size per axis (so every `.mesh` file is written centred on its box, and `size` must be that
+box: BuilderGear warns in the Output when the uploaded mesh's box is not the manifest's); `ReplaceBodyPartR15` scales the
+new part from its OriginalSize by the humanoid's scale values, in the call or in the engine's own pass, re-aims the
+joints and makes an OriginalSize for a part without one, and BuilderTiers' scale-once leaves nothing for that pass to
+change; a later ApplyDescription rescales the body parts under the gear and the next Cosmetics rebuilds it (the cache
+key carries the parts' sizes). In Studio: the Attire folder's attributes say per group `mesh` or `blocks: <reason>`, and
+`BuilderGear.Audit(model, true)` prints every piece against the manifest.
+
 ## Detail sets (v10)
 
 The body and the mesh gear come in two sets per tier, picked by the boxer's detail level (`Config.Detail[level].meshes`):

@@ -6,6 +6,14 @@
 --
 --   lune run tools/sim/v9_anim.luau [--out DIR] [--tiers 1,3,5] [--clips walk,jog,punch] [--frames N]
 --                                   [--src DIR] (another commit's src: the "before" set)
+--                                   [--timing steady,studio,hz240,spike] [--nopen]
+-- --timing: the frame timing the walk / jog / run clips run under (test_walkstable.luau): steady = 60 Hz, the root
+--   gliding exactly dt x v a frame (the default); studio = a 60 Hz client whose frame times wander +-15 % while the
+--   physics advances in whole 240 Hz steps (what Studio does: the root's travel a frame is never dt x v); hz240 = a
+--   240 Hz client; wander = the frame times of studio with the physics advancing exactly dt x v (the sensing alone);
+--   spike = 60 Hz with a 0.1 s hitch every 47 frames and one 0.25 s hitch. The clips' ids carry the
+--   mode (walk_t3_studio) and their metrics the per-1/60 s roughness of the trunk and head (jitter). --nopen skips
+--   the mesh interpenetration pass (the slow part of a walk clip)
 --
 -- Clips
 --   walk / jog / run: a player character (Players.LocalPlayer.Character) whose HumanoidRootPart glides along -Z at
@@ -37,7 +45,7 @@ do
 	local i = 1
 	while i <= #a do
 		local k = a[i]
-		if k == "--no-regen" or k == "--no-mesh" or k == "--dbgfoot" then
+		if k == "--no-regen" or k == "--no-mesh" or k == "--dbgfoot" or k == "--nopen" then
 			args[k:gsub("^%-%-", "")] = true
 			i += 1
 		else
@@ -632,9 +640,45 @@ do
 	ltask.spawn(chunk)
 end
 local DT = 1 / 60
-local function frame(models)
-	VT += DT
-	PreSim:Fire(DT)
+local NOPEN = args.nopen == true
+local TIMINGS = {}
+for m in (args.timing or "steady"):gmatch("[^,]+") do
+	table.insert(TIMINGS, m)
+end
+-- the frame timing of a walk clip: fdt = the frame's time (PreSimulation's dt, the virtual clock), pdt = the time
+-- the physics advanced the root by (studio: whole 240 Hz steps, the remainder carried to the next frame)
+local function timingOf(mode)
+	local n, acc = 0, 0
+	local nominal = mode == "hz240" and 1 / 240 or 1 / 60
+	local function tick()
+		n += 1
+		if mode == "steady" or mode == "hz240" then
+			return nominal, nominal
+		elseif mode == "spike" then
+			if n % 47 == 0 then
+				return 0.1, 0.1
+			elseif n == 160 then
+				return 0.25, 0.25
+			end
+			return nominal, nominal
+		end
+		-- studio: a deterministic wander of a few periods (the Lua step lands at another point of every frame)
+		local j = 0.15 * (0.6 * math.sin(n * 1.7) + 0.4 * math.sin(n * 0.37 + 1))
+		local fdt = nominal * (1 + j)
+		if mode == "wander" then
+			return fdt, fdt
+		end
+		acc += fdt
+		local steps = math.floor(acc * 240 + 1e-9)
+		acc -= steps / 240
+		return fdt, steps / 240
+	end
+	return tick, nominal
+end
+local function frame(models, dt)
+	dt = dt or DT
+	VT += dt
+	PreSim:Fire(dt)
 	for _, m in ipairs(models) do
 		solve(m, true)
 	end
@@ -734,9 +778,13 @@ local function gaitSampler(model)
 		s.headY = head.Y
 		s.headPitch = deg(math.asin(math.clamp(head.LookVector.Y, -1, 1)))
 		s.headRoll = deg(math.asin(math.clamp(head.RightVector.Y, -1, 1)))
+		s.headYaw = ((yawOf(head) - s.rootYaw + 540) % 360) - 180
 		s.pelvisYaw = ((yawOf(lt) - s.rootYaw + 540) % 360) - 180
 		s.chestYaw = ((yawOf(ut) - s.rootYaw + 540) % 360) - 180
+		s.twist = s.chestYaw - s.pelvisYaw
 		s.trunkPitch = deg(math.asin(math.clamp(ut.LookVector.Y, -1, 1)))
+		s.trunkRoll = deg(math.asin(math.clamp(ut.RightVector.Y, -1, 1)))
+		s.pelvisRoll = deg(math.asin(math.clamp(lt.RightVector.Y, -1, 1)))
 		for _, sd in ipairs({ "Left", "Right" }) do
 			local k = sd:sub(1, 1)
 			local th, sh, ft = P[sd .. "UpperLeg"].CFrame, P[sd .. "LowerLeg"].CFrame, P[sd .. "Foot"].CFrame
@@ -777,7 +825,8 @@ local function gaitSummary(S)
 	end
 	local out = {}
 	for _, k in ipairs({ "hipL", "hipR", "thighL", "kneeL", "kneeR", "ankleL", "footPitchL", "shoulderL", "shoulderR", "elbowL", "elbowR",
-		"wristL", "handZL", "pelvisYaw", "chestYaw", "pelvisY", "headY", "headPitch", "headRoll", "trunkPitch", "soleL", "soleR" }) do
+		"wristL", "handZL", "pelvisYaw", "chestYaw", "twist", "pelvisY", "headY", "headPitch", "headRoll", "headYaw", "trunkPitch", "trunkRoll",
+		"pelvisRoll", "soleL", "soleR" }) do
 		out[k] = range(k)
 	end
 	-- the planted feet: each frame a foot's lowest point is on the floor (< 0.03), how far its ankle moved in the
@@ -857,9 +906,37 @@ for kv in (args.speeds or ""):gmatch("[^,]+") do
 		SPEEDS[k] = tonumber(v)
 	end
 end
-local function walkClip(clip, tier)
+local function walkClip(clip, tier, timing)
+	timing = timing or "steady"
+	local tick, nominal = timingOf(timing)
+	local TTAG = timing ~= "steady" and ("_" .. timing) or ""
 	local model, hum = makeBoxer(tier)
 	model.Name = "Walker"
+	-- Roblox's Animate script and the Humanoid's Animator on the local character (fakes): the Animate script keeps
+	-- starting walk tracks for as long as it is enabled; the Animator must switch it off and stop every track it started
+	local animate = E.new("LocalScript", model)
+	animate.Name = "Animate"
+	animate.Disabled = false
+	local animator = E.new("Animator", hum)
+	local playing, started = {}, 0
+	animator.AnimationPlayed = FE.Signal()
+	animator.GetPlayingAnimationTracks = function()
+		local out = {}
+		for tr in pairs(playing) do
+			table.insert(out, tr)
+		end
+		return out
+	end
+	local function playTrack()
+		local tr = { Name = "walk" }
+		tr.Stop = function(self)
+			playing[self] = nil
+		end
+		playing[tr] = true
+		started += 1
+		animator.AnimationPlayed:Fire(tr)
+	end
+	playTrack()
 	player.Character = model
 	player.CharacterAdded:Fire(model)
 	local hrp = model:FindFirstChild("HumanoidRootPart")
@@ -872,20 +949,27 @@ local function walkClip(clip, tier)
 	local frames = {}
 	local tStart = 0
 	local total = 4.5
-	local nSteps = math.floor(total / DT)
+	local nSteps = 0
 	local hist = {}
 	local sample = gaitSampler(model)
 	local S, SALL = {}, {}
-	for i = 1, nSteps do
-		local t = i * DT
+	local t = 0
+	while t < total do
+		local fdt, pdt = tick()
+		t += fdt
+		nSteps += 1
+		local i = nSteps
 		if t > 1 then
-			v = math.min(speed, v + speed / 0.5 * DT)
+			v = math.min(speed, v + speed / 0.5 * fdt)
 		end
-		z -= v * DT
+		z -= v * pdt
 		hrp.CFrame = CFrame.new(0, y0, z)
 		hrp.AssemblyLinearVelocity = Vector3.new(0, 0, -v)
 		hum.MoveDirection = v > 0 and Vector3.new(0, 0, -1) or Vector3.zero
-		frame({ model })
+		if animate.Disabled ~= true and i % 20 == 0 then
+			playTrack()
+		end
+		frame({ model }, fdt)
 		local smp = sample(t)
 		smp.v = v
 		if args.debugrig and t > tonumber(args.debugrig) and t < tonumber(args.debugrig) + 0.4 then
@@ -911,7 +995,10 @@ local function walkClip(clip, tier)
 			local relU = hrp.CFrame:Inverse() * ut.CFrame
 			local relH = hrp.CFrame:Inverse() * head.CFrame
 			local rx, ry, rz = rel:ToOrientation()
+			local hx, _, hz = relH:ToOrientation()
+			local ux = relU:ToOrientation()
 			table.insert(trace, { t = t, ltX = rel.X, ltY = rel.Y, utX = relU.X, headX = relH.X, roll = rz, yaw = ry, pitch = rx,
+				headPitch = hx, headRoll = hz, chestPitch = ux,
 				lf = model:FindFirstChild("LeftFoot").Position, rf = model:FindFirstChild("RightFoot").Position })
 			table.insert(hist, { t = t, i = i })
 		end
@@ -942,22 +1029,65 @@ local function walkClip(clip, tier)
 		minU, maxU = math.min(minU, s.utX), math.max(maxU, s.utX)
 		minH, maxH = math.min(minH, s.headX), math.max(maxH, s.headX)
 	end
+	-- roughness: the most any trunk / head angle or offset changes over 1/60 s (frame to frame at 60 Hz, four frames at
+	-- 240 Hz), and the RMS of it, over the steady walk: a gait's own motion changes smoothly, a jitter does not
+	local jit = { n = 0, nan = false }
+	do
+		local KEYS_J = { pitch = "deg", roll = "deg", yaw = "deg", headPitch = "deg", headRoll = "deg", chestPitch = "deg", headX = "stud", ltX = "stud", ltY = "stud" }
+		local sq = {}
+		for k in pairs(KEYS_J) do
+			jit[k] = 0
+			sq[k] = 0
+		end
+		local j = 1
+		for i = 2, #trace do
+			local s = trace[i]
+			for k in pairs(KEYS_J) do
+				if s[k] ~= s[k] then
+					jit.nan = true
+				end
+			end
+			while j < i and trace[j + 1].t <= s.t - 1 / 60 + 1e-6 do
+				j += 1
+			end
+			local p = trace[j]
+			if p.t <= s.t - 1 / 60 + 1e-6 then
+				jit.n += 1
+				for k, unit in pairs(KEYS_J) do
+					local d = math.abs(s[k] - p[k])
+					if unit == "deg" then
+						d = math.deg(d)
+					end
+					jit[k] = math.max(jit[k], d)
+					sq[k] += d * d
+				end
+			end
+		end
+		for k in pairs(KEYS_J) do
+			jit[k .. "Rms"] = jit.n > 0 and r4(math.sqrt(sq[k] / jit.n)) or 0
+			jit[k] = r4(jit[k])
+		end
+	end
 	local rec = { clip = clip, tier = tier, speed = speed, period = r4(period), pelvisSwayX = r4(maxX - minX), chestSwayX = r4(maxU - minU),
-		headSwayX = r4(maxH - minH), pelvisRollDeg = r4(math.deg(maxR - minR)), hipHeight = r4(hum.HipHeight), worstPen = {} }
+		headSwayX = r4(maxH - minH), pelvisRollDeg = r4(math.deg(maxR - minR)), hipHeight = r4(hum.HipHeight), worstPen = {}, timing = timing,
+		jitter = jit, frames = nSteps }
 	-- record NFRAMES frames over one more cycle
 	local out = { clip = clip, tier = tier, speed = speed, frames = {} }
-	local nCycle = math.max(1, math.floor(period / DT + 0.5))
+	local nCycle = math.max(1, math.floor(period / nominal + 0.5))
 	local every = nCycle / NFRAMES
 	local nextAt = 0
 	local worst = { n = 0, deep = 0 }
 	for k = 0, nCycle - 1 do
-		local t = (nSteps + k + 1) * DT
-		z -= v * DT
+		local fdt, pdt = tick()
+		t += fdt
+		z -= v * pdt
 		hrp.CFrame = CFrame.new(0, y0, z)
 		hrp.AssemblyLinearVelocity = Vector3.new(0, 0, -v)
-		frame({ model })
+		frame({ model }, fdt)
 		local pr = {}
-		partPen(model, pr)
+		if not NOPEN then
+			partPen(model, pr)
+		end
 		do
 			local ltp = model:FindFirstChild("LowerTorso")
 			for _, sd in ipairs({ "Left", "Right" }) do
@@ -972,7 +1102,7 @@ local function walkClip(clip, tier)
 			end
 		end
 		for _, key in ipairs({ "LeftPelvisInThigh", "RightPelvisInThigh" }) do
-			if pr[key].deep > worst.deep then
+			if pr[key] and pr[key].deep > worst.deep then
 				worst = { n = pr[key].n, deep = pr[key].deep, key = key, phase = r4(k / nCycle) }
 			end
 		end
@@ -985,6 +1115,28 @@ local function walkClip(clip, tier)
 		end
 	end
 	rec.worstPen = worst
+	rec.animate = { disabled = animate.Disabled == true, playing = #animator:GetPlayingAnimationTracks(), started = started,
+		procAnim = model:GetAttribute("ProcAnim") == true }
+	if timing == "steady" then
+		-- released (climbing): Roblox's animation back; on the ground again: off again
+		local HSTe = roblox.Enum.HumanoidStateType
+		hum.GetState = function()
+			return HSTe.Climbing
+		end
+		for _ = 1, 20 do
+			frame({ model })
+		end
+		playTrack()
+		rec.animate.climbEnabled = animate.Disabled == false and model:GetAttribute("ProcAnim") == nil
+		rec.animate.climbPlaying = #animator:GetPlayingAnimationTracks()
+		hum.GetState = function()
+			return STATE.Running
+		end
+		for _ = 1, 20 do
+			frame({ model })
+		end
+		rec.animate.backDisabled = animate.Disabled == true and #animator:GetPlayingAnimationTracks() == 0
+	end
 	rec.gait = gaitSummary(S)
 	rec.start = gaitSummary((function()
 		local o = {}
@@ -1011,13 +1163,18 @@ local function walkClip(clip, tier)
 	end
 	do
 		local ser = seriesOf(SALL)
-		Host.WriteJSON(string.format("%s/gait_%s_t%d%s.json", OUT, clip, tier, HTAG), { clip = clip, tier = tier, speed = speed, height = HEIGHT,
-			period = rec.period, summary = rec.gait, start = rec.start, series = ser })
+		Host.WriteJSON(string.format("%s/gait_%s_t%d%s%s.json", OUT, clip, tier, HTAG, TTAG), { clip = clip, tier = tier, speed = speed, height = HEIGHT,
+			period = rec.period, summary = rec.gait, start = rec.start, series = ser, timing = timing })
 	end
 	print(string.format("      hip flex %.0f..%.0f deg, abduction %.0f..%.0f deg", rec.hipFlexMin, rec.hipFlexMax, rec.hipAbdMin, rec.hipAbdMax))
-	local file = string.format("%s_t%d%s.json", clip, tier, HTAG)
+	print(string.format("      Animate: %s, %d tracks playing (%d started), ProcAnim %s%s", rec.animate.disabled and "disabled" or "ENABLED",
+		rec.animate.playing, rec.animate.started, tostring(rec.animate.procAnim), timing == "steady" and string.format(", climbing: %s, back: %s",
+		rec.animate.climbEnabled and "enabled" or "STILL OFF", rec.animate.backDisabled and "disabled" or "STILL ON") or ""))
+	print(string.format("      timing %s (%d frames): roughness per 1/60 s  trunk pitch %.2f (rms %.3f) roll %.2f yaw %.2f  head pitch %.2f roll %.2f  pelvis x %.4f y %.4f  head x %.4f%s",
+		timing, nSteps, jit.pitch, jit.pitchRms, jit.roll, jit.yaw, jit.headPitch, jit.headRoll, jit.ltX, jit.ltY, jit.headX, jit.nan and "  NaN!" or ""))
+	local file = string.format("%s_t%d%s%s.json", clip, tier, HTAG, TTAG)
 	Host.WriteJSON(OUT .. "/" .. file, out)
-	table.insert(index.clips, { id = string.format("%s_t%d%s", clip, tier, HTAG), file = file, clip = clip, tier = tier, n = #out.frames })
+	table.insert(index.clips, { id = string.format("%s_t%d%s%s", clip, tier, HTAG, TTAG), file = file, clip = clip, tier = tier, n = #out.frames, timing = timing })
 	rec.height = HEIGHT
 	table.insert(metrics, rec)
 	print(string.format("%-5s T%d v=%4.1f period %.3f  pelvis sway %.3f  chest sway %.3f  head sway %.3f  pelvis roll %.1f deg  hip %.3f  worst pelvis-in-thigh %d verts %.3f (%s @%.2f)",
@@ -1061,6 +1218,23 @@ local SCRIPTS = {
 	end, yaw = function(t)
 		return (t > 1.8 and t < 1.8 + (PI / 2) / 1.6) and 1.6 or 0
 	end },
+	-- a player on WASD: the Humanoid's AutoRotate snaps the root round at ~18 rad/s (a quarter turn in 0.09 s) on every
+	-- change of direction, and a reversal (W to S) spins it half way round; the body must take them as the pivots they
+	-- are, never bank or twist as if into a held turn
+	snapturn = { total = 5.4, shots = { 1.75, 1.85, 1.95, 2.1, 2.3, 2.55, 2.65, 2.75, 2.9, 4.15, 4.3, 4.45, 4.6, 4.9 }, speed = function(t)
+		return t < 1 and 0 or SPEEDS.walk * math.min(1, (t - 1) / 0.12)
+	end, yaw = function(t)
+		local W = 18
+		local q = (PI / 2) / W
+		if (t > 1.8 and t < 1.8 + q) or (t > 3.4 and t < 3.4 + q) then
+			return W
+		elseif t > 2.6 and t < 2.6 + q then
+			return -W
+		elseif t > 4.2 and t < 4.2 + 2 * q then
+			return W
+		end
+		return 0
+	end },
 }
 local function scriptClip(clip, tier)
 	local sc = SCRIPTS[clip]
@@ -1075,7 +1249,7 @@ local function scriptClip(clip, tier)
 	local S = {}
 	local out = { clip = clip, tier = tier, frames = {} }
 	local shot = 1
-	local maxJ = { knee = 0, hip = 0, shoulder = 0, elbow = 0, pelvisY = 0, headY = 0 }
+	local maxJ = { knee = 0, hip = 0, shoulder = 0, elbow = 0, pelvisY = 0, headY = 0, trunkRoll = 0, headYaw = 0, twist = 0, trunkPitch = 0 }
 	for i = 1, math.floor(sc.total / DT) do
 		local t = i * DT
 		local v, yr = sc.speed(t), sc.yaw(t)
@@ -1110,6 +1284,9 @@ local function scriptClip(clip, tier)
 			end
 			maxJ.pelvisY = math.max(maxJ.pelvisY, math.abs(smp.pelvisY - pv.pelvisY))
 			maxJ.headY = math.max(maxJ.headY, math.abs(smp.headY - pv.headY))
+			for _, k in ipairs({ "trunkRoll", "headYaw", "twist", "trunkPitch" }) do
+				maxJ[k] = math.max(maxJ[k], math.abs(smp[k] - pv[k]))
+			end
 		end
 		table.insert(S, smp)
 		local every = tonumber(args.shotevery)
@@ -1138,6 +1315,9 @@ local function scriptClip(clip, tier)
 	end
 	print(string.format("%-9s T%d  slide L %.3f R %.3f  sink %.3f  max per-frame step: knee %.1f hip %.1f shoulder %.1f elbow %.1f deg, pelvis %.3f head %.3f",
 		clip, tier, g.slideL, g.slideR, g.sinkMin, maxJ.knee, maxJ.hip, maxJ.shoulder, maxJ.elbow, maxJ.pelvisY, maxJ.headY))
+	print(string.format("      trunk roll %.1f..%.1f pitch %.1f..%.1f  head yaw %.1f..%.1f  chest-pelvis twist %.1f..%.1f  pelvis yaw %.1f..%.1f deg; per frame: roll %.2f yaw %.2f twist %.2f",
+		g.trunkRoll[1], g.trunkRoll[2], g.trunkPitch[1], g.trunkPitch[2], g.headYaw[1], g.headYaw[2], g.twist[1], g.twist[2], g.pelvisYaw[1], g.pelvisYaw[2],
+		maxJ.trunkRoll, maxJ.headYaw, maxJ.twist))
 	local file = string.format("%s_t%d%s.json", clip, tier, HTAG)
 	Host.WriteJSON(OUT .. "/" .. file, out)
 	table.insert(index.clips, { id = string.format("%s_t%d%s", clip, tier, HTAG), file = file, clip = clip, tier = tier, n = #out.frames })
@@ -1882,10 +2062,12 @@ for _, tier in ipairs(TIERS) do
 	end
 	for _, clip in ipairs({ "walk", "jog", "run", "sprint" }) do
 		if CLIPS[clip] then
-			walkClip(clip, tier)
+			for _, timing in ipairs(TIMINGS) do
+				walkClip(clip, tier, timing)
+			end
 		end
 	end
-	for _, clip in ipairs({ "startstop", "turn", "curve" }) do
+	for _, clip in ipairs({ "startstop", "turn", "curve", "snapturn" }) do
 		if CLIPS[clip] then
 			scriptClip(clip, tier)
 		end

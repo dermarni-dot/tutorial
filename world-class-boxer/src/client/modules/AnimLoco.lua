@@ -180,12 +180,24 @@ function AnimLoco.sense(rig, dt)
 	-- (the travel this update is expected from the sensed OR the physics speed: a run started from a
 	-- standstill at a low frame rate - or on a far rig's 2-4 frame step - is real motion, not a nudge)
 	local flatD = V3(d.X, 0, d.Z).Magnitude
+	-- (a yaw pop is a pivot teleport only past what a Humanoid's AutoRotate turns in one frame - it spins the root
+	-- round at tens of rad/s on a change of direction, and on a long frame that is a big angle: the whole body must
+	-- not be counter-turned and glided back after every WASD tap or hitch)
+	local yawPop = max(0.6, 30 * dt)
 	if flatD > max(0.9, lo.speed * dt * 3 + 0.5, phys.Magnitude * dt * 1.8 + 0.5) then
 		lo.jumpOff = (lo.jumpOff or ZERO) - V3(d.X, 0, d.Z)
 		lo.jumpYaw = (lo.jumpYaw or 0) + K.wrap(lo.yaw - yaw)
 		raw = lo.vel
-	elseif abs(K.wrap(yaw - lo.yaw)) > 0.35 then
-		lo.jumpYaw = (lo.jumpYaw or 0) + K.wrap(lo.yaw - yaw)
+	else
+		if abs(K.wrap(yaw - lo.yaw)) > yawPop then
+			lo.jumpYaw = (lo.jumpYaw or 0) + K.wrap(lo.yaw - yaw)
+		end
+		if rig.isLocal then
+			-- the local character is simulated on this client: its physics velocity is exact, its travel over the frame
+			-- is not (the physics advances in whole 240 Hz steps while the frame's time wanders; read as travel / dt the
+			-- speed jittered by a tenth or more a frame in Studio, and with it the gait's phase, lean and sway)
+			raw = phys
+		end
 	end
 	local kd = exp(-dt * 9)
 	if lo.jumpOff then
@@ -200,7 +212,7 @@ function AnimLoco.sense(rig, dt)
 			lo.jumpYaw = 0
 		end
 	end
-	if phys.Magnitude > raw.Magnitude * 0.6 and phys.Magnitude < raw.Magnitude * 1.6 + 1 then
+	if not rig.isLocal and phys.Magnitude > raw.Magnitude * 0.6 and phys.Magnitude < raw.Magnitude * 1.6 + 1 then
 		raw = raw:Lerp(phys, 0.5)
 	end
 	local k = 1 - exp(-dt * 20)
@@ -214,7 +226,7 @@ function AnimLoco.sense(rig, dt)
 	lo.vel = vel
 	lo.speed = vel.Magnitude
 	-- (vertical: a walker on a ramp or stairs; clamped so a teleport-sized hop never spikes it)
-	lo.vy += (clamp(d.Y / dt, -40, 40) - lo.vy) * (1 - exp(-dt * 8))
+	lo.vy += (clamp(rig.isLocal and av.Y or d.Y / dt, -40, 40) - lo.vy) * (1 - exp(-dt * 8))
 	if abs(lo.vy) > 0.5 then
 		lo.vyT = rig.clock or 0
 	end
@@ -462,9 +474,13 @@ local function updateGait(rig, t, dt)
 		-- a diagonal (the body kept facing - Shift Lock, first person - while he goes off at an angle): the pelvis and
 		-- the legs turn toward the way he goes, up to ~43 deg, the chest stays (bodyOffsets): he walks the diagonal
 		-- forward (or backward), not a crab's side shuffle; from ~70 deg off it is a side step
+		-- (and never while the root turns: a turn is not a diagonal. The filtered velocity trails a Humanoid's snap turn
+		-- by a quarter second, and read against the new facing it had the legs and pelvis turned 20-40 degrees toward
+		-- the OLD way after every WASD tap, untwisting over half a second; gated on the yaw rate the legs follow the
+		-- root round and the lag that is left when the turn is over is a few degrees)
 		local al = v > 0.3 and atan2(lo.lv.X, -lo.lv.Z) or 0
 		local be = abs(al) > PI / 2 and al - (al > 0 and PI or -PI) or al
-		local lyT = clamp(be, -0.75, 0.75) * (1 - smooth((abs(be) - 0.95) / 0.4))
+		local lyT = clamp(be, -0.75, 0.75) * (1 - smooth((abs(be) - 0.95) / 0.4)) * clamp(1 - abs(lo.yawRate) / 4, 0, 1)
 		lo.legYaw = (lo.legYaw or 0) + (lyT - (lo.legYaw or 0)) * (1 - exp(-dt * 6))
 		-- forward / backward / sideways (in the legs' frame): the arms' swing and the backward step follow it
 		local cy, sy = cos(lo.legYaw), sin(lo.legYaw)
@@ -586,12 +602,27 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 		-- braking tips him back a few degrees, never a backward plunge
 		local vh = lo.vh or 0
 		local steady = (prof.lean + lerp(0.012 + 0.004 * vh, 0.004 + 0.01 * vh, lo.run)) * w * max(0, lo.fwd)
-		tgtP = clamp(-steady - 0.014 * fwdA, -0.26, 0.12)
+		tgtP = clamp(-steady - 0.014 * fwdA, -0.2, 0.12)
 	else
 		tgtP = clamp(-0.004 * fwdV * w - 0.012 * fwdA, -0.3, 0.2)
 	end
-	-- (into a turn: about the centripetal tilt, atan(v w / g))
-	local tgtR = clamp(0.008 * latA - 0.01 * lo.speed * lo.yawRate * (walking and 0.6 or 0.4), -0.25, 0.25)
+	-- (into a turn: about the centripetal tilt, atan(v w / g) - of a HELD turn. A Humanoid's AutoRotate spins the root
+	-- round at tens of rad/s on every change of direction, many times any human turn, and swings its velocity with it
+	-- (a lateral acceleration of 40-80 studs/s^2 for a tenth of a second); read raw, those banked the body 14 degrees
+	-- on every WASD tap. A walker leans into the yaw rate clamped to a human's (4 rad/s) and the lateral push, both
+	-- averaged over a quarter second: a snap turn passes as the pivot it is, a held turn - a curve, a stick held over -
+	-- banks him; a boxer's footwork keeps the quick read, its sidesteps are its own)
+	local yrH = clamp(lo.yawRate, -4, 4)
+	local tgtR
+	if walking then
+		local ks = 1 - exp(-dt * 4)
+		lo.turnS = (lo.turnS or 0) + (yrH - (lo.turnS or 0)) * ks
+		lo.latS = (lo.latS or 0) + (clamp(latA, -25, 25) - (lo.latS or 0)) * ks
+		tgtR = clamp(0.008 * lo.latS - 0.006 * lo.speed * lo.turnS, -0.12, 0.12)
+	else
+		lo.turnS, lo.latS = 0, 0
+		tgtR = clamp(0.008 * latA - 0.004 * lo.speed * yrH, -0.25, 0.25)
+	end
 	lo.leanP, lo.leanPV = K.spring2(lo.leanP, lo.leanPV, tgtP, walking and 11 or 9, 0.55, dt)
 	lo.leanR, lo.leanRV = K.spring2(lo.leanR, lo.leanRV, tgtR, 9, 0.6, dt)
 	-- the upper body's inertia: a nod forward when braking hard, then settle (a walker or runner braking leans
@@ -652,17 +683,21 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 	-- turning: the head leads into the turn, the chest follows, the hips lag behind (the feet step round
 	-- after them) - never the whole body turning as one block on the root
 	-- (only on his feet: a fall, a seat or keyed legs own the whole body)
-	local yr = kind and clamp(lo.yawRate, -4, 4) or 0
-	lo.turnL += (yr - lo.turnL) * (1 - exp(-dt * 10))
+	-- (the lead builds over a sixth of a second and lets go quicker: a Humanoid's snap turn is over before it is
+	-- half way there, a held turn gets all of it - a head turned 15-17 degrees ahead, as a walker's, never the 29
+	-- degrees past the way he now faces that a raw read of the snap left him looking)
+	local yr = kind and yrH or 0
+	lo.turnL += (yr - lo.turnL) * (1 - exp(-dt * (abs(yr) > abs(lo.turnL) and 6 or 10)))
 	local tl = lo.turnL
-	nYaw += clamp(0.17 * tl, -0.5, 0.5)
-	wYaw += clamp(0.1 * tl, -0.3, 0.3)
-	yawP += clamp(-0.05 * tl, -0.15, 0.15)
-	-- (a hard turn at speed - a reversal: the hips lag well behind the shoulders and the legs untwist from the
-	-- planted foot as he pivots, instead of the pelvis spinning round over it and crossing the thighs)
+	nYaw += clamp(0.17 * tl, -0.3, 0.3)
+	wYaw += clamp(0.1 * tl, -0.18, 0.18)
+	yawP += clamp(-0.05 * tl, -0.1, 0.1)
+	-- (a hard turn at speed - a reversal: the hips lag behind the shoulders and the legs untwist from the planted
+	-- foot as he pivots, instead of the pelvis spinning round over it and crossing the thighs; about as far as a
+	-- walker's shoulders ever turn against his hips, whatever the root's rate)
 	local tk = walking and lo.turnK or 0
 	if tk > 0 then
-		local lag = clamp(-0.06 * lo.yawRate, -0.6, 0.6) * tk
+		local lag = clamp(-0.06 * yrH, -0.24, 0.24) * tk
 		yawP += lag
 		wYaw -= lag
 	end

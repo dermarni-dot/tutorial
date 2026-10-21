@@ -12403,12 +12403,30 @@ local function attireBuild(model, app, opts, gear, sp, env)
 	-- the Blender-modelled gear for the tiers the parts show (BuilderGear); nil = the part-built gear below
 	local official = sp.outfit == "referee" or sp.outfit == "cornerman"
 	local meshTrunks, meshShoes, meshTop, meshOutfit
+	local whyTrunks, whyShoes, whyTop, whyOutfit
 	if official then
-		meshOutfit = Gear.Resolve(model, "official", officialStyle(sp.outfit))
+		meshOutfit, whyOutfit = Gear.Resolve(model, "official", officialStyle(sp.outfit))
 	else
-		meshTrunks = Gear.Resolve(model, "trunks", table.find(Looks.TrunkStyles, a.trunkStyle) and a.trunkStyle or "Classic")
-		meshShoes = Gear.Resolve(model, "shoes", a.shoeStyle == "Low-Top" and "Low-Top" or "High-Top")
-		meshTop = app.gender == 2 and Gear.Resolve(model, "top", "Top") or nil
+		meshTrunks, whyTrunks = Gear.Resolve(model, "trunks", table.find(Looks.TrunkStyles, a.trunkStyle) and a.trunkStyle or "Classic")
+		meshShoes, whyShoes = Gear.Resolve(model, "shoes", a.shoeStyle == "Low-Top" and "Low-Top" or "High-Top")
+		if app.gender == 2 then
+			meshTop, whyTop = Gear.Resolve(model, "top", "Top")
+		end
+	end
+	-- (what each group is, readable on the folder in Studio: "mesh", or "blocks: <why the mesh gear was not built>")
+	local function record(folder)
+		local function state(pieces, why)
+			return pieces and "mesh" or ("blocks: " .. tostring(why))
+		end
+		if official then
+			folder:SetAttribute("Outfit", state(meshOutfit, whyOutfit))
+		else
+			folder:SetAttribute("Trunks", state(meshTrunks, whyTrunks))
+			folder:SetAttribute("Shoes", state(meshShoes, whyShoes))
+			if app.gender == 2 then
+				folder:SetAttribute("Top", state(meshTop, whyTop))
+			end
+		end
 	end
 	local key = Kit.sig("A4", a, opts.waistText or "", spT or "", spF or "", spB or "", sp.outfit, sp.detail, gear.shoes, shoeCond(gear), gear.shoesCond >= 60, gear.shoesCond >= 40,
 		eUL, a.trunkStyle == "Long" and eLL or false, topRel, opts.name or "", app.gender, sizesOf(model, ATTIRE_PARTS),
@@ -12417,6 +12435,7 @@ local function attireBuild(model, app, opts, gear, sp, env)
 		return
 	end
 	local folder = getFolder(model, "Attire")
+	record(folder)
 	if official then
 		if meshOutfit then
 			outfitMesh(folder, model, app, opts, sp, meshOutfit)
@@ -13556,6 +13575,11 @@ return Body
 --   painted per colour slot: paint(slot, piece name) -> colour, material, reflectance
 -- * a tier change swaps the body part; the caller's cache signature carries Key(pieces) (the mesh ids and the
 --   parts' sizes), so the gear is rebuilt for the new tier on the next Cosmetics
+-- * checks for Studio: a template whose engine box (CreateMeshPartAsync's Size = the uploaded mesh's bounding box) is
+--   not the manifest's size warns once (the upload and GearAssetData disagree); BuilderBody writes each group's state on
+--   the Attire folder ("Trunks = mesh" / "blocks: <reason>"); Audit(model, true) prints every piece's mesh, part,
+--   tier, ratio and size against the manifest - from the Studio command bar (server side, while playing):
+--   require(game.ReplicatedStorage.Shared.BuilderGear).Audit(workspace.<Name>, true)
 -- Tests: BuilderGear.Services = { AssetService = fake, Content = fake }, BuilderGear.SetData(t), BuilderGear.Reset().
 local BuilderGear = {}
 
@@ -13565,6 +13589,7 @@ local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
 
 local V3 = Vector3.new
 BuilderGear.RETRY = 120
+BuilderGear.BBOX_TOL = 0.02 -- the uploaded mesh's box may differ from the manifest's size by this fraction before a warning
 BuilderGear.Services = {}
 
 ------------------------------------------------------------------------
@@ -13704,6 +13729,22 @@ function BuilderGear.Template(id, size)
 	end)
 	if ok and mp then
 		ok = pcall(function()
+			-- the engine's own Size for the loaded mesh = its bounding box: the manifest's `size` must be the same
+			-- number (the mesh is drawn recentred on that box and scaled to Size per axis), else the uploaded mesh is
+			-- not the one build_gear.py measured (a stale manifest, an id pointing at an older upload): say so
+			-- (a 1 x 1 x 1 Size is a stub part that never loaded a mesh - the simulators' fakes - not a measurement)
+			local bbox = mp.Size
+			if typeof(bbox) == "Vector3" and bbox.X > 1e-4 and bbox.Y > 1e-4 and bbox.Z > 1e-4 and (bbox - V3(1, 1, 1)).Magnitude > 1e-6 then
+				mp:SetAttribute("GearBBox", bbox)
+				if size then
+					local d = V3(math.abs(bbox.X / size.X - 1), math.abs(bbox.Y / size.Y - 1), math.abs(bbox.Z / size.Z - 1))
+					if math.max(d.X, d.Y, d.Z) > BuilderGear.BBOX_TOL then
+						warn(string.format("[Gear] mesh %d: the uploaded mesh's box %s is not the manifest's size %s (GearAssetData is "
+							.. "out of step with the upload: rebuild and re-run publish_gear.py); drawn at the manifest's size", id,
+							tostring(bbox), tostring(size)))
+					end
+				end
+			end
 			mp.Anchored = false
 			mp.CanCollide = false
 			mp.CanQuery = false
@@ -13870,6 +13911,48 @@ function BuilderGear.Build(folder, pieces, paint, rename)
 		stats.built += 1
 	end
 	return made
+end
+
+-- what a model wears, for the Output / a Studio check (one line per mesh piece: the piece, its mesh id, the body part
+-- it is welded to with that part's tier / set / scale ratio, the piece's Size against the manifest's size x ratio, and
+-- the uploaded mesh's own box when it differs), then every look folder's group records (BuilderBody: "Trunks = mesh",
+-- "Shoes = blocks: failed: BootFoot_L"...). Returns the lines and prints them when `print` is true
+function BuilderGear.Audit(model, doPrint)
+	local lines = {}
+	local look = model and model:FindFirstChild("BoxerLook")
+	if not look then
+		table.insert(lines, "no BoxerLook folder (Cosmetics has not run)")
+	else
+		for _, f in ipairs(look:GetChildren()) do
+			for _, p in ipairs(f:GetChildren()) do
+				local name = p:IsA("BasePart") and p:GetAttribute("GearPiece")
+				if name then
+					local w = p:FindFirstChild("GearWeld")
+					local body = w and w.Part0
+					local ratio = BuilderTiers.RatioOf(body)
+					local tier = body and body:GetAttribute("BodyTier")
+					local e = tier and BuilderGear.Entry(tier, name, nil, body:GetAttribute("BodyLite") == true)
+					local want = (e and ratio) and (e.size * ratio) or nil
+					local c = cache[p:GetAttribute("GearMesh")]
+					local bbox = c and c.part and c.part:GetAttribute("GearBBox")
+					table.insert(lines, string.format("%s/%s mesh %s on %s (tier %s%s, ratio %s): size %s%s%s", f.Name, name,
+						tostring(p:GetAttribute("GearMesh")), body and body.Name or "?", tostring(tier),
+						(body and body:GetAttribute("BodyLite")) and " lite" or "", ratio and tostring(ratio) or "?", tostring(p.Size),
+						(want and (p.Size - want).Magnitude > 1e-3) and (" EXPECTED " .. tostring(want)) or "",
+						(bbox and e and (bbox - e.size).Magnitude > 1e-3) and (" UPLOADED BOX " .. tostring(bbox)) or ""))
+				end
+			end
+			for k, v in pairs(f:GetAttributes()) do
+				if k ~= "Sig" then
+					table.insert(lines, string.format("%s.%s = %s", f.Name, k, tostring(v)))
+				end
+			end
+		end
+	end
+	if doPrint then
+		print("[Gear] audit of " .. tostring(model and model.Name) .. ":\n  " .. table.concat(lines, "\n  "))
+	end
+	return lines
 end
 
 -- true when the model shows tier parts for every piece of the style and every one of them is uploaded (no loads:
@@ -15074,6 +15157,20 @@ function Hair.FixAccessories(model)
 	for _, acc in ipairs(model:GetChildren()) do
 		local handle = acc:IsA("Accessory") and acc:FindFirstChild("Handle")
 		if handle and handle:IsA("BasePart") then
+			-- (an avatar's hair hangs off the head's side: no mass for the Humanoid to balance against, no collision to
+			-- catch on a door frame, no ray hit - as every part the Builder puts on)
+			if handle.Massless ~= true then
+				handle.Massless = true
+			end
+			if handle.CanCollide then
+				handle.CanCollide = false
+			end
+			if handle.CanQuery then
+				handle.CanQuery = false
+			end
+			if handle.CanTouch then
+				handle.CanTouch = false
+			end
 			local weld = handle:FindFirstChild("AccessoryWeld")
 			local p0 = weld and weld.Part0
 			local p1 = weld and weld.Part1
@@ -16719,10 +16816,11 @@ end
 ------------------------------------------------------------------------
 -- Headgear (every boxer's, Config.AlwaysHeadgear; else only while sparring)
 ------------------------------------------------------------------------
--- An open-face amateur headgear on the classic head. One padded shell wraps the sides and the back: the classic head's
--- own shape (a Head SpecialMesh) scaled up and set back, so it stands ~0.1 off the ears and the back and sinks into the
--- face in front of az +-44 deg (the face opening's sides); the crown caps the top, a brow roll rings the forehead just
--- above the brows and a cheek bolster rolls each side of the opening.
+-- An open-face amateur headgear on the classic head. One padded shell wraps the sides, the back and the top: the
+-- classic head's own shape (a Head SpecialMesh) a little larger than the head, set back and lifted, so it stands off
+-- the ears and the back and the head's own face comes through it in front (the shell's front lies inside the head
+-- in front of az +-HG.openAz: the face opening). The crown pad caps the forehead's top, a brow roll rings the forehead
+-- just above the brows and a cheek bolster rolls each side of the opening.
 -- Ear holes, the chin strap and the crown seam at full detail (the chin cup from medium). The opening is cut round the
 -- drawn face's ink (Head.HEADGEAR_OPENING, checked against every drawn face by test_bodytiers): the band's lower edge
 -- stays above the brows, the shell and bolsters outside the eyes, brows and mouth, the chin open.
@@ -16732,6 +16830,22 @@ end
 Head.HEADGEAR_OPENING = { top = 0.225, side = 0.29, sideLow = 0.24 }
 local HG_PARTS = { full = 11, medium = 6, low = 3 }
 Head.HEADGEAR_PARTS = HG_PARTS
+
+-- The engine's Head SpecialMesh is NOT stretched by the part's Size per axis (unlike the Sphere mesh): it is the one
+-- head shape, scaled uniformly by the part's smallest axis (an R6 head is a 2 x 1 x 1 part that shows 1.25 wide).
+-- A Head-mesh part is therefore always given a CUBE Size (Head.HeadMeshSize), and the head itself is taken as
+-- uniform at its smallest axis (Head.HeadSpan). test_bodytiers / test_referee model the mesh the same way.
+function Head.HeadSpan(head)
+	local s = head.Size
+	return math.min(s.X, s.Y, s.Z)
+end
+function Head.HeadMeshSize(span)
+	return V3(span, span, span)
+end
+
+-- the shell: a uniform classic head k x the head's, its centre (0, y0, z0) head sizes from the head's centre; the head's
+-- round front comes through it inside az +-openAz (deg from the front: cos openAz = (k^2 / 4 - 1 / 4 - z0^2) / z0)
+Head.HG = { k = 1.18, y0 = 0.06, z0 = 0.117, openAz = 44 }
 
 function Head.SetHeadgear(model, color, on, detail)
 	local folder = getFolder(model, "Headgear")
@@ -16747,16 +16861,18 @@ function Head.SetHeadgear(model, color, on, detail)
 	local full, low = detail == "full", detail == "low"
 	folder:SetAttribute("Detail", detail)
 	color = typeof(color) == "Color3" and color or Color3.fromRGB(200, 25, 30)
-	local s = head.Size
+	local hs = Head.HeadSpan(head)
+	local s = V3(hs, hs, hs)
 	local L = Head.FaceLayout(head, {})
 	local hcf = head.CFrame
 	local mat = Enum.Material.Leather
 	local function add(name, size, cf, c, shape, m)
 		return mk(folder, head, name, size, cf, c, shape or "Ellipsoid", m or mat)
 	end
-	-- the classic head's shape at size k x the head's (per axis), centred at (x, y, z) fractions of the head
-	local function shell(name, kx, ky, kz, y, z, c)
-		local p = mk(folder, head, name, V3(s.X * kx, s.Y * ky, s.Z * kz), hcf * CF(0, y * s.Y, z * s.Z), c, "Block", mat)
+	-- the classic head's shape at k x the head (uniform: the engine scales the Head mesh by the smallest axis),
+	-- centred at (y, z) fractions of the head
+	local function shell(name, k, y, z, c)
+		local p = mk(folder, head, name, Head.HeadMeshSize(hs * k), hcf * CF(0, y * hs, z * hs), c, "Block", mat)
 		local m = Instance.new("SpecialMesh")
 		m.MeshType = Enum.MeshType.Head
 		m.Parent = p
@@ -16782,11 +16898,14 @@ function Head.SetHeadgear(model, color, on, detail)
 		return add(name, V3(w / f, h / f, 2 * D), hcf * cf * CF(0, 0, ctr), c)
 	end
 	local O = Head.HEADGEAR_OPENING
+	local G = Head.HG
 	local browC, seamC, strapC = darken(color, 0.9), darken(color, 0.72), darken(color, 0.55)
-	-- the shell (sides + back: 0.1 off at the ears, 0.09 at the back, into the face in front of az +-44)
-	shell("HGShell", 1.2, 1.1, 1.05, 0.05, 0.06, color)
-	-- the crown: over the top, its front sinking into the forehead behind the band
-	add("HGTop", V3(s.X * 1.16, s.Y * 0.6, s.Z * 1.16), hcf * CF(0, 0.34 * s.Y, 0.04 * s.Z), color)
+	-- the shell (sides, back and top: ~0.08 off at the ears, 0.2 at the back, 0.15 over the top; the head's front
+	-- comes through it inside az +-44: the face opening)
+	shell("HGShell", G.k, G.y0, G.z0, color)
+	-- the crown pad: over the forehead's top, where the head's own curve would graze the shell's front; its front
+	-- sinks into the forehead behind the brow roll, its sides and back inside the shell (0.03 clear of its wall)
+	add("HGTop", V3(s.X * 1.12, s.Y * 0.6, s.Z * 1.12), hcf * CF(0, 0.34 * s.Y, 0.04 * s.Z), color)
 	-- the brow roll: a flat ellipsoid round the forehead whose rim meets the skin at O.top (above every drawn brow)
 	-- and bulges ~0.075 off it in front (its sides and back sink into the shell)
 	add("HGBrow", V3(s.X * 1.11, s.Y * 0.26, s.Z * 1.125), hcf * CF(0, (O.top + 0.066) * s.Y, 0), browC)
@@ -16802,9 +16921,11 @@ function Head.SetHeadgear(model, color, on, detail)
 	if not full then
 		return folder
 	end
+	-- how far the shell stands off the skin at the ears (az 90, z ~ 0): the ear hole is centred on its surface
+	local earOut = math.sqrt((G.k / 2) ^ 2 - G.z0 ^ 2) - 0.5
 	for side = -1, 1, 2 do
 		-- the ear hole: a dark opening in the shell over the ear
-		local ecf = L.shellCF(rad(side * 90), 0.02 * s.Y, 0.09 * s.Z)
+		local ecf = L.shellCF(rad(side * 90), 0.02 * s.Y, earOut * s.Z)
 		add("HGEarHole", V3(0.1 * s.Z, 0.15 * s.Y, 0.04 * s.X), hcf * ecf, darken(color, 0.35))
 		-- the chin strap: from the shell's lower edge behind the cheek along the underside of the jaw to the cup
 		local a = hcf * L.shellCF(rad(side * 66), -0.36 * s.Y, 0.03 * s.Z).Position
@@ -16813,21 +16934,22 @@ function Head.SetHeadgear(model, color, on, detail)
 		local out = mid - hcf * V3(0, -0.2 * s.Y, -0.1 * s.Z)
 		add("HGStrap", V3(0.07 * s.Y, 0.025 * s.Y, (b - a).Magnitude), CFrame.lookAt(mid, b, out.Unit), strapC, "Block", SMOOTH)
 	end
-	-- the stitched seam over the crown (front to back)
-	add("HGSeam", V3(0.045 * s.X, s.Y * 0.615, s.Z * 1.18), hcf * CF(0, 0.34 * s.Y, 0.04 * s.Z), seamC)
+	-- the stitched seam over the crown (front to back), riding the shell's top
+	add("HGSeam", V3(0.045 * s.X, s.Y * (G.k + 0.01), s.Z * (G.k + 0.01)), hcf * CF(0, G.y0 * s.Y, G.z0 * s.Z), seamC)
 	return folder
 end
 
 ------------------------------------------------------------------------
 -- Officials' caps (the referee's peaked cap, the spar coach's team cap): Builder's "Hat" Cosmetics step
 ------------------------------------------------------------------------
--- Parts and SpecialMeshes on the classic head (no uploaded mesh), welded to the head and sized from it, so they scale
--- with the head; BoxerLook/Hat is cached by Builder on the style, colours, head size and detail.
--- * "referee": a black flat-topped peaked cap: a short crown (the classic head's own shape, a Head SpecialMesh, a
---   little wider than the head, its foot at y = REFCAP.crownBase), a band round its base in the venue shirt's colour
---   (light blue at the clubs, white for a title fight), a short stiff visor (a flat ellipsoid) and a gold WCB badge
---   over the band (a gold disc and the "WCB" wordmark, GothamBlack in ink, as UI.Brand's); full adds the cord over
---   the visor's root
+-- Parts on the classic head (no uploaded mesh), welded to the head and sized from it (Head.HeadSpan), so they scale
+-- with the head; BoxerLook/Hat is cached by Builder on the style, colours, head size and detail. Only shapes the
+-- engine sizes from the part (Cylinder parts, Sphere meshes = ellipsoids): no Head mesh, which it never stretches.
+-- * "referee": a black flat-topped peaked cap: a band hugging the head just above the brows (a Cylinder standing
+--   on end, a little wider than the head) in the venue shirt's colour (light blue at the clubs, white for a title
+--   fight), the crown over it (a wider, taller Cylinder: the flat top overhangs the band), a short stiff visor (a
+--   flat ellipsoid rooted under the band, pitched down a little) and a gold WCB badge on the crown's front (a gold
+--   disc and the "WCB" wordmark, GothamBlack in ink, as UI.Brand's); full adds the gold cord across the band
 -- * "baseball": the coach's team cap: a domed six-panel crown (an ellipsoid) in his team colour, a longer bill in its
 --   darker shade, the top button and a white "WCB" on the front; full adds the front seam
 -- Nothing reaches the drawn face: every part stays above Head.CAP_CLEAR (fractions of the head height, the drawn
@@ -16836,9 +16958,11 @@ end
 -- detail = Config.DetailLevel: referee full 6 parts, medium 5, low 2; baseball full 5, medium 4, low 2.
 Head.CAP_CLEAR = 0.235
 Head.CAP_PARTS = { referee = { full = 6, medium = 5, low = 2 }, baseball = { full = 5, medium = 4, low = 2 } }
--- referee cap geometry (fractions of the head size; y up from the head's centre, z: -0.5 = the forehead)
-Head.REFCAP = { crownBase = 0.215, crownH = 0.32, crownW = 1.065, bandY = 0.29, bandH = 0.09, visorY = 0.278, visorT = 0.034,
-	visorReach = 0.24, visorW = 0.76, visorTilt = 3 }
+-- referee cap geometry (fractions of the head span; y up from the head's centre, z: -0.5 = the forehead). The band
+-- from bandLo up bandH (its diameter bandW: the head is 1.0 wide there), the crown from crownBase (inside the band's
+-- top) up crownH at crownW; the visor's root centre at visorY, visorT thick, reaching visorReach ahead of the forehead
+Head.REFCAP = { bandLo = 0.25, bandH = 0.12, bandW = 1.04, crownBase = 0.36, crownH = 0.3, crownW = 1.08,
+	visorY = 0.268, visorT = 0.034, visorReach = 0.24, visorW = 0.78, visorTilt = 3, badgeY = 0.46 }
 Head.BALLCAP = { domeY = 0.33, domeH = 0.27, domeW = 1.07, domeD = 1.09, billY = 0.27, billT = 0.034, billReach = 0.36,
 	billW = 0.68, billTilt = 3 }
 
@@ -16862,63 +16986,61 @@ function Head.SetCap(model, style, colors, detail)
 	local capC = typeof(colors.cap) == "Color3" and colors.cap or (ref and Color3.fromRGB(18, 18, 21) or Color3.fromRGB(30, 30, 34))
 	local trimC = typeof(colors.trim) == "Color3" and colors.trim or (ref and Color3.fromRGB(150, 190, 226) or darken(capC, 0.75))
 	local badgeC = typeof(colors.badge) == "Color3" and colors.badge or (ref and Color3.fromRGB(212, 172, 64) or Color3.fromRGB(238, 238, 232))
-	local s = head.Size
+	local hs = Head.HeadSpan(head)
 	local hcf = head.CFrame
-	local function shape(name, size, cf, c, meshType, m)
-		local p = mk(folder, head, name, size, cf, c, "Block", m or FABRIC)
-		local sm = Instance.new("SpecialMesh")
-		sm.MeshType = meshType
-		sm.Parent = p
-		return p
-	end
 	local function ell(name, size, cf, c, m)
 		return mk(folder, head, name, size, cf, c, "Ellipsoid", m or FABRIC)
 	end
-	-- a flat ellipsoid visor reaching `reach` (fraction of s.Z) ahead of the forehead, its root under the crown,
-	-- pitched down by tilt degrees about its root
-	-- (its back end 0.1 behind the forehead, inside the crown; the tip at 0.5 + reach in front of the head's centre)
+	-- a round, flat-topped drum standing on end: diameter d, height h (fractions of the head span), its centre y up
+	-- from the head's centre (a Cylinder part's axis is its X: stood up with a 90 deg roll)
+	local function drum(name, d, h, y, c, m)
+		return mk(folder, head, name, V3(h * hs, d * hs, d * hs), hcf * CF(0, y * hs, 0) * ANG(0, 0, math.pi / 2), c, "Cylinder", m or FABRIC)
+	end
+	-- a flat ellipsoid visor reaching `reach` ahead of the forehead, its root under the band, pitched down by tilt
+	-- degrees about its root (its back end 0.1 behind the forehead, inside the head; the tip at 0.5 + reach in front
+	-- of the head's centre)
 	local function visor(name, y, t, reach, w, tilt, c)
 		local hl = (0.4 + reach) / 2
-		local root = hcf * CF(0, y * s.Y, -0.5 * s.Z) * ANG(rad(-tilt), 0, 0)
-		return ell(name, V3(w * s.X, t * s.Y, 2 * hl * s.Z), root * CF(0, 0, (0.4 - hl) * s.Z), c, SMOOTH)
+		local root = hcf * CF(0, y * hs, -0.5 * hs) * ANG(rad(-tilt), 0, 0)
+		return ell(name, V3(w * hs, t * hs, 2 * hl * hs), root * CF(0, 0, (0.4 - hl) * hs), c, SMOOTH)
 	end
 	if ref then
 		local R = Head.REFCAP
-		local cy = (R.crownBase + R.crownH / 2) * s.Y
-		shape("RCCrown", V3(s.X * R.crownW, s.Y * R.crownH, s.Z * R.crownW), hcf * CF(0, cy, 0.01 * s.Z), capC, Enum.MeshType.Head)
+		-- the crown (at low detail, without the band, it comes down to the band's foot)
+		local base = low and R.bandLo or R.crownBase
+		local top = R.crownBase + R.crownH
+		drum("RCCrown", R.crownW, top - base, (base + top) / 2, capC)
 		visor("RCVisor", R.visorY, R.visorT, R.visorReach, R.visorW, R.visorTilt, darken(capC, 0.8))
 		if low then
 			return folder
 		end
-		local bw = R.crownW + 0.012
-		shape("RCBand", V3(s.X * bw, s.Y * R.bandH, s.Z * bw), hcf * CF(0, R.bandY * s.Y, 0.01 * s.Z), trimC, Enum.MeshType.Head)
-		-- the WCB badge on the crown's front, above the band
-		local fz = (0.006 - R.crownW / 2) * s.Z
-		local by = (R.bandY + R.bandH / 2 + 0.055) * s.Y
-		ell("RCBadge", V3(0.15 * s.X, 0.1 * s.Y, 0.03 * s.Z), hcf * CF(0, by, fz), badgeC, Enum.Material.Metal)
-		Kit.textPatch(folder, head, "RCBadgeText", V3(0.12 * s.X, 0.05 * s.Y, 0.01), hcf * CF(0, by, fz - 0.016 * s.Z), "WCB",
+		drum("RCBand", R.bandW, R.bandH, R.bandLo + R.bandH / 2, trimC)
+		-- the WCB badge on the crown's front, above the band: a gold disc standing 0.02 proud, the wordmark on it
+		local fz = -R.crownW / 2 * hs
+		local by = R.badgeY * hs
+		ell("RCBadge", V3(0.2 * hs, 0.14 * hs, 0.05 * hs), hcf * CF(0, by, fz - 0.005 * hs), badgeC, Enum.Material.Metal)
+		Kit.textPatch(folder, head, "RCBadgeText", V3(0.16 * hs, 0.07 * hs, 0.01), hcf * CF(0, by, fz - 0.034 * hs), "WCB",
 			Color3.fromRGB(20, 22, 30), Enum.NormalId.Front, "GothamBlack")
 		if full then
-			-- the chin cord across the front, over the visor's root (the badge's gold)
-			local cyc = (R.visorY + R.visorT / 2 + 0.018) * s.Y
-			ell("RCCord", V3(s.X * 0.78, 0.022 * s.Y, s.Z * 0.2), hcf * CF(0, cyc, -0.47 * s.Z), badgeC, Enum.Material.Metal)
+			-- the gold cord across the band's front, over the visor's root
+			ell("RCCord", V3(0.78 * hs, 0.022 * hs, 0.2 * hs), hcf * CF(0, (R.bandLo + 0.04) * hs, -0.47 * hs), badgeC, Enum.Material.Metal)
 		end
 		return folder
 	end
 	local B = Head.BALLCAP
-	ell("BCCrown", V3(s.X * B.domeW, s.Y * B.domeH * 2, s.Z * B.domeD), hcf * CF(0, B.domeY * s.Y, 0.01 * s.Z), capC)
+	ell("BCCrown", V3(hs * B.domeW, hs * B.domeH * 2, hs * B.domeD), hcf * CF(0, B.domeY * hs, 0.01 * hs), capC)
 	visor("BCBill", B.billY, B.billT, B.billReach, B.billW, B.billTilt, trimC)
 	if low then
 		return folder
 	end
-	ell("BCButton", V3(0.09 * s.X, 0.05 * s.Y, 0.09 * s.Z), hcf * CF(0, (B.domeY + B.domeH - 0.008) * s.Y, 0.01 * s.Z), capC)
-	-- the front panel's WCB (on the dome's front at y 0.4: inside the dome's skin there, the wordmark just out of it)
+	ell("BCButton", V3(0.09 * hs, 0.05 * hs, 0.09 * hs), hcf * CF(0, (B.domeY + B.domeH - 0.008) * hs, 0.01 * hs), capC)
+	-- the front panel's WCB (on the dome's front at y 0.41: inside the dome's skin there, the wordmark just out of it)
 	local ly = 0.41
 	local dz = 0.01 - B.domeD / 2 * math.sqrt(math.max(1 - ((ly - B.domeY) / B.domeH) ^ 2, 0))
-	Kit.textPatch(folder, head, "BCLogo", V3(0.2 * s.X, 0.08 * s.Y, 0.01), hcf * CF(0, ly * s.Y, (dz - 0.012) * s.Z)
+	Kit.textPatch(folder, head, "BCLogo", V3(0.2 * hs, 0.08 * hs, 0.01), hcf * CF(0, ly * hs, (dz - 0.012) * hs)
 		* ANG(rad(22), 0, 0), "WCB", badgeC, Enum.NormalId.Front, "GothamBlack")
 	if full then
-		ell("BCSeam", V3(0.03 * s.X, s.Y * B.domeH * 2 + 0.006, s.Z * B.domeD + 0.006), hcf * CF(0, B.domeY * s.Y, 0.01 * s.Z), darken(capC, 0.8))
+		ell("BCSeam", V3(0.03 * hs, hs * B.domeH * 2 + 0.006, hs * B.domeD + 0.006), hcf * CF(0, B.domeY * hs, 0.01 * hs), darken(capC, 0.8))
 	end
 	return folder
 end
@@ -18054,8 +18176,10 @@ function BuilderTiers.Apply(model, tiers, scale, lite)
 		shown[name] = p and tonumber(p:GetAttribute("BodyTier")) or 0
 	end
 	local key = BodyTiers.Key(shown)
-	-- (a body of default parts keeps the engine's HipHeight)
-	if n > 0 or (model:GetAttribute("BodyTiers") ~= key and string.find(key, "[1-9]") ~= nil) then
+	-- the tier legs' own HipHeight, on every run (change-only inside): a body of default parts keeps the engine's; a
+	-- rescale between runs (ApplyDescription: a new height, the avatar look on / off) puts the engine's value back on
+	-- a body whose tiers did not change, and the soles would stand off the floor (or in it) until the next swap
+	if string.find(key, "[1-9]") ~= nil then
 		fixHipHeight(model, hum)
 	end
 	if model:GetAttribute("BodyTiers") ~= key then
@@ -67899,8 +68023,81 @@ local function watchAnatomy(rig, folder)
 	rig.geoNow = true
 end
 
+------------------------------------------------------------------------
+-- Roblox's own animation on player characters. The Animate script (walk / run / idle / jump tracks) is a second
+-- writer on the same joints: the engine applies its tracks to Transform in the animation step just before
+-- PreSimulation, this script overwrites them right after, and on any frame we miss (an error in updateRig, a far rig's
+-- skipped frame, the second between a part swap and the next resolve) Roblox's walk flashes through between two of
+-- our poses - a shake. Other players' tracks replicate into their Animator here and are the same second writer. So for
+-- every character we drive: its playing tracks are stopped as they start (AnimationPlayed), the local character's
+-- Animate script is disabled (it would only start them again), and the model carries ProcAnim = true so the other
+-- client scripts (State.SetAnimate, FightClient) leave it that way. Both come back while the rig is released
+-- (climbing, swimming, dead: the default animation shows) and when the rig is torn down.
+------------------------------------------------------------------------
+local function stopTracks(rig)
+	local an = rig.animator
+	if an and an.Parent then
+		local ok, tracks = pcall(an.GetPlayingAnimationTracks, an)
+		if ok then
+			for _, tr in ipairs(tracks) do
+				pcall(tr.Stop, tr, 0)
+			end
+		end
+	end
+end
+
+local function applyAnimate(rig)
+	local drive = rig.isPlayer and not rig.released
+	local s = rig.animateScript
+	if s and s.Parent and s.Disabled ~= drive then
+		s.Disabled = drive
+	end
+	if rig.model.Parent and (rig.model:GetAttribute("ProcAnim") == true) ~= drive then
+		rig.model:SetAttribute("ProcAnim", drive or nil)
+	end
+	if drive then
+		stopTracks(rig)
+	end
+end
+
+local function hookAnimate(rig)
+	if not rig.isPlayer then
+		return
+	end
+	local hum = rig.hum
+	local an = hum and hum:FindFirstChildOfClass("Animator")
+	if an ~= rig.animator then
+		if rig.animConn then
+			rig.animConn:Disconnect()
+		end
+		rig.animator = an
+		rig.animConn = an and an.AnimationPlayed:Connect(function(track)
+			if not rig.released then
+				pcall(track.Stop, track, 0)
+			end
+		end) or nil
+	end
+	local s = rig.model:FindFirstChild("Animate")
+	if not (s and s:IsA("LuaSourceContainer")) then
+		s = nil
+	end
+	if s ~= rig.animateScript then
+		if rig.animateConn then
+			rig.animateConn:Disconnect()
+		end
+		rig.animateScript = s
+		-- (re-enabled by someone else while we drive: off again, on the next step)
+		rig.animateConn = s and s:GetPropertyChangedSignal("Disabled"):Connect(function()
+			if not rig.released and s.Disabled == false and rigs[rig.model] == rig then
+				task.defer(applyAnimate, rig)
+			end
+		end) or nil
+	end
+	applyAnimate(rig)
+end
+
 local function dropConns(rig)
-	for _, k in ipairs({ "conn", "hipConn", "childConn" }) do
+	for _, k in ipairs({ "conn", "hipConn", "childConn", "humChildConn", "animConn", "animateConn" }) do
 		if rig[k] then
 			rig[k]:Disconnect()
 			rig[k] = nil
@@ -67946,7 +68143,7 @@ local function setup(model)
 		guardT = 0, prevGuard = nil, poseT = 0, countT = 0,
 		breathPhase = 0, nextAuto = 0, autoId = 0, sbCount = 0, combo = nil, comboI = 0,
 		gesture = nil, nextGesture = 3, watch = nil, watchAct = nil,
-		lastT = os.clock(), clock = 0, timeScale = 1, nextGeo = 0, nextResolve = 0, frameSkip = 0, slot = 0, impactT = -10,
+		accDt = 0, clock = 0, timeScale = 1, nextGeo = 0, nextResolve = 0, frameSkip = 0, slot = 0, impactT = -10,
 		koTilt = (seed % 7) / 7 - 0.5, partner = nil, nextPartner = 0, curlCycle = 0, lod = 3,
 		guardL = nil, guardR = nil, guardSink = 0, gl = { 0, 0, 0 }, gr = { 0, 0, 0 },
 	}
@@ -67967,18 +68164,30 @@ local function setup(model)
 			rig.geoNow = true
 		end)
 	end
+	rig.isPlayer = Players:GetPlayerFromCharacter(model) ~= nil
 	rig.childConn = model.ChildAdded:Connect(function(c)
 		if c.Name == "Anatomy" and c:IsA("Folder") then
 			watchAnatomy(rig, c)
+		elseif rig.isPlayer and (c.Name == "Animate" or c:IsA("Humanoid")) then
+			-- (a character's children arrive after CharacterAdded on a client: the Animate script and the Humanoid
+			-- with its Animator come in later)
+			if c:IsA("Humanoid") then
+				rig.hum = c
+			end
+			task.defer(function()
+				if rigs[model] == rig then
+					hookAnimate(rig)
+				end
+			end)
 		end
 	end)
 	local af = model:FindFirstChild("Anatomy")
 	if af and af:IsA("Folder") then
 		watchAnatomy(rig, af)
 	end
-	rig.isPlayer = Players:GetPlayerFromCharacter(model) ~= nil
 	R.resolveJoints(rig)
 	R.computeGeo(rig)
+	hookAnimate(rig)
 	-- (its turn when it is a still figure drawn at a reduced rate: a crowd that streamed in together spreads
 	-- evenly over the frames instead of updating all on one - an even cost, not a spike every other frame)
 	nextSlot += 1
@@ -68000,6 +68209,9 @@ local function teardown(model)
 			j.motor.Transform = I
 		end
 	end
+	-- Roblox's animation back on the character
+	rig.released = true
+	applyAnimate(rig)
 	if rig.rope then
 		rig.rope.beam:Destroy()
 		rig.rope.a0:Destroy()
@@ -68477,6 +68689,10 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 			end
 		end
 		rig.head = model:FindFirstChild("Head")
+		if rig.isPlayer then
+			-- (a late Animator / Animate script, a replaced Humanoid; and any track that slipped past AnimationPlayed)
+			hookAnimate(rig)
+		end
 	end
 	if (t >= rig.nextGeo and lod >= 2) or rig.geoNow then
 		rig.nextGeo = rig.geoNow and t + 0.5 or t + 2.5
@@ -68535,10 +68751,14 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 			if not rig.released then
 				rig.released = true
 				Loco.release(rig)
+				applyAnimate(rig)
 			end
 			return
 		end
-		rig.released = false
+		if rig.released then
+			rig.released = false
+			applyAnimate(rig)
+		end
 	else
 		local name = pose or loop or (rig.isPreview and "preview") or "idle"
 		local w = num(a.PoseSpeed, 1)
@@ -68911,10 +69131,10 @@ end
 local stats = { frames = 0, total = 0, max = 0, rigs = 0 }
 R.stats = stats
 local frameNo = 0
-RunService.PreSimulation:Connect(function(dt)
+RunService.PreSimulation:Connect(function(rawDt)
 	local t = os.clock()
 	frameNo += 1
-	dt = min(dt, 0.1)
+	local dt = min(rawDt, 0.1)
 	cam = workspace.CurrentCamera
 	local camPos = cam and cam.CFrame.Position or Vector3.zero
 	local localChar = player.Character
@@ -68935,6 +69155,12 @@ RunService.PreSimulation:Connect(function(dt)
 			rig.nextGeo = 0
 		end
 		rig.isLocal = model == localChar
+		-- the rig's own frame time: the engine's dt summed over the frames since its last update (a culled, skipped
+		-- or slowed rig catches up on the whole span). The wall clock (os.clock between two PreSimulations) is NOT
+		-- the time the simulation advanced: it wanders with where in the frame the Lua step lands, and read as the
+		-- root's travel over it the sensed speed jittered by 10-20 % a frame in Studio. (The whole hitch, uncapped: the
+		-- root travelled all of it, the feet must know; the rig's update clamps it)
+		rig.accDt += rawDt
 		local pos = root.Position
 		local dist = (pos - camPos).Magnitude
 		-- (camDist for every rig, culled or not: the FX modules below cull by it without reading the parts again)
@@ -68991,8 +69217,8 @@ RunService.PreSimulation:Connect(function(dt)
 			end
 			continue
 		end
-		local rdt = clamp(t - rig.lastT, 1 / 240, 0.25)
-		rig.lastT = t
+		local rdt = clamp(rig.accDt, 1 / 240, 0.25)
+		rig.accDt = 0
 		-- the rig's own clock: a knockout plays its key moment in slow motion (a real-time envelope that
 		-- both fighters share); a rig whose root is travelling is never slowed (its feet must keep up)
 		local ts = Down.timeScale(rig, t)
@@ -69006,6 +69232,17 @@ RunService.PreSimulation:Connect(function(dt)
 		updated += 1
 		local ok, err = pcall(updateRig, rig, model, rig.clock, sdt, lod, rdt)
 		if not ok then
+			-- the last good pose stays on the joints (never a frame of Roblox's own animation, or of the bind
+			-- pose, between two of ours)
+			if rig.outT and not rig.released then
+				local out = rig.outT
+				for k, j in pairs(rig.joints) do
+					local v = out[k]
+					if v and j.motor.Parent then
+						j.motor.Transform = v
+					end
+				end
+			end
 			-- (a different error on the same rig is reported too: at most 3 per rig, never every frame)
 			local w = warned[rig]
 			err = tostring(err)
@@ -87420,12 +87657,24 @@ function AnimLoco.sense(rig, dt)
 	-- (the travel this update is expected from the sensed OR the physics speed: a run started from a
 	-- standstill at a low frame rate - or on a far rig's 2-4 frame step - is real motion, not a nudge)
 	local flatD = V3(d.X, 0, d.Z).Magnitude
+	-- (a yaw pop is a pivot teleport only past what a Humanoid's AutoRotate turns in one frame - it spins the root
+	-- round at tens of rad/s on a change of direction, and on a long frame that is a big angle: the whole body must
+	-- not be counter-turned and glided back after every WASD tap or hitch)
+	local yawPop = max(0.6, 30 * dt)
 	if flatD > max(0.9, lo.speed * dt * 3 + 0.5, phys.Magnitude * dt * 1.8 + 0.5) then
 		lo.jumpOff = (lo.jumpOff or ZERO) - V3(d.X, 0, d.Z)
 		lo.jumpYaw = (lo.jumpYaw or 0) + K.wrap(lo.yaw - yaw)
 		raw = lo.vel
-	elseif abs(K.wrap(yaw - lo.yaw)) > 0.35 then
-		lo.jumpYaw = (lo.jumpYaw or 0) + K.wrap(lo.yaw - yaw)
+	else
+		if abs(K.wrap(yaw - lo.yaw)) > yawPop then
+			lo.jumpYaw = (lo.jumpYaw or 0) + K.wrap(lo.yaw - yaw)
+		end
+		if rig.isLocal then
+			-- the local character is simulated on this client: its physics velocity is exact, its travel over the frame
+			-- is not (the physics advances in whole 240 Hz steps while the frame's time wanders; read as travel / dt the
+			-- speed jittered by a tenth or more a frame in Studio, and with it the gait's phase, lean and sway)
+			raw = phys
+		end
 	end
 	local kd = exp(-dt * 9)
 	if lo.jumpOff then
@@ -87440,7 +87689,7 @@ function AnimLoco.sense(rig, dt)
 			lo.jumpYaw = 0
 		end
 	end
-	if phys.Magnitude > raw.Magnitude * 0.6 and phys.Magnitude < raw.Magnitude * 1.6 + 1 then
+	if not rig.isLocal and phys.Magnitude > raw.Magnitude * 0.6 and phys.Magnitude < raw.Magnitude * 1.6 + 1 then
 		raw = raw:Lerp(phys, 0.5)
 	end
 	local k = 1 - exp(-dt * 20)
@@ -87454,7 +87703,7 @@ function AnimLoco.sense(rig, dt)
 	lo.vel = vel
 	lo.speed = vel.Magnitude
 	-- (vertical: a walker on a ramp or stairs; clamped so a teleport-sized hop never spikes it)
-	lo.vy += (clamp(d.Y / dt, -40, 40) - lo.vy) * (1 - exp(-dt * 8))
+	lo.vy += (clamp(rig.isLocal and av.Y or d.Y / dt, -40, 40) - lo.vy) * (1 - exp(-dt * 8))
 	if abs(lo.vy) > 0.5 then
 		lo.vyT = rig.clock or 0
 	end
@@ -87702,9 +87951,13 @@ local function updateGait(rig, t, dt)
 		-- a diagonal (the body kept facing - Shift Lock, first person - while he goes off at an angle): the pelvis and
 		-- the legs turn toward the way he goes, up to ~43 deg, the chest stays (bodyOffsets): he walks the diagonal
 		-- forward (or backward), not a crab's side shuffle; from ~70 deg off it is a side step
+		-- (and never while the root turns: a turn is not a diagonal. The filtered velocity trails a Humanoid's snap turn
+		-- by a quarter second, and read against the new facing it had the legs and pelvis turned 20-40 degrees toward
+		-- the OLD way after every WASD tap, untwisting over half a second; gated on the yaw rate the legs follow the
+		-- root round and the lag that is left when the turn is over is a few degrees)
 		local al = v > 0.3 and atan2(lo.lv.X, -lo.lv.Z) or 0
 		local be = abs(al) > PI / 2 and al - (al > 0 and PI or -PI) or al
-		local lyT = clamp(be, -0.75, 0.75) * (1 - smooth((abs(be) - 0.95) / 0.4))
+		local lyT = clamp(be, -0.75, 0.75) * (1 - smooth((abs(be) - 0.95) / 0.4)) * clamp(1 - abs(lo.yawRate) / 4, 0, 1)
 		lo.legYaw = (lo.legYaw or 0) + (lyT - (lo.legYaw or 0)) * (1 - exp(-dt * 6))
 		-- forward / backward / sideways (in the legs' frame): the arms' swing and the backward step follow it
 		local cy, sy = cos(lo.legYaw), sin(lo.legYaw)
@@ -87826,12 +88079,27 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 		-- braking tips him back a few degrees, never a backward plunge
 		local vh = lo.vh or 0
 		local steady = (prof.lean + lerp(0.012 + 0.004 * vh, 0.004 + 0.01 * vh, lo.run)) * w * max(0, lo.fwd)
-		tgtP = clamp(-steady - 0.014 * fwdA, -0.26, 0.12)
+		tgtP = clamp(-steady - 0.014 * fwdA, -0.2, 0.12)
 	else
 		tgtP = clamp(-0.004 * fwdV * w - 0.012 * fwdA, -0.3, 0.2)
 	end
-	-- (into a turn: about the centripetal tilt, atan(v w / g))
-	local tgtR = clamp(0.008 * latA - 0.01 * lo.speed * lo.yawRate * (walking and 0.6 or 0.4), -0.25, 0.25)
+	-- (into a turn: about the centripetal tilt, atan(v w / g) - of a HELD turn. A Humanoid's AutoRotate spins the root
+	-- round at tens of rad/s on every change of direction, many times any human turn, and swings its velocity with it
+	-- (a lateral acceleration of 40-80 studs/s^2 for a tenth of a second); read raw, those banked the body 14 degrees
+	-- on every WASD tap. A walker leans into the yaw rate clamped to a human's (4 rad/s) and the lateral push, both
+	-- averaged over a quarter second: a snap turn passes as the pivot it is, a held turn - a curve, a stick held over -
+	-- banks him; a boxer's footwork keeps the quick read, its sidesteps are its own)
+	local yrH = clamp(lo.yawRate, -4, 4)
+	local tgtR
+	if walking then
+		local ks = 1 - exp(-dt * 4)
+		lo.turnS = (lo.turnS or 0) + (yrH - (lo.turnS or 0)) * ks
+		lo.latS = (lo.latS or 0) + (clamp(latA, -25, 25) - (lo.latS or 0)) * ks
+		tgtR = clamp(0.008 * lo.latS - 0.006 * lo.speed * lo.turnS, -0.12, 0.12)
+	else
+		lo.turnS, lo.latS = 0, 0
+		tgtR = clamp(0.008 * latA - 0.004 * lo.speed * yrH, -0.25, 0.25)
+	end
 	lo.leanP, lo.leanPV = K.spring2(lo.leanP, lo.leanPV, tgtP, walking and 11 or 9, 0.55, dt)
 	lo.leanR, lo.leanRV = K.spring2(lo.leanR, lo.leanRV, tgtR, 9, 0.6, dt)
 	-- the upper body's inertia: a nod forward when braking hard, then settle (a walker or runner braking leans
@@ -87892,17 +88160,21 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 	-- turning: the head leads into the turn, the chest follows, the hips lag behind (the feet step round
 	-- after them) - never the whole body turning as one block on the root
 	-- (only on his feet: a fall, a seat or keyed legs own the whole body)
-	local yr = kind and clamp(lo.yawRate, -4, 4) or 0
-	lo.turnL += (yr - lo.turnL) * (1 - exp(-dt * 10))
+	-- (the lead builds over a sixth of a second and lets go quicker: a Humanoid's snap turn is over before it is
+	-- half way there, a held turn gets all of it - a head turned 15-17 degrees ahead, as a walker's, never the 29
+	-- degrees past the way he now faces that a raw read of the snap left him looking)
+	local yr = kind and yrH or 0
+	lo.turnL += (yr - lo.turnL) * (1 - exp(-dt * (abs(yr) > abs(lo.turnL) and 6 or 10)))
 	local tl = lo.turnL
-	nYaw += clamp(0.17 * tl, -0.5, 0.5)
-	wYaw += clamp(0.1 * tl, -0.3, 0.3)
-	yawP += clamp(-0.05 * tl, -0.15, 0.15)
-	-- (a hard turn at speed - a reversal: the hips lag well behind the shoulders and the legs untwist from the
-	-- planted foot as he pivots, instead of the pelvis spinning round over it and crossing the thighs)
+	nYaw += clamp(0.17 * tl, -0.3, 0.3)
+	wYaw += clamp(0.1 * tl, -0.18, 0.18)
+	yawP += clamp(-0.05 * tl, -0.1, 0.1)
+	-- (a hard turn at speed - a reversal: the hips lag behind the shoulders and the legs untwist from the planted
+	-- foot as he pivots, instead of the pelvis spinning round over it and crossing the thighs; about as far as a
+	-- walker's shoulders ever turn against his hips, whatever the root's rate)
 	local tk = walking and lo.turnK or 0
 	if tk > 0 then
-		local lag = clamp(-0.06 * lo.yawRate, -0.6, 0.6) * tk
+		local lag = clamp(-0.06 * yrH, -0.24, 0.24) * tk
 		yawP += lag
 		wYaw -= lag
 	end
@@ -121204,6 +121476,11 @@ function State.SetAnimate(on)
 	if not char then
 		return
 	end
+	-- (ProcAnim: the Animator drives this character's joints and keeps Roblox's own tracks off it; they never come back
+	-- on behind it - it re-enables them itself while the rig is released)
+	if on and char:GetAttribute("ProcAnim") == true then
+		return
+	end
 	local animate = char:FindFirstChild("Animate")
 	if animate then
 		animate.Disabled = not on
@@ -131520,6 +131797,11 @@ setupInput()
 local function setAnimate(on)
 	local char = player.Character
 	if not char then
+		return
+	end
+	-- (ProcAnim: the Animator drives this character and keeps Roblox's tracks off it for good; it brings them back
+	-- itself while the rig is released)
+	if on and char:GetAttribute("ProcAnim") == true then
 		return
 	end
 	local animate = char:FindFirstChild("Animate")

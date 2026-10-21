@@ -14,6 +14,11 @@
 --   painted per colour slot: paint(slot, piece name) -> colour, material, reflectance
 -- * a tier change swaps the body part; the caller's cache signature carries Key(pieces) (the mesh ids and the
 --   parts' sizes), so the gear is rebuilt for the new tier on the next Cosmetics
+-- * checks for Studio: a template whose engine box (CreateMeshPartAsync's Size = the uploaded mesh's bounding box) is
+--   not the manifest's size warns once (the upload and GearAssetData disagree); BuilderBody writes each group's state on
+--   the Attire folder ("Trunks = mesh" / "blocks: <reason>"); Audit(model, true) prints every piece's mesh, part,
+--   tier, ratio and size against the manifest - from the Studio command bar (server side, while playing):
+--   require(game.ReplicatedStorage.Shared.BuilderGear).Audit(workspace.<Name>, true)
 -- Tests: BuilderGear.Services = { AssetService = fake, Content = fake }, BuilderGear.SetData(t), BuilderGear.Reset().
 local BuilderGear = {}
 
@@ -23,6 +28,7 @@ local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
 
 local V3 = Vector3.new
 BuilderGear.RETRY = 120
+BuilderGear.BBOX_TOL = 0.02 -- the uploaded mesh's box may differ from the manifest's size by this fraction before a warning
 BuilderGear.Services = {}
 
 ------------------------------------------------------------------------
@@ -162,6 +168,22 @@ function BuilderGear.Template(id, size)
 	end)
 	if ok and mp then
 		ok = pcall(function()
+			-- the engine's own Size for the loaded mesh = its bounding box: the manifest's `size` must be the same
+			-- number (the mesh is drawn recentred on that box and scaled to Size per axis), else the uploaded mesh is
+			-- not the one build_gear.py measured (a stale manifest, an id pointing at an older upload): say so
+			-- (a 1 x 1 x 1 Size is a stub part that never loaded a mesh - the simulators' fakes - not a measurement)
+			local bbox = mp.Size
+			if typeof(bbox) == "Vector3" and bbox.X > 1e-4 and bbox.Y > 1e-4 and bbox.Z > 1e-4 and (bbox - V3(1, 1, 1)).Magnitude > 1e-6 then
+				mp:SetAttribute("GearBBox", bbox)
+				if size then
+					local d = V3(math.abs(bbox.X / size.X - 1), math.abs(bbox.Y / size.Y - 1), math.abs(bbox.Z / size.Z - 1))
+					if math.max(d.X, d.Y, d.Z) > BuilderGear.BBOX_TOL then
+						warn(string.format("[Gear] mesh %d: the uploaded mesh's box %s is not the manifest's size %s (GearAssetData is "
+							.. "out of step with the upload: rebuild and re-run publish_gear.py); drawn at the manifest's size", id,
+							tostring(bbox), tostring(size)))
+					end
+				end
+			end
 			mp.Anchored = false
 			mp.CanCollide = false
 			mp.CanQuery = false
@@ -328,6 +350,48 @@ function BuilderGear.Build(folder, pieces, paint, rename)
 		stats.built += 1
 	end
 	return made
+end
+
+-- what a model wears, for the Output / a Studio check (one line per mesh piece: the piece, its mesh id, the body part
+-- it is welded to with that part's tier / set / scale ratio, the piece's Size against the manifest's size x ratio, and
+-- the uploaded mesh's own box when it differs), then every look folder's group records (BuilderBody: "Trunks = mesh",
+-- "Shoes = blocks: failed: BootFoot_L"...). Returns the lines and prints them when `print` is true
+function BuilderGear.Audit(model, doPrint)
+	local lines = {}
+	local look = model and model:FindFirstChild("BoxerLook")
+	if not look then
+		table.insert(lines, "no BoxerLook folder (Cosmetics has not run)")
+	else
+		for _, f in ipairs(look:GetChildren()) do
+			for _, p in ipairs(f:GetChildren()) do
+				local name = p:IsA("BasePart") and p:GetAttribute("GearPiece")
+				if name then
+					local w = p:FindFirstChild("GearWeld")
+					local body = w and w.Part0
+					local ratio = BuilderTiers.RatioOf(body)
+					local tier = body and body:GetAttribute("BodyTier")
+					local e = tier and BuilderGear.Entry(tier, name, nil, body:GetAttribute("BodyLite") == true)
+					local want = (e and ratio) and (e.size * ratio) or nil
+					local c = cache[p:GetAttribute("GearMesh")]
+					local bbox = c and c.part and c.part:GetAttribute("GearBBox")
+					table.insert(lines, string.format("%s/%s mesh %s on %s (tier %s%s, ratio %s): size %s%s%s", f.Name, name,
+						tostring(p:GetAttribute("GearMesh")), body and body.Name or "?", tostring(tier),
+						(body and body:GetAttribute("BodyLite")) and " lite" or "", ratio and tostring(ratio) or "?", tostring(p.Size),
+						(want and (p.Size - want).Magnitude > 1e-3) and (" EXPECTED " .. tostring(want)) or "",
+						(bbox and e and (bbox - e.size).Magnitude > 1e-3) and (" UPLOADED BOX " .. tostring(bbox)) or ""))
+				end
+			end
+			for k, v in pairs(f:GetAttributes()) do
+				if k ~= "Sig" then
+					table.insert(lines, string.format("%s.%s = %s", f.Name, k, tostring(v)))
+				end
+			end
+		end
+	end
+	if doPrint then
+		print("[Gear] audit of " .. tostring(model and model.Name) .. ":\n  " .. table.concat(lines, "\n  "))
+	end
+	return lines
 end
 
 -- true when the model shows tier parts for every piece of the style and every one of them is uploaded (no loads:

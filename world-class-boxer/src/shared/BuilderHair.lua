@@ -1166,6 +1166,20 @@ function Hair.FixAccessories(model)
 	for _, acc in ipairs(model:GetChildren()) do
 		local handle = acc:IsA("Accessory") and acc:FindFirstChild("Handle")
 		if handle and handle:IsA("BasePart") then
+			-- (an avatar's hair hangs off the head's side: no mass for the Humanoid to balance against, no collision to
+			-- catch on a door frame, no ray hit - as every part the Builder puts on)
+			if handle.Massless ~= true then
+				handle.Massless = true
+			end
+			if handle.CanCollide then
+				handle.CanCollide = false
+			end
+			if handle.CanQuery then
+				handle.CanQuery = false
+			end
+			if handle.CanTouch then
+				handle.CanTouch = false
+			end
 			local weld = handle:FindFirstChild("AccessoryWeld")
 			local p0 = weld and weld.Part0
 			local p1 = weld and weld.Part1

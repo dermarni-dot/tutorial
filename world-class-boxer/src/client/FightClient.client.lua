@@ -4353,6 +4353,11 @@ local function setAnimate(on)
 	if not char then
 		return
 	end
+	-- (ProcAnim: the Animator drives this character and keeps Roblox's tracks off it for good; it brings them back
+	-- itself while the rig is released)
+	if on and char:GetAttribute("ProcAnim") == true then
+		return
+	end
 	local animate = char:FindFirstChild("Animate")
 	if animate then
 		animate.Disabled = not on

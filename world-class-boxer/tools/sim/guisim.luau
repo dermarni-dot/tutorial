@@ -290,7 +290,7 @@ function GS.new(device, opts)
 		end
 		local s = t[k]
 		if not s then
-			s = FE.Signal()
+			s = FE.Signal(o)
 			t[k] = s
 		end
 		return s
