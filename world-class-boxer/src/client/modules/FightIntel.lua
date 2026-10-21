@@ -30,6 +30,16 @@ local function liveScoreOn()
 	return Players.LocalPlayer and Players.LocalPlayer:GetAttribute("LiveScore") == true
 end
 
+-- the tutorial's step card is up (BoxerClient.Tutorial: TutorialUI.Root.Prompt): the hint chip would sit under
+-- it on a phone, and the card does not chase a chip that comes and goes, so the corner's calls wait
+local function stepCardUp()
+	local pg = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
+	local tg = pg and pg:FindFirstChild("TutorialUI")
+	local rootF = tg and tg.Enabled and tg:FindFirstChild("Root")
+	local card = rootF and rootF:FindFirstChild("Prompt")
+	return card ~= nil and card.Visible == true
+end
+
 function FightIntel.Mount(hud)
 	if root and root.Parent == hud then
 		return root
@@ -57,7 +67,7 @@ function FightIntel.Mount(hud)
 	scoreTop = UI.Text(score, "", { Name = "Round", Font = T.semi, TextSize = 13, TextColor3 = T.text, Position = UDim2.fromOffset(10, 3), Size = UDim2.new(1, -20, 0, 16),
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, ZIndex = 13 })
 	scoreCards = UI.Text(score, "", { Name = "Cards", Font = T.font, TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(10, 21), Size = UDim2.new(1, -20, 0, 14),
-		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, ZIndex = 13 })
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 13 })
 	return root
 end
 
@@ -77,7 +87,7 @@ function FightIntel.Layout(hudTop, compact, touch, padH)
 end
 
 local function showHint(kicker, text, color, sec)
-	if not hint then
+	if not hint or stepCardUp() then
 		return
 	end
 	token += 1
@@ -133,7 +143,9 @@ function FightIntel.On(msg)
 						table.insert(parts, string.format("%d-%d", tonumber(c[1]) or 0, tonumber(c[2]) or 0))
 					end
 				end
-				scoreCards.Text = "CARDS  " .. table.concat(parts, "  ·  ")
+				-- (a phone's chip is 180 wide at a 15 px floor: the cards alone, a space apart)
+				local compact = score.AbsoluteSize.X > 0 and score.AbsoluteSize.X < 200 * UI.ScaleOf(score)
+				scoreCards.Text = compact and table.concat(parts, "   ") or ("CARDS  " .. table.concat(parts, "  ·  "))
 			end
 		end
 	end

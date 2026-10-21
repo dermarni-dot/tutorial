@@ -175,6 +175,14 @@ local function startFight(S, moves)
 	S.settle(1.2)
 end
 
+local function named(S, name)
+	for _, d in ipairs(S.playerGui:GetDescendants()) do
+		if d.Name == name and d.Visible ~= false then
+			return d
+		end
+	end
+	return nil
+end
 local function find(S, path)
 	local n = S.playerGui
 	for part in path:gmatch("[^%.]+") do
@@ -500,6 +508,8 @@ screen("store", function(dev)
 	assert(State.open.Store("Diner", "CHAMP'S DINER"), "the store did not open")
 	S.settle(0.6)
 	check("store@" .. dev .. ": the shop's badge heads the window", named(S, "Badge_diner") ~= nil)
+	local selDbg = rawget(S.host.Service("GuiService"), "SelectedObject")
+	check("DBG store selected: " .. tostring(selDbg and S.pathOf(selDbg) or "nil"), false)
 	return S
 end)
 -- the Tournaments tab: the calendar (an open entry, the rules, prizes, holders), the belts won with WEAR IN RING
@@ -604,14 +614,6 @@ screen("creator", function(dev)
 end)
 -- the creator's Face and Skin steps with Advanced open (the drawn Boxer faces: the style chips, no Built chip, no
 -- built-face-only control)
-local function named(S, name)
-	for _, d in ipairs(S.playerGui:GetDescendants()) do
-		if d.Name == name and d.Visible ~= false then
-			return d
-		end
-	end
-	return nil
-end
 local function press(S, name)
 	local b = assert(named(S, name), "no button " .. name)
 	S.signal(b, "MouseButton1Click"):Fire()

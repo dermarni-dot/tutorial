@@ -276,6 +276,8 @@ function CityStores.Open(kind, store)
 	else
 		return false
 	end
+	-- (a controller's selection lands on the counter's first button once it is built)
+	task.defer(UI.PadRefresh)
 	return true
 end
 

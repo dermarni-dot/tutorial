@@ -318,15 +318,17 @@ function TourneyUI.Tab(body, P, ctx)
 		local stW = math.max(96, UI.TextWidth(st, 11, T.semi) + 22)
 		UI.Title(head, string.upper(e.name), { Name = "EventName", TextSize = narrow and 19 or 24, Position = UDim2.fromOffset(tx, 0), Size = UDim2.new(1, -(tx + stW + 8), 0, narrow and 24 or 30),
 			AutomaticSize = Enum.AutomaticSize.None, TextTruncate = Enum.TextTruncate.AtEnd })
-		-- "DAY 12 · 8 ROUNDS" and the venue's badge (its sign's lockup; the name when the place is not known)
-		local loc = Signage.Find(e.venue)
+		-- "DAY 12 · 8 ROUNDS" and the venue's badge (its sign's lockup) where the head has the height for it; the
+		-- name in the line on a narrow screen (or for a place that is not known)
+		local loc = (not narrow) and Signage.Find(e.venue) or nil
 		local when = string.format("DAY %d  ·  %d ROUNDS%s", e.start or 0, e.rounds or 0, loc and "" or ("  ·  " .. string.upper(e.venue or "")))
 		local whenY = narrow and 25 or 32
 		local whenW = loc and math.min(UI.TextWidth(when, 12, T.semi) + 8, 200) or nil
 		UI.Text(head, when, { Name = "When", Font = T.semi, TextSize = 12, TextColor3 = T.sub,
 			Position = UDim2.fromOffset(tx, whenY), Size = whenW and UDim2.new(0, whenW, 0, 16) or UDim2.new(1, -tx, 0, 16), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		if loc then
-			Signage.Badge(head, loc, 18, { Name = "Venue", sub = false, Position = UDim2.fromOffset(tx + whenW + 2, whenY - 1) })
+			local bh = UI.LocationBadgeHeight(head, 18)
+			UI.LocationBadge(head, loc, 18, { Name = "Venue", sub = false, Position = UDim2.fromOffset(tx + whenW + 2, whenY + 8 - math.floor(bh / 2)) })
 		end
 		UI.Chip(head, st, stColor, { Name = "Status", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 2), solid = e.open and e.eligible and not running })
 		if not narrow then

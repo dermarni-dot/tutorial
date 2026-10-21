@@ -732,15 +732,29 @@ end
 -- a place's badge (Shared.Signage: the same lockup as its sign in the world) h px tall. key = a location id,
 -- a venue kind, a shop's sign text or a display name ("Grand Arena"); nil when the place is not known.
 -- props: Signage.Badge's (sub, text, w, plain, button, order, Position, AnchorPoint)
+-- The words never go under the root's readability floor: a badge grows for it (UI.LocationBadgeHeight gives
+-- the height a caller should lay out for). Returns the badge, the location and its metrics (Signage.BadgeMetrics).
+function UI.LocationBadgeHeight(parent, h)
+	local floor = UI.TextFloor(UI.ScaleOf(parent))
+	return math.max(h or 28, math.ceil(floor / 0.46)), floor
+end
 function UI.LocationBadge(parent, key, h, props)
 	local loc = Signage and (Signage.Get(key) or Signage.Find(key))
 	if not loc then
 		return nil
 	end
-	local badge, wordmark = Signage.Badge(parent, loc, h, props)
-	-- the wordmark stays at its design size: the badge is laid out in px around it
+	local floor
+	h, floor = UI.LocationBadgeHeight(parent, h)
+	props = props and table.clone(props) or {}
+	props.minText = floor
+	local badge, wordmark, m = Signage.Badge(parent, loc, h, props)
+	-- (a rescale re-floors the words with the rest of the root)
 	registerText(wordmark, { TextSize = wordmark.TextSize })
-	return badge, loc
+	local sub = badge:FindFirstChild("Sub")
+	if sub then
+		registerText(sub, { TextSize = sub.TextSize })
+	end
+	return badge, loc, m
 end
 
 ------------------------------------------------------------------------

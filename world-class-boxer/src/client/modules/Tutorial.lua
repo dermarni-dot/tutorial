@@ -144,7 +144,9 @@ local function estimate(step, w, tight)
 end
 
 -- the fight HUD's pieces the card keeps clear of, as design-px rects in this root's space
-local OBSTACLES = { "Scoreboard", "TouchPad", "DefencePad", "MovesPad", "SprintPad", "StanceChips", "Controls", "Ticker", "ComboMeter" }
+-- (a dotted name is a piece inside another: FightIntel's momentum strip and live-score chip; its hint chip is
+-- left out - it comes and goes within seconds and the card would chase it)
+local OBSTACLES = { "Scoreboard", "TouchPad", "DefencePad", "MovesPad", "SprintPad", "StanceChips", "Controls", "Ticker", "ComboMeter", "FightIntel.Momentum", "FightIntel.LiveScore" }
 local function rectOf(obj, s, origin)
 	local p, z = obj.AbsolutePosition, obj.AbsoluteSize
 	return { x0 = (p.X - origin.X) / s, y0 = (p.Y - origin.Y) / s, x1 = (p.X + z.X - origin.X) / s, y1 = (p.Y + z.Y - origin.Y) / s }
@@ -169,7 +171,10 @@ local function obstacles()
 	local s = UI.ScaleOf(root)
 	local origin = root.AbsolutePosition
 	for _, name in ipairs(OBSTACLES) do
-		local o = hud:FindFirstChild(name)
+		local o = hud
+		for part in name:gmatch("[^.]+") do
+			o = o and o:FindFirstChild(part)
+		end
 		if o and o:IsA("GuiObject") and shown(o) then
 			-- the piece and what it draws (a pad cluster's buttons reach past its own frame)
 			local r
@@ -186,9 +191,16 @@ local function obstacles()
 			end
 			if r and r.x1 - r.x0 > 1 and r.y1 - r.y0 > 1 then
 				r.name = name
-				table.insert(out, r)
-				if name == "Scoreboard" then
-					board = r
+				if name == "FightIntel.Momentum" then
+					-- the thin strip under the scoreboard: the band the card starts under reaches past it
+					if board then
+						board.y1 = math.max(board.y1, r.y1 - 5)
+					end
+				else
+					table.insert(out, r)
+					if name == "Scoreboard" then
+						board = r
+					end
 				end
 			end
 		end

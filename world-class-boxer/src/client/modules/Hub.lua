@@ -326,8 +326,9 @@ end
 
 -- "AMATEUR BOUT · 3 ROUNDS" and the venue's badge (its sign's lockup) on the left, the purse on the right
 local function fightHeader(parent, o, special)
-	local row = UI.Frame(parent, { Name = "FightHeader", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 22) })
 	local loc = Signage.Get(o.venue) or Signage.Find(o.venueName)
+	local bh = loc and UI.LocationBadgeHeight(parent, 20) or 20
+	local row = UI.Frame(parent, { Name = "FightHeader", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, math.max(22, bh + 2)) })
 	local line = string.format("%s  ·  %d ROUNDS", o.kind:upper(), o.rounds)
 	if not loc and o.venueName and o.venueName ~= "" then
 		line = line .. "  ·  " .. string.upper(o.venueName)
@@ -336,7 +337,7 @@ local function fightHeader(parent, o, special)
 	UI.Text(row, line, { Font = T.semi, TextSize = 12, TextColor3 = special and T.gold or T.sub,
 		Size = lineW and UDim2.new(0, lineW, 1, 0) or UDim2.new(1, -150, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	if loc then
-		Signage.Badge(row, loc, 20, { sub = false, Position = UDim2.fromOffset(lineW + 4, 1) })
+		UI.LocationBadge(row, loc, 20, { sub = false, Position = UDim2.fromOffset(lineW + 4, 1) })
 	end
 	UI.Text(row, "PURSE  " .. money(o.purse), { Face = "number", TextSize = 18, TextColor3 = T.green, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, -2),
 		Size = UDim2.fromOffset(150, 24), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
@@ -1963,14 +1964,17 @@ R.Life = function(body, P)
 	-- Main Street: each shop's badge (its sign's lockup) and what it is for
 	local guide = UI.Frame(tc, { Name = "CityGuide", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
 	local cols = compact and 1 or 2
-	UI.Grid(guide, UDim2.new(1 / cols, cols > 1 and -4 or 0, 0, 30), nil, 4)
+	local bh = UI.LocationBadgeHeight(tc, 26)
+	UI.Grid(guide, UDim2.new(1 / cols, cols > 1 and -4 or 0, 0, bh + 4), nil, 4)
 	for i, g in ipairs(CITY_GUIDE) do
 		local row = UI.Frame(guide, { Name = "Guide_" .. g[1], BackgroundTransparency = 1, LayoutOrder = i })
-		local badge = Signage.Badge(row, g[1], 26, { sub = false, Position = UDim2.fromOffset(0, 2) })
-		local bw = textW(Signage.ById[g[1]].short, 12, T.bold) + 46
+		local badge, _, m = UI.LocationBadge(row, g[1], 26, { sub = false, Position = UDim2.fromOffset(0, 2) })
+		local bw = m and (m.width + 8) or 0
 		UI.Text(row, g[2], { TextSize = 12, TextColor3 = T.sub, Position = UDim2.fromOffset(bw, 0), Size = UDim2.new(1, -bw, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
 			TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, TextYAlignment = Enum.TextYAlignment.Center })
-		badge.ZIndex = 2
+		if badge then
+			badge.ZIndex = 2
+		end
 	end
 
 	-- garage

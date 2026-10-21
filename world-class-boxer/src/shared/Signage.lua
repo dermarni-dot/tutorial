@@ -294,17 +294,41 @@ function Signage.Boards(part, faces, loc, opts)
 	return out
 end
 
+-- the badge's layout for a height h: pad, the tile's side, the gap to the words, the wordmark's and the sub
+-- line's text sizes (sub = nil when the badge is too short for a readable second line), and the width the
+-- badge takes with the words `text` (an estimate: bold capitals run about 0.72 em)
+function Signage.BadgeMetrics(h, minText, text, sub)
+	h = h or 28
+	minText = minText or 9
+	local pad = math.floor(h * 0.14)
+	local ts = h - pad * 2
+	local m = { h = h, pad = pad, tile = ts, gap = math.floor(h * 0.3) }
+	local subSize = math.floor(h * 0.26)
+	m.sub = (sub and h >= 40 and subSize >= minText) and subSize or nil
+	m.word = math.max(minText, math.floor(h * (m.sub and 0.42 or 0.46)))
+	local wordW = #tostring(text or "") * m.word * 0.72
+	if m.sub then
+		wordW = math.max(wordW, #tostring(sub) * m.sub * 0.62)
+	end
+	m.width = pad + ts + m.gap + math.ceil(wordW) + pad + 2
+	return m
+end
+
 -- a menu badge h px tall (Offset layout; the text sizes follow h). opts:
---   sub      false: wordmark only;  text: another wordmark;  w: a fixed width (else the badge hugs its content)
+--   sub      false: wordmark only;  subText: another sub line;  text: another wordmark
+--   w        a fixed width (else the badge hugs its content);  minText: the smallest text size (a readability floor)
 --   plain    true: no fill, just the tile and the words (inline in a text row)
 --   button   true: a TextButton (hover / selection by the caller)
+-- Returns the badge, its wordmark label and its metrics (Signage.BadgeMetrics)
 function Signage.Badge(parent, loc, h, opts)
 	opts = opts or {}
 	loc = Signage.Get(loc) or Signage.ById.gym
 	h = h or 28
+	local words = opts.text or loc.short
 	local subLine = opts.sub ~= false and (opts.subText or loc.sub) or nil
-	local hasSub = subLine ~= nil and h >= 30
-	local pad = math.floor(h * 0.14)
+	local m = Signage.BadgeMetrics(h, opts.minText, words, subLine)
+	local hasSub = m.sub ~= nil
+	local pad = m.pad
 	local f = new(opts.button and "TextButton" or "Frame", { Name = opts.Name or ("Badge_" .. loc.id), BackgroundColor3 = loc.bg, BackgroundTransparency = opts.plain and 1 or 0, BorderSizePixel = 0,
 		Size = UDim2.fromOffset(opts.w or 0, h), AutomaticSize = opts.w and Enum.AutomaticSize.None or Enum.AutomaticSize.X, LayoutOrder = opts.order or 0, ZIndex = opts.ZIndex or 1 })
 	if opts.button then
@@ -321,21 +345,20 @@ function Signage.Badge(parent, loc, h, opts)
 		new("UICorner", { CornerRadius = UDim.new(0, math.max(4, math.floor(h * 0.22))) }, f)
 		new("UIStroke", { Color = loc.accent or loc.fg, Transparency = 0.6, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, f)
 	end
-	local ts = h - pad * 2
+	local ts = m.tile
 	local t = new("Frame", { Name = "Tile", BackgroundColor3 = loc.accent or loc.fg, BorderSizePixel = 0, Size = UDim2.fromOffset(ts, ts), Position = UDim2.fromOffset(pad, pad), ZIndex = f.ZIndex + 1 }, f)
 	new("UICorner", { CornerRadius = UDim.new(0, math.max(3, math.floor(ts * 0.22))) }, t)
 	Signage.Glyph(t, loc.icon, loc.bg, { Size = UDim2.fromScale(0.7, 0.7), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = f.ZIndex + 2 })
-	local x = pad + ts + math.floor(h * 0.3)
+	local x = pad + ts + m.gap
 	local fg = opts.plain and (opts.fg or WHITE) or loc.fg
-	local words = opts.text or loc.short
-	local wordSize = hasSub and math.floor(h * 0.42) or math.floor(h * 0.46)
+	local wordSize = m.word
 	local right = opts.w and UDim2.new(1, -(x + pad), 0, 0) or nil
 	local wm = new("TextLabel", { Name = "Wordmark", BackgroundTransparency = 1, BorderSizePixel = 0, Font = Enum.Font.GothamBlack, TextSize = wordSize, Text = words, TextColor3 = fg,
 		TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center, TextWrapped = false, TextTruncate = opts.w and Enum.TextTruncate.AtEnd or Enum.TextTruncate.None,
 		Position = UDim2.fromOffset(x, hasSub and pad - 1 or 0), Size = right and UDim2.new(1, -(x + pad + 2), 0, hasSub and wordSize + 2 or h) or UDim2.fromOffset(0, hasSub and wordSize + 2 or h),
 		AutomaticSize = right and Enum.AutomaticSize.None or Enum.AutomaticSize.X, ZIndex = f.ZIndex + 1 }, f)
 	if hasSub then
-		new("TextLabel", { Name = "Sub", BackgroundTransparency = 1, BorderSizePixel = 0, Font = Enum.Font.GothamBold, TextSize = math.max(9, math.floor(h * 0.26)), Text = subLine, TextColor3 = fg,
+		new("TextLabel", { Name = "Sub", BackgroundTransparency = 1, BorderSizePixel = 0, Font = Enum.Font.GothamBold, TextSize = m.sub, Text = subLine, TextColor3 = fg,
 			TextTransparency = 0.25, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd,
 			Position = UDim2.fromOffset(x, pad + wordSize), Size = right and UDim2.new(1, -(x + pad + 2), 0, h - pad * 2 - wordSize) or UDim2.fromOffset(0, h - pad * 2 - wordSize),
 			AutomaticSize = right and Enum.AutomaticSize.None or Enum.AutomaticSize.X, ZIndex = f.ZIndex + 1 }, f)
@@ -346,7 +369,7 @@ function Signage.Badge(parent, loc, h, opts)
 		new("UIPadding", { PaddingRight = UDim.new(0, pad + 2) }, f)
 	end
 	f.Parent = parent
-	return f, wm
+	return f, wm, m
 end
 
 return Signage
