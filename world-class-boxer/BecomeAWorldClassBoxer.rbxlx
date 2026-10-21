@@ -57197,6 +57197,1126 @@ return PvP
       </Item>
       <Item class="ModuleScript" referent="59">
         <Properties>
+          <string name="Name">RingWalk</string>
+          <string name="Source"><![CDATA[-- RingWalk: the pre-fight entrance on the server (FightEngine's Fight:Entrance hands over to RingWalk.Run).
+-- Each walk follows Shared.Entrance.Timeline beat by beat - the clients film the same beats from the plan the
+-- "entrance" message carries, so the server never waits longer than the walk it sends:
+--   tunnel  he stands on the stage at the tunnel mouth (the reveal, his first celebration)
+--   aisle   / crowd: he walks the aisle to the ring steps (an NPC by the server's MoveTo, a player by his own client),
+--           his coach (the Officials "cornerman" polo + towel) and, at the big rooms, a cutman walking behind him
+--   setdown (carried by the crowd: put down at the foot of the steps; the carriers are the clients' own figures)
+--   steps   placed on the apron outside his side's ropes (the clients show the climb up the steps)
+--   ropes   placed just inside the ropes (the clients show him ducking through)
+--   ring    he walks to his corner and does his ring celebration (or climbs the turnbuckle: client visual)
+--   robe    the night's last walk: both robes come off
+-- Positions are the server's own (Place / MoveTo); every lift, climb and duck the clients draw is a visual offset on
+-- the rig, never a move of the fighter. A skip ("entranceSkip": the player, in PvP both) ends the walk at once.
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Entrance = require(Shared:WaitForChild("Entrance"))
+local Config = require(Shared:WaitForChild("Config"))
+
+local RingWalk = {}
+
+local function optional(fn)
+	local ok, mod = pcall(fn)
+	return ok and type(mod) == "table" and mod or nil
+end
+local Builder = optional(function()
+	return require(Shared:WaitForChild("Builder", 5))
+end)
+local Officials = optional(function()
+	return require(Shared:WaitForChild("Officials", 5))
+end)
+local DataManager = optional(function()
+	return require(script.Parent:WaitForChild("DataManager", 5))
+end)
+
+local TEAM = { Red = { 150, 26, 32 }, Blue = { 30, 56, 150 } }
+-- where the entourage walks, in the walker's frame (studs: x right, z back)
+local ENTOURAGE_SLOTS = { Vector3.new(-2.1, 0, 2.6), Vector3.new(2.1, 0, 2.9) }
+
+local function flat(v)
+	return Vector3.new(v.X, 0, v.Z)
+end
+
+local function attr(inst, name)
+	local ok, v = pcall(function()
+		return inst:GetAttribute(name)
+	end)
+	return ok and v or nil
+end
+
+------------------------------------------------------------------------
+-- The context of one walk
+------------------------------------------------------------------------
+local function profileOf(F)
+	if F.player and DataManager and DataManager.Get then
+		local ok, p = pcall(DataManager.Get, F.player)
+		return ok and type(p) == "table" and p or nil
+	end
+	return nil
+end
+
+-- an AI boxer's belts: his world record (the player's save holds the world) or a champion's robe
+local function aiBelts(fight, F)
+	local P = fight.P
+	local prof = P and profileOf(P)
+	local id = F.data and F.data.id
+	local world = prof and prof.world
+	local b = world and type(world.boxers) == "table" and id and world.boxers[id]
+	if type(b) == "table" and type(b.belts) == "table" then
+		return #b.belts
+	end
+	local lo = F.data and F.data.lookOpts
+	return (type(lo) == "table" and lo.robe == "Champion") and 1 or 0
+end
+
+function RingWalk.Context(fight, F, corner, last)
+	local arena = fight.arena
+	local stakes = arena and attr(arena, "Stakes")
+	local title = (type(stakes) == "string" and stakes ~= "") or (Officials and Officials.TITLE_KINDS and Officials.TITLE_KINDS[fight.offerKind or ""] == true) or false
+	local ctx = {
+		corner = corner, last = last, venue = fight.venue, spar = fight.spar ~= nil and fight.spar ~= false,
+		tutorial = fight.tutorial ~= nil and not fight.debut, title = title,
+		importance = tonumber(arena and attr(arena, "Importance")) or 0, pyro = fight.venue == "Stadium",
+		seed = (F.data and type(F.data.name) == "string") and #F.data.name * 131 + (tonumber(F.data.id) or 0) or 0,
+	}
+	if F.isPlayer then
+		local prof = profileOf(F)
+		ctx.choice = prof and prof.entrance or nil
+		ctx.belts = Entrance.BeltCount(prof)
+		ctx.popularity = prof and tonumber(prof.popularity) or 0
+	else
+		ctx.ai = true
+		ctx.personality = F.data and F.data.personality
+		ctx.belts = aiBelts(fight, F)
+		ctx.popularity = 0
+	end
+	return ctx
+end
+
+-- the world points of one corner's walk (on the surfaces a fighter stands on)
+function RingWalk.Points(fight, corner)
+	local A = fight.anchors
+	local centre = A.RingCenter.Position
+	local entrance = A[corner .. "Entrance"].Position
+	local steps = A[corner .. "Steps"].Position
+	local cornerPos = A[corner .. "Corner"].Position
+	local half = fight.ringHalf or 11
+	local dir = flat(steps - centre)
+	dir = dir.Magnitude > 0.1 and dir.Unit or Vector3.new(0, 0, corner == "Red" and -1 or 1)
+	local diag = flat(cornerPos - centre)
+	diag = diag.Magnitude > 0.1 and diag or dir
+	return {
+		centre = centre, entrance = entrance, steps = steps, corner = cornerPos,
+		apron = centre + dir * (half + 1.7), inside = centre + dir * (half - 1.6),
+		post = centre + diag.Unit * (half * math.sqrt(2)), half = half,
+	}
+end
+
+------------------------------------------------------------------------
+-- The entourage: the coach in his corner polo and towel (Officials "cornerman"), a cutman at the big rooms
+------------------------------------------------------------------------
+local function buildMember(fight, corner, i)
+	if not (Builder and Builder.CreateNPC and Officials and Officials.Look) then
+		return nil
+	end
+	local ok, model = pcall(function()
+		local seed = (fight.rng and fight.rng:NextInteger(1, 2 ^ 30)) or (i * 7919)
+		local app, build, gear, opts = Officials.Look(seed, "cornerman", { team = TEAM[corner], venue = fight.venue })
+		return Builder.CreateNPC(app, build, gear, i == 1 and "Coach" or "Cutman", opts)
+	end)
+	if not ok or not model then
+		return nil
+	end
+	model.Name = (i == 1 and "Coach" or "Cutman") .. corner
+	local parts = {}
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.CanCollide = false
+			d.CanTouch = false
+			d.CanQuery = false
+			table.insert(parts, d)
+		end
+	end
+	model:SetAttribute("Loop", "walk")
+	model:SetAttribute("Role", i == 1 and "Coach" or "Cutman")
+	model:SetAttribute("Corner", corner)
+	model:SetAttribute("Entourage", true)
+	local m = { model = model, root = model:FindFirstChild("HumanoidRootPart"), hum = model:FindFirstChildOfClass("Humanoid"), slot = ENTOURAGE_SLOTS[i], parts = parts }
+	if m.hum then
+		m.hum.WalkSpeed = 10
+		m.hum.AutoRotate = true
+	end
+	-- (the Humanoid turns collisions back on for its torso parts in its own step: nobody is pushed by the team)
+	m.noclip = RunService.Stepped:Connect(function()
+		for _, p in ipairs(parts) do
+			p.CanCollide = false
+		end
+	end)
+	return m
+end
+
+local function dropMember(m)
+	if m.noclip then
+		m.noclip:Disconnect()
+	end
+	if m.model then
+		m.model:Destroy()
+	end
+end
+
+local function placeMember(m, pos, lookAt)
+	if not (m.root and m.model.Parent) then
+		return
+	end
+	local hh = (m.hum and m.hum.HipHeight > 0.5) and (m.hum.HipHeight + m.root.Size.Y / 2 + 0.05) or 3.2
+	local p = Vector3.new(pos.X, pos.Y + hh, pos.Z)
+	m.model:PivotTo(CFrame.lookAt(p, Vector3.new(lookAt.X, p.Y, lookAt.Z)))
+	if m.hum then
+		m.hum:MoveTo(p)
+	end
+end
+
+------------------------------------------------------------------------
+-- Skip
+------------------------------------------------------------------------
+-- a player asks to skip (FightEngine.Input "entranceSkip"); vs the AI his word ends it, in PvP both must ask
+function RingWalk.Skip(fight, F)
+	local st = fight and fight.ringWalk
+	if not st or st.done then
+		return false
+	end
+	st.skips[F] = true
+	if not fight.pvp or (st.skips[fight.P] and st.skips[fight.O]) then
+		st.skipped = true
+	end
+	return st.skipped
+end
+
+------------------------------------------------------------------------
+-- The run
+------------------------------------------------------------------------
+-- env (tests): { clock = fn -> s, wait = fn(s), noEntourage = bool }; RingWalk.Env is the default (nil in the game)
+RingWalk.Env = nil
+function RingWalk.Run(fight, env)
+	env = env or RingWalk.Env or {}
+	local clock = env.clock or os.clock
+	local wait = env.wait or task.wait
+	local P, O = fight.P, fight.O
+	local st = { skips = {}, skipped = false, done = false, entourage = {}, log = {} }
+	fight.ringWalk = st
+	local function stop()
+		return st.skipped or fight.aborted or fight.finished
+	end
+	local function log(what, F)
+		table.insert(st.log, { t = clock() - st.t0, what = what, who = F and (F == P and "P" or "O") or nil })
+	end
+	st.t0 = clock()
+	-- robes on, both at their tunnels (the walkout guard animates the warm-up)
+	for _, X in ipairs({ { O, "Blue" }, { P, "Red" } }) do
+		local F = X[1]
+		if Builder and F.model then
+			pcall(Builder.SetRobe, F.model, F.data.app, true, F.data.lookOpts)
+		end
+		fight:Place(F, fight.anchors[X[2] .. "Entrance"].Position, fight.anchors.RingCenter.Position)
+		F.guardOverride = "walkout"
+		F.exprOverride = ((F.data.mental and F.data.mental.Confidence) or 50) > 60 and "confident" or "determined"
+		if fight.UpdateGuard then
+			fight:UpdateGuard(F)
+		end
+		if fight.SyncAttrs then
+			fight:SyncAttrs(F)
+		end
+	end
+	local walks = {
+		{ F = O, corner = "Blue", plan = Entrance.Plan(RingWalk.Context(fight, O, "Blue", false)) },
+		{ F = P, corner = "Red", plan = Entrance.Plan(RingWalk.Context(fight, P, "Red", true)) },
+	}
+	st.walks = walks
+	-- the entourage is built while the lead-in runs (CreateNPC yields); a team not ready by its walk stays home
+	if not env.noEntourage then
+		for _, w in ipairs(walks) do
+			local n = (fight.venue == "Arena" or fight.venue == "Stadium" or w.plan.title) and 2 or 1
+			st.entourage[w.F] = {}
+			for i = 1, n do
+				task.spawn(function()
+					local m = buildMember(fight, w.corner, i)
+					if not m then
+						return
+					end
+					-- (a team built after its man has left the tunnel would pop in behind him: it stays home)
+					if st.done or stop() or (w.started and clock() - w.started > 1.2) then
+						dropMember(m)
+						return
+					end
+					m.model.Parent = fight.arena
+					local pts = RingWalk.Points(fight, w.corner)
+					placeMember(m, pts.entrance + (pts.entrance - pts.centre).Unit * 3 + Vector3.new(i == 1 and -2 or 2, 0, 0), pts.centre)
+					if m.root then
+						pcall(function()
+							m.root:SetNetworkOwner(nil)
+						end)
+					end
+					CollectionService:AddTag(m.model, "Ambient")
+					table.insert(st.entourage[w.F], m)
+				end)
+			end
+		end
+	end
+	local function hold(tEnd, each)
+		while clock() < tEnd and not stop() do
+			if each then
+				each()
+			end
+			wait(math.min(0.2, math.max(0.02, tEnd - clock())))
+		end
+	end
+	hold(st.t0 + Entrance.LEAD)
+	if not stop() then
+		fight:Comment("Making the walk now... " .. tostring(O.data.name) .. "!", true)
+	end
+	for wi, w in ipairs(walks) do
+		if stop() then
+			break
+		end
+		local W, plan = w.F, w.plan
+		local pts = RingWalk.Points(fight, w.corner)
+		local beats, total = Entrance.Timeline(plan)
+		w.beats, w.total = beats, total
+		local wire = table.clone(plan)
+		wire.pts = pts
+		wire.model = W.model
+		wire.arena = fight.arena
+		wire.name, wire.nick, wire.record, wire.nat = W.data.name, W.data.nick, W.data.record, W.data.nat
+		wire.index = wi
+		fight:SendEach(function(V)
+			if V == W then
+				return { t = "entrance", phase = "you", music = W.data.music, pyro = plan.pyro, plan = wire,
+					intro = Config.AnnouncerIntro and (Config.AnnouncerIntro[W.data.voice or "Calm"] or Config.AnnouncerIntro.Calm) or nil }
+			end
+			return { t = "entrance", phase = "opp", pyro = plan.pyro, plan = wire }
+		end)
+		if plan.carry then
+			fight:Comment("The crowd is carrying " .. tostring(W.data.name) .. " to the ring!", true)
+		end
+		local w0 = clock()
+		w.started = w0
+		log("walk", W)
+		local team = st.entourage[W] or {}
+		local nextFollow = 0
+		local function follow()
+			-- the team keeps its places behind him (re-aimed five times a second)
+			local now = clock()
+			if now < nextFollow or not W.root then
+				return
+			end
+			nextFollow = now + 0.2
+			local cf = W.root.CFrame
+			for _, m in ipairs(team) do
+				if m.hum and m.root and m.model.Parent then
+					m.hum:MoveTo(cf:PointToWorldSpace(m.slot))
+				end
+			end
+		end
+		local function moveNPC(pos, speed)
+			if not W.isPlayer and W.hum then
+				W.hum.WalkSpeed = speed
+				W.hum:MoveTo(Vector3.new(pos.X, pos.Y, pos.Z))
+			end
+		end
+		for _, b in ipairs(beats) do
+			if stop() then
+				break
+			end
+			hold(w0 + b.t0, follow)
+			if stop() then
+				break
+			end
+			log(b.id, W)
+			if b.id == "aisle" then
+				moveNPC(pts.steps, plan.speed)
+			elseif b.id == "setdown" then
+				-- (the jump cut to the steps: the crowd sets him down at the foot of them)
+				fight:Place(W, pts.steps, pts.centre)
+				moveNPC(pts.steps, plan.speed)
+			elseif b.id == "steps" then
+				fight:Place(W, pts.apron, pts.centre)
+				moveNPC(pts.apron, plan.speed)
+				-- the team waits at the foot of the steps
+				for i, m in ipairs(team) do
+					local side = (pts.steps - pts.centre):Cross(Vector3.yAxis)
+					side = side.Magnitude > 0.1 and side.Unit or Vector3.xAxis
+					placeMember(m, pts.steps + side * (i == 1 and -3.2 or 3.2), pts.centre)
+					m.model:SetAttribute("Loop", "coachwatch")
+				end
+			elseif b.id == "ropes" then
+				fight:Place(W, pts.inside, pts.centre)
+				moveNPC(pts.inside, plan.speed)
+			elseif b.id == "ring" then
+				moveNPC(pts.corner, Entrance.SPEED.ring)
+			elseif b.id == "robe" then
+				hold(w0 + b.t0 + 0.5)
+				if Builder then
+					for _, F in ipairs({ P, O }) do
+						pcall(Builder.SetRobe, F.model, F.data.app, false)
+					end
+				end
+				st.robesOff = true
+			end
+		end
+		hold(w0 + total, follow)
+		if not stop() then
+			fight:Place(W, pts.corner)
+		end
+		log("done", W)
+	end
+	-- the end (or the skip): both in their corners, robes off, the team gone
+	st.done = true
+	if not (fight.aborted or fight.finished) then
+		fight:Place(O, fight.anchors.BlueCorner.Position)
+		fight:Place(P, fight.anchors.RedCorner.Position)
+		if Builder and not st.robesOff then
+			for _, F in ipairs({ P, O }) do
+				pcall(Builder.SetRobe, F.model, F.data.app, false)
+			end
+		end
+		fight:Send({ t = "entranceEnd", skipped = st.skipped })
+	end
+	for _, team in pairs(st.entourage) do
+		for _, m in ipairs(team) do
+			dropMember(m)
+		end
+	end
+	log("end")
+	st.elapsed = clock() - st.t0
+	return st
+end
+
+return RingWalk
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="60">
+        <Properties>
+          <string name="Name">Tourney</string>
+          <string name="Source"><![CDATA[-- Tourney: the career side of the tournaments (Shared.Tournaments has the events, their rules, prizes and belts).
+--
+-- Saved lazily as profile.tourney (an old save has none; nothing here bumps Config.DataVersion):
+--   { belts = { [id] = { n = wins, last = day } },   the tournament belts won (the trophy case, the FighterCard)
+--     points = n,                                    ranking points (World.PlayerScore adds them)
+--     wear = id | nil,                               the belt worn in ring walks
+--     run = { ... } | nil,                           the bracket being fought (below)
+--     done = { [id] = start day },                   the last edition of each event already settled
+--     history = { { id, ed, place, day, prize } } }  the player's finishes, newest last (capped)
+-- and in the world: world.tourney = { holders = { [id] = { id = boxer id | "player", name, day, ci } },
+--   log = { { t = id, ed, ci, winner, name, runnerUp, day } } } (AI editions and the player's alike, capped)
+--
+-- A run: { id, ed (the start day), ci, field = { 8 ids in bracket order, "player" among them }, seeds = { [id] = n },
+--   w = { [r] = { winners of round r in bracket order } }, m = { [r] = { { a, b, win, method } } }, round = 1..3,
+--   wear = { head, body } (0..40: what the last bout took out of him, recovered `heal` a day), prize = paid so far,
+--   status = "active" }
+-- The run's bouts are ordinary camps (profile.camp, offer.tourney = { id, ed, round }) fought through the normal
+-- fight path; Career.ApplyResult hands each result to Tourney.AfterResult, which resolves the AI side of the round
+-- (World.AIBout) and books the next round `recovery` days later, or ends the run (a loss, a withdrawal, the title).
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local T = require(Shared:WaitForChild("Tournaments"))
+local World = require(script.Parent.World)
+
+local Tourney = {}
+local rng = Random.new()
+
+-- Career hands over its offer builder (makeOffer: purse, venue, opponent view, trash talk) at load
+Tourney.makeOffer = nil
+
+local HISTORY_MAX = 24
+local LOG_MAX = 40
+-- wear per bout (0..WEAR_MAX on each of head / body) and what a recovery day heals of it
+local WEAR_MAX, WEAR_HEAL = 40, 8
+
+local function num(v, d)
+	v = tonumber(v)
+	if v == nil or v ~= v or v == math.huge or v == -math.huge then
+		return d
+	end
+	return v
+end
+
+------------------------------------------------------------------------
+-- State (old saves: created on first use; corrupt pieces dropped)
+------------------------------------------------------------------------
+function Tourney.State(profile)
+	local s = profile.tourney
+	if type(s) ~= "table" then
+		s = {}
+		profile.tourney = s
+	end
+	if type(s.belts) ~= "table" then
+		s.belts = {}
+	end
+	for id, b in pairs(s.belts) do
+		if not T.ById[id] or type(b) ~= "table" or not num(b.n, nil) or b.n < 1 then
+			s.belts[id] = nil
+		else
+			b.n = math.floor(b.n)
+			b.last = math.floor(num(b.last, 1))
+		end
+	end
+	s.points = math.max(0, num(s.points, 0))
+	if s.wear ~= nil and not (T.ById[s.wear] and s.belts[s.wear]) then
+		s.wear = nil
+	end
+	if type(s.done) ~= "table" then
+		s.done = {}
+	end
+	if type(s.history) ~= "table" then
+		s.history = {}
+	end
+	local r = s.run
+	if r ~= nil then
+		if type(r) ~= "table" or not T.ById[r.id] or type(r.field) ~= "table" or #r.field ~= T.FIELD or not table.find(r.field, "player") then
+			s.run = nil
+		else
+			r.w = type(r.w) == "table" and r.w or {}
+			r.m = type(r.m) == "table" and r.m or {}
+			r.round = math.clamp(math.floor(num(r.round, 1)), 1, T.ROUNDS)
+			r.wear = type(r.wear) == "table" and r.wear or {}
+			r.wear.head = math.clamp(num(r.wear.head, 0), 0, WEAR_MAX)
+			r.wear.body = math.clamp(num(r.wear.body, 0), 0, WEAR_MAX)
+			r.prize = num(r.prize, 0)
+		end
+	end
+	return s
+end
+
+local function worldState(world)
+	local w = world.tourney
+	if type(w) ~= "table" then
+		w = {}
+		world.tourney = w
+	end
+	if type(w.holders) ~= "table" then
+		w.holders = {}
+	end
+	if type(w.log) ~= "table" then
+		w.log = {}
+	end
+	return w
+end
+Tourney.WorldState = worldState
+
+------------------------------------------------------------------------
+-- Entry rules
+------------------------------------------------------------------------
+-- -> ok, reason (the rule the player misses)
+function Tourney.Eligible(profile, def)
+	if type(def) == "string" then
+		def = T.ById[def]
+	end
+	if not def then
+		return false, "Unknown tournament."
+	end
+	if profile.retired then
+		return false, "You're retired."
+	end
+	local tier = num(profile.tier, 1)
+	if def.invite then
+		local best = World.BestRank(profile)
+		local champ = false
+		for _, has in pairs(type(profile.belts) == "table" and profile.belts or {}) do
+			champ = champ or has == true
+		end
+		if not champ and best > def.invite then
+			return false, string.format("Invitation only: a world top %d ranking or a world title.", def.invite)
+		end
+		if tier < 5 then
+			return false, "Invitation only: international contenders and up."
+		end
+		return true
+	end
+	if tier < def.minTier or tier > def.maxTier then
+		return false, def.rule .. " (" .. (Config.Tiers[def.minTier] and Config.Tiers[def.minTier].name or "") ..
+			(def.maxTier ~= def.minTier and (" to " .. (Config.Tiers[def.maxTier] and Config.Tiers[def.maxTier].name or "")) or "") .. ")."
+	end
+	return true
+end
+
+------------------------------------------------------------------------
+-- The field
+------------------------------------------------------------------------
+local function activeIds(world, ci)
+	local out = {}
+	for _, id in ipairs(world.classes[ci] or {}) do
+		local b = world.boxers[id]
+		if b and not b.retired then
+			table.insert(out, id)
+		end
+	end
+	return out
+end
+
+-- n AI boxers of class ci for an event: inside its overall band (widened when the division is thin), the best
+-- ranked ones for an invitational; never the ids in `exclude`
+local function pickField(profile, def, ci, n, exclude, r)
+	local world = profile.world
+	local pool = activeIds(world, ci)
+	local out = {}
+	if def.invite then
+		-- the division's best by ranking score (the world's own: World.Score over the orgs)
+		table.sort(pool, function(a, b)
+			local sa, sb = 0, 0
+			for _, org in ipairs(Config.Orgs) do
+				sa += World.Score(world.boxers[a], org)
+				sb += World.Score(world.boxers[b], org)
+			end
+			return sa > sb
+		end)
+		for _, id in ipairs(pool) do
+			if #out >= n then
+				break
+			end
+			if not (exclude and exclude[id]) then
+				table.insert(out, id)
+			end
+		end
+		return out
+	end
+	for widen = 0, 40, 4 do
+		table.clear(out)
+		local lo, hi = def.band[1] - widen, def.band[2] + widen
+		for _, id in ipairs(pool) do
+			local b = world.boxers[id]
+			if b.overall >= lo and b.overall <= hi and not (exclude and exclude[id]) then
+				table.insert(out, id)
+			end
+		end
+		if #out >= n then
+			break
+		end
+	end
+	-- n at random from the band
+	for i = #out, 2, -1 do
+		local j = r:NextInteger(1, i)
+		out[i], out[j] = out[j], out[i]
+	end
+	while #out > n do
+		table.remove(out)
+	end
+	return out
+end
+
+-- seed the 8 by overall (the player by his own) and lay them into the bracket: { ids in slot order }, seeds
+local function seedBracket(profile, ids)
+	local world = profile.world
+	local function ovr(id)
+		if id == "player" then
+			return num(profile.overall, 40)
+		end
+		local b = world.boxers[id]
+		return b and b.overall or 0
+	end
+	local sorted = table.clone(ids)
+	table.sort(sorted, function(a, b)
+		local oa, ob = ovr(a), ovr(b)
+		if oa ~= ob then
+			return oa > ob
+		end
+		return tostring(a) < tostring(b)
+	end)
+	local field, seeds = {}, {}
+	for seed, id in ipairs(sorted) do
+		seeds[id] = seed
+		local slot = table.find(T.SEED_SLOTS, seed)
+		field[slot] = id
+	end
+	return field, seeds
+end
+Tourney.SeedBracket = seedBracket
+
+-- the AI bout of a bracket (World.AIBout, no draws: the judges' tiebreak picks a winner) -> winner id, method
+local function aiMatch(profile, a, b, r)
+	local world = profile.world
+	local A, B = world.boxers[a], world.boxers[b]
+	if not A then
+		return b, "W/O"
+	elseif not B then
+		return a, "W/O"
+	end
+	local winner, _, ko = World.AIBout(A, B, r, true)
+	return winner.id, ko and (r:NextNumber() < 0.5 and "KO" or "TKO") or (r:NextNumber() < 0.75 and "UD" or "SD")
+end
+Tourney.AIMatch = aiMatch
+
+-- resolve every match of round r not yet decided (the player's is left alone unless `withPlayer`); fills run.w[r]
+local function resolveRound(profile, run, r, rr, withPlayer)
+	local list = T.Entrants(run, r)
+	run.m[r] = run.m[r] or {}
+	run.w[r] = run.w[r] or {}
+	for k = 1, #list // 2 do
+		local a, b = list[2 * k - 1], list[2 * k]
+		if not run.w[r][k] then
+			local isPlayer = a == "player" or b == "player"
+			if isPlayer and withPlayer then
+				-- the player withdrew: his opponent goes through on a walkover
+				local other = a == "player" and b or a
+				run.w[r][k] = other
+				run.m[r][k] = { a = a, b = b, win = other, method = "W/O" }
+			elseif not isPlayer then
+				local win, method = aiMatch(profile, a, b, rr)
+				run.w[r][k] = win
+				run.m[r][k] = { a = a, b = b, win = win, method = method }
+			end
+		end
+	end
+end
+
+local function nameOf(profile, id)
+	if id == "player" then
+		return profile.identity and profile.identity.name or "You"
+	end
+	local b = profile.world.boxers[id]
+	return b and b.name or "?"
+end
+
+-- the champion of a finished bracket on the world's books (holders + the log); an AI winner gets the belt count
+local function crown(profile, def, ed, ci, winner, runnerUp)
+	local W = worldState(profile.world)
+	local prev = W.holders[def.id]
+	W.holders[def.id] = { id = winner, name = nameOf(profile, winner), day = ed, ci = ci }
+	if winner ~= "player" then
+		local b = profile.world.boxers[winner]
+		if b then
+			b.tbelts = type(b.tbelts) == "table" and b.tbelts or {}
+			b.tbelts[def.id] = (tonumber(b.tbelts[def.id]) or 0) + 1
+		end
+	end
+	table.insert(W.log, { t = def.id, ed = ed, ci = ci, winner = winner, name = nameOf(profile, winner), runnerUp = runnerUp and nameOf(profile, runnerUp) or nil, day = ed })
+	while #W.log > LOG_MAX do
+		table.remove(W.log, 1)
+	end
+	return prev
+end
+
+-- a whole edition fought by the AI in the player's division (he did not enter): the world's champion of it
+local function simulateEdition(profile, def, ed, r)
+	local ci = profile.physical.weightClass
+	local ids = pickField(profile, def, ci, T.FIELD, nil, r)
+	if #ids < T.FIELD then
+		return nil
+	end
+	local field = seedBracket(profile, ids)
+	local run = { field = field, w = {}, m = {} }
+	for round = 1, T.ROUNDS do
+		resolveRound(profile, run, round, r, false)
+	end
+	local champ = run.w[T.ROUNDS][1]
+	local final = run.m[T.ROUNDS][1]
+	crown(profile, def, ed, ci, champ, final and (final.win == final.a and final.b or final.a))
+	return champ, run
+end
+Tourney.SimulateEdition = simulateEdition
+
+-- the calendar moves on: every edition that started on or before today and that the player is not fighting is
+-- settled by the AI (only the latest edition of each event: a long gap does not replay months of brackets). A new
+-- career gets last season's champions on the first call. Idempotent; returns how many editions were settled.
+function Tourney.Tick(profile, r)
+	if type(profile) ~= "table" or not profile.created or type(profile.world) ~= "table" then
+		return 0
+	end
+	r = r or rng
+	local s = Tourney.State(profile)
+	local n = 0
+	for _, def in ipairs(T.List) do
+		local last = T.LastStart(def, profile.day)
+		local ed = last or (def.offset - def.every) -- (before the first edition: last season's)
+		local running = s.run and s.run.id == def.id and s.run.ed == ed
+		if s.done[def.id] ~= ed and not running and (num(s.done[def.id], -math.huge) < ed) then
+			if simulateEdition(profile, def, ed, r) then
+				n += 1
+			end
+			s.done[def.id] = ed
+		end
+	end
+	return n
+end
+
+------------------------------------------------------------------------
+-- The bouts
+------------------------------------------------------------------------
+local function boutOffer(profile, def, run)
+	local r = run.round
+	local oppId = T.OpponentIn(run, r, "player")
+	local b = oppId and profile.world.boxers[oppId]
+	if not (b and Tourney.makeOffer) then
+		return nil
+	end
+	local offer = Tourney.makeOffer(profile, b, "Tournament " .. T.RoundName(r), { purseMult = def.purse[r] or 1 })
+	offer.rounds = def.rounds
+	offer.venue = def.venue
+	offer.venueName = Config.Venues[def.venue] and Config.Venues[def.venue].name or offer.venueName
+	offer.tourney = { id = def.id, ed = run.ed, round = r, name = def.name, roundName = T.RoundName(r), seed = run.seeds and run.seeds[oppId] or nil }
+	-- (a final is fought for the event's belt: the Hub marks it FOR THE BELT, Tourney.CeremonyFor plays the cutscene)
+	offer.tourneyBelt = r == T.ROUNDS and def.id or nil
+	return offer
+end
+
+-- enter the event that is open now: builds the bracket and books the quarter-final as a camp. -> ok, err | info
+function Tourney.Enter(profile, id)
+	local def = T.ById[tostring(id)]
+	if not def then
+		return false, "Unknown tournament."
+	end
+	if profile.camp then
+		return false, "You already have a fight booked."
+	end
+	local ok, why = Tourney.Eligible(profile, def)
+	if not ok then
+		return false, why
+	end
+	local open, start = T.EntryOpen(def, profile.day)
+	if not open then
+		return false, string.format("Entries open on day %d (the %s starts on day %d).", start - def.window, def.name, start)
+	end
+	local s = Tourney.State(profile)
+	if s.run then
+		return false, "Finish your tournament first."
+	end
+	local ci = profile.physical.weightClass
+	local ids = pickField(profile, def, ci, T.FIELD - 1, nil, rng)
+	if #ids < T.FIELD - 1 then
+		return false, "Not enough boxers in your division for a bracket."
+	end
+	table.insert(ids, "player")
+	local field, seeds = seedBracket(profile, ids)
+	local run = { id = def.id, ed = start, ci = ci, field = field, seeds = seeds, w = {}, m = {}, round = 1, wear = { head = 0, body = 0 }, prize = 0,
+		status = "active", entered = profile.day }
+	s.run = run
+	local offer = boutOffer(profile, def, run)
+	if not offer then
+		s.run = nil
+		return false, "The bracket could not be drawn."
+	end
+	local days = math.max(1, start - profile.day)
+	profile.camp = { offer = offer, daysLeft = days, daysTotal = days, log = {}, tourney = def.id }
+	profile.offers = nil
+	return true, { name = def.name, start = start, seed = seeds.player, opp = offer.opp.name }
+end
+
+-- the run's end: the prize for the round reached, the history line, the champion on the books
+local function finish(profile, def, run, place, notes, res)
+	local s = Tourney.State(profile)
+	local prize = def.prize[place] or 0
+	if prize > 0 then
+		profile.money += prize
+		run.prize += prize
+	end
+	local finalM = run.m[T.ROUNDS] and run.m[T.ROUNDS][1]
+	local champ = run.w[T.ROUNDS] and run.w[T.ROUNDS][1]
+	if champ then
+		crown(profile, def, run.ed, run.ci, champ, finalM and (finalM.win == finalM.a and finalM.b or finalM.a))
+	end
+	local placeText = ({ "Quarter-finalist", "Semi-finalist", "Runner-up", "CHAMPION" })[place]
+	table.insert(s.history, { id = def.id, ed = run.ed, place = place, day = profile.day, prize = run.prize, how = res })
+	while #s.history > HISTORY_MAX do
+		table.remove(s.history, 1)
+	end
+	if prize > 0 then
+		table.insert(notes, string.format("%s prize money (%s): %s.", def.name, placeText, Config.Money(prize)))
+	end
+	s.done[def.id] = run.ed
+	s.run = nil
+	return place
+end
+
+-- the player's bout of round r is over (Career.ApplyResult, before the recovery days pass). -> info =
+-- { continuing, recovery, nextCamp, won (the event), place, belt } (nil when the offer is not this run's)
+function Tourney.AfterResult(profile, offer, res, notes)
+	local tag = type(offer) == "table" and offer.tourney
+	local s = Tourney.State(profile)
+	local run = s.run
+	local def = tag and T.ById[tag.id]
+	if not (def and run and run.id == tag.id and run.ed == tag.ed and run.round == tag.round) then
+		return nil
+	end
+	local r = run.round
+	local won = res.outcome == "win"
+	if res.outcome == "draw" then
+		-- (no draws in a bracket: the tournament rule sends the busier man through)
+		won = num(res.landed, 0) >= num(res.oppLanded, 0)
+		table.insert(notes, won and "A draw on the cards: you go through on punches landed (tournament rule)."
+			or "A draw on the cards: your opponent goes through on punches landed (tournament rule).")
+	end
+	local oppId = T.OpponentIn(run, r, "player")
+	local pos = T.PosIn(run, r, "player")
+	local k = T.MatchOf(pos)
+	run.m[r] = run.m[r] or {}
+	run.w[r] = run.w[r] or {}
+	run.w[r][k] = won and "player" or oppId
+	run.m[r][k] = { a = T.Entrants(run, r)[2 * k - 1], b = T.Entrants(run, r)[2 * k], win = run.w[r][k], method = res.method }
+	resolveRound(profile, run, r, rng, false)
+	-- fame and ranking points for each round won
+	if won then
+		profile.popularity = math.clamp(num(profile.popularity, 0) + (def.fame[r] or 0), 0, 100)
+		s.points += def.points[r] or 0
+	end
+	local info = { place = nil }
+	if not won then
+		-- out: the remaining rounds go on without him
+		for rr = r + 1, T.ROUNDS do
+			resolveRound(profile, run, rr, rng, false)
+		end
+		local place = r -- (lost the QF = 1, the SF = 2, the final = 3)
+		info.place = finish(profile, def, run, place, notes, "lost")
+		table.insert(notes, string.format("Out of the %s in the %s.", def.name, T.RoundName(r):lower()))
+		return info
+	end
+	if r == T.ROUNDS then
+		-- the title
+		local b = s.belts[def.id] or { n = 0 }
+		b.n += 1
+		b.last = profile.day
+		s.belts[def.id] = b
+		if not s.wear then
+			s.wear = def.id
+		end
+		info.won, info.belt = true, def.id
+		info.place = finish(profile, def, run, 4, notes, "won")
+		table.insert(notes, 1, string.format("%s! You win the %s and its belt.", def.champion, def.name))
+		profile.titlesWonT = (tonumber(profile.titlesWonT) or 0) + 1
+		return info
+	end
+	-- through to the next round: what the bout took out of him carries over (less what the days heal)
+	local head = math.clamp(num(res.headTaken, num(res.damageTaken, 0) * 0.5) * 0.35, 0, WEAR_MAX)
+	local body = math.clamp(num(res.bodyTaken, 0) * 0.5, 0, WEAR_MAX)
+	run.wear.head = math.clamp(math.max(run.wear.head - WEAR_HEAL * def.recovery, 0) + head, 0, WEAR_MAX)
+	run.wear.body = math.clamp(math.max(run.wear.body - WEAR_HEAL * def.recovery, 0) + body, 0, WEAR_MAX)
+	run.round = r + 1
+	local offerNext = boutOffer(profile, def, run)
+	if not offerNext then
+		-- (the next opponent is gone from the world: a walkover is not a fight; the run ends here as a finalist)
+		info.place = finish(profile, def, run, r + 1, notes, "walkover")
+		return info
+	end
+	info.continuing = true
+	info.recovery = def.recovery
+	info.nextCamp = { offer = offerNext, daysLeft = def.recovery, daysTotal = def.recovery, log = {}, tourney = def.id }
+	table.insert(notes, string.format("Through to the %s of the %s: %s in %d day%s.", T.RoundName(r + 1):lower(), def.name, offerNext.opp.name,
+		def.recovery, def.recovery == 1 and "" or "s"))
+	if run.wear.head + run.wear.body > 15 then
+		table.insert(notes, string.format("You carry the last bout into the next one: %d%% head, %d%% body still to recover.", math.floor(run.wear.head), math.floor(run.wear.body)))
+	end
+	return info
+end
+
+-- after the recovery days passed (Career.ApplyResult): the doctor's look before the next round. A concussion
+-- ends the run (a medical withdrawal). -> true when he was withdrawn
+function Tourney.MedicalCheck(profile, concussed, notes)
+	local s = Tourney.State(profile)
+	local run = s.run
+	if not run or not concussed then
+		return false
+	end
+	Tourney.Withdraw(profile, notes, "medical")
+	return true
+end
+
+-- pull out of the running tournament (between rounds): the next opponent goes through on a walkover, the prize is
+-- the round reached. -> ok, err
+function Tourney.Withdraw(profile, notes, why)
+	notes = notes or {}
+	local s = Tourney.State(profile)
+	local run = s.run
+	if not run then
+		return false, "You're not in a tournament."
+	end
+	local def = T.ById[run.id]
+	local r = run.round
+	resolveRound(profile, run, r, rng, true)
+	for rr = r + 1, T.ROUNDS do
+		resolveRound(profile, run, rr, rng, false)
+	end
+	finish(profile, def, run, r, notes, why == "medical" and "medical" or "withdrew")
+	table.insert(notes, why == "medical" and string.format("The doctor withdraws you from the %s: you're concussed.", def.name)
+		or string.format("You withdrew from the %s.", def.name))
+	if profile.camp and type(profile.camp.offer) == "table" and type(profile.camp.offer.tourney) == "table" then
+		profile.camp = nil
+	end
+	return true
+end
+
+------------------------------------------------------------------------
+-- Fight night helpers
+------------------------------------------------------------------------
+-- the carried wear as the fight engine reads it (FighterFromProfile: data.carry = { head, body } as 0..1 caps)
+function Tourney.Carry(profile)
+	local s = type(profile.tourney) == "table" and profile.tourney
+	local run = s and s.run
+	local camp = profile.camp
+	if not (run and camp and type(camp.offer) == "table" and type(camp.offer.tourney) == "table" and camp.offer.tourney.id == run.id) then
+		return nil
+	end
+	local h, b = num(run.wear and run.wear.head, 0), num(run.wear and run.wear.body, 0)
+	if h <= 0 and b <= 0 then
+		return nil
+	end
+	return { head = 1 - h / 100, body = 1 - b / 100 }
+end
+
+-- the belt he wears in ring walks (a tournament id), nil for none
+function Tourney.WornBelt(profile)
+	local s = type(profile.tourney) == "table" and profile.tourney
+	local id = s and s.wear
+	if id and T.ById[id] and type(s.belts) == "table" and s.belts[id] then
+		return id
+	end
+	return nil
+end
+
+function Tourney.SetWear(profile, id)
+	local s = Tourney.State(profile)
+	if id == nil or id == false or id == "" then
+		s.wear = nil
+		return true
+	end
+	id = tostring(id)
+	if not (T.ById[id] and s.belts[id]) then
+		return false, "You haven't won that belt."
+	end
+	s.wear = id
+	return true
+end
+
+-- the celebration cutscene for a bout, if he wins it: a tournament final, or a title the player does not hold yet
+-- (world title stakes, the regional / national title). -> spec for FightEngine.Run (opts.ceremony) or nil
+function Tourney.CeremonyFor(profile, offer)
+	if type(offer) ~= "table" then
+		return nil
+	end
+	local name = profile.identity and profile.identity.name or ""
+	local tag = offer.tourney
+	if type(tag) == "table" and tag.round == T.ROUNDS and T.ById[tag.id] then
+		local def = T.ById[tag.id]
+		return { belt = def.id, kicker = "AND THE NEW...", title = def.champion, event = def.name, name = name, kind = "tourney" }
+	end
+	local stakes = type(offer.stakes) == "table" and offer.stakes or {}
+	for _, org in ipairs(stakes) do
+		if not (type(profile.belts) == "table" and profile.belts[org]) then
+			return { belt = org, kicker = "AND THE NEW...", title = org .. " WORLD CHAMPION", event = (offer.kind or "World Title"), name = name, kind = "title" }
+		end
+	end
+	if offer.kind == "Regional Title" then
+		return { belt = "titleRegional", kicker = "AND THE NEW...", title = "REGIONAL CHAMPION", event = "Regional Title", name = name, kind = "title" }
+	elseif offer.kind == "National Title" then
+		return { belt = "titleNational", kicker = "AND THE NEW...", title = "NATIONAL CHAMPION", event = "National Title", name = name, kind = "title" }
+	end
+	return nil
+end
+
+------------------------------------------------------------------------
+-- Client view (Career.Summary: P.tourney)
+------------------------------------------------------------------------
+local function boxerView(profile, id, seeds)
+	if id == nil then
+		return nil
+	end
+	if id == "player" then
+		return { id = "player", name = profile.identity.name, nat = profile.identity.nationality, overall = math.floor(num(profile.overall, 0)), you = true,
+			seed = seeds and seeds.player or nil, record = profile.tier == 1 and profile.amateurRecord or profile.record }
+	end
+	local b = profile.world.boxers[id]
+	if not b then
+		return { id = id, name = "?", overall = 0 }
+	end
+	return { id = id, name = b.name, nat = b.nat, overall = math.floor(b.overall), seed = seeds and seeds[id] or nil, record = b.record }
+end
+
+function Tourney.View(profile)
+	local s = Tourney.State(profile)
+	local W = worldState(profile.world)
+	local list = {}
+	for _, def in ipairs(T.List) do
+		local open, start = T.EntryOpen(def, profile.day)
+		local ok, why = Tourney.Eligible(profile, def)
+		local h = W.holders[def.id]
+		table.insert(list, {
+			id = def.id, name = def.name, short = def.short, blurb = def.blurb, rule = def.rule, rounds = def.rounds, recovery = def.recovery,
+			start = start, opens = start - def.window, open = open, eligible = ok, why = why,
+			prize = def.prize, venue = Config.Venues[def.venue] and Config.Venues[def.venue].name or def.venue,
+			holder = h and { name = h.name, you = h.id == "player", day = h.day } or nil,
+			won = s.belts[def.id] and s.belts[def.id].n or 0,
+		})
+	end
+	local run
+	if s.run then
+		local R = s.run
+		local def = T.ById[R.id]
+		local rounds = {}
+		for r = 1, T.ROUNDS do
+			local entrants = T.Entrants(R, r)
+			local matches = {}
+			for k = 1, T.FIELD / 2 ^ r do
+				local a, b = entrants[2 * k - 1], entrants[2 * k]
+				local m = R.m[r] and R.m[r][k]
+				table.insert(matches, { a = boxerView(profile, a, R.seeds), b = boxerView(profile, b, R.seeds), win = m and m.win or nil, method = m and m.method or nil })
+			end
+			rounds[r] = matches
+		end
+		run = { id = R.id, name = def.name, ed = R.ed, round = R.round, roundName = T.RoundName(R.round), rounds = rounds,
+			wear = { head = math.floor(R.wear.head), body = math.floor(R.wear.body) }, prize = R.prize, seed = R.seeds and R.seeds.player }
+	end
+	local belts = {}
+	for _, def in ipairs(T.List) do
+		local b = s.belts[def.id]
+		if b then
+			table.insert(belts, { id = def.id, name = def.name, n = b.n, last = b.last })
+		end
+	end
+	local hist = {}
+	for i = #s.history, math.max(1, #s.history - 7), -1 do
+		local e = s.history[i]
+		local def = T.ById[e.id]
+		table.insert(hist, { id = e.id, name = def and def.name or e.id, place = e.place, day = e.day, prize = e.prize, how = e.how })
+	end
+	local log = {}
+	for i = #W.log, math.max(1, #W.log - 5), -1 do
+		local e = W.log[i]
+		local def = T.ById[e.t]
+		if def and e.ci == profile.physical.weightClass then
+			table.insert(log, { id = e.t, name = def.name, winner = e.name, runnerUp = e.runnerUp, day = e.day, you = e.winner == "player" })
+		end
+	end
+	return { list = list, run = run, belts = belts, wear = Tourney.WornBelt(profile), points = s.points, history = hist, log = log, day = profile.day }
+end
+
+-- the ids the career still points at (World.Prune keeps them): the running bracket and the belt holders
+function Tourney.Referenced(profile, mark)
+	local s = type(profile.tourney) == "table" and profile.tourney
+	if s and type(s.run) == "table" and type(s.run.field) == "table" then
+		for _, id in ipairs(s.run.field) do
+			mark(id)
+		end
+	end
+	local W = type(profile.world) == "table" and type(profile.world.tourney) == "table" and profile.world.tourney
+	if W and type(W.holders) == "table" then
+		for _, h in pairs(W.holders) do
+			if type(h) == "table" then
+				mark(h.id)
+			end
+		end
+	end
+end
+
+return Tourney
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="61">
+        <Properties>
           <string name="Name">Training</string>
           <string name="Source"><![CDATA[-- Training: the advanced training system.
 -- Condition (energy, hydration, nutrition, sleep, fatigue), overtraining & injuries,
@@ -60946,7 +62066,7 @@ return Training
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="60">
+      <Item class="ModuleScript" referent="62">
         <Properties>
           <string name="Name">TutorialFight</string>
           <string name="Source"><![CDATA[-- TutorialFight: the first-time tutorial bout's cast and night (Shared.Tutorial has the steps and the rules).
@@ -61033,7 +62153,7 @@ return TutorialFight
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="61">
+      <Item class="ModuleScript" referent="63">
         <Properties>
           <string name="Name">Venues</string>
           <string name="Source"><![CDATA[-- Venues: fight-night ring system. Builds one template per venue in ServerStorage at boot and
@@ -63359,7 +64479,7 @@ return Venues
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="62">
+      <Item class="ModuleScript" referent="64">
         <Properties>
           <string name="Name">World</string>
           <string name="Source"><![CDATA[-- World: generates and maintains the AI boxing world (270 boxers), rankings for
@@ -63881,7 +65001,7 @@ return World
         </Properties>
       </Item>
     </Item>
-    <Item class="Script" referent="63">
+    <Item class="Script" referent="65">
       <Properties>
         <string name="Name">Main</string>
         <token name="RunContext">0</token>
@@ -66549,17 +67669,17 @@ print("[Boxer] " .. Config.GameName .. " server ready")
       </Properties>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="64">
+  <Item class="StarterPlayer" referent="66">
     <Properties>
       <string name="Name">StarterPlayer</string>
       <float name="CharacterWalkSpeed">6.5</float>
       <bool name="EnableMouseLockOption">false</bool>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="65">
+    <Item class="StarterPlayerScripts" referent="67">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="66">
+      <Item class="LocalScript" referent="68">
         <Properties>
           <string name="Name">Animator</string>
           <string name="Source"><![CDATA[-- Animator: motion-capture-feeling procedural animation for everyone in the game, no animation
@@ -67924,11 +69044,11 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="67">
+      <Item class="Folder" referent="69">
         <Properties>
           <string name="Name">BoxerClient</string>
         </Properties>
-        <Item class="ModuleScript" referent="68">
+        <Item class="ModuleScript" referent="70">
           <Properties>
             <string name="Name">Activities</string>
             <string name="Source"><![CDATA[-- Activities: every training session and its minigame.
@@ -74153,7 +75273,7 @@ return Activities
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="69">
+        <Item class="ModuleScript" referent="71">
           <Properties>
             <string name="Name">Ambience</string>
             <string name="Source"><![CDATA[-- Ambience: brings the gym and the town to life on the client.
@@ -75397,7 +76517,7 @@ return Ambience
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="70">
+        <Item class="ModuleScript" referent="72">
           <Properties>
             <string name="Name">AnatomyClient</string>
             <string name="Source"><![CDATA[-- AnatomyClient: the client-built meshes on every character: today only the HAIR (the uploaded hair cards,
@@ -78191,7 +79311,7 @@ return AnatomyClient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="71">
+        <Item class="ModuleScript" referent="73">
           <Properties>
             <string name="Name">AnatomyStatus</string>
             <string name="Source"><![CDATA[-- AnatomyStatus: tells the player (and the Output) whether the organic mesh characters are on.
@@ -78447,7 +79567,7 @@ return AnatomyStatus
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="72">
+        <Item class="ModuleScript" referent="74">
           <Properties>
             <string name="Name">AnimCeremony</string>
             <string name="Source"><![CDATA[-- AnimCeremony: the poses of the celebration cutscene (FightEngine's Fight:Ceremony sets them as Pose on a
@@ -78628,7 +79748,7 @@ return AnimCeremony
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="73">
+        <Item class="ModuleScript" referent="75">
           <Properties>
             <string name="Name">AnimDown</string>
             <string name="Source"><![CDATA[-- AnimDown: knockdowns, knockouts, the count and the get-up.
@@ -80283,7 +81403,7 @@ return AnimDown
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="74">
+        <Item class="ModuleScript" referent="76">
           <Properties>
             <string name="Name">AnimEntrance</string>
             <string name="Source"><![CDATA[-- AnimEntrance: the ring walk's body language on the client - the entrance celebrations, the climb up the ring
@@ -80917,7 +82037,7 @@ return AnimEntrance
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="75">
+        <Item class="ModuleScript" referent="77">
           <Properties>
             <string name="Name">AnimFight</string>
             <string name="Source"><![CDATA[-- AnimFight: everything a boxer does on his feet in the ring.
@@ -84402,7 +85522,7 @@ return AnimFight
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="76">
+        <Item class="ModuleScript" referent="78">
           <Properties>
             <string name="Name">AnimGym</string>
             <string name="Source"><![CDATA[-- AnimGym: training poses that work the right muscles, flex poses, gym life and the people who
@@ -85655,7 +86775,7 @@ return AnimGym
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="77">
+        <Item class="ModuleScript" referent="79">
           <Properties>
             <string name="Name">AnimKit</string>
             <string name="Source"><![CDATA[-- AnimKit: the pure math behind the procedural animation (no Instances, no Roblox services), so it
@@ -86115,7 +87235,7 @@ return AnimKit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="78">
+        <Item class="ModuleScript" referent="80">
           <Properties>
             <string name="Name">AnimLoco</string>
             <string name="Source"><![CDATA[-- AnimLoco: locomotion and feet for the procedural Animator.
@@ -88371,7 +89491,7 @@ return AnimLoco
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="79">
+        <Item class="ModuleScript" referent="81">
           <Properties>
             <string name="Name">AnimRig</string>
             <string name="Source"><![CDATA[-- AnimRig: rig geometry, inverse kinematics and the pose building blocks shared by the Animator
@@ -89505,7 +90625,7 @@ return AnimRig
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="80">
+        <Item class="ModuleScript" referent="82">
           <Properties>
             <string name="Name">BodyMap</string>
             <string name="Source"><![CDATA[-- BodyMap: an anatomical body map (front + back views), one region per Config.MuscleParts id.
@@ -90374,7 +91494,7 @@ return BodyMap
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="81">
+        <Item class="ModuleScript" referent="83">
           <Properties>
             <string name="Name">Ceremony</string>
             <string name="Source"><![CDATA[-- Ceremony: the celebration cutscene in the ring after a won tournament final or a new title (10.5 s, skippable).
@@ -90888,7 +92008,7 @@ return Ceremony
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="82">
+        <Item class="ModuleScript" referent="84">
           <Properties>
             <string name="Name">CharacterLight</string>
             <string name="Source"><![CDATA[-- CharacterLight: a camera-aware fill and rim light for the boxers on screen (client only).
@@ -91112,7 +92232,7 @@ return CharacterLight
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="83">
+        <Item class="ModuleScript" referent="85">
           <Properties>
             <string name="Name">CityDetail</string>
             <string name="Source"><![CDATA[-- CityDetail: Main Street's and the campus's extra detail layer (client-only; WorldDetail streams it per block
@@ -91888,7 +93008,7 @@ return CityDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="84">
+        <Item class="ModuleScript" referent="86">
           <Properties>
             <string name="Name">CityStores</string>
             <string name="Source"><![CDATA[-- CityStores: the counters of the city's walk-in shops (prompts in CityMap, dispatched through
@@ -92170,7 +93290,7 @@ return CityStores
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="85">
+        <Item class="ModuleScript" referent="87">
           <Properties>
             <string name="Name">CityVisuals</string>
             <string name="Source"><![CDATA[-- CityVisuals: the city reflects YOUR career. Everything here is client-side (workspace.LocalCity
@@ -94007,7 +95127,7 @@ return CityVisuals
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="86">
+        <Item class="ModuleScript" referent="88">
           <Properties>
             <string name="Name">ComboHud</string>
             <string name="Source"><![CDATA[-- ComboHud: the fight HUD's combo counter (FightClient mounts it in its HUD root and feeds it the server's
@@ -94176,7 +95296,7 @@ return ComboHud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="87">
+        <Item class="ModuleScript" referent="89">
           <Properties>
             <string name="Name">ControlsMenu</string>
             <string name="Source"><![CDATA[-- ControlsMenu: the Moves & Controls window. Opened from the main menu (CONTROLS, or Settings > Controls),
@@ -94924,7 +96044,7 @@ return ControlsMenu
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="88">
+        <Item class="ModuleScript" referent="90">
           <Properties>
             <string name="Name">Creator</string>
             <string name="Source"><![CDATA[-- Creator: the character creator, as seven steps with Back / Next and a step bar (jump to any step).
@@ -96736,7 +97856,7 @@ return Creator
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="89">
+        <Item class="ModuleScript" referent="91">
           <Properties>
             <string name="Name">DetailKit</string>
             <string name="Source"><![CDATA[-- DetailKit: the building blocks of the world's client-side detail layer (WorldDetail: the gym and the city;
@@ -97223,7 +98343,7 @@ return K
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="90">
+        <Item class="ModuleScript" referent="92">
           <Properties>
             <string name="Name">EntranceFX</string>
             <string name="Source"><![CDATA[-- EntranceFX: the ring-walk cinematic on the client. The server (RingWalk) sends one "entrance" message per walk with
@@ -98012,7 +99132,7 @@ return EntranceFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="91">
+        <Item class="ModuleScript" referent="93">
           <Properties>
             <string name="Name">EntrancePicker</string>
             <string name="Source"><![CDATA[-- EntrancePicker: the Locker Room's ENTRANCE window (State.open.Entrance): the ring walk's celebrations (one at the
@@ -98155,7 +99275,7 @@ return EntrancePicker
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="92">
+        <Item class="ModuleScript" referent="94">
           <Properties>
             <string name="Name">FaceFX</string>
             <string name="Source"><![CDATA[-- FaceFX: a face that is alive. Client-only, driven by the Animator every frame (FaceFX.Update; Hit / Effort /
@@ -98950,7 +100070,7 @@ return FaceFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="93">
+        <Item class="ModuleScript" referent="95">
           <Properties>
             <string name="Name">FightIntel</string>
             <string name="Source"><![CDATA[-- FightIntel: the fight HUD's small reads of the deeper fight (FightClient mounts it in its HUD root and feeds it
@@ -99135,7 +100255,7 @@ return FightIntel
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="94">
+        <Item class="ModuleScript" referent="96">
           <Properties>
             <string name="Name">FighterCard</string>
             <string name="Source"><![CDATA[-- FighterCard: the professional fighter card / tale of the tape for the local boxer.
@@ -100015,7 +101135,7 @@ return FighterCard
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="95">
+        <Item class="ModuleScript" referent="97">
           <Properties>
             <string name="Name">Flags</string>
             <string name="Source"><![CDATA[-- Flags: simplified national flags drawn from frames (no image assets) for every Config.Nationalities
@@ -100350,7 +101470,7 @@ return Flags
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="96">
+        <Item class="ModuleScript" referent="98">
           <Properties>
             <string name="Name">GymDetail</string>
             <string name="Source"><![CDATA[-- GymDetail: the training complex's extra detail layer (client-only, WorldDetail streams it by Graphics level
@@ -101330,7 +102450,7 @@ return GymDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="97">
+        <Item class="ModuleScript" referent="99">
           <Properties>
             <string name="Name">GymDetail2</string>
             <string name="Source"><![CDATA[-- GymDetail2: the training complex's second detail pass (client-only, on DetailKit's Streamer like GymDetail, which
@@ -101966,7 +103086,7 @@ return GymDetail2
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="98">
+        <Item class="ModuleScript" referent="100">
           <Properties>
             <string name="Name">GymFacility</string>
             <string name="Source"><![CDATA[-- GymFacility: what YOUR gym looks like as a whole, drawn on your client only (everyone shares
@@ -104189,7 +105309,7 @@ return GymFacility
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="99">
+        <Item class="ModuleScript" referent="101">
           <Properties>
             <string name="Name">GymMirror</string>
             <string name="Source"><![CDATA[-- GymMirror: a live mirror at the shadow-boxing station. While you are within a few strides of
@@ -104571,7 +105691,7 @@ return GymMirror
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="100">
+        <Item class="ModuleScript" referent="102">
           <Properties>
             <string name="Name">GymSound</string>
             <string name="Source"><![CDATA[-- GymSound: every gym sound effect on the client, played from ONE pool of positional sounds
@@ -104816,7 +105936,7 @@ return GymSound
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="101">
+        <Item class="ModuleScript" referent="103">
           <Properties>
             <string name="Name">GymVisuals</string>
             <string name="Source"><![CDATA[-- GymVisuals: draws YOUR gym's equipment (client side) at every station, matched to
@@ -108331,7 +109451,7 @@ return GymVisuals
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="102">
+        <Item class="ModuleScript" referent="104">
           <Properties>
             <string name="Name">HairAssets</string>
             <string name="Source"><![CDATA[-- HairAssets: the asset hair (tools/hair/CONTRACT.md): hair-card meshes modelled in Blender and uploaded as
@@ -109030,7 +110150,7 @@ return HairAssets
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="103">
+        <Item class="ModuleScript" referent="105">
           <Properties>
             <string name="Name">HairFX</string>
             <string name="Source"><![CDATA[-- HairFX: hair that moves like hair. Client-only, driven by the Animator every frame (HairFX.Update) and on
@@ -111006,7 +112126,7 @@ return HairFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="104">
+        <Item class="ModuleScript" referent="106">
           <Properties>
             <string name="Name">Hub</string>
             <string name="Source"><![CDATA[-- Hub: the Career Hub window.
@@ -113325,7 +114445,7 @@ return Hub
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="105">
+        <Item class="ModuleScript" referent="107">
           <Properties>
             <string name="Name">KnockFX</string>
             <string name="Source"><![CDATA[-- KnockFX: the local player's "lights going out" screen. FightClient calls it on its own knockdown /
@@ -113581,7 +114701,7 @@ return KnockFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="106">
+        <Item class="ModuleScript" referent="108">
           <Properties>
             <string name="Name">LightLevels</string>
             <string name="Source"><![CDATA[-- LightLevels: the game's exposure targets in one place, plus the player's brightness preference.
@@ -113774,7 +114894,7 @@ return LightLevels
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="107">
+        <Item class="ModuleScript" referent="109">
           <Properties>
             <string name="Name">LookKit</string>
             <string name="Source"><![CDATA[-- LookKit: the look editors' shared parts (Creator, barber): plain-word readouts, short labels and
@@ -114213,7 +115333,7 @@ return LookKit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="108">
+        <Item class="ModuleScript" referent="110">
           <Properties>
             <string name="Name">MainMenu</string>
             <string name="Source"><![CDATA[-- MainMenu: the title screen. Your boxer stands in his corner of a ring in a gym at night (MenuStage: a
@@ -115834,7 +116954,7 @@ return MainMenu
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="109">
+        <Item class="ModuleScript" referent="111">
           <Properties>
             <string name="Name">MenuDetail</string>
             <string name="Source"><![CDATA[-- MenuDetail: the title-screen set's extra dressing (MenuStage). Built into the set's folder, in the set's own
@@ -116099,7 +117219,7 @@ return MenuDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="110">
+        <Item class="ModuleScript" referent="112">
           <Properties>
             <string name="Name">MenuStage</string>
             <string name="Source"><![CDATA[-- MenuStage: the main menu's set. A closed boxing-gym corner built on this client, far above the map,
@@ -116743,7 +117863,7 @@ return MenuStage
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="111">
+        <Item class="ModuleScript" referent="113">
           <Properties>
             <string name="Name">MuscleScreen</string>
             <string name="Source"><![CDATA[-- MuscleScreen: the Muscle Progression screen (Hub Body tab "3D MUSCLE VIEW", training result "MUSCLES").
@@ -117765,7 +118885,7 @@ return MuscleScreen
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="112">
+        <Item class="ModuleScript" referent="114">
           <Properties>
             <string name="Name">Perf</string>
             <string name="Source"><![CDATA[-- Perf: the one performance level every client system reads (optimization pass).
@@ -118093,7 +119213,7 @@ return Perf
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="113">
+        <Item class="ModuleScript" referent="115">
           <Properties>
             <string name="Name">PvP</string>
             <string name="Source"><![CDATA[-- PvP (client): challenge other players, answer challenges, Find Match, the PvP record.
@@ -118859,7 +119979,7 @@ return PvP
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="114">
+        <Item class="ModuleScript" referent="116">
           <Properties>
             <string name="Name">Services</string>
             <string name="Source"><![CDATA[-- Services: the gym's service windows.
@@ -119685,7 +120805,7 @@ return Services
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="115">
+        <Item class="ModuleScript" referent="117">
           <Properties>
             <string name="Name">Settings</string>
             <string name="Source"><![CDATA[-- Settings: the player's options, applied on this client straight away.
@@ -119976,7 +121096,7 @@ return Settings
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="116">
+        <Item class="ModuleScript" referent="118">
           <Properties>
             <string name="Name">State</string>
             <string name="Source"><![CDATA[-- State: shared client state and helpers (latest profile, server requests, toasts,
@@ -120138,7 +121258,7 @@ return State
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="117">
+        <Item class="ModuleScript" referent="119">
           <Properties>
             <string name="Name">TourneyUI</string>
             <string name="Source"><![CDATA[-- TourneyUI: the Career Hub's Tournaments tab (Hub's R.Tournaments) and the belt badge the FighterCard, the Hub and
@@ -120528,7 +121648,7 @@ return TourneyUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="118">
+        <Item class="ModuleScript" referent="120">
           <Properties>
             <string name="Name">Tutorial</string>
             <string name="Source"><![CDATA[-- Tutorial (client): the guided fights around the real fight HUD (FightClient).
@@ -121202,7 +122322,7 @@ return Tutorial
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="119">
+        <Item class="ModuleScript" referent="121">
           <Properties>
             <string name="Name">VenueDetail</string>
             <string name="Source"><![CDATA[-- VenueDetail: the fight venues' extra detail layer, built by VenueFX.Start on the fighting client only (inside
@@ -121779,7 +122899,7 @@ return VenueDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="120">
+        <Item class="ModuleScript" referent="122">
           <Properties>
             <string name="Name">VenueFX</string>
             <string name="Source"><![CDATA[-- VenueFX: client-only fight-night presentation for the player's own venue (stream G).
@@ -124339,7 +125459,7 @@ return VenueFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="121">
+        <Item class="ModuleScript" referent="123">
           <Properties>
             <string name="Name">WorldDetail</string>
             <string name="Source"><![CDATA[-- WorldDetail: the client-side detail layer of the gym and the city (GymDetail, CityDetail on DetailKit's
@@ -124524,7 +125644,7 @@ return WorldDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="122">
+        <Item class="ModuleScript" referent="124">
           <Properties>
             <string name="Name">WorldLOD</string>
             <string name="Source"><![CDATA[-- WorldLOD: the Graphics level (Perf) applied to the world's own lights, signs, particles and shadow
@@ -125116,7 +126236,7 @@ return WorldLOD
           </Properties>
         </Item>
       </Item>
-      <Item class="LocalScript" referent="123">
+      <Item class="LocalScript" referent="125">
         <Properties>
           <string name="Name">ClientMain</string>
           <string name="Source"><![CDATA[-- ClientMain: wires the client together - main menu at join, the gym HUD (player plate, condition
@@ -126044,7 +127164,7 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="LocalScript" referent="124">
+      <Item class="LocalScript" referent="126">
         <Properties>
           <string name="Name">FightClient</string>
           <string name="Source"><![CDATA[-- FightClient: fight-night presentation and controls (also used for gym sparring).
@@ -131611,7 +132731,7 @@ end)
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="125">
+  <Item class="Workspace" referent="127">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="NeedsPivotMigration">false</bool>

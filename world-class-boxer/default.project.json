@@ -59,6 +59,12 @@
         "PvP": {
           "$path": "src/server/PvP.lua"
         },
+        "RingWalk": {
+          "$path": "src/server/RingWalk.lua"
+        },
+        "Tourney": {
+          "$path": "src/server/Tourney.lua"
+        },
         "Training": {
           "$path": "src/server/Training.lua"
         },
