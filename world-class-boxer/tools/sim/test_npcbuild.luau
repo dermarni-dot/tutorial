@@ -364,6 +364,9 @@ do
 	local ok = pcall(Builder.Cosmetics, pm, app, build, gear, { hands = "gloves", detail = "full" })
 	check("Cosmetics on the player rig", ok)
 	local text, verdicts = reportOf(pm, { label = "LOCAL", side = "client", rig = { geo = { ok = false }, joints = {}, lod = 3, a = {} } })
+	if process.args[1] == "--print" then
+		print(Diag.Block(select(2, pcall(Diag.Report, pm, { label = "LOCAL", side = "client", rig = { geo = { ok = false }, joints = {}, lod = 3, a = {} } }))))
+	end
 	check("player report: parts listed", text:find("part Head", 1, true) ~= nil and text:find("part RightFoot", 1, true) ~= nil)
 	check("player report: every motor listed with its attachments", select(2, text:gsub("motor %u", "")) == 15 and text:find("att0=", 1, true) ~= nil)
 	check("player report: BodyAssetData's expected attachment printed for a tier part", text:find("exp1=", 1, true) ~= nil)

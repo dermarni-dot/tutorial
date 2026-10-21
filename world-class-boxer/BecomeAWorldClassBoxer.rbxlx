@@ -11528,6 +11528,30 @@ end
 ------------------------------------------------------------------------
 -- Public entry points
 ------------------------------------------------------------------------
+-- what the rig measured when its layers were built (attributes the diagnostic compares with the live rig: a head the
+-- engine rescaled after the headgear was fitted to it, a HipHeight the engine's deferred scaling pass put back), and
+-- the tier legs' HipHeight checked again a moment later (BuilderTiers.FixHipHeight: change-only, see there)
+local function buildRecord(model)
+	local head = model:FindFirstChild("Head")
+	if head and head:IsA("BasePart") then
+		setAttr(model, "HeadSizeAtBuild", head.Size)
+	end
+	local hum = model:FindFirstChildOfClass("Humanoid")
+	if hum then
+		setAttr(model, "HipHeightAtBuild", hum.HipHeight)
+	end
+	for _, delay in ipairs({ 0.25, 1.5 }) do
+		task.delay(delay, function()
+			if model.Parent then
+				local h = BuilderTiers.FixHipHeight(model)
+				if h then
+					model:SetAttribute("HipHeightRefixed", h)
+				end
+			end
+		end)
+	end
+end
+
 -- opts (all optional, CONTRACTS section 4): hands = "gloves"|"wraps"|"bare", mouthguard, name, nick,
 -- nat, waistText, robe, detail ("full"|"medium"|"low"), damage, sweat, grime, age, tier, physique,
 -- fightNight, sponsorTrunks / sponsorRobe ({ text, fg, bg }), dry, outfit ("referee"|"cornerman"),
@@ -11558,6 +11582,7 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 		Builder.SetSweat(model, app, opts.sweat or model:GetAttribute("Sweat") or 0)
 		-- previews (Creator / barber) change the look too: the meshes follow
 		step("LookData", publishLook, model, app, build, opts, nil)
+		buildRecord(model)
 		return
 	end
 	gear = Body.Gear(gear)
@@ -11613,6 +11638,7 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	Builder.SetSweat(model, app, opts.sweat or model:GetAttribute("Sweat") or 0)
 	-- last: the rig is final (head swap, rescale) and every attribute above is set
 	step("LookData", publishLook, model, app, build, opts, sp, gear)
+	buildRecord(model)
 end
 
 -- Apply to a live player character (yields). Re-scales only when the body changed.
@@ -11654,6 +11680,45 @@ function Builder.Apply(character, app, build, gear, opts)
 	end
 end
 
+-- The staging container an NPC is built in. CreateHumanoidModelFromDescription hands back a model OUTSIDE the
+-- DataModel, and the Humanoid's rig operations the Cosmetics run on it (ReplaceBodyPartR15 for the tier parts and the
+-- classic head, the body scaling they trigger) read engine state through the model's DataModel: outside it the
+-- engine logs "Instance outside of DataModel; could not read property Workspace.MeshPartHeadsAndAccessories" and a
+-- swap can be refused or come out at the wrong size / class (the default MeshPart head under a headgear built for
+-- the classic one). So the model is parented into ServerStorage first (inside the DataModel, no replication, no
+-- physics), built, then handed back unparented as before (every caller parents it where it goes).
+-- Builder.Services.Stage: an override (tests) or any container; nil when no container could be made (the old,
+-- unparented build, warned once).
+Builder.Services = Builder.Services or {}
+local stageWarned = false
+local function stageFolder()
+	local s = Builder.Services.Stage
+	if s ~= nil then
+		return s or nil
+	end
+	local ok, f = pcall(function()
+		local ss = game:GetService("ServerStorage")
+		local f = ss:FindFirstChild("BoxerStaging")
+		if not f then
+			f = Instance.new("Folder")
+			f.Name = "BoxerStaging"
+			f.Parent = ss
+		end
+		return f
+	end)
+	if ok and f then
+		Builder.Services.Stage = f
+		return f
+	end
+	if not stageWarned then
+		stageWarned = true
+		warn("[Boxer] no staging container for NPC builds (rigs are built outside the DataModel):", f)
+	end
+	Builder.Services.Stage = false
+	return nil
+end
+Builder.StageFolder = stageFolder
+
 function Builder.CreateNPC(app, build, gear, displayName, opts)
 	local model
 	local ok, err = pcall(function()
@@ -11673,7 +11738,27 @@ function Builder.CreateNPC(app, build, gear, displayName, opts)
 		hum.DisplayName = displayName or "Boxer"
 		hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 	end
-	Builder.Cosmetics(model, app, build, gear, opts)
+	-- inside the DataModel for every rig operation (see stageFolder); the root held still while the build yields
+	local stage = stageFolder()
+	local root = model:FindFirstChild("HumanoidRootPart")
+	local wasAnchored = root and root:IsA("BasePart") and root.Anchored
+	if stage then
+		if root and root:IsA("BasePart") then
+			root.Anchored = true
+		end
+		model.Parent = stage
+	end
+	local okC, errC = pcall(Builder.Cosmetics, model, app, build, gear, opts)
+	if stage then
+		model.Parent = nil
+		if root and root.Parent and wasAnchored ~= nil then
+			root.Anchored = wasAnchored
+		end
+	end
+	if not okC then
+		-- (as before the staging: the error is the caller's - SpawnReferee's pcall, Ambient's spawn thread)
+		error(errC, 0)
+	end
 	-- nothing in the game listens for touches: an NPC's parts that report none cost the physics less (the
 	-- built layers' parts already have it off; this is the R15 body itself)
 	for _, d in ipairs(model:GetDescendants()) do
@@ -15873,12 +15958,22 @@ local function classicHead(model, head)
 			c:Clone().Parent = clean
 		end
 	end
-	local swapped = hum and pcall(function()
-		hum:ReplaceBodyPartR15(Enum.BodyPartR15.Head, clean)
-	end)
-	if swapped and model:FindFirstChild("Head") == clean then
+	local swapped, err = false, "no Humanoid"
+	if hum then
+		swapped, err = pcall(function()
+			hum:ReplaceBodyPartR15(Enum.BodyPartR15.Head, clean)
+		end)
+	end
+	local got = model:FindFirstChild("Head")
+	if swapped and got == clean then
+		if not clean:FindFirstChildOfClass("SpecialMesh") then
+			Head.SwapFailed(model, "the engine dropped the Head SpecialMesh from the classic head")
+		end
 		return clean
 	end
+	-- the face, the headgear and the caps are built for the classic head's profile: on the engine's MeshPart head
+	-- they sit in or off the skull. One Output line per reason
+	Head.SwapFailed(model, swapped and ("the model still carries " .. (got and (got.ClassName .. " " .. got.Name) or "no Head")) or tostring(err))
 	clean:Destroy()
 	pcall(function()
 		head.TextureID = ""
@@ -15886,6 +15981,25 @@ local function classicHead(model, head)
 	return head
 end
 Head.ClassicHead = classicHead
+
+-- the classic head swap did not take (warned once per reason; Head.SwapFailures counts them for tests / the diagnostic)
+Head.SwapFailures = 0
+local headSwapWarned = {}
+function Head.SwapFailed(model, reason)
+	Head.SwapFailures += 1
+	local inGame = false
+	pcall(function()
+		inGame = model:IsDescendantOf(game)
+	end)
+	local key = tostring(reason) .. "|" .. tostring(inGame)
+	if headSwapWarned[key] then
+		return
+	end
+	headSwapWarned[key] = true
+	warn(string.format("[Boxer] classic head swap did not take on %s: %s; %s (the headgear / face are built for the classic head)",
+		tostring(model and model.Name), tostring(reason),
+		inGame and "the model is in the DataModel" or "the model is OUTSIDE the DataModel: the engine cannot swap its parts there"))
+end
 
 -- a player's avatar face (Builder: the AvatarFace attribute, Config.AvatarLook.face): the head and face the
 -- engine put on from the avatar's description stay exactly as they are; no built face. An empty Face folder
@@ -18050,6 +18164,26 @@ local function scaleOnce(p, ratio)
 	return fixed
 end
 
+-- a body part swap that did not take (ReplaceBodyPartR15 refused it, or something else is in its place): warned once
+-- per (part, reason) with where the model was (outside the DataModel the engine's rig operations misbehave), so a
+-- silent failure is a visible Output line. SwapFailures: the count, for tests / the diagnostic
+BuilderTiers.SwapFailures = 0
+local swapWarned = {}
+function BuilderTiers.SwapFailed(model, name, reason)
+	BuilderTiers.SwapFailures += 1
+	local inGame = false
+	pcall(function()
+		inGame = model:IsDescendantOf(game)
+	end)
+	local key = name .. "|" .. tostring(reason) .. "|" .. tostring(inGame)
+	if swapWarned[key] then
+		return
+	end
+	swapWarned[key] = true
+	warn(string.format("[Boxer] body part swap did not take on %s: %s (%s); %s", tostring(model and model.Name), name, tostring(reason),
+		inGame and "the model is in the DataModel" or "the model is OUTSIDE the DataModel: the engine cannot swap its parts there"))
+end
+
 local COPY = { "Color", "Material", "Transparency", "Reflectance", "CanCollide", "CanQuery", "CanTouch", "Massless", "CastShadow", "CFrame" }
 
 -- swap one part (true when the model now carries the template's tier); scale = the description's
@@ -18074,12 +18208,18 @@ local function swap(model, hum, name, template, scale)
 		end
 	end
 	local enum = Enum.BodyPartR15[name]
-	local ok = pcall(function()
+	local ok, err = pcall(function()
 		hum:ReplaceBodyPartR15(enum, new)
 	end)
-	if not ok or model:FindFirstChild(name) ~= new then
+	local got = model:FindFirstChild(name)
+	if not ok or got ~= new then
+		-- a swap that did not take is a silent default part under tier-fitted gear: one Output line per reason
+		BuilderTiers.SwapFailed(model, name, ok and "the model still carries " .. (got and (got.ClassName .. " " .. got.Name) or "no part") or tostring(err))
 		new:Destroy()
 		return false
+	end
+	if not new:IsA("MeshPart") then
+		BuilderTiers.SwapFailed(model, name, "the engine put a " .. new.ClassName .. " in place of the tier MeshPart")
 	end
 	scaleOnce(new, ratio)
 	reaim(model, new)
@@ -18148,6 +18288,24 @@ local function fixHipHeight(model, hum)
 	if h and math.abs(hum.HipHeight - h) > 0.005 then
 		hum.HipHeight = h
 	end
+end
+
+-- the tier legs' HipHeight put back on a built body (change-only; a body of default parts keeps the engine's). Builder
+-- runs it again a moment after a build: the engine's own scaling pass (AutomaticScalingEnabled, deferred to a later
+-- frame after a part swap or a scale change) may have put the default body's value back, and the feet would float or
+-- sink by the difference. Returns the value set (or nil)
+function BuilderTiers.FixHipHeight(model)
+	local hum = model and model.Parent and model:FindFirstChildOfClass("Humanoid")
+	local key = model and model:GetAttribute("BodyTiers")
+	if not (hum and type(key) == "string" and string.find(key, "[1-9]") ~= nil) then
+		return nil
+	end
+	local h = BuilderTiers.HipHeight(model)
+	if h and math.abs(hum.HipHeight - h) > 0.005 then
+		hum.HipHeight = h
+		return h
+	end
+	return nil
 end
 
 -- swap every part whose tier changed. tiers = { [part] = 1..5 } (BodyTiers.Tiers); scale = Vector3 (W, H, D)
@@ -21149,6 +21307,769 @@ return Config
       </Item>
       <Item class="ModuleScript" referent="24">
         <Properties>
+          <string name="Name">Diag</string>
+          <string name="Source"><![CDATA[-- Diag: the in-game rig diagnostic ("/wcbdiag" in chat, Settings -> GAME -> COPY DIAGNOSTIC TO OUTPUT). Pure: given a
+-- character model (and what the caller knows about it: the Animator's rig table on a client, a motion sample) it
+-- returns the lines the caller prints, one block per model, every line prefixed [WCBDIAG]. Nothing here runs unless
+-- invoked. It reports what the engine really built so a Studio report carries numbers, not impressions:
+--  * every body part: class, Size, OriginalSize, mesh id, BodyTier / BodyLite / BodyRatio; the Head's class, its
+--    SpecialMesh or MeshId and the face decal
+--  * the Humanoid: HipHeight (against the legs' own, BuilderTiers.HipHeight), RigType, AutomaticScalingEnabled, the
+--    applied description's scales, the scale values, the Animate script, the playing tracks
+--  * every Motor6D: Part0 / Part1, C0 / C1 next to the RigAttachments they should equal, the live Transform, and -
+--    for a tier part - the attachment position BodyAssetData expects (OriginalPosition x the part's scale)
+--  * the bind-pose joint heights above the sole, next to BodyAssetData.unit's (x the height scale)
+--  * BoxerLook: the headgear / cap parts (size, offset from the head), the attire pieces (part, size, offset)
+--  * the Animator's view (client): AnimRig geo, LOD, state, and a motion sample (DiagClient takes it)
+--  * a VERDICT line per check, OK or a plain description of what is off
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
+local BuilderTiers = require(Shared:WaitForChild("BuilderTiers"))
+
+local Diag = {}
+Diag.PREFIX = "[WCBDIAG] "
+Diag.VERSION = 1
+
+local PARTS = { "HumanoidRootPart", "LowerTorso", "UpperTorso", "Head", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm",
+	"RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot" }
+local MOTORS = { "Root", "Waist", "Neck", "LeftShoulder", "LeftElbow", "LeftWrist", "RightShoulder", "RightElbow", "RightWrist",
+	"LeftHip", "LeftKnee", "LeftAnkle", "RightHip", "RightKnee", "RightAnkle" }
+local MOTOR_PARENT = { Root = "LowerTorso", Waist = "UpperTorso", Neck = "Head", LeftShoulder = "LeftUpperArm", LeftElbow = "LeftLowerArm",
+	LeftWrist = "LeftHand", RightShoulder = "RightUpperArm", RightElbow = "RightLowerArm", RightWrist = "RightHand", LeftHip = "LeftUpperLeg",
+	LeftKnee = "LeftLowerLeg", LeftAnkle = "LeftFoot", RightHip = "RightUpperLeg", RightKnee = "RightLowerLeg", RightAnkle = "RightFoot" }
+local SCALE_VALUES = { "BodyHeightScale", "BodyWidthScale", "BodyDepthScale", "HeadScale", "BodyProportionScale", "BodyTypeScale" }
+
+local function f2(x)
+	return string.format("%.2f", x)
+end
+local function v3(v)
+	if typeof(v) ~= "Vector3" then
+		return tostring(v)
+	end
+	return string.format("(%.2f,%.2f,%.2f)", v.X, v.Y, v.Z)
+end
+local function v3f(v)
+	return string.format("(%.3f,%.3f,%.3f)", v.X, v.Y, v.Z)
+end
+local function ang(cf)
+	local x, y, z = cf:ToEulerAnglesXYZ()
+	return string.format("%d/%d/%d", math.floor(math.deg(x) + 0.5), math.floor(math.deg(y) + 0.5), math.floor(math.deg(z) + 0.5))
+end
+local function cfs(cf)
+	if typeof(cf) ~= "CFrame" then
+		return tostring(cf)
+	end
+	return v3f(cf.Position) .. "r" .. ang(cf)
+end
+local function get(obj, k)
+	local ok, v = pcall(function()
+		return obj[k]
+	end)
+	if ok then
+		return v
+	end
+	return nil
+end
+local function attr(obj, k)
+	local ok, v = pcall(obj.GetAttribute, obj, k)
+	return ok and v or nil
+end
+local function fullName(inst)
+	local ok, n = pcall(inst.GetFullName, inst)
+	return ok and n or tostring(inst)
+end
+
+------------------------------------------------------------------------
+-- the pieces
+------------------------------------------------------------------------
+local function partLine(model, name)
+	local p = model:FindFirstChild(name)
+	if not (p and p:IsA("BasePart")) then
+		return string.format("part %-16s MISSING", name)
+	end
+	local o = p:FindFirstChild("OriginalSize")
+	local orig = (o and o:IsA("Vector3Value")) and o.Value or nil
+	local mesh = ""
+	if p:IsA("MeshPart") then
+		mesh = " mesh=" .. tostring(get(p, "MeshId") or ""):gsub("rbxassetid://", "")
+	else
+		local sm = p:FindFirstChildOfClass("SpecialMesh")
+		if sm then
+			mesh = string.format(" SpecialMesh=%s scale=%s meshId=%s", tostring(sm.MeshType and sm.MeshType.Name or sm.MeshType), v3(sm.Scale),
+				tostring(sm.MeshId or ""):gsub("rbxassetid://", ""))
+		end
+	end
+	local tier = attr(p, "BodyTier")
+	local extra = ""
+	if tier ~= nil then
+		local okE, e = pcall(BodyTiers.PartEntry, tonumber(tier), name, nil, attr(p, "BodyLite") == true)
+		local want = okE and e and tostring(e.id) or "?"
+		local have = p:IsA("MeshPart") and tostring(get(p, "MeshId") or ""):gsub("rbxassetid://", "") or "-"
+		extra = string.format(" tier=%s%s ratio=%s expectMesh=%s%s", tostring(tier), attr(p, "BodyLite") and " lite" or "", v3(attr(p, "BodyRatio")), want,
+			(have == want or want == "?") and "" or " MISMATCH")
+	end
+	extra ..= " color=" .. (typeof(p.Color) == "Color3" and string.format("%d,%d,%d", p.Color.R * 255, p.Color.G * 255, p.Color.B * 255) or "?")
+	if name == "Head" then
+		local decals = {}
+		for _, d in ipairs(p:GetChildren()) do
+			if d:IsA("Decal") then
+				table.insert(decals, d.Name .. ":" .. tostring(d.Texture or ""):gsub("rbxassetid://", ""))
+			end
+		end
+		extra ..= " decals=[" .. table.concat(decals, " ") .. "]"
+	end
+	return string.format("part %-16s %-8s size=%s orig=%s%s%s anch=%s coll=%s massless=%s", name, p.ClassName, v3(p.Size), orig and v3(orig) or "-",
+		mesh, extra, tostring(get(p, "Anchored")), tostring(get(p, "CanCollide")), tostring(get(p, "Massless")))
+end
+
+-- what BodyAssetData expects for an attachment on a tier part: OriginalPosition x the part's ratio (nil when unknown)
+local function expectedAtt(part, attName)
+	local tier = tonumber(attr(part, "BodyTier"))
+	if not tier then
+		return nil
+	end
+	local ok, e = pcall(BodyTiers.PartEntry, tier, part.Name, nil, attr(part, "BodyLite") == true)
+	local pos = ok and e and e.attachments and e.attachments[attName]
+	if not pos then
+		return nil
+	end
+	local ratio = BuilderTiers.RatioOf(part) or attr(part, "BodyRatio")
+	if typeof(ratio) ~= "Vector3" then
+		return nil
+	end
+	return Vector3.new(pos[1] * ratio.X, pos[2] * ratio.Y, pos[3] * ratio.Z)
+end
+
+local function motorLine(model, name, verdicts)
+	local holder = model:FindFirstChild(MOTOR_PARENT[name])
+	local m = holder and holder:FindFirstChild(name)
+	if not (m and m:IsA("Motor6D")) then
+		-- (an AnimationConstraint rig, or a joint that is simply gone)
+		local ac
+		for _, d in ipairs(model:GetDescendants()) do
+			if d.Name == name and (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) then
+				ac = d
+				break
+			end
+		end
+		if ac then
+			return string.format("motor %-13s %s under %s (not where the R15 rig keeps it)", name, ac.ClassName, fullName(ac.Parent))
+		end
+		table.insert(verdicts, "BAD  Motor6D " .. name .. " is missing: the Animator cannot drive this joint")
+		return string.format("motor %-13s MISSING", name)
+	end
+	local p0, p1 = m.Part0, m.Part1
+	local an = name .. "RigAttachment"
+	local a0 = p0 and p0:FindFirstChild(an)
+	local a1 = p1 and p1:FindFirstChild(an)
+	local s = string.format("motor %-13s %s->%s C0=%s C1=%s T=%s", name, p0 and p0.Name or "nil", p1 and p1.Name or "nil", cfs(m.C0), cfs(m.C1),
+		cfs(m.Transform))
+	if a0 and a0:IsA("Attachment") then
+		local d = (m.C0.Position - a0.CFrame.Position).Magnitude
+		s ..= string.format(" att0=%s d=%.3f", v3f(a0.CFrame.Position), d)
+		if d > 0.02 then
+			table.insert(verdicts, string.format("BAD  %s.C0 is %.3f studs off %s.%s: the joint is not aimed at its RigAttachment", name, d, p0.Name, an))
+		end
+		local e0 = p0 and expectedAtt(p0, an)
+		if e0 then
+			local de = (a0.CFrame.Position - e0).Magnitude
+			s ..= string.format(" exp0=%s d=%.3f", v3f(e0), de)
+			if de > 0.02 then
+				table.insert(verdicts, string.format("BAD  %s.%s is %.3f studs from where BodyAssetData puts it (%s): the part was scaled differently from its attachments", p0.Name, an, de, v3f(e0)))
+			end
+		end
+	else
+		s ..= " att0=MISSING"
+	end
+	if a1 and a1:IsA("Attachment") then
+		local d = (m.C1.Position - a1.CFrame.Position).Magnitude
+		s ..= string.format(" att1=%s d=%.3f", v3f(a1.CFrame.Position), d)
+		if d > 0.02 then
+			table.insert(verdicts, string.format("BAD  %s.C1 is %.3f studs off %s.%s: the joint is not aimed at its RigAttachment", name, d, p1.Name, an))
+		end
+		local e1 = p1 and expectedAtt(p1, an)
+		if e1 then
+			local de = (a1.CFrame.Position - e1).Magnitude
+			s ..= string.format(" exp1=%s d=%.3f", v3f(e1), de)
+			if de > 0.02 then
+				table.insert(verdicts, string.format("BAD  %s.%s is %.3f studs from where BodyAssetData puts it (%s): the part was scaled differently from its attachments", p1.Name, an, de, v3f(e1)))
+			end
+		end
+	else
+		s ..= " att1=MISSING"
+	end
+	return s
+end
+
+-- the bind pose (every Transform identity): each part's CFrame in HumanoidRootPart space, from the Motor6D chain
+local function bindPose(model)
+	local out = { HumanoidRootPart = CFrame.identity }
+	local joints = {}
+	for _, name in ipairs(MOTORS) do
+		local holder = model:FindFirstChild(MOTOR_PARENT[name])
+		local m = holder and holder:FindFirstChild(name)
+		if m and m:IsA("Motor6D") and m.Part0 and m.Part1 then
+			table.insert(joints, m)
+		end
+	end
+	for _ = 1, #joints do
+		for _, m in ipairs(joints) do
+			local base = out[m.Part0.Name]
+			if base and not out[m.Part1.Name] then
+				out[m.Part1.Name] = base * m.C0 * m.C1:Inverse()
+			end
+		end
+	end
+	return out
+end
+
+local function lookLines(model, lines, verdicts)
+	local look = model:FindFirstChild("BoxerLook")
+	local head = model:FindFirstChild("Head")
+	if not look then
+		table.insert(lines, "look: no BoxerLook folder")
+		return
+	end
+	local names = {}
+	for _, f in ipairs(look:GetChildren()) do
+		local n = 0
+		for _, d in ipairs(f:GetDescendants()) do
+			if d:IsA("BasePart") then
+				n += 1
+			end
+		end
+		table.insert(names, string.format("%s(%d parts, Detail=%s)", f.Name, n, tostring(attr(f, "Detail"))))
+	end
+	table.insert(lines, "look folders: " .. table.concat(names, " ") .. " | Hands attr=" .. tostring(attr(model, "Hands")) .. " Outfit=" .. tostring(attr(model, "Outfit"))
+		.. " HeadgearColor=" .. tostring(attr(model, "HeadgearColor")) .. " HeadgearCorner=" .. tostring(attr(model, "HeadgearCorner")))
+	-- the hands: gloves / wraps, each welded to a hand or forearm
+	local hands = look:FindFirstChild("Hands")
+	if hands then
+		local n, loose, kinds = 0, 0, {}
+		for _, p in ipairs(hands:GetDescendants()) do
+			if p:IsA("BasePart") then
+				n += 1
+				local w = p:FindFirstChildOfClass("WeldConstraint") or p:FindFirstChildOfClass("Weld")
+				local to = w and ((w.Part0 == p and w.Part1) or w.Part0)
+				if not (to and to.Parent) then
+					loose += 1
+				end
+				local k = p.Name:gsub("[LR]$", "")
+				kinds[k] = (kinds[k] or 0) + 1
+				if n <= 10 then
+					table.insert(lines, string.format("hands %-14s %-8s size=%s on=%s color=%d,%d,%d mesh=%s", p.Name, p.ClassName, v3(p.Size), to and to.Name or "NONE",
+						p.Color.R * 255, p.Color.G * 255, p.Color.B * 255, p:IsA("MeshPart") and tostring(get(p, "MeshId") or ""):gsub("rbxassetid://", "") or "-"))
+				end
+			end
+		end
+		local kl = {}
+		for k, c in pairs(kinds) do
+			table.insert(kl, k .. "x" .. c)
+		end
+		table.sort(kl)
+		table.insert(lines, string.format("hands: %d parts (%s), %d welded to nothing", n, table.concat(kl, " "), loose))
+		if n == 0 then
+			table.insert(verdicts, "BAD  the Hands folder is empty: no gloves / wraps built")
+		elseif loose > 0 then
+			table.insert(verdicts, string.format("BAD  %d hand pieces are welded to nothing (they fall or stay behind)", loose))
+		else
+			table.insert(verdicts, string.format("OK   hands: %d pieces (%s) welded", n, table.concat(kl, " ")))
+		end
+	else
+		table.insert(verdicts, "BAD  no Hands folder: the gloves / wraps step never ran (or was removed)")
+	end
+	for _, fname in ipairs({ "Headgear", "Hat" }) do
+		local f = look:FindFirstChild(fname)
+		if f then
+			local n, inside, shell = 0, 0, nil
+			for _, p in ipairs(f:GetDescendants()) do
+				if p:IsA("BasePart") then
+					n += 1
+					local rel = head and head:IsA("BasePart") and head.CFrame:ToObjectSpace(p.CFrame) or p.CFrame
+					local w = p:FindFirstChildOfClass("WeldConstraint") or p:FindFirstChildOfClass("Weld")
+					local to = w and ((w.Part0 == p and w.Part1) or w.Part0)
+					if n <= 12 then
+						table.insert(lines, string.format("%s %-12s %-8s size=%s relHead=%s color=%d,%d,%d massless=%s coll=%s weld->%s", fname:lower(), p.Name, p.ClassName,
+							v3(p.Size), cfs(rel), p.Color.R * 255, p.Color.G * 255, p.Color.B * 255, tostring(p.Massless), tostring(p.CanCollide), to and to.Name or "NONE"))
+					end
+					if p.Name == "HGShell" or p.Name == "CapCrown" or p.Name == "Crown" then
+						shell = p
+					end
+					if head and head:IsA("BasePart") and rel.Position.Magnitude < head.Size.X * 0.25 and p.Size.X < head.Size.X * 0.9 then
+						inside += 1
+					end
+				end
+			end
+			table.insert(lines, string.format("%s: %d parts, %d of them small and centred in the head", fname:lower(), n, inside))
+			if shell and head and head:IsA("BasePart") then
+				local hs = math.min(head.Size.X, head.Size.Y, head.Size.Z)
+				if shell.Size.X < hs * 0.98 then
+					table.insert(verdicts, string.format("BAD  %s %s (%.2f wide) is narrower than the head (%.2f): the %s sits inside the skull", fname, shell.Name,
+						shell.Size.X, hs, fname:lower()))
+				else
+					table.insert(verdicts, string.format("OK   %s %s %.2f wide over a %.2f head", fname, shell.Name, shell.Size.X, hs))
+				end
+			end
+		end
+	end
+	local att = look:FindFirstChild("Attire")
+	if att then
+		local fa = {}
+		for k, v in pairs(att:GetAttributes()) do
+			table.insert(fa, k .. "=" .. tostring(v))
+		end
+		table.sort(fa)
+		table.insert(lines, "attire attributes: " .. table.concat(fa, " "))
+		local n = 0
+		for _, p in ipairs(att:GetDescendants()) do
+			if p:IsA("BasePart") then
+				n += 1
+				local w = p:FindFirstChildOfClass("WeldConstraint") or p:FindFirstChildOfClass("Weld")
+				local to = w and ((w.Part0 == p and w.Part1) or w.Part0)
+				local rel = to and to:IsA("BasePart") and to.CFrame:ToObjectSpace(p.CFrame) or nil
+				if n <= 16 then
+					table.insert(lines, string.format("attire %-14s %-8s size=%s on=%s off=%s", p.Name, p.ClassName, v3(p.Size), to and to.Name or "NONE",
+						rel and v3f(rel.Position) or "-"))
+				end
+				if not to then
+					table.insert(verdicts, "BAD  attire piece " .. p.Name .. " is welded to nothing")
+				end
+			end
+		end
+		table.insert(lines, string.format("attire: %d parts", n))
+		if n == 0 then
+			table.insert(verdicts, "BAD  the Attire folder is empty: no trunks / outfit built")
+		end
+	else
+		table.insert(verdicts, "BAD  no Attire folder: the attire step never ran (or was removed)")
+	end
+end
+
+local function humanoidLines(model, hum, lines, verdicts)
+	if not hum then
+		table.insert(lines, "humanoid: NONE")
+		table.insert(verdicts, "BAD  no Humanoid")
+		return
+	end
+	local hh = hum.HipHeight
+	local root = model:FindFirstChild("HumanoidRootPart")
+	local legs = BuilderTiers.HipHeight(model)
+	local desc
+	pcall(function()
+		desc = hum:GetAppliedDescription()
+	end)
+	local ds = desc and string.format("H%.2f W%.2f D%.2f Head%.2f Prop%.2f Type%.2f", desc.HeightScale, desc.WidthScale, desc.DepthScale, desc.HeadScale,
+		desc.ProportionScale, desc.BodyTypeScale) or "n/a"
+	local sv = {}
+	for _, n in ipairs(SCALE_VALUES) do
+		local v = hum:FindFirstChild(n)
+		if v and v:IsA("NumberValue") then
+			table.insert(sv, n:gsub("Body", ""):gsub("Scale", "") .. "=" .. f2(v.Value))
+		end
+	end
+	local animate = model:FindFirstChild("Animate")
+	local tracks = {}
+	local animator = hum:FindFirstChildOfClass("Animator")
+	if animator then
+		pcall(function()
+			for _, tr in ipairs(animator:GetPlayingAnimationTracks()) do
+				table.insert(tracks, (tr.Name ~= "" and tr.Name or (tr.Animation and tr.Animation.Name) or "?") .. ":" .. f2(tr.Weight or 0))
+			end
+		end)
+	end
+	table.insert(lines, string.format("humanoid HipHeight=%.3f legsSay=%s RigType=%s AutoScale=%s state=%s WalkSpeed=%.1f AutoRotate=%s PlatformStand=%s EvalSM=%s",
+		hh, legs and f2(legs) or "n/a", tostring(hum.RigType and hum.RigType.Name), tostring(get(hum, "AutomaticScalingEnabled")),
+		tostring(get(hum, "GetState") and hum:GetState().Name or "?"), hum.WalkSpeed, tostring(hum.AutoRotate), tostring(hum.PlatformStand),
+		tostring(get(hum, "EvaluateStateMachine"))))
+	table.insert(lines, string.format("description %s | values %s | Animate=%s Animator=%s tracks=[%s] ProcAnim=%s", ds, table.concat(sv, " "),
+		animate and (animate.ClassName .. (get(animate, "Disabled") and " DISABLED" or " ENABLED")) or "none", animator and "yes" or "NO",
+		table.concat(tracks, " "), tostring(attr(model, "ProcAnim"))))
+	if root and root:IsA("BasePart") then
+		table.insert(lines, string.format("root pos=%s vel=%s size=%s anchored=%s networkOwnerKnown=%s", v3(root.Position), v3(root.AssemblyLinearVelocity),
+			v3(root.Size), tostring(root.Anchored), tostring(get(root, "ReceiveAge") ~= nil)))
+	end
+	if legs then
+		if math.abs(legs - hh) <= 0.05 then
+			table.insert(verdicts, string.format("OK   HipHeight %.2f vs the legs' own %.2f", hh, legs))
+		else
+			table.insert(verdicts, string.format("BAD  HipHeight %.2f vs the legs' own %.2f: the body stands %.2f studs %s the floor", hh, legs, math.abs(legs - hh),
+				hh > legs and "above" or "into"))
+		end
+	end
+	if #tracks > 0 then
+		table.insert(verdicts, "BAD  Animate track(s) playing [" .. table.concat(tracks, " ") .. "]: a second writer on the joints (the Animator stops them; they came back)")
+	else
+		table.insert(verdicts, "OK   no Animate tracks playing")
+	end
+	if animate and get(animate, "Disabled") == false and attr(model, "ProcAnim") == true then
+		table.insert(verdicts, "BAD  the Animate script is ENABLED on a procedurally driven character")
+	end
+end
+
+------------------------------------------------------------------------
+-- Report
+------------------------------------------------------------------------
+-- ctx (all optional): label, side ("client" | "server"), rig (the Animator's rig table), sample (DiagClient's motion
+-- sample lines), unit (BodyAssetData.unit for the height comparison; BodyTiers.Data().unit by default)
+function Diag.Report(model, ctx)
+	ctx = ctx or {}
+	local lines, verdicts = {}, {}
+	local hum = model:FindFirstChildOfClass("Humanoid")
+	local inGame = false
+	pcall(function()
+		inGame = model:IsDescendantOf(game)
+	end)
+	local tags = {}
+	pcall(function()
+		tags = game:GetService("CollectionService"):GetTags(model)
+	end)
+	table.insert(lines, string.format("== %s %q at %s | side=%s inDataModel=%s tags=[%s] BodyTiers=%s Detail=%s ScaleKey=%s AvatarFace=%s", ctx.label or "MODEL",
+		model.Name, fullName(model.Parent or model), ctx.side or "?", tostring(inGame), table.concat(tags, ","), tostring(attr(model, "BodyTiers")),
+		tostring(attr(model, "Detail")), tostring(attr(model, "ScaleKey")), tostring(attr(model, "AvatarFace"))))
+	humanoidLines(model, hum, lines, verdicts)
+	for _, name in ipairs(PARTS) do
+		table.insert(lines, partLine(model, name))
+	end
+	-- the head: the classic head (a Part with the Head SpecialMesh) unless the rig keeps a player's avatar face; its size now
+	-- against the size the layers (headgear, face) were fitted to, and the HipHeight now against the build's
+	local head = model:FindFirstChild("Head")
+	if head and head:IsA("BasePart") then
+		local hb, hhb, refix = attr(model, "HeadSizeAtBuild"), attr(model, "HipHeightAtBuild"), attr(model, "HipHeightRefixed")
+		local headScale = "?"
+		pcall(function()
+			local d = hum and hum:GetAppliedDescription()
+			if d then
+				headScale = f2(d.HeadScale)
+			end
+		end)
+		table.insert(lines, string.format("head size now=%s atBuild=%s HeadScale=%s | HipHeight now=%s atBuild=%s refixedLater=%s", v3(head.Size),
+			typeof(hb) == "Vector3" and v3(hb) or "n/a", headScale, hum and f2(hum.HipHeight) or "?", hhb and f2(hhb) or "n/a", refix and f2(refix) or "no"))
+		if typeof(hb) == "Vector3" and (hb - head.Size).Magnitude > 1e-3 then
+			table.insert(verdicts, string.format("BAD  the Head changed size after the layers were built (%s -> %s): the headgear / face were fitted to the old size",
+				v3(hb), v3(head.Size)))
+		elseif typeof(hb) == "Vector3" then
+			table.insert(verdicts, "OK   the Head is the size the layers were built for")
+		end
+		if hum and type(hhb) == "number" and math.abs(hhb - hum.HipHeight) > 0.01 then
+			table.insert(verdicts, string.format("BAD  HipHeight changed since the build (%.2f -> %.2f%s): something re-set it after Builder", hhb, hum.HipHeight,
+				refix and ", re-fixed later to " .. f2(refix) or ""))
+		end
+		if refix then
+			table.insert(verdicts, string.format("BAD  Builder had to put HipHeight back to %.2f after the build: the engine's scaling pass changed it", refix))
+		end
+		local sm = head:FindFirstChildOfClass("SpecialMesh")
+		if attr(model, "AvatarFace") == true then
+			table.insert(verdicts, "OK   Head kept as the avatar's (" .. head.ClassName .. ")")
+		elseif head:IsA("MeshPart") then
+			table.insert(verdicts, "BAD  Head is a MeshPart (expected Part + SpecialMesh Head): the classic head swap did not take; the face / headgear are built for the classic head")
+		elseif not (sm and sm.MeshType == Enum.MeshType.Head) then
+			table.insert(verdicts, "BAD  Head is a " .. head.ClassName .. " without the Head SpecialMesh")
+		else
+			table.insert(verdicts, string.format("OK   Head is a Part + SpecialMesh Head, %.2f studs", head.Size.Y))
+		end
+	end
+	-- the tier parts: every part the key says is a tier part carries that tier, and is scaled exactly once
+	local key = attr(model, "BodyTiers")
+	local defaults, twice = {}, {}
+	for _, name in ipairs(BodyTiers.PARTS) do
+		local p = model:FindFirstChild(name)
+		if p and p:IsA("BasePart") then
+			local tier = attr(p, "BodyTier")
+			if tier == nil then
+				table.insert(defaults, name)
+			else
+				local okE, e = pcall(BodyTiers.PartEntry, tonumber(tier), name, nil, attr(p, "BodyLite") == true)
+				local have = p:IsA("MeshPart") and tostring(get(p, "MeshId") or ""):gsub("rbxassetid://", "") or "-"
+				if okE and e and have ~= tostring(e.id) then
+					table.insert(verdicts, string.format("BAD  %s shows mesh %s, tier %s expects %s: not the tier part the attribute claims", name, have, tostring(tier), tostring(e.id)))
+				end
+				local r0 = attr(p, "BodyRatio")
+				local r = BuilderTiers.RatioOf(p)
+				if typeof(r0) == "Vector3" and r and (r - r0).Magnitude > 0.02 then
+					table.insert(twice, string.format("%s %s vs %s", name, v3(r), v3(r0)))
+				end
+			end
+		end
+	end
+	if type(key) == "string" and key:find("[1-9]") and #defaults > 0 then
+		table.insert(verdicts, "BAD  default (untiered) parts on a tiered body: " .. table.concat(defaults, " ") .. " (their swaps did not take)")
+	elseif #defaults == 0 then
+		table.insert(verdicts, "OK   every body part is a tier part")
+	else
+		table.insert(verdicts, "OK   a body of default parts (no tiers asked for)")
+	end
+	if #twice > 0 then
+		table.insert(verdicts, "BAD  tier parts whose Size / OriginalSize is not the ratio they were swapped at (scaled again since): " .. table.concat(twice, "; "))
+	end
+	for _, name in ipairs(MOTORS) do
+		table.insert(lines, motorLine(model, name, verdicts))
+	end
+	-- the bind pose's joint heights above the lowest sole (HumanoidRootPart space), next to the unit rig's x the height scale
+	local okB, pose = pcall(bindPose, model)
+	if okB and pose.LowerTorso and pose.LeftFoot and pose.RightFoot then
+		local lf, rf = model:FindFirstChild("LeftFoot"), model:FindFirstChild("RightFoot")
+		local sole = math.min(pose.LeftFoot.Position.Y - (lf and lf.Size.Y or 0.3) / 2, pose.RightFoot.Position.Y - (rf and rf.Size.Y or 0.3) / 2)
+		local function jy(holder, mname)
+			local h = model:FindFirstChild(holder)
+			local m = h and h:FindFirstChild(mname)
+			local base = m and m:IsA("Motor6D") and m.Part0 and pose[m.Part0.Name]
+			return base and (base * m.C0).Position.Y - sole or nil
+		end
+		local hs = { Root = jy("LowerTorso", "Root"), Waist = jy("UpperTorso", "Waist"), RightHip = jy("RightUpperLeg", "RightHip"),
+			RightKnee = jy("RightLowerLeg", "RightKnee"), RightAnkle = jy("RightFoot", "RightAnkle"), Neck = jy("Head", "Neck"), RightShoulder = jy("RightUpperArm", "RightShoulder") }
+		local unit = ctx.unit
+		if unit == nil then
+			local okD, d = pcall(BodyTiers.Data)
+			unit = okD and type(d) == "table" and d.unit or nil
+		end
+		local hscale = 1
+		pcall(function()
+			local d = hum and hum:GetAppliedDescription()
+			if d and d.HeightScale > 0 then
+				hscale = d.HeightScale
+			end
+		end)
+		local parts = {}
+		for _, k in ipairs({ "Root", "Waist", "RightHip", "RightKnee", "RightAnkle", "RightShoulder", "Neck" }) do
+			local u = unit and unit.joints and unit.joints[k]
+			parts[#parts + 1] = string.format("%s=%s%s", k, hs[k] and f2(hs[k]) or "?", u and string.format("(unit %.2f)", u[2] * hscale) or "")
+		end
+		local root = model:FindFirstChild("HumanoidRootPart")
+		local soleUnderRoot = -sole
+		table.insert(lines, string.format("bindpose heights above the sole: %s | HRP centre %.2f above the sole (HipHeight+HRP/2 = %s) heightScale=%.2f", table.concat(parts, " "),
+			soleUnderRoot, (hum and root) and f2(hum.HipHeight + root.Size.Y / 2) or "?", hscale))
+		if hum and root then
+			local d = soleUnderRoot - (hum.HipHeight + root.Size.Y / 2)
+			if math.abs(d) > 0.05 then
+				table.insert(verdicts, string.format("BAD  the soles hang %.2f studs %s where HipHeight puts the floor: the feet %s", math.abs(d), d > 0 and "below" or "above",
+					d > 0 and "sink into the ground (the Humanoid floats on HipHeight)" or "float (or the legs are bent to reach the ground)"))
+			else
+				table.insert(verdicts, string.format("OK   soles at HipHeight (%.2f vs %.2f)", soleUnderRoot, hum.HipHeight + root.Size.Y / 2))
+			end
+		end
+	else
+		table.insert(lines, "bindpose: could not be chained (" .. tostring(okB and "parts missing" or pose) .. ")")
+	end
+	lookLines(model, lines, verdicts)
+	-- the Animator's view (client only)
+	local rig = ctx.rig
+	if rig then
+		local g = rig.geo or {}
+		local missing = {}
+		for _, k in ipairs({ "Root", "W", "Neck", "RS", "RE", "RW", "LS", "LE", "LW", "RH", "RK", "RA", "LH", "LK", "LA" }) do
+			if not (rig.joints and rig.joints[k]) then
+				table.insert(missing, k)
+			end
+		end
+		local lo = rig.loco or {}
+		table.insert(lines, string.format("animator geo.ok=%s legLen=%s hipW=%s floorH=%s rootY=%s groundY=%s utScale=%s footW=%s meshFeet=%s | lod=%s released=%s isPlayer=%s isLocal=%s fighter=%s ambient=%s trainee=%s ref=%s pose=%s loop=%s speed=%s camDist=%s missingJoints=[%s]",
+			tostring(g.ok), g.legLen and f2(g.legLen) or "-", g.hipW and f2(g.hipW) or "-", g.floorH and f2(g.floorH) or "-", g.rootY and f2(g.rootY) or "-",
+			g.groundY and f2(g.groundY) or "-", g.utScale and v3(g.utScale) or "-", g.footW and f2(g.footW) or "-", tostring(g.meshFeet), tostring(rig.lod),
+			tostring(rig.released), tostring(rig.isPlayer), tostring(rig.isLocal), tostring(rig.isFighter), tostring(rig.isAmbient), tostring(rig.isTrainee),
+			tostring(rig.isReferee), tostring(rig.a and rig.a.Pose), tostring(rig.a and rig.a.Loop), lo.speed and f2(lo.speed) or "-", rig.camDist and f2(rig.camDist) or "-",
+			table.concat(missing, ",")))
+		if not g.ok then
+			table.insert(verdicts, "BAD  the Animator could not measure this rig (geo.ok false; joints missing: " .. table.concat(missing, ",") .. "): no gait, no IK on it")
+		elseif hum and g.floorH and g.rootY then
+			local root = model:FindFirstChild("HumanoidRootPart")
+			local want = root and (hum.HipHeight + root.Size.Y / 2) or nil
+			local have = g.floorH - g.rootY
+			if want and math.abs(have - want) > 0.05 then
+				table.insert(verdicts, string.format("BAD  Animator floor %.2f under the root vs HipHeight's %.2f: the planted feet and the Humanoid disagree about the ground", have, want))
+			else
+				table.insert(verdicts, string.format("OK   Animator floor %.2f under the root matches HipHeight", have))
+			end
+		end
+	elseif ctx.side == "client" then
+		table.insert(lines, "animator: this model is NOT in the Animator's rig registry (no tag / not a player character)")
+		table.insert(verdicts, "BAD  the Animator does not drive this model")
+	end
+	if type(ctx.sample) == "table" then
+		for _, s in ipairs(ctx.sample.lines or {}) do
+			table.insert(lines, s)
+		end
+		for _, s in ipairs(ctx.sample.verdicts or {}) do
+			table.insert(verdicts, s)
+		end
+	end
+	for _, v in ipairs(verdicts) do
+		table.insert(lines, "VERDICT " .. v)
+	end
+	table.insert(lines, "== end " .. model.Name)
+	return lines, verdicts
+end
+
+-- the lines as one block (every line prefixed), ready for print / warn
+function Diag.Block(lines)
+	local out = table.create(#lines)
+	for i, l in ipairs(lines) do
+		out[i] = Diag.PREFIX .. l
+	end
+	return table.concat(out, "\n")
+end
+
+function Diag.Print(model, ctx)
+	local ok, lines = pcall(Diag.Report, model, ctx)
+	if ok then
+		print(Diag.Block(lines))
+	else
+		print(Diag.PREFIX .. "report failed on " .. tostring(model) .. ": " .. tostring(lines))
+	end
+	return ok
+end
+
+-- the models worth reporting near a position: the player's own character first, then the nearest `n` other humanoid
+-- models in workspace (NPCs, other players), nearest first
+function Diag.Pick(center, own, n, root)
+	root = root or workspace
+	local list = {}
+	local seen = {}
+	if own then
+		seen[own] = true
+	end
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("Humanoid") then
+			local m = d.Parent
+			local hrp = m and m:FindFirstChild("HumanoidRootPart")
+			if m and hrp and hrp:IsA("BasePart") and not seen[m] then
+				seen[m] = true
+				table.insert(list, { m = m, d = (hrp.Position - center).Magnitude })
+			end
+		end
+	end
+	table.sort(list, function(a, b)
+		return a.d < b.d
+	end)
+	local out = {}
+	if own then
+		table.insert(out, own)
+	end
+	for i = 1, math.min(n or 2, #list) do
+		table.insert(out, list[i].m)
+	end
+	return out
+end
+
+------------------------------------------------------------------------
+-- Motion sample (the caller feeds frames; pure here): per tick the root's velocity and height, each foot's world Y
+-- and horizontal travel while it is down, the hip / knee / elbow bend from the live Transforms, and whether any
+-- Animate track was playing. Diag.NewSample() -> S; Diag.SampleTick(S, model, t); Diag.SampleLines(S) -> { lines, verdicts }
+------------------------------------------------------------------------
+local function bend(model, holder, mname)
+	local h = model:FindFirstChild(holder)
+	local m = h and h:FindFirstChild(mname)
+	if not (m and m:IsA("Motor6D")) then
+		return nil
+	end
+	local x = m.Transform:ToEulerAnglesXYZ()
+	return math.deg(x)
+end
+
+function Diag.NewSample()
+	return { ticks = {}, lastL = nil, lastR = nil, slideL = 0, slideR = 0, downL = 0, downR = 0, tracks = 0 }
+end
+
+function Diag.SampleTick(S, model, t)
+	local root = model:FindFirstChild("HumanoidRootPart")
+	local lf, rf = model:FindFirstChild("LeftFoot"), model:FindFirstChild("RightFoot")
+	if not (root and lf and rf) then
+		return
+	end
+	local hum = model:FindFirstChildOfClass("Humanoid")
+	local an = hum and hum:FindFirstChildOfClass("Animator")
+	local playing = false
+	if an then
+		pcall(function()
+			playing = #an:GetPlayingAnimationTracks() > 0
+		end)
+	end
+	if playing then
+		S.tracks += 1
+	end
+	local vel = root.AssemblyLinearVelocity
+	local tick = {
+		t = t, vx = Vector3.new(vel.X, 0, vel.Z).Magnitude, rootY = root.Position.Y, lY = lf.Position.Y, rY = rf.Position.Y,
+		lP = lf.Position, rP = rf.Position, hip = bend(model, "RightUpperLeg", "RightHip"), knee = bend(model, "RightLowerLeg", "RightKnee"),
+		elbow = bend(model, "RightLowerArm", "RightElbow"), playing = playing,
+	}
+	table.insert(S.ticks, tick)
+	-- a foot is "down" when it is within 0.12 of the lowest foot height seen so far; its travel then is slide
+	local n = #S.ticks
+	if n > 1 then
+		local lo = math.huge
+		for _, k in ipairs(S.ticks) do
+			lo = math.min(lo, k.lY, k.rY)
+		end
+		local prev = S.ticks[n - 1]
+		if tick.lY < lo + 0.12 and prev.lY < lo + 0.12 then
+			local d = (Vector3.new(tick.lP.X, 0, tick.lP.Z) - Vector3.new(prev.lP.X, 0, prev.lP.Z)).Magnitude
+			S.slideL += d
+			S.downL += 1
+		end
+		if tick.rY < lo + 0.12 and prev.rY < lo + 0.12 then
+			local d = (Vector3.new(tick.rP.X, 0, tick.rP.Z) - Vector3.new(prev.rP.X, 0, prev.rP.Z)).Magnitude
+			S.slideR += d
+			S.downR += 1
+		end
+	end
+end
+
+function Diag.SampleLines(S)
+	local lines, verdicts = {}, {}
+	local n = #S.ticks
+	if n == 0 then
+		table.insert(lines, "sample: no ticks")
+		return { lines = lines, verdicts = verdicts }
+	end
+	local vmax, rootMin, rootMax, lo = 0, math.huge, -math.huge, math.huge
+	for _, k in ipairs(S.ticks) do
+		vmax = math.max(vmax, k.vx)
+		rootMin, rootMax = math.min(rootMin, k.rootY), math.max(rootMax, k.rootY)
+		lo = math.min(lo, k.lY, k.rY)
+	end
+	table.insert(lines, string.format("sample %d ticks over %.1fs: vmax=%.2f rootY %.2f..%.2f (bob %.2f) lowestFootY=%.2f animateTicks=%d slideL=%.2f/%d slideR=%.2f/%d",
+		n, S.ticks[n].t - S.ticks[1].t, vmax, rootMin, rootMax, rootMax - rootMin, lo, S.tracks, S.slideL, S.downL, S.slideR, S.downR))
+	for _, k in ipairs(S.ticks) do
+		table.insert(lines, string.format("  t=%.1f v=%.2f rootY=%.2f footL=%.2f footR=%.2f hip=%s knee=%s elbow=%s%s", k.t, k.vx, k.rootY, k.lY, k.rY,
+			k.hip and string.format("%d", k.hip) or "-", k.knee and string.format("%d", k.knee) or "-", k.elbow and string.format("%d", k.elbow) or "-",
+			k.playing and " ANIMATE" or ""))
+	end
+	local moving = vmax > 2
+	if not moving then
+		table.insert(verdicts, "note the character did not move during the sample (walk while it runs for the gait numbers)")
+	else
+		local slide = (S.slideL + S.slideR) / math.max(1, S.downL + S.downR)
+		if slide > 0.08 then
+			table.insert(verdicts, string.format("BAD  the planted feet slide %.2f studs per tick while down: the gait and the root disagree (speed, HipHeight or a second writer)", slide))
+		else
+			table.insert(verdicts, string.format("OK   planted feet hold (%.2f studs per tick)", slide))
+		end
+		if rootMax - rootMin > 0.6 then
+			table.insert(verdicts, string.format("BAD  the root bobs %.2f studs while walking", rootMax - rootMin))
+		end
+		local bentKnee = false
+		for _, k in ipairs(S.ticks) do
+			if k.knee and math.abs(k.knee) > 8 then
+				bentKnee = true
+			end
+		end
+		if not bentKnee then
+			table.insert(verdicts, "BAD  the knees never bent while moving: the Animator is not writing this rig's legs (or its writes are overwritten)")
+		end
+	end
+	if S.tracks > 0 then
+		table.insert(verdicts, string.format("BAD  Animate tracks were playing on %d of %d ticks: a conflicting writer", S.tracks, n))
+	end
+	return { lines = lines, verdicts = verdicts }
+end
+
+return Diag
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="25">
+        <Properties>
           <string name="Name">DrillScore</string>
           <string name="Source"><![CDATA[-- DrillScore: how a training drill is judged. Shared by the client, which plays the drill with these
 -- judges, and the server, which replays the client's input stream through the same judges to score
@@ -22207,7 +23128,7 @@ return DrillScore
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">DrillWorkouts</string>
           <string name="Source"><![CDATA[-- DrillWorkouts: the judges and plans of the exercise-specific workouts (the weight room, the cardio
@@ -23783,7 +24704,7 @@ return W
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="26">
+      <Item class="ModuleScript" referent="27">
         <Properties>
           <string name="Name">Entrance</string>
           <string name="Source"><![CDATA[-- Entrance: the pre-fight ring walk's rules, shared by the server (RingWalk runs the beats) and the client
@@ -24123,7 +25044,7 @@ return Entrance
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">Evasion</string>
           <string name="Source"><![CDATA[-- Evasion: the head movement and the dodges, as data (shared and pure: FightEngine runs them, FightAI picks them,
@@ -24245,7 +25166,7 @@ return Evasion
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">FightMotion</string>
           <string name="Source"><![CDATA[--!strict
@@ -24655,7 +25576,7 @@ return FightMotion
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">FightRead</string>
           <string name="Source"><![CDATA[-- FightRead: an AI's rolling read of the man in front of it (FightAI owns one per fight). Shared and pure: no Roblox
@@ -24932,7 +25853,7 @@ return FightRead
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">Gamepad</string>
           <string name="Source"><![CDATA[-- Gamepad: which device the player is using right now (keyboard and mouse, gamepad or touch), the names
@@ -25183,7 +26104,7 @@ return Gamepad
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="31">
+      <Item class="ModuleScript" referent="32">
         <Properties>
           <string name="Name">GearAssetData</string>
           <string name="Source"><![CDATA[-- GENERATED by tools/body/publish_gear.py from tools/body/out/gear (build_gear.py) and the upload cache
@@ -29725,7 +30646,7 @@ return {
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="32">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">HairAssetData</string>
           <string name="Source"><![CDATA[-- GENERATED by tools/hair/publish.py from tools/hair/out/*/style.json and the upload cache
@@ -31896,7 +32817,7 @@ return {
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">HairAssetKit</string>
           <string name="Source"><![CDATA[-- HairAssetKit: the pure half of the asset hair (tools/hair/CONTRACT.md; the client's HairAssets does the
@@ -32882,7 +33803,7 @@ return HK
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">IconData</string>
           <string name="Source"><![CDATA[-- IconData: the game's icon set and title logo as uploaded Image assets. GENERATED by
@@ -32987,7 +33908,7 @@ return IconData
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">Keymap</string>
           <string name="Source"><![CDATA[-- Keymap: every fight action, its default keys on keyboard + mouse and on a controller, and the player's
@@ -33461,7 +34382,7 @@ return Keymap
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">LookData</string>
           <string name="Source"><![CDATA[-- LookData: the exact inputs the client-side asset hair (and its generated fallback) reads, published by the
@@ -34170,7 +35091,7 @@ return LookData
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">Looks</string>
           <string name="Source"><![CDATA[-- Looks: everything about how a boxer looks (face, hair, body frame, attire, gloves).
@@ -34938,7 +35859,7 @@ return Looks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">MeshKit</string>
           <string name="Source"><![CDATA[-- MeshKit: pure-Luau mesh data and procedural modelling for the anatomy meshes (shared, deterministic).
@@ -37823,7 +38744,7 @@ return MeshKit
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">Moves</string>
           <string name="Source"><![CDATA[-- Moves: the special moves (data only; FightEngine runs them, FightAI picks them, FightClient /
@@ -38180,7 +39101,7 @@ return Moves
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">Officials</string>
           <string name="Source"><![CDATA[-- Officials: how the ring officials look (the server builds them with Builder.CreateNPC / Cosmetics; the colours are
@@ -38279,7 +39200,7 @@ return Officials
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">Signage</string>
           <string name="Source"><![CDATA[-- Signage: the game's places and their logo lockups - one system for the signs in the world and the badges
@@ -38670,7 +39591,7 @@ return Signage
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">Tournaments</string>
           <string name="Source"><![CDATA[-- Tournaments: the bracket events of the career (data + pure helpers, shared by the server's Tourney module,
@@ -38931,7 +39852,7 @@ return Tournaments
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">TrainingPlan</string>
           <string name="Source"><![CDATA[-- TrainingPlan: the rules of the training system both sides read (pure: nothing here touches a
@@ -39509,7 +40430,7 @@ return TP
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="44">
+      <Item class="ModuleScript" referent="45">
         <Properties>
           <string name="Name">Traits</string>
           <string name="Source"><![CDATA[-- Traits: the AI boxers' ring traits (resistances to a way of fighting), the scouting of them, and the player's
@@ -39853,7 +40774,7 @@ return Traits
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="45">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">Tutorial</string>
           <string name="Source"><![CDATA[-- Tutorial: the guided fights. Shared and pure (no Roblox services), so the server (FightEngine, Main), the client
@@ -40379,7 +41300,7 @@ return Tutorial
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="46">
+      <Item class="ModuleScript" referent="47">
         <Properties>
           <string name="Name">Typography</string>
           <string name="Source"><![CDATA[-- Typography: the game's type faces in one place, for the menus (Shared.UI) and for the signs in the world
@@ -40565,7 +41486,7 @@ return Typography
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="47">
+      <Item class="ModuleScript" referent="48">
         <Properties>
           <string name="Name">UI</string>
           <string name="Source"><![CDATA[-- UI: the game's design system - "fight night broadcast", championship-belt finish.
@@ -43820,7 +44741,7 @@ return UI
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="48">
+      <Item class="ModuleScript" referent="49">
         <Properties>
           <string name="Name">WorldAssetData</string>
           <string name="Source"><![CDATA[-- WorldAssetData: the world's detail textures as uploaded Image assets. GENERATED by
@@ -43867,15 +44788,15 @@ return WorldAssetData
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="49">
+  <Item class="ServerScriptService" referent="50">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="50">
+    <Item class="Folder" referent="51">
       <Properties>
         <string name="Name">BoxerModules</string>
       </Properties>
-      <Item class="ModuleScript" referent="51">
+      <Item class="ModuleScript" referent="52">
         <Properties>
           <string name="Name">Ambient</string>
           <string name="Source"><![CDATA[-- Ambient: gym members, coaches and staff that bring the training complex to life.
@@ -44187,7 +45108,7 @@ return Ambient
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="52">
+      <Item class="ModuleScript" referent="53">
         <Properties>
           <string name="Name">Career</string>
           <string name="Source"><![CDATA[-- Career: character creation, fight offers, camps, economy, titles, promotions,
@@ -45685,7 +46606,7 @@ return Career
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="53">
+      <Item class="ModuleScript" referent="54">
         <Properties>
           <string name="Name">CityMap</string>
           <string name="Source"><![CDATA[-- CityMap: the neighbourhood around the gym, so the world outside feels like a real town.
@@ -48146,7 +49067,7 @@ return CityMap
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="54">
+      <Item class="ModuleScript" referent="55">
         <Properties>
           <string name="Name">DataManager</string>
           <string name="Source"><![CDATA[-- DataManager: loads/saves each player's career with DataStoreService.
@@ -48768,7 +49689,7 @@ return DataManager
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="55">
+      <Item class="ModuleScript" referent="56">
         <Properties>
           <string name="Name">FightAI</string>
           <string name="Source"><![CDATA[-- FightAI: the opponent's brain. One per AI fighter (FightEngine.Run makes the blue corner's; the balance sims in
@@ -49834,7 +50755,7 @@ return FightAI
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="56">
+      <Item class="ModuleScript" referent="57">
         <Properties>
           <string name="Name">FightEngine</string>
           <string name="Source"><![CDATA[-- FightEngine: server-authoritative real-time boxing.
@@ -54697,7 +55618,7 @@ return FightEngine
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="57">
+      <Item class="ModuleScript" referent="58">
         <Properties>
           <string name="Name">GymDecor</string>
           <string name="Source"><![CDATA[-- GymDecor: everything that turns the training complex from a box into a real boxing gym.
@@ -56221,7 +57142,7 @@ return GymDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="58">
+      <Item class="ModuleScript" referent="59">
         <Properties>
           <string name="Name">MapBuilder</string>
           <string name="Source"><![CDATA[-- MapBuilder: builds the training complex entirely from parts.
@@ -57243,7 +58164,7 @@ return MapBuilder
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="59">
+      <Item class="ModuleScript" referent="60">
         <Properties>
           <string name="Name">Poser</string>
           <string name="Source"><![CDATA[-- Poser: puts a character (player or NPC) at a training spot in the right posture
@@ -57437,7 +58358,7 @@ return Poser
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="60">
+      <Item class="ModuleScript" referent="61">
         <Properties>
           <string name="Name">PvP</string>
           <string name="Source"><![CDATA[-- PvP: player vs player boxing in the same server.
@@ -57994,7 +58915,7 @@ return PvP
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="61">
+      <Item class="ModuleScript" referent="62">
         <Properties>
           <string name="Name">RingWalk</string>
           <string name="Source"><![CDATA[-- RingWalk: the pre-fight entrance on the server (FightEngine's Fight:Entrance hands over to RingWalk.Run).
@@ -58399,7 +59320,7 @@ return RingWalk
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="62">
+      <Item class="ModuleScript" referent="63">
         <Properties>
           <string name="Name">Tourney</string>
           <string name="Source"><![CDATA[-- Tourney: the career side of the tournaments (Shared.Tournaments has the events, their rules, prizes and belts).
@@ -59114,7 +60035,7 @@ return Tourney
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="63">
+      <Item class="ModuleScript" referent="64">
         <Properties>
           <string name="Name">Training</string>
           <string name="Source"><![CDATA[-- Training: the advanced training system.
@@ -62871,7 +63792,7 @@ return Training
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="64">
+      <Item class="ModuleScript" referent="65">
         <Properties>
           <string name="Name">TutorialFight</string>
           <string name="Source"><![CDATA[-- TutorialFight: the first-time tutorial bout's cast and night (Shared.Tutorial has the steps and the rules).
@@ -62958,7 +63879,7 @@ return TutorialFight
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="65">
+      <Item class="ModuleScript" referent="66">
         <Properties>
           <string name="Name">Venues</string>
           <string name="Source"><![CDATA[-- Venues: fight-night ring system. Builds one template per venue in ServerStorage at boot and
@@ -65289,7 +66210,7 @@ return Venues
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="66">
+      <Item class="ModuleScript" referent="67">
         <Properties>
           <string name="Name">World</string>
           <string name="Source"><![CDATA[-- World: generates and maintains the AI boxing world (270 boxers), rankings for
@@ -65811,7 +66732,7 @@ return World
         </Properties>
       </Item>
     </Item>
-    <Item class="Script" referent="67">
+    <Item class="Script" referent="68">
       <Properties>
         <string name="Name">Main</string>
         <token name="RunContext">0</token>
@@ -68230,15 +69151,60 @@ function handlers.GetMuscleHistory(player, profile)
 	return { ok = true, history = ok and hist or {}, xp = xp, level = okLv and level or nil, day = profile.day }
 end
 
-local PRE_CREATE = { GetProfile = true, CreateBoxer = true, NewCareer = true, PreviewLook = true, GetLegacy = true, SaveSettings = true,
+-- the rig diagnostic (Shared.Diag; "/wcbdiag" in chat or the Settings button): the server's view of the player's
+-- character and the nearest NPCs, printed to the server Output (in Studio the same window) and answered as blocks for
+-- the client to print. Read-only, allowed anywhere (a fight, an activity, before the boxer is created)
+local Diag = require(Shared.Diag)
+local function runDiag(player, names)
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	local center = root and root.Position or Vector3.zero
+	local models = Diag.Pick(center, char, 2)
+	-- the client's picks by name when they are not the nearest to the server (it may stand somewhere else by now)
+	if type(names) == "table" then
+		local have = {}
+		for _, m in ipairs(models) do
+			have[m.Name] = true
+		end
+		for _, n in ipairs(names) do
+			if type(n) == "string" and not have[n] then
+				local m = workspace:FindFirstChild(n, true)
+				if m and m:IsA("Model") and m:FindFirstChildOfClass("Humanoid") then
+					table.insert(models, m)
+					have[n] = true
+				end
+			end
+		end
+	end
+	local BT = require(Shared.BuilderTiers)
+	local BH = require(Shared.BuilderHead)
+	local blocks = {}
+	local head = string.format("%sv%d SERVER report for %s: %d model(s); body part swaps refused on the server: %d, classic head swaps refused: %d; swaps done %d, template loads %d (failed %d); staging=%s",
+		Diag.PREFIX, Diag.VERSION, player.Name, #models, BT.SwapFailures, BH.SwapFailures, BT.Stats().swaps, BT.Stats().loads, BT.Stats().failed,
+		tostring(Builder.StageFolder and Builder.StageFolder()))
+	print(head)
+	table.insert(blocks, head)
+	for i, m in ipairs(models) do
+		local ok, lines = pcall(Diag.Report, m, { label = m == char and "LOCAL" or ("NPC" .. i - (char and 1 or 0)), side = "server" })
+		local block = ok and Diag.Block(lines) or (Diag.PREFIX .. "server report failed on " .. m.Name .. ": " .. tostring(lines))
+		print(block)
+		table.insert(blocks, block)
+	end
+	return blocks
+end
+handlers.Diag = function(player, _profile, names)
+	return { ok = true, lines = runDiag(player, names) }
+end
+
+local PRE_CREATE = { GetProfile = true, Diag = true, CreateBoxer = true, NewCareer = true, PreviewLook = true, GetLegacy = true, SaveSettings = true,
 	StartTutorial = true, SkipTutorial = true }
-local READ_ONLY = { GetProfile = true, GetRankings = true, GetBoxer = true, PreviewLook = true, GetOffers = true, GetRivals = true, GetLegacy = true, GetPvP = true, GetMuscleHistory = true }
+local READ_ONLY = { GetProfile = true, Diag = true, GetRankings = true, GetBoxer = true, PreviewLook = true, GetOffers = true, GetRivals = true, GetLegacy = true, GetPvP = true, GetMuscleHistory = true }
 -- (PvPQueue / PvPCancel / PvPRespond may be sent mid-drill: leaving the queue, cancelling, declining)
-local DURING_ACTIVITY = { FinishActivity = true, CancelActivity = true, Eat = true, SaveSettings = true, PvPQueue = true, PvPCancel = true, PvPRespond = true }
+local DURING_ACTIVITY = { FinishActivity = true, Diag = true, CancelActivity = true, Eat = true, SaveSettings = true, PvPQueue = true, PvPCancel = true, PvPRespond = true }
 -- actions that change nothing the summary shows: no push afterwards (R-ui)
 local NO_PUSH = { SaveSettings = true }
 -- allowed in the ring too: the Settings screen opens mid-fight and its save is never retried
-local IN_RING = { SaveSettings = true }
+local IN_RING = { SaveSettings = true, Diag = true }
 
 -- per-player rate limit on the whole remote: a token bucket (RATE.perSecond refilled, RATE.burst deep).
 -- A legit client never gets near it (the Creator's previews are 4 / s, everything else is a click);
@@ -68360,6 +69326,17 @@ local function onPlayer(player)
 	player.CharacterAdded:Connect(function(char)
 		onCharacter(player, char)
 	end)
+	-- "/wcbdiag" in chat: the server's rig report (the client prints its own on the same command)
+	player.Chatted:Connect(function(msg)
+		if type(msg) == "string" and msg:lower():sub(1, 8) == "/wcbdiag" then
+			task.spawn(function()
+				local ok, err = pcall(runDiag, player, nil)
+				if not ok then
+					warn("[WCBDIAG] server report failed:", err)
+				end
+			end)
+		end
+	end)
 	player.CharacterRemoving:Connect(function()
 		endSession(player, true)
 	end)
@@ -68479,17 +69456,17 @@ print("[Boxer] " .. Config.GameName .. " server ready")
       </Properties>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="68">
+  <Item class="StarterPlayer" referent="69">
     <Properties>
       <string name="Name">StarterPlayer</string>
       <float name="CharacterWalkSpeed">6.5</float>
       <bool name="EnableMouseLockOption">false</bool>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="69">
+    <Item class="StarterPlayerScripts" referent="70">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="70">
+      <Item class="LocalScript" referent="71">
         <Properties>
           <string name="Name">Animator</string>
           <string name="Source"><![CDATA[-- Animator: motion-capture-feeling procedural animation for everyone in the game, no animation
@@ -69967,11 +70944,11 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="71">
+      <Item class="Folder" referent="72">
         <Properties>
           <string name="Name">BoxerClient</string>
         </Properties>
-        <Item class="ModuleScript" referent="72">
+        <Item class="ModuleScript" referent="73">
           <Properties>
             <string name="Name">Activities</string>
             <string name="Source"><![CDATA[-- Activities: every training session and its minigame.
@@ -76196,7 +77173,7 @@ return Activities
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="73">
+        <Item class="ModuleScript" referent="74">
           <Properties>
             <string name="Name">Ambience</string>
             <string name="Source"><![CDATA[-- Ambience: brings the gym and the town to life on the client.
@@ -77440,7 +78417,7 @@ return Ambience
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="74">
+        <Item class="ModuleScript" referent="75">
           <Properties>
             <string name="Name">AnatomyClient</string>
             <string name="Source"><![CDATA[-- AnatomyClient: the client-built meshes on every character: today only the HAIR (the uploaded hair cards,
@@ -80234,7 +81211,7 @@ return AnatomyClient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="75">
+        <Item class="ModuleScript" referent="76">
           <Properties>
             <string name="Name">AnatomyStatus</string>
             <string name="Source"><![CDATA[-- AnatomyStatus: tells the player (and the Output) whether the organic mesh characters are on.
@@ -80491,7 +81468,7 @@ return AnatomyStatus
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="76">
+        <Item class="ModuleScript" referent="77">
           <Properties>
             <string name="Name">AnimCeremony</string>
             <string name="Source"><![CDATA[-- AnimCeremony: the poses of the celebration cutscene (FightEngine's Fight:Ceremony sets them as Pose on a
@@ -80672,7 +81649,7 @@ return AnimCeremony
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="77">
+        <Item class="ModuleScript" referent="78">
           <Properties>
             <string name="Name">AnimDown</string>
             <string name="Source"><![CDATA[-- AnimDown: knockdowns, knockouts, the count and the get-up.
@@ -82327,7 +83304,7 @@ return AnimDown
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="78">
+        <Item class="ModuleScript" referent="79">
           <Properties>
             <string name="Name">AnimEntrance</string>
             <string name="Source"><![CDATA[-- AnimEntrance: the ring walk's body language on the client - the entrance celebrations, the climb up the ring
@@ -82961,7 +83938,7 @@ return AnimEntrance
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="79">
+        <Item class="ModuleScript" referent="80">
           <Properties>
             <string name="Name">AnimFight</string>
             <string name="Source"><![CDATA[-- AnimFight: everything a boxer does on his feet in the ring.
@@ -86450,7 +87427,7 @@ return AnimFight
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="80">
+        <Item class="ModuleScript" referent="81">
           <Properties>
             <string name="Name">AnimGym</string>
             <string name="Source"><![CDATA[-- AnimGym: training poses that work the right muscles, flex poses, gym life and the people who
@@ -87703,7 +88680,7 @@ return AnimGym
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="81">
+        <Item class="ModuleScript" referent="82">
           <Properties>
             <string name="Name">AnimKit</string>
             <string name="Source"><![CDATA[-- AnimKit: the pure math behind the procedural animation (no Instances, no Roblox services), so it
@@ -88163,7 +89140,7 @@ return AnimKit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="82">
+        <Item class="ModuleScript" referent="83">
           <Properties>
             <string name="Name">AnimLoco</string>
             <string name="Source"><![CDATA[-- AnimLoco: locomotion and feet for the procedural Animator.
@@ -90454,7 +91431,7 @@ return AnimLoco
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="83">
+        <Item class="ModuleScript" referent="84">
           <Properties>
             <string name="Name">AnimRig</string>
             <string name="Source"><![CDATA[-- AnimRig: rig geometry, inverse kinematics and the pose building blocks shared by the Animator
@@ -91588,7 +92565,7 @@ return AnimRig
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="84">
+        <Item class="ModuleScript" referent="85">
           <Properties>
             <string name="Name">BodyMap</string>
             <string name="Source"><![CDATA[-- BodyMap: an anatomical body map (front + back views), one region per Config.MuscleParts id.
@@ -92457,7 +93434,7 @@ return BodyMap
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="85">
+        <Item class="ModuleScript" referent="86">
           <Properties>
             <string name="Name">Ceremony</string>
             <string name="Source"><![CDATA[-- Ceremony: the celebration cutscene in the ring after a won tournament final or a new title (10.5 s, skippable).
@@ -92971,7 +93948,7 @@ return Ceremony
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="86">
+        <Item class="ModuleScript" referent="87">
           <Properties>
             <string name="Name">CharacterLight</string>
             <string name="Source"><![CDATA[-- CharacterLight: a camera-aware fill and rim light for the boxers on screen (client only).
@@ -93195,7 +94172,7 @@ return CharacterLight
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="87">
+        <Item class="ModuleScript" referent="88">
           <Properties>
             <string name="Name">CityDetail</string>
             <string name="Source"><![CDATA[-- CityDetail: Main Street's and the campus's extra detail layer (client-only; WorldDetail streams it per block
@@ -93971,7 +94948,7 @@ return CityDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="88">
+        <Item class="ModuleScript" referent="89">
           <Properties>
             <string name="Name">CityStores</string>
             <string name="Source"><![CDATA[-- CityStores: the counters of the city's walk-in shops (prompts in CityMap, dispatched through
@@ -94272,7 +95249,7 @@ return CityStores
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="89">
+        <Item class="ModuleScript" referent="90">
           <Properties>
             <string name="Name">CityVisuals</string>
             <string name="Source"><![CDATA[-- CityVisuals: the city reflects YOUR career. Everything here is client-side (workspace.LocalCity
@@ -96109,7 +97086,7 @@ return CityVisuals
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="90">
+        <Item class="ModuleScript" referent="91">
           <Properties>
             <string name="Name">ComboHud</string>
             <string name="Source"><![CDATA[-- ComboHud: the fight HUD's combo counter (FightClient mounts it in its HUD root and feeds it the server's
@@ -96278,7 +97255,7 @@ return ComboHud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="91">
+        <Item class="ModuleScript" referent="92">
           <Properties>
             <string name="Name">ControlsMenu</string>
             <string name="Source"><![CDATA[-- ControlsMenu: the Moves & Controls window. Opened from the main menu (CONTROLS, or Settings > Controls),
@@ -97026,7 +98003,7 @@ return ControlsMenu
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="92">
+        <Item class="ModuleScript" referent="93">
           <Properties>
             <string name="Name">Creator</string>
             <string name="Source"><![CDATA[-- Creator: the character creator, as seven steps with Back / Next and a step bar (jump to any step).
@@ -98838,7 +99815,7 @@ return Creator
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="93">
+        <Item class="ModuleScript" referent="94">
           <Properties>
             <string name="Name">DetailKit</string>
             <string name="Source"><![CDATA[-- DetailKit: the building blocks of the world's client-side detail layer (WorldDetail: the gym and the city;
@@ -99330,7 +100307,167 @@ return K
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="94">
+        <Item class="ModuleScript" referent="95">
+          <Properties>
+            <string name="Name">DiagClient</string>
+            <string name="Source"><![CDATA[-- DiagClient: runs the rig diagnostic (Shared.Diag) on this client and asks the server for its own view of the same
+-- models. Invoked by "/wcbdiag" in chat (Player.Chatted and a TextChatCommand, whichever chat the place runs) or the
+-- Settings -> GAME -> COPY DIAGNOSTIC TO OUTPUT button; nothing runs otherwise. Reports: the local character and the
+-- nearest two other humanoid models (NPCs, other players), each as one [WCBDIAG] block in the Output, then a 2-second
+-- motion sample of each at 10 Hz (walk or punch while it runs) and the server's blocks (the same models as the server
+-- sees them: part sizes, HipHeight, the swap counters). Copy everything between the first "== " and the last "== end".
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Diag = require(Shared:WaitForChild("Diag"))
+local BuilderTiers = require(Shared:WaitForChild("BuilderTiers"))
+
+local DiagClient = {}
+DiagClient.COMMAND = "/wcbdiag"
+DiagClient.SAMPLE_SECONDS = 2
+DiagClient.SAMPLE_HZ = 10
+DiagClient.NEARBY = 2
+
+local player = Players.LocalPlayer
+local Modules = script.Parent
+local running = false
+
+local function rigOf(model)
+	local ok, R = pcall(function()
+		return require(Modules:WaitForChild("AnimRig", 5))
+	end)
+	return ok and type(R) == "table" and type(R.rigs) == "table" and R.rigs[model] or nil
+end
+
+local function say(msg)
+	print(Diag.PREFIX .. msg)
+end
+
+-- the whole run (yields ~2 s for the sample); State = BoxerClient.State for the server request (optional)
+function DiagClient.Run(State)
+	if running then
+		say("already running")
+		return
+	end
+	running = true
+	local ok, err = pcall(function()
+		local char = player.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		local cam = workspace.CurrentCamera
+		local center = root and root.Position or (cam and cam.CFrame.Position) or Vector3.zero
+		local models = Diag.Pick(center, char, DiagClient.NEARBY)
+		say(string.format("v%d client report: %d model(s); place %s; %s; body part swaps refused on this client: %d", Diag.VERSION, #models,
+			tostring(game.PlaceId), RunService:IsStudio() and "Studio" or "live", BuilderTiers.SwapFailures))
+		if #models == 0 then
+			say("no humanoid models found (no character yet?)")
+			return
+		end
+		local ctxs = {}
+		for i, m in ipairs(models) do
+			local ctx = { label = m == char and "LOCAL" or ("NPC" .. i - (char and 1 or 0)), side = "client", rig = rigOf(m) }
+			ctxs[i] = ctx
+			Diag.Print(m, ctx)
+		end
+		-- the server's view in parallel with the sample (it prints to the same Output in Studio; in a live server it
+		-- prints to the server log and answers with its lines, printed here)
+		if State and type(State.req) == "function" then
+			task.spawn(function()
+				local names = {}
+				for _, m in ipairs(models) do
+					table.insert(names, m.Name)
+				end
+				local r = State.req("Diag", names)
+				if type(r) == "table" and r.ok and type(r.lines) == "table" then
+					for _, block in ipairs(r.lines) do
+						print(block)
+					end
+				elseif type(r) == "table" and r.err then
+					say("server report: " .. tostring(r.err))
+				end
+			end)
+		end
+		-- the motion sample: walk / punch while it runs
+		say(string.format("sampling %d model(s) for %d s at %d Hz: WALK or PUNCH now", #models, DiagClient.SAMPLE_SECONDS, DiagClient.SAMPLE_HZ))
+		local samples = {}
+		for i, m in ipairs(models) do
+			samples[i] = Diag.NewSample()
+		end
+		local t0 = os.clock()
+		local period = 1 / DiagClient.SAMPLE_HZ
+		local nextT = 0
+		while os.clock() - t0 < DiagClient.SAMPLE_SECONDS do
+			local t = os.clock() - t0
+			if t >= nextT then
+				nextT += period
+				for i, m in ipairs(models) do
+					if m.Parent then
+						pcall(Diag.SampleTick, samples[i], m, t)
+					end
+				end
+			end
+			RunService.Heartbeat:Wait()
+		end
+		for i, m in ipairs(models) do
+			if m.Parent then
+				local res = Diag.SampleLines(samples[i])
+				local lines = { "== sample " .. (ctxs[i].label or "") .. " " .. m.Name }
+				for _, l in ipairs(res.lines) do
+					table.insert(lines, l)
+				end
+				for _, v in ipairs(res.verdicts) do
+					table.insert(lines, "VERDICT " .. v)
+				end
+				table.insert(lines, "== end sample " .. m.Name)
+				print(Diag.Block(lines))
+			end
+		end
+		say("done: copy every [WCBDIAG] line from the Output (right-click > Select All in the Output, or filter it on WCBDIAG)")
+	end)
+	running = false
+	if not ok then
+		say("diagnostic failed: " .. tostring(err))
+	end
+end
+
+-- the chat command and the Settings hook (State.open.Diag)
+function DiagClient.Start(State)
+	if State and type(State.open) == "table" then
+		State.open.Diag = function()
+			task.spawn(DiagClient.Run, State)
+		end
+	end
+	local function onText(text)
+		if type(text) == "string" and text:lower():sub(1, #DiagClient.COMMAND) == DiagClient.COMMAND then
+			task.spawn(DiagClient.Run, State)
+			return true
+		end
+		return false
+	end
+	pcall(function()
+		player.Chatted:Connect(onText)
+	end)
+	-- TextChatService (the default chat since 2023: a TextChatCommand fires on the sending client)
+	pcall(function()
+		local TCS = game:GetService("TextChatService")
+		local cmd = Instance.new("TextChatCommand")
+		cmd.Name = "WCBDiagCommand"
+		cmd.PrimaryAlias = DiagClient.COMMAND
+		cmd.SecondaryAlias = "/wcbd"
+		cmd.Triggered:Connect(function(origin)
+			if origin == nil or origin.UserId == player.UserId then
+				task.spawn(DiagClient.Run, State)
+			end
+		end)
+		cmd.Parent = TCS
+	end)
+end
+
+return DiagClient
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="96">
           <Properties>
             <string name="Name">EntranceFX</string>
             <string name="Source"><![CDATA[-- EntranceFX: the ring-walk cinematic on the client. The server (RingWalk) sends one "entrance" message per walk with
@@ -100119,7 +101256,7 @@ return EntranceFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="95">
+        <Item class="ModuleScript" referent="97">
           <Properties>
             <string name="Name">EntrancePicker</string>
             <string name="Source"><![CDATA[-- EntrancePicker: the Locker Room's ENTRANCE window (State.open.Entrance): the ring walk's celebrations (one at the
@@ -100262,7 +101399,7 @@ return EntrancePicker
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="96">
+        <Item class="ModuleScript" referent="98">
           <Properties>
             <string name="Name">FaceFX</string>
             <string name="Source"><![CDATA[-- FaceFX: a face that is alive. Client-only, driven by the Animator every frame (FaceFX.Update; Hit / Effort /
@@ -101057,7 +102194,7 @@ return FaceFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="97">
+        <Item class="ModuleScript" referent="99">
           <Properties>
             <string name="Name">FightIntel</string>
             <string name="Source"><![CDATA[-- FightIntel: the fight HUD's small reads of the deeper fight (FightClient mounts it in its HUD root and feeds it
@@ -101294,7 +102431,7 @@ return FightIntel
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="98">
+        <Item class="ModuleScript" referent="100">
           <Properties>
             <string name="Name">FighterCard</string>
             <string name="Source"><![CDATA[-- FighterCard: the professional fighter card / tale of the tape for the local boxer.
@@ -102174,7 +103311,7 @@ return FighterCard
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="99">
+        <Item class="ModuleScript" referent="101">
           <Properties>
             <string name="Name">Flags</string>
             <string name="Source"><![CDATA[-- Flags: simplified national flags drawn from frames (no image assets) for every Config.Nationalities
@@ -102509,7 +103646,7 @@ return Flags
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="100">
+        <Item class="ModuleScript" referent="102">
           <Properties>
             <string name="Name">GymDetail</string>
             <string name="Source"><![CDATA[-- GymDetail: the training complex's extra detail layer (client-only, WorldDetail streams it by Graphics level
@@ -103489,7 +104626,7 @@ return GymDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="101">
+        <Item class="ModuleScript" referent="103">
           <Properties>
             <string name="Name">GymDetail2</string>
             <string name="Source"><![CDATA[-- GymDetail2: the training complex's second detail pass (client-only, on DetailKit's Streamer like GymDetail, which
@@ -104125,7 +105262,7 @@ return GymDetail2
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="102">
+        <Item class="ModuleScript" referent="104">
           <Properties>
             <string name="Name">GymFacility</string>
             <string name="Source"><![CDATA[-- GymFacility: what YOUR gym looks like as a whole, drawn on your client only (everyone shares
@@ -106353,7 +107490,7 @@ return GymFacility
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="103">
+        <Item class="ModuleScript" referent="105">
           <Properties>
             <string name="Name">GymMirror</string>
             <string name="Source"><![CDATA[-- GymMirror: a live mirror at the shadow-boxing station. While you are within a few strides of
@@ -106735,7 +107872,7 @@ return GymMirror
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="104">
+        <Item class="ModuleScript" referent="106">
           <Properties>
             <string name="Name">GymSound</string>
             <string name="Source"><![CDATA[-- GymSound: every gym sound effect on the client, played from ONE pool of positional sounds
@@ -106980,7 +108117,7 @@ return GymSound
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="105">
+        <Item class="ModuleScript" referent="107">
           <Properties>
             <string name="Name">GymVisuals</string>
             <string name="Source"><![CDATA[-- GymVisuals: draws YOUR gym's equipment (client side) at every station, matched to
@@ -110496,7 +111633,7 @@ return GymVisuals
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="106">
+        <Item class="ModuleScript" referent="108">
           <Properties>
             <string name="Name">HairAssets</string>
             <string name="Source"><![CDATA[-- HairAssets: the asset hair (tools/hair/CONTRACT.md): hair-card meshes modelled in Blender and uploaded as
@@ -111195,7 +112332,7 @@ return HairAssets
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="107">
+        <Item class="ModuleScript" referent="109">
           <Properties>
             <string name="Name">HairFX</string>
             <string name="Source"><![CDATA[-- HairFX: hair that moves like hair. Client-only, driven by the Animator every frame (HairFX.Update) and on
@@ -113171,7 +114308,7 @@ return HairFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="108">
+        <Item class="ModuleScript" referent="110">
           <Properties>
             <string name="Name">Hub</string>
             <string name="Source"><![CDATA[-- Hub: the Career Hub window.
@@ -115595,7 +116732,7 @@ return Hub
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="109">
+        <Item class="ModuleScript" referent="111">
           <Properties>
             <string name="Name">KnockFX</string>
             <string name="Source"><![CDATA[-- KnockFX: the local player's "lights going out" screen. FightClient calls it on its own knockdown /
@@ -115851,7 +116988,7 @@ return KnockFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="110">
+        <Item class="ModuleScript" referent="112">
           <Properties>
             <string name="Name">LightLevels</string>
             <string name="Source"><![CDATA[-- LightLevels: the game's exposure targets in one place, plus the player's brightness preference.
@@ -116044,7 +117181,7 @@ return LightLevels
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="111">
+        <Item class="ModuleScript" referent="113">
           <Properties>
             <string name="Name">LookKit</string>
             <string name="Source"><![CDATA[-- LookKit: the look editors' shared parts (Creator, barber): plain-word readouts, short labels and
@@ -116483,7 +117620,7 @@ return LookKit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="112">
+        <Item class="ModuleScript" referent="114">
           <Properties>
             <string name="Name">MainMenu</string>
             <string name="Source"><![CDATA[-- MainMenu: the title screen. Your boxer stands in his corner of a ring in a gym at night (MenuStage: a
@@ -117666,6 +118803,23 @@ local function screenSettings(layer)
 		end
 	end)
 	add(UI.Text(body, "A short guided fight as a random boxer: moving, punching, combinations, defending, dodging and countering, stamina and a special move. Your career is not touched.", { TextSize = 13, TextColor3 = T.sub }))
+	-- the rig diagnostic: prints [WCBDIAG] blocks (your character and the nearest NPCs: parts, joints, HipHeight, headgear,
+	-- the Animator's measurements, a 2 s motion sample) to the Output, for a bug report. Same as "/wcbdiag" in chat
+	local function runDiag()
+		if State.open.Diag then
+			State.open.Diag()
+			State.toast("Diagnostic printed to the Output (walk or punch for 2 seconds)", T.sub, 4)
+		else
+			State.toast("The diagnostic is not loaded on this client.", T.red)
+		end
+	end
+	local diagBtn = UI.Button(body, "COPY DIAGNOSTIC TO OUTPUT", { Name = "Diag", Size = UDim2.fromOffset(320, math.max(40, UI.MinHit(body))) }, runDiag)
+	add(diagBtn, function(dir)
+		if dir == 0 then
+			runDiag()
+		end
+	end)
+	add(UI.Text(body, "For bug reports: prints the rig numbers of your boxer and the nearest two people ([WCBDIAG] lines in the Output window; also the chat command /wcbdiag). Walk or punch for two seconds after pressing it.", { TextSize = 13, TextColor3 = T.sub }))
 	-- the boxer's hair & face from the player's Roblox avatar (saved with the boxer: appearance.avatar)
 	local P = State.P
 	if P and P.created and type(P.appearance) == "table" then
@@ -118104,7 +119258,7 @@ return MainMenu
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="113">
+        <Item class="ModuleScript" referent="115">
           <Properties>
             <string name="Name">MenuDetail</string>
             <string name="Source"><![CDATA[-- MenuDetail: the title-screen set's extra dressing (MenuStage). Built into the set's folder, in the set's own
@@ -118369,7 +119523,7 @@ return MenuDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="114">
+        <Item class="ModuleScript" referent="116">
           <Properties>
             <string name="Name">MenuStage</string>
             <string name="Source"><![CDATA[-- MenuStage: the main menu's set. A closed boxing-gym corner built on this client, far above the map,
@@ -119014,7 +120168,7 @@ return MenuStage
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="115">
+        <Item class="ModuleScript" referent="117">
           <Properties>
             <string name="Name">MuscleScreen</string>
             <string name="Source"><![CDATA[-- MuscleScreen: the Muscle Progression screen (Hub Body tab "3D MUSCLE VIEW", training result "MUSCLES").
@@ -120036,7 +121190,7 @@ return MuscleScreen
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="116">
+        <Item class="ModuleScript" referent="118">
           <Properties>
             <string name="Name">Perf</string>
             <string name="Source"><![CDATA[-- Perf: the one performance level every client system reads (optimization pass).
@@ -120364,7 +121518,7 @@ return Perf
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="117">
+        <Item class="ModuleScript" referent="119">
           <Properties>
             <string name="Name">PvP</string>
             <string name="Source"><![CDATA[-- PvP (client): challenge other players, answer challenges, Find Match, the PvP record.
@@ -121130,7 +122284,7 @@ return PvP
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="118">
+        <Item class="ModuleScript" referent="120">
           <Properties>
             <string name="Name">Services</string>
             <string name="Source"><![CDATA[-- Services: the gym's service windows.
@@ -121956,7 +123110,7 @@ return Services
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="119">
+        <Item class="ModuleScript" referent="121">
           <Properties>
             <string name="Name">Settings</string>
             <string name="Source"><![CDATA[-- Settings: the player's options, applied on this client straight away.
@@ -122247,7 +123401,7 @@ return Settings
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="120">
+        <Item class="ModuleScript" referent="122">
           <Properties>
             <string name="Name">State</string>
             <string name="Source"><![CDATA[-- State: shared client state and helpers (latest profile, server requests, toasts,
@@ -122414,7 +123568,7 @@ return State
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="121">
+        <Item class="ModuleScript" referent="123">
           <Properties>
             <string name="Name">TourneyUI</string>
             <string name="Source"><![CDATA[-- TourneyUI: the Career Hub's Tournaments tab (Hub's R.Tournaments) and the belt badge the FighterCard, the Hub and
@@ -122815,7 +123969,7 @@ return TourneyUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="122">
+        <Item class="ModuleScript" referent="124">
           <Properties>
             <string name="Name">Tutorial</string>
             <string name="Source"><![CDATA[-- Tutorial (client): the guided fights around the real fight HUD (FightClient).
@@ -123498,7 +124652,7 @@ return Tutorial
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="123">
+        <Item class="ModuleScript" referent="125">
           <Properties>
             <string name="Name">VenueDetail</string>
             <string name="Source"><![CDATA[-- VenueDetail: the fight venues' extra detail layer, built by VenueFX.Start on the fighting client only (inside
@@ -124075,7 +125229,7 @@ return VenueDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="124">
+        <Item class="ModuleScript" referent="126">
           <Properties>
             <string name="Name">VenueFX</string>
             <string name="Source"><![CDATA[-- VenueFX: client-only fight-night presentation for the player's own venue (stream G).
@@ -126636,7 +127790,7 @@ return VenueFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="125">
+        <Item class="ModuleScript" referent="127">
           <Properties>
             <string name="Name">WorldDetail</string>
             <string name="Source"><![CDATA[-- WorldDetail: the client-side detail layer of the gym and the city (GymDetail, CityDetail on DetailKit's
@@ -126821,7 +127975,7 @@ return WorldDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="126">
+        <Item class="ModuleScript" referent="128">
           <Properties>
             <string name="Name">WorldLOD</string>
             <string name="Source"><![CDATA[-- WorldLOD: the Graphics level (Perf) applied to the world's own lights, signs, particles and shadow
@@ -127413,7 +128567,7 @@ return WorldLOD
           </Properties>
         </Item>
       </Item>
-      <Item class="LocalScript" referent="127">
+      <Item class="LocalScript" referent="129">
         <Properties>
           <string name="Name">ClientMain</string>
           <string name="Source"><![CDATA[-- ClientMain: wires the client together - main menu at join, the gym HUD (player plate, condition
@@ -127512,6 +128666,20 @@ else
 	warn("[ClientMain] Tutorial unavailable:", TutorialClient)
 	TutorialClient = nil
 end
+-- the rig diagnostic ("/wcbdiag" in chat, Settings -> GAME -> COPY DIAGNOSTIC TO OUTPUT): optional, runs only when invoked
+task.spawn(function()
+	local ok, DiagClient = pcall(function()
+		return require(Modules:WaitForChild("DiagClient", 10))
+	end)
+	if ok and type(DiagClient) == "table" then
+		local okStart, errStart = pcall(DiagClient.Start, State)
+		if not okStart then
+			warn("[ClientMain] DiagClient start:", errStart)
+		end
+	else
+		warn("[ClientMain] DiagClient unavailable:", DiagClient)
+	end
+end)
 -- the celebration cutscene after a won tournament final / a new title (camera, confetti, banner, SKIP): optional
 task.spawn(function()
 	local ok, CeremonyClient = pcall(function()
@@ -128345,7 +129513,7 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="LocalScript" referent="128">
+      <Item class="LocalScript" referent="130">
         <Properties>
           <string name="Name">FightClient</string>
           <string name="Source"><![CDATA[-- FightClient: fight-night presentation and controls (also used for gym sparring).
@@ -133917,7 +135085,7 @@ end)
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="129">
+  <Item class="Workspace" referent="131">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="NeedsPivotMigration">false</bool>

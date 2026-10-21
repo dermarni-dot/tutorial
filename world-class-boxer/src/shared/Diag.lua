@@ -93,8 +93,13 @@ local function partLine(model, name)
 	local tier = attr(p, "BodyTier")
 	local extra = ""
 	if tier ~= nil then
-		extra = string.format(" tier=%s%s ratio=%s", tostring(tier), attr(p, "BodyLite") and " lite" or "", v3(attr(p, "BodyRatio")))
+		local okE, e = pcall(BodyTiers.PartEntry, tonumber(tier), name, nil, attr(p, "BodyLite") == true)
+		local want = okE and e and tostring(e.id) or "?"
+		local have = p:IsA("MeshPart") and tostring(get(p, "MeshId") or ""):gsub("rbxassetid://", "") or "-"
+		extra = string.format(" tier=%s%s ratio=%s expectMesh=%s%s", tostring(tier), attr(p, "BodyLite") and " lite" or "", v3(attr(p, "BodyRatio")), want,
+			(have == want or want == "?") and "" or " MISMATCH")
 	end
+	extra ..= " color=" .. (typeof(p.Color) == "Color3" and string.format("%d,%d,%d", p.Color.R * 255, p.Color.G * 255, p.Color.B * 255) or "?")
 	if name == "Head" then
 		local decals = {}
 		for _, d in ipairs(p:GetChildren()) do
@@ -218,9 +223,52 @@ local function lookLines(model, lines, verdicts)
 	end
 	local names = {}
 	for _, f in ipairs(look:GetChildren()) do
-		table.insert(names, f.Name .. "(" .. #f:GetDescendants() .. ")")
+		local n = 0
+		for _, d in ipairs(f:GetDescendants()) do
+			if d:IsA("BasePart") then
+				n += 1
+			end
+		end
+		table.insert(names, string.format("%s(%d parts, Detail=%s)", f.Name, n, tostring(attr(f, "Detail"))))
 	end
-	table.insert(lines, "look folders: " .. table.concat(names, " "))
+	table.insert(lines, "look folders: " .. table.concat(names, " ") .. " | Hands attr=" .. tostring(attr(model, "Hands")) .. " Outfit=" .. tostring(attr(model, "Outfit"))
+		.. " HeadgearColor=" .. tostring(attr(model, "HeadgearColor")) .. " HeadgearCorner=" .. tostring(attr(model, "HeadgearCorner")))
+	-- the hands: gloves / wraps, each welded to a hand or forearm
+	local hands = look:FindFirstChild("Hands")
+	if hands then
+		local n, loose, kinds = 0, 0, {}
+		for _, p in ipairs(hands:GetDescendants()) do
+			if p:IsA("BasePart") then
+				n += 1
+				local w = p:FindFirstChildOfClass("WeldConstraint") or p:FindFirstChildOfClass("Weld")
+				local to = w and ((w.Part0 == p and w.Part1) or w.Part0)
+				if not (to and to.Parent) then
+					loose += 1
+				end
+				local k = p.Name:gsub("[LR]$", "")
+				kinds[k] = (kinds[k] or 0) + 1
+				if n <= 10 then
+					table.insert(lines, string.format("hands %-14s %-8s size=%s on=%s color=%d,%d,%d mesh=%s", p.Name, p.ClassName, v3(p.Size), to and to.Name or "NONE",
+						p.Color.R * 255, p.Color.G * 255, p.Color.B * 255, p:IsA("MeshPart") and tostring(get(p, "MeshId") or ""):gsub("rbxassetid://", "") or "-"))
+				end
+			end
+		end
+		local kl = {}
+		for k, c in pairs(kinds) do
+			table.insert(kl, k .. "x" .. c)
+		end
+		table.sort(kl)
+		table.insert(lines, string.format("hands: %d parts (%s), %d welded to nothing", n, table.concat(kl, " "), loose))
+		if n == 0 then
+			table.insert(verdicts, "BAD  the Hands folder is empty: no gloves / wraps built")
+		elseif loose > 0 then
+			table.insert(verdicts, string.format("BAD  %d hand pieces are welded to nothing (they fall or stay behind)", loose))
+		else
+			table.insert(verdicts, string.format("OK   hands: %d pieces (%s) welded", n, table.concat(kl, " ")))
+		end
+	else
+		table.insert(verdicts, "BAD  no Hands folder: the gloves / wraps step never ran (or was removed)")
+	end
 	for _, fname in ipairs({ "Headgear", "Hat" }) do
 		local f = look:FindFirstChild(fname)
 		if f then
@@ -232,8 +280,8 @@ local function lookLines(model, lines, verdicts)
 					local w = p:FindFirstChildOfClass("WeldConstraint") or p:FindFirstChildOfClass("Weld")
 					local to = w and ((w.Part0 == p and w.Part1) or w.Part0)
 					if n <= 12 then
-						table.insert(lines, string.format("%s %-12s %-8s size=%s relHead=%s massless=%s coll=%s weld->%s", fname:lower(), p.Name, p.ClassName,
-							v3(p.Size), cfs(rel), tostring(p.Massless), tostring(p.CanCollide), to and to.Name or "NONE"))
+						table.insert(lines, string.format("%s %-12s %-8s size=%s relHead=%s color=%d,%d,%d massless=%s coll=%s weld->%s", fname:lower(), p.Name, p.ClassName,
+							v3(p.Size), cfs(rel), p.Color.R * 255, p.Color.G * 255, p.Color.B * 255, tostring(p.Massless), tostring(p.CanCollide), to and to.Name or "NONE"))
 					end
 					if p.Name == "HGShell" or p.Name == "CapCrown" or p.Name == "Crown" then
 						shell = p
@@ -257,6 +305,12 @@ local function lookLines(model, lines, verdicts)
 	end
 	local att = look:FindFirstChild("Attire")
 	if att then
+		local fa = {}
+		for k, v in pairs(att:GetAttributes()) do
+			table.insert(fa, k .. "=" .. tostring(v))
+		end
+		table.sort(fa)
+		table.insert(lines, "attire attributes: " .. table.concat(fa, " "))
 		local n = 0
 		for _, p in ipairs(att:GetDescendants()) do
 			if p:IsA("BasePart") then
@@ -274,6 +328,11 @@ local function lookLines(model, lines, verdicts)
 			end
 		end
 		table.insert(lines, string.format("attire: %d parts", n))
+		if n == 0 then
+			table.insert(verdicts, "BAD  the Attire folder is empty: no trunks / outfit built")
+		end
+	else
+		table.insert(verdicts, "BAD  no Attire folder: the attire step never ran (or was removed)")
 	end
 end
 
@@ -317,8 +376,8 @@ local function humanoidLines(model, hum, lines, verdicts)
 		animate and (animate.ClassName .. (get(animate, "Disabled") and " DISABLED" or " ENABLED")) or "none", animator and "yes" or "NO",
 		table.concat(tracks, " "), tostring(attr(model, "ProcAnim"))))
 	if root and root:IsA("BasePart") then
-		table.insert(lines, string.format("root pos=%s vel=%s size=%s anchored=%s networkOwnerKnown=%s", v3(root.Position), v3(root.AssemblyLinearVelocity),
-			v3(root.Size), tostring(root.Anchored), tostring(get(root, "ReceiveAge") ~= nil)))
+		table.insert(lines, string.format("root pos=%s vel=%s size=%s anchored=%s", v3(root.Position), v3(root.AssemblyLinearVelocity), v3(root.Size),
+			tostring(root.Anchored)))
 	end
 	if legs then
 		if math.abs(legs - hh) <= 0.05 then
@@ -410,6 +469,11 @@ function Diag.Report(model, ctx)
 			if tier == nil then
 				table.insert(defaults, name)
 			else
+				local okE, e = pcall(BodyTiers.PartEntry, tonumber(tier), name, nil, attr(p, "BodyLite") == true)
+				local have = p:IsA("MeshPart") and tostring(get(p, "MeshId") or ""):gsub("rbxassetid://", "") or "-"
+				if okE and e and have ~= tostring(e.id) then
+					table.insert(verdicts, string.format("BAD  %s shows mesh %s, tier %s expects %s: not the tier part the attribute claims", name, have, tostring(tier), tostring(e.id)))
+				end
 				local r0 = attr(p, "BodyRatio")
 				local r = BuilderTiers.RatioOf(p)
 				if typeof(r0) == "Vector3" and r and (r - r0).Magnitude > 0.02 then
