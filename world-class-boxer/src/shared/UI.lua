@@ -595,6 +595,15 @@ do
 	IconData = ok and type(m) == "table" and m or nil
 end
 UI.IconData = IconData
+-- the places' lockups (Shared.Signage): UI.LocationBadge
+local Signage
+do
+	local ok, m = pcall(function()
+		return require(script.Parent:WaitForChild("Signage", 5))
+	end)
+	Signage = ok and type(m) == "table" and m or nil
+end
+UI.Signage = Signage
 local ICON_ALIAS = { right = { "chevron", 0 }, down = { "chevron", 90 }, left = { "chevron", 180 }, up = { "chevron", 270 }, undo = { "reset", 0 },
 	gloves = { "glove", 0 }, store = { "bag", 0 }, settings = { "gear", 0 } }
 
@@ -619,9 +628,14 @@ function UI.Icon(parent, kind, size, color, props)
 	end
 	size = size or 16
 	color = color or T.text
+	-- props.rotates: the caller turns the icon later (a chevron flipping open): the glyph follows the holder's
+	-- Rotation through a listener; every other icon is still, so no connection is made for it
+	local rotates = props and (props.rotates or props.Rotation ~= nil)
 	local f = UI.New("Frame", { Name = "Icon", BackgroundTransparency = 1, Size = UDim2.fromOffset(size, size), BorderSizePixel = 0, Parent = parent })
 	for k, v in pairs(props or {}) do
-		f[k] = v
+		if k ~= "rotates" then
+			f[k] = v
+		end
 	end
 	f:SetAttribute("Icon", kind)
 	local e, rot = UI.IconEntry(kind)
@@ -632,9 +646,11 @@ function UI.Icon(parent, kind, size, color, props)
 			ImageColor3 = color, ScaleType = Enum.ScaleType.Fit, Rotation = rot + f.Rotation, ZIndex = f.ZIndex, Parent = f })
 		-- (a GuiObject's Rotation does not turn its children: the holder's is carried onto the image, so a
 		-- caller turning the icon - the brand's tilted glove, a chevron flipping open - turns the glyph)
-		f:GetPropertyChangedSignal("Rotation"):Connect(function()
-			glyph.Rotation = rot + f.Rotation
-		end)
+		if rotates then
+			f:GetPropertyChangedSignal("Rotation"):Connect(function()
+				glyph.Rotation = rot + f.Rotation
+			end)
+		end
 	elseif VECTOR_KINDS[kind] then
 		vectorIcon(f, kind, size, color)
 	else
@@ -711,6 +727,20 @@ function UI.Brand(parent, size, props)
 		Size = UDim2.fromScale(1, 1), ZIndex = badge.ZIndex + 3, Parent = ribbon })
 	UI.SetFace(mark, "display")
 	return badge
+end
+
+-- a place's badge (Shared.Signage: the same lockup as its sign in the world) h px tall. key = a location id,
+-- a venue kind, a shop's sign text or a display name ("Grand Arena"); nil when the place is not known.
+-- props: Signage.Badge's (sub, text, w, plain, button, order, Position, AnchorPoint)
+function UI.LocationBadge(parent, key, h, props)
+	local loc = Signage and (Signage.Get(key) or Signage.Find(key))
+	if not loc then
+		return nil
+	end
+	local badge, wordmark = Signage.Badge(parent, loc, h, props)
+	-- the wordmark stays at its design size: the badge is laid out in px around it
+	registerText(wordmark, { TextSize = wordmark.TextSize })
+	return badge, loc
 end
 
 ------------------------------------------------------------------------

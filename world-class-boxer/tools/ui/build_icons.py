@@ -736,6 +736,134 @@ def _():
     return s
 
 
+# --- places (the signage lockups: Shared.Signage) ---------------------------------------------------------
+@icon("burger")  # the diner
+def _():
+    s = path("M36 108 C36 60 76 36 128 36 C180 36 220 60 220 108 Z")
+    s += rect(30, 122, 196, 26, 13) + rect(36, 162, 184, 22, 11)
+    s += path("M40 196 H216 V208 C216 224 204 232 188 232 H68 C52 232 40 224 40 208 Z")
+    s += circle(92, 72, 7, K) + circle(128, 60, 7, K) + circle(164, 72, 7, K)
+    return s
+
+
+@icon("cup")  # the cafe: a mug with steam
+def _():
+    s = path("M44 112 H168 V196 C168 218 150 232 128 232 H84 C62 232 44 218 44 196 Z")
+    s += stroke("M168 132 H190 C214 132 222 150 222 164 C222 182 208 192 190 192 H168", sw=22)
+    s += stroke("M80 86 C68 70 92 60 80 40", sw=18) + stroke("M118 86 C106 70 130 60 118 40", sw=18) + stroke("M156 86 C144 70 168 60 156 40", sw=18)
+    return s
+
+
+@icon("washer")  # the laundromat: a front loader
+def _():
+    s = rect(32, 26, 192, 204, 20)
+    s += circle(128, 148, 58, K) + circle(128, 148, 42) + circle(128, 148, 22, K)
+    s += rect(48, 42, 60, 22, 8, K) + circle(196, 53, 11, K) + circle(166, 53, 11, K)
+    return s
+
+
+@icon("needle")  # the tattoo parlour: an ink pen and a drop
+def _():
+    pen = rect(104, 10, 48, 124, 14) + rect(98, 144, 60, 16, 5) + path("M100 172 H156 L136 236 H120 Z") + rect(124, 188, 8, 30, 4, K)
+    s = g(pen, "rotate(40 128 128)")
+    s += circle(198, 204, 22) + path("M176 200 C176 180 198 154 198 154 C198 154 220 180 220 200 Z")
+    return s
+
+
+@icon("bread")  # the bakery: a loaf, scored
+def _():
+    s = path("M30 150 C30 108 70 74 128 74 C186 74 226 108 226 150 V196 C226 212 212 226 196 226 H60 C44 226 30 212 30 196 Z")
+    for x in (86, 128, 170):
+        s += rect(x - 7, 92, 14, 54, 7, K, rot=(28, x, 119))
+    return s
+
+
+@icon("ticket")  # the box office: a ticket stub
+def _():
+    body = ("M30 76 C30 66 38 58 48 58 H208 C218 58 226 66 226 76 V102 C212 104 202 114 202 128 C202 142 212 152 226 154 V180 "
+            "C226 190 218 198 208 198 H48 C38 198 30 190 30 180 V154 C44 152 54 142 54 128 C54 114 44 104 30 102 Z")
+    s = path(body)
+    s += rect(150, 70, 12, 116, 6, K)
+    s += rect(70, 92, 56, 14, 7, K) + rect(70, 121, 56, 14, 7, K) + rect(70, 150, 40, 14, 7, K)
+    return s
+
+
+@icon("pizza")  # the pizzeria: a slice
+def _():
+    s = path("M128 234 L26 70 C58 46 92 34 128 34 C164 34 198 46 230 70 Z")
+    s += path("M128 206 L58 84 C80 70 104 62 128 62 C152 62 176 70 198 84 Z", fill=K)
+    s += path("M128 196 L72 92 C90 82 108 76 128 76 C148 76 166 82 184 92 Z")
+    s += circle(128, 110, 14, K) + circle(102, 140, 12, K) + circle(154, 142, 12, K) + circle(128, 168, 10, K)
+    return s
+
+
+@icon("building")  # the apartments: a tower of lit windows
+def _():
+    s = rect(50, 22, 156, 212, 10)
+    for r_ in range(4):
+        for c in range(3):
+            s += rect(70 + c * 44, 42 + r_ * 40, 28, 24, 4, K)
+    s += rect(110, 198, 36, 36, 4, K)
+    return s
+
+
+@icon("columns")  # the museum: a portico
+def _():
+    s = poly([(128, 22), (236, 76), (20, 76)], stroke=W, sw=14)
+    s += rect(30, 84, 196, 18, 6)
+    for x in (48, 98, 148, 198):
+        s += rect(x - 10, 110, 20, 86, 6)
+    s += rect(24, 204, 208, 30, 8)
+    return s
+
+
+@icon("bed")  # the motel: a bed
+def _():
+    s = rect(26, 60, 26, 150, 10)
+    s += path("M52 128 H214 C226 128 234 136 234 148 V200 H52 Z")
+    s += rect(60, 92, 70, 30, 14)
+    s += rect(26, 196, 208, 22, 8) + rect(26, 210, 22, 26, 6) + rect(208, 210, 22, 26, 6)
+    s += rect(52, 186, 182, 10, 0, K)
+    return s
+
+
+@icon("pump")  # the gas station: a fuel pump
+def _():
+    s = rect(36, 26, 128, 208, 16)
+    s += rect(56, 46, 88, 56, 10, K)
+    s += stroke("M164 92 H190 C206 92 214 102 214 118 V176 C214 190 206 198 196 198 C186 198 178 190 178 176 V140 C178 134 172 130 164 130", sw=18)
+    s += rect(24, 222, 152, 14, 6)
+    return s
+
+
+@icon("arena")  # the arena: a roofed bowl
+def _():
+    s = path("M22 112 C22 74 70 46 128 46 C186 46 234 74 234 112 L224 128 H32 Z")
+    s += path("M34 140 H222 L240 214 C240 222 234 228 226 228 H30 C22 228 16 222 16 214 Z")
+    for x in (64, 104, 144, 184):
+        s += rect(x - 8, 158, 16, 44, 6, K)
+    s += rect(100, 84, 56, 12, 6, K)
+    return s
+
+
+@icon("stadium")  # the stadium: an open bowl under floodlights
+def _():
+    s = rect(22, 44, 40, 20, 8) + rect(38, 64, 8, 50, 3)
+    s += rect(194, 44, 40, 20, 8) + rect(210, 64, 8, 50, 3)
+    s += path("M18 126 H238 L218 230 C216 236 212 238 206 238 H50 C44 238 40 236 38 230 Z")
+    s += path("M44 148 H212 L198 214 H58 Z", fill=K)
+    s += rect(68, 162, 120, 10, 5) + rect(78, 184, 100, 10, 5)
+    return s
+
+
+@icon("mountain")  # the training camp: peaks and a flag
+def _():
+    s = poly([(16, 226), (104, 86), (158, 170), (182, 134), (240, 226)], stroke=W, sw=16)
+    s += path("M104 86 L128 124 L118 118 L108 128 L98 118 L88 124 Z", fill=K)
+    s += rect(176, 36, 10, 70, 4) + path("M186 40 L232 60 L186 80 Z")
+    return s
+
+
 ORDER = [
     # interface
     "close", "chevron", "check", "plus", "minus", "play", "menu", "reset", "lock", "info", "warning", "star", "eye", "gear",
@@ -747,6 +875,9 @@ ORDER = [
     # career and life
     "money", "calendar", "trophy", "podium", "medal", "chart", "trend", "whistle", "contract", "home", "car", "pin", "bag",
     "scissors", "user", "gamepad", "crown", "flame", "skull", "dumbbell", "shoe", "emblem", "coin", "people",
+    # places (the signage lockups)
+    "burger", "cup", "washer", "needle", "bread", "ticket", "pizza", "building", "columns", "bed", "pump", "arena", "stadium",
+    "mountain",
 ]
 
 

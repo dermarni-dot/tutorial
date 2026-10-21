@@ -592,6 +592,10 @@ function Tutorial.OfferDebut(info)
 	local _, win, body = UI.Window(root, "DebutOffer", 640, 470, "YOUR DEBUT", { kicker = "AMATEUR BOUT  ·  TONIGHT", footer = 64 })
 	UI.Text(body, "Your first fight is tonight: a " .. tostring(info.rounds or 3) .. "-round amateur bout against a fellow novice from your division, at the "
 		.. tostring(info.venue or "Community Center") .. ".", { Name = "Lead", TextSize = 17, Font = T.semi, LayoutOrder = 1 })
+	local vb = UI.LocationBadge(body, info.venue or "Community Center", 30, { Name = "VenueBadge", order = 1 })
+	if vb then
+		vb.LayoutOrder = 1
+	end
 	UI.Text(body, "Your coach talks you through it step by step: moving, the jab and the cross, hooks, uppercuts and body shots, combinations, blocking, slipping and weaving, counters and stamina. The clock waits while you learn each one.",
 		{ TextSize = 14, TextColor3 = T.sub, LayoutOrder = 2 })
 	UI.Text(body, "It's a real fight: the result goes on your record and pays a purse. Gentler rules for this one night: his punches hurt half as much and you can't be stopped before the last round. The win is still yours to earn.",

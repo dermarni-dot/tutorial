@@ -8,6 +8,8 @@
 -- Animated pieces (fans, round timers, TV tickers, neon flicker, barber pole) are tagged and
 -- driven client-side by Ambience. Everything is anchored; small props never collide.
 local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Signage = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Signage"))
 
 local GymDecor = {}
 
@@ -161,9 +163,11 @@ local function frame(parent, props)
 	return f
 end
 
--- simple text sign on one face
+-- simple text sign on one face (the density is capped by the face's height: the engine draws text at
+-- 100 px at most, so a tall face at 40 px per stud would keep its words small)
 local function sign(p, face, text, fg, bg, ppu, light, font)
-	local sg = gui(p, face, ppu or 40, light or 0)
+	local _, fh = Signage.FaceDims(p.Size, face)
+	local sg = gui(p, face, math.min(ppu or 40, Signage.PPS(fh, 0.86)), light or 0)
 	if bg then
 		frame(sg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = bg })
 	end
@@ -609,7 +613,7 @@ local function buildLobby(root)
 	part(f, "DeskTopReturn", V3(2.8, 0.3, 8.8), CF(35.0, 4.15, 67.2), Color3.fromRGB(225, 225, 228), M.Marble)
 	part(f, "DeskStripe", V3(11.8, 0.35, 0.08), CF(27.9, 3.2, 68.97), C.red, M.SmoothPlastic)
 	local deskLogo = part(f, "DeskLogo", V3(8, 1.3, 0.06), CF(27.9, 1.9, 68.97), Color3.new(), M.SmoothPlastic, { transparency = 1 })
-	sign(deskLogo, Enum.NormalId.Front, "WORLD CLASS BOXING", C.gold, nil, 40)
+	Signage.Board(deskLogo, Enum.NormalId.Front, "gym", { bg = false, sub = false, maxDist = 120 })
 	part(f, "MonitorBase", V3(1.0, 0.08, 0.6), CF(25.5, 4.34, 70.6), C.black, M.SmoothPlastic)
 	part(f, "MonitorNeck", V3(0.2, 0.7, 0.2), CF(25.5, 4.7, 70.65), C.black, M.SmoothPlastic)
 	local screen = part(f, "Monitor", V3(2.3, 1.4, 0.14), CF(25.5, 5.6, 70.55), C.black, M.SmoothPlastic)
@@ -887,8 +891,7 @@ local function buildBoxing(root)
 		part(f, "FloorLine", V3(e[3], 0.02, e[4]), CF(e[1], 0.515, e[2]), C.white, M.SmoothPlastic)
 	end
 	local logo = part(f, "CanvasLogo", V3(8, 0.02, 8), CF(0, 2.82, -50), Color3.new(), M.SmoothPlastic, { transparency = 1 })
-	local lsg = gui(logo, Enum.NormalId.Top, 30, 1)
-	label(lsg, "WCB", { TextColor3 = Color3.fromRGB(235, 235, 240), TextTransparency = 0.35 })
+	Signage.Board(logo, Enum.NormalId.Top, "gym", { bg = false, text = "WCB", sub = false, light = 1, maxDist = 160, fg = Color3.fromRGB(235, 235, 240) })
 end
 
 ------------------------------------------------------------------------
@@ -1272,10 +1275,8 @@ local function buildExterior(root)
 	-- illuminated sign above the main entrance (faces the street)
 	local sg = model(f, "EntranceSign")
 	local back = part(sg, "SignBack", V3(62, 6.6, 0.8), CF(0, 23.4, 81.5), Color3.fromRGB(16, 16, 20), M.SmoothPlastic)
-	local s = gui(back, Enum.NormalId.Back, 12, 0)
-	frame(s, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(16, 16, 20) })
-	label(s, "WORLD CLASS BOXING GYM", { TextColor3 = C.gold, Size = UDim2.fromScale(0.94, 0.66), Position = UDim2.fromScale(0.03, 0.08) })
-	label(s, "CHAMPIONS ARE MADE HERE  -  EST. 1987", { TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.6, 0.18), Position = UDim2.fromScale(0.2, 0.76) })
+	-- the gym's lockup (Shared.Signage): the glove tile, the wordmark, the motto (the same badge the menus show)
+	Signage.Board(back, Enum.NormalId.Back, "gym", { bg = Color3.fromRGB(16, 16, 20), maxDist = 900 })
 	local neon = model(sg, "Neon")
 	for _, e in ipairs({ { 0, 3.35, 62.4, 0.28 }, { 0, -3.35, 62.4, 0.28 }, { -31.2, 0, 0.28, 6.9 }, { 31.2, 0, 0.28, 6.9 } }) do
 		part(neon, "NeonTube", V3(e[3], e[4], 0.28), CF(e[1], 23.4 + e[2], 82.0), Color3.fromRGB(255, 40, 50), M.Neon, { shadow = false })

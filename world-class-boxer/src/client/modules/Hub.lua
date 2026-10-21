@@ -14,6 +14,7 @@ local Catalog = require(Shared:WaitForChild("Catalog"))
 -- the opponents' ring traits as the scouting report knows them (Traits.ScoutView)
 local Traits = require(Shared:WaitForChild("Traits"))
 local UI = require(Shared:WaitForChild("UI"))
+local Signage = require(Shared:WaitForChild("Signage"))
 local State = require(script.Parent:WaitForChild("State"))
 local FighterCard = require(script.Parent:WaitForChild("FighterCard"))
 local BodyMap = require(script.Parent:WaitForChild("BodyMap"))
@@ -165,9 +166,9 @@ local function fits(obj, text, size, width, font)
 	return textW(text, math.max(size, UI.TextFloor(UI.ScaleOf(obj))), font) <= width
 end
 
-local function act(text, color, fn, width)
+local function act(text, color, fn, width, icon)
 	return function(parent)
-		return UI.Button(parent, text, { Size = UDim2.new(0, width or 170, 1, 0), BackgroundColor3 = color or T.panel2, TextColor3 = (color == T.gold) and T.bg or T.text, TextSize = 14 }, fn)
+		return UI.Button(parent, text, { Size = UDim2.new(0, width or 170, 1, 0), BackgroundColor3 = color or T.panel2, TextColor3 = (color == T.gold) and T.bg or T.text, TextSize = 14, icon = icon }, fn)
 	end
 end
 
@@ -179,14 +180,33 @@ local function buttons(parent, list, h)
 	return row
 end
 
--- a sponsor's logo as a little coloured badge (bg / fg / text from Catalog.Sponsors logo)
-local function logoChip(parent, logo, w, h)
-	logo = type(logo) == "table" and logo or {}
-	local f = UI.Frame(parent, { Size = UDim2.fromOffset(w or 130, h or 40), BackgroundColor3 = rgb(logo.bg, T.panel2) })
-	UI.Corner(f, 6)
-	UI.Text(f, tostring(logo.text or "?"), { Font = T.bold, TextScaled = true, TextColor3 = rgb(logo.fg, T.text), Size = UDim2.new(1, -10, 0.62, 0), Position = UDim2.fromOffset(5, 3), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center })
+-- a sponsor's logo as a little coloured badge (bg / fg / text from Catalog.Sponsors logo). A local brand that
+-- owns a Main Street shop carries the shop's icon tile (Shared.Signage), so the chip matches the shop front.
+local function logoChip(parent, def, w, h)
+	def = type(def) == "table" and def or {}
+	local logo = type(def.logo) == "table" and def.logo or def
+	w, h = w or 130, h or 40
+	local fg = rgb(logo.fg, T.text)
+	local f = UI.Frame(parent, { Name = "LogoChip", Size = UDim2.fromOffset(w, h), BackgroundColor3 = rgb(logo.bg, T.panel2) })
+	UI.Corner(f, UI.R.sm)
+	UI.Stroke(f, fg, 1, 0.7)
+	UI.Gradient(f, { Color3.new(1, 1, 1), Color3.fromRGB(214, 214, 214) }, 90)
+	local loc = def.shop and Signage.ByShop[string.upper(def.shop)]
+	local x = 6
+	if loc then
+		local ts = h - 12
+		local tile = UI.Frame(f, { Name = "Tile", Size = UDim2.fromOffset(ts, ts), Position = UDim2.fromOffset(6, 6), BackgroundColor3 = fg })
+		UI.Corner(tile, math.floor(ts * 0.22))
+		Signage.Glyph(tile, loc.icon, rgb(logo.bg, T.panel2), { Size = UDim2.fromScale(0.7, 0.7), Position = UDim2.fromScale(0.5, 0.5), AnchorPoint = Vector2.new(0.5, 0.5) })
+		x = 6 + ts + 6
+	end
+	local mark = UI.Text(f, tostring(logo.text or "?"), { Name = "Wordmark", Font = T.bold, TextScaled = true, TextColor3 = fg, Size = UDim2.new(1, -(x + 6), 0, math.floor(h * 0.5)), Position = UDim2.fromOffset(x, logo.glyph and 4 or math.floor(h * 0.25)),
+		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = loc and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center, TextWrapped = false })
+	UI.New("UITextSizeConstraint", { MaxTextSize = math.floor(h * 0.42), MinTextSize = 9, Parent = mark })
 	if logo.glyph then
-		UI.Text(f, tostring(logo.glyph), { Font = T.semi, TextScaled = true, TextColor3 = rgb(logo.fg, T.text), Size = UDim2.new(1, -10, 0.28, 0), Position = UDim2.new(0, 5, 0.66, 0), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center })
+		local gl = UI.Text(f, tostring(logo.glyph), { Name = "Glyph", Font = T.semi, TextScaled = true, TextColor3 = fg, TextTransparency = 0.25, Size = UDim2.new(1, -(x + 6), 0, math.floor(h * 0.3)), Position = UDim2.fromOffset(x, math.floor(h * 0.56)),
+			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = loc and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center, TextWrapped = false })
+		UI.New("UITextSizeConstraint", { MaxTextSize = math.floor(h * 0.26), MinTextSize = 8, Parent = gl })
 	end
 	return f
 end
@@ -304,11 +324,20 @@ local function oppBlock(parent, o)
 	end
 end
 
--- "AMATEUR BOUT · 3 ROUNDS · COMMUNITY CENTER" on the left, the purse on the right
+-- "AMATEUR BOUT · 3 ROUNDS" and the venue's badge (its sign's lockup) on the left, the purse on the right
 local function fightHeader(parent, o, special)
 	local row = UI.Frame(parent, { Name = "FightHeader", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 22) })
-	UI.Text(row, string.format("%s  ·  %d ROUNDS  ·  %s", o.kind:upper(), o.rounds, string.upper(o.venueName or "")), { Font = T.semi, TextSize = 12, TextColor3 = special and T.gold or T.sub,
-		Size = UDim2.new(1, -150, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	local loc = Signage.Get(o.venue) or Signage.Find(o.venueName)
+	local line = string.format("%s  ·  %d ROUNDS", o.kind:upper(), o.rounds)
+	if not loc and o.venueName and o.venueName ~= "" then
+		line = line .. "  ·  " .. string.upper(o.venueName)
+	end
+	local lineW = loc and math.min(textW(line, 12, T.semi) + 8, 260) or nil
+	UI.Text(row, line, { Font = T.semi, TextSize = 12, TextColor3 = special and T.gold or T.sub,
+		Size = lineW and UDim2.new(0, lineW, 1, 0) or UDim2.new(1, -150, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	if loc then
+		Signage.Badge(row, loc, 20, { sub = false, Position = UDim2.fromOffset(lineW + 4, 1) })
+	end
 	UI.Text(row, "PURSE  " .. money(o.purse), { Face = "number", TextSize = 18, TextColor3 = T.green, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, -2),
 		Size = UDim2.fromOffset(150, 24), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
 	return row
@@ -621,6 +650,46 @@ end
 -- an exercise card: what it builds (stats), the muscles it works as level bars against the frame's
 -- potential (coloured by how hard it works them), your personal best and sessions, a body map thumbnail
 local CARD_H = 166
+-- The exercise cards' body-map thumbnails are built only for the cards in (or just below) the view: the
+-- Training tab holds thirty cards, and each thumbnail is a painted figure (an EditableImage and its mask, or a
+-- hundred frames without one) - built all at once they were two thirds of the tab's objects and most of its
+-- build time. lazyMaps = { tile, build }; the view's scroll (Hub.Open's listener) and every render pass check
+-- which cards came into the view and build theirs once.
+local lazyMaps = {}
+local lazyQueued = false
+local function buildVisibleMaps()
+	if not (content and content.Parent) or #lazyMaps == 0 then
+		return
+	end
+	local top = content.AbsolutePosition.Y
+	local bottom = top + content.AbsoluteSize.Y
+	local margin = content.AbsoluteSize.Y * 0.5
+	local keep = {}
+	for _, e in ipairs(lazyMaps) do
+		local t = e.tile
+		if t.Parent then
+			local y0 = t.AbsolutePosition.Y
+			local y1 = y0 + t.AbsoluteSize.Y
+			if y1 >= top - margin and y0 <= bottom + margin then
+				e.build()
+			else
+				table.insert(keep, e)
+			end
+		end
+	end
+	lazyMaps = keep
+end
+local function queueVisibleMaps()
+	if lazyQueued then
+		return
+	end
+	lazyQueued = true
+	task.defer(function()
+		lazyQueued = false
+		buildVisibleMaps()
+	end)
+end
+
 local function exerciseCard(grid, a, P, order, cap)
 	local st = Catalog.Stations[a.station]
 	local lv = math.max(1, P.gym.levels[a.station] or 1)
@@ -707,22 +776,30 @@ local function exerciseCard(grid, a, P, order, cap)
 	end
 	refit()
 	tile:GetPropertyChangedSignal("AbsoluteSize"):Connect(refit)
-	-- the body map: what it works (recovery: the whole body, cool); a finger-high GO under it
+	-- the body map: what it works (recovery: the whole body, cool); a finger-high GO under it. Built when the
+	-- card scrolls into the view (lazyMaps above)
 	local goH = hit(tile, 32)
-	local ok, map = pcall(BodyMap.new, tile, { Size = UDim2.fromOffset(THUMB_W, math.min(100, CARD_H - goH - 30)), views = "front", labels = false, glow = false, AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -10, 0, 8) })
-	if ok and map then
-		if a.recovery then
-			local all = {}
-			for _, p in ipairs(Config.MuscleParts) do
-				all[p.id] = 0.5
-			end
-			map:SetTargets(all, T.cyan, 1)
-		else
-			-- the thumbnail lights what the card lists (its three main muscles)
-			map:SetTargets(listed, T.red)
+	local built = false
+	table.insert(lazyMaps, { tile = tile, build = function()
+		if built or not tile.Parent then
+			return
 		end
-	end
+		built = true
+		local ok, map = pcall(BodyMap.new, tile, { Size = UDim2.fromOffset(THUMB_W, math.min(100, CARD_H - goH - 30)), views = "front", labels = false, glow = false, AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -10, 0, 8) })
+		if ok and map then
+			if a.recovery then
+				local all = {}
+				for _, p in ipairs(Config.MuscleParts) do
+					all[p.id] = 0.5
+				end
+				map:SetTargets(all, T.cyan, 1)
+			else
+				-- the thumbnail lights what the card lists (its three main muscles)
+				map:SetTargets(listed, T.red)
+			end
+		end
+	end })
 	-- done today already: the next one pays less (TrainingPlan.RepeatMul)
 	local nToday = trv and type(trv.today) == "table" and tonumber(trv.today[a.id]) or 0
 	if nToday > 0 and not a.recovery and TP then
@@ -1713,7 +1790,7 @@ R.Sponsors = function(body, P)
 		UI.Line(c, (SLOT_NAMES[slot] or slot:upper()) .. (d and "" or "  -  open slot"), { Font = T.bold, TextColor3 = d and T.gold or T.sub })
 		if d then
 			local row = UI.Row(c, 44)
-			logoChip(row, d.logo)
+			logoChip(row, d)
 			local info = UI.Frame(row, { BackgroundTransparency = 1, Size = UDim2.new(1, -150, 1, 0) })
 			UI.List(info, 2)
 			UI.Line(info, string.format("%s  (%s)", d.name, d.scope or ""), { Font = T.semi, TextSize = 15 })
@@ -1743,7 +1820,7 @@ R.Sponsors = function(body, P)
 	for _, o in ipairs(offers) do
 		local c = UI.Card(body)
 		local row = UI.Row(c, 44)
-		logoChip(row, o.logo)
+		logoChip(row, o)
 		local info = UI.Frame(row, { BackgroundTransparency = 1, Size = UDim2.new(1, -150, 1, 0) })
 		UI.List(info, 2)
 		UI.Line(info, string.format("%s  -  %s  (%s)", o.name, SLOT_NAMES[o.slot] or o.slot, o.scope or ""), { Font = T.semi, TextSize = 15 })
@@ -1791,14 +1868,16 @@ local HOME_WHERE = {
 	Mansion = "The Hillcrest estate at the top of Oak Street",
 }
 local WAKE = { { "here", "WHERE I SLEPT" }, { "home", "AT HOME" }, { "gym", "AT THE GYM" } }
+-- Main Street's shops by their Signage id (the badge is the shop front's own lockup)
 local CITY_GUIDE = {
-	{ "Iron Supplements", "protein, creatine and pre-workout (gains buffs)" },
-	{ "Champ's Diner / Tony's Pizza", "real food: refuel your nutrition" },
-	{ "WCB Pro Shop", "gloves, boots, wraps, robes by every brand" },
-	{ "Fresh Fades Barbershop", "haircuts, fades, beards" },
-	{ "Prestige Motors", "sports cars, supercars and the hypercar" },
-	{ "Boxing Hall of Fame Museum", "the legends - and one day your exhibit" },
-	{ "WCB Arena Tickets", "fight offers and your next card" },
+	{ "supplements", "protein, creatine and pre-workout (gains buffs)" },
+	{ "diner", "real food: refuel your nutrition" },
+	{ "pizza", "a slice of champions (cheat meal)" },
+	{ "proshop", "gloves, boots, wraps, robes by every brand" },
+	{ "barber", "haircuts, fades, beards" },
+	{ "motors", "sports cars, supercars and the hypercar" },
+	{ "museum", "the legends - and one day your exhibit" },
+	{ "tickets", "fight offers and your next card" },
 }
 
 R.Life = function(body, P)
@@ -1849,32 +1928,49 @@ R.Life = function(body, P)
 	local tc = UI.Card(body)
 	UI.Line(tc, "AROUND THE CITY", { Font = T.bold, TextColor3 = T.gold })
 	local gt = P.gymTier and P.gymTier.index or 1
+	-- (each trip's button carries its place's icon: the same glyph as the sign there)
 	local trips = {
 		act("GYM", T.panel2, function()
 			travel("TravelPlace", "gym")
-		end, 110),
+		end, 110, "glove"),
 		act("MAIN STREET", T.panel2, function()
 			travel("TravelPlace", "city")
-		end, 140),
+		end, 150, "pin"),
 		act(gt >= 3 and "ELITE CENTER" or "ELITE CENTER (LOCKED)", gt >= 3 and T.panel2 or Color3.fromRGB(50, 40, 40), function()
 			if gt < 3 then
 				State.toast("Reach the Elite facility tier first (Gym tab).", T.red)
 				return
 			end
 			travel("TravelPlace", "elite")
-		end, 200),
+		end, gt >= 3 and 160 or 210, gt >= 3 and "bolt" or "lock"),
 		act("HILLCREST", T.panel2, function()
 			travel("TravelPlace", "estate")
-		end, 120),
+		end, 130, "home"),
 	}
 	if P.camp and (owned.MountainCamp or owned.EliteCamp) then
 		table.insert(trips, act("TRAINING CAMP", T.gold, function()
 			travel("TravelPlace", "camp")
-		end, 160))
+		end, 170, "mountain"))
 	end
-	buttons(tc, trips, 34)
-	for _, g in ipairs(CITY_GUIDE) do
-		UI.Line(tc, g[1] .. "  -  " .. g[2], { TextSize = 12, TextColor3 = T.sub })
+	-- a phone keeps the trips to two rows
+	local compact = compactHub()
+	if compact then
+		buttons(tc, { trips[1], trips[2] }, 34)
+		buttons(tc, { trips[3], trips[4], trips[5] }, 34)
+	else
+		buttons(tc, trips, 34)
+	end
+	-- Main Street: each shop's badge (its sign's lockup) and what it is for
+	local guide = UI.Frame(tc, { Name = "CityGuide", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+	local cols = compact and 1 or 2
+	UI.Grid(guide, UDim2.new(1 / cols, cols > 1 and -4 or 0, 0, 30), nil, 4)
+	for i, g in ipairs(CITY_GUIDE) do
+		local row = UI.Frame(guide, { Name = "Guide_" .. g[1], BackgroundTransparency = 1, LayoutOrder = i })
+		local badge = Signage.Badge(row, g[1], 26, { sub = false, Position = UDim2.fromOffset(0, 2) })
+		local bw = textW(Signage.ById[g[1]].short, 12, T.bold) + 46
+		UI.Text(row, g[2], { TextSize = 12, TextColor3 = T.sub, Position = UDim2.fromOffset(bw, 0), Size = UDim2.new(1, -bw, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
+			TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, TextYAlignment = Enum.TextYAlignment.Center })
+		badge.ZIndex = 2
 	end
 
 	-- garage
@@ -2136,6 +2232,7 @@ function Hub.RenderNow()
 	end
 	local y = content.CanvasPosition
 	renderId += 1
+	lazyMaps = {}
 	UI.Clear(content)
 	local summary = UI.Frame(content, { Name = "SectionIntro", BackgroundTransparency = 1,
 		Size = UDim2.new(1, -8, 0, compactHub() and 54 or 70), LayoutOrder = -100 })
@@ -2153,6 +2250,7 @@ function Hub.RenderNow()
 		if content and content.Parent then
 			content.CanvasPosition = y
 		end
+		buildVisibleMaps()
 	end)
 end
 
@@ -2245,6 +2343,9 @@ function Hub.Open(which)
 	end
 	UI.Frame(body, { Name = "NavLine", Position = UDim2.new(0, navW + 8, 0, 0), Size = UDim2.new(0, 1, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.92 })
 	content = UI.Scroll(body, { Name = "Content", Position = UDim2.new(0, navW + (rail and 14 or 24), 0, 0), Size = UDim2.new(1, -(navW + (rail and 14 or 24)), 1, 0) })
+	-- the cards' thumbnails follow the scroll (one check per frame at most; the listener dies with the window)
+	content:GetPropertyChangedSignal("CanvasPosition"):Connect(queueVisibleMaps)
+	content:GetPropertyChangedSignal("AbsoluteSize"):Connect(queueVisibleMaps)
 	-- the screen crosses the phone / desktop line (rotation, a resized window): rebuild for it
 	local sizeConn
 	-- (let go with the window: a closed hub keeps no listener on the root)

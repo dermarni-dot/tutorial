@@ -8,6 +8,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
 local UI = require(Shared:WaitForChild("UI"))
+local Signage = require(Shared:WaitForChild("Signage"))
 local State = require(script.Parent:WaitForChild("State"))
 local T = UI.Theme
 
@@ -96,11 +97,17 @@ local function renderMenu(body, menu)
 	end
 end
 
+-- the window: its title, and the shop's lockup (Shared.Signage: the sign over its door) as the header row
 local function openWindow(title, w, h)
 	State.closeAll("Store")
-	local s, _, body = UI.Window(State.gui, "Store", w or 560, h or 600, title, { onClose = close })
+	local loc = Signage.Find(title)
+	local s, _, body = UI.Window(State.gui, "Store", w or 560, h or 600, loc and loc.short or title, { onClose = close })
 	shade = s
 	State.windows.Store = close
+	if loc then
+		local head = UI.Frame(body, { Name = "ShopHeader", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 48), LayoutOrder = -10 })
+		Signage.Badge(head, loc, 44, { Position = UDim2.fromOffset(0, 2) })
+	end
 	return body
 end
 

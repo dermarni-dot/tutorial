@@ -9,6 +9,7 @@ local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
+local Signage = require(Shared:WaitForChild("Signage"))
 local GymDecor = require(script.Parent:WaitForChild("GymDecor"))
 local CityMap = require(script.Parent:WaitForChild("CityMap"))
 
@@ -60,11 +61,14 @@ local function label(adornee, text, color, offsetY, maxDist)
 	return bb
 end
 
+-- a whole-face text sign. The density follows the face's height: the engine draws text at 100 px at most,
+-- so a tall board at 40 px per stud kept its words a third of its height (the 7-stud banner, the zone signs)
 local function sign(p, face, text, bg, fg)
 	local sg = Instance.new("SurfaceGui")
 	sg.Face = face
 	sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-	sg.PixelsPerStud = 40
+	local _, fh = Signage.FaceDims(p.Size, face)
+	sg.PixelsPerStud = math.min(40, Signage.PPS(fh, 0.8))
 	sg.LightInfluence = 0
 	local t = Instance.new("TextLabel")
 	t.Size = UDim2.fromScale(1, 1)
@@ -711,10 +715,12 @@ function MapBuilder.BuildGym()
 	zoneSign(gym, "CARDIO ROOM", CF(108.5, 18, -30) * CFrame.Angles(0, math.rad(-90), 0), Color3.fromRGB(90, 190, 255))
 	zoneSign(gym, "RECOVERY AREA", CF(108.5, 18, 50) * CFrame.Angles(0, math.rad(-90), 0), Color3.fromRGB(140, 240, 220))
 	zoneSign(gym, "BARBER - LOCKERS - BUNKS", CF(-108.5, 18, 50) * CFrame.Angles(0, math.rad(90), 0), Color3.fromRGB(240, 200, 140))
+	-- the gym's wordmark over the lobby (the +Z wall, read from inside: its Front face looks into the hall)
 	local banner = deco(gym, "Banner", V3(70, 7, 0.6), CF(0, 21, 78.6), Color3.fromRGB(18, 18, 22))
-	sign(banner, Enum.NormalId.Front, "WORLD CLASS BOXING GYM", Color3.fromRGB(18, 18, 22), Color3.fromRGB(255, 200, 40))
+	Signage.Board(banner, Enum.NormalId.Front, "gym", { maxDist = 400 })
+	-- the motto on the north wall: its Back face (+Z) looks into the hall (the Front face looked at the wall)
 	local motto = deco(gym, "Motto", V3(70, 4, 0.6), CF(0, 25, -78.6), Color3.fromRGB(18, 18, 22))
-	sign(motto, Enum.NormalId.Front, "CHAMPIONS ARE MADE WHEN NOBODY IS WATCHING", Color3.fromRGB(18, 18, 22), TRIM)
+	sign(motto, Enum.NormalId.Back, "CHAMPIONS ARE MADE WHEN NOBODY IS WATCHING", Color3.fromRGB(18, 18, 22), TRIM)
 
 	-- spawn & lobby
 	local spawn = Instance.new("SpawnLocation")

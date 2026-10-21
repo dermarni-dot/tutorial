@@ -14,6 +14,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
 local CityProps = require(Shared:WaitForChild("CityProps"))
+local Signage = require(Shared:WaitForChild("Signage"))
 
 local CityMap = {}
 
@@ -883,10 +884,16 @@ local function shop(f, d, rng)
 	tag(glow, "NightLight")
 	-- awning and sign band
 	part(f, "ShopAwning", V3(w - 1.5, 0.35, 4.2), CF(cx, 8.6, FRONT_Z - 1.9) * ANG(RAD(-14), 0, 0), d.awning, M.Fabric)
+	-- the shop's logo lockup (Shared.Signage: the same lockup the menus show for the place)
 	local signPart = part(f, "ShopSign", V3(w - 3, 2.6, 0.4), CF(cx, 10.9, FRONT_Z - 0.25), d.signBg, M.SmoothPlastic)
-	local sg = gui(signPart, Enum.NormalId.Front, 20, 0, 700)
-	frame(sg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = d.signBg })
-	label(sg, d.sign, { TextColor3 = d.signFg, Size = UDim2.fromScale(0.94, 0.8), Position = UDim2.fromScale(0.03, 0.1) })
+	local loc = Signage.ByShop[d.sign]
+	if loc then
+		Signage.Board(signPart, Enum.NormalId.Front, loc, { maxDist = 700 })
+	else
+		local sg = gui(signPart, Enum.NormalId.Front, Signage.PPS(2.6, 0.8), 0, 700)
+		frame(sg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = d.signBg })
+		label(sg, d.sign, { TextColor3 = d.signFg, Size = UDim2.fromScale(0.94, 0.8), Position = UDim2.fromScale(0.03, 0.1) })
+	end
 	if d.neon then
 		neonOutline(f, CF(cx, 10.9, FRONT_Z - 0.56), w - 2.6, 2.9, d.signFg)
 	end
@@ -963,7 +970,7 @@ local function gasStation(f)
 	-- the shop behind the pumps and the price pylon by the street
 	part(f, "GasShop", V3(26, 11, 14), CF(cx, 5.5, cz + 18), Color3.fromRGB(230, 230, 226), M.SmoothPlastic, { collide = true })
 	local gs = part(f, "GasShopSign", V3(18, 2.2, 0.3), CF(cx, 9.4, cz + 10.85), Color3.fromRGB(200, 30, 36), M.SmoothPlastic)
-	GymDecor.Sign(gs, Enum.NormalId.Front, "FUEL & GO - SNACKS - ICE", Color3.new(1, 1, 1), Color3.fromRGB(200, 30, 36), 20)
+	Signage.Board(gs, Enum.NormalId.Front, "gas", { maxDist = 700 })
 	local gw = part(f, "GasShopWindow", V3(20, 5, 0.1), CF(cx, 3.6, cz + 10.9), Color3.fromRGB(170, 205, 230), M.Glass, { transparency = 0.45, shadow = false })
 	gw:SetAttribute("Shop", "FUEL & GO")
 	-- on the apron in front of the shop window (cz + 10.9); the shop block itself starts at cz + 11
@@ -1555,7 +1562,7 @@ local function buildEstates(root)
 		ball(leaf, "GateCrest", 0.9, CF(gx + sx * 3.3, 4.2, E.z1), C.gold, M.Metal)
 	end
 	local plaque = part(f, "EstatePlaque", V3(6, 1.6, 0.15), CF(gx - 13, 3.2, E.z1 + 0.68), Color3.fromRGB(40, 40, 44), M.Granite)
-	GymDecor.Sign(plaque, Enum.NormalId.Back, "HILLCREST ESTATES", C.gold, Color3.fromRGB(40, 40, 44), 40, 0, Enum.Font.Garamond)
+	Signage.Board(plaque, Enum.NormalId.Back, "estate", { maxDist = 400 })
 	local rs = part(f, "RealtySign", V3(4.6, 2.6, 0.12), CF(gx + 13, 3.6, E.z1 + 2.4), Color3.fromRGB(180, 30, 36), M.SmoothPlastic)
 	part(f, "SignPost", V3(0.25, 3, 0.25), CF(gx + 13, 1.5, E.z1 + 2.4), C.white, M.Wood)
 	GymDecor.Sign(rs, Enum.NormalId.Back, "HILLCREST MANSION\nFOR SALE  $5,000,000\nCITY REALTY", C.white, Color3.fromRGB(180, 30, 36), 40)
@@ -1669,9 +1676,13 @@ local function buildEliteCenter(root)
 	end
 	part(f, "EliteCanopy", V3(doorW + 10, 0.6, 7), CF(cx, 11.6, E.z1 + 3.6), Color3.fromRGB(26, 26, 30), M.Metal)
 	local band = part(f, "EliteSign", V3(46, 3.2, 0.4), CF(cx, E.h - 3, E.z1 + 0.5), Color3.fromRGB(16, 16, 20), M.SmoothPlastic)
-	local bsg = gui(band, Enum.NormalId.Back, 12, 0, 1200)
-	frame(bsg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(16, 16, 20) })
-	label(bsg, "WCB ELITE PERFORMANCE CENTER", { Name = "SignText", TextColor3 = Color3.fromRGB(120, 128, 140), Size = UDim2.fromScale(0.94, 0.7), Position = UDim2.fromScale(0.03, 0.15), Font = Enum.Font.Michroma })
+	-- (the wordmark is SignText: CityVisuals lights it when the centre opens for your facility tier)
+	local bsg = Signage.Board(band, Enum.NormalId.Back, "elite", { maxDist = 1200 })
+	local bwm = bsg:FindFirstChild("Wordmark", true)
+	if bwm then
+		bwm.Name = "SignText"
+		bwm.TextColor3 = Color3.fromRGB(120, 128, 140)
+	end
 	-- inside: glass partitions with doorways split recovery / motion capture / sports science
 	for _, px in ipairs({ E.x0 + 27, E.x1 - 27 }) do
 		for _, sp in ipairs({ { E.z0 + 1, cz - 4 }, { cz + 4, E.z1 - 1 } }) do
@@ -1789,8 +1800,7 @@ local function buildCamp(root)
 		end
 	end
 	local sg = part(f, "CampSign", V3(12, 2.6, 0.4), CF(CAMP + V3(0, 4.4, 30)), Color3.fromRGB(70, 46, 30), M.Wood)
-	GymDecor.Sign(sg, Enum.NormalId.Back, "SUMMIT TRAINING CAMP", Color3.fromRGB(255, 230, 170), Color3.fromRGB(70, 46, 30), 30)
-	GymDecor.Sign(sg, Enum.NormalId.Front, "SUMMIT TRAINING CAMP", Color3.fromRGB(255, 230, 170), Color3.fromRGB(70, 46, 30), 30)
+	Signage.Boards(sg, { Enum.NormalId.Back, Enum.NormalId.Front }, "camp", { maxDist = 400 })
 	for _, x in ipairs({ -5.5, 5.5 }) do
 		part(f, "CampSignPost", V3(0.5, 4.4, 0.5), CF(CAMP + V3(x, 2.2, 30)), Color3.fromRGB(70, 46, 30), M.Wood)
 	end

@@ -395,7 +395,9 @@ local function showResult(data)
 	local bodyTop = short and 108 or 150
 	body.Position = UDim2.fromOffset(28, bodyTop)
 	body.Size = UDim2.new(1, -56, 1, -(bodyTop + 72))
-	UI.Kicker(win, (data.venue and data.venue ~= "") and ("FIGHT NIGHT  ·  " .. data.venue) or "FIGHT NIGHT", T.sub, { Position = UDim2.fromOffset(28, short and 16 or 22), Size = UDim2.new(1, -120, 0, 18),
+	-- "FIGHT NIGHT" and the venue's badge (the sign's lockup; the name when the place is not known)
+	local venueBadge = UI.LocationBadge(win, data.venue, 20, { sub = false, Position = UDim2.fromOffset(28 + 20 + UI.TextWidth("FIGHT NIGHT", 12, T.semi) + 10, short and 15 or 21) })
+	UI.Kicker(win, (not venueBadge and data.venue and data.venue ~= "") and ("FIGHT NIGHT  ·  " .. data.venue) or "FIGHT NIGHT", T.sub, { Position = UDim2.fromOffset(28, short and 16 or 22), Size = UDim2.new(1, -120, 0, 18),
 		icon = "bell" })
 	-- the outcome's emblem (a trophy for a win, the KO burst for a stoppage, gloves for a decision / loss) beside the
 	-- headline, left of the close button

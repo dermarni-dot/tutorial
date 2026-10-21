@@ -6,7 +6,7 @@
 -- logo: the full-colour lockup (colour rect) and its white silhouette (mask rect) on one 1024 x 1024 image.
 local IconData = {}
 IconData.cell = 256
-IconData.sheets = { 73262065551247, 79669087847406, 75263359625354, 93992151006897, 106471342773499 }
+IconData.sheets = { 73262065551247, 79669087847406, 75263359625354, 93992151006897, 119739304021822 }
 IconData.moderation = { "Approved", "Approved", "Approved", "Approved", "Approved", "Approved" } -- sheets then the logo, when published
 IconData.icons = {
 	close = { id = 73262065551247, x = 0, y = 0 },
@@ -73,8 +73,22 @@ IconData.icons = {
 	dumbbell = { id = 93992151006897, x = 256, y = 768 },
 	shoe = { id = 93992151006897, x = 512, y = 768 },
 	emblem = { id = 93992151006897, x = 768, y = 768 },
-	coin = { id = 106471342773499, x = 0, y = 0 },
-	people = { id = 106471342773499, x = 256, y = 0 },
+	coin = { id = 119739304021822, x = 0, y = 0 },
+	people = { id = 119739304021822, x = 256, y = 0 },
+	burger = { id = 119739304021822, x = 512, y = 0 },
+	cup = { id = 119739304021822, x = 768, y = 0 },
+	washer = { id = 119739304021822, x = 0, y = 256 },
+	needle = { id = 119739304021822, x = 256, y = 256 },
+	bread = { id = 119739304021822, x = 512, y = 256 },
+	ticket = { id = 119739304021822, x = 768, y = 256 },
+	pizza = { id = 119739304021822, x = 0, y = 512 },
+	building = { id = 119739304021822, x = 256, y = 512 },
+	columns = { id = 119739304021822, x = 512, y = 512 },
+	bed = { id = 119739304021822, x = 768, y = 512 },
+	pump = { id = 119739304021822, x = 0, y = 768 },
+	arena = { id = 119739304021822, x = 256, y = 768 },
+	stadium = { id = 119739304021822, x = 512, y = 768 },
+	mountain = { id = 119739304021822, x = 768, y = 768 },
 }
 IconData.logo = {
 	id = 84041580925823,

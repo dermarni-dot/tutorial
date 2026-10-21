@@ -367,6 +367,32 @@ screen("fight_debut", function(dev)
 	S.settle(1.2)
 	return S
 end)
+-- the fight HUD at its busiest: the debut's step card, the combo counter, the corner's trait call, the momentum
+-- strip and the live score (the player's Live score setting on) all up at once
+screen("fight_busy", function(dev)
+	local S = client(dev, { fightOnly = true })
+	S.host.Service("Players").LocalPlayer:SetAttribute("LiveScore", true)
+	local Steps = S.require("Tutorial")
+	S.require("Client/Tutorial").Start()
+	local fire = S.remotes.FightEvent
+	fire:Fire({ t = "start", rounds = 3, tape = TAPE, kind = "Amateur Bout", venue = "CommunityCenter", venueName = "Community Center", moves = { "overhand" },
+		tutorial = { total = 12, special = "overhand", debut = true } })
+	S.settle(0.2)
+	fire:Fire({ t = "round", n = 2, total = 3 })
+	fire:Fire({ t = "countdown", n = 0, round = 2 })
+	fire:Fire({ t = "state", time = 60, me = { hp = 95, cap = 100, body = 90, bodyCap = 100, stam = 70, max = 100, stamCap = 100, conc = 0, tier = 0, bal = 90 },
+		opp = { hp = 80, cap = 100, body = 80, bodyCap = 100, stam = 60, max = 100, stamCap = 100, conc = 0, tier = 0 } })
+	local tr = Steps.NewTracker({ debut = true, special = "overhand", specialName = "Loaded overhand", rounds = 3 })
+	tr.step = Steps.IndexOf(tr, "counter")
+	fire:Fire(Steps.View(tr))
+	fireCombo(S)
+	fire:Fire({ t = "trait", id = "ironchin", name = "Iron Chin", hint = "He's walking through your hooks! Go to the body!", reveal = true })
+	fire:Fire({ t = "mom", m = 0.6, d = 2, cards = { { 10, 9 }, { 10, 9 }, { 9, 10 } }, round = 2 })
+	S.settle(0.6)
+	check("fight_busy@" .. dev .. ": the trait call is up", named(S, "Hint") ~= nil)
+	check("fight_busy@" .. dev .. ": the live score is up", named(S, "LiveScore") ~= nil)
+	return S
+end)
 -- the debut's offer, right after the creator (ClientMain puts it up from the summary)
 screen("debut_offer", function(dev)
 	local S = client(dev, { debut = true })
@@ -455,6 +481,25 @@ screen("hub", function(dev)
 	local S = client(dev)
 	S.require("Client/Hub").Open("Career")
 	S.settle(0.6)
+	return S
+end)
+-- the Life tab: the home card, the trips (each with its place's icon) and Main Street's shop badges (the shop
+-- fronts' lockups, Shared.Signage)
+screen("hub_life", function(dev)
+	local S = client(dev)
+	S.require("Client/Hub").Open("Life")
+	S.settle(0.6)
+	check("hub_life@" .. dev .. ": the shop badges", named(S, "Badge_proshop") ~= nil)
+	return S
+end)
+-- a Main Street counter (Champ's Diner, CityStores): the shop's lockup heads the window
+screen("store", function(dev)
+	local S = client(dev)
+	S.require("Client/CityStores")
+	local State = S.require("Client/State")
+	assert(State.open.Store("Diner", "CHAMP'S DINER"), "the store did not open")
+	S.settle(0.6)
+	check("store@" .. dev .. ": the shop's badge heads the window", named(S, "Badge_diner") ~= nil)
 	return S
 end)
 -- the Tournaments tab: the calendar (an open entry, the rules, prizes, holders), the belts won with WEAR IN RING
@@ -847,13 +892,13 @@ screen("drill_report", function(dev)
 end)
 
 local DEVICES = { "phone", "phone_small", "tablet", "desktop", "console" }
-local PAD_SELECT = { entrance = true, hub = true, hub_training = true, hub_plan = true, hub_tournaments = true, hub_bracket = true, controls = true, result = true, menu_career = true, tutorial_offer = true, tutorial_done = true, debut_offer = true }
+local PAD_SELECT = { entrance = true, hub = true, hub_life = true, store = true, hub_training = true, hub_plan = true, hub_tournaments = true, hub_bracket = true, controls = true, result = true, menu_career = true, tutorial_offer = true, tutorial_done = true, debut_offer = true }
 -- (the tutorial's step card is checked with the fight HUD's pieces: on the screen, below the top bar, finger-sized
 -- on touch, apart from the scoreboard, the touch pads, the key strip and the stance chips)
 -- the fight HUD also on a phone with a controller and a short laptop window (the key strip on small canvases)
 local EXTRA = { entrance_walk = { "phone_pad", "laptop" }, drill_bench = { "laptop" }, drill_massage = { "laptop", "phone_pad" }, drill_bike = { "laptop" }, fight = { "phone_pad", "laptop" }, fight_strip = { "phone_pad", "laptop" }, fight_down = { "phone_pad" }, menu = { "laptop" }, gym = { "laptop" },
 	fight_tutorial = { "phone_pad", "laptop" }, fight_tutorial_keys = { "phone_pad", "laptop" }, tutorial_offer = { "phone_pad" },
-	fight_combo = { "phone_pad", "laptop" }, fight_debut = { "phone_pad", "laptop" }, debut_offer = { "phone_pad" } }
+	fight_combo = { "phone_pad", "laptop" }, fight_debut = { "phone_pad", "laptop" }, debut_offer = { "phone_pad" }, fight_busy = { "phone_pad", "laptop" } }
 
 ------------------------------------------------------------------------
 -- checks
@@ -930,6 +975,7 @@ local function run(name, dev)
 			"FightUI.HUDRoot.Scoreboard", "FightUI.HUDRoot.TouchPad", "FightUI.HUDRoot.TouchPad.Specials", "FightUI.HUDRoot.DefencePad", "FightUI.HUDRoot.MovesPad", "FightUI.HUDRoot.SprintPad",
 			"FightUI.HUDRoot.Controls", "FightUI.HUDRoot.StanceChips", "FightUI.HUDRoot.Ticker", "FightUI.HUDRoot.Overlay", "FightUI.HUDRoot.Count",
 			"FightUI.HUDRoot.GetUp", "TutorialUI.Root.Prompt", "FightUI.HUDRoot.ComboMeter",
+			"FightUI.HUDRoot.FightIntel.Hint", "FightUI.HUDRoot.FightIntel.Momentum", "FightUI.HUDRoot.FightIntel.LiveScore",
 		}
 		-- a piece's extent: what it and its descendants draw (or take input with) on the screen
 		local function extent(path)

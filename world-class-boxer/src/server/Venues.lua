@@ -25,6 +25,7 @@ local CollectionService = game:GetService("CollectionService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Looks = require(Shared:WaitForChild("Looks"))
 local Config = require(Shared:WaitForChild("Config"))
+local Signage = require(Shared:WaitForChild("Signage"))
 -- Catalog is only needed for sponsor logos: a broken Catalog must never stop fights
 local Catalog
 do
@@ -1192,11 +1193,10 @@ local function buildScreens(arena, spec, kind)
 		bannerY = math.max(bannerY, 18.6)
 	end
 	local banner = deco(arena, "Banner", bannerSize, CF(0, bannerY, S / 2 - 1 - bannerSize.Z / 2), spec.tier == 1 and rgb(235, 232, 220) or rgb(14, 14, 18), spec.tier == 1 and M.Fabric or M.SmoothPlastic)
-	if spec.tier == 1 then
-		sign(banner, FACE.Front, spec.banner, rgb(235, 232, 220), rgb(170, 25, 30), 12, spec.bannerFont or Enum.Font.GothamBlack, 1)
-	else
-		sign(banner, FACE.Front, spec.banner, rgb(14, 14, 18), GOLD, 12)
-	end
+	-- the venue's lockup (Shared.Signage: the badge the offers and tournament cards show), the night's bill under it
+	local loc = Signage.ByVenue[kind] or Signage.ById.club
+	local bill = spec.banner ~= loc.short and spec.banner or nil
+	Signage.Board(banner, FACE.Front, loc, { subText = bill, light = spec.tier == 1 and 1 or 0, maxDist = 420 })
 	local title = string.upper(spec.displayName or "FIGHT NIGHT")
 	if spec.jumbotron then
 		local y = spec.jumboY or 30

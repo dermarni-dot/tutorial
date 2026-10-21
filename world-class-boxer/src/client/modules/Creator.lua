@@ -1511,7 +1511,7 @@ function Creator.Open()
 			title.Size = UDim2.new(1, -52, 0, 24)
 			UI.SetTextSize(title, 22)
 		end
-		UI.Icon(pick, "down", 14, T.text, { Name = "Chevron", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0) })
+		UI.Icon(pick, "down", 14, T.text, { Name = "Chevron", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), rotates = true })
 		top = math.max(top, toolsY + rowH + 10)
 		local divider = win:FindFirstChild("Divider")
 		if divider then
