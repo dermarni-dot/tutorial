@@ -319,7 +319,11 @@ local function gloveRoom(rig, p, gl, gr, dt)
 		rig.gloveCache = gc
 	end
 	local k = 1 - exp(-dt * 12)
-	local sc = rig.geo.utScale
+	-- (a rig measured before its torso was in place has no scale yet: the gloves keep their guard spot)
+	local sc = rig.geo and rig.geo.utScale
+	if not sc then
+		return
+	end
 	local tcf
 	for _, s in ipairs(R.SIDES) do
 		local g = s == "L" and gl or gr

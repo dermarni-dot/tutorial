@@ -223,8 +223,14 @@ function Training.GymTier(profile)
 	return 1, Config.GymTiers[1]
 end
 
+-- the profile's injury list (empty for a profile with no condition yet: a player who has not made a boxer)
+local function injuryList(profile)
+	local c = type(profile) == "table" and type(profile.condition) == "table" and profile.condition or nil
+	return c and type(c.injuries) == "table" and c.injuries or {}
+end
+
 local function activeInjury(profile, id)
-	for _, inj in ipairs(profile.condition.injuries or {}) do
+	for _, inj in ipairs(injuryList(profile)) do
 		if inj.id == id and (tonumber(inj.days) or 0) > 0 then
 			return inj
 		end
@@ -266,7 +272,7 @@ end
 
 function Training.ActiveInjuries(profile)
 	local list = {}
-	for _, inj in ipairs(profile.condition.injuries) do
+	for _, inj in ipairs(injuryList(profile)) do
 		if inj.days > 0 then
 			table.insert(list, inj)
 		end
