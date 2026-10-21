@@ -1178,6 +1178,23 @@ local function screenSettings(layer)
 		end
 	end)
 	add(UI.Text(body, "A short guided fight as a random boxer: moving, punching, combinations, defending, dodging and countering, stamina and a special move. Your career is not touched.", { TextSize = 13, TextColor3 = T.sub }))
+	-- the rig diagnostic: prints [WCBDIAG] blocks (your character and the nearest NPCs: parts, joints, HipHeight, headgear,
+	-- the Animator's measurements, a 2 s motion sample) to the Output, for a bug report. Same as "/wcbdiag" in chat
+	local function runDiag()
+		if State.open.Diag then
+			State.open.Diag()
+			State.toast("Diagnostic printed to the Output (walk or punch for 2 seconds)", T.sub, 4)
+		else
+			State.toast("The diagnostic is not loaded on this client.", T.red)
+		end
+	end
+	local diagBtn = UI.Button(body, "COPY DIAGNOSTIC TO OUTPUT", { Name = "Diag", Size = UDim2.fromOffset(320, math.max(40, UI.MinHit(body))) }, runDiag)
+	add(diagBtn, function(dir)
+		if dir == 0 then
+			runDiag()
+		end
+	end)
+	add(UI.Text(body, "For bug reports: prints the rig numbers of your boxer and the nearest two people ([WCBDIAG] lines in the Output window; also the chat command /wcbdiag). Walk or punch for two seconds after pressing it.", { TextSize = 13, TextColor3 = T.sub }))
 	-- the boxer's hair & face from the player's Roblox avatar (saved with the boxer: appearance.avatar)
 	local P = State.P
 	if P and P.created and type(P.appearance) == "table" then

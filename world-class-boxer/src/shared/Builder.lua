@@ -504,6 +504,30 @@ end
 ------------------------------------------------------------------------
 -- Public entry points
 ------------------------------------------------------------------------
+-- what the rig measured when its layers were built (attributes the diagnostic compares with the live rig: a head the
+-- engine rescaled after the headgear was fitted to it, a HipHeight the engine's deferred scaling pass put back), and
+-- the tier legs' HipHeight checked again a moment later (BuilderTiers.FixHipHeight: change-only, see there)
+local function buildRecord(model)
+	local head = model:FindFirstChild("Head")
+	if head and head:IsA("BasePart") then
+		setAttr(model, "HeadSizeAtBuild", head.Size)
+	end
+	local hum = model:FindFirstChildOfClass("Humanoid")
+	if hum then
+		setAttr(model, "HipHeightAtBuild", hum.HipHeight)
+	end
+	for _, delay in ipairs({ 0.25, 1.5 }) do
+		task.delay(delay, function()
+			if model.Parent then
+				local h = BuilderTiers.FixHipHeight(model)
+				if h then
+					model:SetAttribute("HipHeightRefixed", h)
+				end
+			end
+		end)
+	end
+end
+
 -- opts (all optional, CONTRACTS section 4): hands = "gloves"|"wraps"|"bare", mouthguard, name, nick,
 -- nat, waistText, robe, detail ("full"|"medium"|"low"), damage, sweat, grime, age, tier, physique,
 -- fightNight, sponsorTrunks / sponsorRobe ({ text, fg, bg }), dry, outfit ("referee"|"cornerman"),
@@ -534,6 +558,7 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 		Builder.SetSweat(model, app, opts.sweat or model:GetAttribute("Sweat") or 0)
 		-- previews (Creator / barber) change the look too: the meshes follow
 		step("LookData", publishLook, model, app, build, opts, nil)
+		buildRecord(model)
 		return
 	end
 	gear = Body.Gear(gear)
@@ -589,6 +614,7 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	Builder.SetSweat(model, app, opts.sweat or model:GetAttribute("Sweat") or 0)
 	-- last: the rig is final (head swap, rescale) and every attribute above is set
 	step("LookData", publishLook, model, app, build, opts, sp, gear)
+	buildRecord(model)
 end
 
 -- Apply to a live player character (yields). Re-scales only when the body changed.
@@ -630,6 +656,45 @@ function Builder.Apply(character, app, build, gear, opts)
 	end
 end
 
+-- The staging container an NPC is built in. CreateHumanoidModelFromDescription hands back a model OUTSIDE the
+-- DataModel, and the Humanoid's rig operations the Cosmetics run on it (ReplaceBodyPartR15 for the tier parts and the
+-- classic head, the body scaling they trigger) read engine state through the model's DataModel: outside it the
+-- engine logs "Instance outside of DataModel; could not read property Workspace.MeshPartHeadsAndAccessories" and a
+-- swap can be refused or come out at the wrong size / class (the default MeshPart head under a headgear built for
+-- the classic one). So the model is parented into ServerStorage first (inside the DataModel, no replication, no
+-- physics), built, then handed back unparented as before (every caller parents it where it goes).
+-- Builder.Services.Stage: an override (tests) or any container; nil when no container could be made (the old,
+-- unparented build, warned once).
+Builder.Services = Builder.Services or {}
+local stageWarned = false
+local function stageFolder()
+	local s = Builder.Services.Stage
+	if s ~= nil then
+		return s or nil
+	end
+	local ok, f = pcall(function()
+		local ss = game:GetService("ServerStorage")
+		local f = ss:FindFirstChild("BoxerStaging")
+		if not f then
+			f = Instance.new("Folder")
+			f.Name = "BoxerStaging"
+			f.Parent = ss
+		end
+		return f
+	end)
+	if ok and f then
+		Builder.Services.Stage = f
+		return f
+	end
+	if not stageWarned then
+		stageWarned = true
+		warn("[Boxer] no staging container for NPC builds (rigs are built outside the DataModel):", f)
+	end
+	Builder.Services.Stage = false
+	return nil
+end
+Builder.StageFolder = stageFolder
+
 function Builder.CreateNPC(app, build, gear, displayName, opts)
 	local model
 	local ok, err = pcall(function()
@@ -649,7 +714,27 @@ function Builder.CreateNPC(app, build, gear, displayName, opts)
 		hum.DisplayName = displayName or "Boxer"
 		hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 	end
-	Builder.Cosmetics(model, app, build, gear, opts)
+	-- inside the DataModel for every rig operation (see stageFolder); the root held still while the build yields
+	local stage = stageFolder()
+	local root = model:FindFirstChild("HumanoidRootPart")
+	local wasAnchored = root and root:IsA("BasePart") and root.Anchored
+	if stage then
+		if root and root:IsA("BasePart") then
+			root.Anchored = true
+		end
+		model.Parent = stage
+	end
+	local okC, errC = pcall(Builder.Cosmetics, model, app, build, gear, opts)
+	if stage then
+		model.Parent = nil
+		if root and root.Parent and wasAnchored ~= nil then
+			root.Anchored = wasAnchored
+		end
+	end
+	if not okC then
+		-- (as before the staging: the error is the caller's - SpawnReferee's pcall, Ambient's spawn thread)
+		error(errC, 0)
+	end
 	-- nothing in the game listens for touches: an NPC's parts that report none cost the physics less (the
 	-- built layers' parts already have it off; this is the R15 body itself)
 	for _, d in ipairs(model:GetDescendants()) do

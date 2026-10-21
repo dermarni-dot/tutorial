@@ -606,12 +606,22 @@ local function classicHead(model, head)
 			c:Clone().Parent = clean
 		end
 	end
-	local swapped = hum and pcall(function()
-		hum:ReplaceBodyPartR15(Enum.BodyPartR15.Head, clean)
-	end)
-	if swapped and model:FindFirstChild("Head") == clean then
+	local swapped, err = false, "no Humanoid"
+	if hum then
+		swapped, err = pcall(function()
+			hum:ReplaceBodyPartR15(Enum.BodyPartR15.Head, clean)
+		end)
+	end
+	local got = model:FindFirstChild("Head")
+	if swapped and got == clean then
+		if not clean:FindFirstChildOfClass("SpecialMesh") then
+			Head.SwapFailed(model, "the engine dropped the Head SpecialMesh from the classic head")
+		end
 		return clean
 	end
+	-- the face, the headgear and the caps are built for the classic head's profile: on the engine's MeshPart head
+	-- they sit in or off the skull. One Output line per reason
+	Head.SwapFailed(model, swapped and ("the model still carries " .. (got and (got.ClassName .. " " .. got.Name) or "no Head")) or tostring(err))
 	clean:Destroy()
 	pcall(function()
 		head.TextureID = ""
@@ -619,6 +629,25 @@ local function classicHead(model, head)
 	return head
 end
 Head.ClassicHead = classicHead
+
+-- the classic head swap did not take (warned once per reason; Head.SwapFailures counts them for tests / the diagnostic)
+Head.SwapFailures = 0
+local headSwapWarned = {}
+function Head.SwapFailed(model, reason)
+	Head.SwapFailures += 1
+	local inGame = false
+	pcall(function()
+		inGame = model:IsDescendantOf(game)
+	end)
+	local key = tostring(reason) .. "|" .. tostring(inGame)
+	if headSwapWarned[key] then
+		return
+	end
+	headSwapWarned[key] = true
+	warn(string.format("[Boxer] classic head swap did not take on %s: %s; %s (the headgear / face are built for the classic head)",
+		tostring(model and model.Name), tostring(reason),
+		inGame and "the model is in the DataModel" or "the model is OUTSIDE the DataModel: the engine cannot swap its parts there"))
+end
 
 -- a player's avatar face (Builder: the AvatarFace attribute, Config.AvatarLook.face): the head and face the
 -- engine put on from the avatar's description stay exactly as they are; no built face. An empty Face folder

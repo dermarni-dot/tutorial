@@ -94,6 +94,20 @@ else
 	warn("[ClientMain] Tutorial unavailable:", TutorialClient)
 	TutorialClient = nil
 end
+-- the rig diagnostic ("/wcbdiag" in chat, Settings -> GAME -> COPY DIAGNOSTIC TO OUTPUT): optional, runs only when invoked
+task.spawn(function()
+	local ok, DiagClient = pcall(function()
+		return require(Modules:WaitForChild("DiagClient", 10))
+	end)
+	if ok and type(DiagClient) == "table" then
+		local okStart, errStart = pcall(DiagClient.Start, State)
+		if not okStart then
+			warn("[ClientMain] DiagClient start:", errStart)
+		end
+	else
+		warn("[ClientMain] DiagClient unavailable:", DiagClient)
+	end
+end)
 -- the celebration cutscene after a won tournament final / a new title (camera, confetti, banner, SKIP): optional
 task.spawn(function()
 	local ok, CeremonyClient = pcall(function()

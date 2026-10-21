@@ -2413,15 +2413,60 @@ function handlers.GetMuscleHistory(player, profile)
 	return { ok = true, history = ok and hist or {}, xp = xp, level = okLv and level or nil, day = profile.day }
 end
 
-local PRE_CREATE = { GetProfile = true, CreateBoxer = true, NewCareer = true, PreviewLook = true, GetLegacy = true, SaveSettings = true,
+-- the rig diagnostic (Shared.Diag; "/wcbdiag" in chat or the Settings button): the server's view of the player's
+-- character and the nearest NPCs, printed to the server Output (in Studio the same window) and answered as blocks for
+-- the client to print. Read-only, allowed anywhere (a fight, an activity, before the boxer is created)
+local Diag = require(Shared.Diag)
+local function runDiag(player, names)
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	local center = root and root.Position or Vector3.zero
+	local models = Diag.Pick(center, char, 2)
+	-- the client's picks by name when they are not the nearest to the server (it may stand somewhere else by now)
+	if type(names) == "table" then
+		local have = {}
+		for _, m in ipairs(models) do
+			have[m.Name] = true
+		end
+		for _, n in ipairs(names) do
+			if type(n) == "string" and not have[n] then
+				local m = workspace:FindFirstChild(n, true)
+				if m and m:IsA("Model") and m:FindFirstChildOfClass("Humanoid") then
+					table.insert(models, m)
+					have[n] = true
+				end
+			end
+		end
+	end
+	local BT = require(Shared.BuilderTiers)
+	local BH = require(Shared.BuilderHead)
+	local blocks = {}
+	local head = string.format("%sv%d SERVER report for %s: %d model(s); body part swaps refused on the server: %d, classic head swaps refused: %d; swaps done %d, template loads %d (failed %d); staging=%s",
+		Diag.PREFIX, Diag.VERSION, player.Name, #models, BT.SwapFailures, BH.SwapFailures, BT.Stats().swaps, BT.Stats().loads, BT.Stats().failed,
+		tostring(Builder.StageFolder and Builder.StageFolder()))
+	print(head)
+	table.insert(blocks, head)
+	for i, m in ipairs(models) do
+		local ok, lines = pcall(Diag.Report, m, { label = m == char and "LOCAL" or ("NPC" .. i - (char and 1 or 0)), side = "server" })
+		local block = ok and Diag.Block(lines) or (Diag.PREFIX .. "server report failed on " .. m.Name .. ": " .. tostring(lines))
+		print(block)
+		table.insert(blocks, block)
+	end
+	return blocks
+end
+handlers.Diag = function(player, _profile, names)
+	return { ok = true, lines = runDiag(player, names) }
+end
+
+local PRE_CREATE = { GetProfile = true, Diag = true, CreateBoxer = true, NewCareer = true, PreviewLook = true, GetLegacy = true, SaveSettings = true,
 	StartTutorial = true, SkipTutorial = true }
-local READ_ONLY = { GetProfile = true, GetRankings = true, GetBoxer = true, PreviewLook = true, GetOffers = true, GetRivals = true, GetLegacy = true, GetPvP = true, GetMuscleHistory = true }
+local READ_ONLY = { GetProfile = true, Diag = true, GetRankings = true, GetBoxer = true, PreviewLook = true, GetOffers = true, GetRivals = true, GetLegacy = true, GetPvP = true, GetMuscleHistory = true }
 -- (PvPQueue / PvPCancel / PvPRespond may be sent mid-drill: leaving the queue, cancelling, declining)
-local DURING_ACTIVITY = { FinishActivity = true, CancelActivity = true, Eat = true, SaveSettings = true, PvPQueue = true, PvPCancel = true, PvPRespond = true }
+local DURING_ACTIVITY = { FinishActivity = true, Diag = true, CancelActivity = true, Eat = true, SaveSettings = true, PvPQueue = true, PvPCancel = true, PvPRespond = true }
 -- actions that change nothing the summary shows: no push afterwards (R-ui)
 local NO_PUSH = { SaveSettings = true }
 -- allowed in the ring too: the Settings screen opens mid-fight and its save is never retried
-local IN_RING = { SaveSettings = true }
+local IN_RING = { SaveSettings = true, Diag = true }
 
 -- per-player rate limit on the whole remote: a token bucket (RATE.perSecond refilled, RATE.burst deep).
 -- A legit client never gets near it (the Creator's previews are 4 / s, everything else is a click);
@@ -2542,6 +2587,17 @@ end
 local function onPlayer(player)
 	player.CharacterAdded:Connect(function(char)
 		onCharacter(player, char)
+	end)
+	-- "/wcbdiag" in chat: the server's rig report (the client prints its own on the same command)
+	player.Chatted:Connect(function(msg)
+		if type(msg) == "string" and msg:lower():sub(1, 8) == "/wcbdiag" then
+			task.spawn(function()
+				local ok, err = pcall(runDiag, player, nil)
+				if not ok then
+					warn("[WCBDIAG] server report failed:", err)
+				end
+			end)
+		end
 	end)
 	player.CharacterRemoving:Connect(function()
 		endSession(player, true)

@@ -215,6 +215,26 @@ local function scaleOnce(p, ratio)
 	return fixed
 end
 
+-- a body part swap that did not take (ReplaceBodyPartR15 refused it, or something else is in its place): warned once
+-- per (part, reason) with where the model was (outside the DataModel the engine's rig operations misbehave), so a
+-- silent failure is a visible Output line. SwapFailures: the count, for tests / the diagnostic
+BuilderTiers.SwapFailures = 0
+local swapWarned = {}
+function BuilderTiers.SwapFailed(model, name, reason)
+	BuilderTiers.SwapFailures += 1
+	local inGame = false
+	pcall(function()
+		inGame = model:IsDescendantOf(game)
+	end)
+	local key = name .. "|" .. tostring(reason) .. "|" .. tostring(inGame)
+	if swapWarned[key] then
+		return
+	end
+	swapWarned[key] = true
+	warn(string.format("[Boxer] body part swap did not take on %s: %s (%s); %s", tostring(model and model.Name), name, tostring(reason),
+		inGame and "the model is in the DataModel" or "the model is OUTSIDE the DataModel: the engine cannot swap its parts there"))
+end
+
 local COPY = { "Color", "Material", "Transparency", "Reflectance", "CanCollide", "CanQuery", "CanTouch", "Massless", "CastShadow", "CFrame" }
 
 -- swap one part (true when the model now carries the template's tier); scale = the description's
@@ -239,12 +259,18 @@ local function swap(model, hum, name, template, scale)
 		end
 	end
 	local enum = Enum.BodyPartR15[name]
-	local ok = pcall(function()
+	local ok, err = pcall(function()
 		hum:ReplaceBodyPartR15(enum, new)
 	end)
-	if not ok or model:FindFirstChild(name) ~= new then
+	local got = model:FindFirstChild(name)
+	if not ok or got ~= new then
+		-- a swap that did not take is a silent default part under tier-fitted gear: one Output line per reason
+		BuilderTiers.SwapFailed(model, name, ok and "the model still carries " .. (got and (got.ClassName .. " " .. got.Name) or "no part") or tostring(err))
 		new:Destroy()
 		return false
+	end
+	if not new:IsA("MeshPart") then
+		BuilderTiers.SwapFailed(model, name, "the engine put a " .. new.ClassName .. " in place of the tier MeshPart")
 	end
 	scaleOnce(new, ratio)
 	reaim(model, new)
@@ -313,6 +339,24 @@ local function fixHipHeight(model, hum)
 	if h and math.abs(hum.HipHeight - h) > 0.005 then
 		hum.HipHeight = h
 	end
+end
+
+-- the tier legs' HipHeight put back on a built body (change-only; a body of default parts keeps the engine's). Builder
+-- runs it again a moment after a build: the engine's own scaling pass (AutomaticScalingEnabled, deferred to a later
+-- frame after a part swap or a scale change) may have put the default body's value back, and the feet would float or
+-- sink by the difference. Returns the value set (or nil)
+function BuilderTiers.FixHipHeight(model)
+	local hum = model and model.Parent and model:FindFirstChildOfClass("Humanoid")
+	local key = model and model:GetAttribute("BodyTiers")
+	if not (hum and type(key) == "string" and string.find(key, "[1-9]") ~= nil) then
+		return nil
+	end
+	local h = BuilderTiers.HipHeight(model)
+	if h and math.abs(hum.HipHeight - h) > 0.005 then
+		hum.HipHeight = h
+		return h
+	end
+	return nil
 end
 
 -- swap every part whose tier changed. tiers = { [part] = 1..5 } (BodyTiers.Tiers); scale = Vector3 (W, H, D)
