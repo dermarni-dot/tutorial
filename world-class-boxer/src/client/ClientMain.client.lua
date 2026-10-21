@@ -155,10 +155,10 @@ local function miniBar(label, color, order, icon)
 	local f = UI.Frame(bars, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = order })
 	-- the meter's icon in its colour, then its caption
 	UI.Icon(f, icon, 14, color, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5) })
-	UI.Text(f, label, { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(20, 0), Size = UDim2.new(0, 82, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	UI.Text(f, label, { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(20, 0), Size = UDim2.new(0, 96, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	-- the meter in the fight bars' finish (UI.Meter: rounded, the sheen, an eased fill, a ghost that drains
 	-- when the value drops, a glow when it comes back)
-	local meter = UI.Meter(f, { Position = UDim2.new(0, 104, 0.5, -4), Size = UDim2.new(1, -144, 0, 8) }, { color = color })
+	local meter = UI.Meter(f, { Position = UDim2.new(0, 118, 0.5, -4), Size = UDim2.new(1, -158, 0, 8) }, { color = color })
 	local val = UI.Text(f, "", { Face = "number", TextSize = 15, Position = UDim2.new(1, -34, 0, 0), Size = UDim2.new(0, 34, 1, 0), TextXAlignment = Enum.TextXAlignment.Right,
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	return function(v, c)
@@ -407,7 +407,9 @@ local function showResult(data)
 	local tile = UI.IconTile(win, emblem, es, col, { Name = "Emblem", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -84, 0, short and 30 or 40), iconScale = 0.62 })
 	local tileScale = UI.New("UIScale", { Scale = 0.6, Parent = tile })
 	UI.Tween(tileScale, { Scale = 1 }, UI.Motion.spring)
-	local big = UI.Title(win, title, { TextSize = short and 54 or 84, TextColor3 = col, Position = UDim2.fromOffset(24, short and 30 or 38), Size = UDim2.new(1, -48, 0, short and 58 or 88),
+	-- (the poster face's capitals bounce above their cap line: the headline sits a little lower than the kicker's
+	-- row would need for a flat face)
+	local big = UI.Title(win, title, { TextSize = short and 48 or 76, TextColor3 = col, Position = UDim2.fromOffset(24, short and 36 or 44), Size = UDim2.new(1, -48, 0, short and 52 or 82),
 		TextTransparency = 1 })
 	UI.Tween(big, { TextTransparency = 0 }, UI.Motion.slow)
 	if res.outcome == "win" then

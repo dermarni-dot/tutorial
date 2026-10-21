@@ -159,6 +159,18 @@ The optimization pass made every client system follow one Graphics level (Settin
 - **Scenes** (`perf_gym_levels.jpg`, `perf_stadium_levels.jpg`, `perf_city_night_levels.jpg`, simulator scene renders): High after the pass looks like High before it; Low drops shadows, spot-ray rate, crowd density and window grids.
 - **Interface** (`perf_fight_hud_low_vs_high.jpg`, `perf_fight_hud_phone_low_vs_high.jpg`, `perf_settings_graphics_note.jpg`, offline GUI renders): the HUD is the same at every level, and the Settings note says what each level does.
 
+## Type switch (v9/type)
+
+`v9/type/`: the face change, before / after. The game's type is `src/shared/Typography.lua`: Bangers (a poster
+display face) for titles, buttons, call-outs and every sign in the world, Oswald Bold kept for the numbers that
+line up in columns (stats, clocks, records, money), Montserrat Medium / Bold for body copy and labels, RobotoMono
+for readouts. `ui_<screen>_<device>_before|after.jpg` are mock renders of the simulator's layout dumps
+(`tools/ui/render_mock.py`, drawn with the real TTFs in `tools/ui/fonts`): the title menu, the Career Hub and its
+tournaments page, the fight HUD mid-round, a result, the creator, the gym HUD with a store prompt, the debut offer,
+at desktop and phone size. `world_<view>_before|after.jpg` are Cycles renders of the world dump
+(`tools/sim/world_scene.luau` + `world_render.py`): the gym's front banner, Main Street's shop fronts by day, the
+street by day and by night, and the Grand Arena. Fonts only render for real in Studio; these approximate them.
+
 ## Every image in this folder
 
 ### Graphics levels (optimization pass)

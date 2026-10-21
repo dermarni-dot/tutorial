@@ -183,11 +183,11 @@ end
 
 -- the lockup's natural width in height units (1 = the lockup's height): the tile, the gap and the wordmark
 -- (Typography.Em: Bangers caps run about 0.46 em with their spaces, Montserrat Bold 0.76; the wordmark is
--- 0.56 of the height when a sub line is shown)
+-- 0.6 of the height when a sub line is shown: the condensed poster face is given the room it saves)
 local function naturalUnits(loc, opts)
 	local words = opts.text or loc.short
 	local sub = opts.sub ~= false and (opts.subText or loc.sub) or nil
-	local wordH = sub and 0.56 or 0.66
+	local wordH = sub and 0.6 or 0.7
 	local subH = 0.2
 	local w = #words * wordH * Typography.Em.sign
 	if sub then
@@ -235,12 +235,12 @@ function Signage.Lockup(parent, loc, opts)
 	tile(group, loc, UDim2.fromScale(0.76 / ga, 0.76), UDim2.fromScale(0.12 / ga, 0.12), nil, z)
 	local x0 = 1.06 / ga
 	local tw = 1 - x0 - 0.14 / ga
-	text(group, opts.text or loc.short, { Name = "Wordmark", Size = UDim2.fromScale(tw, hasSub and 0.56 or 0.66), Position = UDim2.fromScale(x0, hasSub and 0.06 or 0.17), TextColor3 = fg,
+	text(group, opts.text or loc.short, { Name = "Wordmark", Size = UDim2.fromScale(tw, hasSub and 0.6 or 0.7), Position = UDim2.fromScale(x0, hasSub and 0.05 or 0.15), TextColor3 = fg,
 		TextXAlignment = Enum.TextXAlignment.Left, ZIndex = z + 1 })
 	if hasSub then
 		-- a hairline in the accent, then the sub line
-		new("Frame", { Name = "Rule", BackgroundColor3 = loc.accent or fg, BackgroundTransparency = 0.35, BorderSizePixel = 0, Size = UDim2.fromScale(tw, 0.035), Position = UDim2.fromScale(x0, 0.655), ZIndex = z + 1 }, group)
-		text(group, subLine, { Name = "Sub", Size = UDim2.fromScale(tw, 0.2), Position = UDim2.fromScale(x0, 0.72), TextColor3 = fg, TextTransparency = 0.15, Face = "signSub",
+		new("Frame", { Name = "Rule", BackgroundColor3 = loc.accent or fg, BackgroundTransparency = 0.35, BorderSizePixel = 0, Size = UDim2.fromScale(tw, 0.035), Position = UDim2.fromScale(x0, 0.69), ZIndex = z + 1 }, group)
+		text(group, subLine, { Name = "Sub", Size = UDim2.fromScale(tw, 0.2), Position = UDim2.fromScale(x0, 0.75), TextColor3 = fg, TextTransparency = 0.15, Face = "signSub",
 			TextXAlignment = Enum.TextXAlignment.Left, ZIndex = z + 1 })
 	end
 	return holder

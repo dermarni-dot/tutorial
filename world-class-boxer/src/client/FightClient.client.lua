@@ -1261,11 +1261,11 @@ do
 		UI.Corner(f, 4)
 		local face = emphasis and "number" or "displayMed"
 		local size = emphasis and 28 or 19
-		UI.Text(f, tostring(a), { Face = face, TextSize = size, TextColor3 = emphasis and T.gold or T.text, Position = UDim2.fromOffset(14, 0), Size = UDim2.new(0.38, -14, 1, 0),
+		UI.Text(f, tostring(a), { Face = face, TextSize = size, TextColor3 = emphasis and T.gold or T.text, Position = UDim2.fromOffset(14, 0), Size = UDim2.new(0.33, -14, 1, 0),
 			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-		UI.Text(f, string.upper(caption), { Font = T.semi, TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromScale(0.38, 0), Size = UDim2.new(0.24, 0, 1, 0),
+		UI.Text(f, string.upper(caption), { Font = T.semi, TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromScale(0.33, 0), Size = UDim2.new(0.34, 0, 1, 0),
 			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
-		UI.Text(f, tostring(b), { Face = face, TextSize = size, TextColor3 = emphasis and T.gold or T.text, Position = UDim2.fromScale(0.62, 0), Size = UDim2.new(0.38, -14, 1, 0),
+		UI.Text(f, tostring(b), { Face = face, TextSize = size, TextColor3 = emphasis and T.gold or T.text, Position = UDim2.fromScale(0.67, 0), Size = UDim2.new(0.33, -14, 1, 0),
 			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		return f, h
 	end
