@@ -2364,9 +2364,9 @@ function UI.Card(parent, props)
 	UI.Pad(f, props.pad or 16)
 	UI.List(f, props.gap or 8)
 	if props.stroke then
-		-- a highlighted card: a 1 px rule in the accent and a 3 px bar down its left edge
-		UI.Stroke(f, props.stroke, 1, 0.5)
-		UI.Frame(f, { Name = "Edge", Position = UDim2.new(0, -(props.pad or 16), 0, -(props.pad or 16)), Size = UDim2.new(0, 3, 1, 2 * (props.pad or 16)), BackgroundColor3 = props.stroke })
+		-- a highlighted card: a 1 px rule in the accent (the card lays its children out in a list, so the
+		-- accent is the stroke alone: nothing else may sit among them)
+		UI.Stroke(f, props.stroke, 1, 0.35)
 	else
 		UI.New("UIStroke", { Color = T.line, Transparency = 0, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = f })
 	end

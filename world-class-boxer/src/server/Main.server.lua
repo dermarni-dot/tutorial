@@ -2465,6 +2465,14 @@ local function runDiag(player, names)
 		print(block)
 		table.insert(blocks, block)
 	end
+	-- a live fight: the engine's view (Shared.Diag's FIGHT block: modes, ranges, the separation, the AI's last decisions)
+	local fight = FightEngine.Active and FightEngine.Active[player]
+	if fight then
+		local okF, flines = pcall(Diag.FightLines, fight)
+		local block = okF and Diag.Block(flines) or (Diag.PREFIX .. "FIGHT report failed: " .. tostring(flines))
+		print(block)
+		table.insert(blocks, block)
+	end
 	return blocks
 end
 handlers.Diag = function(player, _profile, names)

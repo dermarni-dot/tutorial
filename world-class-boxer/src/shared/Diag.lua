@@ -827,4 +827,97 @@ function Diag.SampleLines(S)
 	return { lines = lines, verdicts = verdicts }
 end
 
+------------------------------------------------------------------------
+-- FIGHT block (server): the engine's view of a live fight (FightEngine.Active[player]), printed by /wcbdiag during
+-- a bout: per fighter his mode and state, stamina, how long he is still busy, the distance, PunchRange (jab / cross /
+-- hook), the separation and the floor, HitTest(jab, head) with why, the hit geometry's frame and its fallback, the
+-- punches thrown / landed so far and the AI's last decisions with their reasons ("out of range 4.8 > 4.1", "busy",
+-- "attack (work floor)", "clinch"). Every read is guarded: a field the engine does not have prints as "?"
+------------------------------------------------------------------------
+local function try(fn, ...)
+	local ok, v = pcall(fn, ...)
+	if ok then
+		return v
+	end
+	return nil
+end
+local function n2(v)
+	return type(v) == "number" and string.format("%.2f", v) or "?"
+end
+function Diag.FightLines(fight)
+	local lines, verdicts = {}, {}
+	if type(fight) ~= "table" then
+		return { "== FIGHT: none live" }
+	end
+	local now = try(fight.Now, fight) or 0
+	local P, O = fight.P, fight.O
+	local kind = fight.pvp and "PvP" or (fight.spar and ("spar " .. tostring(fight.spar))) or (fight.debut and "debut") or (fight.tutorial and "tutorial") or "career"
+	local minSep = try(fight.MinSep, fight)
+	local floor = try(fight.Floor, fight)
+	local dist = (P and O) and try(fight.Distance, fight, P, O) or nil
+	local roundLeft = type(fight.roundEnd) == "number" and math.max(0, fight.roundEnd - now) or nil
+	table.insert(lines, string.format("== FIGHT %s round %s/%s live=%s paused=%s menuHold=%s roundLeft=%s rigK=%s sp.min=%s minSep=%s floor=%s dist=%s",
+		kind, tostring(fight.round), tostring(fight.rounds), tostring(fight.live), tostring(fight.paused), tostring(fight.menuHold),
+		roundLeft and f2(roundLeft) or "?", n2(fight.rigK), n2(fight.sp and fight.sp.min), n2(minSep), n2(floor), n2(dist)))
+	local elapsed = 0
+	if type(fight.roundSeconds) == "number" then
+		elapsed = math.max(0, (tonumber(fight.round) or 1) - 1) * fight.roundSeconds + (roundLeft and (fight.roundSeconds - roundLeft) or 0)
+	end
+	for _, F in ipairs({ P, O }) do
+		if F then
+			local other = F == P and O or P
+			local name = tostring(F.data and F.data.name or "?")
+			local ai = F.ai
+			local jab, cross, hook = try(fight.PunchRange, fight, F, "jab"), try(fight.PunchRange, fight, F, "cross"), try(fight.PunchRange, fight, F, "leadhook")
+			local ht = (other and dist) and try(fight.HitTest, fight, F, other, "jab", false, dist) or nil
+			local geo = F.geo
+			table.insert(lines, string.format("-- %s (%s) state=%s mode=%s stamina=%s/%s busy=%+.2fs tier=%s hurt=%s blocking=%s onRopes=%s",
+				name, F.isPlayer and "player" or (ai and (ai.tier and ("AI " .. tostring(ai.tier.name) .. " L" .. tostring(math.floor((ai.level or 0) + 0.5))) or "AI") or "no brain"),
+				tostring(F.state), ai and tostring(ai.mode) or "-", n2(F.stamina), n2(F.maxStam), (tonumber(F.busyUntil) or 0) - now, tostring(F.tier),
+				tostring(try(fight.IsHurt, fight, F)), tostring(F.blocking), tostring(F.onRopes)))
+			table.insert(lines, string.format("   range jab=%s cross=%s hook=%s | HitTest(jab,head @%s)=%s%s | geo=%s%s",
+				n2(jab), n2(cross), n2(hook), n2(dist), ht and tostring(ht.ok) or "?",
+				ht and ((ht.why and (" why=" .. ht.why) or "") .. (ht.redirected and " (falls to the body)" or "") .. (type(ht.margin) == "number" and string.format(" margin=%.2f", ht.margin) or "")) or "",
+				geo and (tostring(geo.source) .. string.format(" stand=%.2f arm=%.2f glove=%.2f", geo.stand or 0, geo.arm or 0, geo.glove or 0)) or "none",
+				F.geoFallback and (" FALLBACK: " .. tostring(F.geoFallback)) or ""))
+			local tot, tal = F.totals or {}, F.tally or {}
+			local ppm = elapsed > 5 and (tonumber(tot.thrown) or 0) / elapsed * 60 or nil
+			table.insert(lines, string.format("   punches fight thrown=%s landed=%s (%s/min) round thrown=%s landed=%s kd=%s | last throw %s ago",
+				tostring(tot.thrown), tostring(tot.landed), ppm and f2(ppm) or "?", tostring(tal.thrown), tostring(tal.landed), tostring(F.kdTotal),
+				type(F.lastPunch) == "number" and f2(now - F.lastPunch) or "?"))
+			if ai and type(ai.log) == "table" then
+				local bits = {}
+				for i = math.max(1, #ai.log - 4), #ai.log do
+					local e = ai.log[i]
+					if e then
+						table.insert(bits, string.format("%s%s (%.1fs ago)", tostring(e.why), (e.n or 1) > 1 and (" x" .. e.n) or "", now - (e.t or now)))
+					end
+				end
+				table.insert(lines, "   AI decisions: " .. (#bits > 0 and table.concat(bits, "; ") or "none yet"))
+				table.insert(lines, string.format("   AI aggression=%s range=%s skill=%s tier work=%s floor=%s/min react=%s read=%s reachableSince=%s",
+					n2(try(ai.Aggression, ai)), n2(try(ai.Range, ai)), n2(ai.skill), n2(ai.tier and ai.tier.work), n2(ai.tier and ai.tier.floor),
+					n2(ai.tier and ai.tier.react), n2(ai.tier and ai.tier.read), ai.reachableSince and f2(now - ai.reachableSince) or "-"))
+			end
+			if F.geoFallback then
+				table.insert(verdicts, "BAD  " .. name .. ": hit geometry fell back (" .. tostring(F.geoFallback) .. ")")
+			end
+			if type(jab) == "number" and type(minSep) == "number" then
+				if minSep + 0.3 < jab then
+					table.insert(verdicts, string.format("OK   %s: a jab reaches from the separation (%.2f + 0.3 < %.2f)", name, minSep, jab))
+				else
+					table.insert(verdicts, string.format("BAD  %s: the separation starves the jab (%.2f + 0.3 >= %.2f)", name, minSep, jab))
+				end
+			end
+			if ai and fight.live and elapsed > 10 and (tonumber(tot.thrown) or 0) == 0 then
+				table.insert(verdicts, "BAD  " .. name .. ": the AI has not thrown a punch in " .. f2(elapsed) .. " s of boxing")
+			end
+		end
+	end
+	for _, v in ipairs(verdicts) do
+		table.insert(lines, "VERDICT " .. v)
+	end
+	table.insert(lines, "== end FIGHT")
+	return lines
+end
+
 return Diag

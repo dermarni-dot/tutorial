@@ -18,6 +18,7 @@
 local roblox = require("@lune/roblox")
 local task = require("@lune/task")
 local process = require("@lune/process")
+local fs = require("@lune/fs")
 local Host = require("./host")
 local FE = require("./fakeengine")
 
@@ -478,14 +479,14 @@ do
 	local f4, h4 = previews()
 	check("a colour swatch creates no GUI instances", made == 0, made)
 	check("a colour swatch previews once", f4 + h4 == 1, f4 .. "/" .. h4)
-	-- the Hair step: a hair colour swatch is a head-only preview
-	check("Step4 (Hair)", press("Step4"))
+	-- the Face step: a face chip is a head-only preview (the page is rebuilt for the pick: a hitch, not lag)
+	check("Step2 (Face) again", press("Step2"))
 	S.settle(0.4)
 	table.clear(reqs)
-	check("Hair colour swatch", press("Swatch2"))
+	check("a face chip", press("Chip_wcb_grit"))
 	S.settle(0.6)
 	local f5, h5 = previews()
-	check("a hair colour swatch previews head-only", f5 == 0 and h5 == 1, f5 .. "/" .. h5)
+	check("a face chip previews head-only", f5 == 0 and h5 == 1, f5 .. "/" .. h5)
 	print(string.format("  Creator: open %d instances, step change %d, slider step / drag / swatch 0; a 0.6 s height drag: 1 full preview (was 3)", built, tab))
 	Creator.Close()
 	S.settle(0.2)
@@ -493,6 +494,36 @@ do
 	--------------------------------------------------------------------
 	-- MainMenu: a burst of character changes is one re-stage
 	--------------------------------------------------------------------
+	-- (a second client: a created boxer, as the menu needs; the profile from the real server code, as test_ui_layout)
+	local S1 = S
+	S = GS.new("desktop")
+	do
+		local folder = Host.NewNode("Server", "Folder", S.host.Service("ServerScriptService"))
+		for _, f in ipairs(fs.readDir(S.host.src .. "/server")) do
+			local base = f:match("^(.-)%.lua$")
+			if base and not f:find("%.server%.") then
+				local n = Host.NewNode(base, "ModuleScript", folder)
+				rawset(n, "_file", S.host.src .. "/server/" .. f)
+			end
+		end
+		local Career = S.host.requireNode(folder._kids.Career)
+		local Looks = S.require("Looks")
+		local prof = Career.CreateProfile(nil, { first = "Marcus", last = "Reed-Okonkwo", name = "Marcus Reed-Okonkwo", nickname = "The Hammer", age = 24, nationality = "USA",
+			weightClass = 5, style = "boxer", look = Looks.Defaults(1) }, 1)
+		prof.record = { w = 18, l = 2, d = 1, ko = 12 }
+		local P = Career.Summary(prof, true)
+		P.settings = P.settings or {}
+		P.settings.ui = { menuAtStart = false }
+		S.P = P
+		S.onInvokeServer = function(_, action)
+			if action == "GetProfile" then
+				return P
+			end
+			return { ok = false }
+		end
+		S.loadScript("client/ClientMain.client.lua")
+		S.settle(0.6)
+	end
 	local MM = S.require("Client/MainMenu")
 	local MS = S.require("Client/MenuStage")
 	local places = 0
@@ -525,9 +556,6 @@ do
 	look2.Name = "BoxerLook"
 	char2.Parent = S.E.workspace
 	S.player.Character = char2
-	S.P = { created = true, identity = { name = "Marcus Reed-Okonkwo", nationality = "USA" }, record = { w = 1, l = 0, d = 0, ko = 1 } }
-	local State = S.require("Client/State")
-	State.P = S.P
 	MM.Open()
 	S.settle(0.5)
 	check("MainMenu: the boxer staged once on open", places == 1 and MS ~= nil, places)
@@ -549,6 +577,7 @@ do
 	print(string.format("  MainMenu: 302 change signals in %.1f ms -> 1 re-stage (one pending timer; was 302 task.delay threads)", burst * 1000))
 	MM.Close()
 	S.settle(0.4)
+	S = S1
 end
 
 print(string.format("test_menustage: %d passed, %d failed", pass, fail))

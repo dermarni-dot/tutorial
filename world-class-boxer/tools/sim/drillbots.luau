@@ -402,7 +402,7 @@ A.bike = function(seg, j, t, M, mem, sk, rng)
 			tap(out, mem.side)
 		end
 	else
-		if every(mem, "g", t, 1.2 * sk.k) and math.abs(j.gear - ideal) >= 2 then
+		if every(mem, "g", t, 1.2 * sk.k) and math.abs(j.gear - ideal) >= (sk.k > 1 and 2 or 1) then
 			tap(out, j.gear < ideal and "gearUp" or "gearDn")
 		end
 		if every(mem, "p", t, 0.36 + rng:NextNumber() * 0.12 * sk.k) then

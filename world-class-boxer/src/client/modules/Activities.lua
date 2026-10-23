@@ -13,7 +13,7 @@
 --  squat     sink (faster as you go) and stop in the depth zone, drive out of the hole in the bounce window
 --  pullup    alternate arms through the bottom of the swing, go hollow to kill the swing
 --  curls     tempo hold notes, one arm at a time (both at once is a swing)
---  medball   medicine ball: overhead slams on the pad, then Russian twists on the beat
+--  medball   medicine ball: overhead slams on the pad, then a plank on the ball (shove it back in the green)
 --  treadmill follow the program's speed and incline steps on the console
 --  bike      a hill profile: pedal cadence in the band, gears for the gradient
 --  rower     catch - drive - finish - recovery: the timing of every stroke at the piece's rate
@@ -2276,25 +2276,41 @@ GAMES.mitts = function(ctx)
 		for r = 1, perRound do
 			UI.Clear(ctx.stage)
 			local seg = ctx.peek()
-			local keys = seg.ids or {}
+			local ids = seg.ids or {}
 			UI.Text(ctx.stage, "COACH: \"" .. tostring(seg.name) .. "!\"", { Font = T.bold, TextSize = 18, TextColor3 = T.gold, Position = UDim2.fromOffset(10, 4), Size = UDim2.new(1, -20, 0, 24), AutomaticSize = Enum.AutomaticSize.None })
 			say(tostring(seg.name) .. "!")
+			-- CALL & RESPONSE: one mitt per call, dim until the coach calls it (gold; a FEINT flashes orange
+			-- and must be left alone), then coloured by the answer; the bar under them is the open call's window
 			local labels = {}
-			for i, k in ipairs(keys) do
-				labels[i] = LABEL[k] or k
+			for i, k in ipairs(ids) do
+				labels[i] = k == "feint" and "FEINT" or (LABEL[k] or k)
 			end
 			local chips = chipRow(ctx, labels, 40, false, 92)
-			local limit = seg.limit or 3
-			local setTime = timeBar(ctx, 30)
-			chips[1].BackgroundColor3 = T.gold
+			for i in ipairs(ids) do
+				chips[i].BackgroundTransparency = 0.6
+			end
+			local setTime = timeBar(ctx, 30, T.gold)
+			local CALL_COLOR = { perfect = T.gold, good = T.green, wrong = T.red, missed = T.red, held = T.green, bitten = T.red }
+			local CALL_TEXT = { perfect = { "SNAP!", T.gold }, good = { "GOOD", T.green }, wrong = { "WRONG MITT", T.red }, missed = { "TOO SLOW", T.red }, held = { "HELD THE FEINT", T.green }, bitten = { "BIT ON THE FEINT!", T.orange } }
+			local function paint(k, how)
+				local c = chips[k]
+				if c then
+					c.BackgroundTransparency = 0
+					c.BackgroundColor3 = CALL_COLOR[how] or T.panel2
+				end
+				local ft = CALL_TEXT[how]
+				if ft then
+					ctx.feedback(ft[1], ft[2], false)
+				end
+			end
 			local j, _, start = ctx.begin()
 			ctx.on(function(id, down, t)
 				local hit = j.input(id, down, t)
-				if not hit then
+				if not hit or hit.stray then
 					return
 				end
-				seqChips(j, chips, hit)
-				if not hit.ok then
+				paint(hit.k, hit.how)
+				if hit.how ~= "perfect" and hit.how ~= "good" then
 					return
 				end
 				local mittSide = "R"
@@ -2326,23 +2342,45 @@ GAMES.mitts = function(ctx)
 				end
 				thrown += 1
 			end)
-			local okPlay = playSegment(ctx, j, function(now)
-				local el = now - start
-				setTime(1 - el / limit)
-				ctx.progress((r - 1 + math.min(1, el / limit)) / perRound)
-			end)
-			ctx.on(nil)
-			if not okPlay then
-				return nil
+			local lit = {}
+			local span = (seg.lead or 0.5) + #ids * (seg.call or 0.6)
+			while true do
+				if ctx.cancelled then
+					ctx.on(nil)
+					return nil
+				end
+				local now = ctx.now()
+				for _, m in ipairs(j.advance(now) or {}) do
+					paint(m.k, m.how)
+				end
+				local open
+				for k, c in ipairs(j.calls) do
+					if not c.judged and now >= c.t then
+						if not lit[k] then
+							lit[k] = true
+							chips[k].BackgroundTransparency = 0
+							chips[k].BackgroundColor3 = c.feint and T.orange or T.gold
+						end
+						open = open or c
+					end
+				end
+				setTime(open and (1 - (now - open.t) / (seg.window or 1)) or 0)
+				ctx.progress((r - 1 + math.min(1, (now - start) / span)) / perRound)
+				if j.closed then
+					break
+				end
+				RunService.Heartbeat:Wait()
 			end
+			ctx.on(nil)
 			local res = ctx.close(j)
-			if res.complete and res.wrong == 0 then
+			local q = DrillScore.CallScore(res)
+			if q >= 0.9 then
 				clean += 1
 				local line = pick(Config.MittPraise)
 				ctx.feedback(line, T.gold)
 				say(line)
-			elseif res.complete then
-				local line = pick(Config.MittCritique.sloppy)
+			elseif q >= 0.6 then
+				local line = pick(res.bitten > 0 and { "Don't bite on the feint!", "Eyes on the mitts, not the hands!" } or Config.MittCritique.sloppy)
 				ctx.feedback(line, T.orange)
 				say(line)
 			else
@@ -2803,9 +2841,9 @@ end
 
 -- MEDICINE BALL ---------------------------------------------------------
 -- Set 1 SLAMS: hold to drive the ball overhead, release in the green zone and the ball is slammed
--- into the pad (the station thumps, the dust flies). Set 2 RUSSIAN TWISTS: touch the ball down
--- LEFT / RIGHT on the beat (TwistSide drives the Animator's rotation). Abs and obliques get the
--- live pump with every clean rep.
+-- into the pad (the station thumps, the dust flies). Set 2 PLANK ON THE BALL: the ball rolls under
+-- your hands, LEFT / RIGHT shoves keep it in the green (TwistSide drives the Animator's rotation).
+-- Abs and obliques get the live pump with every clean rep and every steady stretch.
 GAMES.medball = function(ctx)
 	local load, loadText = liftLoad(ctx)
 	loadText = loadText or "MED BALL"
@@ -2878,84 +2916,93 @@ GAMES.medball = function(ctx)
 		return nil
 	end
 
-	-- SET 2: RUSSIAN TWISTS on a metronome
-	ctx.bind({ { id = "L", label = "TWIST LEFT", keys = { K.Q, K.A, K.J }, color = T.blue }, { id = "R", label = "TWIST RIGHT", keys = { K.E, K.D, K.K }, color = T.red } }, 2)
-	local bpm = ctx.peek().bpm or 76
-	ctx.setInfo(string.format("Feet up, chest proud: touch the ball down LEFT and RIGHT on every beat (%d BPM). Rotate from the ribs - this is your body-shot armour.", bpm))
-	if not ctx.round(2, 2, "RUSSIAN TWISTS" .. DOT .. bpm .. " BPM", "SET") then
+	-- SET 2: PLANK ON THE BALL - hands on the ball, it wants to roll out from under you: LEFT / RIGHT
+	-- shoves keep the balance marker in the green (the obliques brace against every roll)
+	ctx.bind({ { id = "L", label = "SHOVE LEFT", keys = { K.Q, K.A, K.J }, color = T.blue }, { id = "R", label = "SHOVE RIGHT", keys = { K.E, K.D, K.K }, color = T.red } }, 2)
+	ctx.setInfo("Plank with your hands on the ball - it rolls under you. Tap LEFT / RIGHT to shove it back and keep the marker in the green. Brace, don't chase it.")
+	if not ctx.round(2, 2, "PLANK ON THE BALL", "SET") then
 		return nil
 	end
 	ctx.clearRep()
 	UI.Clear(ctx.stage)
-	local lineX = 70
 	local j, seg, M = ctx.begin()
 	if not j then
 		return nil
 	end
-	local frames = noteFrames(ctx, j, lineX)
-	local count = #seg.lanes
-	local start = M + seg.lead
-	local onBeat, streak, bestStreak = 0, 0, 0
+	local W2 = DrillScore.Workouts
+	local band = seg.band or 0.3
+	local track = UI.Frame(ctx.stage, { Position = UDim2.new(0, 24, 0, 28), Size = UDim2.new(1, -48, 0, 32), BackgroundColor3 = Color3.fromRGB(30, 30, 38) })
+	UI.Corner(track, 16)
+	local green = UI.Frame(track, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(band, 1), BackgroundColor3 = T.green, BackgroundTransparency = 0.4 })
+	UI.Corner(green, 16)
+	UI.Frame(track, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.new(0, 2, 1, 0), BackgroundColor3 = T.gold, BackgroundTransparency = 0.5 })
+	local ball = UI.Frame(track, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(26, 26), BackgroundColor3 = T.gold })
+	UI.Corner(ball, 13)
+	UI.Text(ctx.stage, GLYPH.left .. " SHOVE", { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(24, 64), Size = UDim2.fromOffset(80, 14), AutomaticSize = Enum.AutomaticSize.None })
+	UI.Text(ctx.stage, "SHOVE " .. GLYPH.right, { Font = T.semi, TextSize = 11, TextColor3 = T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -24, 0, 64), Size = UDim2.fromOffset(80, 14), TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None })
+	local setTime = timeBar(ctx, 84, T.blue)
+	local lost, steadyAt, partialAt = 0, M, -math.huge
 	ctx.intensity = 0.6
 	ctx.on(function(id, down, t)
 		if not down then
 			return
 		end
-		ctx.attr("TwistSide", id == "L" and -1 or 1)
-		local hit = j.input(id, down, t)
-		if hit and hit.stray then
-			streak = 0
-			ctx.feedback("OFF BEAT", T.orange)
-			return
-		end
-		if not (hit and hit.grade) then
-			return
-		end
-		frames[hit.note].Visible = false
-		if hit.grade == "perfect" then
-			onBeat += 1
-			streak += 1
-			bestStreak = math.max(bestStreak, streak)
-			ctx.feedback(streak >= 6 and ("ON FIRE x" .. streak) or "TOUCH", streak >= 6 and T.gold or T.green)
-			ctx.impact(-0.2, id == "L" and -1 or 1) -- the ball taps the floor
-			if streak % 4 == 0 then
-				ctx.pump(0.05)
-			end
-		else
-			streak = 0
-			ctx.feedback("OFF BEAT", T.orange)
+		if j.input(id, down, t) then
+			ctx.attr("TwistSide", id == "L" and -1 or 1)
+			ctx.impact(-0.15, id == "L" and -1 or 1)
 		end
 	end)
-	local pxPerSec = 220
 	while true do
 		if ctx.cancelled then
 			ctx.on(nil)
 			return nil
 		end
 		local now = ctx.now()
-		for _ in ipairs(j.advance(now) or {}) do
-			streak = 0
-			ctx.feedback("MISSED", T.red)
+		j.advance(now)
+		local x = j.x
+		local ax = math.abs(x)
+		ball.Position = UDim2.fromScale(0.5 + 0.5 * x, 0.5)
+		ball.BackgroundColor3 = ax <= band and T.green or (ax <= 2 * band and T.gold or T.red)
+		if j.lost > lost then
+			lost = j.lost
+			steadyAt = now
+			ctx.feedback("ROLLED OFF IT!", T.red)
+		elseif ax <= band then
+			if now - steadyAt >= 3 then
+				steadyAt = now
+				ctx.feedback("ROCK SOLID", T.gold)
+				ctx.pump(0.05)
+			end
+		else
+			steadyAt = now
 		end
-		local alive = moveNotes(j, frames, lineX, now, pxPerSec)
-		ctx.progress((now - start) / (count * seg.interval))
-		ctx.stats(string.format("%d/%d on the beat%sstreak %d", onBeat, count, DOT, streak))
-		if not alive or j.closed then
+		setTime(1 - (now - M) / seg.duration)
+		ctx.progress((now - M) / seg.duration)
+		if now - partialAt >= 0.25 then
+			partialAt = now
+			ctx.partial = { w = 1, g = math.clamp(j.acc * W2.TICK / math.max(0.01, now - M) / W2.TIMED_FULL, 0, 1) }
+			ctx.updateMetrics()
+		end
+		ctx.stats(string.format("%.1f s in the green%s%d slips", j.inBand * W2.TICK, DOT, j.lost))
+		if j.closed then
 			break
 		end
 		RunService.Heartbeat:Wait()
 	end
 	ctx.on(nil)
-	ctx.close(j)
+	local res = ctx.close(j)
+	ctx.partial = nil
 	ctx.intensity = nil
 	ctx.attr("TwistSide", 0)
+	local coreQ = math.clamp(res.acc / math.max(0.1, res.duration) / W2.TIMED_FULL - 0.1 * res.lost, 0, 1)
+	ctx.feedback(coreQ >= 0.9 and "IRON CORE" or (coreQ >= 0.65 and "SOLID PLANK" or "SHAKY"), ctx.gradeColor(coreQ), coreQ)
 	ctx.put("load", load or 0)
 	ctx.put("cleanSlams", cleanSlams)
-	ctx.put("twists", onBeat)
-	ctx.put("bestStreak", bestStreak)
+	ctx.put("plankSec", math.floor(res.inBand * 10 + 0.5) / 10)
+	ctx.put("slips", res.lost)
 	ctx.note(string.format("%s%s%d/%d clean slams", loadText, DOT, cleanSlams, slams))
-	ctx.note(string.format("%d/%d twists on the beat (best streak %d)", onBeat, count, bestStreak))
-	if not ctx.wait(0.6) then
+	ctx.note(string.format("%.1f s steady on the ball%s%d slips", res.inBand, DOT, res.lost))
+	if not ctx.wait(0.3) then
 		return nil
 	end
 	return ctx.score()
@@ -3140,8 +3187,10 @@ local LADDER_DIRS = {
 	{ id = "B", label = "DOWN", keys = { K.S, K.Down }, arrow = GLYPH.down }, { id = "R", label = "RIGHT", keys = { K.D, K.Right }, arrow = GLYPH.right },
 }
 local LADDER_PAD = { F = 1, L = 3, B = 4, R = 2 } -- reaction pods: forward, right, left, back
+local LADDER_COLOR = { F = T.blue, B = T.red, L = T.green, R = T.gold }
 
--- named footwork drills (smart reaction lights at the top level: a lit drill, then random lights)
+-- STEPPED PATTERNS: a named drill's steps (arrows) slide along the ladder to the foot line on a beat
+-- that quickens through the drill; the smart ladder at the top level ends with random reaction lights
 GAMES.ladder = function(ctx)
 	local dirById = {}
 	for _, d in ipairs(LADDER_DIRS) do
@@ -3149,126 +3198,229 @@ GAMES.ladder = function(ctx)
 	end
 	ctx.bind(LADDER_DIRS, 4)
 	local drills = ctx.plan.segs
-	local smart = drills[1] ~= nil and drills[1].j == "lights"
 	ctx.onDestroy(function()
 		GymVisuals.Light("ladder", 0)
 	end)
-	ctx.setInfo(smart and "SMART LIGHTS: step toward each pad as it lights up (W/A/S/D or arrows), as fast as you can."
-		or "Run each named footwork drill in order (W/A/S/D or arrows). Speed and accuracy count.")
-	local completed, correct, stepTime = 0, 0, 0
+	local completed, correct, stepTime, stepsAll = 0, 0, 0, 0
 	for p, drill in ipairs(drills) do
+		local lights = drill.j == "lights"
+		ctx.setInfo(lights and "SMART LIGHTS: step toward each pad as it lights up (W/A/S/D or arrows), as fast as you can."
+			or string.format("%s: step each arrow (W/A/S/D or arrows) as it reaches the foot line. The beat quickens through the drill - light feet.", drill.name or "LADDER"))
 		if not ctx.round(p, #drills, drill.name, "DRILL") then
 			return nil
 		end
 		UI.Clear(ctx.stage)
-		local seq = {}
-		for i, s in ipairs(drill.ids or {}) do
-			seq[i] = dirById[s] or LADDER_DIRS[1]
-		end
-		local len = #seq
-		local chips = {}
-		if not smart then
-			local w = math.max(24, math.min(44, math.floor((stageWidth(ctx) - 20) / math.max(1, len)) - 4))
-			for i, d in ipairs(seq) do
-				chips[i] = chip(ctx.stage, d.arrow, 10 + (i - 1) * (w + 4), w)
+		if drill.j == "notes" then
+			local lineX = 70
+			UI.Text(ctx.stage, "FEET", { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(8, 44), Size = UDim2.fromOffset(52, 14), AutomaticSize = Enum.AutomaticSize.None })
+			UI.Frame(ctx.stage, { Position = UDim2.new(0, lineX - 2, 0, 18), Size = UDim2.new(0, 4, 0, 66), BackgroundColor3 = T.gold })
+			-- the ladder's rungs
+			for x = lineX + 40, 600, 40 do
+				UI.Frame(ctx.stage, { Position = UDim2.new(0, x, 0, 30), Size = UDim2.new(0, 2, 0, 42), BackgroundColor3 = T.line })
 			end
-			if chips[1] then
-				chips[1].BackgroundColor3 = T.gold
+			local j, sg, M = ctx.begin()
+			if not j then
+				return nil
 			end
-		end
-		local j, _, start = ctx.begin()
-		if not j then
-			return nil
-		end
-		local lightChip
-		local function lightUp()
-			local d = seq[j.idx]
-			if not d then
-				return
+			local frames = {}
+			for i, nt in ipairs(j.notes) do
+				local d = dirById[nt.lane] or LADDER_DIRS[1]
+				local f = UI.Frame(ctx.stage, { Size = UDim2.fromOffset(30, 30), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(NOTE_FAR, 51), BackgroundColor3 = LADDER_COLOR[nt.lane] or T.blue })
+				UI.Corner(f, 8)
+				UI.Text(f, d.arrow, { Font = T.bold, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None })
+				frames[i] = f
 			end
-			if lightChip then
-				lightChip:Destroy()
-			end
-			lightChip = chip(ctx.stage, d.arrow .. "  " .. d.label, 0, 160, T.blue)
-			lightChip.Position = UDim2.new(0.5, -80, 0.5, -34)
-			GymVisuals.Light("ladder", LADDER_PAD[d.id], Color3.fromRGB(60, 200, 255))
-		end
-		ctx.on(function(id, down, t)
-			if not down then
-				return
-			end
-			-- a pad due to light lights first (the judge does the same at this moment)
-			if smart and j.advance(t) then
-				lightUp()
-			end
-			local at = j.idx
-			local hit = j.input(id, down, t)
-			if not hit then
-				return
-			end
-			ctx.move("step", id)
-			ctx.speed(1.3)
-			if hit.ok then
-				correct += 1
-				if chips[at] then
-					chips[at].BackgroundColor3 = T.green
+			local streak, onBeat = 0, 0
+			ctx.on(function(id, down, t)
+				if not down then
+					return
 				end
-				if chips[at + 1] then
-					chips[at + 1].BackgroundColor3 = T.gold
+				local hit = j.input(id, down, t)
+				if not hit then
+					return
 				end
-				if smart then
-					GymVisuals.Light("ladder", 0)
-					if lightChip then
-						lightChip:Destroy()
-						lightChip = nil
+				ctx.move("step", id)
+				if hit.stray then
+					streak = 0
+					ctx.feedback("OFF THE BEAT", T.orange)
+				elseif hit.grade then
+					frames[hit.note].Visible = false
+					if hit.grade == "off" then
+						streak = 0
+						ctx.feedback("LATE FEET", T.orange)
+					else
+						streak += 1
+						onBeat += 1
+						correct += 1
+						ctx.feedback(hit.grade == "perfect" and ("QUICK FEET x" .. streak) or "GOOD STEP", hit.grade == "perfect" and T.gold or T.green)
 					end
 				end
-			else
-				if chips[at] then
-					chips[at].BackgroundColor3 = T.red
+			end)
+			local pps = 200
+			local start = M + (sg.lead or 1)
+			local lastT = j.notes[#j.notes].t
+			while true do
+				if ctx.cancelled then
+					ctx.on(nil)
+					return nil
 				end
-				ctx.feedback(hit.early and "TOO EARLY" or "WRONG FOOT", T.red)
+				local now = ctx.now()
+				for _ in ipairs(j.advance(now) or {}) do
+					streak = 0
+					ctx.feedback("MISSED STEP", T.red)
+				end
+				local alive = false
+				for i, nt in ipairs(j.notes) do
+					local f = frames[i]
+					if nt.judged then
+						if f.Visible then
+							f.Visible = false
+						end
+					else
+						alive = true
+						local x = lineX + (nt.t - now) * pps
+						if x < NOTE_FAR then
+							f.Position = UDim2.fromOffset(x, 51)
+						end
+					end
+				end
+				ctx.speed(1 + math.min(streak, 10) * 0.05)
+				ctx.progress((now - start) / math.max(1, lastT - start))
+				ctx.stats(string.format("%d/%d steps on the beat%sstreak %d", onBeat, #sg.lanes, DOT, streak))
+				if not alive or j.closed then
+					break
+				end
+				RunService.Heartbeat:Wait()
 			end
-		end)
-		local okPlay = true
-		while not j.closed do
-			if ctx.cancelled then
-				okPlay = false
-				break
+			ctx.on(nil)
+			ctx.speed(1)
+			local res = ctx.close(j)
+			stepTime += math.max(0.5, lastT - start)
+			stepsAll += res.count
+			if res.hits >= 0.6 * res.count then
+				completed += 1
+				ctx.feedback(string.format("%d/%d ON THE BEAT", res.hits, res.count), res.hits == res.count and T.gold or T.green)
+			else
+				ctx.feedback("LOST THE PATTERN", T.red)
 			end
-			local now = ctx.now()
-			if j.advance(now) and smart then
-				lightUp()
-			end
-			if j.closed then
-				break
-			end
-			local el = now - start
-			ctx.progress((j.idx - 1) / math.max(1, len))
-			ctx.stats(string.format("Step %d/%d%s%.1f steps/s", math.min(j.idx, len), len, DOT, (j.idx - 1) / math.max(0.5, el)))
-			RunService.Heartbeat:Wait()
-		end
-		ctx.on(nil)
-		ctx.speed(1)
-		GymVisuals.Light("ladder", 0)
-		if not okPlay then
-			return nil
-		end
-		local res = ctx.close(j)
-		local el = res.time or drill.limit or 0
-		stepTime += el
-		if res.complete then
-			completed += 1
-			ctx.feedback(string.format("%.1fs", el), T.gold)
 		else
-			ctx.feedback("OUT OF TIME", T.red)
+			local seq = {}
+			for i, s in ipairs(drill.ids or {}) do
+				seq[i] = dirById[s] or LADDER_DIRS[1]
+			end
+			local len = #seq
+			local chips = {}
+			if not lights then
+				local w = math.max(24, math.min(44, math.floor((stageWidth(ctx) - 20) / math.max(1, len)) - 4))
+				for i, d in ipairs(seq) do
+					chips[i] = chip(ctx.stage, d.arrow, 10 + (i - 1) * (w + 4), w)
+				end
+				if chips[1] then
+					chips[1].BackgroundColor3 = T.gold
+				end
+			end
+			local j, _, start = ctx.begin()
+			if not j then
+				return nil
+			end
+			local lightChip
+			local function lightUp()
+				local d = seq[j.idx]
+				if not d then
+					return
+				end
+				if lightChip then
+					lightChip:Destroy()
+				end
+				lightChip = chip(ctx.stage, d.arrow .. "  " .. d.label, 0, 160, T.blue)
+				lightChip.Position = UDim2.new(0.5, -80, 0.5, -34)
+				GymVisuals.Light("ladder", LADDER_PAD[d.id], Color3.fromRGB(60, 200, 255))
+			end
+			ctx.on(function(id, down, t)
+				if not down then
+					return
+				end
+				-- a pad due to light lights first (the judge does the same at this moment)
+				if lights and j.advance(t) then
+					lightUp()
+				end
+				local at = j.idx
+				local hit = j.input(id, down, t)
+				if not hit then
+					return
+				end
+				ctx.move("step", id)
+				ctx.speed(1.3)
+				if hit.ok then
+					correct += 1
+					if chips[at] then
+						chips[at].BackgroundColor3 = T.green
+					end
+					if chips[at + 1] then
+						chips[at + 1].BackgroundColor3 = T.gold
+					end
+					if lights then
+						GymVisuals.Light("ladder", 0)
+						if lightChip then
+							lightChip:Destroy()
+							lightChip = nil
+						end
+						ctx.feedback(hit.rt and hit.rt < 0.4 and "QUICK!" or "STEP", hit.rt and hit.rt < 0.4 and T.gold or T.green, false)
+					end
+				else
+					if chips[at] then
+						chips[at].BackgroundColor3 = T.red
+					end
+					ctx.feedback(hit.early and "TOO EARLY" or "WRONG FOOT", T.red)
+				end
+			end)
+			local okPlay = true
+			while not j.closed do
+				if ctx.cancelled then
+					okPlay = false
+					break
+				end
+				local now = ctx.now()
+				if j.advance(now) and lights then
+					lightUp()
+				end
+				if j.closed then
+					break
+				end
+				local el = now - start
+				ctx.progress((j.idx - 1) / math.max(1, len))
+				ctx.stats(string.format("Step %d/%d%s%.1f steps/s", math.min(j.idx, len), len, DOT, (j.idx - 1) / math.max(0.5, el)))
+				RunService.Heartbeat:Wait()
+			end
+			ctx.on(nil)
+			ctx.speed(1)
+			GymVisuals.Light("ladder", 0)
+			if not okPlay then
+				return nil
+			end
+			local res = ctx.close(j)
+			local el = res.time or drill.limit or 0
+			stepTime += el
+			stepsAll += len
+			if res.complete then
+				completed += 1
+				ctx.feedback(string.format("%.1fs", el), T.gold)
+			else
+				ctx.feedback("OUT OF TIME", T.red)
+			end
 		end
 		ctx.progress(1)
 		if not ctx.wait(WAIT.ladder) then
 			return nil
 		end
-		if p < #drills and ((smart and p == 1) or (not smart and p == 2)) then
-			if not ctx.rest(smart and WAIT.rest or WAIT.restShort, string.format("DRILL %d DONE", p), string.format("%d/%d drills completed", completed, p)) then
+		-- the breathers the plan paces: before the reaction lights, and after the first pattern
+		local nextDrill = drills[p + 1]
+		if nextDrill and nextDrill.j == "lights" then
+			if not ctx.rest(WAIT.rest, string.format("DRILL %d DONE", p), string.format("%d/%d drills completed", completed, p)) then
+				return nil
+			end
+		elseif nextDrill and p == 1 then
+			if not ctx.rest(WAIT.restShort, "DRILL 1 DONE", string.format("%d/%d drills completed", completed, p)) then
 				return nil
 			end
 		end
@@ -3276,8 +3428,9 @@ GAMES.ladder = function(ctx)
 	local sps = correct / math.max(1, stepTime)
 	ctx.put("stepsPerSec", math.floor(sps * 10 + 0.5) / 10)
 	ctx.put("drills", completed)
+	ctx.put("steps", correct)
 	ctx.note(string.format("%d/%d drills completed", completed, #drills))
-	ctx.note(string.format("%.1f steps/s", sps))
+	ctx.note(string.format("%d/%d steps%s%.1f steps/s", correct, stepsAll, DOT, sps))
 	return ctx.score()
 end
 
@@ -5278,7 +5431,7 @@ local STAT_NAMES = {
 	distance = "Distance", topSpeed = "Top speed", maxWatts = "Max watts", avgRpm = "Avg cadence", meters = "Distance",
 	maxSpm = "Stroke rate", inZone = "Time in zone", stepsPerSec = "Foot speed", drills = "Drills completed",
 	cleanJumps = "Clean jumps", doubleUnders = "Double unders", sync = "Breathing sync", waterLost = "Water cut",
-	lengths = "Lengths", speed = "Average speed", cleanSlams = "Clean slams", twists = "Twists on the beat",
+	lengths = "Lengths", speed = "Average speed", cleanSlams = "Clean slams", twists = "Twists on the beat", plankSec = "Steady on the ball (s)", slips = "Slips", steps = "Steps",
 	form = "Form", tempo = "Tempo", perfectCurls = "Perfect curls", strokes = "Strokes", calmBreaths = "Calm breaths",
 	timeInRange = "Time in range", soreSpots = "Sore spots found", rebounds = "Rebounds slipped", footwork = "Footwork on the beat",
 }

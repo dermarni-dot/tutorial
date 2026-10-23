@@ -464,7 +464,7 @@ local function keyboardMap(m, order)
 		end
 	end
 	local short = UI.CanvasSize(gui).Y < 560
-	local unit, gap, capH = short and 40 or 48, 4, short and 36 or 44
+	local unit, gap, capH = short and 48 or 60, 4, short and 36 or 44
 	local holder = UI.Frame(content, { Name = "KeyboardMap", BackgroundColor3 = T.panel, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order })
 	UI.Stroke(holder, T.line, 1, 0)
 	UI.Corner(holder, UI.R.lg)
@@ -479,12 +479,16 @@ local function keyboardMap(m, order)
 			local a = bound[key[1]]
 			local color = a and (SECTION_COLOR[a.section] or T.sub) or nil
 			local cap = UI.Frame(f, { Name = "Key_" .. key[1], Size = UDim2.fromOffset(math.floor(unit * (key[3] or 1)), capH), BackgroundColor3 = color and T.bg:Lerp(color, 0.18) or T.panel2, LayoutOrder = i })
+			if key[3] == 6 then
+				cap.Size = UDim2.new(0, math.floor(unit * 4.2), 0, capH)
+			end
 			UI.Corner(cap, 3)
 			UI.Stroke(cap, color or T.line, 1, 0)
 			UI.Text(cap, key[2], { Font = T.semi, TextSize = 12, TextColor3 = color or T.sub, Position = UDim2.fromOffset(6, 4), Size = UDim2.new(1, -12, 0, 14), AutomaticSize = Enum.AutomaticSize.None,
 				TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 			if a then
-				local label = SHORT_ACTION[a.id] or a.label
+				-- (a special move's name is long: its first word says enough under its key)
+				local label = SHORT_ACTION[a.id] or (a.special and tostring(a.label):match("^(%S+)")) or a.label
 				-- (the action's name, cut short where the cap is narrow: the list under the map says it in full)
 				UI.Text(cap, label, { Name = "Action", TextSize = 11, TextColor3 = T.text, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 6, 1, -4), Size = UDim2.new(1, -12, 0, 14), AutomaticSize = Enum.AutomaticSize.None,
 					TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = Enum.TextXAlignment.Left })

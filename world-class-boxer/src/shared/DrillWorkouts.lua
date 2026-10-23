@@ -148,7 +148,7 @@ J.bench = function(seg, M, TapHold)
 		local q = 0
 		local avg = s.sum / math.max(1, s.n)
 		if v == "lockout" then
-			q = clamp(1 - math.max(0, avg - 0.12) / 0.35, 0.5, 1)
+			q = clamp(1 - math.max(0, avg - 0.1) / 0.3, 0.5, 1)
 			if s.maxX > 0.85 * seg.tiltMax then
 				q *= 0.9
 			end
@@ -687,7 +687,7 @@ J.bike = function(seg, M)
 		local ideal = W.IdealGear(stepAt(seg.hill, T - M).grade, seg.gears)
 		local band = rpm >= seg.lo and rpm <= seg.hi
 		local gearOk = math.abs(s.gear - ideal) <= 1
-		s.acc += (band and gearOk) and 1 or (band and 0.6 or 0)
+		s.acc += (band and gearOk) and 1 or (band and 0.7 or 0)
 		if band then
 			s.inBand += 1
 		end
@@ -1464,7 +1464,7 @@ PLAN.pullup = function(segs, lv, r, Wt)
 	for set = 1, 2 do
 		for rep = 1, 3 do
 			table.insert(segs, { j = "pullup", set = set, rep = rep, omega = 3.0 + 0.6 * f, ph = r:NextNumber() * 6.28, a0 = 0.2 + 0.05 * rep,
-				amax = 1.15, gain = 0.3 - 0.04 * f - 0.01 * (set - 1), sink = 0.04 + 0.02 * f, swingAdd = 0.26 + 0.16 * f, damp = 0.06, hollowDamp = 0.55 - 0.15 * f,
+				amax = 1.15 - 0.1 * f, gain = 0.3 - 0.04 * f - 0.01 * (set - 1), sink = 0.04 + 0.02 * f, swingAdd = 0.26 + 0.22 * f, damp = 0.06, hollowDamp = 0.55 - 0.15 * f,
 				wait = 4, limit = 6, gap = repGap(Wt, set, rep) })
 		end
 	end
@@ -1526,7 +1526,7 @@ PLAN.bike = function(segs, lv, r, Wt)
 		table.insert(hill, { t = t, grade = p[1], name = p[2] })
 		t += 5
 	end
-	table.insert(segs, { j = "bike", duration = t, hill = hill, gears = 6, gear0 = 4, lo = 66, hi = 100 - 6 * f, gap = Wt.intro })
+	table.insert(segs, { j = "bike", duration = t, hill = hill, gears = 6, gear0 = 4, lo = 58, hi = 100 - 6 * f, gap = Wt.intro })
 end
 PLAN.rower = function(segs, lv, r, Wt)
 	local f = lvf(lv)

@@ -889,13 +889,15 @@ function FightAI:Think(now)
 	if now < self.nextThink then
 		return
 	end
-	self.nextThink = now + 0.32 - F.data.stats.RingIQ * 0.0018
+	self.nextThink = now + lerp(AIC.think[1], AIC.think[2], self.skill)
 	if F.state == "down" or O.state == "down" then
 		self.queue = {}
+		self:Note(now, "down")
 		return
 	end
 	if F.state == "clinch" then
 		self.queue = {}
+		self:Note(now, "clinch")
 		self:ClinchThink(now)
 		return
 	end
@@ -905,14 +907,23 @@ function FightAI:Think(now)
 	local tier = F.tier or 0
 	-- a dazed fighter sometimes just freezes for a moment (and gets hit): ~15% per second per tier
 	if now < self.freezeUntil or engine:IsStumbling(F) then
+		self:Note(now, now < self.freezeUntil and "frozen" or "stumbling")
 		return
 	end
 	if tier >= 1 and self.rng:NextNumber() < 0.15 * tier * 0.32 then
 		self.freezeUntil = now + 0.4
 		self.queue = {}
+		self:Note(now, "frozen (dazed)")
 		return
 	end
 	local dist = engine:Distance(F, O)
+	local jab = engine:PunchRange(F, "jab")
+	-- the work-rate clock: since when he has been within a step of its reach (the floor counts from there)
+	if dist <= jab + AIC.stepIn then
+		self.reachableSince = self.reachableSince or now
+	else
+		self.reachableSince = nil
+	end
 	if now >= self.nextMove then
 		self.nextMove = now + 0.35
 		self:Move(now, dist)
@@ -921,6 +932,7 @@ function FightAI:Think(now)
 		engine:SetBlock(F, false)
 	end
 	if now < F.busyUntil then
+		self:Note(now, "busy")
 		return
 	end
 	-- (the engine's spacing is scaled to the pair's rigs: engine.rigK)
@@ -938,17 +950,25 @@ function FightAI:Think(now)
 			engine:TraitFired(F, "RingGeneral")
 		end
 		engine:Pivot(F, self.circleDir)
+		self:Note(now, "pivot out")
 		return
 	end
+	local clinchRange = engine.ClinchRange and engine:ClinchRange(F) or SPACING.clinch * rk
 	if self.mode == "survive" or self.mode == "reset" then
-		local hold = self.mode == "survive" and (tier >= 1 and 0.45 or 0.25) or 0.12
-		if dist < (engine.ClinchRange and engine:ClinchRange(F) or SPACING.clinch * rk) and self.rng:NextNumber() < hold and engine:CanClinch(F) then
+		local hold = self.mode == "survive" and (tier >= 1 and 0.6 or 0.35) or 0.12
+		-- (and a boxer who knows his trade ties up to kill his momentum when it is all his)
+		if engine.Mom and engine:Mom(F) < -0.5 and self.skill >= 0.4 then
+			hold += 0.2
+		end
+		if dist < clinchRange and self.rng:NextNumber() < hold and engine:CanClinch(F) then
 			engine:Clinch(F)
+			self:Note(now, "clinch (" .. self.mode .. ")")
 			return
 		end
-		if dist < SPACING.cover * rk and self.rng:NextNumber() < (self.mode == "survive" and 0.6 or 0.3) then
+		if dist < SPACING.cover * rk and self.rng:NextNumber() < (self.mode == "survive" and 0.5 or 0.25) then
 			engine:SetBlock(F, true)
 			self.blockUntil = now + 0.7
+			self:Note(now, "cover (" .. self.mode .. ")")
 			return
 		end
 	end
@@ -962,16 +982,26 @@ function FightAI:Think(now)
 			return
 		end
 	end
+	-- the opening it saw him give (OnOppMiss: his punch missed, a perception delay ago): fire into it
+	if now >= self.openAt and now < self.openUntil and self:Fits("cross", dist) then
+		self.openUntil = 0
+		self:Throw(self:CounterPunch(dist), self.rng:NextNumber() < self.bodyBias)
+		self:Note(now, "punish: " .. tostring(self.openWhy))
+		return
+	end
 	-- he bit on its feint: fire now (it saw him react)
 	if now < (F.feintOpenUntil or 0) and self:Fits("cross", dist) then
 		self:Throw(self:CounterPunch(dist), self.rng:NextNumber() < self.bodyBias)
+		self:Note(now, "feint: he bit")
 		return
 	end
 	if self:TrySpecial(now, dist) then
+		self:Note(now, "special")
 		return
 	end
 	if now < F.counterUntil and self:Fits("jab", dist) and self.rng:NextNumber() < 0.35 + 0.45 * self.skill then
 		self:Throw(self:CounterPunch(dist), false)
+		self:Note(now, "counter")
 		return
 	end
 	-- the end of his combination: he is in his recovery (it saw it end)
@@ -980,44 +1010,81 @@ function FightAI:Think(now)
 		self.punishAt = nil
 		if now - at < 0.4 and self:Fits("jab", dist) and self.mode ~= "survive" then
 			self:Throw(self:CounterPunch(dist), self.rng:NextNumber() < self.bodyBias * 0.6)
+			self:Note(now, "punish: his combination ended")
 			return
 		end
+	end
+	-- his rhythm: his next punch is due on the beat he keeps - a straight meets it
+	if self:RhythmDue(now) and self:Fits("jab", dist) then
+		self:Throw(self.rng:NextNumber() < 0.6 and "jab" or "cross", false)
+		self:Note(now, "timing counter")
+		return
 	end
 	if #self.queue > 0 then
 		local nxt = table.remove(self.queue, 1)
 		if dist <= engine:PunchRange(F, nxt.p) + 0.4 then
 			self:Throw(nxt.p, nxt.body)
 			self:ChainNext()
+			self:Note(now, "combination")
 			if #self.queue == 0 then
 				self:ComboDone(now)
 			end
 		else
 			self.queue = {}
+			self:Note(now, string.format("combination broken off: %.1f > %.1f", dist, engine:PunchRange(F, nxt.p)))
 		end
 		return
 	end
 	local aggr = self:Aggression()
-	if self:Fits("jab", dist) or (self:Fits("jab", dist - 0.6) and (self.mode == "bait" or self.mode == "outbox")) then
+	local fits = self:Fits("jab", dist)
+	if fits or (self:Fits("jab", dist - 0.6) and (self.mode == "bait" or self.mode == "outbox")) then
 		-- a feint / a draw: show him a jab and see what he does (counter-punchers and out-boxers, the smart ones)
 		if self:TryFeint(now, dist) then
+			self:Note(now, "feint")
 			return
 		end
 	end
-	if self:Fits("jab", dist) then
-		-- (engine.aiWork: a gym sparring partner works harder than the fight-night pace)
-		-- (a raw boxer looks for its openings less often: the work rate grows with its skill)
-		if self.rng:NextNumber() < (aggr * 0.13 + self.jabRate * 0.07) * (engine.aiWork or 1) * (0.4 + 0.3 * self.skill) * ((MODES[self.mode] and MODES[self.mode].work) or 1) then
+	-- the work: its chance to attack this think (engine.aiWork: a gym partner or the tutorial's opponent is told
+	-- how hard; the tier's work; a raw boxer looks for its openings less often), up when he is open to it; and
+	-- the floor under it (Config.FightAI.tiers[].floor punches a minute while he is within a step of its reach: a
+	-- step in and a punch when it has gone too long without one - a debut opponent is easier, never passive)
+	local M = MODES[self.mode]
+	local work = (aggr * 0.2 + self.jabRate * 0.08) * AIC.work * self.tier.work * (engine.aiWork or 1) * (0.55 + 0.45 * self.skill) * ((M and M.work) or 1)
+	local open = self:Opening(now, dist, jab)
+	if open then
+		work *= AIC.openWork
+	end
+	local floorPPM = math.max(AIC.floorMin, self.tier.floor * (engine.aiWork or 1) * ((self.mode == "survive" or self.mode == "reset") and 0.4 or 1))
+	local gap = 60 / floorPPM
+	local overdue = self.reachableSince ~= nil and now - self.reachableSince > gap and now - self.lastThrowAt > gap and F.stamina >= 6
+	if fits then
+		if overdue or self.rng:NextNumber() < work then
 			self.queue = self:BuildCombo()
 			local first = table.remove(self.queue, 1)
 			self:Throw(first.p, first.body)
 			self:ChainNext()
+			self:Note(now, overdue and "attack (work floor)" or (open and ("attack: " .. open) or "attack"))
 			if #self.queue == 0 then
 				self:ComboDone(now)
 			end
-		elseif self.rng:NextNumber() < (1 - aggr) * 0.3 * (0.6 + self.arch.block) * (engine.aiDefense or 1) * (1 + 0.4 * self.skill) then
-			engine:SetBlock(F, true)
-			self.blockUntil = now + 0.5
+			return
 		end
+		-- (between its punches a boxer keeps his feet moving; the guard held still in range is the raw one's habit)
+		if self.rng:NextNumber() < (1 - aggr) * 0.18 * (0.6 + self.arch.block) * (engine.aiDefense or 1) * (1.2 - 0.5 * self.skill) then
+			engine:SetBlock(F, true)
+			self.blockUntil = now + 0.4
+			self:Note(now, "guard")
+			return
+		end
+		self:Note(now, "waiting (in range)")
+	elseif dist <= jab + AIC.stepIn and (overdue or self.rng:NextNumber() < work * 0.8) then
+		-- a step in to punch: Range() draws it closer for a moment, the next think throws when it gets there
+		self.closeUntil = now + 0.7
+		self.nextMove = 0
+		self.nextThink = math.min(self.nextThink, now + 0.15)
+		self:Note(now, string.format("step in %.1f > %.1f", dist, jab))
+	else
+		self:Note(now, string.format("out of range %.1f > %.1f", dist, jab))
 	end
 end
 
@@ -1091,6 +1158,19 @@ function FightAI:Move(now, dist)
 		-- cut the ring off for real only when he is near the ropes; a skilled boxer does it better
 		cut = cut * (oRope < 4 and (0.5 + 0.5 * self.skill) or (0.15 + 0.2 * self.skill))
 		circle *= 0.5
+	end
+	-- a man who keeps circling one way (Observe's running mean of his side-steps) is cut off, not chased: a
+	-- pressing boxer stands in his way (the ring-centre side) rather than circling himself
+	local presses = cut > 0 or self.mode == "stalk" or self.mode == "swarm" or self.mode == "pressure" or self.mode == "finish" or self.mode == "gamble"
+	if presses and math.abs(self.oCircle) > 0.35 and self.skill >= 0.3 then
+		cut = math.max(cut, 0.4 + 0.4 * self.skill)
+		circle *= 0.3
+	end
+	-- head movement on the way in: a boxer who knows his trade does not walk in with his head on the line
+	if dist > self:Range() + 0.5 and dist < self:Range() + 3 and self.skill >= 0.35 and now >= F.busyUntil and F.stamina > F.maxStam * 0.4 and (O.state == "punching" or self.rng:NextNumber() < 0.08 + 0.1 * self.skill) then
+		if self.rng:NextNumber() < 0.5 + 0.3 * self.skill then
+			engine:Slip(F, self.rng:NextNumber() < 0.5 and -1 or 1)
+		end
 	end
 	local myRope = engine.RopeDist and engine:RopeDist(F) or 99
 	local backOff = self.mode == "outbox" or self.mode == "bait" or self.mode == "survive" or self.mode == "reset" or self.mode == "cruise"

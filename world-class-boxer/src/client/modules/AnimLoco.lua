@@ -227,6 +227,15 @@ function AnimLoco.sense(rig, dt)
 		dv += (raw - dv) * km
 		lo.dispV = dv
 		local meas = dv
+		-- and the body is DRAWN where the smoothed root is: the travel the replication step did not deliver this frame
+		-- (or delivered three frames of at once) goes into the glide offset the feet and the Root joint already follow
+		-- for a server nudge (lo.jumpOff: it decays at 9/s, so a steady error never accumulates) - the invisible
+		-- HumanoidRootPart steps, the pelvis, legs and planted feet glide; without it the planted feet were suddenly a
+		-- step further from the hips on every replication frame and the pelvis dipped to reach them (the NPC bob)
+		local errT = V3(d.X, 0, d.Z) - dv * dt
+		if errT.Magnitude > 1e-4 and errT.Magnitude < 1.5 then
+			lo.jumpOff = (lo.jumpOff or ZERO) - errT
+		end
 		local a = rig.a
 		local iv = a and a.Gait
 		local intent

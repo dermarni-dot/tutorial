@@ -59,7 +59,7 @@ if BodyTiers.DrawnFaces() then
 	TITLES["Skin & Eyes"] = "Skin"
 end
 local PAGE_HINTS = {
-	Identity = "Name your boxer - the rest can stay as it is. RANDOM on this step rolls a whole new look.",
+	Identity = "Name your boxer. Random on this step rolls a whole new look.",
 	Face = "Start from a face, then tune the main features. Advanced holds every detail.",
 	["Skin & Eyes"] = "Pick a skin tone, then add freckles, scars and other skin detail.",
 	Hair = "Tap a style, then a colour. Length, volume and the beard are below.",

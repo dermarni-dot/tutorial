@@ -621,43 +621,185 @@ def add_light(L, part, night, power_k):
     bpy.context.scene.collection.objects.link(ob)
 
 
-def setup_world(mode, sun_strength):
+# ------------------------------------------------------------------------------------------ lighting
+# The views were tuned against the Lighting the server set before Config.Lighting (these numbers); the
+# scene's exported Lighting (world_scene.luau: scene["lighting"] / scene["venueLighting"]) moves the sun,
+# the fills and the exposure relative to them, so a brighter / warmer Lighting in the game renders
+# brighter / warmer here too. Approximate: Cycles is not Future lighting.
+REF = {"Brightness": 3.6, "Ambient": (138, 132, 126), "OutdoorAmbient": (150, 158, 172), "ExposureCompensation": 0.1,
+       "venueExposure": 0.16, "venueBright": 0.4, "venueAmbient": (68, 70, 84)}
+# the zone grades Ambience stacks on the global grade out of fights (client ColorCorrection "ZoneGrade";
+# the approximate middle entries of Ambience.GRADES: GymWarm tier 2, Street, StreetNight)
+ZONE_GRADES = {
+    "interior": {"b": 0.02, "c": 0.04, "s": 0.08, "tint": (255, 245, 232)},
+    "day": {"b": 0.03, "c": 0.06, "s": 0.14, "tint": (255, 250, 240)},
+    "night": {"b": 0.04, "c": 0.08, "s": 0.2, "tint": (232, 228, 255)},
+}
+
+
+def lum(c):
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+
+
+def col01(c):
+    """an exported colour (0..1 floats, or 0..255 ints) -> 0..1 floats"""
+    c = tuple(float(x) for x in c[:3])
+    return tuple(x / 255.0 for x in c) if max(c) > 1.0 else c
+
+
+def lighting_for(scene, view):
+    """(global Lighting dict or {}, the venue profile for a venue / crowd root or None)"""
+    L = scene.get("lighting") or {}
+    VL = scene.get("venueLighting") or {}
+    venue = None
+    for r in view.get("roots", []):
+        for prefix in ("venue_", "VenueDetail_"):
+            if r.startswith(prefix) and r[len(prefix):] in VL:
+                venue = r[len(prefix):]
+        for kind in VL:
+            if r == kind or r.startswith(kind + "_"):
+                venue = kind
+    return L, VL.get(venue) if venue else None
+
+
+def setup_world(mode, sun_strength, L=None, V=None):
     sc = bpy.context.scene
     w = bpy.data.worlds.new("w")
     sc.world = w
     w.use_nodes = True
     nt = w.node_tree
     bg = nt.nodes["Background"]
+    props = (L or {}).get("props") or {}
+    night_cfg = (L or {}).get("night") or {}
+    sun_k = float(props.get("Brightness", REF["Brightness"])) / REF["Brightness"]
+    amb = srgb2lin(col01(props.get("Ambient", REF["Ambient"])))
+    out = srgb2lin(col01(props.get("OutdoorAmbient", REF["OutdoorAmbient"])))
+    amb_k = lum(amb) / lum(srgb2lin(col01(REF["Ambient"])))
+    out_k = lum(out) / lum(srgb2lin(col01(REF["OutdoorAmbient"])))
+    sun_col = srgb2lin(col01(props.get("ColorShift_Top", (255, 245, 230))))
+    sun_col = sun_col / max(1e-6, sun_col.max())
     if mode == "night":
-        bg.inputs["Color"].default_value = (0.006, 0.009, 0.02, 1)
+        if V:
+            # a fight night: the venue's Ambient is the fill the whole bowl sits in
+            fill = srgb2lin(col01(V.get("ambient", REF["venueAmbient"])))
+            bg.inputs["Color"].default_value = (*(fill * 0.3), 1)
+        else:
+            # the town after dark: Ambience eases OutdoorAmbient to Config.Lighting.Night
+            sky = srgb2lin(col01(night_cfg.get("OutdoorAmbient", (82, 98, 164))))
+            bg.inputs["Color"].default_value = (*(sky * 0.09), 1)
         bg.inputs["Strength"].default_value = 1.0
     elif mode == "interior":
-        bg.inputs["Color"].default_value = (0.45, 0.52, 0.62, 1)
-        bg.inputs["Strength"].default_value = 0.6
+        # the roof hides the sky: the world is the hall's fill (Ambient) with a little window blue
+        tint = amb / max(1e-6, amb.max())
+        c = np.array((0.45, 0.52, 0.62)) * 0.45 + tint * 0.55
+        bg.inputs["Color"].default_value = (*c, 1)
+        bg.inputs["Strength"].default_value = 0.6 * amb_k
     else:
         sky = nt.nodes.new("ShaderNodeTexSky")
         sky.sky_type = "NISHITA"
         sky.sun_elevation = math.radians(48)
         sky.sun_rotation = math.radians(200)
-        sky.sun_intensity = 0.25
+        sky.sun_intensity = 0.25 * sun_k
         sky.air_density = 1.2
         nt.links.new(sky.outputs["Color"], bg.inputs["Color"])
-        bg.inputs["Strength"].default_value = 0.35
+        bg.inputs["Strength"].default_value = 0.35 * out_k
     if mode in ("day", "interior") and sun_strength > 0:
         sd = bpy.data.lights.new("sun", "SUN")
-        sd.energy = sun_strength
-        sd.angle = math.radians(1.5)
-        sd.color = (1.0, 0.96, 0.9)
+        sd.energy = sun_strength * sun_k
+        sd.angle = math.radians(1.5 + 4.0 * float(props.get("ShadowSoftness", 0.2)))
+        sd.color = tuple(np.array((1.0, 0.96, 0.9)) * sun_col) if L else (1.0, 0.96, 0.9)
         so = bpy.data.objects.new("sun", sd)
         so.rotation_euler = (math.radians(42), 0, math.radians(200))
         sc.collection.objects.link(so)
     if mode == "night":
         sd = bpy.data.lights.new("moon", "SUN")
-        sd.energy = 0.08
+        k = (float(V.get("bright", REF["venueBright"])) / REF["venueBright"]) if V else 1.0
+        sd.energy = 0.08 * min(3.0, k)
         sd.color = (0.6, 0.7, 1.0)
         so = bpy.data.objects.new("moon", sd)
         so.rotation_euler = (math.radians(50), 0, math.radians(120))
         sc.collection.objects.link(so)
+
+
+def exposure_for(view, L, V):
+    """the view's tuned exposure plus how far the game's ExposureCompensation moved from the reference"""
+    e = view.get("exposure", 0.0)
+    if V:
+        return e + float(V.get("exposure", REF["venueExposure"])) - REF["venueExposure"]
+    props = (L or {}).get("props") or {}
+    return e + float(props.get("ExposureCompensation", REF["ExposureCompensation"])) - REF["ExposureCompensation"]
+
+
+def grade_for(mode, L, V):
+    """ColorCorrection + Bloom as the game stacks them for this view -> ({b, c, s, tint}, {intensity, threshold, size})"""
+    if V:
+        g = {"b": 0.0, "c": float(V.get("contrast", 0)) + 0.02, "s": float(V.get("saturation", 0)), "tint": col01(V.get("tint", (1, 1, 1)))}
+        bloom = {"intensity": float(V.get("bloomI", 0.5)), "threshold": float(V.get("bloomT", 1.4)), "size": float(V.get("bloomS", 28))}
+        return g, bloom
+    ch = (L or {}).get("children") or {}
+    gg = ch.get("GymGrade") or {}
+    z = ZONE_GRADES.get(mode, ZONE_GRADES["day"])
+    tint = np.array(col01(gg.get("TintColor", (1, 1, 1)))) * np.array(col01(z["tint"]))
+    g = {"b": float(gg.get("Brightness", 0)) + z["b"], "c": float(gg.get("Contrast", 0)) + z["c"], "s": float(gg.get("Saturation", 0)) + z["s"], "tint": tuple(tint)}
+    bb = ch.get("GymBloom") or {}
+    bloom = {"intensity": float(bb.get("Intensity", 0.3)), "threshold": float(bb.get("Threshold", 1.6)), "size": float(bb.get("Size", 28))}
+    return g, bloom
+
+
+def setup_grade(sc, grade, bloom):
+    """the compositor: Roblox's ColorCorrectionEffect (saturation, contrast, brightness, tint) and BloomEffect, approximated"""
+    sc.use_nodes = True
+    nt = sc.node_tree
+    for n in list(nt.nodes):
+        nt.nodes.remove(n)
+    rl = nt.nodes.new("CompositorNodeRLayers")
+    last = rl.outputs["Image"]
+    if bloom and bloom["intensity"] > 0.02:
+        gl = nt.nodes.new("CompositorNodeGlare")
+        try:
+            gl.glare_type = "BLOOM"
+        except TypeError:
+            gl.glare_type = "FOG_GLOW"
+        gl.quality = "MEDIUM"
+        # Roblox's threshold is on the tonemapped value; Blender's on the scene-linear one
+        gl.threshold = max(0.3, 0.9 * bloom["threshold"])
+        gl.mix = -1.0 + min(0.6, 0.6 * bloom["intensity"])
+        try:
+            gl.size = int(max(6, min(9, 5 + bloom["size"] / 12)))
+        except Exception:
+            pass
+        nt.links.new(last, gl.inputs["Image"])
+        last = gl.outputs["Image"]
+    hs = nt.nodes.new("CompositorNodeHueSat")
+    hs.inputs["Saturation"].default_value = max(0.0, 1.0 + grade["s"])
+    nt.links.new(last, hs.inputs["Image"])
+    last = hs.outputs["Image"]
+    bc = nt.nodes.new("CompositorNodeBrightContrast")
+    bc.inputs["Bright"].default_value = grade["b"] * 60.0
+    bc.inputs["Contrast"].default_value = grade["c"] * 60.0
+    nt.links.new(last, bc.inputs["Image"])
+    last = bc.outputs["Image"]
+    tint = tuple(grade.get("tint", (1, 1, 1)))
+    if any(abs(t - 1.0) > 0.002 for t in tint):
+        mx = nt.nodes.new("CompositorNodeMixRGB")
+        mx.blend_type = "MULTIPLY"
+        mx.inputs["Fac"].default_value = 1.0
+        mx.inputs[2].default_value = (*tint, 1.0)
+        nt.links.new(last, mx.inputs[1])
+        last = mx.outputs["Image"]
+    comp = nt.nodes.new("CompositorNodeComposite")
+    nt.links.new(last, comp.inputs["Image"])
+
+
+def apply_lighting(sc, scene, view):
+    """the world (sky / sun / fills), the exposure and the compositor grade for a view -> (mode, night)"""
+    mode = view.get("mode", "day")
+    L, V = lighting_for(scene, view)
+    setup_world(mode, view.get("sun", 3.5), L, V)
+    sc.view_settings.exposure = exposure_for(view, L, V)
+    g, bloom = grade_for(mode, L, V)
+    setup_grade(sc, g, bloom)
+    return mode, mode == "night"
 
 
 def look_at(ob, eye, target):
@@ -692,10 +834,7 @@ def render_view(scene, view, out, samples, res, tmpdir):
     sc.render.image_settings.file_format = "JPEG"
     sc.render.image_settings.quality = 90
     sc.view_settings.view_transform = "AgX"
-    sc.view_settings.exposure = view.get("exposure", 0.0)
-    mode = view.get("mode", "day")
-    night = mode == "night"
-    setup_world(mode, view.get("sun", 3.5))
+    mode, night = apply_lighting(sc, scene, view)
     B = Builder(tmpdir)
     centre = np.array(view["cull"][0]) if view.get("cull") else None
     radius = view["cull"][1] if view.get("cull") else 0

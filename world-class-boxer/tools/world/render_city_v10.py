@@ -121,10 +121,8 @@ def render_view(scene, view, out, samples, res, tmpdir, figure):
     sc.render.image_settings.file_format = "JPEG"
     sc.render.image_settings.quality = 90
     sc.view_settings.view_transform = "AgX"
-    sc.view_settings.exposure = view.get("exposure", 0.0)
-    mode = view.get("mode", "day")
-    night = mode == "night"
-    WR.setup_world(mode, view.get("sun", 3.5))
+    view = dict(view, roots=CITY)
+    mode, night = WR.apply_lighting(sc, scene, view)
     B = WR.Builder(tmpdir)
     centre = np.array(view["cull"][0]) if view.get("cull") else None
     radius = view["cull"][1] if view.get("cull") else 0

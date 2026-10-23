@@ -546,6 +546,10 @@ end
 -- never compensated: it reasons in server time.
 ------------------------------------------------------------------------
 local POSE_KEEP, POSE_INTERP, LAG_MAX, LAG_TOL = 1.0, 0.1, 0.3, 0.35
+-- the end of the reach (Fight:Resolve): the last STRETCH share of a punch's reach is a glancing shot, its hit
+-- chance down to STRETCH_HIT[1] of itself and its damage to STRETCH_DMG[1] at the very edge
+local STRETCH, STRETCH_HIT, STRETCH_DMG = 0.15, { 0.6 }, { 0.65 }
+FightEngine.STRETCH = { share = STRETCH, hit = STRETCH_HIT[1], dmg = STRETCH_DMG[1] }
 FightEngine.LAG_TOL = LAG_TOL
 local function serverTime()
 	local ok, t = pcall(function()
@@ -1844,6 +1848,17 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	-- hit chance
 	local vision = math.max(F.dmg.leftEye, F.dmg.rightEye) > 0.8 and 0.88 or 1
 	local chance = P.hit * (0.7 + (F.data.mental.Focus + s.RingIQ) / 500) - os_.HeadMovement / 350
+	-- a punch landing at the end of its reach (the last STRETCH of the glove's travel: HitGeometry's margin over its
+	-- reach) is a glancing shot: it registers - the player saw it reach - but finds the target less often and lands
+	-- lighter. The ranges are calibrated to where the animation's glove visibly arrives (HitGeometry.TARGET), a
+	-- stud or more past the spacing the damage was balanced on; a hook that just reaches from range is not the
+	-- hook thrown inside
+	local stretchK = 1
+	if type(hit.margin) == "number" and type(hit.reach) == "number" and hit.reach > 0 then
+		stretchK = math.clamp(hit.margin / (STRETCH * hit.reach), 0, 1)
+	end
+	hit.stretch = 1 - stretchK
+	chance *= STRETCH_HIT[1] + (1 - STRETCH_HIT[1]) * stretchK
 	if body then
 		chance += 0.1
 	end
@@ -1948,6 +1963,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 
 	-- damage
 	local dmg = P.dmg * (0.55 + s.Power / 110) * F.style.fight.power * F.classScale * F.powerMul
+	dmg *= STRETCH_DMG[1] + (1 - STRETCH_DMG[1]) * stretchK -- (the end of the reach: see stretchK above)
 	dmg *= F.frame.power -- [FrameTraits] the frame's power
 	if ptype == "jab" then
 		dmg *= F.style.fight.jab

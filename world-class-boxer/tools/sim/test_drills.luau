@@ -120,8 +120,14 @@ local function serverParams(act, lv)
 	return paramsFor(act, lv)
 end
 
-local LIMITS = { idle = 0.15, perfect = 0.85 }
-local IDLE_MAX = { Sauna = 0.3 }
+-- the bands: perfect >= 0.85, idle <= 0.15, the average player in between and clear of both. The
+-- drills are tuned so that "good" is the common result (the average bot's timing error is a human's),
+-- so the average player's ceiling is 0.93, and never closer than 0.06 to the perfect one: the drill
+-- still tells them apart.
+local LIMITS = { idle = 0.15, perfect = 0.85, averageMax = 0.93, averageGapToPerfect = 0.06 }
+-- idle players the drill itself carries: the sauna's coach pulls an idle player out (the water lost
+-- until then is real), the chamber's profile starts and ends at the surface pressure an idle player sits at
+local IDLE_MAX = { Sauna = 0.4, Chamber = 0.2 }
 
 ------------------------------------------------------------------------
 -- Part A: the judges on a virtual clock
@@ -194,7 +200,7 @@ for _, act in ipairs(isChild and {} or ACTS) do
 			local idleMax = IDLE_MAX[act.id] or LIMITS.idle
 			check(string.format("%s lv%d perfect >= %.2f", act.id, lv, LIMITS.perfect), row.perfect >= LIMITS.perfect, string.format("%.3f", row.perfect))
 			check(string.format("%s lv%d idle <= %.2f", act.id, lv, idleMax), row.idle <= idleMax, string.format("%.3f", row.idle))
-			check(string.format("%s lv%d average between", act.id, lv), row.average >= row.idle + 0.1 and row.average <= row.perfect - 0.08 and row.average >= 0.2 and row.average <= 0.85,
+			check(string.format("%s lv%d average between", act.id, lv), row.average >= row.idle + 0.1 and row.average <= row.perfect - LIMITS.averageGapToPerfect and row.average >= 0.2 and row.average <= LIMITS.averageMax,
 				string.format("idle %.3f average %.3f perfect %.3f", row.idle, row.average, row.perfect))
 			if verbose then
 				print(string.format("  %-10s lv%d  perfect %.3f  average %.3f  idle %.3f", act.id, lv, row.perfect, row.average, row.idle))
@@ -342,7 +348,7 @@ if childAt then
 				elseif sk == "idle" then
 					check(tag .. " idle low", r.server <= (IDLE_MAX[actId] or LIMITS.idle), string.format("%.3f", r.server))
 				else
-					check(tag .. " average in between", r.server >= 0.2 and r.server <= 0.9, string.format("%.3f", r.server))
+					check(tag .. " average in between", r.server >= 0.2 and r.server <= 0.95, string.format("%.3f", r.server))
 				end
 				if verbose then
 					print(string.format("  %-28s client %.3f server %.3f  %d inputs  %.0f s", tag, r.client, r.server, r.events or 0, r.frames / 60))
