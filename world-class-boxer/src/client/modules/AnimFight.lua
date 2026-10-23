@@ -60,14 +60,14 @@ local wander = K.wander
 local STYLE = {
 	BoxerPuncher = {
 		depth = 0.3, stagger = 1.45, wk = 0.82, yawL = -0.22, yawR = -0.78, heel = 0.14, hip = -0.3, wyaw = -0.08,
-		lean = -0.05, tuck = -0.15, leadT = { -0.42, 0.95, -1.12 }, rearT = { 0.38, 1.05, -0.68 },
-		bounce = { 0.075, 1.75, 0.1 }, shift = { 0.1, 0.34 }, head = { 0.08, 0.55, 0, 0.05 },
+		lean = -0.05, tuck = -0.15, leadT = { -0.4, 1.16, -1.0 }, rearT = { 0.36, 1.22, -0.62 },
+		bounce = { 0.11, 1.8, 0.16 }, shift = { 0.14, 0.4 }, head = { 0.08, 0.55, 0, 0.05 },
 		hands = { 0.12, 0.07, 0.6 }, feet = { 0.9, 0.14, 0 }, roll = 0, fidget = { 3.5, 6 }, rock = { 0.035, 0.03 }, gait = { 1, 1, 0.6 },
 		likes = { tap = 1, roll = 1, feint = 2, pump = 1, neck = 1, adjust = 1 },
 	},
 	OutBoxer = {
 		depth = 0.2, stagger = 1.6, wk = 0.8, yawL = -0.15, yawR = -0.85, heel = 0.14, hip = -0.4, wyaw = -0.1,
-		lean = 0.0, tuck = -0.08, leadT = { -0.5, 0.18, -1.5 }, rearT = { 0.36, 1.0, -0.72 },
+		lean = 0.0, tuck = -0.08, leadT = { -0.5, 0.18, -1.5 }, rearT = { 0.34, 1.16, -0.66 },
 		bounce = { 0.21, 2.35, 0.14 }, shift = { 0.05, 0.45 }, head = { 0.06, 0.8, 0, 0.06 },
 		hands = { 0.3, 0.13, 1.0 }, feet = { 2.4, 0.22, 0 }, roll = 0, fidget = { 3, 6 }, rock = { 0.07, 0.02 }, gait = { 0.85, 1.35, 0.7 },
 		likes = { pump = 3, feint = 2, shake = 1, bounce2 = 2, tap = 1 },
@@ -75,21 +75,21 @@ local STYLE = {
 	Swarmer = {
 		depth = 0.5, stagger = 1.25, wk = 0.9, yawL = -0.3, yawR = -0.6, heel = 0.12, hip = -0.18, wyaw = -0.04,
 		lean = -0.24, tuck = -0.32, leadT = { -0.25, 1.32, -0.94 }, rearT = { 0.27, 1.3, -0.88 },
-		bounce = { 0.045, 1.6, 0.08 }, shift = { 0.06, 0.4 }, head = { 0.07, 0.7, 0.26, 0.05 },
+		bounce = { 0.07, 1.65, 0.11 }, shift = { 0.08, 0.42 }, head = { 0.07, 0.7, 0.26, 0.05 },
 		hands = { 0.06, 0.05, 0.8 }, feet = { 1.3, 0.16, 1 }, roll = 0, fidget = { 3, 6 }, elbows = -0.12, rock = { 0.02, 0.06 }, gait = { 0.78, 0.9, 0.55 },
 		likes = { tap = 3, feint = 1, neck = 1, adjust = 1 },
 	},
 	Slugger = {
 		depth = 0.45, stagger = 1.5, wk = 0.92, yawL = -0.25, yawR = -0.8, heel = 0.05, hip = -0.3, wyaw = -0.06,
-		lean = -0.08, tuck = -0.2, leadT = { -0.44, 0.92, -1.08 }, rearT = { 0.5, 1.25, -0.5 },
-		bounce = { 0.065, 1.15, 0.035 }, shift = { 0.25, 0.32 }, head = { 0.14, 0.65, 0, 0.07 },
+		lean = -0.08, tuck = -0.2, leadT = { -0.42, 1.1, -0.98 }, rearT = { 0.48, 1.26, -0.52 },
+		bounce = { 0.09, 1.2, 0.07 }, shift = { 0.28, 0.34 }, head = { 0.14, 0.65, 0, 0.07 },
 		hands = { 0.05, 0.08, 0.4 }, feet = { 0.45, 0.14, 0 }, roll = 0.8, fidget = { 3, 6 }, sink = 0.5, gait = { 1.2, 1.45, 0.45 },
 		likes = { roll = 3, tap = 2, neck = 2, breath = 2, adjust = 1 },
 	},
 	CounterPuncher = {
 		depth = 0.28, stagger = 1.4, wk = 0.8, yawL = -0.25, yawR = -0.8, heel = 0.12, hip = -0.5, wyaw = -0.14,
-		lean = -0.03, tuck = -0.24, leadT = { -0.05, 0.12, -0.88 }, rearT = { 0.32, 1.15, -0.62 },
-		bounce = { 0.045, 1.4, 0.06 }, shift = { 0.07, 0.3 }, head = { 0.09, 0.85, 0, 0.09 },
+		lean = -0.03, tuck = -0.24, leadT = { -0.05, 0.12, -0.88 }, rearT = { 0.32, 1.22, -0.6 },
+		bounce = { 0.065, 1.45, 0.09 }, shift = { 0.09, 0.32 }, head = { 0.09, 0.85, 0, 0.09 },
 		hands = { 0.05, 0.06, 0.5 }, feet = { 0.6, 0.12, 0 }, roll = 1, fidget = { 3.5, 6 }, rock = { 0.03, 0.02 },
 		micro = { 0.5, 1.1, 0.2 }, raise = 0.12, gait = { 0.95, 0.8, 0.55 },
 		likes = { roll = 2, feint = 2, neck = 1, adjust = 1 },
@@ -537,10 +537,12 @@ function AnimFight.stance(p, rig, t, dt)
 	rig.guardL, rig.guardR = gl, gr
 	rig.guardSink = sinkY
 	-- authored fallback (far rigs) then the IK guard (near rigs)
-	p.LS = A(0.9 - 0.35 * tired + br * 0.4, 0, 0.2 + sroll)
-	p.LE = A(1.75 - 0.25 * tired, 0, 0)
-	p.RS = A(0.8 - 0.35 * tired + br * 0.4, 0, -0.3 + sroll * 0.5)
-	p.RE = A(2.05 - 0.2 * tired, 0, 0)
+	-- (a high guard: the upper arms hang close to the ribs, the forearms stand up in front of the face, the
+	-- gloves at the cheeks - never the low, wide "arms out" pose; tired arms sink)
+	p.LS = A(0.72 - 0.3 * tired + br * 0.4, 0, 0.1 + sroll)
+	p.LE = A(2.4 - 0.4 * tired, 0, 0)
+	p.RS = A(0.62 - 0.3 * tired + br * 0.4, 0, -0.16 + sroll * 0.5)
+	p.RE = A(2.5 - 0.35 * tired, 0, 0)
 	p.LW = A(0, 0.22, 0)
 	p.RW = A(0, -0.22, 0)
 	local eo = P.elbows + (st.elbows or 0)
@@ -822,18 +824,18 @@ end
 -- pow = how hard the fist accelerates; rec = recovery (x windup); pivot / heel / knee = feet; path =
 -- the fist's shape; reach = share of the full extension; wrist = corkscrew; low = aim lower
 local PUNCH = {
-	jab = { hand = "L", path = "straight", hip = -0.08, sho = -0.28, fwd = 0.2, side = -0.03, dip = 0.03, lean = -0.05, roll = 0.07,
-		load = 0.12, aHip = 0.02, aSho = 0.02, aDip = 0, aLean = 0, tHip = 0, tSho = 0.08, tArm = 0.2, pow = 1.9, rec = 0.82, follow = 0.4,
-		heelL = 0.14, wrist = 1.25, rise = 0.05, reach = 1, nx = 0.06,
+	jab = { hand = "L", path = "straight", hip = -0.12, sho = -0.34, fwd = 0.22, side = -0.03, dip = 0.03, lean = -0.05, roll = 0.08,
+		load = 0.18, aHip = 0.04, aSho = 0.06, aDip = 0.01, aLean = 0, tHip = 0, tSho = 0.08, tArm = 0.2, pow = 1.9, rec = 0.82, follow = 0.4,
+		heelL = 0.18, heelR = 0.12, wrist = 1.25, rise = 0.05, reach = 1, nx = 0.06,
 		variants = {
 			{ w = 3, name = "snap" },
 			{ w = 2, name = "step", fwd = 0.34, lean = -0.08, step = 0.42 },
 			{ w = 1.4, name = "paw", reach = 0.82, sho = -0.12, hip = -0.03, rec = 0.72, pow = 1.25, low = 0.18 },
 			{ w = 1.4, name = "long", lean = -0.13, fwd = 0.26, sho = -0.3, dip = 0.08, reach = 1.06 },
 		} },
-	cross = { hand = "R", path = "straight", hip = 0.52, sho = 0.42, fwd = 0.36, side = -0.14, dip = 0.08, lean = -0.12, roll = -0.1,
-		load = 0.22, aHip = 0.07, aSho = 0.05, aDip = 0.03, aLean = 0.03, tHip = 0, tSho = 0.22, tArm = 0.3, pow = 2.1, rec = 1.05, follow = 1,
-		pivot = "R", pivotAmt = 0.62, heelR = 0.55, kneeR = 0.25, wrist = 1.2, rise = 0.04, reach = 1, nx = -0.1,
+	cross = { hand = "R", path = "straight", hip = 0.62, sho = 0.5, fwd = 0.38, side = -0.14, dip = 0.08, lean = -0.12, roll = -0.12,
+		load = 0.26, aHip = 0.13, aSho = 0.1, aDip = 0.04, aLean = 0.03, tHip = 0, tSho = 0.22, tArm = 0.3, pow = 2.1, rec = 1.05, follow = 1,
+		pivot = "R", pivotAmt = 0.78, heelR = 0.66, kneeR = 0.3, wrist = 1.2, rise = 0.04, reach = 1, nx = -0.1,
 		variants = {
 			{ w = 3, name = "standard" },
 			{ w = 1.6, name = "long", fwd = 0.4, lean = -0.14, dip = 0.1, reach = 1.06 },
@@ -844,34 +846,34 @@ local PUNCH = {
 		} },
 	-- hooks: the whole body turns (hips, then shoulders past them) on the pivoting lead / rear foot, the
 	-- weight goes onto that leg; the arm comes late and fast
-	leadhook = { hand = "L", path = "hook", hip = -0.6, sho = -0.45, fwd = 0.08, side = 0.16, dip = 0.12, lean = -0.04, roll = 0.16,
-		load = 0.3, aHip = 0.25, aSho = 0.18, aDip = 0.08, aLean = 0, tHip = 0.12, tSho = 0.3, tArm = 0.38, pow = 2.6, rec = 1.1, follow = 1.4, hipLead = 0,
-		elbowT = 0.05, pivot = "L", pivotAmt = 1.0, heelL = 0.6, kneeL = 0.35, wrist = 0.15, arc = 0.6, reach = 0.97, nx = 0.08,
+	leadhook = { hand = "L", path = "hook", hip = -0.7, sho = -0.55, fwd = 0.08, side = 0.16, dip = 0.12, lean = -0.04, roll = 0.18,
+		load = 0.32, aHip = 0.32, aSho = 0.26, aDip = 0.1, aLean = 0, tHip = 0.12, tSho = 0.3, tArm = 0.38, pow = 2.6, rec = 1.1, follow = 1.4, hipLead = 0,
+		elbowT = 0.05, pivot = "L", pivotAmt = 1.15, heelL = 0.7, kneeL = 0.4, wrist = 0.15, arc = 0.72, reach = 0.97, nx = 0.08,
 		variants = {
 			{ w = 3, name = "tight", arc = 0.45 },
 			{ w = 1.6, name = "wide", arc = 0.9, hip = -0.68, sho = -0.5, load = 0.3 },
 			{ w = 1.0, name = "check", hip = -0.62, sho = -0.42, aHip = 0.18, aSho = 0.12, stepR = { 0.45, 0.3 } },
 		} },
-	rearhook = { hand = "R", path = "hook", hip = 0.66, sho = 0.5, fwd = 0.12, side = -0.16, dip = 0.12, lean = -0.04, roll = -0.16,
-		load = 0.26, aHip = 0.16, aSho = 0.1, aDip = 0.05, aLean = 0, tHip = 0.04, tSho = 0.26, tArm = 0.4, pow = 2.3, rec = 1.15, follow = 1.2,
-		elbowT = 0.05, pivot = "R", pivotAmt = 1.05, heelR = 0.65, kneeR = 0.35, wrist = -0.15, arc = 0.6, reach = 0.97, nx = -0.1,
+	rearhook = { hand = "R", path = "hook", hip = 0.78, sho = 0.6, fwd = 0.12, side = -0.16, dip = 0.12, lean = -0.04, roll = -0.18,
+		load = 0.3, aHip = 0.3, aSho = 0.22, aDip = 0.08, aLean = 0, tHip = 0.04, tSho = 0.26, tArm = 0.4, pow = 2.3, rec = 1.15, follow = 1.2,
+		elbowT = 0.05, pivot = "R", pivotAmt = 1.25, heelR = 0.78, kneeR = 0.4, wrist = -0.15, arc = 0.72, reach = 0.97, nx = -0.1,
 		variants = {
 			{ w = 3, name = "tight", arc = 0.45 },
 			{ w = 1.6, name = "wide", arc = 0.95, hip = 0.74, sho = 0.56, load = 0.32 },
 		} },
 	-- the uppercut: a real dip (the knees load), then the legs drive the hips up into the punch onto the
 	-- ball of the rear foot
-	uppercut = { hand = "R", path = "upper", hip = 0.32, sho = 0.2, fwd = 0.1, side = -0.04, dip = -0.12, lean = 0.06, roll = -0.06,
-		load = 0.36, aHip = 0.08, aSho = 0.05, aDip = 0.75, aLean = -0.06, tHip = 0.1, tSho = 0.3, tArm = 0.4, pow = 2.4, rec = 1.15, follow = 1.2,
-		pivot = "R", pivotAmt = 0.45, heelR = 0.6, kneeR = 0.22, rise = true, wrist = 0, reach = 0.94, nx = -0.05,
+	uppercut = { hand = "R", path = "upper", hip = 0.42, sho = 0.28, fwd = 0.1, side = -0.04, dip = -0.16, lean = 0.06, roll = -0.08,
+		load = 0.36, aHip = 0.14, aSho = 0.1, aDip = 0.85, aLean = -0.06, tHip = 0.1, tSho = 0.3, tArm = 0.4, pow = 2.4, rec = 1.15, follow = 1.2,
+		pivot = "R", pivotAmt = 0.55, heelR = 0.7, kneeR = 0.26, rise = true, wrist = 0, reach = 0.94, nx = -0.05,
 		variants = {
 			{ w = 2, name = "short", aDip = 0.62, dip = -0.1 },
 			{ w = 1.5, name = "dipping", aDip = 0.82, dip = -0.14, load = 0.42, aLean = -0.1 },
 		} },
 	-- the overhand: down and off the line in the load (under the jab), then the rear shoulder rolls up
 	-- and over and the fist comes down on top, the weight going down and forward through it
-	overhand = { hand = "R", path = "over", hip = 0.5, sho = 0.44, fwd = 0.34, side = -0.34, dip = 0.12, lean = -0.14, roll = -0.24,
-		load = 0.3, aHip = 0.08, aSho = 0.04, aDip = 0.2, aLean = 0.05, tHip = 0, tSho = 0.22, tArm = 0.38, pow = 2.4, rec = 1.3, follow = 0.45,
+	overhand = { hand = "R", path = "over", hip = 0.58, sho = 0.5, fwd = 0.34, side = -0.34, dip = 0.12, lean = -0.14, roll = -0.26,
+		load = 0.3, aHip = 0.16, aSho = 0.12, aDip = 0.24, aLean = 0.05, tHip = 0, tSho = 0.22, tArm = 0.38, pow = 2.4, rec = 1.3, follow = 0.45,
 		pivot = "R", pivotAmt = 0.6, heelR = 0.6, kneeR = 0.3, wrist = 1.0, reach = 1, nx = -0.34,
 		variants = {
 			{ w = 2, name = "looping" },
@@ -894,7 +896,7 @@ local PEAK = {
 -- the forearm runs level along the punch's line instead of tipping up from a dropped elbow; a hook's elbow
 -- comes up level with the fist, the upper arm out to the side)
 local POLE = {
-	straight = { 0.9, -0.45, 0.1 }, hook = { 0.85, 0.6, 0.2 }, upper = { 0.35, -1, 0.35 }, over = { 1, 0.08, 0.1 },
+	straight = { 0.9, -0.45, 0.1 }, hook = { 0.9, 0.75, 0.15 }, upper = { 0.35, -1, 0.35 }, over = { 1, 0.08, 0.1 },
 }
 -- style preference among a punch's variants (multiplies the weights by name)
 local STYLE_VARIANT = {
@@ -1292,7 +1294,7 @@ end
 -- (angle and radius together: a hook swings, it does not push forward), arriving across (inward) and
 -- fastest at contact; `through` drives it a touch on through the target at contact. Takes and returns
 -- UpperTorso standard units.
-local HOOK_SWING = 0.9
+local HOOK_SWING = 1.02
 local HOOK_KEEP = 0.5
 local function hookPos(rig, p, act, P0, P3, u, eT, armK, inward, body, sc, through)
 	local toR = rig.root.CFrame:Inverse() * punchTorso(rig, p)
@@ -1323,11 +1325,11 @@ local function hookPos(rig, p, act, P0, P3, u, eT, armK, inward, body, sc, throu
 	-- further round to still come in from the side)
 	-- (the boxer's arc: a wide looping hook swings further round, a tight one stays compact - the variant's arc
 	-- and his swing, AnimFight.swing; the landing spot is the same)
-	local arcK = clamp(((act.prm.arc or 0.6) / 0.6) ^ 0.6, 0.72, 1.4)
-	local sw = (clamp(1.4 / max(0.5, r3), HOOK_SWING, 1.1) * arcK + 0.15 * across) * (body and 0.75 or 1)
+	local arcK = clamp(((act.prm.arc or 0.6) / 0.6) ^ 0.6, 0.72, 1.5)
+	local sw = (clamp(1.4 / max(0.5, r3), HOOK_SWING, 1.22) * arcK + 0.15 * across) * (body and 0.75 or 1)
 	local ac = a3 - inward * sw
 	local rc = max(0.6, r3 - 0.15)
-	local c = h0:Lerp(V3(px + sin(ac) * rc, h0.Y + (p3.Y - h0.Y) * (body and 0.5 or 0.85) + (body and -0.05 or 0.05), pz - cos(ac) * rc), ck)
+	local c = h0:Lerp(V3(px + sin(ac) * rc, h0.Y + (p3.Y - h0.Y) * (body and 0.5 or 0.85) + (body and -0.05 or 0.1), pz - cos(ac) * rc), ck)
 	-- the sweep from wherever the fist is (never the long way round)
 	local cx, cz = c.X - px, c.Z - pz
 	local r0, a0 = sqrt(cx * cx + cz * cz), math.atan2(cx, -cz)
@@ -1429,9 +1431,9 @@ end
 --  * any punch whose target is still out of the arm's reach after the turn is thrown with a lunge: the
 --    hips drive forward (up to LUNGE_MAX; the lead foot steps in on a straight) so the glove arrives.
 -- Returns the share of the authored turn and the lunge (studs).
-local HOOK_REL = math.rad(40)
+local HOOK_REL = math.rad(46)
 local LUNGE_MAX = 0.5
-local HOOK_REACH, HOOK_LUNGE_MAX, UPPER_LUNGE_MAX = 0.76, 1.1, 1.25
+local HOOK_REACH, HOOK_LUNGE_MAX, UPPER_LUNGE_MAX = 0.72, 1.1, 1.25
 local OVER_ROOM = 0.6
 -- a straight is fitted so its target sits STRAIGHT_REACH of the arm's full length from the shoulder (the
 -- IK's soft limit lands it with the elbow about 160 degrees open); in close the hips give up to GIVE_MAX
@@ -1491,7 +1493,7 @@ local function fitPunch(rig, p, act, body, near, gain, drop)
 		-- turning into the punch moves the target further inside the shoulder's line: bisect
 		local want = act.hand == "L" and HOOK_REL or -HOOK_REL
 		local sg = act.hand == "L" and 1 or -1
-		local lo, hi = 0.45, 1.2
+		local lo, hi = 0.5, 1.35
 		if (rel(lo) - want) * sg >= 0 then
 			k = lo
 		elseif (rel(hi) - want) * sg <= 0 then
@@ -1647,6 +1649,32 @@ local function fitPunch(rig, p, act, body, near, gain, drop)
 	-- (hooks and uppercuts are the close punches: they step in for the range the bigger bodies keep)
 	return k, clamp(short + 0.05, 0, hook and HOOK_LUNGE_MAX or (prm.path == "upper" and UPPER_LUNGE_MAX or LUNGE_MAX))
 end
+
+-- Authored arm poses for the rigs without IK (a far rig, an unmeasured one): the shoulder's frame is built from
+-- where the upper arm points (u) and which way the elbow hinges (h) in the puncher's UpperTorso space (x right, y up,
+-- -z forward; authored for the right arm, mirrored for the left), the elbow's bend e about that hinge. The shoulder
+-- joint's rest frame has y running up the upper arm and x the hinge, so with e the forearm points
+-- cos(e) u - sin(e) (u x h): a hook with a vertical hinge comes across level, an uppercut with a level hinge comes up.
+local function armFrame(side, u, h, e)
+	if side == "L" then
+		u = V3(-u.X, u.Y, u.Z)
+		h = V3(h.X, -h.Y, -h.Z)
+	end
+	u = u.Unit
+	h -= u * h:Dot(u)
+	if h.Magnitude < 1e-3 then
+		h = V3(1, 0, 0)
+	end
+	return CFrame.fromMatrix(Vector3.zero, h.Unit, -u), A(e, 0, 0)
+end
+-- (per path: the peak; the hook's upper arm forward and out, the fist swinging across; the uppercut's upper arm
+-- down and forward, the forearm up; the overhand's arm up and over, the fist coming down)
+local FALLBACK_ARM = {
+	straight = { u = V3(0.12, 0.04, -1), h = V3(1, 0, 0), e = 0.18, body = { u = V3(0.12, -0.3, -0.95), e = 0.22 } },
+	hook = { u = V3(0.62, 0.12, -0.78), h = V3(0, 1, 0), e = 1.72, body = { u = V3(0.72, -0.25, -0.65), e = 1.6 } },
+	upper = { u = V3(0.22, -0.5, -0.84), h = V3(1, 0, 0), e = 1.78, body = { u = V3(0.25, -0.75, -0.6), e = 1.5 } },
+	over = { u = V3(0.42, 0.5, -0.76), h = V3(-1, 0, 0), e = 0.95, body = { u = V3(0.3, 0.1, -0.95), e = 0.6 } },
+}
 
 -- evaluate one punch layer; returns false when finished
 -- the hips have finished their turn this long before contact (s): they brake and the trunk whips on
@@ -2267,15 +2295,18 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 	end
 	local ac = retK > 0 and (1 - smooth(retK / 0.8)) or armK
 	if not pathed then
-		-- far away / no guard to start from: authored joint angles
-		local sp = prm.path == "over" and 2.1 or (prm.path == "upper" and 1.8 or (prm.path == "hook" and 1.42 or 1.6))
-		local el2 = prm.path == "hook" and 1.6 or (prm.path == "upper" and 1.45 or 0.1)
-		local sr = prm.path == "hook" and 0.85 or -0.1
-		if body then
-			sp -= 0.35
+		-- far away / no arm geometry: the authored punch shape (armFrame), the body's turn is already in p.Root / p.W
+		local fb = FALLBACK_ARM[prm.path] or FALLBACK_ARM.straight
+		local u, e = fb.u, fb.e
+		if body and fb.body then
+			u, e = fb.body.u, fb.body.e
 		end
-		p[S] = p[S]:Lerp(A(sp, 0, L_ and -sr or sr), ac)
-		p[E] = p[E]:Lerp(A(el2, 0, 0), ac)
+		local shT, elT = armFrame(act.hand, u, fb.h, e)
+		-- (the way out passes through the wind-up: the hook's elbow comes up before the fist swings, the uppercut's
+		-- hand drops first)
+		local k = retK > 0 and ac or smooth(clamp((u and ac) or 0, 0, 1))
+		p[S] = p[S]:Lerp(shT, k)
+		p[E] = p[E]:Lerp(elT, k)
 	end
 	-- (the corkscrew turns over with the forearm through the drive, not all in the last frames on the fist's
 	-- accelerating curve: the wrist flicked 23 degrees a frame into contact)
@@ -2337,7 +2368,7 @@ function AnimFight.punches(p, rig, t, near)
 				local k = act and (act.armT or 0) * 0.85 or 0
 				if k > 0.02 then
 					local sx = h == "R" and 1 or -1
-					guardArm(rig, p, h, sx * 0.3, 1.04 - (rig.guardSink or 0) * 0.5, -0.8, k)
+					guardArm(rig, p, h, sx * 0.32, 1.22 - (rig.guardSink or 0) * 0.5, -0.72, k)
 				end
 			end
 		end
