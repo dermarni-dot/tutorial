@@ -1,0 +1,48 @@
+{
+ "id": "ko_corner",
+ "kdAt": 0.6,
+ "frames": [
+  {
+   "dt": 0.0,
+   "t": 0.6,
+   "lowest": 0.048,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.583,
+   "headY": 5.466
+  },
+  {
+   "dt": 0.2,
+   "t": 0.8,
+   "lowest": 0.023,
+   "lowestPart": "RightFoot",
+   "pelvisY": 2.448,
+   "headY": 5.241
+  },
+  {
+   "dt": 0.5,
+   "t": 1.1333,
+   "lowest": 0.016,
+   "lowestPart": "RightFoot",
+   "pelvisY": 2.542,
+   "headY": 5.246
+  },
+  {
+   "dt": 1.0,
+   "t": 1.6,
+   "lowest": 0.103,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.527,
+   "headY": 5.177
+  },
+  {
+   "dt": 2.0,
+   "t": 2.6,
+   "lowest": 0.064,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 0.703,
+   "headY": 3.308
+  }
+ ],
+ "slideAfter": 0.056,
+ "slideMaxStep": 0.019
+}

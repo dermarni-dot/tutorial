@@ -125,10 +125,10 @@ keep("weight-room doorway", { -52, 0.6, -17.5 }, { -48, 9, 18 }) -- the gaps bet
 keep("cardio doorway", { 48, 0.6, -17.5 }, { 52, 9, 18 })
 keep("boxing-lobby walkway", { -45, 0.6, 5 }, { 45, 8, 18 }) -- the open floor between the boxing area and the lobby
 keep("services walkway", { -66, 0.6, 33 }, { -50, 8, 60 }) -- from the lobby to the lockers, barber and bar
--- Main Street lanes (CityVisuals: pedestrians at z 166.3 / 184.6, cars at 169.6 / 174.8)
-keep("north pedestrian lane", { -330, 0.65, 165.95 }, { 330, 3.2, 166.65 })
-keep("south pedestrian lane", { -330, 0.65, 184.25 }, { 330, 3.2, 184.95 })
-keep("traffic lanes", { -330, 0.45, 168.2 }, { 330, 4.5, 176.2 })
+-- Main Street lanes (Config.City.MainStreet, CityVisuals: pedestrians at z 296 / 350, cars at 314.75 / 327.25)
+keep("north pedestrian lane", { -620, 0.95, 295.5 }, { 860, 3.6, 296.5 })
+keep("south pedestrian lane", { -620, 0.95, 349.5 }, { 860, 3.6, 350.5 })
+keep("traffic lanes", { -620, 0.45, 308.5 }, { 860, 5.5, 333.5 })
 
 local function isPrompt(n)
 	return n == "PromptPart" or (n:sub(-6) == "Prompt" and n ~= "TimerPrompt")
@@ -138,6 +138,11 @@ local DETAIL_ROOTS = { "WorldDetail_gym", "WorldDetail_city" }
 local SOLID_SKIP = {
 	Floor = true, Ground = true, Wall = true, Roof = true, BoxingFloor = true, WeightFloor = true, CardioFloor = true, RecoveryFloor = true,
 	ServicesFloor = true, MainStreet = true, SidewalkS = true, SidewalkN = true, ChampionAve = true, AveSidewalk = true, ParkingLot = true,
+	Sidewalk = true, Kerb = true, Gutter = true, Lawn = true, LawnPatch = true, Road = true, LoopSouth = true, LoopNorth = true, LoopWest = true, LoopEast = true,
+	SecondStreet = true, OakStreet = true, CedarLane = true, RiversideDrive = true, FoundryStreet = true, EliteWay = true, ArenaWayW = true, ArenaWayE = true,
+	EntrancePlaza = true, PlazaPaving = true, PlazaBorder = true, FieldLawn = true, CampusPath = true, ParkPath = true, ArenaPlaza = true, Median = true,
+	Boardwalk = true, PromenadePath = true, Alley = true, BackLot = true, IndustrialYard = true, ElitePlaza = true, GasApron = true, FireApron = true,
+	TowerPlaza = true, EstateLawn = true, EstateDrive = true, Forecourt = true, FountainPlaza = true, CourtApron = true, BuildingBody = true,
 	Wainscot = true, Baseboard = true, WallStripe = true, Divider = true, Building = true, BuildingUpper = true, Cornice = true,
 }
 
