@@ -763,6 +763,14 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "1117282f4262412d7d6d9bbb2810acadff4914f0b2c8128cac2fbee2659e9463": {
+  "at": "2026-10-23T03:52:06Z",
+  "file": "out/tier2/LeftLowerLeg.mesh",
+  "id": 99840801909436,
+  "moderation": "Approved",
+  "name": "WCB Body T2 LeftLowerLeg",
+  "type": "Mesh"
+ },
  "1118e5b48bba2ac4febeed9509c39753453532a47ccc924e73005b9c54c94e91": {
   "at": "2026-10-20T18:40:44Z",
   "file": "out/lite/gear/tier2/OffShirt.mesh",
@@ -1405,6 +1413,14 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "1f71f489eddcee789ccc2d1d4251578ad85dc055c8d4fdebb825164174d1bd2d": {
+  "at": "2026-10-23T03:52:18Z",
+  "file": "out/tier3/LeftUpperArm.mesh",
+  "id": 124745151232051,
+  "moderation": "Approved",
+  "name": "WCB Body T3 LeftUpperArm",
+  "type": "Mesh"
+ },
  "1f7ba28647638ce85421b53c6ab7e4d1cd6c7b65347b0fad3ba7c50b697a8022": {
   "at": "2026-10-20T18:54:13Z",
   "file": "out/lite/gear/tier4/BootLaces_R.mesh",
@@ -1439,6 +1455,14 @@
   "moderation": "Approved",
   "name": "WCB Gear T5 AnkleSock_R lite",
   "state": "Active",
+  "type": "Mesh"
+ },
+ "2077aff329079d223844f20586dcb225dd686ae7355d90d2b700576714b0ff01": {
+  "at": "2026-10-23T03:51:53Z",
+  "file": "out/tier2/LeftUpperArm.mesh",
+  "id": 115672042775829,
+  "moderation": "Approved",
+  "name": "WCB Body T2 LeftUpperArm",
   "type": "Mesh"
  },
  "208907ec016f772f554a603f678b2a9979c1fb297f19a005c612bb45ab829070": {
@@ -1682,6 +1706,14 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "289f9b282f67c26cd123c74d5cc770ef0e2dd89e43b4eb4293697e579582be86": {
+  "at": "2026-10-23T03:52:16Z",
+  "file": "out/tier3/LowerTorso.mesh",
+  "id": 93457804510191,
+  "moderation": "Approved",
+  "name": "WCB Body T3 LowerTorso",
+  "type": "Mesh"
+ },
  "28a5fe4c454146ed458cd2584bcb7f4d82b84a7702a0c305e533ec2ef544cfbf": {
   "at": "2026-10-20T19:06:44Z",
   "file": "out/lite/gear/tier5/TrunkStripe_L.mesh",
@@ -1778,6 +1810,14 @@
   "moderation": "Approved",
   "name": "WCB Gear T4 WrapWrist_R",
   "state": "Active",
+  "type": "Mesh"
+ },
+ "2b15d673326ab016755157dabe4a90a3e8dd39fb66ecc5e39fedce3f969f37db": {
+  "at": "2026-10-23T03:51:31Z",
+  "file": "out/tier1/LeftLowerArm.mesh",
+  "id": 104622449752609,
+  "moderation": "Approved",
+  "name": "WCB Body T1 LeftLowerArm",
   "type": "Mesh"
  },
  "2b1b00855e7cbad6500b944bba95ad5d5e362279971a75ad5542086db4c89f28": {
@@ -2086,6 +2126,14 @@
   "moderation": "Approved",
   "name": "WCB Gear T5 ShoeCollar_L",
   "state": "Active",
+  "type": "Mesh"
+ },
+ "303e9fb0272b24bbaa1873435c83c46d4e329a735a8060203ef0772a6052c3bb": {
+  "at": "2026-10-23T03:51:58Z",
+  "file": "out/tier2/RightUpperArm.mesh",
+  "id": 100219930369684,
+  "moderation": "Approved",
+  "name": "WCB Body T2 RightUpperArm",
   "type": "Mesh"
  },
  "304369dedaddfd8f015ac259c97b6cf92b6d2c5ce3533703824012bf3ba25fe8": {
@@ -2831,6 +2879,14 @@
   "name": "WCB Gear T3 OffTowel",
   "type": "Mesh"
  },
+ "3e95d8e1856d0ecc0c6eca4aa72a683fef5d058d86bb47bf2c195636090507b6": {
+  "at": "2026-10-23T03:51:56Z",
+  "file": "out/tier2/LeftLowerArm.mesh",
+  "id": 93222457230747,
+  "moderation": "Approved",
+  "name": "WCB Body T2 LeftLowerArm",
+  "type": "Mesh"
+ },
  "3ea85c853166e24df3986053400bd25f1613ecddf8e19309f4cd28251300e8b1": {
   "at": "2026-10-20T15:56:02Z",
   "file": "out/gear/shared/OffShoe_R.mesh",
@@ -2864,6 +2920,14 @@
   "moderation": "Approved",
   "name": "WCB Body T2 LeftHand",
   "state": "Active",
+  "type": "Mesh"
+ },
+ "3ede12e8fc849d650cf09605d510afb3ca6ea0200ba2454b359c538b75dcdd01": {
+  "at": "2026-10-23T03:51:51Z",
+  "file": "out/tier2/LowerTorso.mesh",
+  "id": 81374913450996,
+  "moderation": "Approved",
+  "name": "WCB Body T2 LowerTorso",
   "type": "Mesh"
  },
  "3f01410a50e1469a5100a96d8120ca673a95eac7c0af8fe7243e93df915c4288": {
@@ -3077,6 +3141,14 @@
   "moderation": "Approved",
   "name": "WCB Gear T5 WrapWrist_R lite",
   "state": "Active",
+  "type": "Mesh"
+ },
+ "443b60a091f773c5fcb3ad337372f3dfe6b037dbf77d10693eff7a07655db8dc": {
+  "at": "2026-10-23T03:51:33Z",
+  "file": "out/tier1/RightUpperArm.mesh",
+  "id": 84597388967783,
+  "moderation": "Approved",
+  "name": "WCB Body T1 RightUpperArm",
   "type": "Mesh"
  },
  "44c7b2122e83ac09f2c15f7f65355c7add6a95a3f19410e2768ca63d1933c0a2": {
@@ -3395,6 +3467,14 @@
   "id": 109817398959968,
   "moderation": "Approved",
   "name": "WCB Gear T2 BootShaft_L lite",
+  "type": "Mesh"
+ },
+ "4c55118d3bbb3da7795fbaa3f4b50a4c219ae8acbfc6afdc1eaa727f4cdf610f": {
+  "at": "2026-10-23T03:51:36Z",
+  "file": "out/tier1/RightLowerArm.mesh",
+  "id": 119597361790338,
+  "moderation": "Approved",
+  "name": "WCB Body T1 RightLowerArm",
   "type": "Mesh"
  },
  "4cac0993359998f441358bd75f6a43f8c9e0a44db045028be2c23c8bf1829c78": {
@@ -4399,6 +4479,14 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "6152f046903f8c8a0dc63da0f3916e22ef047453d5ef8f05bee86d36a45804ae": {
+  "at": "2026-10-23T03:51:43Z",
+  "file": "out/tier1/RightUpperLeg.mesh",
+  "id": 79993345582620,
+  "moderation": "Approved",
+  "name": "WCB Body T1 RightUpperLeg",
+  "type": "Mesh"
+ },
  "61ccb96e580b4f6cfc1f3de6c85a81c59797200f7d0f1150c97599abd0a3e29d": {
   "at": "2026-10-20T18:34:01Z",
   "file": "out/lite/gear/tier1/OffPolo.mesh",
@@ -4724,6 +4812,14 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "6736eb4c170c396f88b794d3b70c60096aec8a721795ac369dbc85ae3324326a": {
+  "at": "2026-10-23T03:51:41Z",
+  "file": "out/tier1/LeftLowerLeg.mesh",
+  "id": 79963378511187,
+  "moderation": "Approved",
+  "name": "WCB Body T1 LeftLowerLeg",
+  "type": "Mesh"
+ },
  "678bb6172ce8aad96d8e857c0373c498946367c3d09a03d62b678ee5559e14ac": {
   "at": "2026-10-19T19:53:04Z",
   "file": "out/faces/face_wcb_grin.png",
@@ -5002,6 +5098,14 @@
   "id": 74120029608447,
   "moderation": "Approved",
   "name": "WCB Gear T2 Waistband",
+  "type": "Mesh"
+ },
+ "6d26231fc447ea3127df1ef82ccf0db722c6c5ed4b4ed58adaed2ed8976b2547": {
+  "at": "2026-10-23T03:51:26Z",
+  "file": "out/tier1/LowerTorso.mesh",
+  "id": 129552194690404,
+  "moderation": "Approved",
+  "name": "WCB Body T1 LowerTorso",
   "type": "Mesh"
  },
  "6da94792b4dba0e8157e6ab53c935355d517aa315246e7014b47f27877f4dda4": {
@@ -6848,6 +6952,14 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "9117777d22804e3f64ebaafb1da84a0d5a93ed6fc86c9b5524d7c62ad2f20388": {
+  "at": "2026-10-23T03:51:46Z",
+  "file": "out/tier1/RightLowerLeg.mesh",
+  "id": 113155130109671,
+  "moderation": "Approved",
+  "name": "WCB Body T1 RightLowerLeg",
+  "type": "Mesh"
+ },
  "9183cd6556ea04ba33e0b691dc787a1a36c8b2fee4bc26d4cf98c4a08613cc1a": {
   "at": "2026-10-18T01:57:40Z",
   "file": "out/tier4/LeftUpperLeg.mesh",
@@ -7903,6 +8015,14 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "a637efd24f5dac3175307c3dec344993d56ba69608b1588d03139ce113595b25": {
+  "at": "2026-10-23T03:51:48Z",
+  "file": "out/tier2/UpperTorso.mesh",
+  "id": 125921427475355,
+  "moderation": "Approved",
+  "name": "WCB Body T2 UpperTorso",
+  "type": "Mesh"
+ },
  "a66b9beb76f01c7ca215caa37d93f441be0e87df32148fe4ca8177e20e7efb7f": {
   "at": "2026-10-18T03:32:57Z",
   "file": "out/gear/tier2/TrunkLeg_R.mesh",
@@ -8166,6 +8286,14 @@
   "name": "WCB Gear T3 OffPolo lite",
   "type": "Mesh"
  },
+ "aaa4cdb470b821f9932fb618272e1f002690cb253f17cf56e58504a338966ba2": {
+  "at": "2026-10-23T03:52:08Z",
+  "file": "out/tier2/RightUpperLeg.mesh",
+  "id": 131346528805397,
+  "moderation": "Approved",
+  "name": "WCB Body T2 RightUpperLeg",
+  "type": "Mesh"
+ },
  "aabea3c21396c795d4ddb8616d240caae0e7164fe3e339adfeda13045596b9d5": {
   "at": "2026-10-18T03:34:06Z",
   "file": "out/gear/tier3/TrunkHemLong_L.mesh",
@@ -8226,6 +8354,14 @@
   "id": 102463233309933,
   "moderation": "Approved",
   "name": "WCB Gear T1 OffThigh_R lite",
+  "type": "Mesh"
+ },
+ "abd3dfbe3077446e3252ae4dcae2c80f73b8fe3b9806a37f2974907dea645817": {
+  "at": "2026-10-23T03:51:23Z",
+  "file": "out/tier1/UpperTorso.mesh",
+  "id": 97567545772169,
+  "moderation": "Approved",
+  "name": "WCB Body T1 UpperTorso",
   "type": "Mesh"
  },
  "abf6e82ecd33030b4fc00b9c0502b368aa7bd066d9f93a557efce974e34bc845": {
@@ -8758,6 +8894,14 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "b5c23b7506431f1929386e54c26e240d3ee53c2ffacf0c08e521d025c2be036e": {
+  "at": "2026-10-23T03:52:03Z",
+  "file": "out/tier2/LeftUpperLeg.mesh",
+  "id": 88481641849111,
+  "moderation": "Approved",
+  "name": "WCB Body T2 LeftUpperLeg",
+  "type": "Mesh"
+ },
  "b5c998e58ad9978df6e16dbdaa79e3022ab269d27fb3159331c6062321ea5b42": {
   "at": "2026-10-18T01:58:13Z",
   "file": "out/tier5/LeftUpperLeg.mesh",
@@ -8931,6 +9075,14 @@
   "moderation": "Approved",
   "name": "WCB Gear T1 GloveStrap_R",
   "state": "Active",
+  "type": "Mesh"
+ },
+ "b955e16b41356c6cfd3ad6ba12f0991a1ae501eb2d638181f157c0a0f291ec0a": {
+  "at": "2026-10-23T03:51:38Z",
+  "file": "out/tier1/LeftUpperLeg.mesh",
+  "id": 85154092207671,
+  "moderation": "Approved",
+  "name": "WCB Body T1 LeftUpperLeg",
   "type": "Mesh"
  },
  "b978c3fbcdd39697c90ccff1eda964497fe025f931685916e418a4da7b06ca61": {
@@ -9269,6 +9421,14 @@
   "name": "WCB Gear T2 OffSleeve_R",
   "type": "Mesh"
  },
+ "c09517f88c208d84653c539e2d113323ec493e9321113d8feb710dc39038c35e": {
+  "at": "2026-10-23T03:51:28Z",
+  "file": "out/tier1/LeftUpperArm.mesh",
+  "id": 112300644218298,
+  "moderation": "Approved",
+  "name": "WCB Body T1 LeftUpperArm",
+  "type": "Mesh"
+ },
  "c0df6fc3f2b276b431a7ff0c25f907ed1508ecdc4d395a6b2be8fdf09ee6f7bb": {
   "at": "2026-10-18T03:37:19Z",
   "file": "out/gear/tier5/GloveStrap_R.mesh",
@@ -9374,6 +9534,14 @@
   "moderation": "Approved",
   "name": "WCB Gear T1 OffShirt",
   "state": "Active",
+  "type": "Mesh"
+ },
+ "c340d00a9bceb1353eee670809f958e0db7488b02a7b15b3d1939493b71ba0b1": {
+  "at": "2026-10-23T03:52:01Z",
+  "file": "out/tier2/RightLowerArm.mesh",
+  "id": 122293346295196,
+  "moderation": "Approved",
+  "name": "WCB Body T2 RightLowerArm",
   "type": "Mesh"
  },
  "c37196998c281be557ec88fbaffe155d6950a71202383ed6c0db64709f938e64": {
@@ -9839,6 +10007,14 @@
   "moderation": "Approved",
   "name": "WCB Gear T1 GloveCuff_L",
   "state": "Active",
+  "type": "Mesh"
+ },
+ "cbdce52a225761a541c76284879ccd06fdbb8ee12a8426f88104e18ec1d84fd8": {
+  "at": "2026-10-23T03:52:13Z",
+  "file": "out/tier3/UpperTorso.mesh",
+  "id": 94864637994649,
+  "moderation": "Approved",
+  "name": "WCB Body T3 UpperTorso",
   "type": "Mesh"
  },
  "cbedb6f88e6412fbe4e188b1488fa52e9f2e754d89284f83d04948f3fa03a5a1": {
@@ -11158,6 +11334,14 @@
   "moderation": "Approved",
   "name": "WCB Gear T5 BootLaces_R lite",
   "state": "Active",
+  "type": "Mesh"
+ },
+ "e4703e6335ca2b56ea37de452f0faf5db3ca66fb73b102165c8626eebdbeec21": {
+  "at": "2026-10-23T03:52:11Z",
+  "file": "out/tier2/RightLowerLeg.mesh",
+  "id": 126737989927313,
+  "moderation": "Approved",
+  "name": "WCB Body T2 RightLowerLeg",
   "type": "Mesh"
  },
  "e4e709cdff993a694e6160858ebd9134c4549e77e40ec3c99a92fe3224481b6c": {
