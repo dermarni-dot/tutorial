@@ -10,7 +10,8 @@
     },
     "Workspace": {
       "$properties": {
-        "StreamingEnabled": false
+        "StreamingEnabled": false,
+        "MeshPartHeadsAndAccessories": "Disabled"
       }
     },
     "MaterialService": {

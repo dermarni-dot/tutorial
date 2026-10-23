@@ -30662,6 +30662,145 @@ return FightRead
       </Item>
       <Item class="ModuleScript" referent="31">
         <Properties>
+          <string name="Name">FrameTraits</string>
+          <string name="Source"><![CDATA[-- FrameTraits: what a boxer's body frame (Config.BodyTypes: Lean, Athletic, Muscular, Power Build, Heavyweight
+-- Build) does to him in the ring, for his whole career, player and AI alike. Pure data and helpers: no engine
+-- state. FightEngine multiplies these in at the places marked `-- [FrameTraits]` (damage, knockdowns, stamina,
+-- movement, the punch windows, the dodge windows, the clinch, the get-up); FightAI fights to its frame
+-- (FrameTraits.Data[id].ai); FightClient predicts its punch windows with the same handSpeed; the Creator and the
+-- fighter card read Pros / Cons / Read for the copy. (The frame's muscle cap and the one-off starting-stat mods
+-- stay in Config.BodyTypes: these are the permanent traits on top.)
+--
+-- Every multiplier is 1 for a trait the frame does not change. The meaning of each key:
+--   power        damage of his own punches (head and body)
+--   kdPower      the knockdown odds of his own head shots (Power Build: the biggest single punch)
+--   handSpeed    the punch wind-up (and so the recovery) is DIVIDED by it: 1.1 = 10% faster hands
+--   footSpeed    his walking speed in the ring
+--   staminaDrain the stamina every punch costs
+--   powerDrain   on top of it for the power punches (everything but the jab)
+--   staminaRegen the stamina coming back, in the round and in the corner
+--   chin         head damage taken is DIVIDED by it: 1.1 = takes 10% less
+--   bodyAbsorb   body damage (and the gas it drains) is DIVIDED by it
+--   reachBonus   the arm's length for the hit geometry (a long-armed frame reaches further at the same height)
+--   kdResist     the odds of being dropped by a head shot are DIVIDED by it
+--   getUpTime    the get-up after a knockdown (the animation and the presses the count asks for)
+--   clinch       the inside work in a clinch: what he lands in it, and how long his hold keeps the other man tied up
+--   insideBonus  hooks and uppercuts thrown from inside (FightMotion's inside spacing)
+--   dodgeWindow  the slip / roll / weave / duck / pull / side-step / parry windows
+--   target       the odds of a punch landing on him (the bigger man is the bigger target; HitGeometry already
+--                reaches him sooner from his real size)
+local FrameTraits = {}
+
+FrameTraits.Keys = { "power", "kdPower", "handSpeed", "footSpeed", "staminaDrain", "powerDrain", "staminaRegen", "chin", "bodyAbsorb", "reachBonus",
+	"kdResist", "getUpTime", "clinch", "insideBonus", "dodgeWindow", "target" }
+
+-- ai: how the AI fights to the frame. range = its preferred distance as a share of the jab range (added to the
+-- style's); aggr = aggression added; clinch = the chance per decision inside clinch range to tie up (on top of a
+-- hurt man's); inside = weight on hooks / uppercuts (under 1: the straights); press = cuts the ring more
+FrameTraits.Data = {
+	Lean = {
+		name = "Lean", short = "Lean", tag = "Fast hands, long jab",
+		power = 0.90, kdPower = 0.92, handSpeed = 1.10, footSpeed = 1.08, staminaDrain = 0.92, powerDrain = 1, staminaRegen = 1.08,
+		chin = 0.90, bodyAbsorb = 0.86, reachBonus = 1.04, kdResist = 0.90, getUpTime = 0.95, clinch = 0.88, insideBonus = 0.95, dodgeWindow = 1.10, target = 0.96,
+		ai = { range = 0.06, aggr = -0.05, clinch = 0.0, inside = 0.8, press = 0 },
+		pros = { "Fastest hands: shorter punch windows, quicker recovery", "Quick feet and longer slip and dodge windows", "Spends less stamina a punch, recovers more", "Long arms: reaches further at the same height" },
+		cons = { "Less power behind every punch", "A softer chin: goes down easier", "Body shots hurt more and take more gas" },
+	},
+	Athletic = {
+		name = "Athletic", short = "Athletic", tag = "The all-rounder",
+		power = 1, kdPower = 1, handSpeed = 1, footSpeed = 1, staminaDrain = 0.97, powerDrain = 1, staminaRegen = 1.05,
+		chin = 1, bodyAbsorb = 1, reachBonus = 1, kdResist = 1, getUpTime = 1, clinch = 1, insideBonus = 1, dodgeWindow = 1, target = 1,
+		ai = { range = 0, aggr = 0, clinch = 0, inside = 1, press = 0 },
+		pros = { "No weaknesses: the baseline frame", "A little more stamina and recovery" },
+		cons = { "No standout strength either" },
+	},
+	Muscular = {
+		name = "Muscular", short = "Muscular", tag = "Power with a chin",
+		power = 1.06, kdPower = 1.04, handSpeed = 0.96, footSpeed = 1, staminaDrain = 1, powerDrain = 1.06, staminaRegen = 1,
+		chin = 1.06, bodyAbsorb = 1.02, reachBonus = 1, kdResist = 1.05, getUpTime = 1, clinch = 1.04, insideBonus = 1.03, dodgeWindow = 0.98, target = 1,
+		ai = { range = -0.02, aggr = 0.04, clinch = 0.02, inside = 1.08, press = 0.05 },
+		pros = { "More power in every punch", "A better chin, harder to drop", "Normal footwork" },
+		cons = { "Slightly slower hands", "Power punches drain a little more stamina" },
+	},
+	["Power Build"] = {
+		name = "Power Build", short = "Power", tag = "One-punch power inside",
+		power = 1.12, kdPower = 1.16, handSpeed = 0.92, footSpeed = 0.94, staminaDrain = 1.06, powerDrain = 1.06, staminaRegen = 0.92,
+		chin = 1.10, bodyAbsorb = 1.04, reachBonus = 1, kdResist = 1.14, getUpTime = 1.05, clinch = 1.12, insideBonus = 1.12, dodgeWindow = 0.94, target = 1.02,
+		ai = { range = -0.08, aggr = 0.08, clinch = 0.06, inside = 1.3, press = 0.12 },
+		pros = { "The biggest single punch and knockdown chance", "A hard chin: very hard to drop", "Strong in the clinch and inside: hooks and uppercuts land harder" },
+		cons = { "Slower hands and feet", "Gasses in the later rounds", "Easier to outbox at range" },
+	},
+	["Heavyweight Build"] = {
+		name = "Heavyweight Build", short = "Heavyweight", tag = "Raw power, slow burn",
+		power = 1.16, kdPower = 1.10, handSpeed = 0.88, footSpeed = 0.88, staminaDrain = 1.10, powerDrain = 1.06, staminaRegen = 0.86,
+		chin = 1.14, bodyAbsorb = 1.14, reachBonus = 1, kdResist = 1.20, getUpTime = 1.18, clinch = 1.20, insideBonus = 1.06, dodgeWindow = 0.90, target = 1.06,
+		ai = { range = -0.10, aggr = 0.1, clinch = 0.09, inside = 1.2, press = 0.15 },
+		pros = { "The strongest raw power", "Absorbs body shots best and is the hardest to knock down", "The heaviest clinch: holds and wears the other man" },
+		cons = { "The slowest feet and hands", "The worst stamina", "The biggest target, and slower up off the canvas" },
+	},
+}
+FrameTraits.Order = { "Lean", "Athletic", "Muscular", "Power Build", "Heavyweight Build" }
+
+local NEUTRAL = {}
+for _, k in ipairs(FrameTraits.Keys) do
+	NEUTRAL[k] = 1
+end
+NEUTRAL.name, NEUTRAL.short, NEUTRAL.tag, NEUTRAL.ai, NEUTRAL.pros, NEUTRAL.cons = "Athletic", "Athletic", "", { range = 0, aggr = 0, clinch = 0, inside = 1, press = 0 }, {}, {}
+FrameTraits.Neutral = NEUTRAL
+
+-- the traits of a frame id (an unknown / missing id: Athletic's, the baseline)
+function FrameTraits.Get(id)
+	return FrameTraits.Data[id] or FrameTraits.Data.Athletic or NEUTRAL
+end
+
+-- the frame id of a fighter's data (FightEngine: data.app.body.frame; a profile summary: appearance.body.frame)
+function FrameTraits.IdOf(data)
+	local app = type(data) == "table" and (data.app or data.appearance) or nil
+	local body = type(app) == "table" and app.body or nil
+	local id = type(body) == "table" and body.frame or nil
+	return FrameTraits.Data[id] and id or "Athletic"
+end
+
+function FrameTraits.For(data)
+	return FrameTraits.Get(FrameTraits.IdOf(data))
+end
+
+-- one multiplier, 1 when the id or the key is unknown
+function FrameTraits.Mul(id, key)
+	local t = FrameTraits.Data[id]
+	local v = t and t[key]
+	return type(v) == "number" and v or 1
+end
+
+-- the short read for the opponent's scouting line and the fighter card: "Heavyweight - raw power, slow burn"
+function FrameTraits.Read(id)
+	local t = FrameTraits.Data[id]
+	if not t then
+		return nil
+	end
+	return string.format("%s - %s", t.short, string.lower(t.tag))
+end
+
+-- the pros / cons lists (copies) for the UI
+function FrameTraits.Pros(id)
+	return table.clone(FrameTraits.Get(id).pros)
+end
+function FrameTraits.Cons(id)
+	return table.clone(FrameTraits.Get(id).cons)
+end
+
+-- the display name of a frame ("Heavyweight" for "Heavyweight Build")
+function FrameTraits.ShortName(id)
+	local t = FrameTraits.Data[id]
+	return t and t.short or tostring(id or "?"):gsub(" Build$", "")
+end
+
+return FrameTraits
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="32">
+        <Properties>
           <string name="Name">Gamepad</string>
           <string name="Source"><![CDATA[-- Gamepad: which device the player is using right now (keyboard and mouse, gamepad or touch), the names
 -- of the controller's buttons for on-screen prompts and a thumbstick flick detector.
@@ -30911,7 +31050,7 @@ return Gamepad
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="32">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">GearAssetData</string>
           <string name="Source"><![CDATA[-- GENERATED by tools/body/publish_gear.py from tools/body/out/gear (build_gear.py) and the upload cache
@@ -35453,7 +35592,7 @@ return {
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">HairAssetData</string>
           <string name="Source"><![CDATA[-- GENERATED by tools/hair/publish.py from tools/hair/out/*/style.json and the upload cache
@@ -37624,7 +37763,7 @@ return {
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">HairAssetKit</string>
           <string name="Source"><![CDATA[-- HairAssetKit: the pure half of the asset hair (tools/hair/CONTRACT.md; the client's HairAssets does the
@@ -38610,7 +38749,7 @@ return HK
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">HitGeometry</string>
           <string name="Source"><![CDATA[-- HitGeometry: reach and hit volumes from the live rig, shared by the server (FightEngine: the authoritative
@@ -39005,7 +39144,7 @@ return HitGeometry
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">IconData</string>
           <string name="Source"><![CDATA[-- IconData: the game's icon set and title logo as uploaded Image assets. GENERATED by
@@ -39110,7 +39249,7 @@ return IconData
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">Keymap</string>
           <string name="Source"><![CDATA[-- Keymap: every fight action, its default keys on keyboard + mouse and on a controller, and the player's
@@ -39584,7 +39723,7 @@ return Keymap
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">LookData</string>
           <string name="Source"><![CDATA[-- LookData: the exact inputs the client-side asset hair (and its generated fallback) reads, published by the
@@ -40293,7 +40432,7 @@ return LookData
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">Looks</string>
           <string name="Source"><![CDATA[-- Looks: everything about how a boxer looks (face, hair, body frame, attire, gloves).
@@ -41062,7 +41201,7 @@ return Looks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">MeshKit</string>
           <string name="Source"><![CDATA[-- MeshKit: pure-Luau mesh data and procedural modelling for the anatomy meshes (shared, deterministic).
@@ -43947,7 +44086,7 @@ return MeshKit
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">Moves</string>
           <string name="Source"><![CDATA[-- Moves: the special moves (data only; FightEngine runs them, FightAI picks them, FightClient /
@@ -44304,7 +44443,7 @@ return Moves
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">Officials</string>
           <string name="Source"><![CDATA[-- Officials: how the ring officials look (the server builds them with Builder.CreateNPC / Cosmetics; the colours are
@@ -44403,7 +44542,7 @@ return Officials
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">Signage</string>
           <string name="Source"><![CDATA[-- Signage: the game's places and their logo lockups - one system for the signs in the world and the badges
@@ -44800,7 +44939,7 @@ return Signage
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="44">
+      <Item class="ModuleScript" referent="45">
         <Properties>
           <string name="Name">Tournaments</string>
           <string name="Source"><![CDATA[-- Tournaments: the bracket events of the career (data + pure helpers, shared by the server's Tourney module,
@@ -45061,7 +45200,7 @@ return Tournaments
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="45">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">TrainingPlan</string>
           <string name="Source"><![CDATA[-- TrainingPlan: the rules of the training system both sides read (pure: nothing here touches a
@@ -45639,7 +45778,7 @@ return TP
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="46">
+      <Item class="ModuleScript" referent="47">
         <Properties>
           <string name="Name">Traits</string>
           <string name="Source"><![CDATA[-- Traits: the AI boxers' ring traits (resistances to a way of fighting), the scouting of them, and the player's
@@ -46015,7 +46154,7 @@ return Traits
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="47">
+      <Item class="ModuleScript" referent="48">
         <Properties>
           <string name="Name">Tutorial</string>
           <string name="Source"><![CDATA[-- Tutorial: the guided fights. Shared and pure (no Roblox services), so the server (FightEngine, Main), the client
@@ -46541,7 +46680,7 @@ return Tutorial
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="48">
+      <Item class="ModuleScript" referent="49">
         <Properties>
           <string name="Name">Typography</string>
           <string name="Source"><![CDATA[-- Typography: the game's type faces in one place, for the menus (Shared.UI) and for the signs in the world
@@ -46727,7 +46866,7 @@ return Typography
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="49">
+      <Item class="ModuleScript" referent="50">
         <Properties>
           <string name="Name">UI</string>
           <string name="Source"><![CDATA[-- UI: the game's design system - "fight night broadcast", championship-belt finish.
@@ -49982,7 +50121,7 @@ return UI
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="50">
+      <Item class="ModuleScript" referent="51">
         <Properties>
           <string name="Name">WorldAssetData</string>
           <string name="Source"><![CDATA[-- WorldAssetData: the world's detail textures as uploaded Image assets. GENERATED by
@@ -50029,15 +50168,15 @@ return WorldAssetData
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="51">
+  <Item class="ServerScriptService" referent="52">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="52">
+    <Item class="Folder" referent="53">
       <Properties>
         <string name="Name">BoxerModules</string>
       </Properties>
-      <Item class="ModuleScript" referent="53">
+      <Item class="ModuleScript" referent="54">
         <Properties>
           <string name="Name">Ambient</string>
           <string name="Source"><![CDATA[-- Ambient: gym members, coaches and staff that bring the training complex to life.
@@ -50349,7 +50488,7 @@ return Ambient
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="54">
+      <Item class="ModuleScript" referent="55">
         <Properties>
           <string name="Name">Career</string>
           <string name="Source"><![CDATA[-- Career: character creation, fight offers, camps, economy, titles, promotions,
@@ -51816,6 +51955,8 @@ function Career.Summary(profile, storeOk)
 		history = hist, pastCareers = profile.pastCareers, final = profile.final,
 		className = Config.WeightClasses[profile.physical.weightClass].name,
 		body = body, physique = Training.Physique(profile), physiqueId = physique.id, physiqueDesc = physique.desc,
+		-- [FrameTraits] the body frame (Shared.FrameTraits reads its ring traits for the cards)
+		frame = profile.appearance and profile.appearance.body and profile.appearance.body.frame or "Athletic",
 		physiquePinned = physique.pinned == true,
 		weight = r2(wi.weight), weightLimit = wi.limit, overWeight = r2(wi.over),
 		condition = {
@@ -51847,7 +51988,7 @@ return Career
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="55">
+      <Item class="ModuleScript" referent="56">
         <Properties>
           <string name="Name">CityHomes</string>
           <string name="Source"><![CDATA[-- CityHomes: the players' home interiors. Per player and server-built (a teleported character must
@@ -52358,7 +52499,7 @@ return CityHomes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="56">
+      <Item class="ModuleScript" referent="57">
         <Properties>
           <string name="Name">CityKit</string>
           <string name="Source"><![CDATA[-- CityKit: the pieces the town is built from, at real-world scale for the R15 rig (Config.City:
@@ -53585,7 +53726,7 @@ return K
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="57">
+      <Item class="ModuleScript" referent="58">
         <Properties>
           <string name="Name">CityMap</string>
           <string name="Source"><![CDATA[-- CityMap: the town around the gym, at real-world scale (Config.City: 1 stud = 0.28 m). The gym
@@ -55416,7 +55557,7 @@ return CityMap
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="58">
+      <Item class="ModuleScript" referent="59">
         <Properties>
           <string name="Name">CityShops</string>
           <string name="Source"><![CDATA[-- CityShops: the Main Street shop fronts and their walk-in interiors (barbershop, diner, supplements,
@@ -56216,7 +56357,7 @@ return CityShops
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="59">
+      <Item class="ModuleScript" referent="60">
         <Properties>
           <string name="Name">Crowd</string>
           <string name="Source"><![CDATA[-- Crowd: the fight venues' spectators and stands. Venues.buildTemplate calls Crowd.Build on every venue template
@@ -57321,7 +57462,7 @@ return Crowd
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="60">
+      <Item class="ModuleScript" referent="61">
         <Properties>
           <string name="Name">DataManager</string>
           <string name="Source"><![CDATA[-- DataManager: loads/saves each player's career with DataStoreService.
@@ -57943,7 +58084,7 @@ return DataManager
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="61">
+      <Item class="ModuleScript" referent="62">
         <Properties>
           <string name="Name">FightAI</string>
           <string name="Source"><![CDATA[-- FightAI: the opponent's brain. One per AI fighter (FightEngine.Run makes the blue corner's; the balance sims in
@@ -58007,6 +58148,8 @@ local Combos = require(ReplicatedStorage.Shared:WaitForChild("Combos"))
 local Evasion = require(ReplicatedStorage.Shared:WaitForChild("Evasion"))
 local FightRead = require(ReplicatedStorage.Shared:WaitForChild("FightRead"))
 local Traits = require(ReplicatedStorage.Shared:WaitForChild("Traits"))
+-- [FrameTraits] the body frame it fights to (Shared.FrameTraits .ai): a heavyweight presses and ties up, a Lean boxes at range
+local FrameTraits = require(ReplicatedStorage.Shared:WaitForChild("FrameTraits"))
 
 local AIC = Config.FightAI
 
@@ -58053,8 +58196,11 @@ function FightAI.new(F, O, engine)
 	self.rng = Random.new()
 	self.style = style
 	self.arch = arch and arch.ai or DEFAULT_ARCH
-	self.baseRange = style.ai.range
-	self.baseAggr = style.ai.aggression + ((F.data.mental.Aggression or 50) - 50) / 200 + self.arch.aggr
+	-- [FrameTraits] its own frame and the one in front of it (the engine's F.frame; the headless sims' too)
+	self.frame = F.frame or FrameTraits.For(F.data)
+	self.oFrame = O.frame or FrameTraits.For(O.data)
+	self.baseRange = style.ai.range + self.frame.ai.range
+	self.baseAggr = style.ai.aggression + ((F.data.mental.Aggression or 50) - 50) / 200 + self.arch.aggr + self.frame.ai.aggr
 	self.jabRate = style.ai.jabRate
 	self.comboMax = style.fight.combo >= 1.2 and 4 or 3
 	self.queue = {}
@@ -58391,6 +58537,8 @@ function FightAI:UpdateMode()
 	if self.mode == "finish" then
 		self.bodyBias *= 0.3 -- head hunting
 	end
+	-- [FrameTraits] a boxer who knows his trade goes to a Lean man's body (and not a heavyweight's)
+	self.bodyBias += (1 - (self.oFrame.bodyAbsorb or 1)) * 0.6 * self.skill
 	self.bodyBias = math.clamp(self.bodyBias, 0, 0.7)
 	self.exploitGassed = O.stamina < O.maxStam * 0.3
 end
@@ -58515,6 +58663,16 @@ function FightAI:PunchPrefs()
 				pref[p] *= 1 + (m - 1) * lean
 			end
 		end
+	end
+	-- [FrameTraits] the frame's game: a power frame hooks and uppercuts inside, a Lean one works the straights
+	local inside = self.frame.ai.inside or 1
+	if inside ~= 1 then
+		pref.leadhook *= inside
+		pref.rearhook *= inside
+		pref.uppercut *= inside
+		local straight = math.clamp(2 - inside, 0.6, 1.4)
+		pref.jab *= straight
+		pref.cross *= straight
 	end
 	return pref
 end
@@ -58757,6 +58915,16 @@ function FightAI:Think(now)
 			return
 		end
 	end
+	-- [FrameTraits] a heavy frame ties up to wear the other man down: more when he is tiring, when it is gassed itself,
+	-- or when it is being outboxed at range (never while finishing him)
+	local fc = self.frame.ai.clinch or 0
+	if fc > 0 and self.mode ~= "finish" and self.mode ~= "gamble" and dist < (engine.ClinchRange and engine:ClinchRange(F) or SPACING.clinch * rk) then
+		local want = fc * (1 + (O.stamina < O.maxStam * 0.5 and 0.6 or 0) + (F.stamina < F.maxStam * 0.4 and 0.6 or 0) + (F.pressured and 0.4 or 0))
+		if self.rng:NextNumber() < want and engine:CanClinch(F) then
+			engine:Clinch(F)
+			return
+		end
+	end
 	-- he bit on its feint: fire now (it saw him react)
 	if now < (F.feintOpenUntil or 0) and self:Fits("cross", dist) then
 		self:Throw(self:CounterPunch(dist), self.rng:NextNumber() < self.bodyBias)
@@ -58877,6 +59045,10 @@ function FightAI:Move(now, dist)
 		circle = self.circleDir * 0.1
 	end
 	local cut = M.cut or 0
+	-- [FrameTraits] a pressing frame cuts the ring (when it is coming forward at all)
+	if cut > 0 or self.mode == "stalk" or self.mode == "swarm" or self.mode == "plan" then
+		cut += self.frame.ai.press or 0
+	end
 	local oRope = engine.RopeDist and engine:RopeDist(O) or 99
 	if cut > 0 then
 		-- cut the ring off for real only when he is near the ropes; a skilled boxer does it better
@@ -59034,7 +59206,7 @@ return FightAI
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="62">
+      <Item class="ModuleScript" referent="63">
         <Properties>
           <string name="Name">FightEngine</string>
           <string name="Source"><![CDATA[-- FightEngine: server-authoritative real-time boxing.
@@ -59101,6 +59273,8 @@ local Combos = require(Shared:WaitForChild("Combos"))
 local Evasion = require(Shared:WaitForChild("Evasion"))
 -- the AI boxers' ring traits (resistances, scouting) and the player's fighting type
 local Traits = require(Shared:WaitForChild("Traits"))
+-- [FrameTraits] the body frame's permanent ring traits (Shared.FrameTraits): multiplied in at the places marked so
+local FrameTraits = require(Shared:WaitForChild("FrameTraits"))
 -- reach and hit volumes from the live rigs (Shared.HitGeometry: the client's prediction runs the same code);
 -- optional: without it the ranges fall back to the old tape-based numbers
 local HitGeometry
@@ -59237,7 +59411,14 @@ local function geoFrame(F)
 	local root = F.root
 	local soleY = root and root.Position and (root.Position.Y - standHeight(F.hum, root)) or nil
 	local okF, frame = pcall(HitGeometry.Frame, F.model, soleY, fallback)
-	return okF and frame or fallback
+	frame = okF and frame or fallback
+	-- [FrameTraits] a long-armed frame reaches further at the same height (the client gets this frame in `start`)
+	local reachBonus = (F.frame or FrameTraits.For(data)).reachBonus or 1
+	if type(frame) == "table" and type(frame.arm) == "number" and reachBonus ~= 1 then
+		frame = table.clone(frame)
+		frame.arm *= reachBonus
+	end
+	return frame
 end
 
 -- server attributes are change-only (CONTRACTS ground rules)
@@ -59342,6 +59523,8 @@ local function makeFighter(data, model, player)
 		data = data, model = model, player = player, isPlayer = player ~= nil,
 		hum = model:FindFirstChildOfClass("Humanoid"), root = model:FindFirstChild("HumanoidRootPart"),
 		style = style, classScale = 0.85 + (data.class - 1) * 0.045,
+		-- [FrameTraits] the body frame's permanent traits (data.app.body.frame; Athletic without one)
+		frame = FrameTraits.For(data),
 		powerMul = mods.powerMul or 1, speedMul = mods.speedMul or 1, moveMul = mods.moveMul or 1,
 		maxStam = maxStam, stamCap = maxStam, stamina = maxStam * fatigueFactor, stamErosion = 0,
 		health = 100, healthCap = 100, body = 100, bodyCap = 100,
@@ -59599,7 +59782,8 @@ end
 
 -- how much a dazed / concussed fighter's defensive windows shrink (slip, roll, parry, pivot)
 function Fight:DefenseMul(F)
-	return math.max(0.35, (1 - CONC.tierDefense * F.tier) * (1 - CONC.defense * F.conc))
+	-- [FrameTraits] the frame's dodge windows (a Lean man slips longer, a heavyweight shorter)
+	return math.max(0.35, (1 - CONC.tierDefense * F.tier) * (1 - CONC.defense * F.conc)) * F.frame.dodgeWindow
 end
 
 ------------------------------------------------------------------------
@@ -59938,6 +60122,7 @@ local function punchSpeed(F, stamPct)
 	local s = F.data.stats
 	local speedMul = (1.25 - s.PunchSpeed / 200) * (stamPct < 0.3 and 1.25 or 1)
 	speedMul /= (1.08 - (F.data.class - 1) * 0.02) * F.speedMul
+	speedMul /= F.frame.handSpeed -- [FrameTraits] hand speed (FightClient.predWindup mirrors it)
 	return speedMul * (1 + CONC.tierWindup * F.tier) * (1 + CONC.windup * F.conc)
 end
 
@@ -60160,6 +60345,7 @@ function Fight:Punch(F, ptype, body, counter, fromBuffer)
 	end
 	F.lastPunch = now
 	local cost = P.stam * (body and 1.1 or 1) * (1.2 - s.Endurance / 250) * Combos.StamMul(F.combo)
+	cost *= F.frame.staminaDrain * (ptype ~= "jab" and F.frame.powerDrain or 1) -- [FrameTraits] the frame's economy
 	F.stamina = math.max(0, F.stamina - cost)
 	F.blocking = false
 	F.state = "punching"
@@ -60757,6 +60943,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	chance *= 1 - DEPTH.fatigueHit * math.max(0, DEPTH.fatigueAt - stamPct) / DEPTH.fatigueAt
 	chance *= 1 - DEPTH.damageHit * math.max(0, DEPTH.damageAt - F.health) / DEPTH.damageAt
 	vision = math.min(vision, 1 - DEPTH.visionHit * math.max(F.dmg.leftEye, F.dmg.rightEye))
+	chance *= O.frame.target -- [FrameTraits] the bigger man is the bigger target
 	chance = math.clamp(chance * vision, 0.15, 0.95)
 	-- clean = how cleanly it landed (feeds the knockdown odds); 0.5 when it comes through a guard
 	local clean = 0.5
@@ -60775,6 +60962,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 
 	-- damage
 	local dmg = P.dmg * (0.55 + s.Power / 110) * F.style.fight.power * F.classScale * F.powerMul
+	dmg *= F.frame.power -- [FrameTraits] the frame's power
 	if ptype == "jab" then
 		dmg *= F.style.fight.jab
 	end
@@ -60792,7 +60980,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	end
 	if dist < (self.sp or SPACING).inside then
 		if P.kind == "hook" or P.kind == "uppercut" then
-			dmg *= F.style.fight.inside
+			dmg *= F.style.fight.inside * F.frame.insideBonus -- [FrameTraits] the inside fighter's frame
 		else
 			dmg *= 0.85
 		end
@@ -60893,11 +61081,12 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		local ba = self:Trait(O, "BodyArmor")
 		local baCut = Traits.Effect("BodyArmor", "dmg", ba)
 		local bd = dmg * 0.8 * (1.2 - os_.Endurance / 200) * (P.body or 1) * armor * (1 - baCut)
+		bd /= O.frame.bodyAbsorb -- [FrameTraits] what his frame soaks up (a Lean body feels it more)
 		if ba > 0 then
 			self:TraitFired(O, "BodyArmor")
 		end
 		O.body = math.max(0, O.body - bd)
-		O.stamina = math.max(0, O.stamina - dmg * 0.6 * (P.body or 1) * (1 - Traits.Effect("BodyArmor", "drain", ba)))
+		O.stamina = math.max(0, O.stamina - dmg * 0.6 * (P.body or 1) * (1 - Traits.Effect("BodyArmor", "drain", ba)) / O.frame.bodyAbsorb) -- [FrameTraits]
 		O.health = math.max(0, O.health - dmg * 0.15)
 		O.lastBodyHitAt = now
 		-- rib bruising on the side that was hit (a left hand lands on the right flank)
@@ -60922,6 +61111,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	else
 		local chinMul = 1.35 - os_.Chin / 100 * 0.7
 		local hd = dmg * HEAD_SCALE * chinMul * (P.head or 1) * (O.dmg.cut > 0.5 and 1.08 or 1) * (1 + KO.tierDamage * O.tier)
+		hd /= O.frame.chin -- [FrameTraits] the frame's chin
 		-- Iron Chin (the ring trait): power shots to the head do less, and drop him less; it cracks as his body
 		-- and his gas go (the counter is the body work)
 		local ic = ptype ~= "jab" and self:Trait(O, "IronChin") or 0
@@ -60956,6 +61146,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 				trauma = O.data.trauma, composure = O.data.mental.Composure,
 			})
 			p *= sp.kd or 1
+			p *= F.frame.kdPower / O.frame.kdResist -- [FrameTraits] his one-punch power against the other man's frame
 			if self.tutorial and Tutorial and not O.isPlayer then
 				p *= Tutorial.KoMul(self.tutorial)
 			end
@@ -61315,11 +61506,13 @@ function Fight:Clinch(F)
 	F.stamina -= 4
 	F.nextClinch = now + 6
 	F.tally.clinches += 1
+	-- [FrameTraits] a heavy frame's hold keeps the other man tied up longer (a light one's is shrugged off sooner)
+	local hold = 1.8 + (F.frame.clinch - 1) * 1.5
 	for _, X in ipairs({ F, O }) do
 		X.state = "clinch"
 		X.blocking = false
-		X.clinchUntil = now + 1.8
-		X.busyUntil = now + 1.9
+		X.clinchUntil = now + hold
+		X.busyUntil = now + hold + 0.1
 		X.stumbleUntil = 0
 		X.stumbleVel = nil
 		X.strain = math.max(X.strain, 0.8)
@@ -61393,6 +61586,7 @@ function Fight:ClinchWork(F, ptype)
 	local P = Config.Punches[ptype] or Config.Punches.leadhook
 	local s, os_ = F.data.stats, O.data.stats
 	local dmg = P.dmg * DEPTH.clinchDmg * (0.55 + s.Power / 110) * F.style.fight.inside * F.classScale * self.damageScale
+	dmg *= F.frame.clinch * F.frame.power / O.frame.bodyAbsorb -- [FrameTraits] clinch strength, his power, the other man's body
 	if self.clinchBy == O then
 		dmg *= 1 - DEPTH.clinchSmother
 	end
@@ -61990,13 +62184,14 @@ function Fight:Count(F)
 			if sev == "flash" then
 				aiUpAt = self.rng:NextInteger(2, 4)
 			else
-				aiUpAt = math.clamp(math.floor(9 - ability * 6 + self.rng:NextInteger(-1, 1) + (sev == "heavy" and 1 or 0)), 3, 9)
+				aiUpAt = math.clamp(math.floor(9 - ability * 6 + self.rng:NextInteger(-1, 1) + (sev == "heavy" and 1 or 0) + (F.frame.getUpTime - 1) * 6), 3, 9) -- [FrameTraits]
 			end
 		end
 	end
 	-- presses needed (a green-zone press counts 3): a first knockdown takes a few seconds of honest work, a
 	-- third one when he's badly hurt still needs good timing on top of the mashing
 	local target = 8 + F.kdTotal * 4 + (1 - ability) * 12 + F.conc * 8
+	target *= F.frame.getUpTime -- [FrameTraits] more work to get a heavy frame up
 	if sev == "flash" then
 		target *= 0.35
 	elseif sev == "heavy" then
@@ -62050,6 +62245,7 @@ function Fight:GetUp(F, n)
 	-- every fall has its own get-up (off the back: roll, hands and knees, a knee, up)
 	local fall = F.model:GetAttribute("DownPose") or "back"
 	local upT = FightMotion and FightMotion.GetUpTime and FightMotion.GetUpTime(fall) or 0.9
+	upT *= F.frame.getUpTime -- [FrameTraits] a heavy frame is slower up (the act carries it to the Animator)
 	F.hurtUntil = now + upT + (sev == "flash" and 1.2 or 2.5)
 	F.busyUntil = now + upT
 	F.stamina = math.max(F.stamina, F.maxStam * 0.3)
@@ -62319,6 +62515,7 @@ function Fight:UpdateMovement(F, dt)
 	if F.hum then
 		local s = F.data.stats
 		local speed = (8 + s.Footwork * 0.08) * F.style.fight.move * F.moveMul
+		speed *= F.frame.footSpeed -- [FrameTraits] the frame's feet
 		local cw = F.cornerWalk
 		if cw and (not F.root or F.isPlayer or F.state == "down" or not self.paused or flat(cw - F.root.Position).Magnitude < 1.2) then
 			F.cornerWalk = nil
@@ -62585,7 +62782,7 @@ function Fight:Update(dt)
 		local s = F.data.stats
 		-- stamina ceiling: body damage and the rounds wear the gas tank down
 		F.stamCap = math.clamp(F.maxStam * (0.72 + 0.28 * F.body / 100) - F.stamErosion, F.maxStam * 0.35, F.maxStam)
-		local regen = 5 + s.Endurance * 0.06
+		local regen = (5 + s.Endurance * 0.06) * F.frame.staminaRegen -- [FrameTraits] the frame's recovery
 		if F.state == "punching" then
 			regen *= 0.2
 		elseif F.blocking then
@@ -63162,7 +63359,7 @@ function Fight:Rest()
 		F.bodyCap = math.max(40, F.bodyCap - (F.bodyCap - F.body) * 0.25)
 		F.body = math.min(F.bodyCap, F.body + 8 * nut)
 		F.stamCap = math.clamp(F.maxStam * (0.72 + 0.28 * F.body / 100) - F.stamErosion, F.maxStam * 0.35, F.maxStam)
-		F.stamina = math.min(F.stamCap, F.stamina + F.maxStam * (0.25 + s.Recovery * 0.004) * nut)
+		F.stamina = math.min(F.stamCap, F.stamina + F.maxStam * (0.25 + s.Recovery * 0.004) * nut * F.frame.staminaRegen) -- [FrameTraits]
 		F.healthCap = math.max(30, F.healthCap - (100 - F.health) * 0.12)
 		-- the minute's rest clears the stun and the corner gets a little more back
 		F.health = math.min(F.healthCap, F.health + F.stun + (2 + s.Recovery * 0.05) * nut)
@@ -63476,7 +63673,7 @@ function Fight:Run()
 	self:SpawnReferee()
 	local function tapeOf(F)
 		local t = { name = F.data.name, nick = F.data.nick, nat = F.data.nat, record = F.data.record, height = F.data.height, reach = F.data.reach, style = F.style.name,
-			overall = Config.Overall(F.data.stats), female = femaleOf(F) }
+			overall = Config.Overall(F.data.stats), female = femaleOf(F), frame = F.frame.name } -- [FrameTraits] the frame on the tape
 		if F.isPlayer then
 			-- PvP: the HUD names the Roblox account behind the boxer (and the record is the PvP one)
 			t.player = self.pvp and F.player and ("@" .. F.player.Name) or nil
@@ -64280,7 +64477,7 @@ return FightEngine
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="63">
+      <Item class="ModuleScript" referent="64">
         <Properties>
           <string name="Name">GymDecor</string>
           <string name="Source"><![CDATA[-- GymDecor: everything that turns the training complex from a box into a real boxing gym.
@@ -65804,7 +66001,7 @@ return GymDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="64">
+      <Item class="ModuleScript" referent="65">
         <Properties>
           <string name="Name">Judging</string>
           <string name="Source"><![CDATA[-- Judging: the three ringside judges (pure: no engine state, no Instances; tools/sim/test_judging.luau pins it).
@@ -66252,7 +66449,7 @@ return Judging
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="65">
+      <Item class="ModuleScript" referent="66">
         <Properties>
           <string name="Name">MapBuilder</string>
           <string name="Source"><![CDATA[-- MapBuilder: builds the training complex entirely from parts.
@@ -67278,7 +67475,7 @@ return MapBuilder
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="66">
+      <Item class="ModuleScript" referent="67">
         <Properties>
           <string name="Name">Poser</string>
           <string name="Source"><![CDATA[-- Poser: puts a character (player or NPC) at a training spot in the right posture
@@ -67472,7 +67669,7 @@ return Poser
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="67">
+      <Item class="ModuleScript" referent="68">
         <Properties>
           <string name="Name">PostFight</string>
           <string name="Source"><![CDATA[-- PostFight: the scene after the final bell of every fight (FightEngine.Run calls PostFight.Run(fight, res, opts) once
@@ -67744,7 +67941,7 @@ return PostFight
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="68">
+      <Item class="ModuleScript" referent="69">
         <Properties>
           <string name="Name">PvP</string>
           <string name="Source"><![CDATA[-- PvP: player vs player boxing in the same server.
@@ -68301,7 +68498,7 @@ return PvP
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="69">
+      <Item class="ModuleScript" referent="70">
         <Properties>
           <string name="Name">Ragdoll</string>
           <string name="Source"><![CDATA[-- Ragdoll (server): the physics side of a knockdown / knockout. The Animator (AnimDown) draws the fall on every
@@ -68583,7 +68780,7 @@ return Ragdoll
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="70">
+      <Item class="ModuleScript" referent="71">
         <Properties>
           <string name="Name">RingWalk</string>
           <string name="Source"><![CDATA[-- RingWalk: the pre-fight entrance on the server (FightEngine's Fight:Entrance hands over to RingWalk.Run).
@@ -68988,7 +69185,7 @@ return RingWalk
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="71">
+      <Item class="ModuleScript" referent="72">
         <Properties>
           <string name="Name">Tourney</string>
           <string name="Source"><![CDATA[-- Tourney: the career side of the tournaments (Shared.Tournaments has the events, their rules, prizes and belts).
@@ -69703,7 +69900,7 @@ return Tourney
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="72">
+      <Item class="ModuleScript" referent="73">
         <Properties>
           <string name="Name">Training</string>
           <string name="Source"><![CDATA[-- Training: the advanced training system.
@@ -73460,7 +73657,7 @@ return Training
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="73">
+      <Item class="ModuleScript" referent="74">
         <Properties>
           <string name="Name">TutorialFight</string>
           <string name="Source"><![CDATA[-- TutorialFight: the first-time tutorial bout's cast and night (Shared.Tutorial has the steps and the rules).
@@ -73547,7 +73744,7 @@ return TutorialFight
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="74">
+      <Item class="ModuleScript" referent="75">
         <Properties>
           <string name="Name">Venues</string>
           <string name="Source"><![CDATA[-- Venues: fight-night ring system. Builds one template per venue in ServerStorage at boot and
@@ -75663,7 +75860,7 @@ return Venues
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="75">
+      <Item class="ModuleScript" referent="76">
         <Properties>
           <string name="Name">World</string>
           <string name="Source"><![CDATA[-- World: generates and maintains the AI boxing world (270 boxers), rankings for
@@ -76185,7 +76382,7 @@ return World
         </Properties>
       </Item>
     </Item>
-    <Item class="Script" referent="76">
+    <Item class="Script" referent="77">
       <Properties>
         <string name="Name">Main</string>
         <token name="RunContext">0</token>
@@ -76198,6 +76395,18 @@ local StarterPlayer = game:GetService("StarterPlayer")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 local CollectionService = game:GetService("CollectionService")
+
+-- [Studio] Roblox's Avatar Joint Upgrade rigs R15 characters with AnimationConstraints instead of Motor6Ds; the
+-- procedural Animator, the head / headgear welds and /wcbdiag all drive Motor6Ds (a /wcbdiag from Studio showed
+-- every joint "missing" and the player's character dead). tools/build_place.py pins the place setting; this is
+-- the runtime fallback (before any character is built). MeshPartHeadsAndAccessories: the classic head must stay
+-- a Part + SpecialMesh (default.project.json sets it too).
+pcall(function()
+	workspace.AvatarJointUpgrade = Enum.RolloutState.Disabled
+end)
+pcall(function()
+	workspace.MeshPartHeadsAndAccessories = Enum.MeshPartHeadsAndAccessories.Disabled
+end)
 
 local Modules = script.Parent:WaitForChild("BoxerModules")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -78910,17 +79119,17 @@ print("[Boxer] " .. Config.GameName .. " server ready")
       </Properties>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="77">
+  <Item class="StarterPlayer" referent="78">
     <Properties>
       <string name="Name">StarterPlayer</string>
       <float name="CharacterWalkSpeed">6.5</float>
       <bool name="EnableMouseLockOption">false</bool>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="78">
+    <Item class="StarterPlayerScripts" referent="79">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="79">
+      <Item class="LocalScript" referent="80">
         <Properties>
           <string name="Name">Animator</string>
           <string name="Source"><![CDATA[-- Animator: motion-capture-feeling procedural animation for everyone in the game, no animation
@@ -80403,11 +80612,11 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="80">
+      <Item class="Folder" referent="81">
         <Properties>
           <string name="Name">BoxerClient</string>
         </Properties>
-        <Item class="ModuleScript" referent="81">
+        <Item class="ModuleScript" referent="82">
           <Properties>
             <string name="Name">Activities</string>
             <string name="Source"><![CDATA[-- Activities: every training session and its minigame.
@@ -86632,7 +86841,7 @@ return Activities
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="82">
+        <Item class="ModuleScript" referent="83">
           <Properties>
             <string name="Name">Ambience</string>
             <string name="Source"><![CDATA[-- Ambience: brings the gym and the town to life on the client.
@@ -87876,7 +88085,7 @@ return Ambience
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="83">
+        <Item class="ModuleScript" referent="84">
           <Properties>
             <string name="Name">AnatomyClient</string>
             <string name="Source"><![CDATA[-- AnatomyClient: the client-built meshes on every character: today only the HAIR (the uploaded hair cards,
@@ -90670,7 +90879,7 @@ return AnatomyClient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="84">
+        <Item class="ModuleScript" referent="85">
           <Properties>
             <string name="Name">AnatomyStatus</string>
             <string name="Source"><![CDATA[-- AnatomyStatus: tells the player (and the Output) whether the organic mesh characters are on.
@@ -90927,7 +91136,7 @@ return AnatomyStatus
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="85">
+        <Item class="ModuleScript" referent="86">
           <Properties>
             <string name="Name">AnimCeremony</string>
             <string name="Source"><![CDATA[-- AnimCeremony: the poses of the celebration cutscene (FightEngine's Fight:Ceremony sets them as Pose on a
@@ -91235,7 +91444,7 @@ return AnimCeremony
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="86">
+        <Item class="ModuleScript" referent="87">
           <Properties>
             <string name="Name">AnimDown</string>
             <string name="Source"><![CDATA[-- AnimDown: knockdowns, knockouts, the count and the get-up.
@@ -93155,7 +93364,7 @@ return AnimDown
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="87">
+        <Item class="ModuleScript" referent="88">
           <Properties>
             <string name="Name">AnimEntrance</string>
             <string name="Source"><![CDATA[-- AnimEntrance: the ring walk's body language on the client - the entrance celebrations, the climb up the ring
@@ -93789,7 +93998,7 @@ return AnimEntrance
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="88">
+        <Item class="ModuleScript" referent="89">
           <Properties>
             <string name="Name">AnimFight</string>
             <string name="Source"><![CDATA[-- AnimFight: everything a boxer does on his feet in the ring.
@@ -97318,7 +97527,7 @@ return AnimFight
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="89">
+        <Item class="ModuleScript" referent="90">
           <Properties>
             <string name="Name">AnimGym</string>
             <string name="Source"><![CDATA[-- AnimGym: training poses that work the right muscles, flex poses, gym life and the people who
@@ -98571,7 +98780,7 @@ return AnimGym
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="90">
+        <Item class="ModuleScript" referent="91">
           <Properties>
             <string name="Name">AnimKit</string>
             <string name="Source"><![CDATA[-- AnimKit: the pure math behind the procedural animation (no Instances, no Roblox services), so it
@@ -99031,7 +99240,7 @@ return AnimKit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="91">
+        <Item class="ModuleScript" referent="92">
           <Properties>
             <string name="Name">AnimLoco</string>
             <string name="Source"><![CDATA[-- AnimLoco: locomotion and feet for the procedural Animator.
@@ -101322,7 +101531,7 @@ return AnimLoco
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="92">
+        <Item class="ModuleScript" referent="93">
           <Properties>
             <string name="Name">AnimRig</string>
             <string name="Source"><![CDATA[-- AnimRig: rig geometry, inverse kinematics and the pose building blocks shared by the Animator
@@ -102456,7 +102665,7 @@ return AnimRig
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="93">
+        <Item class="ModuleScript" referent="94">
           <Properties>
             <string name="Name">BodyMap</string>
             <string name="Source"><![CDATA[-- BodyMap: an anatomical body map (front + back views), one region per Config.MuscleParts id.
@@ -103325,7 +103534,7 @@ return BodyMap
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="94">
+        <Item class="ModuleScript" referent="95">
           <Properties>
             <string name="Name">Ceremony</string>
             <string name="Source"><![CDATA[-- Ceremony: the celebration cutscene in the ring after a won tournament final or a new title (10.5 s, skippable).
@@ -104035,7 +104244,7 @@ return Ceremony
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="95">
+        <Item class="ModuleScript" referent="96">
           <Properties>
             <string name="Name">CharacterLight</string>
             <string name="Source"><![CDATA[-- CharacterLight: a camera-aware fill and rim light for the boxers on screen (client only).
@@ -104259,7 +104468,7 @@ return CharacterLight
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="96">
+        <Item class="ModuleScript" referent="97">
           <Properties>
             <string name="Name">CityDetail</string>
             <string name="Source"><![CDATA[-- CityDetail: the town's fine-detail layer (client-only; WorldDetail streams it per cell by Graphics
@@ -105004,7 +105213,7 @@ return CityDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="97">
+        <Item class="ModuleScript" referent="98">
           <Properties>
             <string name="Name">CityStores</string>
             <string name="Source"><![CDATA[-- CityStores: the counters of the city's walk-in shops (prompts in CityMap, dispatched through
@@ -105305,7 +105514,7 @@ return CityStores
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="98">
+        <Item class="ModuleScript" referent="99">
           <Properties>
             <string name="Name">CityVisuals</string>
             <string name="Source"><![CDATA[-- CityVisuals: the city reflects YOUR career. Everything here is client-side (workspace.LocalCity
@@ -107184,7 +107393,7 @@ return CityVisuals
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="99">
+        <Item class="ModuleScript" referent="100">
           <Properties>
             <string name="Name">ComboHud</string>
             <string name="Source"><![CDATA[-- ComboHud: the fight HUD's combo counter (FightClient mounts it in its HUD root and feeds it the server's
@@ -107353,7 +107562,7 @@ return ComboHud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="100">
+        <Item class="ModuleScript" referent="101">
           <Properties>
             <string name="Name">ControlsMenu</string>
             <string name="Source"><![CDATA[-- ControlsMenu: the Moves & Controls window. Opened from the main menu (CONTROLS, or Settings > Controls),
@@ -108113,7 +108322,7 @@ return ControlsMenu
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="101">
+        <Item class="ModuleScript" referent="102">
           <Properties>
             <string name="Name">Creator</string>
             <string name="Source"><![CDATA[-- Creator: the character creator, as seven steps with Back / Next and a step bar (jump to any step).
@@ -108142,6 +108351,7 @@ local Catalog = require(Shared:WaitForChild("Catalog"))
 local UI = require(Shared:WaitForChild("UI"))
 local State = require(script.Parent:WaitForChild("State"))
 local LookKit = require(script.Parent:WaitForChild("LookKit"))
+local FrameTraits = require(Shared:WaitForChild("FrameTraits")) -- [FrameTraits] the frames' ring traits (the body-type panel)
 local okFlags, Flags = pcall(function()
 	return require(script.Parent:WaitForChild("Flags", 5))
 end)
@@ -108983,6 +109193,33 @@ local function pageHair()
 	end
 end
 
+-- [FrameTraits] the frame's permanent ring traits: its tag line, then the pros (green plus) and the cons (red minus)
+-- as two short lists side by side (stacked on a narrow column)
+local function frameTraitsPanel(frameId)
+	local FT = FrameTraits.Get(frameId)
+	local panel = UI.Frame(body, { Name = "FrameTraits", BackgroundColor3 = T.panel2, BackgroundTransparency = 0.5, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+	UI.Corner(panel, UI.R.md)
+	UI.Pad(panel, 10, 12)
+	UI.List(panel, 6)
+	UI.Kicker(panel, string.format("%s  ·  %s", FrameTraits.ShortName(frameId), FT.tag or ""), T.gold, { order = 1, icon = "muscle" })
+	local narrow = body.AbsoluteSize.X > 0 and body.AbsoluteSize.X < 520
+	local cols = UI.Frame(panel, { Name = "Columns", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 })
+	UI.New("UIListLayout", { FillDirection = narrow and Enum.FillDirection.Vertical or Enum.FillDirection.Horizontal, SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, narrow and 6 or 12), Parent = cols })
+	local function list(name, lines, icon, color, order)
+		local col = UI.Frame(cols, { Name = name, BackgroundTransparency = 1, Size = narrow and UDim2.new(1, 0, 0, 0) or UDim2.new(0.5, -6, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order })
+		UI.List(col, 4)
+		for i, text in ipairs(lines) do
+			local row = UI.Frame(col, { Name = "Row", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = i })
+			UI.Icon(row, icon, 12, color, { Name = "Sign", Position = UDim2.fromOffset(0, 3) })
+			UI.Text(row, text, { Position = UDim2.fromOffset(18, 0), Size = UDim2.new(1, -18, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextSize = 13, TextColor3 = T.text, TextWrapped = true })
+		end
+	end
+	list("Pros", FT.pros or {}, "plus", T.green, 1)
+	list("Cons", FT.cons or {}, "minus", T.red, 2)
+	return panel
+end
+
 local function pageBody()
 	local b = C.look.body
 	local def = defaults()
@@ -109002,6 +109239,7 @@ local function pageBody()
 	end)
 	local ft = Config.FindById(Config.BodyTypes, b.frame) or Config.BodyTypes[2]
 	UI.Line(body, string.format("%s: %s", ft.id, modsText(ft.mods)), { TextColor3 = T.sub, TextSize = 13 })
+	frameTraitsPanel(ft.id)
 	UI.Header(body, "SIZE")
 	UI.Slider(body, "Height", 60, 84, C.look.height, 1, function(v)
 		pushUndo("height")
@@ -109925,7 +110163,7 @@ return Creator
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="102">
+        <Item class="ModuleScript" referent="103">
           <Properties>
             <string name="Name">CrowdFX</string>
             <string name="Source"><![CDATA[-- CrowdFX: the crowd, alive, on the fighting client (VenueFX owns the session and calls in; nothing replicates).
@@ -110759,7 +110997,7 @@ return CrowdFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="103">
+        <Item class="ModuleScript" referent="104">
           <Properties>
             <string name="Name">DetailKit</string>
             <string name="Source"><![CDATA[-- DetailKit: the building blocks of the world's client-side detail layer (WorldDetail: the gym and the city;
@@ -111251,7 +111489,7 @@ return K
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="104">
+        <Item class="ModuleScript" referent="105">
           <Properties>
             <string name="Name">DiagClient</string>
             <string name="Source"><![CDATA[-- DiagClient: runs the rig diagnostic (Shared.Diag) on this client and asks the server for its own view of the same
@@ -111411,7 +111649,7 @@ return DiagClient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="105">
+        <Item class="ModuleScript" referent="106">
           <Properties>
             <string name="Name">EntranceFX</string>
             <string name="Source"><![CDATA[-- EntranceFX: the ring-walk cinematic on the client. The server (RingWalk) sends one "entrance" message per walk with
@@ -112200,7 +112438,7 @@ return EntranceFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="106">
+        <Item class="ModuleScript" referent="107">
           <Properties>
             <string name="Name">EntrancePicker</string>
             <string name="Source"><![CDATA[-- EntrancePicker: the Locker Room's ENTRANCE window (State.open.Entrance): the ring walk's celebrations (one at the
@@ -112343,7 +112581,7 @@ return EntrancePicker
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="107">
+        <Item class="ModuleScript" referent="108">
           <Properties>
             <string name="Name">FaceFX</string>
             <string name="Source"><![CDATA[-- FaceFX: a face that is alive. Client-only, driven by the Animator every frame (FaceFX.Update; Hit / Effort /
@@ -113138,7 +113376,7 @@ return FaceFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="108">
+        <Item class="ModuleScript" referent="109">
           <Properties>
             <string name="Name">FightIntel</string>
             <string name="Source"><![CDATA[-- FightIntel: the fight HUD's small reads of the deeper fight (FightClient mounts it in its HUD root and feeds it
@@ -113375,7 +113613,7 @@ return FightIntel
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="109">
+        <Item class="ModuleScript" referent="110">
           <Properties>
             <string name="Name">FighterCard</string>
             <string name="Source"><![CDATA[-- FighterCard: the professional fighter card / tale of the tape for the local boxer.
@@ -114255,7 +114493,7 @@ return FighterCard
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="110">
+        <Item class="ModuleScript" referent="111">
           <Properties>
             <string name="Name">Flags</string>
             <string name="Source"><![CDATA[-- Flags: simplified national flags drawn from frames (no image assets) for every Config.Nationalities
@@ -114590,7 +114828,7 @@ return Flags
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="111">
+        <Item class="ModuleScript" referent="112">
           <Properties>
             <string name="Name">GymDetail</string>
             <string name="Source"><![CDATA[-- GymDetail: the training complex's extra detail layer (client-only, WorldDetail streams it by Graphics level
@@ -115570,7 +115808,7 @@ return GymDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="112">
+        <Item class="ModuleScript" referent="113">
           <Properties>
             <string name="Name">GymDetail2</string>
             <string name="Source"><![CDATA[-- GymDetail2: the training complex's second detail pass (client-only, on DetailKit's Streamer like GymDetail, which
@@ -116206,7 +116444,7 @@ return GymDetail2
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="113">
+        <Item class="ModuleScript" referent="114">
           <Properties>
             <string name="Name">GymFacility</string>
             <string name="Source"><![CDATA[-- GymFacility: what YOUR gym looks like as a whole, drawn on your client only (everyone shares
@@ -118434,7 +118672,7 @@ return GymFacility
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="114">
+        <Item class="ModuleScript" referent="115">
           <Properties>
             <string name="Name">GymMirror</string>
             <string name="Source"><![CDATA[-- GymMirror: a live mirror at the shadow-boxing station. While you are within a few strides of
@@ -118816,7 +119054,7 @@ return GymMirror
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="115">
+        <Item class="ModuleScript" referent="116">
           <Properties>
             <string name="Name">GymSound</string>
             <string name="Source"><![CDATA[-- GymSound: every gym sound effect on the client, played from ONE pool of positional sounds
@@ -119061,7 +119299,7 @@ return GymSound
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="116">
+        <Item class="ModuleScript" referent="117">
           <Properties>
             <string name="Name">GymVisuals</string>
             <string name="Source"><![CDATA[-- GymVisuals: draws YOUR gym's equipment (client side) at every station, matched to
@@ -122577,7 +122815,7 @@ return GymVisuals
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="117">
+        <Item class="ModuleScript" referent="118">
           <Properties>
             <string name="Name">HairAssets</string>
             <string name="Source"><![CDATA[-- HairAssets: the asset hair (tools/hair/CONTRACT.md): hair-card meshes modelled in Blender and uploaded as
@@ -123276,7 +123514,7 @@ return HairAssets
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="118">
+        <Item class="ModuleScript" referent="119">
           <Properties>
             <string name="Name">HairFX</string>
             <string name="Source"><![CDATA[-- HairFX: hair that moves like hair. Client-only, driven by the Animator every frame (HairFX.Update) and on
@@ -125252,7 +125490,7 @@ return HairFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="119">
+        <Item class="ModuleScript" referent="120">
           <Properties>
             <string name="Name">Hub</string>
             <string name="Source"><![CDATA[-- Hub: the Career Hub window.
@@ -127676,7 +127914,7 @@ return Hub
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="120">
+        <Item class="ModuleScript" referent="121">
           <Properties>
             <string name="Name">KnockFX</string>
             <string name="Source"><![CDATA[-- KnockFX: the local player's "lights going out" screen. FightClient calls it on its own knockdown /
@@ -127935,7 +128173,7 @@ return KnockFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="121">
+        <Item class="ModuleScript" referent="122">
           <Properties>
             <string name="Name">LightLevels</string>
             <string name="Source"><![CDATA[-- LightLevels: the game's exposure targets in one place, plus the player's brightness preference.
@@ -128128,7 +128366,7 @@ return LightLevels
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="122">
+        <Item class="ModuleScript" referent="123">
           <Properties>
             <string name="Name">LookKit</string>
             <string name="Source"><![CDATA[-- LookKit: the look editors' shared parts (Creator, barber): plain-word readouts, short labels and
@@ -128567,7 +128805,7 @@ return LookKit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="123">
+        <Item class="ModuleScript" referent="124">
           <Properties>
             <string name="Name">MainMenu</string>
             <string name="Source"><![CDATA[-- MainMenu: the title screen. Your boxer stands in his corner of a ring in a gym at night (MenuStage: a
@@ -130205,7 +130443,7 @@ return MainMenu
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="124">
+        <Item class="ModuleScript" referent="125">
           <Properties>
             <string name="Name">MenuDetail</string>
             <string name="Source"><![CDATA[-- MenuDetail: the title-screen set's extra dressing (MenuStage). Built into the set's folder, in the set's own
@@ -130470,7 +130708,7 @@ return MenuDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="125">
+        <Item class="ModuleScript" referent="126">
           <Properties>
             <string name="Name">MenuStage</string>
             <string name="Source"><![CDATA[-- MenuStage: the main menu's set. A closed boxing-gym corner built on this client, far above the map,
@@ -131115,7 +131353,7 @@ return MenuStage
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="126">
+        <Item class="ModuleScript" referent="127">
           <Properties>
             <string name="Name">MuscleScreen</string>
             <string name="Source"><![CDATA[-- MuscleScreen: the Muscle Progression screen (Hub Body tab "3D MUSCLE VIEW", training result "MUSCLES").
@@ -132137,7 +132375,7 @@ return MuscleScreen
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="127">
+        <Item class="ModuleScript" referent="128">
           <Properties>
             <string name="Name">Perf</string>
             <string name="Source"><![CDATA[-- Perf: the one performance level every client system reads (optimization pass).
@@ -132465,7 +132703,7 @@ return Perf
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="128">
+        <Item class="ModuleScript" referent="129">
           <Properties>
             <string name="Name">PostFightUI</string>
             <string name="Source"><![CDATA[-- PostFightUI: the results screen after every fight (the "result" message: FightClient's handler calls
@@ -132858,7 +133096,7 @@ return PostFightUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="129">
+        <Item class="ModuleScript" referent="130">
           <Properties>
             <string name="Name">PvP</string>
             <string name="Source"><![CDATA[-- PvP (client): challenge other players, answer challenges, Find Match, the PvP record.
@@ -133624,7 +133862,7 @@ return PvP
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="130">
+        <Item class="ModuleScript" referent="131">
           <Properties>
             <string name="Name">Ragdoll</string>
             <string name="Source"><![CDATA[-- Ragdoll (client): the Animator's side of a knockout's physics ragdoll (server Ragdoll: the limbs' Motor6Ds
@@ -133721,7 +133959,7 @@ return Ragdoll
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="131">
+        <Item class="ModuleScript" referent="132">
           <Properties>
             <string name="Name">Scorecards</string>
             <string name="Source"><![CDATA[-- Scorecards: the judges' cards and the punch statistics on the player's screen (the WCB gold-glove UI kit).
@@ -134107,7 +134345,7 @@ return Scorecards
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="132">
+        <Item class="ModuleScript" referent="133">
           <Properties>
             <string name="Name">Services</string>
             <string name="Source"><![CDATA[-- Services: the gym's service windows.
@@ -134933,7 +135171,7 @@ return Services
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="133">
+        <Item class="ModuleScript" referent="134">
           <Properties>
             <string name="Name">Settings</string>
             <string name="Source"><![CDATA[-- Settings: the player's options, applied on this client straight away.
@@ -135224,7 +135462,7 @@ return Settings
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="134">
+        <Item class="ModuleScript" referent="135">
           <Properties>
             <string name="Name">SparExit</string>
             <string name="Source"><![CDATA[-- SparExit: the way out of a sparring session, at any time. A LEAVE SPARRING button on the spar HUD (and an entry
@@ -135371,7 +135609,7 @@ return SparExit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="135">
+        <Item class="ModuleScript" referent="136">
           <Properties>
             <string name="Name">State</string>
             <string name="Source"><![CDATA[-- State: shared client state and helpers (latest profile, server requests, toasts,
@@ -135538,7 +135776,7 @@ return State
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="136">
+        <Item class="ModuleScript" referent="137">
           <Properties>
             <string name="Name">TourneyUI</string>
             <string name="Source"><![CDATA[-- TourneyUI: the Career Hub's Tournaments tab (Hub's R.Tournaments) and the belt badge the FighterCard, the Hub and
@@ -135939,7 +136177,7 @@ return TourneyUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="137">
+        <Item class="ModuleScript" referent="138">
           <Properties>
             <string name="Name">Tutorial</string>
             <string name="Source"><![CDATA[-- Tutorial (client): the guided fights around the real fight HUD (FightClient).
@@ -136622,7 +136860,7 @@ return Tutorial
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="138">
+        <Item class="ModuleScript" referent="139">
           <Properties>
             <string name="Name">VenueDetail</string>
             <string name="Source"><![CDATA[-- VenueDetail: the fight venues' extra detail layer, built by VenueFX.Start on the fighting client only (inside
@@ -137199,7 +137437,7 @@ return VenueDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="139">
+        <Item class="ModuleScript" referent="140">
           <Properties>
             <string name="Name">VenueFX</string>
             <string name="Source"><![CDATA[-- VenueFX: client-only fight-night presentation for the player's own venue (stream G).
@@ -139510,7 +139748,7 @@ return VenueFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="140">
+        <Item class="ModuleScript" referent="141">
           <Properties>
             <string name="Name">WorldDetail</string>
             <string name="Source"><![CDATA[-- WorldDetail: the client-side detail layer of the gym and the city (GymDetail, CityDetail on DetailKit's
@@ -139695,7 +139933,7 @@ return WorldDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="141">
+        <Item class="ModuleScript" referent="142">
           <Properties>
             <string name="Name">WorldLOD</string>
             <string name="Source"><![CDATA[-- WorldLOD: the Graphics level (Perf) applied to the world's own lights, signs, particles and shadow
@@ -140287,7 +140525,7 @@ return WorldLOD
           </Properties>
         </Item>
       </Item>
-      <Item class="LocalScript" referent="142">
+      <Item class="LocalScript" referent="143">
         <Properties>
           <string name="Name">ClientMain</string>
           <string name="Source"><![CDATA[-- ClientMain: wires the client together - main menu at join, the gym HUD (player plate, condition
@@ -141240,7 +141478,7 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="LocalScript" referent="143">
+      <Item class="LocalScript" referent="144">
         <Properties>
           <string name="Name">FightClient</string>
           <string name="Source"><![CDATA[-- FightClient: fight-night presentation and controls (also used for gym sparring).
@@ -141288,6 +141526,7 @@ local T = UI.Theme
 local Gamepad = UI.Gamepad -- input device and button names (optional)
 local Keymap = require(Shared:WaitForChild("Keymap")) -- the control map (actions, defaults, labels)
 local Moves = require(Shared:WaitForChild("Moves")) -- the special moves (names, hands, cooldowns)
+local FrameTraits = require(Shared:WaitForChild("FrameTraits")) -- [FrameTraits] the body frames' ring traits (the punch windows, the tape)
 local K = Enum.KeyCode
 local FightRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Fight")
 
@@ -144794,7 +145033,9 @@ end
 -- the predicted wind-up (the server's, roughly: fatigue and daze slow it)
 local function predWindup(base)
 	local stam = F.me and F.me.max and F.me.stam / math.max(1, F.me.max) or 1
-	return base * (stam < 0.3 and 1.25 or 1) * (1 + 0.08 * ((F.me and F.me.tier) or 0))
+	-- [FrameTraits] the frame's hand speed, as the server's punchSpeed divides by it (the tape carries the frame)
+	local hand = FrameTraits.Mul(F.tape and F.tape.you and F.tape.you.frame, "handSpeed")
+	return base * (stam < 0.3 and 1.25 or 1) * (1 + 0.08 * ((F.me and F.me.tier) or 0)) / hand
 end
 
 -- counter = a counter jab / cross out of a slip (Q + click): the server lets it through the slip's recovery
@@ -146169,12 +146410,16 @@ local function buildTape()
 		ovRow(string.format("%d in", y.reach or 0), "Reach", string.format("%d in", o.reach or 0))
 	end
 	ovRow(string.upper(y.style or "-"), "Style", string.upper(o.style or "-"))
+	-- [FrameTraits] the frames on the tape, and the read of his
+	if y.frame or o.frame then
+		ovRow(string.upper(FrameTraits.ShortName(y.frame or "Athletic")), "Frame", string.upper(FrameTraits.ShortName(o.frame or "Athletic")))
+	end
 	if not compact then
 		ovRow(string.upper(y.nat or "-"), "Nationality", string.upper(o.nat or "-"))
 	end
 	ovRow(y.overall or 0, "Overall", o.overall or 0, true)
 	if o.archetype and not compact then
-		ovNote("Scouting", o.archetype, T.blue)
+		ovNote("Scouting", o.archetype .. (o.frame and FrameTraits.Read(o.frame) and ("  ·  " .. FrameTraits.Read(o.frame)) or ""), T.blue)
 	end
 	-- his ring traits as far as the scouting report knows them (the rest are revealed in the fight)
 	local traitLine = KM.intel and KM.intel.TapeLine(o.traits)
@@ -147014,9 +147259,11 @@ end)
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="144">
+  <Item class="Workspace" referent="145">
     <Properties>
+			<token name="AvatarJointUpgrade">1</token>
       <string name="Name">Workspace</string>
+      <token name="MeshPartHeadsAndAccessories">1</token>
       <bool name="NeedsPivotMigration">false</bool>
       <bool name="StreamingEnabled">false</bool>
     </Properties>

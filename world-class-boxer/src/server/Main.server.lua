@@ -8,6 +8,18 @@ local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 local CollectionService = game:GetService("CollectionService")
 
+-- [Studio] Roblox's Avatar Joint Upgrade rigs R15 characters with AnimationConstraints instead of Motor6Ds; the
+-- procedural Animator, the head / headgear welds and /wcbdiag all drive Motor6Ds (a /wcbdiag from Studio showed
+-- every joint "missing" and the player's character dead). tools/build_place.py pins the place setting; this is
+-- the runtime fallback (before any character is built). MeshPartHeadsAndAccessories: the classic head must stay
+-- a Part + SpecialMesh (default.project.json sets it too).
+pcall(function()
+	workspace.AvatarJointUpgrade = Enum.RolloutState.Disabled
+end)
+pcall(function()
+	workspace.MeshPartHeadsAndAccessories = Enum.MeshPartHeadsAndAccessories.Disabled
+end)
+
 local Modules = script.Parent:WaitForChild("BoxerModules")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
