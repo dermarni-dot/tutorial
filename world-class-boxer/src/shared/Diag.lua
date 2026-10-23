@@ -16,6 +16,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
 local BuilderTiers = require(Shared:WaitForChild("BuilderTiers"))
+-- [Studio] the joints may be Motor6Ds or AnimationConstraints (Workspace.AvatarJointUpgrade): one lookup for both
+local RigJoints = require(Shared:WaitForChild("RigJoints"))
 
 local Diag = {}
 Diag.PREFIX = "[WCBDIAG] "
@@ -132,31 +134,22 @@ local function expectedAtt(part, attName)
 end
 
 local function motorLine(model, name, verdicts)
-	local holder = model:FindFirstChild(MOTOR_PARENT[name])
-	local m = holder and holder:FindFirstChild(name)
-	if not (m and m:IsA("Motor6D")) then
-		-- (an AnimationConstraint rig, or a joint that is simply gone)
-		local ac
-		for _, d in ipairs(model:GetDescendants()) do
-			if d.Name == name and (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) then
-				ac = d
-				break
-			end
-		end
-		if ac then
-			return string.format("motor %-13s %s under %s (not where the R15 rig keeps it)", name, ac.ClassName, fullName(ac.Parent))
-		end
-		table.insert(verdicts, "BAD  Motor6D " .. name .. " is missing: the Animator cannot drive this joint")
+	local m = RigJoints.Find(model, name)
+	if not m then
+		table.insert(verdicts, "BAD  joint " .. name .. " is missing (no Motor6D, no AnimationConstraint): the Animator cannot drive this joint")
 		return string.format("motor %-13s MISSING", name)
 	end
-	local p0, p1 = m.Part0, m.Part1
+	local holder = model:FindFirstChild(MOTOR_PARENT[name])
+	local where = m.Parent ~= holder and (" under " .. fullName(m.Parent) .. " (not where the R15 rig keeps it)") or ""
+	local p0, p1 = RigJoints.Parts(m)
+	local C0, C1 = RigJoints.C0(m), RigJoints.C1(m)
 	local an = name .. "RigAttachment"
 	local a0 = p0 and p0:FindFirstChild(an)
 	local a1 = p1 and p1:FindFirstChild(an)
-	local s = string.format("motor %-13s %s->%s C0=%s C1=%s T=%s", name, p0 and p0.Name or "nil", p1 and p1.Name or "nil", cfs(m.C0), cfs(m.C1),
-		cfs(m.Transform))
+	local s = string.format("motor %-13s %s %s->%s C0=%s C1=%s T=%s%s", name, m.ClassName, p0 and p0.Name or "nil", p1 and p1.Name or "nil", cfs(C0), cfs(C1),
+		cfs(m.Transform), where)
 	if a0 and a0:IsA("Attachment") then
-		local d = (m.C0.Position - a0.CFrame.Position).Magnitude
+		local d = (C0.Position - a0.CFrame.Position).Magnitude
 		s ..= string.format(" att0=%s d=%.3f", v3f(a0.CFrame.Position), d)
 		if d > 0.02 then
 			table.insert(verdicts, string.format("BAD  %s.C0 is %.3f studs off %s.%s: the joint is not aimed at its RigAttachment", name, d, p0.Name, an))
@@ -173,7 +166,7 @@ local function motorLine(model, name, verdicts)
 		s ..= " att0=MISSING"
 	end
 	if a1 and a1:IsA("Attachment") then
-		local d = (m.C1.Position - a1.CFrame.Position).Magnitude
+		local d = (C1.Position - a1.CFrame.Position).Magnitude
 		s ..= string.format(" att1=%s d=%.3f", v3f(a1.CFrame.Position), d)
 		if d > 0.02 then
 			table.insert(verdicts, string.format("BAD  %s.C1 is %.3f studs off %s.%s: the joint is not aimed at its RigAttachment", name, d, p1.Name, an))
@@ -197,17 +190,17 @@ local function bindPose(model)
 	local out = { HumanoidRootPart = CFrame.identity }
 	local joints = {}
 	for _, name in ipairs(MOTORS) do
-		local holder = model:FindFirstChild(MOTOR_PARENT[name])
-		local m = holder and holder:FindFirstChild(name)
-		if m and m:IsA("Motor6D") and m.Part0 and m.Part1 then
-			table.insert(joints, m)
+		local m = RigJoints.Find(model, name)
+		local p0, p1 = RigJoints.Parts(m)
+		if m and p0 and p1 then
+			table.insert(joints, { p0 = p0, p1 = p1, cf = RigJoints.C0(m) * RigJoints.C1(m):Inverse() })
 		end
 	end
 	for _ = 1, #joints do
-		for _, m in ipairs(joints) do
-			local base = out[m.Part0.Name]
-			if base and not out[m.Part1.Name] then
-				out[m.Part1.Name] = base * m.C0 * m.C1:Inverse()
+		for _, j in ipairs(joints) do
+			local base = out[j.p0.Name]
+			if base and not out[j.p1.Name] then
+				out[j.p1.Name] = base * j.cf
 			end
 		end
 	end
@@ -549,11 +542,11 @@ function Diag.Report(model, ctx)
 	if okB and pose.LowerTorso and pose.LeftFoot and pose.RightFoot then
 		local lf, rf = model:FindFirstChild("LeftFoot"), model:FindFirstChild("RightFoot")
 		local sole = math.min(pose.LeftFoot.Position.Y - (lf and lf.Size.Y or 0.3) / 2, pose.RightFoot.Position.Y - (rf and rf.Size.Y or 0.3) / 2)
-		local function jy(holder, mname)
-			local h = model:FindFirstChild(holder)
-			local m = h and h:FindFirstChild(mname)
-			local base = m and m:IsA("Motor6D") and m.Part0 and pose[m.Part0.Name]
-			return base and (base * m.C0).Position.Y - sole or nil
+		local function jy(_, mname)
+			local m = RigJoints.Find(model, mname)
+			local p0 = m and RigJoints.Part0(m)
+			local base = p0 and pose[p0.Name]
+			return base and (base * RigJoints.C0(m)).Position.Y - sole or nil
 		end
 		local hs = { Root = jy("LowerTorso", "Root"), Waist = jy("UpperTorso", "Waist"), RightHip = jy("RightUpperLeg", "RightHip"),
 			RightKnee = jy("RightLowerLeg", "RightKnee"), RightAnkle = jy("RightFoot", "RightAnkle"), Neck = jy("Head", "Neck"), RightShoulder = jy("RightUpperArm", "RightShoulder") }
@@ -696,10 +689,9 @@ end
 -- and horizontal travel while it is down, the hip / knee / elbow bend from the live Transforms, and whether any
 -- Animate track was playing. Diag.NewSample() -> S; Diag.SampleTick(S, model, t); Diag.SampleLines(S) -> { lines, verdicts }
 ------------------------------------------------------------------------
-local function bend(model, holder, mname)
-	local h = model:FindFirstChild(holder)
-	local m = h and h:FindFirstChild(mname)
-	if not (m and m:IsA("Motor6D")) then
+local function bend(model, _, mname)
+	local m = RigJoints.Find(model, mname)
+	if not m then
 		return nil
 	end
 	local x = m.Transform:ToEulerAnglesXYZ()

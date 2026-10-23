@@ -10,8 +10,17 @@
 -- Everything works on the rig table the Animator keeps per character; nothing here allocates
 -- tables per frame.
 local K = require(script.Parent:WaitForChild("AnimKit"))
+-- [Studio] the joints may be Motor6Ds or (Workspace.AvatarJointUpgrade) AnimationConstraints: every joint lookup, rest
+-- pose (C0 / C1 vs Attachment0 / Attachment1) and part read goes through Shared.RigJoints (see there)
+local RigJoints = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("RigJoints"))
 
 local AnimRig = {}
+AnimRig.RigJoints = RigJoints
+-- AnimRig.FindJoint(model, "Neck") -> the Motor6D or AnimationConstraint; JointParts(j) -> parent part, child part
+AnimRig.FindJoint = RigJoints.Find
+AnimRig.JointParts = RigJoints.Parts
+AnimRig.IsJoint = RigJoints.IsJoint
+local part1 = RigJoints.Part1
 
 local A = CFrame.Angles
 local CF = CFrame.new
@@ -136,29 +145,11 @@ local CAP_PAD = { RS = -0.2, LS = -0.2 }
 -- foot box), the hips and trunks seat and the chest (proud of their boxes), the face (in front of the head's
 -- sphere: a guard's gloves); by the joint that drives the part
 local MESH_OF = { Root = "LowerTorso", W = "UpperTorso", RA = "RightFoot", LA = "LeftFoot", Neck = "Head" }
-local function jointC0(m)
-	if m:IsA("Motor6D") then
-		return m.C0
-	end
-	local a = m.Attachment0
-	return a and a.CFrame or I
-end
-local function jointC1(m)
-	if m:IsA("Motor6D") then
-		return m.C1
-	end
-	local a = m.Attachment1
-	return a and a.CFrame or I
-end
+local jointC0, jointC1 = RigJoints.C0, RigJoints.C1
+AnimRig.jointC0, AnimRig.jointC1 = jointC0, jointC1
 
 local function findJoint(model, key)
-	local path = JOINTS[key]
-	local p = model:FindFirstChild(path[1])
-	local m = p and p:FindFirstChild(path[2])
-	if m and (m:IsA("Motor6D") or m:IsA("AnimationConstraint")) then
-		return m
-	end
-	return nil
+	return RigJoints.Find(model, JOINTS[key][2])
 end
 
 -- (re)resolve joint motors: the Builder's head swap (ReplaceBodyPartR15) replaces the Neck, body
@@ -224,7 +215,7 @@ function AnimRig.computeGeo(rig)
 		leg.ankle0 = ankleCF.Position
 		leg.hip0 = (lt0 * leg.hipC0).Position
 		leg.footRest = (ankleCF * ankleC1:Inverse()).Rotation
-		local foot = ankleM.Part1
+		local foot = part1(ankleM)
 		local fs = foot and foot.Size or V3(0.7, 0.4, 1)
 		local footCF = ankleCF * ankleC1:Inverse()
 		local sole = footCF.Position.Y - fs.Y / 2
@@ -267,8 +258,8 @@ function AnimRig.computeGeo(rig)
 	do
 		local fw, tw = 0, 0
 		for _, s in ipairs(SIDES) do
-			local ft = J[s .. "A"].motor.Part1
-			local th = J[s .. "H"].motor.Part1
+			local ft = part1(J[s .. "A"].motor)
+			local th = part1(J[s .. "H"].motor)
 			fw = max(fw, ft and ft.Size.X or 0.7)
 			tw = max(tw, th and th.Size.X or 1)
 		end
@@ -280,7 +271,7 @@ function AnimRig.computeGeo(rig)
 		local H = 2.25 * ((g.rootY or rootC0.Position.Y) - lowest)
 		if J.Neck then
 			local head = lt0 * g.waistC0 * g.waistC1inv * jointC0(J.Neck.motor) * jointC1(J.Neck.motor):Inverse()
-			local hp = J.Neck.motor.Part1
+			local hp = part1(J.Neck.motor)
 			H = head.Position.Y + (hp and hp.Size.Y or 1.2) / 2 - lowest
 		end
 		FL = clamp(0.155 * H, 0.55, 1.4) * (rig.a and rig.a.Female == true and 0.96 or 1)
@@ -309,7 +300,7 @@ function AnimRig.computeGeo(rig)
 	g.legLen = (g.L.l1 + g.L.l2 + g.R.l1 + g.R.l2) / 2
 	g.hipW = abs(g.L.hip0.X - g.R.hip0.X)
 	-- torso size: guard targets are authored for a 2 x 1.6 x 1 UpperTorso and scale with the body
-	local utPart = J.W.motor.Part1
+	local utPart = part1(J.W.motor)
 	local us = utPart and utPart.Size or V3(2, 1.6, 1)
 	g.utScale = V3(us.X / 2, us.Y / 1.6, us.Z)
 	g.utSize = us
@@ -328,7 +319,7 @@ function AnimRig.computeGeo(rig)
 			arm.u0 = (arm.c1inv * arm.elbowC0).Position
 			arm.a = max(0.3, arm.u0.Magnitude)
 			arm.elbowRot = (arm.c1inv * arm.elbowC0).Rotation
-			local hand = wr.motor.Part1
+			local hand = part1(wr.motor)
 			local f0 = (jointC1(el.motor):Inverse() * jointC0(wr.motor)).Position
 			local ext = hand and hand.Size.Y * 0.55 or 0.35
 			arm.v0 = f0.Magnitude > 1e-3 and f0 + f0.Unit * ext or V3(0, -0.8, 0) -- elbow frame
@@ -336,7 +327,7 @@ function AnimRig.computeGeo(rig)
 			-- the forearm itself (punches keep it off the boxer's own head): the wrist's share of the elbow
 			-- to fist line and a radius for the arm drawn over the (fatter) R15 box
 			arm.fw = f0.Magnitude > 1e-3 and clamp(f0.Magnitude / arm.b, 0.5, 1) or 0.85
-			local fa = el.motor.Part1
+			local fa = part1(el.motor)
 			local fs = fa and fa.Size or V3(0.6, 1, 0.6)
 			arm.rf = clamp(min(fs.X, fs.Z) * 0.24, 0.12, 0.25)
 			-- hinge geometry for solveArm: the hinge axis in the shoulder frame, the bones split into
@@ -364,7 +355,7 @@ function AnimRig.computeGeo(rig)
 		if j then
 			g.jc0[key] = jointC0(j.motor)
 			g.jc1i[key] = jointC1(j.motor):Inverse()
-			local part = j.motor.Part1
+			local part = part1(j.motor)
 			g.sz[key] = part and part.Size or V3(1, 1, 1)
 		else
 			g.jc0[key] = nil
@@ -388,7 +379,7 @@ function AnimRig.computeGeo(rig)
 	for k, pn in pairs(MESH_OF) do
 		local mp = folder and folder:FindFirstChild("Anatomy" .. pn)
 		local weld = mp and mp:FindFirstChild("AnatomyWeld")
-		local part = J[k] and J[k].motor.Part1
+		local part = J[k] and part1(J[k].motor)
 		if weld and weld:IsA("Weld") and part and weld.Part0 == part and mp:IsA("BasePart") then
 			local m = g.mesh[k] or {}
 			m.cf = weld.C0 * weld.C1:Inverse()

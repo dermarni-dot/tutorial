@@ -378,12 +378,15 @@ do
 	check("referee: the badge reads WCB", lbl ~= nil and lbl.Text == "WCB")
 	local badW = {}
 	for _, p in ipairs(hp) do
-		local w = p:FindFirstChildOfClass("WeldConstraint")
-		if not (w and w.Part0 == model.Head and w.Part1 == p) then
+		local w = p:FindFirstChildOfClass("Weld")
+		if not (w and w.Part0 == model.Head and w.Part1 == p and w.Parent == p) then
 			table.insert(badW, p.Name)
 		end
 	end
-	check("referee: every cap part welded to his head", #badW == 0, table.concat(badW, ","))
+	check("referee: every cap part welded to his head (a Weld under the part)", #badW == 0, table.concat(badW, ","))
+	check("referee: the cap records the colours it was built from (the late re-fit rebuilds from them)",
+		typeof(hat:GetAttribute("CapColor")) == "Color3" and typeof(hat:GetAttribute("CapTrim")) == "Color3" and hat:GetAttribute("HeadClass") == "Part"
+		and typeof(hat:GetAttribute("HeadSize")) == "Vector3" and type(hat:GetAttribute("HeadMesh")) == "string")
 	check("referee: cap parts massless, no collisions", hp.RCCrown and hp.RCCrown.Massless and not hp.RCCrown.CanCollide)
 	-- a rebuild with nothing changed keeps the same parts (cache); a new head (respawn / head swap) rebuilds it on that head
 	local crown = hp.RCCrown
@@ -393,7 +396,7 @@ do
 	local c = model:Clone()
 	c.Parent = E.workspace
 	local cp = hatParts(c)
-	local cw = cp.RCCrown and cp.RCCrown:FindFirstChildOfClass("WeldConstraint")
+	local cw = cp.RCCrown and cp.RCCrown:FindFirstChildOfClass("Weld")
 	check("referee: a clone carries the cap, welded to the clone's head", #cp == #hp and cw and cw.Part0 == c:FindFirstChild("Head"))
 	c:Destroy()
 	-- a title fight: white

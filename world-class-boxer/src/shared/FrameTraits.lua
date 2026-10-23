@@ -36,8 +36,8 @@ FrameTraits.Keys = { "power", "kdPower", "handSpeed", "footSpeed", "tank", "stam
 FrameTraits.Data = {
 	Lean = {
 		name = "Lean", short = "Lean", tag = "Fast hands, long jab",
-		power = 0.94, kdPower = 0.95, handSpeed = 1.10, footSpeed = 1.08, tank = 1.04, staminaDrain = 0.92, powerDrain = 1, staminaRegen = 1.10,
-		chin = 0.95, bodyAbsorb = 0.90, reachBonus = 1.04, kdResist = 0.94, getUpTime = 0.95, clinch = 0.88, insideBonus = 0.95, dodgeWindow = 1.12, target = 0.95,
+		power = 0.93, kdPower = 0.90, handSpeed = 1.10, footSpeed = 1.08, tank = 1.04, staminaDrain = 0.92, powerDrain = 1, staminaRegen = 1.10,
+		chin = 0.95, bodyAbsorb = 0.90, reachBonus = 1.04, kdResist = 0.94, getUpTime = 0.95, clinch = 0.88, insideBonus = 0.95, dodgeWindow = 1.15, target = 0.94,
 		ai = { range = 0.06, aggr = -0.05, clinch = 0.0, inside = 0.8, press = 0 },
 		pros = { "Fastest hands: shorter punch windows, quicker recovery", "Quick feet and longer slip and dodge windows", "Spends less stamina a punch, recovers more", "Long arms: reaches further at the same height" },
 		cons = { "Less power behind every punch", "A softer chin: goes down easier", "Body shots hurt more and take more gas" },
@@ -60,15 +60,15 @@ FrameTraits.Data = {
 	},
 	["Power Build"] = {
 		name = "Power Build", short = "Power", tag = "One-punch power inside",
-		power = 1.09, kdPower = 1.12, handSpeed = 0.93, footSpeed = 0.94, tank = 0.96, staminaDrain = 1.06, powerDrain = 1.06, staminaRegen = 0.92,
-		chin = 1.06, bodyAbsorb = 1.04, reachBonus = 1, kdResist = 1.08, getUpTime = 1.05, clinch = 1.12, insideBonus = 1.12, dodgeWindow = 0.94, target = 1.02,
-		ai = { range = -0.08, aggr = 0.08, clinch = 0.06, inside = 1.3, press = 0.12 },
+		power = 1.07, kdPower = 1.08, handSpeed = 0.93, footSpeed = 0.94, tank = 0.96, staminaDrain = 1.06, powerDrain = 1.06, staminaRegen = 0.92,
+		chin = 1.05, bodyAbsorb = 1.04, reachBonus = 1, kdResist = 1.08, getUpTime = 1.05, clinch = 1.12, insideBonus = 1.08, dodgeWindow = 0.94, target = 1.02,
+		ai = { range = -0.08, aggr = 0.08, clinch = 0.06, inside = 1.2, press = 0.12 },
 		pros = { "The biggest single punch and knockdown chance", "A hard chin: very hard to drop", "Strong in the clinch and inside: hooks and uppercuts land harder" },
 		cons = { "Slower hands and feet", "Gasses in the later rounds", "Easier to outbox at range" },
 	},
 	["Heavyweight Build"] = {
 		name = "Heavyweight Build", short = "Heavyweight", tag = "Raw power, slow burn",
-		power = 1.12, kdPower = 1.06, handSpeed = 0.88, footSpeed = 0.88, tank = 0.92, staminaDrain = 1.12, powerDrain = 1.06, staminaRegen = 0.84,
+		power = 1.12, kdPower = 1.08, handSpeed = 0.88, footSpeed = 0.88, tank = 0.92, staminaDrain = 1.12, powerDrain = 1.06, staminaRegen = 0.84,
 		chin = 1.08, bodyAbsorb = 1.12, reachBonus = 1, kdResist = 1.12, getUpTime = 1.18, clinch = 1.20, insideBonus = 1.06, dodgeWindow = 0.90, target = 1.06,
 		ai = { range = -0.10, aggr = 0.1, clinch = 0.09, inside = 1.2, press = 0.15 },
 		pros = { "The strongest raw power", "Absorbs body shots best and is the hardest to knock down", "The heaviest clinch: holds and wears the other man" },

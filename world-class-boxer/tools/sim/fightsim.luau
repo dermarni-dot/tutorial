@@ -110,6 +110,7 @@ function FightSim.new(opts)
 	local Career = H.requireNode(folder._kids.Career)
 	local World = H.requireNode(folder._kids.World)
 	S.FightEngine, S.FightAI, S.Career, S.World = FightEngine, FightAI, Career, World
+	S.server = folder -- (the server folder's nodes: H.requireNode(S.server._kids.PostFight) loads another module)
 	local Fight = FightEngine._Fight
 	local V3, CF = H.globals.Vector3, H.globals.CFrame
 	local Random = H.globals.Random
@@ -160,6 +161,8 @@ function FightSim.new(opts)
 		end
 		return model, root, hum
 	end
+
+	S.StubRig = rig
 
 	local ARCH_OF = { Swarmer = "Pressure", CounterPuncher = "Counter", BoxerPuncher = "Technician", Slugger = "KO", OutBoxer = "Defensive" }
 	local simId = 0
@@ -245,11 +248,16 @@ function FightSim.new(opts)
 		return self
 	end
 
-	-- the stub rigs' walking (the Humanoid's MoveTo at its WalkSpeed) and their facing (the AlignOrientation)
+	-- the stub rigs' walking (the Humanoid's MoveTo at its WalkSpeed) and their facing (the AlignOrientation);
+	-- the stub referee (spec.ref) walks the same way, facing the midpoint
 	local function walk(fight, dt)
-		for _, F in ipairs(fight.pair) do
+		local list = fight.pair
+		if fight.ref then
+			list = { fight.pair[1], fight.pair[2], fight.ref }
+		end
+		for _, F in ipairs(list) do
 			local hum, root = F.hum, F.root
-			local O = fight:Other(F)
+			local O = F ~= fight.ref and fight:Other(F) or nil
 			local p = root.Position
 			local mv = V3.zero
 			if hum.target and hum.WalkSpeed > 0 and F.state ~= "down" then
@@ -266,7 +274,8 @@ function FightSim.new(opts)
 				hum.MoveDirection = V3.zero
 			end
 			local np = p + mv
-			local look = V3.new(O.root.Position.X, np.Y, O.root.Position.Z)
+			local lp = O and O.root.Position or (fight.P.root.Position + fight.O.root.Position) / 2
+			local look = V3.new(lp.X, np.Y, lp.Z)
 			if (look - np).Magnitude > 0.05 then
 				root.CFrame = CF.lookAt(np, look)
 			else
@@ -511,6 +520,12 @@ function FightSim.new(opts)
 		end
 		O.ai = FightAI.new(O, P, fight)
 		O.ai.rng = Random.new((spec.seed or 1) * 31 + 5)
+		-- (spec.ref: a stub referee the engine's UpdateReferee moves, as SpawnReferee's R; walk() walks him)
+		if spec.ref then
+			local mR, rR, hR = rig(V3.new(0, 3.2, 7), V3.new(0, 3.2, 0))
+			hR.WalkSpeed = 9
+			fight.ref = { model = mR, root = rR, hum = hR, actId = 0, nextMove = 0, state = "idle" }
+		end
 		if spec.red.bot then
 			P.ai = Bot.new(spec.red.bot, P, O, fight, Random.new((spec.seed or 1) * 17 + 3))
 		else
