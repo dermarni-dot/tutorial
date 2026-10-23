@@ -149,6 +149,11 @@ function HitGeometry.Frame(model, soleY, fallback)
 	local head, ut, lt = part("Head"), part("UpperTorso"), part("LowerTorso")
 	local ua, la = part("LeftUpperArm") or part("RightUpperArm"), part("LeftLowerArm") or part("RightLowerArm")
 	local hand, glove = part("LeftHand") or part("RightHand"), part("GloveL") or part("GloveR")
+	if not (head or ut) then
+		-- (a root alone: the headless sims' stub rigs)
+		F.source = base.source
+		return F
+	end
 	if head then
 		F.headR = math.max(head.Size.X, head.Size.Y) / 2
 		F.headY = head.Position.Y - sole
@@ -193,10 +198,10 @@ end
 ------------------------------------------------------------------------
 -- the reach R of A's punch (shoulder pivot to the glove's face along the punch's line) before the height shaping:
 -- (arm + glove + the step) x the punch's calibration
-local CAL = {} -- ptype -> multiplier (solved below)
-local function reachOf(A, ptype, mul)
-	local r = (A.arm + A.glove + STEP * A.hScale) * (CAL[ptype] or 1) * (mul or 1)
-	return r
+local CAL = {} -- ptype -> { head = multiplier, body = multiplier } (solved below)
+local function reachOf(A, ptype, zone, mul)
+	local c = CAL[ptype]
+	return (A.arm + A.glove + STEP * A.hScale) * (c and c[zone] or 1) * (mul or 1)
 end
 
 -- A's punch at B: the zones B offers, from A's shoulder (heights above B's soles are A's: both stand on the
@@ -235,7 +240,7 @@ local function tryZone(A, B, kind, K, ptype, zone, dist, opts)
 	local y = math.clamp(oY, bLo, bHi)
 	local dy = y - oY
 	-- the reach: out, the calibrated R; up and down, the arm (an ellipse about the origin)
-	local Rh = reachOf(A, ptype, opts.mul)
+	local Rh = reachOf(A, ptype, zone, opts.mul)
 	local armR = (A.arm + A.glove) * (opts.mul or 1)
 	local Rv
 	if dy >= 0 then
@@ -357,23 +362,26 @@ end
 
 ------------------------------------------------------------------------
 -- Calibration: the unit rig against itself lands every punch at exactly BASE x RANGE[p] (the distance the fight
--- was balanced on) with a level stance, to the head
+-- was balanced on) with a level stance, to the head and to the body alike
 ------------------------------------------------------------------------
 do
 	local U = HitGeometry.Unit()
 	for p, rg in pairs(RANGE) do
 		local target = HitGeometry.BASE * rg
-		local lo, hi = 0.2, 4
-		for _ = 1, 40 do
-			local mid = (lo + hi) / 2
-			CAL[p] = mid
-			if HitGeometry.Test(U, U, p, false, target, { noRedirect = true }).ok then
-				hi = mid
-			else
-				lo = mid
+		CAL[p] = { head = 1, body = 1 }
+		for _, zone in ipairs({ "head", "body" }) do
+			local lo, hi = 0.2, 4
+			for _ = 1, 40 do
+				local mid = (lo + hi) / 2
+				CAL[p][zone] = mid
+				if HitGeometry.Test(U, U, p, zone == "body", target, { noRedirect = true }).ok then
+					hi = mid
+				else
+					lo = mid
+				end
 			end
+			CAL[p][zone] = hi
 		end
-		CAL[p] = hi
 	end
 end
 HitGeometry.CAL = CAL

@@ -464,7 +464,7 @@ local function printSlab(slab, share, seedK)
 		if rng:NextNumber() < fill then
 			local female = rng:NextNumber() < 0.38
 			local skin = c3(Looks.SkinTones[rng:NextInteger(1, #Looks.SkinTones)])
-			local shirt = c3(SHIRTS[rng:NextInteger(1, #SHIRTS)])
+			local shirt = c3(SHIRTS[rng:NextInteger(1, #SHIRTS)]):Lerp(rgb(90, 90, 96), 0.18)
 			local x = (c + 0.5) * colW + (rng:NextNumber() - 0.5) * colW * 0.12
 			local wk = female and 0.86 or (0.9 + rng:NextNumber() * 0.25)
 			local hk = 0.92 + rng:NextNumber() * 0.16
@@ -597,21 +597,26 @@ local function bowlRows(slab, share)
 		local heads, bodies = table.create(cols), table.create(cols)
 		for j = 1, cols do
 			if rng:NextNumber() < fill then
+				-- far and under the house lights: dim, a little grey, so the bowl reads as a crowd and not confetti
 				local sh = SHIRTS[rng:NextInteger(1, #SHIRTS)]
 				local sk = Looks.SkinTones[rng:NextInteger(1, #Looks.SkinTones)]
-				local kk = 0.6 + rng:NextNumber() * 0.4
+				local kk = 0.35 + rng:NextNumber() * 0.3
 				local hat = rng:NextNumber() < 0.4 and HATS[rng:NextInteger(1, #HATS)] or nil
 				local hc = hat or sk
-				heads[j] = string.format('<font color="#%02x%02x%02x">●</font>', math.floor(hc[1] * kk), math.floor(hc[2] * kk), math.floor(hc[3] * kk))
-				bodies[j] = string.format('<font color="#%02x%02x%02x">▆</font>', math.floor(sh[1] * kk), math.floor(sh[2] * kk), math.floor(sh[3] * kk))
+				local function dim(c)
+					local g = (c[1] + c[2] + c[3]) / 3
+					return math.floor((c[1] * 0.7 + g * 0.3) * kk), math.floor((c[2] * 0.7 + g * 0.3) * kk), math.floor((c[3] * 0.7 + g * 0.3) * kk)
+				end
+				heads[j] = string.format('<font color="#%02x%02x%02x">●</font>', dim(hc))
+				bodies[j] = string.format('<font color="#%02x%02x%02x">▮</font>', dim(sh))
 			else
 				heads[j] = '<font transparency="1">●</font>'
-				bodies[j] = '<font transparency="1">▆</font>'
+				bodies[j] = '<font transparency="1">▮</font>'
 			end
 		end
 		local rowH = 1 / rows
-		local hl = mk("TextLabel", { Name = "CrowdRow", BackgroundTransparency = 1, RichText = true, TextScaled = true, TextColor3 = WHITE, Text = table.concat(heads), Size = UDim2.fromScale(1, rowH * 0.5), Position = UDim2.fromScale(0, i * rowH), ZIndex = 3 }, sg)
-		local bl = mk("TextLabel", { Name = "CrowdRow", BackgroundTransparency = 1, RichText = true, TextScaled = true, TextColor3 = WHITE, Text = table.concat(bodies), Size = UDim2.fromScale(1, rowH * 0.55), Position = UDim2.fromScale(0, i * rowH + rowH * 0.45), ZIndex = 2 }, sg)
+		local hl = mk("TextLabel", { Name = "CrowdRow", BackgroundTransparency = 1, RichText = true, TextScaled = true, TextColor3 = WHITE, Text = table.concat(heads), Size = UDim2.fromScale(1, rowH * 0.42), Position = UDim2.fromScale(0, i * rowH + rowH * 0.04), ZIndex = 3 }, sg)
+		local bl = mk("TextLabel", { Name = "CrowdRow", BackgroundTransparency = 1, RichText = true, TextScaled = true, TextColor3 = WHITE, Text = table.concat(bodies), Size = UDim2.fromScale(1, rowH * 0.5), Position = UDim2.fromScale(0, i * rowH + rowH * 0.42), ZIndex = 2 }, sg)
 		Typography.Apply(hl, "glyph")
 		Typography.Apply(bl, "glyph")
 		table.insert(rec.rows, { h = hl, b = bl, y = i * rowH, rowH = rowH, phase = rng:NextNumber() * 6.28, d = rec.ringD + i * 2.6 })

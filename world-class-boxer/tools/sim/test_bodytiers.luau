@@ -167,6 +167,95 @@ do
 end
 
 ------------------------------------------------------------------------
+-- body frames (v12): every Config.BodyTypes frame has a mesh family of its own
+------------------------------------------------------------------------
+do
+	local Config = H.require("Config")
+	local ids = {}
+	for _, bt in ipairs(Config.BodyTypes) do
+		ids[bt.id] = bt
+	end
+	check("Config.BodyTypes: Lean, Muscular, Power Build and Heavyweight Build exist (and Athletic, the default family)",
+		ids.Lean and ids.Muscular and ids["Power Build"] and ids["Heavyweight Build"] and ids.Athletic)
+	-- the frame a Tiers() call is for: from the frame id, else from the potential Builder passes
+	check("FrameOf: an explicit frame id", BodyTiers.FrameOf({ frame = "Lean", potential = 1.25 }) == "Lean")
+	check("FrameOf: the BodyTypes entry with that potential", BodyTiers.FrameOf({ potential = ids["Power Build"].potential }) == "Power Build"
+		and BodyTiers.FrameOf({ potential = 0.8 }) == "Lean" and BodyTiers.FrameOf({ potential = 0.95 }) == "Athletic")
+	check("FrameOf: unknown -> the default family", BodyTiers.FrameOf({ potential = 0.123 }) == BodyTiers.DEFAULT_FRAME
+		and BodyTiers.FrameOf(nil) == "Athletic")
+	local t = BodyTiers.Tiers(build(50), { potential = 1.15 })
+	check("Tiers carries the frame", t.frame == "Power Build" and BodyTiers.Key(t) == string.rep("3", 14), t.frame)
+	-- the manifest: every frame family complete (ids, sizes, rig attachments), the same part names and attachment names
+	-- as the default family; the default family itself answers for an unknown frame
+	local frames = BodyTiers.Frames(REAL)
+	local hasFrames = type(REAL.frames) == "table" and next(REAL.frames) ~= nil
+	check("Frames(): the default family first", frames[1] == "Athletic")
+	if hasFrames then
+		local missing = {}
+		for _, fid in ipairs({ "Lean", "Muscular", "Power Build", "Heavyweight Build" }) do
+			if not BodyTiers.HasFrame(fid, REAL) then
+				table.insert(missing, fid .. " (no family)")
+			end
+			for tier = 1, 5 do
+				for _, n in ipairs(BodyTiers.PARTS) do
+					local e = BodyTiers.PartEntry(tier, n, REAL, false, fid)
+					local base = BodyTiers.PartEntry(tier, n, REAL)
+					if not (e and base) then
+						table.insert(missing, fid .. tier .. n)
+					else
+						if e.frame ~= fid then
+							table.insert(missing, fid .. tier .. n .. "(default family)")
+						end
+						if e.id == base.id then
+							table.insert(missing, fid .. tier .. n .. "(same mesh as Athletic)")
+						end
+						for an in pairs(base.attachments) do
+							if not e.attachments[an] then
+								table.insert(missing, fid .. tier .. n .. "(no " .. an .. ")")
+							end
+						end
+					end
+				end
+			end
+		end
+		check("manifest: 4 x 70 frame parts with their own ids and the rig attachments", #missing == 0,
+			table.concat(missing, ",", 1, math.min(#missing, 8)))
+		-- the frames read as different silhouettes: the shoulder span (BodyAssetData fit) climbs Lean < Athletic <
+		-- Muscular < Power Build, and the thighs / hips under the trunks stay what the gear was fitted to
+		local function fit(fid, tier, key)
+			return BodyTiers.Fit(tier, key, REAL, fid)
+		end
+		for _, tier in ipairs({ 1, 5 }) do
+			local sp = {}
+			for _, fid in ipairs({ "Lean", "Athletic", "Muscular", "Power Build" }) do
+				local f = REAL.frames[fid] and REAL.frames[fid].tiers[tier] or REAL.tiers[tier]
+				table.insert(sp, f.fit.shoulderSpan)
+			end
+			check(string.format("tier %d shoulder span: Lean %.2f < Athletic %.2f < Muscular %.2f < Power %.2f", tier, sp[1], sp[2], sp[3], sp[4]),
+				sp[1] < sp[2] and sp[2] < sp[3] and sp[3] < sp[4] and sp[4] / sp[1] > 1.2)
+			for _, fid in ipairs({ "Lean", "Muscular", "Power Build", "Heavyweight Build" }) do
+				local a, b = fit(fid, tier, "hips"), fit("Athletic", tier, "hips")
+				local c, d = fit(fid, tier, "thigh"), fit("Athletic", tier, "thigh")
+				local w, x = fit(fid, tier, "wrist"), fit("Athletic", tier, "wrist")
+				check(fid .. " tier " .. tier .. ": hips / thigh / wrist stay within the gear's fit",
+					a.width <= b.width + 0.01 and c.width <= d.width + 0.01 and math.abs(w.width - x.width) < 0.01,
+					string.format("%.3f/%.3f %.3f/%.3f %.3f/%.3f", a.width, b.width, c.width, d.width, w.width, x.width))
+			end
+		end
+		-- lite: the frames wear the default family's lite set
+		local le = BodyTiers.PartEntry(3, "UpperTorso", REAL, true, "Power Build")
+		local lb = BodyTiers.PartEntry(3, "UpperTorso", REAL, true)
+		check("a frame's lite part is the default family's", le and lb and le.id == lb.id and le.lite == lb.lite, le and le.id)
+	else
+		print("  (no frame families in the manifest yet: frame checks on the data skipped)")
+	end
+	local unknown = BodyTiers.PartEntry(3, "UpperTorso", REAL, false, "No Such Frame")
+	local base = BodyTiers.PartEntry(3, "UpperTorso", REAL)
+	check("an unknown frame wears the default family", unknown and base and unknown.id == base.id and unknown.frame == "Athletic")
+end
+end
+
+------------------------------------------------------------------------
 -- faces and expressions
 ------------------------------------------------------------------------
 do
@@ -632,7 +721,30 @@ do
 	local t3 = REAL.tiers[3]
 	print(string.format("body triangles: %d detailed, %d lite", t3.tris or 0, t3.liteTris or 0))
 	check("lite set lighter than the detailed one", (t3.liteTris or 0) > 0 and t3.liteTris < t3.tris)
-end
+	-- (v12) the frame families on the swap
+	local hasFrames = type(REAL.frames) == "table" and next(REAL.frames) ~= nil
+	-- the swap: a frame change swaps the parts of an unchanged tier (BuilderTiers.Apply follows tiers.frame)
+	if hasFrames then
+		BuilderTiers.Reset()
+		local model = newRig(Vector3.new(1, 1, 1), "keep")
+		local scale = Vector3.new(1, 1, 1)
+		local n1 = BuilderTiers.Apply(model, BodyTiers.Tiers(build(50), { potential = 0.95 }), scale)
+		local ut = model:FindFirstChild("UpperTorso")
+		check("frame swap: the default family first", n1 == 14 and ut:GetAttribute("BodyFrame") == "Athletic" and model:GetAttribute("BodyFrame") == "Athletic", n1)
+		local n2 = BuilderTiers.Apply(model, BodyTiers.Tiers(build(50), { potential = 1.15 }, BuilderTiers.Current(model)), scale)
+		ut = model:FindFirstChild("UpperTorso")
+		local pe = BodyTiers.PartEntry(3, "UpperTorso", REAL, false, "Power Build")
+		check("frame swap: a new frame swaps every part of the same tier", n2 == 14 and ut:GetAttribute("BodyFrame") == "Power Build"
+			and ut:GetAttribute("BodyMesh") == pe.id and ut:GetAttribute("BodyTier") == 3 and model:GetAttribute("BodyFrame") == "Power Build", n2)
+		local n3 = BuilderTiers.Apply(model, BodyTiers.Tiers(build(50), { potential = 1.15 }, BuilderTiers.Current(model)), scale)
+		check("frame swap: change-only", n3 == 0, n3)
+		-- the model's Frame attribute stands in when the tiers table carries none
+		model:SetAttribute("Frame", "Lean")
+		local plain = BodyTiers.Tiers(build(50), { potential = 1.15 })
+		plain.frame = nil
+		local n4 = BuilderTiers.Apply(model, plain, scale)
+		check("frame swap: the model's Frame attribute", n4 == 14 and model:FindFirstChild("UpperTorso"):GetAttribute("BodyFrame") == "Lean", n4)
+	end
 
 ------------------------------------------------------------------------
 -- the asset hair on the classic head
@@ -699,7 +811,23 @@ do
 	check("women: narrower shoulders, smaller head", near(ws.width, 0.92) and near(ws.depth, 0.94) and near(ws.head, 0.7724 * 0.97, 1e-4))
 	man.body.frame = "Heavyweight Build"
 	local hs = Builder.Scales(man, build(8))
-	check("Heavyweight frame: wider and deeper, bigger head", near(hs.width, 1.18) and near(hs.depth, 1.14) and near(hs.head, 0.85 * 0.942, 1e-4))
+	check("Heavyweight frame: wider and deeper, bigger head", near(hs.width, 1.17) and near(hs.depth, 1.16) and near(hs.head, 0.85 * 0.942, 1e-4))
+	man.body.frame = "Lean"
+	local ls = Builder.Scales(man, build(8))
+	check("Lean frame: narrower, smaller head", ls.width < 0.95 and ls.depth < 0.95 and ls.head < sc.head)
+	check("the four frames' scales climb Lean < Muscular < Power Build < Heavyweight Build", (function()
+		local last = 0
+		for _, id in ipairs({ "Lean", "Muscular", "Power Build", "Heavyweight Build" }) do
+			man.body.frame = id
+			local w = Builder.Scales(man, build(8)).width
+			if w <= last then
+				return false
+			end
+			last = w
+		end
+		return true
+	end)())
+	man.body.frame = "Athletic"
 	man.height = 76
 	check("height scales with inches / 70", near(Builder.Scales(man, build(8)).height, 76 / 70))
 	check("Builder.Tiers", Builder.Tiers(Looks.Defaults(1), build(95)).UpperTorso == 5)

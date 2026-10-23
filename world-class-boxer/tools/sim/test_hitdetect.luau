@@ -265,22 +265,24 @@ do
 			redirects += 1
 		end
 	end
-	place(4.4)
+	place(3.9)
 	local b0 = P.tally.body
 	for _ = 1, 30 do
 		f:Resolve(P, O, "jab", false, 1)
 	end
 	bodyHits = P.tally.body - b0
-	check("engine: the short man's jab from 4.4 is thrown to the tall man's body", redirects == 30 and bodyHits > 0 and bodyHits == P.totals.landed, redirects .. " / " .. bodyHits)
+	check("engine: the short man's jab from 3.9 is thrown to the tall man's body", redirects == 30 and bodyHits > 0 and bodyHits == P.totals.landed, redirects .. " / " .. bodyHits)
+	check("engine: the short man's jab from 4.4 reaches nothing on the tall man", not f:HitTest(P, O, "jab", false, 4.4).ok and f:HitTest(P, O, "jab", false, 4.4).why == "short")
 	check("engine: the tall man's jab from 4.4 is a head shot", f:HitTest(O, P, "jab", false, 4.4).ok and f:HitTest(O, P, "jab", false, 4.4).zone == "head")
 	check("engine: the short man's jab inside reaches the chin", f:HitTest(P, O, "jab", false, 3.4).zone == "head")
 	check("engine: a rolling tall man is a head target from range", (function()
 		O.rollUntil = f:Now() + 1
-		local t = f:HitTest(P, O, "jab", false, 4.4)
+		local t = f:HitTest(P, O, "jab", false, 3.8)
 		O.rollUntil = 0
 		return t.ok and t.zone == "head"
 	end)())
 	check("engine: a Punch at a tall man from range is thrown to the body (the act says so)", (function()
+		place(3.9)
 		P.busyUntil, P.state = 0, "idle"
 		P.stamina = P.maxStam
 		f:Punch(P, "jab", false)

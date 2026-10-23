@@ -735,6 +735,38 @@ for _, kind in ipairs(KINDS) do
 				end
 				record(name, arena)
 				scene.cameras[name] = cfArr(CFrame.new(c))
+				-- which dumped parts are the crowd's / the stands' / the bowl's (dumpRoot indexes BaseParts in GetDescendants order)
+				do
+					local idx, mine = 0, {}
+					local own = {}
+					for _, fn in ipairs({ "Crowd", "Stands", "Bowl" }) do
+						local f = arena:FindFirstChild(fn)
+						if f then
+							own[f] = true
+							for _, d in ipairs(f:GetDescendants()) do
+								own[d] = true
+							end
+						end
+					end
+					for _, d in ipairs(arena:GetDescendants()) do
+						if d:IsA("BasePart") then
+							idx += 1
+							if own[d] or d.Name == "FanBanner" then
+								table.insert(mine, idx)
+							end
+						end
+					end
+					scene.crowdParts = scene.crowdParts or {}
+					scene.crowdParts[name] = mine
+				end
+				if v[2] and CrowdFX then
+					-- the wave: its value near the ring and far out, 0.5 s in (test_crowd)
+					local now = os.clock()
+					scene.wave = scene.wave or {}
+					scene.wave[name] = { near = CrowdFX.ReactValue(10, now - v[2].at + 0.5), far = CrowdFX.ReactValue(60, now - v[2].at + 0.5), later = CrowdFX.ReactValue(60, now - v[2].at + 1.6) }
+					Crowd.React(arena, "knockdown", { who = "opp" })
+					scene.reactAttr = arena:GetAttribute("CrowdReact")
+				end
 				scene.crowd[name] = Crowd.Counts(arena)
 				scene.crowd[name].share = arena:GetAttribute("CrowdShare")
 				scene.crowd[name].total = scene.counts[name].parts

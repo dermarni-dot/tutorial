@@ -6,8 +6,9 @@ manifest src/shared/BodyAssetData.lua (format: tools/body/CONTRACT.md).
     python3 tools/body/publish_body.py --check            # also re-query the moderation state of every id
     python3 tools/body/publish_body.py --local [OUT.lua]  # offline: fake ids, nothing uploaded
 
-* Inputs: tools/body/out/tier<N>/parts.json + <Part>.mesh (build_body.py), tools/body/out/body_tiers.json
-  (the unit rig), tools/body/out/faces/faces.json + face_<key>.png (faces.py).
+* Inputs: tools/body/out/tier<N>/parts.json + <Part>.mesh (build_body.py: the Athletic frame, the default family),
+  tools/body/out/frames/<key>/tier<N>/ (the other frames' families -> manifest `frames[<frame id>]`),
+  tools/body/out/body_tiers.json (the unit rig), tools/body/out/faces/faces.json + face_<key>.png (faces.py).
 * Creator: ROBLOX_CREATOR_ID / ROBLOX_CREATOR_TYPE (group | user). API key: injected by the proxy for
   apis.roblox.com (or ROBLOX_API_KEY when set).
 * Meshes go up as assetType "Mesh" (model/x-file-mesh-data), faces as "Image" (image/png). The upload / cache /
@@ -86,22 +87,33 @@ def main():
     uploaded_before = set(v["id"] for v in cache.values())
 
     with open(os.path.join(OUT, "body_tiers.json")) as f:
-        unit = json.load(f)["unit"]
+        bt = json.load(f)
+    unit = bt["unit"]
     tiers = []
     used = []
-    for pj in sorted(glob.glob(os.path.join(OUT, "tier*", "parts.json")), key=lambda p: int(p.split("tier")[-1][0])):
+
+    def tier_dirs(root):
+        return sorted(glob.glob(os.path.join(root, "tier*", "parts.json")),
+                      key=lambda p: int(os.path.basename(os.path.dirname(p))[4:]))
+
+    def upload_parts(td, d, tag, label):
+        parts = {}
+        n = td["tier"]
+        for name in PARTS:
+            rec = td["parts"][name]
+            mid = hp.ensure(cache, os.path.join(d, rec["mesh_file"]), "Mesh", f"WCB Body {tag}T{n} {name}",
+                            f"Become a World Class Boxer: {label}muscle tier {n} ({td['name']}) R15 body part {name}",
+                            "model/x-file-mesh-data", dry, local)
+            used.append(mid)
+            parts[name] = {"mesh": mid, "size": rec["size"], "attachments": rec["attachments"], "nt": rec["nt"]}
+        return parts
+
+    for pj in tier_dirs(OUT):
         with open(pj) as f:
             td = json.load(f)
         n = td["tier"]
         d = os.path.dirname(pj)
-        parts = {}
-        for name in PARTS:
-            rec = td["parts"][name]
-            mid = hp.ensure(cache, os.path.join(d, rec["mesh_file"]), "Mesh", f"WCB Body T{n} {name}",
-                            f"Become a World Class Boxer: muscle tier {n} ({td['name']}) R15 body part {name}",
-                            "model/x-file-mesh-data", dry, local)
-            used.append(mid)
-            parts[name] = {"mesh": mid, "size": rec["size"], "attachments": rec["attachments"], "nt": rec["nt"]}
+        parts = upload_parts(td, d, "", "")
         # the lite detail set (Config.Detail.meshes "lite": the v9 meshes, kept in tools/body/out/lite/tier<N>): their
         # hashes are in the cache, so they keep their ids and nothing is uploaded again
         lite_tris = None
@@ -123,6 +135,22 @@ def main():
                       "parts": parts})
     if [t["tier"] for t in tiers] != [1, 2, 3, 4, 5]:
         raise SystemExit("expected tiers 1-5 in tools/body/out, got %s" % [t["tier"] for t in tiers])
+    # the other frames' families: out/frames/<key>/tier<N> (build_body.FRAMES; the frame id is in parts.json)
+    frames = {}
+    for fdir in sorted(glob.glob(os.path.join(OUT, "frames", "*"))):
+        key = os.path.basename(fdir)
+        ftiers, fid = [], None
+        for pj in tier_dirs(fdir):
+            with open(pj) as f:
+                td = json.load(f)
+            fid = td.get("frame") or fid
+            n = td["tier"]
+            parts = upload_parts(td, os.path.dirname(pj), f"{key} ", f"{fid} frame, ")
+            ftiers.append({"tier": n, "name": td["name"], "tris": td["tris"], "fit": td["fit"], "parts": parts,
+                           "armAxisX": td.get("armAxisX")})
+        if [t["tier"] for t in ftiers] != [1, 2, 3, 4, 5]:
+            raise SystemExit("frame %s: expected tiers 1-5 in %s, got %s" % (key, fdir, [t["tier"] for t in ftiers]))
+        frames[fid] = {"key": key, "tiers": ftiers}
 
     with open(os.path.join(OUT, "faces", "faces.json")) as f:
         fj = json.load(f)
@@ -154,6 +182,11 @@ def main():
         "unit": unit,
         "tiers": [dict({"name": t["name"], "tris": t["tris"], "fit": t["fit"], "parts": t["parts"]},
                        **({"liteTris": t["liteTris"]} if t["liteTris"] else {})) for t in tiers],
+        "frames": {fid: {"key": fr["key"],
+                         "tiers": [{"name": t["name"], "tris": t["tris"], "fit": t["fit"], "parts": t["parts"],
+                                    "armAxisX": t["armAxisX"]} for t in fr["tiers"]]}
+                   for fid, fr in frames.items()},
+        "defaultFrame": "Athletic",
         "faces": faces,
         "defaultFace": fj.get("default", "smile"),
         "expressions": fj["expressions"],
@@ -168,7 +201,9 @@ def main():
             "-- default part / face. expressions: mood -> face key; a nil entry = the boxer's own chosen face.\n"
             "-- tiers[n].fit: gear-fit girths / widths (studs, unscaled, convex hull) at fixed heights (rest space).\n"
             "-- parts[<Part>].lite: the same part in the lite detail set (Config.Detail.meshes = \"lite\": the v9 mesh,\n"
-            "-- its own size and attachments; liteTris = that set's triangles per body).\n")
+            "-- its own size and attachments; liteTris = that set's triangles per body).\n"
+            "-- frames[<Config.BodyTypes id>] = { key, tiers = { [1..5] = { parts, fit, tris, armAxisX } } }: that frame's own\n"
+            "-- mesh family (v12; the Athletic frame is `tiers`, the default family, with the lite set and the gear fit).\n")
     if local:
         head = ("-- LOCAL manifest from tools/body/publish_body.py --local: FAKE asset ids (nothing uploaded), for\n"
                 "-- offline simulation only. Each id's file is in the .ids.json sidecar next to this file.\n")
@@ -185,7 +220,8 @@ def main():
         print("wrote", out, "(fake ids);", side, len(local.files), "files")
     else:
         zero = sum(1 for i in used if not i)
-        print("wrote", os.path.relpath(MANIFEST, ROOT), "%d tiers, %d faces, %d ids missing" % (len(tiers), len(faces), zero))
+        print("wrote", os.path.relpath(MANIFEST, ROOT), "%d tiers, %d frames, %d faces, %d ids missing"
+              % (len(tiers), len(frames), len(faces), zero))
 
 
 if __name__ == "__main__":
