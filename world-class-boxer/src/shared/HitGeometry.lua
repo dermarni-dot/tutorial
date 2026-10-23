@@ -51,7 +51,7 @@ HitGeometry.CLINCH = 4.8
 -- lands - the jab registered to 4.86 where it visibly landed to 5.35, the hooks to the body a stud short - which is
 -- the Studio report's "all the punches are inaccurate". tools/sim/test_hitdetect holds every pairing to 0.25 stud
 local TARGET = {
-	jab = { head = 5.39, body = 4.69 },
+	jab = { head = 5.39, body = 4.77 },
 	cross = { head = 5.71, body = 5.49 },
 	leadhook = { head = 5.21, body = 5.26 },
 	rearhook = { head = 5.40, body = 5.84 },
@@ -69,12 +69,12 @@ HitGeometry.RIG = RIG
 -- the shoulder and turns the cross through it, so a broad man's hooks land a stud further than a lean man's at the
 -- same height, while the jab and the uppercut barely care (fitted over the 25 pairings)
 local WIDE = {
-	jab = { head = 0.15, body = 0.67 },
-	cross = { head = 0.85, body = 0.74 },
+	jab = { head = 0.14, body = 0.64 },
+	cross = { head = 0.86, body = 0.74 },
 	leadhook = { head = 3.14, body = 1.85 },
-	rearhook = { head = 0.87, body = 2.04 },
-	uppercut = { head = -0.18, body = 0.00 },
-	overhand = { head = -0.20, body = -0.20 },
+	rearhook = { head = 0.85, body = 2.04 },
+	uppercut = { head = -0.18, body = -0.01 },
+	overhand = { head = -0.21, body = -0.21 },
 }
 HitGeometry.WIDE = WIDE
 HitGeometry.TARGET = TARGET
@@ -454,7 +454,10 @@ function HitGeometry.Test(A, B, ptype, body, dist, opts)
 	end
 	-- a head shot that cannot get up there (a much taller man, out at range) lands on the body when the
 	-- glove reaches that far: the punch is thrown, it just lands low
-	if r.why == "high" or (r.why == "short" and r.dy > 0.3) then
+	-- (a short miss falls to the body only when it is the height that beat it - a notably taller man: between two men
+	-- of a height a hook that is short of the head is short, not a body shot, even where the animation's body hook
+	-- reaches a little further than its head hook)
+	if r.why == "high" or (r.why == "short" and r.dy > 0.3 and B.headY - A.headY > 0.25) then
 		local b = tryZone(A, B, kind, K, ptype, "body", dist, o)
 		if b.ok then
 			b.redirected = true

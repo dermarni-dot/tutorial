@@ -4,11 +4,11 @@ local fs = require("@lune/fs")
 local serde = require("@lune/serde")
 local process = require("@lune/process")
 local Host = require("./host")
-local H = Host.new()
+local H = Host.new({ root = (process.args[3] and process.args[3] ~= "" and process.args[3]) or nil })
 local HG = H.require("HitGeometry")
 local dir = process.args[1]
 local C = tonumber(process.args[2]) or 0.15
-local function boundary(list)
+local function boundary0(list)
 	for i = 1, #list do
 		local a, b = list[i], list[i + 1]
 		if a.surf > C and (b == nil or b.surf > C) then
@@ -30,7 +30,7 @@ for _, f in ipairs(fs.readDir(dir)) do
 			local list = d.punches[key]
 			if list then
 				local p, z = key:match("^(%a+)|?(%a*)$")
-				local anim = boundary(list)
+				local anim = d.boundary and d.boundary[key] or boundary0(list)
 				local hg = HG.Range(A, B, p, z == "body")
 				local e = hg - anim
 				worst = math.max(worst, math.abs(e)); n += 1; sum += e

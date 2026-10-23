@@ -16,8 +16,8 @@ for i = 1, N do
 	w += r.winner == "red" and 1 or (r.winner == "draw" and 0.5 or 0)
 	if r.method == "KO" or r.method == "TKO" then ko += 1 end
 	rr += r.round
-	st.rt += r.thrown.red; st.rl += r.landed.red; st.bt += r.thrown.blue; st.bl += r.landed.blue; st.secs += r.seconds; st.rkd += r.kd.red; st.bkd += r.kd.blue; st.rd += r.P.damageDealt; st.bd += r.O.damageDealt
+	st.rt += r.thrown.red; st.rl += r.landed.red; st.bt += r.thrown.blue; st.bl += r.landed.blue; st.secs += r.seconds; st.rkd += r.kd.red; st.bkd += r.kd.blue; st.rd += r.P.damageDealt; st.rb = (st.rb or 0) + r.P.totals.body; st.bb = (st.bb or 0) + r.O.totals.body; st.bd += r.O.damageDealt
 end
 local t = {}
 for k, v in pairs(modes) do table.insert(t, k .. "=" .. v) end
-print(string.format("%s vs %s: red %.2f ko %.2f r%.1f | red %.0f/min %.0f%% dmg %.0f kd %d | blue %.0f/min %.0f%% dmg %.0f kd %d | blue modes %s", a, b, w / N, ko / N, rr / N, st.rt / st.secs * 60, st.rl / st.rt * 100, st.rd / N, st.rkd, st.bt / st.secs * 60, st.bl / st.bt * 100, st.bd / N, st.bkd, table.concat(t, " ")))
+print(string.format("%s vs %s: red %.2f ko %.2f r%.1f body share red %.0f%% blue %.0f%% | red %.0f/min %.0f%% dmg %.0f kd %d | blue %.0f/min %.0f%% dmg %.0f kd %d | blue modes %s", a, b, w / N, ko / N, rr / N, st.rb / st.rl * 100, st.bb / st.bl * 100, st.rt / st.secs * 60, st.rl / st.rt * 100, st.rd / N, st.rkd, st.bt / st.secs * 60, st.bl / st.bt * 100, st.bd / N, st.bkd, table.concat(t, " ")))

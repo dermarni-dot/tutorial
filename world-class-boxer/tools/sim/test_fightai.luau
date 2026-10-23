@@ -925,6 +925,22 @@ do
 	end)
 	check("balance: stoppages happen, but not every fight", ko >= 0.1 and ko <= 0.95, ko)
 	check("balance: fights last", rounds >= 2.5, rounds)
+	-- the harder AI's bands (FightAI's work rate, its defence and its punch choice against the engine's health and
+	-- knockdown rules; measured over 48 fights a cell when they were set: equal level 60, mixed styles, traits on -
+	-- about 4.3 rounds, 75-90% stoppages, 33-38 punches a minute each, 30% landed, 2.5 damage a landed punch;
+	-- 5cff75c, before the work-rate floors, read 83% / 4.1 rounds / 31 a minute / 31%). A busier AI that lands
+	-- more and harder ends its fights in a round or two: these hold it to fights that go the rounds
+	check("bands: equal men go the rounds (average past 3.5)", rounds >= 3.5, rounds)
+	local th, la, secs = 0, 0, 0
+	for i = 1, (QUICK and 6 or 12) do
+		local r = S.Fight({ red = { style = STYLES[(i % 5) + 1], level = 60 }, blue = { style = STYLES[((i + 2) % 5) + 1], level = 60 }, rounds = 6, seed = i * 7919 + 13 })
+		th += r.thrown.red + r.thrown.blue
+		la += r.landed.red + r.landed.blue
+		secs += r.seconds
+	end
+	local ppm, acc = th / math.max(1, secs) * 30, la / math.max(1, th)
+	check("bands: an AI throws a boxer's work rate (24-50 a minute)", ppm >= 24 and ppm <= 50, ppm)
+	check("bands: and lands a realistic share (22-40%)", acc >= 0.22 and acc <= 0.4, acc)
 end
 do
 	-- the scripted players: a low-level AI is beatable, a high-level one a puzzle a one-trick player can't solve

@@ -7,7 +7,7 @@ if process.args[2] and process.args[2] ~= "" then
 	luau.load(process.args[2], { environment = setmetatable({ AIC = S.Config.FightAI, S = S }, { __index = _G }) })()
 end
 local STY = { "OutBoxer", "Swarmer", "Slugger", "BoxerPuncher", "CounterPuncher" }
-local m, rounds, kds, n = {}, {}, 0, 24
+local m, rounds, kds, n = {}, {}, 0, tonumber(process.args[3]) or 24
 local firstKD = 0
 local th, la, dmg, secs, ctr = 0, 0, 0, 0, 0
 for i = 1, n do

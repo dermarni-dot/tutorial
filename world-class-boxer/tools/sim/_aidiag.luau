@@ -1,7 +1,7 @@
 --!nocheck
 local process = require("@lune/process")
 local FS = require("./fightsim")
-local S = FS.new()
+local S = FS.new({ root = (process.args[4] and process.args[4] ~= "" and process.args[4]) or nil })
 local bot = process.args[1] or "pressure"
 local lvl = tonumber(process.args[2]) or 40
 local N = tonumber(process.args[3]) or 6

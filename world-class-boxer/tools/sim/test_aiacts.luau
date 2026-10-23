@@ -307,7 +307,7 @@ local function career(spec)
 		end
 	end
 	out.done = done
-	if not done and os.getenv("AIACTS_DEBUG") then
+	if not done and process.env.AIACTS_DEBUG then
 		local f = FightEngine.Active[player]
 		local last = {}
 		for i = math.max(1, #msgs - 4), #msgs do
@@ -428,24 +428,20 @@ do
 		check("brain: a hurt man is finished upstairs", headOnly)
 		check("brain: nothing fits from across the ring", ai:ExploitCombo("hurt", 12) == nil)
 	end
-	-- survival is for the stun and the first seconds of a daze, not the rest of the bout
+	-- survival is for a dazed head; the other man dazed is the finish; low on health but clear-headed it fights on
 	do
 		local f, ai = newFight("BoxerPuncher", 60)
 		f.O.health, f.O.tier = 25, 1
 		ai:UpdateMode()
-		check("brain: freshly dazed it survives (holds, covers, moves)", ai.mode == "survive", ai.mode)
-		S.advance(12)
-		ai.nextMode = 0
-		ai:UpdateMode()
-		check("brain: a dazed boxer then boxes on, guarded (never a whole round running)", ai.mode == "guarded", ai.mode)
-		f.P.tier, f.P.health = 1, 25
-		ai.nextMode = 0
-		ai:UpdateMode()
-		check("brain: both of them hurt, it goes for the finish", ai.mode == "finish", ai.mode)
+		check("brain: dazed it survives (holds, covers, moves, still throws at its survival floor)", ai.mode == "survive", ai.mode)
 		local g, ai2 = newFight("BoxerPuncher", 60)
 		g.O.health = 31
 		ai2:UpdateMode()
 		check("brain: low on health but clear-headed it keeps fighting", ai2.mode ~= "survive", ai2.mode)
+		g.P.tier, g.P.health = 1, 25
+		ai2.nextMode = 0
+		ai2:UpdateMode()
+		check("brain: him dazed, it goes for the finish", ai2.mode == "finish", ai2.mode)
 	end
 	-- the read of his feet: a man who keeps backing away
 	do
@@ -467,6 +463,29 @@ do
 		end
 		check("brain: its guesses keep missing, its prediction rate falls", ai.predAcc < 0.3, ai.predAcc)
 	end
+	-- the punch for the distance: the jab and the cross from range, the hooks and the uppercut from inside (the
+	-- animation's hook lunges out past the jab and registers where it lands, but a boxer does not choose it there)
+	do
+		local f, ai = newFight("BoxerPuncher", 60)
+		local jab = f:PunchRange(f.O, "jab")
+		check("brain: from out at its jab's reach it throws the jab, not the hook", ai:Fits("jab", jab * 0.9) and not ai:Fits("leadhook", jab * 0.9) and not ai:Fits("uppercut", jab * 0.9))
+		check("brain: inside, the hooks and the uppercut", ai:Fits("leadhook", jab * 0.6) and ai:Fits("uppercut", jab * 0.6))
+	end
+	-- the guard between its punches (the defence that keeps a busier AI's fights going the rounds); an out-boxer's
+	-- defence is his feet
+	do
+		local f, ai = newFight("BoxerPuncher", 60)
+		always(ai)
+		f.O.state, f.O.blocking = "idle", false
+		check("brain: in his reach and not punching, its hands are up", ai:HandsUp(S.now(), f:PunchRange(f.P, "jab") - 0.5) and f.O.blocking == true)
+		check("brain: out of his reach it keeps them free", not ai:HandsUp(S.now(), f:PunchRange(f.P, "jab") + 1.5))
+		local g, ob = newFight("OutBoxer", 60)
+		always(ob)
+		g.O.state, g.O.blocking = "idle", false
+		check("brain: an out-boxer moves rather than shells (his body sound)", not ob:HandsUp(S.now(), g:PunchRange(g.P, "jab") - 0.5))
+		g.O.body = 40
+		check("brain: ...and keeps his elbows in once his body is going", ob:HandsUp(S.now(), g:PunchRange(g.P, "jab") - 0.5))
+	end
 	-- the style's brain: a counter-puncher counters and punishes more than a swarmer, a swarmer presses harder
 	do
 		local T = FightAI.TACTICS
@@ -477,8 +496,8 @@ do
 	-- the harder default: every level's work floor, the tiers' reaction and read
 	do
 		local C = Config.FightAI
-		check("tiers: the debut floor is a real work rate (>= 24 a minute)", C.Tier(0).floor >= 24, C.Tier(0).floor)
-		check("tiers: the elite floor is a champion's (>= 48 a minute)", C.Tier(99).floor >= 48, C.Tier(99).floor)
+		check("tiers: the debut floor is a real work rate (>= 12 a minute)", C.Tier(0).floor >= 12, C.Tier(0).floor)
+		check("tiers: the elite floor is a champion's (>= 30 a minute)", C.Tier(99).floor >= 30, C.Tier(99).floor)
 		check("tiers: the floor never drops with the level", (function()
 			for l = 0, 98 do
 				if C.Tier(l + 1).floor < C.Tier(l).floor then

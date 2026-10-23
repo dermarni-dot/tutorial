@@ -102,8 +102,8 @@ local MISTAKES = { straight = { "duck", "weave" }, hook = { "parry", "parry", "s
 -- the work rate up close (a swarmer lives there, an out-boxer leaves); smother = how readily it ties up a man
 -- who rushes it; body = its extra share to the body; check = how readily it jabs a man as he steps into range
 local TACTICS = {
-	OutBoxer = { counter = 1.1, punish = 1.15, press = 0.85, volume = 1.25, inside = 0.8, smother = 1.6, body = 0, check = 1.7 },
-	Swarmer = { counter = 0.85, punish = 1.05, press = 1.35, volume = 1.1, inside = 1.35, smother = 0.5, body = 0.12, check = 0.4 },
+	OutBoxer = { counter = 1.1, punish = 1.15, press = 0.85, volume = 1.25, inside = 0.8, smother = 1.2, body = 0, check = 1.7 },
+	Swarmer = { counter = 0.85, punish = 1.05, press = 1.35, volume = 1.1, inside = 1.35, smother = 0.5, body = 0.06, check = 0.4 },
 	Slugger = { counter = 0.9, punish = 1.2, press = 1.2, volume = 0.9, inside = 1.15, smother = 0.8, body = 0.05, check = 0.7 },
 	CounterPuncher = { counter = 1.5, punish = 1.45, press = 0.85, volume = 0.95, inside = 0.95, smother = 1, body = 0, check = 1.3 },
 	BoxerPuncher = { counter = 1.2, punish = 1.2, press = 1.05, volume = 1.05, inside = 1.05, smother = 0.9, body = 0.04, check = 1 },
@@ -467,6 +467,9 @@ function FightAI:OnOppPunch(ptype, body, windup, info)
 	-- (the tier's read: a world-class boxer defends more of what he sees, a debut's less)
 	local chance = (s.Reflexes * 0.5 + s.RingIQ * 0.3 + s.HeadMovement * 0.2) / 100 * 0.9 * (0.85 + 0.25 * self.tier.read)
 	chance += (self.anticipate[ptype] or 0) * 0.3
+	-- (what it sees on its own is capped before the read adds on top: a sharp defender's eye never hides what tonight's
+	-- read of him taught it)
+	chance = math.min(chance, 0.7)
 	-- slip the punch he throws most (the read of tonight); a body puncher's shots are expected low
 	chance += self.read:Share(ptype) * 0.25 * self.arch.adapt
 	if body then
@@ -492,7 +495,7 @@ function FightAI:OnOppPunch(ptype, body, windup, info)
 		return
 	end
 	-- (engine.aiDefense: the tutorial's opponent reacts far less, so the lesson's punches land)
-	chance = math.clamp(chance, 0.05, 0.85) * (engine.aiDefense or 1)
+	chance = math.clamp(chance, 0.05, 0.9) * (engine.aiDefense or 1)
 	-- a feint: it bites as on any jab, less once it has seen him feint a lot (and the smarter it is) - after the cap,
 	-- so a sharp defender's high reaction rate never hides what the read taught it
 	if info.feint then
@@ -684,16 +687,16 @@ function FightAI:UpdateMode()
 		self.mode = self.plan
 	end
 	local intel = self:Intel()
-	self.bodyBias = 0.12 + self.arch.body + self.tactics.body + intel.blockRatio * 0.55 * self.arch.adapt
+	self.bodyBias = 0.12 + self.arch.body + self.tactics.body + intel.blockRatio * 0.35 * self.arch.adapt
 	-- he blocks the moment it throws: go round it (the body) - and his Iron Chin wants the body too. The more of
 	-- its head shots meet his gloves, the more it digs downstairs (a thinking boxer more than a raw one)
-	self.bodyBias += math.max(0, self.read:ReactBlock() - 0.25) * (0.3 + 0.5 * self.skill) * self.arch.adapt
+	self.bodyBias += math.max(0, self.read:ReactBlock() - 0.55) * (0.3 + 0.5 * self.skill) * self.arch.adapt
 	if self.mode == "finish" then
 		self.bodyBias *= 0.3 -- head hunting
 	end
 	-- [FrameTraits] a boxer who knows his trade goes to a Lean man's body (and not a heavyweight's)
 	self.bodyBias += (1 - (self.oFrame.bodyAbsorb or 1)) * 0.6 * self.skill
-	self.bodyBias = math.clamp(self.bodyBias, 0, 0.7)
+	self.bodyBias = math.clamp(self.bodyBias, 0, 0.55)
 	self.exploitGassed = O.stamina < O.maxStam * 0.3
 end
 
@@ -897,8 +900,8 @@ function FightAI:BuildCombo()
 		end
 		-- (a man shelled up in front of it is open downstairs: the hooks go round the guard to the body)
 		local bb = self.bodyBias
-		if self.O.blocking and (p == "leadhook" or p == "rearhook" or p == "jab") then
-			bb = math.min(0.85, bb + 0.35 * (0.5 + 0.5 * self.skill))
+		if self.O.blocking and self.skill >= 0.4 and (p == "leadhook" or p == "rearhook") then
+			bb = math.min(0.7, bb + 0.2 * (0.5 + 0.5 * self.skill))
 		end
 		local body = p ~= "overhand" and self.rng:NextNumber() < bb
 		table.insert(list, { p = p, body = body })
@@ -979,7 +982,7 @@ function FightAI:BodyFlip(p, body)
 	if body or p == "overhand" or p == "cross" or p == "uppercut" then
 		return body
 	end
-	local k = math.max(0, self.bodyBias - 0.18) * (0.6 + 0.6 * self.skill) + (self.O.blocking and 0.25 * self.skill or 0)
+	local k = math.max(0, self.bodyBias - 0.2) * (0.4 + 0.4 * self.skill) + (self.O.blocking and 0.15 * self.skill or 0)
 	return self.rng:NextNumber() < k
 end
 
@@ -1111,7 +1114,7 @@ function FightAI:Think(now)
 	end
 	local clinchRange = engine.ClinchRange and engine:ClinchRange(F) or SPACING.clinch * rk
 	if self.mode == "survive" or self.mode == "reset" then
-		local hold = self.mode == "survive" and (tier >= 1 and 0.6 or 0.35) or 0.12
+		local hold = (self.mode == "survive" and (tier >= 1 and 0.6 or 0.35) or 0.12) * (0.7 + 0.3 * self.tactics.smother)
 		-- (and a boxer who knows his trade ties up to kill his momentum when it is all his)
 		if engine.Mom and engine:Mom(F) < -0.5 and self.skill >= 0.4 then
 			hold += 0.2
@@ -1168,6 +1171,11 @@ function FightAI:Think(now)
 	-- its own defence worked (a slip, a parry, a roll: the engine's counter window): fire back - the timed counter a
 	-- boxer drills, more from a counter-puncher and a high tier
 	local counterK = math.clamp((0.12 + 0.3 * self.skill) * self.tactics.counter * math.min(1.15, self.tier.read), 0.1, 0.7)
+	-- (out of the guard - the window a blocked shot opens - the counter is the exception, not the rule: a boxer firing
+	-- back off every shot that hits his gloves turned every exchange into a knockdown)
+	if F.blocking then
+		counterK *= 0.4
+	end
 	if now < F.counterUntil and self:Fits("jab", dist) and self.rng:NextNumber() < counterK then
 		self:Throw(self:CounterPunch(dist), false)
 		self:Note(now, "counter")
@@ -1184,7 +1192,7 @@ function FightAI:Think(now)
 			self:Note(now, "meets the rush: " .. p)
 			return
 		end
-		if dist < clinchRange and self.rng:NextNumber() < 0.05 * self.tactics.smother * self.skill and engine:CanClinch(F) then
+		if dist < clinchRange and self.rng:NextNumber() < 0.12 * self.tactics.smother * self.skill and engine:CanClinch(F) then
 			engine:Clinch(F)
 			self:Note(now, "ties up the rush")
 			return
@@ -1242,6 +1250,14 @@ function FightAI:Think(now)
 	work *= pressing and T.press or (dist < jab * 0.8 and T.inside or T.volume)
 	if self.mode == "finish" then
 		work *= 1.1 -- (he is hurt: go and end it)
+	end
+	-- outworked: a man throwing more than it over the last ten seconds is matched (a boxer losing the work rate picks
+	-- his own up; two men at an even pace leave each other be)
+	if engine.RecentThrows then
+		local his, mine = engine:RecentThrows(O, 10), engine:RecentThrows(F, 10)
+		if his > mine * 1.2 + 1 then
+			work *= math.min(1.4, 1 + (his - mine) / math.max(4, mine) * 0.5)
+		end
 	end
 	local open = self:Opening(now, dist, jab)
 	if open then
@@ -1310,7 +1326,8 @@ function FightAI:HandsUp(now, dist)
 	-- (the guard slows the feet: a mover who wants out of range - an out-boxer's plan, a reset, a cruise - uses his
 	-- footwork for his defence and keeps his hands free to move)
 	local mover = self.mode == "outbox" or self.mode == "bait" or self.mode == "cruise" or self.mode == "reset"
-	if (mover and dist < self:Range() * 0.95) or (self.style.id == "OutBoxer" and not F.onRopes) then
+	-- (but with his body going - the liver, the empty tank - even a mover keeps his elbows in)
+	if F.body >= 50 and ((mover and dist < self:Range() * 0.95) or (self.style.id == "OutBoxer" and not F.onRopes)) then
 		return false
 	end
 	local k = (0.6 + 0.4 * self.skill) * (0.8 + self.arch.block) * (0.85 + 0.15 * self.tier.read) * (engine.aiDefense or 1)
@@ -1441,7 +1458,7 @@ function FightAI:ClinchThink(now)
 		return -- hold on
 	end
 	local inside = self.style.fight.inside or 1
-	if F.stamina > F.maxStam * 0.3 and (O.stamina < O.maxStam * 0.5 or inside > 1.05 or self.mode == "pressure") and self.rng:NextNumber() < 0.6 then
+	if F.stamina > F.maxStam * 0.3 and (O.stamina < O.maxStam * 0.5 or inside > 1.05 or self.mode == "pressure") and self.rng:NextNumber() < 0.4 then
 		local p = self.rng:NextNumber() < 0.5 and "leadhook" or "uppercut"
 		engine:Punch(F, p, true)
 		return
@@ -1498,7 +1515,9 @@ function FightAI:TrySpecial(now, dist)
 	add("pullcounter", (coming and 0.6 or 0) + (counterWin and 0.4 or 0))
 	add("stepback", (coming and 0.5 or 0) + (self.mode == "survive" and 0.4 or 0))
 	add("checkhook", (coming and 0.5 or 0) + (engine:IsHurt(O) and 0.2 or 0))
-	add("livershot", (blocking and 0.5 or 0.15) + (O.body < 60 and 0.4 or 0))
+	-- (the liver shot folds a man well before his body is gone: kept for the moment - his guard high, his body
+	-- going - not thrown at every shell, which turned a guard held up into a string of liver knockdowns)
+	add("livershot", (blocking and 0.1 or 0.04) + (O.body < 50 and 0.1 or 0))
 	add("gazelle", (dist > engine:PunchRange(F, "jab") and 0.5 or 0.05) + (finishing and 0.2 or 0))
 	add("peekaboo", (finishing and 0.6 or 0.15))
 	add("overhand", (blocking and 0.55 or 0.1) + (finishing and 0.25 or 0))
@@ -1506,7 +1525,7 @@ function FightAI:TrySpecial(now, dist)
 	local hurt = engine:IsHurt(O)
 	add("doublejab", (dist > engine:PunchRange(F, "leadhook") and 0.45 or 0.1) + (self.mode == "survive" and 0.2 or 0))
 	add("feintcross", (blocking and 0.55 or 0.15))
-	add("bodyhead", (blocking and 0.4 or 0.15) + (O.body < 70 and 0.25 or 0))
+	add("bodyhead", (blocking and 0.3 or 0.15) + (O.body < 60 and 0.15 or 0))
 	add("onetwothree", (finishing and 0.4 or 0.2) + (hurt and 0.2 or 0))
 	add("shovelhook", (hurt and 0.6 or 0.1) + (finishing and 0.3 or 0))
 	if total <= 0 then
