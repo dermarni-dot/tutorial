@@ -497,23 +497,85 @@ function Fight:HitTest(F, O, ptype, body, dist, mul)
 end
 
 -- the closest the two bodies get, centre to centre (the pair's scaled spacing, and no less than their real torsos
--- and gloves need: HitGeometry.MinSep)
+-- and gloves need: HitGeometry.MinSep), and no less than two BLADED torsos need: a boxer stands turned
+-- ~BLADE rad off square, so the chest he presents across the line between the roots is torsoHalfD x cos +
+-- torsoHalfW x sin (a Heavyweight frame's 1.17-wide chest is what meets the other man, not its depth alone),
+-- plus both pairs of gloves (SEP_GLOVE x the glove radii, as HitGeometry.MinSep) and SEP_AIR of air. The unit
+-- (Athletic) pair gives the balanced 3.25 either way; a Heavyweight pair 3.57 by depth, 3.70 bladed.
+local BLADE, SEP_GLOVE, SEP_AIR = math.rad(35), 1.6, 0.53
+local function bladedHalf(G)
+	return G.torsoHalfD * math.cos(BLADE) + G.torsoHalfW * math.sin(BLADE)
+end
 function Fight:MinSep()
 	local base = (self.sp or SPACING).minSep
 	if not self.minSepGeo then
 		local G, OG = self:Geo(self.P), self:Geo(self.O)
-		self.minSepGeo = (G and OG) and HitGeometry.MinSep(G, OG) or 0
+		if G and OG then
+			local bladed = bladedHalf(G) + bladedHalf(OG) + SEP_GLOVE * (G.glove + OG.glove) + SEP_AIR * (G.hScale + OG.hScale) / 2
+			self.minSepGeo = math.max(HitGeometry.MinSep(G, OG), bladed)
+		else
+			self.minSepGeo = 0
+		end
 	end
 	return math.max(base, self.minSepGeo)
 end
 
+-- a body's share of a separation push: the lighter man gives more ground (his torso's volume from the frame,
+-- x the height: a Heavyweight at 1.17 x 1.16 x 1 against a Lean man at 0.92 x 0.94 gives ~60 / 40)
+function Fight:BodyMass(F)
+	local G = self:Geo(F)
+	if not G then
+		return 1
+	end
+	return math.max(0.2, G.torsoHalfW * G.torsoHalfD * G.hScale / (0.795 * 0.485))
+end
+
+-- the spacing the pair keeps right now, centre to centre: the clinch distance while they hold, else MinSep
+function Fight:SepRadius()
+	if self.P.state == "clinch" or self.O.state == "clinch" then
+		return self:ClinchSep()
+	end
+	return self:MinSep()
+end
+
+-- pos (a goal, a glide step, a lunge) pushed back out of the other man's body: a spot nearer than radius
+-- (SepRadius) to O's root, read where O will be in a moment (his MoveDirection x WalkSpeed x LOOKAHEAD, so two
+-- men closing on each other stop short together instead of each walking into where the other was), comes out
+-- along the line from O to it (a spot right on him comes out toward F). Nothing is clamped against a man on
+-- the canvas, or for one (the fall rooms and the corner walks are theirs).
+local LOOKAHEAD = 0.08
+function Fight:KeepOut(F, pos, radius)
+	local O = self:Other(F)
+	if not (O and O.root and F.root) or O.state == "down" or F.state == "down" then
+		return pos
+	end
+	radius = radius or self:SepRadius()
+	local op = O.root.Position
+	local hum = O.hum
+	if hum and hum.WalkSpeed and hum.WalkSpeed > 0 and hum.MoveDirection then
+		local mv = flat(hum.MoveDirection)
+		if mv.Magnitude > 0.1 then
+			op += mv * (hum.WalkSpeed * LOOKAHEAD)
+		end
+	end
+	local d = flat(pos - op)
+	local m = d.Magnitude
+	if m >= radius then
+		return pos
+	end
+	local dir = m > 0.05 and d.Unit or unitOr(flat(F.root.Position - op), flat(F.root.CFrame.LookVector) * -1)
+	local out = op + dir * radius
+	return Vector3.new(out.X, pos.Y, out.Z)
+end
+
 -- how far out F can tie the other man up: his arms' reach (HitGeometry.ClinchRange), never inside the bodies
+-- and never inside the distance the clinch itself is held at (ClinchSep: the tie-up slides the pair out to it)
 function Fight:ClinchRange(F)
 	local G, OG = self:Geo(F), self:Geo(self:Other(F))
 	if not (G and OG) then
-		return (self.sp or SPACING).clinch
+		return math.max((self.sp or SPACING).clinch, self:ClinchSep() + 0.3)
 	end
-	F.clinchRange = F.clinchRange or math.max(HitGeometry.ClinchRange(G, OG), self:MinSep() + 0.4)
+	F.clinchRange = F.clinchRange or math.max(HitGeometry.ClinchRange(G, OG), self:MinSep() + 0.4, self:ClinchSep() + 0.3)
 	return F.clinchRange
 end
 

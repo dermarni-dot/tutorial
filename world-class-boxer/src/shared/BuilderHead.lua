@@ -1644,40 +1644,258 @@ function Head.OffSkin(color, skin)
 	return lerpColor(color, WHITE, 0.3), true
 end
 
--- The head is scaled after a build at times (ApplyDescription, a head swap kept at the engine's scale): the gear
--- was then built for another size. The folder records the size it was built for (attribute HeadSize) and watches
--- the head's Size while it lives; a change rebuilds it through `rebuild` (deferred: one rebuild per change burst).
--- Builder's cache keys carry the head size too, so a Cosmetics after the change rebuilds either way; this covers a
--- change with no Cosmetics after it. Quiet when the host has no property signals (the lune tests).
-local function followHead(folder, head, rebuild)
+-- Every head-worn part is joined to the head by a Weld (a JointInstance, as the gear meshes and the engine's own
+-- accessories are), parented to the part, Part0 = the head, C0 = the part in head space, C1 = identity. Not a
+-- WeldConstraint: the engine re-points JointInstances when it replaces the head (ReplaceBodyPartR15, the MeshPart
+-- head conversion) and never a constraint, a WeldConstraint only records its offset once it goes live, and a Weld's
+-- C0 places the part from the head deterministically wherever the model goes (a clone, out of and back into the
+-- DataModel). Massless, no collisions / queries / touches (Kit.mk), the head's collision group.
+local function weldToHead(p, head)
+	for _, c in ipairs(p:GetChildren()) do
+		if c:IsA("WeldConstraint") or c:IsA("Weld") then
+			c:Destroy()
+		end
+	end
+	local w = Instance.new("Weld")
+	w.Name = "HeadWeld"
+	w.Part0 = head
+	w.Part1 = p
+	w.C0 = head.CFrame:ToObjectSpace(p.CFrame)
+	w.C1 = CF()
+	w.Parent = p
+	pcall(function()
+		p.CollisionGroup = head.CollisionGroup
+	end)
+	return w
+end
+Head.WeldToHead = weldToHead
+
+-- what the gear is fitted to, as one string: the head's mesh (a MeshPart's id and MeshSize, a SpecialMesh's type and
+-- Scale) - the engine swaps a classic head for a MeshPart (and back) without a Size change
+local function v3s(v)
+	if typeof(v) ~= "Vector3" then
+		return "?"
+	end
+	return string.format("%.3f,%.3f,%.3f", v.X, v.Y, v.Z)
+end
+function Head.HeadMeshSig(head)
+	if not (head and head:IsA("BasePart")) then
+		return "none"
+	end
+	if head:IsA("MeshPart") then
+		local id, ms
+		pcall(function()
+			id = tostring(head.MeshId):gsub("rbxassetid://", "")
+			ms = head.MeshSize
+		end)
+		return "MeshPart " .. tostring(id) .. " " .. v3s(ms)
+	end
+	local sm = head:FindFirstChildOfClass("SpecialMesh")
+	if sm then
+		local mt, sc
+		pcall(function()
+			mt = tostring(sm.MeshType):match("(%w+)$")
+			sc = sm.Scale
+		end)
+		return "SpecialMesh " .. tostring(mt) .. " " .. v3s(sc)
+	end
+	return head.ClassName .. " nomesh"
+end
+
+-- the folder records the head it was fitted to: its Size, class and mesh (HeadSize / HeadClass / HeadMesh)
+function Head.StampHead(folder, head)
 	folder:SetAttribute("HeadSize", head.Size)
-	local conn
-	local ok = pcall(function()
-		conn = head:GetPropertyChangedSignal("Size"):Connect(function()
-			if folder.Parent == nil then
-				conn:Disconnect()
+	folder:SetAttribute("HeadClass", head.ClassName)
+	folder:SetAttribute("HeadMesh", Head.HeadMeshSig(head))
+end
+
+-- Why a gear folder (Headgear / Hat) no longer fits the model's live head, or nil while it does: parts whose weld is
+-- gone (the Humanoid died with BreakJointsOnDeath, a broken rig: they fall or stay behind), parts welded to a head
+-- that is no longer in the model (the engine replaced the instance), the head's Size / class / mesh differing from
+-- what the folder was fitted to (a rescale after the build, the MeshPart conversion). nil with no head or no parts.
+function Head.GearStale(model, folder)
+	local head = model:FindFirstChild("Head")
+	if not (head and head:IsA("BasePart")) or folder == nil or folder.Parent == nil then
+		return nil
+	end
+	local parts, loose, other = 0, 0, nil
+	for _, p in ipairs(folder:GetDescendants()) do
+		if p:IsA("BasePart") then
+			parts += 1
+			local w = p:FindFirstChildOfClass("Weld") or p:FindFirstChildOfClass("WeldConstraint")
+			if not (w and w.Part0 and w.Part1 == p) then
+				loose += 1
+			elseif w.Part0 ~= head then
+				other = w.Part0
+			end
+		end
+	end
+	if parts == 0 then
+		return nil
+	end
+	local why = {}
+	if loose > 0 then
+		why[#why + 1] = string.format("%d of %d parts with no weld", loose, parts)
+	end
+	if other then
+		why[#why + 1] = string.format("welded to a head no longer in the model (%s%s); the live Head is a %s", other.ClassName,
+			other.Parent and (" under " .. other.Parent.Name) or ", orphaned", head.ClassName)
+	end
+	local was = folder:GetAttribute("HeadSize")
+	if typeof(was) == "Vector3" and (head.Size - was).Magnitude > 1e-3 then
+		why[#why + 1] = string.format("Head.Size (%s) -> (%s)", v3s(was), v3s(head.Size))
+	end
+	local cls = folder:GetAttribute("HeadClass")
+	if type(cls) == "string" and cls ~= head.ClassName then
+		why[#why + 1] = "Head " .. cls .. " -> " .. head.ClassName
+	end
+	local mesh = folder:GetAttribute("HeadMesh")
+	local live = Head.HeadMeshSig(head)
+	if type(mesh) == "string" and mesh ~= live then
+		why[#why + 1] = "head mesh " .. mesh .. " -> " .. live
+	end
+	if #why == 0 then
+		return nil
+	end
+	return table.concat(why, "; ")
+end
+
+-- one Output line per rebuild, counted on the module (tests) and the model (HeadgearRefits / HeadgearRefitLast: Diag)
+Head.Refits = 0
+local function refitNote(model, fname, why)
+	Head.Refits += 1
+	pcall(function()
+		model:SetAttribute("HeadgearRefits", (tonumber(model:GetAttribute("HeadgearRefits")) or 0) + 1)
+		model:SetAttribute("HeadgearRefitLast", fname .. ": " .. why)
+	end)
+	warn(string.format("[Boxer] headgear refit %s: %s %s", tostring(model and model.Name), fname, why))
+end
+
+-- The head changes after a build at times: scaled (ApplyDescription, a head swap kept at the engine's scale, the
+-- Humanoid's deferred scaling pass once the model is in Workspace) or REPLACED (the engine's MeshPart head
+-- conversion, a later ReplaceBodyPartR15): the gear was fitted to another head. The folder records the head it
+-- was fitted to (Head.StampHead) and watches, while it lives, the head's Size, the head leaving the model and a new
+-- Head arriving (model.ChildAdded); any of them re-checks (deferred: one rebuild per burst) and rebuilds the folder
+-- through `rebuild(why)` when Head.GearStale says it no longer fits. Builder's cache keys carry the head size too,
+-- so a Cosmetics after a change rebuilds either way; this covers a change with no Cosmetics after it, and the late
+-- re-fit (Head.RefitHeadgear, from Builder.OnPlaced) covers a clone (no watch) and anything the signals miss.
+local function followHead(folder, head, rebuild)
+	Head.StampHead(folder, head)
+	local look = folder.Parent
+	local model = look and look.Parent
+	local conns, done = {}, false
+	local function stop()
+		done = true
+		for _, c in ipairs(conns) do
+			pcall(c.Disconnect, c)
+		end
+	end
+	local function changed()
+		if done then
+			return
+		end
+		task.defer(function()
+			if done or folder.Parent == nil or model == nil then
 				return
 			end
-			task.defer(function()
-				if folder.Parent == nil or head.Parent == nil then
-					return
-				end
-				local was = folder:GetAttribute("HeadSize")
-				if typeof(was) == "Vector3" and (head.Size - was).Magnitude > 1e-3 then
-					conn:Disconnect()
-					rebuild()
-				end
-			end)
-		end)
-	end)
-	if ok and conn then
-		-- (the folder goes with the model, a rebuild or a fight cleanup: the watch goes with it)
-		pcall(function()
-			folder.Destroying:Once(function()
-				conn:Disconnect()
-			end)
+			local why = Head.GearStale(model, folder)
+			if why then
+				stop()
+				rebuild(why)
+			end
 		end)
 	end
+	local function watch(sig)
+		local ok, c = pcall(function()
+			return sig:Connect(changed)
+		end)
+		if ok and c then
+			conns[#conns + 1] = c
+		end
+	end
+	watch(head:GetPropertyChangedSignal("Size"))
+	watch(head.AncestryChanged)
+	if model then
+		watch(model.ChildAdded)
+	end
+	-- (the folder goes with the model, a rebuild or a fight cleanup: the watch goes with it)
+	pcall(function()
+		folder.Destroying:Once(stop)
+	end)
+end
+
+-- The late re-fit: every gear folder checked against the live head (Head.GearStale) and rebuilt from its own record
+-- (the Headgear folder's Color / Detail, the Hat's Style / CapColor / CapTrim / CapBadge / Detail) when it no longer
+-- fits, with one "[Boxer] headgear refit" line each. A no-op (nil) while everything fits. Builder.OnPlaced runs it
+-- 0.3 s and 2 s after a model is placed in Workspace (and after a player's Builder.Apply).
+-- Returns { Headgear = why, Hat = why } for what was rebuilt, or nil.
+function Head.RefitHeadgear(model)
+	local look = model and model:FindFirstChild("BoxerLook")
+	if not look then
+		return nil
+	end
+	local out = nil
+	local hg = look:FindFirstChild("Headgear")
+	local why = hg and Head.GearStale(model, hg)
+	if why then
+		local color, detail = hg:GetAttribute("Color"), hg:GetAttribute("Detail")
+		refitNote(model, "Headgear", why)
+		Head.SetHeadgear(model, color, true, detail)
+		out = out or {}
+		out.Headgear = why
+	end
+	local hat = look:FindFirstChild("Hat")
+	why = hat and Head.GearStale(model, hat)
+	if why then
+		local style, detail = hat:GetAttribute("Style"), hat:GetAttribute("Detail")
+		local colors = { cap = hat:GetAttribute("CapColor"), trim = hat:GetAttribute("CapTrim"), badge = hat:GetAttribute("CapBadge") }
+		refitNote(model, "Hat", why)
+		Head.SetCap(model, style, colors, detail)
+		out = out or {}
+		out.Hat = why
+	end
+	return out
+end
+
+-- The Neck after a head swap. Whatever joint the rig uses stays as it is (a Motor6D "Neck" under the head, or the
+-- AnimationConstraint an upgraded avatar rig carries); with none at all joining the UpperTorso to the head (the
+-- swap dropped it) a Motor6D Neck is rebuilt from the two NeckRigAttachments: without one Humanoid.RequiresNeck
+-- kills the character and BreakJointsOnDeath then drops every weld (the gear falls off, the joints go).
+-- Returns "ok", "rebuilt" or nil (no head / torso / attachments to build from).
+function Head.EnsureNeck(model)
+	local head, torso = model:FindFirstChild("Head"), model:FindFirstChild("UpperTorso")
+	if not (head and torso and head:IsA("BasePart") and torso:IsA("BasePart")) then
+		return nil
+	end
+	local function joins(c)
+		if c:IsA("Motor6D") or c:IsA("Weld") then
+			return (c.Part0 == torso and c.Part1 == head) or (c.Part0 == head and c.Part1 == torso)
+		end
+		if c:IsA("AnimationConstraint") then
+			local a0, a1 = c.Attachment0, c.Attachment1
+			return a0 ~= nil and a1 ~= nil and ((a0.Parent == torso and a1.Parent == head) or (a0.Parent == head and a1.Parent == torso))
+		end
+		return false
+	end
+	for _, holder in ipairs({ head, torso }) do
+		for _, c in ipairs(holder:GetChildren()) do
+			if joins(c) then
+				return "ok"
+			end
+		end
+	end
+	local a0, a1 = torso:FindFirstChild("NeckRigAttachment"), head:FindFirstChild("NeckRigAttachment")
+	if not (a0 and a1 and a0:IsA("Attachment") and a1:IsA("Attachment")) then
+		return nil
+	end
+	local m = Instance.new("Motor6D")
+	m.Name = "Neck"
+	m.Part0 = torso
+	m.Part1 = head
+	m.C0 = a0.CFrame
+	m.C1 = a1.CFrame
+	m.Parent = head
+	return "rebuilt"
 end
 
 function Head.SetHeadgear(model, color, on, detail)
@@ -1706,9 +1924,19 @@ function Head.SetHeadgear(model, color, on, detail)
 	local function at(x, y, z)
 		return hcf * CF(x * hs, y * hs, z * hs)
 	end
+	-- a part on the head: Kit.mk, then the Weld to the head (weldToHead) in place of mk's WeldConstraint
+	local function piece(name, size, cf, c, shape, m)
+		local p = mk(folder, head, name, size, cf, c, shape, m)
+		weldToHead(p, head)
+		return p
+	end
 	-- an ellipsoid pad: centre (x, y, z) and size w x h x d in spans
 	local function pad(name, x, y, z, w, h, d, c, m)
-		return mk(folder, head, name, V3(w * hs, h * hs, d * hs), at(x, y, z), c, "Ellipsoid", m or mat)
+		return piece(name, V3(w * hs, h * hs, d * hs), at(x, y, z), c, "Ellipsoid", m or mat)
+	end
+	local function rebuild(why)
+		refitNote(model, "Headgear", why)
+		Head.SetHeadgear(model, asked, true, detail)
 	end
 	local browC, strapC, holeC = darken(color, 0.9), darken(color, 0.55), darken(color, 0.35)
 	-- the brow roll, the crown cap and the back shell: every detail level
@@ -1716,9 +1944,7 @@ function Head.SetHeadgear(model, color, on, detail)
 	pad("HGTop", 0, G.top.y, G.top.z, G.top.w, G.top.h, G.top.d, color)
 	pad("HGShell", 0, G.back.y, G.back.z, G.back.w, G.back.h, G.back.d, color)
 	if low then
-		followHead(folder, head, function()
-			Head.SetHeadgear(model, asked, true, detail)
-		end)
+		followHead(folder, head, rebuild)
 		return folder
 	end
 	-- the cheek bolsters: upright rolls (long ellipsoids) beside the face, outside the eyes
@@ -1729,10 +1955,8 @@ function Head.SetHeadgear(model, color, on, detail)
 	if not full then
 		-- one drum through the head along X: its two ends are the ear pads (a Cylinder part's axis is its X)
 		local E = G.ears
-		mk(folder, head, "HGEars", V3(E.len * hs, E.d * hs, E.d * hs), at(0, E.y, E.z), color, "Cylinder", mat)
-		followHead(folder, head, function()
-			Head.SetHeadgear(model, asked, true, detail)
-		end)
+		piece("HGEars", V3(E.len * hs, E.d * hs, E.d * hs), at(0, E.y, E.z), color, "Cylinder", mat)
+		followHead(folder, head, rebuild)
 		return folder
 	end
 	local S, Hh, St = G.side, G.hole, G.strap
@@ -1745,11 +1969,9 @@ function Head.SetHeadgear(model, color, on, detail)
 		local b = at(side * St.b[1], St.b[2], St.b[3]).Position
 		local mid = (a + b) * 0.5
 		local out = mid - at(0, -0.1, 0).Position
-		mk(folder, head, "HGStrap", V3(St.w * hs, St.t * hs, (b - a).Magnitude), CFrame.lookAt(mid, b, out.Unit), strapC, "Block", SMOOTH)
+		piece("HGStrap", V3(St.w * hs, St.t * hs, (b - a).Magnitude), CFrame.lookAt(mid, b, out.Unit), strapC, "Block", SMOOTH)
 	end
-	followHead(folder, head, function()
-		Head.SetHeadgear(model, asked, true, detail)
-	end)
+	followHead(folder, head, rebuild)
 	return folder
 end
 
@@ -1796,6 +2018,10 @@ function Head.SetCap(model, style, colors, detail)
 	folder:SetAttribute("Detail", detail)
 	folder:SetAttribute("Style", style)
 	colors = type(colors) == "table" and colors or {}
+	-- the asked colours: what the late re-fit (Head.RefitHeadgear) rebuilds the cap from
+	for k, a in pairs({ cap = "CapColor", trim = "CapTrim", badge = "CapBadge" }) do
+		folder:SetAttribute(a, typeof(colors[k]) == "Color3" and colors[k] or nil)
+	end
 	local ref = style == "referee"
 	local capC = typeof(colors.cap) == "Color3" and colors.cap or (ref and Color3.fromRGB(18, 18, 21) or Color3.fromRGB(30, 30, 34))
 	-- (a team colour within a hair of the skin reads as a bare head: nudged off it, Head.OffSkin)
