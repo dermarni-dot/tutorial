@@ -545,7 +545,14 @@ State.FightRemote.OnClientEvent:Connect(function(msg)
 	if msg.t == "result" then
 		task.delay(0.5, showResult, msg)
 	elseif msg.t == "sparResult" then
-		task.delay(0.4, showSparResult, msg)
+		-- (a session left with "Return to gym" - FightClient / BoxerClient.SparExit set SparSkipCard - goes
+		-- straight back to the floor: the training still counted, the card is skipped this once)
+		if player:GetAttribute("SparSkipCard") then
+			player:SetAttribute("SparSkipCard", nil)
+			State.toast("Back in the gym. The session's work counted.", T.gold)
+		else
+			task.delay(0.4, showSparResult, msg)
+		end
 	elseif msg.t == "aborted" then
 		State.toast(msg.spar and "Sparring session ended." or "The fight was called off.", T.red)
 	end

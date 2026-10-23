@@ -1788,11 +1788,17 @@ end
 function AnimDown.getup(p, rig, act, el, t)
 	local u = el / act.dur
 	if u >= 1 then
+		-- up: the rig's own floor again (the canvas measured while he was down is let go)
+		rig.geoNow = true
+		rig.downClear = nil
 		return false
 	end
 	p.override = true -- the base pose continues from here when the get-up ends
+	Rag.sync(rig, t)
 	if not act.from then
 		act.from = capture(rig, {})
+		-- (a get-up off a physics ragdoll starts from where the limbs really lie)
+		Rag.limp(rig, act.from)
 		act.stance = {}
 		act.last = {}
 		act.keys = GETUPS[act.fall] or GETUPS.back
@@ -1808,11 +1814,14 @@ function AnimDown.getup(p, rig, act, el, t)
 	local standAt = act.standAt
 	if u < standAt then
 		rig.plant = false
+		applyCanvas(rig, act, nil)
 		timeline(p, rig, act.d, act.keys, u, t, act.from, 1, nil, act.yaw)
+		limits(p)
 		if act.fall == "corner" then
 			clearCorner(rig, p, act.d)
 		end
-		onCanvas(rig, p)
+		rig.downClear = CLEAR
+		onCanvas(rig, p, CLEAR)
 		for _, k in ipairs(KEYS) do
 			act.last[k] = p[k]
 		end
@@ -1856,7 +1865,13 @@ function AnimDown.recoverAct(d, now)
 end
 
 function AnimDown.clear(rig)
+	if rig.down then
+		-- the rig's own floor again (the canvas measured while he was down is let go)
+		rig.geoNow = true
+	end
 	rig.down = nil
+	rig.downClear = nil
+	Rag.clear(rig)
 end
 
 -- (key poses by name: tools / the animation lab inspect them on a real rig)

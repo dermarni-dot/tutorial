@@ -2792,6 +2792,20 @@ function Fight:Knockdown(F, by, severity, fall, cause)
 	table.insert(self.knockdowns, { who = self:Who(F), severity = severity, fall = fall, round = self.round, cause = cause })
 	self.kdHold = true
 	self.paused = true
+	-- the physics under the fall (server Ragdoll): the root stops dead where he stands and holds its height -
+	-- velocity zeroed, anchored, the Humanoid platform-standing, no auto-rotate - until Guard leaves "down" (the
+	-- get-up, the end of the fight, Cleanup), so the body the Animator lays on the canvas never slides or floats.
+	-- The walk into the ropes / the corner below still moves it (CFrame shifts). Optional: the round-1 physics
+	-- when the module is missing
+	local RagdollS
+	do
+		local node = script.Parent:FindFirstChild("Ragdoll")
+		local okR, modR = pcall(require, node)
+		RagdollS = okR and type(modR) == "table" and modR or nil
+	end
+	if RagdollS then
+		pcall(RagdollS.Hold, F.model, F.hum, F.root)
+	end
 	-- DownPose (+ DownDir / DownDist / KOKind) before Guard = "down" so the Animator picks the right
 	-- fall on the first frame
 	setAttr(F.model, "DownPose", fall)
@@ -2853,6 +2867,14 @@ function Fight:Knockdown(F, by, severity, fall, cause)
 		else
 			-- the fall plays out (the slow-motion beat included) before anybody reacts to it
 			task.wait(FightMotion and FightMotion.KOFallWall and FightMotion.KOFallWall(choice.ko, fall) or 1.6)
+			-- landed on every client: the limbs go to physics for the settle (server Ragdoll: ball sockets within
+			-- human limits, collision boxes, the punch's last push on the head and the gloves; the pelvis stays on
+			-- the held root where the fall laid it). The server owns an NPC's limbs, the player his own
+			if animKO and RagdollS and self.id and not self.finished then
+				local push = (F.root and by.root) and flat(F.root.Position - by.root.Position) or nil
+				local dir = push and unitOr(push, flat(F.root.CFrame.LookVector) * -1) or nil
+				pcall(RagdollS.Release, F.model, { dir = dir, power = 0.8 + 0.2 * self.rng:NextNumber(), owner = F.player })
+			end
 		end
 		-- no neutral corner after a knockout: it is over, the winner celebrates where he stands
 		by.guardOverride = "win"

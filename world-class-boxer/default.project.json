@@ -68,6 +68,9 @@
         "PvP": {
           "$path": "src/server/PvP.lua"
         },
+        "Ragdoll": {
+          "$path": "src/server/Ragdoll.lua"
+        },
         "RingWalk": {
           "$path": "src/server/RingWalk.lua"
         },

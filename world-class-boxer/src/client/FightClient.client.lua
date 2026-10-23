@@ -812,6 +812,9 @@ do
 				leave = function(mode)
 					if F.spar and not F.pvp then
 						F.sparLeaving = mode
+						-- "Return to gym": ClientMain skips the coach's card for this one result (the attribute is
+						-- read and cleared there); "End session" shows it as usual
+						pcall(player.SetAttribute, player, "SparSkipCard", mode == "gym" or nil)
 						send({ t = "leaveSpar" })
 					end
 				end,
@@ -4646,6 +4649,12 @@ local function finish()
 	hideCount()
 	bannerBand.Visible = false
 	angleTag.Visible = false
+	if KM.rangeTag then
+		KM.rangeTag.Visible = false
+	end
+	if KM.modules.SparExit then
+		pcall(KM.modules.SparExit.Reset)
+	end
 	bug:SetAttribute("On", false)
 	bug.Visible = false
 	crowdStrip.Visible = false
@@ -5672,6 +5681,41 @@ function handlers.aborted()
 end
 -- the tutorial bout is over (completed, skipped or called off): the wrap-up is BoxerClient.Tutorial's
 handlers.tutorialEnd = handlers.aborted
+
+-- [Judging] the round scorecards (BoxerClient.Scorecards: the judges' round card and the punch stats between rounds,
+-- opened with the rest message once the server's "scorecard" came) and the results screen (BoxerClient.PostFightUI,
+-- on "result"). Both optional: without them the overlay above and ClientMain's result window stand.
+local function judgingModule(name)
+	local ok, mod = pcall(function()
+		local folder = script.Parent:FindFirstChild("BoxerClient") or script.Parent:WaitForChild("BoxerClient", 10)
+		return folder and require(folder:WaitForChild(name, 10))
+	end)
+	return ok and type(mod) == "table" and mod or nil
+end
+local Scorecards = judgingModule("Scorecards")
+local PostFightUI = judgingModule("PostFightUI")
+function handlers.scorecard(msg)
+	if Scorecards then
+		Scorecards.Note(msg)
+	end
+end
+local restBase = handlers.rest
+function handlers.rest(msg)
+	restBase(msg)
+	local names = { F.tape and F.tape.you and F.tape.you.name or "You", F.tape and F.tape.opp and F.tape.opp.name or "Opponent" }
+	if Scorecards and Scorecards.OpenRest(msg, { names = names, rounds = F.rounds, spar = F.spar }) then
+		-- (the scorecard panel takes the overlay's place for this rest)
+		overlay.Visible = false
+		F.overlayBuild = nil
+	end
+end
+local resultBase = handlers.result
+function handlers.result(msg)
+	resultBase(msg)
+	if PostFightUI then
+		PostFightUI.Open(msg)
+	end
+end
 
 FightRemote.OnClientEvent:Connect(function(msg)
 	if type(msg) ~= "table" then

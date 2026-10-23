@@ -647,7 +647,19 @@ function ControlsMenu.Open(opts)
 	-- (opts.kicker: a fight says whether the round waits for you; a phone's window has no kicker line, so
 	-- there the note goes into the title)
 	local title = (opts.kicker and short) and ("Moves & Controls  ·  " .. opts.kicker) or "Moves & Controls"
-	local _, _, body = UI.Window(root, "ControlsMenu", 1100, 760, title, { kicker = opts.kicker or "HOW TO FIGHT", onClose = ControlsMenu.Close, scroll = false, z = 12 })
+	local _, win, body = UI.Window(root, "ControlsMenu", 1100, 760, title, { kicker = opts.kicker or "HOW TO FIGHT", onClose = ControlsMenu.Close, scroll = false, z = 12 })
+	-- (opts.extra = { text, onClick }: one action of the caller's in the title line - a spar's LEAVE SPARRING
+	-- (FightClient's openMoves / BoxerClient.SparExit); the menu closes first, then the action runs)
+	if type(opts.extra) == "table" and opts.extra.text then
+		local extra = opts.extra
+		UI.Button(win, extra.text, { Name = "Extra", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -(short and 60 or 76), 0, short and 10 or 14), Size = UDim2.fromOffset(150, short and 28 or 32),
+			TextSize = 12, Font = T.semi, BackgroundColor3 = T.panel2, TextColor3 = T.text, ZIndex = 14 }, function()
+			ControlsMenu.Close()
+			if extra.onClick then
+				task.spawn(extra.onClick)
+			end
+		end)
+	end
 	-- the tab bar: a fingertip tall on touch (UI.TabsHeight), the list placed under it by hand
 	local barH = UI.TabsHeight(body, short and 32 or 38)
 	local bar
