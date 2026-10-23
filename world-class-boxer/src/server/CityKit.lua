@@ -485,7 +485,7 @@ function K.trafficSignal(parent, base, dir, reach, face, streetName)
 		local cf = CFrame.lookAt(at, at + face)
 		part(m, "SignalHead", V3(1.5, 4.6, 1.3), cf, Color3.fromRGB(40, 40, 36), M.Metal)
 		part(m, "SignalBack", V3(2.3, 5.4, 0.12), cf * CF(0, 0, 0.72), C.black, M.SmoothPlastic)
-		K.rod(m, "SignalHanger", at + V3(0, 2.3, 0), at + V3(0, 3.0, 0), 0.18, POLE, M.Metal)
+		part(m, "SignalHanger", V3(0.2, 0.8, 0.2), CF(at + V3(0, 2.65, 0)), POLE, M.Metal, { shadow = false })
 		for _, l in ipairs({ { 1.45, Color3.fromRGB(110, 20, 20), M.SmoothPlastic }, { 0, Color3.fromRGB(110, 86, 20), M.SmoothPlastic }, { -1.45, Color3.fromRGB(60, 255, 120), M.Neon } }) do
 			cyl(m, "SignalLens", 0.1, 1.05, cf * CF(0, l[1], -0.68) * ANG(0, RAD(90), 0), l[2], l[3], { shadow = false })
 			part(m, "SignalVisor", V3(1.2, 0.12, 0.7), cf * CF(0, l[1] + 0.6, -0.95), Color3.fromRGB(40, 40, 36), M.Metal, { shadow = false })

@@ -603,6 +603,35 @@ end
 ------------------------------------------------------------------------
 -- Cars: your best car in the reserved bay at the gym and at home
 ------------------------------------------------------------------------
+local CAR_SCALE = 1.45 -- CityProps cars were drawn at ~2/3 scale: 1.45 puts a sports car at 4.2 m
+
+-- builds a CityProps car at cf and scales every part about cf (sizes and offsets), so the same car
+-- reads at real-world size next to CityKit's traffic and the 2.7 m parking bays
+local function scaledCar(parent, cf, kind, color, plate, k)
+	k = k or CAR_SCALE
+	local m = CityProps.SportsCar(parent, cf, kind, color, plate)
+	for _, d in ipairs(m:GetDescendants()) do
+		if d:IsA("BasePart") then
+			local rel = cf:ToObjectSpace(d.CFrame)
+			d.Size = d.Size * k
+			d.CFrame = cf * CF(rel.Position * k) * (rel - rel.Position)
+		end
+	end
+	return m
+end
+
+local bulkParts, bulkCFrames = {}, {}
+local function bulkSet(p, cf)
+	table.insert(bulkParts, p)
+	table.insert(bulkCFrames, cf)
+end
+local function directSet(p, cf)
+	p.CFrame = cf
+end
+
+-- one walking pose; set = bulkSet in the loop, directSet when building (so nobody waits at the
+-- world origin for the first animation frame)
+
 local function updateCars(P)
 	local owned = P.owned or {}
 	local cars = carsOf(owned)
@@ -1241,34 +1270,6 @@ local CROSSWALK_X = MAINST.crosswalks -- module scope: animate() runs at 30 Hz a
 local HEADWAY = 22 -- studs kept to the car in front (a car is ~13 long)
 local STREET_SPAN = MAINST.x1 - MAINST.x0 -- traffic loops the whole street
 local STREET_MID = (MAINST.x0 + MAINST.x1) / 2
-local CAR_SCALE = 1.45 -- CityProps cars were drawn at ~2/3 scale: 1.45 puts a sports car at 4.2 m
-
--- builds a CityProps car at cf and scales every part about cf (sizes and offsets), so the same car
--- reads at real-world size next to CityKit's traffic and the 2.7 m parking bays
-local function scaledCar(parent, cf, kind, color, plate, k)
-	k = k or CAR_SCALE
-	local m = CityProps.SportsCar(parent, cf, kind, color, plate)
-	for _, d in ipairs(m:GetDescendants()) do
-		if d:IsA("BasePart") then
-			local rel = cf:ToObjectSpace(d.CFrame)
-			d.Size = d.Size * k
-			d.CFrame = cf * CF(rel.Position * k) * (rel - rel.Position)
-		end
-	end
-	return m
-end
-
-local bulkParts, bulkCFrames = {}, {}
-local function bulkSet(p, cf)
-	table.insert(bulkParts, p)
-	table.insert(bulkCFrames, cf)
-end
-local function directSet(p, cf)
-	p.CFrame = cf
-end
-
--- one walking pose; set = bulkSet in the loop, directSet when building (so nobody waits at the
--- world origin for the first animation frame)
 local function posePed(e, swing, set)
 	local cf = CF(e.x, Config.City.SidewalkY, e.z) * ANG(0, e.dir > 0 and RAD(-90) or RAD(90), 0)
 	local lift = math.abs(swing) * 0.08
