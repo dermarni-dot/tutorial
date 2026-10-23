@@ -4569,12 +4569,15 @@ local function setChip(panel, text, color)
 		panel.chipLast = nil
 		return
 	end
-	panel.chip.Visible = true
-	panel.chip.BackgroundColor3 = color
-	panel.chipText.TextColor3 = UI.InkOn(color)
-	panel.chipText.Text = text
+	if not panel.chip.Visible then
+		panel.chip.Visible = true
+	end
 	if panel.chipLast ~= text then
 		panel.chipLast = text
+		-- (written on a change only: the state packet that carries it lands many times a second)
+		panel.chip.BackgroundColor3 = color
+		panel.chipText.TextColor3 = UI.InkOn(color)
+		panel.chipText.Text = text
 		-- pop when it changes
 		panel.chip.BackgroundTransparency = 0
 		panel.chip.Size = UDim2.fromOffset(0, 26)
@@ -5054,8 +5057,16 @@ function handlers.state(msg)
 	if type(msg.me) ~= "table" or type(msg.opp) ~= "table" then
 		return
 	end
-	timeText.Text = fmtTime(msg.time)
-	timeText.TextColor3 = (msg.time or 99) <= 10 and T.red or T.text
+	-- (the clock and the balance bar are written only when they change: a state packet lands many times a
+	-- second and a TextLabel re-lays out on every write)
+	local clockText = fmtTime(msg.time)
+	if timeText.Text ~= clockText then
+		timeText.Text = clockText
+	end
+	local clockColor = (msg.time or 99) <= 10 and T.red or T.text
+	if timeText.TextColor3 ~= clockColor then
+		timeText.TextColor3 = clockColor
+	end
 	F.me, F.oppState = msg.me, msg.opp
 	local function apply(panel, s, female, model)
 		-- one colour language: HEALTH / HEAD / BODY follow their value (green, gold, orange, red, blended),
@@ -5085,11 +5096,17 @@ function handlers.state(msg)
 	F.wasHurt = hurt
 	apply(R, msg.opp, F.tape and F.tape.opp.female, F.opp)
 	if L.bal and msg.me.bal then
-		local b = math.clamp(msg.me.bal / 100, 0, 1)
-		L.bal.Size = UDim2.fromScale(b, 1)
-		L.bal.BackgroundColor3 = b < 0.3 and T.red or (b < 0.55 and T.gold or Color3.fromRGB(200, 200, 210))
+		local b = math.floor(math.clamp(msg.me.bal / 100, 0, 1) * 200 + 0.5) / 200
+		if F.balShown ~= b then
+			F.balShown = b
+			L.bal.Size = UDim2.fromScale(b, 1)
+			L.bal.BackgroundColor3 = b < 0.3 and T.red or (b < 0.55 and T.gold or Color3.fromRGB(200, 200, 210))
+		end
 	end
-	angleTag.Visible = msg.me.angle == true
+	local angleOn = msg.me.angle == true
+	if angleTag.Visible ~= angleOn then
+		angleTag.Visible = angleOn
+	end
 	KM.paintSpecials()
 	vfx("State", msg)
 end

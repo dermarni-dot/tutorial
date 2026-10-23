@@ -361,9 +361,10 @@ end
 local function signNeon(m, s)
 	local sign = s.sign
 	local col = neonColor(tostring(s.store ~= "" and s.store or sign.Position.X))
-	local under = sign.CFrame * CF(0, -sign.Size.Y / 2 - 0.3, -sign.Size.Z / 2 - 0.12)
-	Part(m, "SignNeon", V3(sign.Size.X * 0.92, 0.16, 0.16), under, col, M.Neon, { shadow = false })
-	local src = Part(m, "SignNeonLight", V3(0.2, 0.2, 0.2), under * CF(0, -0.6, -1.2), col, M.SmoothPlastic, { shadow = false, t = 1 })
+	-- (along the sign's top edge: under it the awnings get in the way)
+	local over = sign.CFrame * CF(0, sign.Size.Y / 2 + 0.3, -sign.Size.Z / 2 - 0.12)
+	Part(m, "SignNeon", V3(sign.Size.X * 0.92, 0.16, 0.16), over, col, M.Neon, { shadow = false })
+	local src = Part(m, "SignNeonLight", V3(0.2, 0.2, 0.2), over * CF(0, -0.4, -1.4), col, M.SmoothPlastic, { shadow = false, t = 1 })
 	local l = Instance.new("PointLight")
 	l.Color = col
 	l.Range = 20

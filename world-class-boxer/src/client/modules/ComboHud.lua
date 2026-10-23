@@ -35,14 +35,16 @@ function ComboHud.Mount(hud)
 	end
 	root = UI.Frame(hud, { Name = "ComboMeter", BackgroundTransparency = 1, Size = UDim2.fromOffset(W, H), Position = UDim2.fromOffset(20, 170), ZIndex = 12 })
 	card = UI.Frame(root, { Name = "Card", Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 12 })
-	UI.Glass(card, { transparency = 0.15, stroke = T.gold, strokeT = 0.5 })
+	UI.Glass(card, { transparency = 0.04, stroke = T.gold, strokeT = 0.5 })
 	icon = UI.Icon(card, "fist", 26, T.gold, { Name = "ComboIcon", Position = UDim2.fromOffset(10, 8), ZIndex = 13 })
 	count = UI.Text(card, "0", { Name = "Count", Face = "number", TextSize = 30, TextColor3 = Color3.new(1, 1, 1), Position = UDim2.fromOffset(42, 2),
 		Size = UDim2.fromOffset(44, 34), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, ZIndex = 13 })
 	hitsWord = UI.Text(card, "HIT COMBO", { Name = "Hits", Font = T.semi, TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromOffset(88, 12),
 		Size = UDim2.new(1, -94, 0, 18), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 13 })
-	callout = UI.Text(card, "", { Name = "Callout", Face = "displayMed", TextSize = 15, TextColor3 = T.gold, Position = UDim2.fromOffset(10, 36),
-		Size = UDim2.new(1, -20, 0, 18), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 13 })
+	-- (a long call-out - "OPP  LEFT-RIGHT HOOKS" - steps down to fit the chip, never under the floor)
+	callout = UI.Text(card, "", { Name = "Callout", Face = "displayMed", TextSize = 14, TextColor3 = T.gold, Position = UDim2.fromOffset(10, 36),
+		Size = UDim2.new(1, -20, 0, 18), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextScaled = true, ZIndex = 13 })
+	UI.New("UITextSizeConstraint", { MaxTextSize = 14, MinTextSize = 11, Parent = callout })
 	bar = UI.Frame(card, { Name = "Window", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 8, 1, -3), Size = UDim2.new(1, -16, 0, 2), BackgroundColor3 = T.gold, ZIndex = 13 })
 	return root
 end

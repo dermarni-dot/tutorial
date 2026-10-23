@@ -711,11 +711,11 @@ J.breath = function(seg, M)
 end
 
 -- the jump rope: the rope turns at omega (x1.9 on a double under) from overhead; it passes the feet at
--- every full turn and the pass is judged 0.12 s later on the presses from 0.42 s before to 0.12 s after
+-- every full turn and the pass is judged 0.12 s later on the presses from 0.48 s before to 0.12 s after
 -- it. One press earlier than that since the last pass is forgiven (a nervous hop); two or more are
 -- jumping on nothing: mistimed - mashing the button trips. A clean jump speeds the rope up; a trip
 -- stops it for 0.45 s and slows it a little (the rhythm is lost, not the progress).
-local ROPE_EARLY, ROPE_LATE, ROPE_TRIP = 0.42, 0.12, 0.45
+local ROPE_EARLY, ROPE_LATE, ROPE_TRIP = 0.48, 0.12, 0.45
 J.rope = function(seg, M)
 	local cues = seg.cues
 	local s = { phase = math.pi, tau = M, omega = seg.omega, ci = 1, done = 0, clean = 0, doubles = 0, pressed = {}, tripped = M, closed = false }

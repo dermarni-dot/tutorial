@@ -624,9 +624,12 @@ J.treadmill = function(seg, M)
 	end
 	stepper(s, M, function(T)
 		local tg = stepAt(seg.program, T - M)
-		local okS = math.abs(s.mph - tg.mph) <= seg.tolMph + 1e-6
-		local okI = math.abs(s.incl - tg.incl) <= seg.tolIncl + 1e-6
-		s.acc += (okS and okI) and 1 or (okS and 0.5 or 0)
+		-- on target is full credit; a step off (inside twice the tolerance) half; the incline counts half
+		local dS, dI = math.abs(s.mph - tg.mph), math.abs(s.incl - tg.incl)
+		local okS, okI = dS <= seg.tolMph + 1e-6, dI <= seg.tolIncl + 1e-6
+		local cs = okS and 1 or (dS <= 2 * seg.tolMph + 1e-6 and 0.5 or 0)
+		local ci = okI and 1 or (dI <= 2 * seg.tolIncl + 1e-6 and 0.5 or 0)
+		s.acc += cs * (0.5 + 0.5 * ci)
 		if okS and okI then
 			s.onBoth += 1
 		end
@@ -879,7 +882,7 @@ J.icebath = function(seg, M, TapHold)
 		elseif flip == "off" then
 			-- how calming the breath was: how full (0.4 .. 0.9) times how empty it started (0.6 .. 0.15)
 			local full, fromEmpty = s.l >= 0.8, (s.startL or 1) <= 0.25
-			local q = clamp((s.l - 0.4) / 0.5, 0, 1) * clamp((0.6 - (s.startL or 1)) / 0.45, 0, 1)
+			local q = clamp((s.l - 0.3) / 0.45, 0, 1) * clamp((0.7 - (s.startL or 1)) / 0.5, 0, 1)
 			local good = q >= 0.75
 			s.breaths += 1
 			s.calm = q > 0 and q or nil
@@ -1463,9 +1466,10 @@ PLAN.pullup = function(segs, lv, r, Wt)
 	local f = lvf(lv)
 	for set = 1, 2 do
 		for rep = 1, 3 do
-			table.insert(segs, { j = "pullup", set = set, rep = rep, omega = 3.0 + 0.6 * f, ph = r:NextNumber() * 6.28, a0 = 0.2 + 0.05 * rep,
-				amax = 1.15 - 0.1 * f, gain = 0.3 - 0.04 * f - 0.01 * (set - 1), sink = 0.04 + 0.02 * f, swingAdd = 0.26 + 0.22 * f, damp = 0.06, hollowDamp = 0.55 - 0.15 * f,
-				wait = 4, limit = 6, gap = repGap(Wt, set, rep) })
+			-- (the level mostly shortens the time to the chin and the pull: the swing stays readable)
+			table.insert(segs, { j = "pullup", set = set, rep = rep, omega = 3.0 + 0.4 * f, ph = r:NextNumber() * 6.28, a0 = 0.2 + 0.05 * rep,
+				amax = 1.2 - 0.15 * f, gain = 0.3 - 0.06 * f - 0.01 * (set - 1), sink = 0.04 + 0.015 * f, swingAdd = 0.22 + 0.26 * f, damp = 0.06, hollowDamp = 0.55 - 0.15 * f,
+				wait = 4, limit = 6 - 1.0 * f, gap = repGap(Wt, set, rep) })
 		end
 	end
 end
@@ -1512,7 +1516,7 @@ PLAN.treadmill = function(segs, lv, r, Wt)
 			mph, incl = 10 + math.floor(2 * f + r:NextNumber() * 2), 2
 		end
 		table.insert(program, { t = t, mph = mph, incl = incl, name = name })
-		t += 4.2 - 0.4 * f
+		t += 4.8 - 0.8 * f
 	end
 	table.insert(segs, { j = "treadmill", duration = t, program = program, mph0 = 3, incl0 = 0, stepMph = 1, tolMph = 1 - 0.4 * f, tolIncl = 1.5 - 0.5 * f,
 		mphMin = 1, mphMax = 14, inclMax = 12, gap = Wt.intro })
@@ -1576,7 +1580,7 @@ PLAN.chamber = function(segs, lv, r, Wt)
 	local f = lvf(lv)
 	local depth = 1.3 + 0.1 * f
 	table.insert(segs, { j = "chamber", duration = 26, profile = { { 0, 1 }, { 7, depth }, { 18, depth }, { 26, 1 } }, rise = 0.07, vent = 0.07, leak = 0.012,
-		earRate = 2.0 + 0.5 * f, tol = 0.06 - 0.02 * f, maxP = 1.6, gap = Wt.intro })
+		earRate = 2.0 + 0.5 * f, tol = 0.065 - 0.02 * f, maxP = 1.6, gap = Wt.intro })
 end
 PLAN.sauna = function(segs, lv, r, Wt)
 	local f = lvf(lv)

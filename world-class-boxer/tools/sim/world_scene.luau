@@ -256,7 +256,19 @@ end }, { __index = RUD })
 local TweenInfo = { new = function(time, style, dir, rep, rev, delay)
 	return { Time = time or 1, EasingStyle = style, EasingDirection = dir, RepeatCount = rep or 0, Reverses = rev or false, DelayTime = delay or 0 }
 end }
-local H = Host.new({ globals = { Instance = E.Instance, workspace = E.workspace, Workspace = E.workspace, UDim2 = UDim2, UDim = UDim, TweenInfo = TweenInfo }, src = args.src })
+-- typeof: fakeengine instances (and the host's module nodes) are Instances, as the game code expects
+local luneTypeof = typeof
+local function worldTypeof(v)
+	if type(v) == "table" and (E.IsInstance(v) or rawget(v, "_class") ~= nil or rawget(v, "ClassName") ~= nil) then
+		return "Instance"
+	end
+	return luneTypeof(v)
+end
+-- (RaycastParams: VenueFX's follow spots build one for their floor-pool rays)
+local RaycastParams = { new = function()
+	return { FilterDescendantsInstances = {}, FilterType = nil, IgnoreWater = true }
+end }
+local H = Host.new({ globals = { Instance = E.Instance, workspace = E.workspace, Workspace = E.workspace, UDim2 = UDim2, UDim = UDim, TweenInfo = TweenInfo, typeof = worldTypeof, RaycastParams = RaycastParams }, src = args.src })
 
 -- services as fakeengine instances (they hold real children); the host's GetService finds game._kids first
 local function svc(name, props)
@@ -827,6 +839,27 @@ if ONLY.venues then
 			end
 			local center = arena:FindFirstChild("Anchors") and arena.Anchors:FindFirstChild("RingCenter")
 			scene.cameras["venue_" .. kind] = center and cfArr(center.CFrame) or nil
+			-- the Arena on a world title night with VenueFX's show rig running (its client-local lights,
+			-- apron LEDs, corner glows, fascia trims; the spots in their entrance gels): root VenueFX_Arena
+			if kind == "Arena" and okFX and type(VenueFX) == "table" and VenueFX.Start then
+				local okS, errS = pcall(VenueFX.Start, arena, {
+					venue = kind, venueName = "WCB GRAND ARENA", stakes = { "WBC", "WBA" }, kind = "fight", rounds = 12,
+					tape = { you = { name = "PREVIEW", nick = "THE PREVIEW", record = { w = 20, l = 0, d = 0, ko = 15 } }, opp = { name = "RIVAL", record = { w = 18, l = 2, d = 0, ko = 10 } } },
+				})
+				if okS then
+					pcall(VenueFX.Phase, "entrance", { who = "you", corner = "Red" })
+					for _ = 1, 12 do
+						pcall(E.Heartbeat.Fire, E.Heartbeat, 0.1)
+					end
+					local fx = E.workspace:FindFirstChild("VenueFX_Local")
+					if fx then
+						record("VenueFX_Arena", fx)
+					end
+					pcall(VenueFX.Stop)
+				else
+					print("[world_scene] VenueFX.Start (preview) failed: " .. tostring(errS))
+				end
+			end
 		else
 			print("[world_scene] Venues.New " .. kind .. " failed: " .. tostring(arena))
 		end

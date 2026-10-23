@@ -428,7 +428,7 @@ local function setupLighting()
 	-- current values start from the venue base and ease toward each phase target
 	S.cur = {
 		exposure = Lighting.ExposureCompensation, contrast = 0, saturation = 0, bloomI = 0, house = 0.55, dof = 0, spot = 5, ring = 0.8,
-		tint = WHITE, density = atm.Density, haze = atm.Haze,
+		tint = WHITE, density = atm.Density or prof.density, haze = atm.Haze or prof.haze,
 	}
 	S.kick = { exposure = 0, contrast = 0, saturation = 0, bloom = 0 }
 end

@@ -12,12 +12,14 @@ local Bots = {}
 
 local TWO_PI = 2 * math.pi
 
+-- k scales the timing (reactions, timing error, how often the player looks); w the slips of the mind
+-- (a wrong move, a skipped beat, biting on a feint) - a slow player is not that much more wrong
 Bots.SKILLS = {
-	perfect = { name = "perfect", k = 0 },
-	high = { name = "high", k = 0.5 },
-	average = { name = "average", k = 1 },
-	low = { name = "low", k = 1.5 },
-	idle = { name = "idle", k = 1, idle = true },
+	perfect = { name = "perfect", k = 0, w = 0 },
+	high = { name = "high", k = 0.5, w = 0.5 },
+	average = { name = "average", k = 1, w = 1 },
+	low = { name = "low", k = 1.5, w = 1.25 },
+	idle = { name = "idle", k = 1, w = 1, idle = true },
 }
 -- a human-like number between the perfect player's (a) and the average one's (b)
 local function mix(sk, a, b)
@@ -67,7 +69,7 @@ A.seq = function(seg, j, t, M, mem, sk, rng)
 	if t >= mem.at and j.idx <= #seg.ids then
 		mem.at = t + gap
 		local id = seg.ids[j.idx]
-		if rng:NextNumber() < 0.2 * sk.k then
+		if rng:NextNumber() < 0.15 * sk.w then
 			-- a wrong press: another move of the same sequence (if it has one)
 			for _, other in ipairs(seg.ids) do
 				if other ~= id then
@@ -89,7 +91,7 @@ A.cue = function(seg, j, t, M, mem, sk, rng)
 	if not mem.done and t - M >= mem.rt then
 		mem.done = true
 		local id = seg.want
-		if rng:NextNumber() < 0.2 * sk.k then
+		if rng:NextNumber() < 0.2 * sk.w then
 			id = WRONG[id] or id
 		end
 		tap(out, id)
@@ -104,7 +106,7 @@ A.call = function(seg, j, t, M, mem, sk, rng)
 	for k, c in ipairs(j.calls) do
 		local p = mem.plan[k]
 		if not p then
-			p = { rt = mix(sk, 0.16, 0.3 + rng:NextNumber() * 0.4), wrong = rng:NextNumber() < 0.12 * sk.k, bite = rng:NextNumber() < 0.3 * sk.k, skip = rng:NextNumber() < 0.08 * sk.k }
+			p = { rt = mix(sk, 0.16, 0.3 + rng:NextNumber() * 0.4), wrong = rng:NextNumber() < 0.12 * sk.w, bite = rng:NextNumber() < 0.3 * sk.w, skip = rng:NextNumber() < 0.08 * sk.w }
 			mem.plan[k] = p
 		end
 		if not p.done and t >= c.t + p.rt then
@@ -125,7 +127,7 @@ A.counter = function(seg, j, t, M, mem, sk, rng)
 	local rt = mix(sk, 0.16, 0.42)
 	if j.step == 1 and not mem.d1 and t - M >= rt then
 		mem.d1 = true
-		tap(out, (rng:NextNumber() < 0.15 * sk.k) and (seg.want == "slipL" and "slipR" or "slipL") or seg.want)
+		tap(out, (rng:NextNumber() < 0.15 * sk.w) and (seg.want == "slipL" and "slipR" or "slipL") or seg.want)
 	elseif j.step == 2 and not mem.d2 and t - j.shown2 >= rt then
 		mem.d2 = true
 		tap(out, "punch")
@@ -174,7 +176,7 @@ A.notes = function(seg, j, t, M, mem, sk, rng)
 		if not n.judged then
 			local p = mem.plan[i]
 			if not p then
-				p = { off = mix(sk, 0, rng:NextNumber() * 0.28 - 0.12), skip = rng:NextNumber() < 0.12 * sk.k }
+				p = { off = mix(sk, 0, rng:NextNumber() * 0.28 - 0.12), skip = rng:NextNumber() < 0.12 * sk.w }
 				mem.plan[i] = p
 			end
 			if not p.done and not p.skip and t >= n.t + p.off - 0.004 then
@@ -192,7 +194,8 @@ A.lift = function(seg, j, t, M, mem, sk, rng)
 		table.insert(out, { "lift", true })
 	end
 	if mem.down and not mem.up then
-		mem.target = mem.target or mix(sk, seg.lo + seg.width / 2, seg.lo + seg.width * (rng:NextNumber() * 2.2 - 0.6))
+		-- (the release is early or late by a human moment: up to 0.14 s for the average player)
+		mem.target = mem.target or (seg.lo + seg.width / 2 + mix(sk, 0, (rng:NextNumber() * 2 - 1) * 0.14) * seg.speed)
 		local f = seg.speed * (t - mem.down)
 		if f >= mem.target - seg.speed / 120 then
 			mem.up = true
@@ -232,7 +235,7 @@ A.rope = function(seg, j, t, M, mem, sk, rng)
 	local lead = mix(sk, 0.05, rng:NextNumber() * 0.42)
 	if toPass <= lead and not mem.done[key] then
 		mem.done[key] = true
-		if rng:NextNumber() < 0.12 * sk.k then
+		if rng:NextNumber() < 0.12 * sk.w then
 			return out
 		end
 		local cue = j.cue
@@ -297,7 +300,7 @@ A.squat = function(seg, j, t, M, mem, sk, rng)
 		table.insert(out, { "sit", true })
 		mem.down = true
 	elseif ph == "descend" and mem.down then
-		mem.target = mem.target or mix(sk, (seg.lo + seg.hi) / 2, seg.lo + (seg.hi - seg.lo) * (rng:NextNumber() * 2.4 - 0.7))
+		mem.target = mem.target or ((seg.lo + seg.hi) / 2 + mix(sk, 0, (rng:NextNumber() * 2 - 1) * 0.16))
 		local v = seg.v0 + seg.acc * (t - j.descT)
 		if j.z + v / 120 >= mem.target then
 			mem.down = false
@@ -340,7 +343,7 @@ A.tempo = function(seg, j, t, M, mem, sk, rng)
 	for i, n in ipairs(j.notes) do
 		local p = mem.plan[i]
 		if not p then
-			local early = rng:NextNumber() < 0.15 * sk.k
+			local early = rng:NextNumber() < 0.15 * sk.w
 			p = { a = mix(sk, 0, rng:NextNumber() * 0.26 - 0.12), b = early and -((n.te - n.ts) * 0.5) or mix(sk, 0, rng:NextNumber() * 0.3 - 0.12) }
 			mem.plan[i] = p
 		end
@@ -357,8 +360,8 @@ end
 -- the plank on the ball: a look at the balance now and then, a shove back once it is clearly off
 A.wobble = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
-	if every(mem, "look", t, mix(sk, 0.05, 0.4)) then
-		local th = seg.band * mix(sk, 0.3, 0.7)
+	if every(mem, "look", t, mix(sk, 0.05, 0.35)) then
+		local th = seg.band * mix(sk, 0.3, 0.6)
 		if j.x > th then
 			tap(out, "L")
 		elseif j.x < -th then
@@ -370,7 +373,7 @@ end
 -- cardio -----------------------------------------------------------------
 A.treadmill = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
-	local lag = mix(sk, 0, 1.1)
+	local lag = mix(sk, 0, 0.9)
 	local tg = j.target(t - lag)
 	local period = mix(sk, 0.06, 0.35)
 	if every(mem, "s", t, period) then
@@ -496,13 +499,17 @@ A.massage = function(seg, j, t, M, mem, sk, rng)
 		else
 			mem.pick = mem.pick or {}
 			if not mem.pick[j.round] then
-				local free = {}
+				-- the sorest spot left half the time (an average eye on the body map), else any free one
+				local free, best, bestI = {}, -1, nil
 				for i, g in ipairs(seg.groups) do
 					if not j.worked[g] then
 						table.insert(free, i)
+						if j.sore[g] > best then
+							best, bestI = j.sore[g], i
+						end
 					end
 				end
-				mem.pick[j.round] = free[rng:NextInteger(1, #free)]
+				mem.pick[j.round] = (rng:NextNumber() < mix(sk, 1, 0.5)) and bestI or free[rng:NextInteger(1, #free)]
 			end
 			want = mem.pick[j.round]
 			if t - j.chooseAt < 1.5 then
@@ -523,7 +530,7 @@ A.massage = function(seg, j, t, M, mem, sk, rng)
 		local key = j.round .. ":" .. k
 		local p = mem.st[key]
 		if not p then
-			p = { off = mix(sk, 0, rng:NextNumber() * 0.5 - 0.22), skip = rng:NextNumber() < 0.2 * sk.k }
+			p = { off = mix(sk, 0, rng:NextNumber() * 0.5 - 0.22), skip = rng:NextNumber() < 0.2 * sk.w }
 			mem.st[key] = p
 		end
 		if not st.judged and not p.done and not p.skip and t >= st.t + p.off - 0.004 then
@@ -542,10 +549,11 @@ A.chamber = function(seg, j, t, M, mem, sk, rng)
 		if j.ear > 0.5 and every(mem, "e", t, 0.3) then
 			tap(out, "eq")
 		end
-	elseif every(mem, "look", t, 0.7) then
+	elseif every(mem, "look", t, mix(sk, 0, 0.7)) then
 		local tg = j.target(t)
-		hold(out, mem, "up", j.P < tg - 0.07)
-		hold(out, mem, "down", j.P > tg + 0.07)
+		local db = mix(sk, 0.008, 0.07)
+		hold(out, mem, "up", j.P < tg - db)
+		hold(out, mem, "down", j.P > tg + db)
 		if j.ear > 0.9 then
 			tap(out, "eq")
 		end
@@ -554,7 +562,7 @@ A.chamber = function(seg, j, t, M, mem, sk, rng)
 end
 A.sauna = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
-	local outT, inT = mix(sk, 0.8, 0.95), mix(sk, 0.45, 0.6)
+	local outT, inT = math.min(0.95, mix(sk, 0.8, 0.95)), math.min(0.6, mix(sk, 0.45, 0.6))
 	if t < j.forcedUntil then
 		return out
 	end

@@ -16,6 +16,7 @@
 --     keep apart, and the key strip with all 14 special moves fits (at most two special rows, one on a
 --     short canvas; the rest behind the "+N MORE" cap), and a phone's special pads stay two rows (paged)
 --   * a controller has a selection on the screens Roblox's selection drives
+--   * the poster face (Bangers) draws nothing but the brand: the WCB wordmark and the places' sign lockups
 -- Objects drawn under a modal shade (a UI.Window's) are skipped. The box dumps land in tools/sim/out/ui/.
 --
 --   lune run tools/sim/test_ui_layout.luau                       # the checks
@@ -1023,6 +1024,15 @@ local function run(name, dev)
 		end
 	end
 	report("unknown icon name", unknown)
+	-- the type system: the poster face (Bangers) is the brand's alone - the WCB wordmark on the emblem's ribbon
+	-- and the places' sign lockups (Shared.Signage badges); every other label is Gotham, Builder Sans or Oswald
+	local poster = {}
+	for _, it in ipairs(items) do
+		if it.text and it.text ~= "" and GS.FaceOf(it.obj) == "bangers" and it.name ~= "Wordmark" and not it.path:find("Badge_", 1, true) and not it.path:find("Lockup", 1, true) then
+			table.insert(poster, { item = it })
+		end
+	end
+	report("poster face outside the brand", poster)
 	-- the fight HUD's pieces keep apart
 	if name:find("^fight") then
 		local pieces = {
