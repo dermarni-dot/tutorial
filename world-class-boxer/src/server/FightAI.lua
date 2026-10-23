@@ -1096,7 +1096,8 @@ function FightAI:Think(now)
 	local rg = engine.Trait and engine:Trait(F, "RingGeneral") or 0
 	local escape = self.arch.pivot * 0.08 + (F.onRopes and (0.05 + 0.1 * self.skill + Traits.Effect("RingGeneral", "escape", rg) * 0.4) or 0)
 	-- a mover being walked down takes the angle out instead of backing straight up (ring generalship)
-	local mover = (self.mode == "outbox" or self.mode == "bait" or self.mode == "cruise") and (F.pressured or dist < self:Range() * 0.75)
+	local mover = (self.mode == "outbox" or self.mode == "bait" or self.mode == "cruise" or (self.style.id == "OutBoxer" and self.mode ~= "finish"))
+		and (F.pressured or dist < self:Range() * 0.75)
 	if mover then
 		escape += 0.08 + 0.14 * self.skill
 	end
@@ -1299,7 +1300,7 @@ function FightAI:HandsUp(now, dist)
 	-- (the guard slows the feet: a mover who wants out of range - an out-boxer's plan, a reset, a cruise - uses his
 	-- footwork for his defence and keeps his hands free to move)
 	local mover = self.mode == "outbox" or self.mode == "bait" or self.mode == "cruise" or self.mode == "reset"
-	if mover and dist < self:Range() * 0.95 then
+	if (mover and dist < self:Range() * 0.95) or (self.style.id == "OutBoxer" and not F.onRopes) then
 		return false
 	end
 	local k = (0.6 + 0.4 * self.skill) * (0.8 + self.arch.block) * (0.85 + 0.15 * self.tier.read) * (engine.aiDefense or 1)
