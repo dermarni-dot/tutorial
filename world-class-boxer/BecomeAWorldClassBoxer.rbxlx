@@ -15276,8 +15276,10 @@ function BodyTiers.GearScale(frame, base, d)
 	return vec3(g) or { 1, 1, 1 }
 end
 
--- the frame's rig heights (BodyAssetData.frames[id].unit: joints, hipHeight, shoulderHeight, ...), the default
--- family's unit for the default frame / an unknown one
+-- the frame's rig heights (BodyAssetData.frames[id].unit: joints, hipHeight, shoulderHeight, neckHeight, the frame's
+-- head (studs) and headScale, standingHeight = neckHeight + head), the default family's unit for the default frame /
+-- an unknown one. Builder.Scales normalises the HeightScale from neckHeight and the head so every frame stands the
+-- chosen height (v13)
 function BodyTiers.Unit(frame, d)
 	d = d or load()
 	local fr = type(d) == "table" and type(d.frames) == "table" and type(frame) == "string" and d.frames[frame] or nil
@@ -15718,30 +15720,77 @@ end
 -- old Rthro blend made: about 6.2 studs, 7 heads), so Height / Width / Depth only carry the boxer's height, his
 -- frame's build (BodyTypes width / depth) and the women's narrower shoulders; training never widens the frame
 -- (the tiers carry the muscle). The head is the standard head at the frame's head share: FRAME_PROPORTIONS'
--- head x RTHRO_HEAD (what BodyTypeScale 1 used to take off it), so it stays the size it was (0.927 studs).
--- With every id 0 the default parts stay: the classic block body at these scales.
+-- head x RTHRO_HEAD (what BodyTypeScale 1 used to take off it): 0.927 studs on the Athletic frame, a little
+-- smaller on the Lean, bigger on the Power Build / Heavyweight (tools/body/build_body.py FRAMES[id].head is the
+-- same table: the neck column is modelled under that head). With every id 0 the default parts stay: the classic
+-- block body at these scales.
+--
+-- THE HEIGHT (v13): the frame changes the build, never the height. Every frame's mesh family has its own unit rig
+-- (BodyAssetData.frames[id].unit: the neck pivot's height neckHeight with the frame's skeleton, its head), so the
+-- HeightScale is normalised per frame: the chosen height in inches is the standing height of the Athletic unit x
+-- inches / 70 (the 70-inch Athletic man stands unit.standingHeight = 6.2161 studs, the game's inch), and
+--   HeightScale = (standing - head) / unit[frame].neckHeight     (head = 1.2 x HeadScale: the head is not height-scaled)
+-- so the sole-to-crown height, and with it the eye line, is the same for every frame at the same inches (the frames'
+-- skeletons are tuned so the hip line follows within 1 %: BuilderTiers.FixHipHeight follows the scaled legs anyway).
+-- A missing unit (no neckHeight) falls back to inches / 70.
 local FRAME_PROPORTIONS = {
-	Lean = { head = 0.81 },
+	Lean = { head = 0.79 },
 	Athletic = { head = 0.82 },
-	Muscular = { head = 0.83 },
-	["Power Build"] = { head = 0.84 },
-	["Heavyweight Build"] = { head = 0.85 },
+	Muscular = { head = 0.835 },
+	["Power Build"] = { head = 0.85 },
+	["Heavyweight Build"] = { head = 0.865 },
 }
 Builder.FRAME_PROPORTIONS = FRAME_PROPORTIONS
 local RTHRO_HEAD = 0.942
+Builder.RTHRO_HEAD = RTHRO_HEAD
+-- the classic head's nominal size the HeadScale scales (the plain head Part BuilderHead swaps in)
+local HEAD_NOMINAL = 1.2
+-- the share of Config.BodyTypes' width / depth that still goes into the description: the frames' mesh families carry
+-- the build (a Lean frame's narrow shoulders, the heavyweight's wide pelvis are IN the meshes, v12), so the whole-body
+-- Width / Depth is only the fine-tune on top; at the full BodyTypes values the pelvis of a Heavyweight came out 1.16
+-- (mesh) x 1.17 (description) = 1.36 x the Athletic one, and every hand, foot and shin with it
+local FRAME_WIDTH_SHARE = 0.5
+Builder.FRAME_WIDTH_SHARE = FRAME_WIDTH_SHARE
+
+-- the inches the creator / the records carry (Looks: 60..84), the Athletic unit's studs per 70 inches
+local HEIGHT_MIN, HEIGHT_MAX = 60, 84
+local UNIT_STAND_FALLBACK = 6.2161
+
+-- the frame's unit rig heights (BodyTiers.Unit) and the Athletic unit's standing height: nil, nil without data
+local function unitOf(frameId)
+	local ok, u = pcall(BodyTiers.Unit, frameId)
+	return ok and type(u) == "table" and u or nil
+end
+
+-- the standing height in studs a boxer of `inches` is built to (every frame): the Athletic unit's x inches / 70
+function Builder.StandingHeight(inches)
+	local ath = unitOf(BodyTiers.DEFAULT_FRAME)
+	local unitStand = ath and type(ath.standingHeight) == "number" and ath.standingHeight or UNIT_STAND_FALLBACK
+	return math.clamp(tonumber(inches) or 70, HEIGHT_MIN, HEIGHT_MAX) / 70 * unitStand
+end
 
 -- (build, opts: kept for the callers; the physique and training no longer change the scales)
 function Builder.Scales(app, build, opts)
 	local frame = frameOf(app)
 	local female = app.gender == 2
 	local pr = FRAME_PROPORTIONS[frame.id] or FRAME_PROPORTIONS.Athletic
+	local headScale = pr.head * RTHRO_HEAD * (female and 0.97 or 1)
+	local inches = math.clamp(tonumber(app.height) or 70, HEIGHT_MIN, HEIGHT_MAX)
+	-- the frame's own neck height: the height scale that puts the crown of its head at the chosen height
+	local u = unitOf(frame.id)
+	local height = inches / 70
+	if u and type(u.neckHeight) == "number" and u.neckHeight > 1 then
+		height = (Builder.StandingHeight(inches) - HEAD_NOMINAL * headScale) / u.neckHeight
+	end
+	local wk = (female and 0.92 or 1)
+	local dk = (female and 0.94 or 1)
 	return {
-		height = math.clamp((app.height or 70) / 70, 0.86, 1.2),
-		width = math.clamp(frame.width * (female and 0.92 or 1), 0.7, 1.4),
-		depth = math.clamp(frame.depth * (female and 0.94 or 1), 0.7, 1.4),
+		height = math.clamp(height, 0.8, 1.3),
+		width = math.clamp((1 + (frame.width - 1) * FRAME_WIDTH_SHARE) * wk, 0.7, 1.4),
+		depth = math.clamp((1 + (frame.depth - 1) * FRAME_WIDTH_SHARE) * dk, 0.7, 1.4),
 		bodyType = 0,
 		proportion = 0,
-		head = pr.head * RTHRO_HEAD * (female and 0.97 or 1),
+		head = headScale,
 	}
 end
 
@@ -15776,15 +15825,15 @@ function Builder.Description(app, build, opts)
 	return desc
 end
 
--- quantised to 0.01 so only real changes re-apply the description (which yields); "p3" = the standard R15
--- body at BodyTypeScale 0 (characters scaled under an older key re-apply once)
--- body at BodyTypeScale 0 (characters scaled under an older key re-apply once). A player's avatar hair / face
+-- quantised to 0.01 so only real changes re-apply the description (which yields); "p4" = the standard R15
+-- body at BodyTypeScale 0 with the frame-normalised height (characters scaled under an older key re-apply once).
+-- A player's avatar hair / face
 -- (opts.avatar) adds its AvatarLook.Key: a new avatar, the setting turned on / off re-apply once; the game
 -- look's key is exactly the old one
 function Builder.ScaleKey(app, build, opts)
 	local sc = Builder.Scales(app, build, opts)
 	local av = AvatarLook.Key(opts and opts.avatar)
-	return string.format("%.2f|%.2f|%.2f|%d|%.2f|%.2f|%.2f|%sp3", sc.height, sc.width, sc.depth, app.gender or 1, sc.bodyType, sc.proportion, sc.head,
+	return string.format("%.2f|%.2f|%.2f|%d|%.2f|%.2f|%.2f|%sp4", sc.height, sc.width, sc.depth, app.gender or 1, sc.bodyType, sc.proportion, sc.head,
 		av ~= "" and (av .. "|") or "")
 end
 
@@ -15920,6 +15969,90 @@ local function capLook(model, opts, detail)
 		Kit.seal(model, "Hat", key)
 	end
 end
+
+-- The late re-fit (BuilderHead.RefitHeadgear): the gear folders checked against the live head (its instance, Size,
+-- class, mesh; welds still there) and rebuilt from their own record when they no longer fit, each rebuild warned as
+-- "[Boxer] headgear refit <name>: ..."; a rebuilt folder is re-sealed under the key its step would have used, so the
+-- next Cosmetics keeps it. The Neck is checked too (Head.EnsureNeck: a rig the swap left without one is dead on
+-- RequiresNeck). Change-only: nil while everything fits.
+function Builder.RefitHeadgear(model)
+	if not (model and model.Parent) then
+		return nil
+	end
+	local okN, neck = pcall(Head.EnsureNeck, model)
+	if okN and neck == "rebuilt" then
+		warn("[Boxer] headgear refit " .. tostring(model.Name) .. ": no Neck joint on the rig; a Motor6D Neck was rebuilt from the RigAttachments")
+	end
+	local ok, res = pcall(Head.RefitHeadgear, model)
+	if not ok then
+		warn("[Boxer] headgear refit failed:", res)
+		return nil
+	end
+	if type(res) ~= "table" then
+		return nil
+	end
+	local head = model:FindFirstChild("Head")
+	local look = model:FindFirstChild("BoxerLook")
+	if res.Headgear then
+		local f = look and look:FindFirstChild("Headgear")
+		local col = f and f:GetAttribute("Color")
+		if f and typeof(col) == "Color3" then
+			Kit.seal(model, "Headgear", Kit.sig("HG1", col, head and head.Size or false, f:GetAttribute("Detail")))
+		end
+	end
+	if res.Hat then
+		local f = look and look:FindFirstChild("Hat")
+		if f then
+			local colors = { cap = f:GetAttribute("CapColor"), trim = f:GetAttribute("CapTrim"), badge = f:GetAttribute("CapBadge") }
+			Kit.seal(model, "Hat", Kit.sig("CAP1", f:GetAttribute("Style"), colors, head and head.Size or false, f:GetAttribute("Detail")))
+		end
+	end
+	return res
+end
+
+-- A model placed in Workspace (an NPC parented in by Ambient / Venues / FightEngine, a player after Builder.Apply):
+-- the engine's deferred passes (the Humanoid's scaling, the MeshPart head conversion, a death on a missing Neck)
+-- run after the parent, so the gear is re-fitted 0.3 s and 2 s later (Builder.RefitHeadgear; a no-op while it
+-- fits). One schedule per model at a time.
+Builder.REFIT_DELAYS = { 0.3, 2 }
+local refitPending = setmetatable({}, { __mode = "k" })
+function Builder.OnPlaced(model)
+	if model == nil or refitPending[model] then
+		return
+	end
+	refitPending[model] = true
+	local last = Builder.REFIT_DELAYS[#Builder.REFIT_DELAYS]
+	for _, delay in ipairs(Builder.REFIT_DELAYS) do
+		task.delay(delay, function()
+			if delay == last then
+				refitPending[model] = nil
+			end
+			if model.Parent then
+				Builder.RefitHeadgear(model)
+			end
+		end)
+	end
+end
+
+-- Every built character / NPC keeps its joints and its gear whatever happens to its Neck: the rigs the engine hands
+-- out now carry AnimationConstraint joints (the avatar joint upgrade) or lose the Neck in a head swap, and with
+-- RequiresNeck on the Humanoid dies and BreakJointsOnDeath then drops every weld (the headgear lying studs away,
+-- every motor gone: the Studio diagnostic). FightEngine / Ragdoll set these per fight already; this is the baseline.
+local function hardenHumanoid(model)
+	local hum = model and model:FindFirstChildOfClass("Humanoid")
+	if not hum then
+		return
+	end
+	pcall(function()
+		if hum.RequiresNeck ~= false then
+			hum.RequiresNeck = false
+		end
+		if hum.BreakJointsOnDeath ~= false then
+			hum.BreakJointsOnDeath = false
+		end
+	end)
+end
+Builder.HardenHumanoid = hardenHumanoid
 
 -- Sparring: on = the corner's colour over the boxer's own headgear, off = his own colour back. A model without its
 -- own headgear (Config.AlwaysHeadgear off, an exempt official) gets the old toggle: built on, removed off
@@ -16201,6 +16334,7 @@ end
 function Builder.Cosmetics(model, app, build, gear, opts)
 	opts = opts or {}
 	app = app or Looks.Defaults(1)
+	hardenHumanoid(model)
 	avatarState(model)
 	-- preview path: rebuild only the requested head folders, in order
 	if type(opts.only) == "table" then
@@ -16318,6 +16452,8 @@ function Builder.Apply(character, app, build, gear, opts)
 	end
 	if character.Parent then
 		Builder.Cosmetics(character, app, build, gear, opts)
+		-- the engine's deferred passes after the description (scaling, the head conversion) run after this returns
+		Builder.OnPlaced(character)
 	end
 end
 
@@ -16407,6 +16543,17 @@ function Builder.CreateNPC(app, build, gear, displayName, opts)
 			d.CanTouch = false
 		end
 	end
+	-- the late re-fit once the caller places it in Workspace (Builder.OnPlaced; the callers' own hook covers a clone,
+	-- which carries no connection)
+	pcall(function()
+		local conn
+		conn = model.AncestryChanged:Connect(function()
+			if model:FindFirstAncestorWhichIsA("Workspace") then
+				conn:Disconnect()
+				Builder.OnPlaced(model)
+			end
+		end)
+	end)
 	return model
 end
 
@@ -20615,6 +20762,12 @@ local function classicHead(model, head)
 		if not clean:FindFirstChildOfClass("SpecialMesh") then
 			Head.SwapFailed(model, "the engine dropped the Head SpecialMesh from the classic head")
 		end
+		-- the Neck must survive the swap whatever joint type the rig uses (Humanoid.RequiresNeck otherwise kills the
+		-- character and BreakJointsOnDeath drops every weld): rebuilt from the RigAttachments when it is gone
+		local okN, neck = pcall(Head.EnsureNeck, model)
+		if okN and neck == "rebuilt" then
+			warn("[Boxer] classic head swap on " .. tostring(model.Name) .. " left no Neck joint: a Motor6D Neck was rebuilt from the RigAttachments")
+		end
 		return clean
 	end
 	-- the face, the headgear and the caps are built for the classic head's profile: on the engine's MeshPart head
@@ -21642,40 +21795,258 @@ function Head.OffSkin(color, skin)
 	return lerpColor(color, WHITE, 0.3), true
 end
 
--- The head is scaled after a build at times (ApplyDescription, a head swap kept at the engine's scale): the gear
--- was then built for another size. The folder records the size it was built for (attribute HeadSize) and watches
--- the head's Size while it lives; a change rebuilds it through `rebuild` (deferred: one rebuild per change burst).
--- Builder's cache keys carry the head size too, so a Cosmetics after the change rebuilds either way; this covers a
--- change with no Cosmetics after it. Quiet when the host has no property signals (the lune tests).
-local function followHead(folder, head, rebuild)
+-- Every head-worn part is joined to the head by a Weld (a JointInstance, as the gear meshes and the engine's own
+-- accessories are), parented to the part, Part0 = the head, C0 = the part in head space, C1 = identity. Not a
+-- WeldConstraint: the engine re-points JointInstances when it replaces the head (ReplaceBodyPartR15, the MeshPart
+-- head conversion) and never a constraint, a WeldConstraint only records its offset once it goes live, and a Weld's
+-- C0 places the part from the head deterministically wherever the model goes (a clone, out of and back into the
+-- DataModel). Massless, no collisions / queries / touches (Kit.mk), the head's collision group.
+local function weldToHead(p, head)
+	for _, c in ipairs(p:GetChildren()) do
+		if c:IsA("WeldConstraint") or c:IsA("Weld") then
+			c:Destroy()
+		end
+	end
+	local w = Instance.new("Weld")
+	w.Name = "HeadWeld"
+	w.Part0 = head
+	w.Part1 = p
+	w.C0 = head.CFrame:ToObjectSpace(p.CFrame)
+	w.C1 = CF()
+	w.Parent = p
+	pcall(function()
+		p.CollisionGroup = head.CollisionGroup
+	end)
+	return w
+end
+Head.WeldToHead = weldToHead
+
+-- what the gear is fitted to, as one string: the head's mesh (a MeshPart's id and MeshSize, a SpecialMesh's type and
+-- Scale) - the engine swaps a classic head for a MeshPart (and back) without a Size change
+local function v3s(v)
+	if typeof(v) ~= "Vector3" then
+		return "?"
+	end
+	return string.format("%.3f,%.3f,%.3f", v.X, v.Y, v.Z)
+end
+function Head.HeadMeshSig(head)
+	if not (head and head:IsA("BasePart")) then
+		return "none"
+	end
+	if head:IsA("MeshPart") then
+		local id, ms
+		pcall(function()
+			id = tostring(head.MeshId):gsub("rbxassetid://", "")
+			ms = head.MeshSize
+		end)
+		return "MeshPart " .. tostring(id) .. " " .. v3s(ms)
+	end
+	local sm = head:FindFirstChildOfClass("SpecialMesh")
+	if sm then
+		local mt, sc
+		pcall(function()
+			mt = tostring(sm.MeshType):match("(%w+)$")
+			sc = sm.Scale
+		end)
+		return "SpecialMesh " .. tostring(mt) .. " " .. v3s(sc)
+	end
+	return head.ClassName .. " nomesh"
+end
+
+-- the folder records the head it was fitted to: its Size, class and mesh (HeadSize / HeadClass / HeadMesh)
+function Head.StampHead(folder, head)
 	folder:SetAttribute("HeadSize", head.Size)
-	local conn
-	local ok = pcall(function()
-		conn = head:GetPropertyChangedSignal("Size"):Connect(function()
-			if folder.Parent == nil then
-				conn:Disconnect()
+	folder:SetAttribute("HeadClass", head.ClassName)
+	folder:SetAttribute("HeadMesh", Head.HeadMeshSig(head))
+end
+
+-- Why a gear folder (Headgear / Hat) no longer fits the model's live head, or nil while it does: parts whose weld is
+-- gone (the Humanoid died with BreakJointsOnDeath, a broken rig: they fall or stay behind), parts welded to a head
+-- that is no longer in the model (the engine replaced the instance), the head's Size / class / mesh differing from
+-- what the folder was fitted to (a rescale after the build, the MeshPart conversion). nil with no head or no parts.
+function Head.GearStale(model, folder)
+	local head = model:FindFirstChild("Head")
+	if not (head and head:IsA("BasePart")) or folder == nil or folder.Parent == nil then
+		return nil
+	end
+	local parts, loose, other = 0, 0, nil
+	for _, p in ipairs(folder:GetDescendants()) do
+		if p:IsA("BasePart") then
+			parts += 1
+			local w = p:FindFirstChildOfClass("Weld") or p:FindFirstChildOfClass("WeldConstraint")
+			if not (w and w.Part0 and w.Part1 == p) then
+				loose += 1
+			elseif w.Part0 ~= head then
+				other = w.Part0
+			end
+		end
+	end
+	if parts == 0 then
+		return nil
+	end
+	local why = {}
+	if loose > 0 then
+		why[#why + 1] = string.format("%d of %d parts with no weld", loose, parts)
+	end
+	if other then
+		why[#why + 1] = string.format("welded to a head no longer in the model (%s%s); the live Head is a %s", other.ClassName,
+			other.Parent and (" under " .. other.Parent.Name) or ", orphaned", head.ClassName)
+	end
+	local was = folder:GetAttribute("HeadSize")
+	if typeof(was) == "Vector3" and (head.Size - was).Magnitude > 1e-3 then
+		why[#why + 1] = string.format("Head.Size (%s) -> (%s)", v3s(was), v3s(head.Size))
+	end
+	local cls = folder:GetAttribute("HeadClass")
+	if type(cls) == "string" and cls ~= head.ClassName then
+		why[#why + 1] = "Head " .. cls .. " -> " .. head.ClassName
+	end
+	local mesh = folder:GetAttribute("HeadMesh")
+	local live = Head.HeadMeshSig(head)
+	if type(mesh) == "string" and mesh ~= live then
+		why[#why + 1] = "head mesh " .. mesh .. " -> " .. live
+	end
+	if #why == 0 then
+		return nil
+	end
+	return table.concat(why, "; ")
+end
+
+-- one Output line per rebuild, counted on the module (tests) and the model (HeadgearRefits / HeadgearRefitLast: Diag)
+Head.Refits = 0
+local function refitNote(model, fname, why)
+	Head.Refits += 1
+	pcall(function()
+		model:SetAttribute("HeadgearRefits", (tonumber(model:GetAttribute("HeadgearRefits")) or 0) + 1)
+		model:SetAttribute("HeadgearRefitLast", fname .. ": " .. why)
+	end)
+	warn(string.format("[Boxer] headgear refit %s: %s %s", tostring(model and model.Name), fname, why))
+end
+
+-- The head changes after a build at times: scaled (ApplyDescription, a head swap kept at the engine's scale, the
+-- Humanoid's deferred scaling pass once the model is in Workspace) or REPLACED (the engine's MeshPart head
+-- conversion, a later ReplaceBodyPartR15): the gear was fitted to another head. The folder records the head it
+-- was fitted to (Head.StampHead) and watches, while it lives, the head's Size, the head leaving the model and a new
+-- Head arriving (model.ChildAdded); any of them re-checks (deferred: one rebuild per burst) and rebuilds the folder
+-- through `rebuild(why)` when Head.GearStale says it no longer fits. Builder's cache keys carry the head size too,
+-- so a Cosmetics after a change rebuilds either way; this covers a change with no Cosmetics after it, and the late
+-- re-fit (Head.RefitHeadgear, from Builder.OnPlaced) covers a clone (no watch) and anything the signals miss.
+local function followHead(folder, head, rebuild)
+	Head.StampHead(folder, head)
+	local look = folder.Parent
+	local model = look and look.Parent
+	local conns, done = {}, false
+	local function stop()
+		done = true
+		for _, c in ipairs(conns) do
+			pcall(c.Disconnect, c)
+		end
+	end
+	local function changed()
+		if done then
+			return
+		end
+		task.defer(function()
+			if done or folder.Parent == nil or model == nil then
 				return
 			end
-			task.defer(function()
-				if folder.Parent == nil or head.Parent == nil then
-					return
-				end
-				local was = folder:GetAttribute("HeadSize")
-				if typeof(was) == "Vector3" and (head.Size - was).Magnitude > 1e-3 then
-					conn:Disconnect()
-					rebuild()
-				end
-			end)
-		end)
-	end)
-	if ok and conn then
-		-- (the folder goes with the model, a rebuild or a fight cleanup: the watch goes with it)
-		pcall(function()
-			folder.Destroying:Once(function()
-				conn:Disconnect()
-			end)
+			local why = Head.GearStale(model, folder)
+			if why then
+				stop()
+				rebuild(why)
+			end
 		end)
 	end
+	local function watch(sig)
+		local ok, c = pcall(function()
+			return sig:Connect(changed)
+		end)
+		if ok and c then
+			conns[#conns + 1] = c
+		end
+	end
+	watch(head:GetPropertyChangedSignal("Size"))
+	watch(head.AncestryChanged)
+	if model then
+		watch(model.ChildAdded)
+	end
+	-- (the folder goes with the model, a rebuild or a fight cleanup: the watch goes with it)
+	pcall(function()
+		folder.Destroying:Once(stop)
+	end)
+end
+
+-- The late re-fit: every gear folder checked against the live head (Head.GearStale) and rebuilt from its own record
+-- (the Headgear folder's Color / Detail, the Hat's Style / CapColor / CapTrim / CapBadge / Detail) when it no longer
+-- fits, with one "[Boxer] headgear refit" line each. A no-op (nil) while everything fits. Builder.OnPlaced runs it
+-- 0.3 s and 2 s after a model is placed in Workspace (and after a player's Builder.Apply).
+-- Returns { Headgear = why, Hat = why } for what was rebuilt, or nil.
+function Head.RefitHeadgear(model)
+	local look = model and model:FindFirstChild("BoxerLook")
+	if not look then
+		return nil
+	end
+	local out = nil
+	local hg = look:FindFirstChild("Headgear")
+	local why = hg and Head.GearStale(model, hg)
+	if why then
+		local color, detail = hg:GetAttribute("Color"), hg:GetAttribute("Detail")
+		refitNote(model, "Headgear", why)
+		Head.SetHeadgear(model, color, true, detail)
+		out = out or {}
+		out.Headgear = why
+	end
+	local hat = look:FindFirstChild("Hat")
+	why = hat and Head.GearStale(model, hat)
+	if why then
+		local style, detail = hat:GetAttribute("Style"), hat:GetAttribute("Detail")
+		local colors = { cap = hat:GetAttribute("CapColor"), trim = hat:GetAttribute("CapTrim"), badge = hat:GetAttribute("CapBadge") }
+		refitNote(model, "Hat", why)
+		Head.SetCap(model, style, colors, detail)
+		out = out or {}
+		out.Hat = why
+	end
+	return out
+end
+
+-- The Neck after a head swap. Whatever joint the rig uses stays as it is (a Motor6D "Neck" under the head, or the
+-- AnimationConstraint an upgraded avatar rig carries); with none at all joining the UpperTorso to the head (the
+-- swap dropped it) a Motor6D Neck is rebuilt from the two NeckRigAttachments: without one Humanoid.RequiresNeck
+-- kills the character and BreakJointsOnDeath then drops every weld (the gear falls off, the joints go).
+-- Returns "ok", "rebuilt" or nil (no head / torso / attachments to build from).
+function Head.EnsureNeck(model)
+	local head, torso = model:FindFirstChild("Head"), model:FindFirstChild("UpperTorso")
+	if not (head and torso and head:IsA("BasePart") and torso:IsA("BasePart")) then
+		return nil
+	end
+	local function joins(c)
+		if c:IsA("Motor6D") or c:IsA("Weld") then
+			return (c.Part0 == torso and c.Part1 == head) or (c.Part0 == head and c.Part1 == torso)
+		end
+		if c:IsA("AnimationConstraint") then
+			local a0, a1 = c.Attachment0, c.Attachment1
+			return a0 ~= nil and a1 ~= nil and ((a0.Parent == torso and a1.Parent == head) or (a0.Parent == head and a1.Parent == torso))
+		end
+		return false
+	end
+	for _, holder in ipairs({ head, torso }) do
+		for _, c in ipairs(holder:GetChildren()) do
+			if joins(c) then
+				return "ok"
+			end
+		end
+	end
+	local a0, a1 = torso:FindFirstChild("NeckRigAttachment"), head:FindFirstChild("NeckRigAttachment")
+	if not (a0 and a1 and a0:IsA("Attachment") and a1:IsA("Attachment")) then
+		return nil
+	end
+	local m = Instance.new("Motor6D")
+	m.Name = "Neck"
+	m.Part0 = torso
+	m.Part1 = head
+	m.C0 = a0.CFrame
+	m.C1 = a1.CFrame
+	m.Parent = head
+	return "rebuilt"
 end
 
 function Head.SetHeadgear(model, color, on, detail)
@@ -21704,9 +22075,19 @@ function Head.SetHeadgear(model, color, on, detail)
 	local function at(x, y, z)
 		return hcf * CF(x * hs, y * hs, z * hs)
 	end
+	-- a part on the head: Kit.mk, then the Weld to the head (weldToHead) in place of mk's WeldConstraint
+	local function piece(name, size, cf, c, shape, m)
+		local p = mk(folder, head, name, size, cf, c, shape, m)
+		weldToHead(p, head)
+		return p
+	end
 	-- an ellipsoid pad: centre (x, y, z) and size w x h x d in spans
 	local function pad(name, x, y, z, w, h, d, c, m)
-		return mk(folder, head, name, V3(w * hs, h * hs, d * hs), at(x, y, z), c, "Ellipsoid", m or mat)
+		return piece(name, V3(w * hs, h * hs, d * hs), at(x, y, z), c, "Ellipsoid", m or mat)
+	end
+	local function rebuild(why)
+		refitNote(model, "Headgear", why)
+		Head.SetHeadgear(model, asked, true, detail)
 	end
 	local browC, strapC, holeC = darken(color, 0.9), darken(color, 0.55), darken(color, 0.35)
 	-- the brow roll, the crown cap and the back shell: every detail level
@@ -21714,9 +22095,7 @@ function Head.SetHeadgear(model, color, on, detail)
 	pad("HGTop", 0, G.top.y, G.top.z, G.top.w, G.top.h, G.top.d, color)
 	pad("HGShell", 0, G.back.y, G.back.z, G.back.w, G.back.h, G.back.d, color)
 	if low then
-		followHead(folder, head, function()
-			Head.SetHeadgear(model, asked, true, detail)
-		end)
+		followHead(folder, head, rebuild)
 		return folder
 	end
 	-- the cheek bolsters: upright rolls (long ellipsoids) beside the face, outside the eyes
@@ -21727,10 +22106,8 @@ function Head.SetHeadgear(model, color, on, detail)
 	if not full then
 		-- one drum through the head along X: its two ends are the ear pads (a Cylinder part's axis is its X)
 		local E = G.ears
-		mk(folder, head, "HGEars", V3(E.len * hs, E.d * hs, E.d * hs), at(0, E.y, E.z), color, "Cylinder", mat)
-		followHead(folder, head, function()
-			Head.SetHeadgear(model, asked, true, detail)
-		end)
+		piece("HGEars", V3(E.len * hs, E.d * hs, E.d * hs), at(0, E.y, E.z), color, "Cylinder", mat)
+		followHead(folder, head, rebuild)
 		return folder
 	end
 	local S, Hh, St = G.side, G.hole, G.strap
@@ -21743,11 +22120,9 @@ function Head.SetHeadgear(model, color, on, detail)
 		local b = at(side * St.b[1], St.b[2], St.b[3]).Position
 		local mid = (a + b) * 0.5
 		local out = mid - at(0, -0.1, 0).Position
-		mk(folder, head, "HGStrap", V3(St.w * hs, St.t * hs, (b - a).Magnitude), CFrame.lookAt(mid, b, out.Unit), strapC, "Block", SMOOTH)
+		piece("HGStrap", V3(St.w * hs, St.t * hs, (b - a).Magnitude), CFrame.lookAt(mid, b, out.Unit), strapC, "Block", SMOOTH)
 	end
-	followHead(folder, head, function()
-		Head.SetHeadgear(model, asked, true, detail)
-	end)
+	followHead(folder, head, rebuild)
 	return folder
 end
 
@@ -21794,6 +22169,10 @@ function Head.SetCap(model, style, colors, detail)
 	folder:SetAttribute("Detail", detail)
 	folder:SetAttribute("Style", style)
 	colors = type(colors) == "table" and colors or {}
+	-- the asked colours: what the late re-fit (Head.RefitHeadgear) rebuilds the cap from
+	for k, a in pairs({ cap = "CapColor", trim = "CapTrim", badge = "CapBadge" }) do
+		folder:SetAttribute(a, typeof(colors[k]) == "Color3" and colors[k] or nil)
+	end
 	local ref = style == "referee"
 	local capC = typeof(colors.cap) == "Color3" and colors.cap or (ref and Color3.fromRGB(18, 18, 21) or Color3.fromRGB(30, 30, 34))
 	-- (a team colour within a hair of the skin reads as a bare head: nudged off it, Head.OffSkin)
@@ -21804,20 +22183,31 @@ function Head.SetCap(model, style, colors, detail)
 	local badgeC = typeof(colors.badge) == "Color3" and colors.badge or (ref and Color3.fromRGB(212, 172, 64) or Color3.fromRGB(238, 238, 232))
 	local hs = Head.HeadSpan(head)
 	local hcf = head.CFrame
-	-- the cap follows a head rescale after the build (followHead above)
+	-- the cap follows a head rescale / replacement after the build (followHead above); every piece (the text patches
+	-- too) is joined to the head by a Weld (weldToHead)
 	local function done()
-		followHead(folder, head, function()
+		for _, p in ipairs(folder:GetChildren()) do
+			if p:IsA("BasePart") and not p:FindFirstChildOfClass("Weld") then
+				weldToHead(p, head)
+			end
+		end
+		followHead(folder, head, function(why)
+			refitNote(model, "Hat", why)
 			Head.SetCap(model, style, colors, detail)
 		end)
 		return folder
 	end
 	local function ell(name, size, cf, c, m)
-		return mk(folder, head, name, size, cf, c, "Ellipsoid", m or FABRIC)
+		local p = mk(folder, head, name, size, cf, c, "Ellipsoid", m or FABRIC)
+		weldToHead(p, head)
+		return p
 	end
 	-- a round, flat-topped drum standing on end: diameter d, height h (fractions of the head span), its centre y up
 	-- from the head's centre (a Cylinder part's axis is its X: stood up with a 90 deg roll)
 	local function drum(name, d, h, y, c, m)
-		return mk(folder, head, name, V3(h * hs, d * hs, d * hs), hcf * CF(0, y * hs, 0) * ANG(0, 0, math.pi / 2), c, "Cylinder", m or FABRIC)
+		local p = mk(folder, head, name, V3(h * hs, d * hs, d * hs), hcf * CF(0, y * hs, 0) * ANG(0, 0, math.pi / 2), c, "Cylinder", m or FABRIC)
+		weldToHead(p, head)
+		return p
 	end
 	-- a flat ellipsoid visor reaching `reach` ahead of the forehead, its root under the band, pitched down by tilt
 	-- degrees about its root (its back end 0.1 behind the forehead, inside the head; the tip at 0.5 + reach in front
@@ -26132,6 +26522,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
 local BuilderTiers = require(Shared:WaitForChild("BuilderTiers"))
+-- [Studio] the joints may be Motor6Ds or AnimationConstraints (Workspace.AvatarJointUpgrade): one lookup for both
+local RigJoints = require(Shared:WaitForChild("RigJoints"))
 
 local Diag = {}
 Diag.PREFIX = "[WCBDIAG] "
@@ -26248,31 +26640,22 @@ local function expectedAtt(part, attName)
 end
 
 local function motorLine(model, name, verdicts)
-	local holder = model:FindFirstChild(MOTOR_PARENT[name])
-	local m = holder and holder:FindFirstChild(name)
-	if not (m and m:IsA("Motor6D")) then
-		-- (an AnimationConstraint rig, or a joint that is simply gone)
-		local ac
-		for _, d in ipairs(model:GetDescendants()) do
-			if d.Name == name and (d:IsA("Motor6D") or d:IsA("AnimationConstraint")) then
-				ac = d
-				break
-			end
-		end
-		if ac then
-			return string.format("motor %-13s %s under %s (not where the R15 rig keeps it)", name, ac.ClassName, fullName(ac.Parent))
-		end
-		table.insert(verdicts, "BAD  Motor6D " .. name .. " is missing: the Animator cannot drive this joint")
+	local m = RigJoints.Find(model, name)
+	if not m then
+		table.insert(verdicts, "BAD  joint " .. name .. " is missing (no Motor6D, no AnimationConstraint): the Animator cannot drive this joint")
 		return string.format("motor %-13s MISSING", name)
 	end
-	local p0, p1 = m.Part0, m.Part1
+	local holder = model:FindFirstChild(MOTOR_PARENT[name])
+	local where = m.Parent ~= holder and (" under " .. fullName(m.Parent) .. " (not where the R15 rig keeps it)") or ""
+	local p0, p1 = RigJoints.Parts(m)
+	local C0, C1 = RigJoints.C0(m), RigJoints.C1(m)
 	local an = name .. "RigAttachment"
 	local a0 = p0 and p0:FindFirstChild(an)
 	local a1 = p1 and p1:FindFirstChild(an)
-	local s = string.format("motor %-13s %s->%s C0=%s C1=%s T=%s", name, p0 and p0.Name or "nil", p1 and p1.Name or "nil", cfs(m.C0), cfs(m.C1),
-		cfs(m.Transform))
+	local s = string.format("motor %-13s %s %s->%s C0=%s C1=%s T=%s%s", name, m.ClassName, p0 and p0.Name or "nil", p1 and p1.Name or "nil", cfs(C0), cfs(C1),
+		cfs(m.Transform), where)
 	if a0 and a0:IsA("Attachment") then
-		local d = (m.C0.Position - a0.CFrame.Position).Magnitude
+		local d = (C0.Position - a0.CFrame.Position).Magnitude
 		s ..= string.format(" att0=%s d=%.3f", v3f(a0.CFrame.Position), d)
 		if d > 0.02 then
 			table.insert(verdicts, string.format("BAD  %s.C0 is %.3f studs off %s.%s: the joint is not aimed at its RigAttachment", name, d, p0.Name, an))
@@ -26289,7 +26672,7 @@ local function motorLine(model, name, verdicts)
 		s ..= " att0=MISSING"
 	end
 	if a1 and a1:IsA("Attachment") then
-		local d = (m.C1.Position - a1.CFrame.Position).Magnitude
+		local d = (C1.Position - a1.CFrame.Position).Magnitude
 		s ..= string.format(" att1=%s d=%.3f", v3f(a1.CFrame.Position), d)
 		if d > 0.02 then
 			table.insert(verdicts, string.format("BAD  %s.C1 is %.3f studs off %s.%s: the joint is not aimed at its RigAttachment", name, d, p1.Name, an))
@@ -26313,17 +26696,17 @@ local function bindPose(model)
 	local out = { HumanoidRootPart = CFrame.identity }
 	local joints = {}
 	for _, name in ipairs(MOTORS) do
-		local holder = model:FindFirstChild(MOTOR_PARENT[name])
-		local m = holder and holder:FindFirstChild(name)
-		if m and m:IsA("Motor6D") and m.Part0 and m.Part1 then
-			table.insert(joints, m)
+		local m = RigJoints.Find(model, name)
+		local p0, p1 = RigJoints.Parts(m)
+		if m and p0 and p1 then
+			table.insert(joints, { p0 = p0, p1 = p1, cf = RigJoints.C0(m) * RigJoints.C1(m):Inverse() })
 		end
 	end
 	for _ = 1, #joints do
-		for _, m in ipairs(joints) do
-			local base = out[m.Part0.Name]
-			if base and not out[m.Part1.Name] then
-				out[m.Part1.Name] = base * m.C0 * m.C1:Inverse()
+		for _, j in ipairs(joints) do
+			local base = out[j.p0.Name]
+			if base and not out[j.p1.Name] then
+				out[j.p1.Name] = base * j.cf
 			end
 		end
 	end
@@ -26385,29 +26768,78 @@ local function lookLines(model, lines, verdicts)
 	else
 		table.insert(verdicts, "BAD  no Hands folder: the gloves / wraps step never ran (or was removed)")
 	end
+	-- HEADGEAR block: the live head (class, Size, its span = the smallest axis every head-worn part is sized from, the
+	-- SpecialMesh's type / Scale or the MeshPart's id / MeshSize) against what the gear folders were fitted to (their
+	-- HeadSize / HeadClass / HeadMesh), every gear part's offset and size in head spans and its weld's class and
+	-- Part0 / Part1; a VERDICT per folder: detached (no weld), welded to a head no longer in the model, fitted to
+	-- another head, or OK
+	local liveHead = head and head:IsA("BasePart") and head or nil
+	local hs = liveHead and math.min(liveHead.Size.X, liveHead.Size.Y, liveHead.Size.Z) or 0
+	if liveHead then
+		local sm = liveHead:FindFirstChildOfClass("SpecialMesh")
+		table.insert(lines, string.format("HEADGEAR head %s size=%s span=%.3f mesh=%s meshScale=%s meshSize=%s HeadSizeAtBuild=%s refits=%s last=%s",
+			liveHead.ClassName, v3f(liveHead.Size), hs,
+			sm and tostring(get(sm, "MeshType")):gsub("^Enum%.MeshType%.", "") or (liveHead:IsA("MeshPart") and tostring(get(liveHead, "MeshId") or ""):gsub("rbxassetid://", "") or "none"),
+			sm and v3(get(sm, "Scale")) or "-", liveHead:IsA("MeshPart") and v3(get(liveHead, "MeshSize")) or "-",
+			v3(attr(model, "HeadSizeAtBuild")), tostring(attr(model, "HeadgearRefits") or 0), tostring(attr(model, "HeadgearRefitLast"))))
+	else
+		table.insert(lines, "HEADGEAR head MISSING")
+	end
 	for _, fname in ipairs({ "Headgear", "Hat" }) do
 		local f = look:FindFirstChild(fname)
 		if f then
-			local n, inside, shell = 0, 0, nil
+			local n, inside, shell, loose, otherHead, far = 0, 0, nil, 0, 0, 0
 			for _, p in ipairs(f:GetDescendants()) do
 				if p:IsA("BasePart") then
 					n += 1
-					local rel = head and head:IsA("BasePart") and head.CFrame:ToObjectSpace(p.CFrame) or p.CFrame
-					local w = p:FindFirstChildOfClass("WeldConstraint") or p:FindFirstChildOfClass("Weld")
+					local rel = liveHead and liveHead.CFrame:ToObjectSpace(p.CFrame) or p.CFrame
+					local w = p:FindFirstChildOfClass("Weld") or p:FindFirstChildOfClass("WeldConstraint")
 					local to = w and ((w.Part0 == p and w.Part1) or w.Part0)
+					local w0, w1 = w and w.Part0, w and w.Part1
+					if not (w and w0 and w1) then
+						loose += 1
+					elseif liveHead and w0 ~= liveHead and w1 ~= liveHead then
+						otherHead += 1
+					end
+					if liveHead and rel.Position.Magnitude > liveHead.Size.X * 2 then
+						far += 1
+					end
 					if n <= 12 then
 						table.insert(lines, string.format("%s %-12s %-8s size=%s relHead=%s color=%d,%d,%d massless=%s coll=%s weld->%s", fname:lower(), p.Name, p.ClassName,
 							v3(p.Size), cfs(rel), p.Color.R * 255, p.Color.G * 255, p.Color.B * 255, tostring(p.Massless), tostring(p.CanCollide), to and to.Name or "NONE"))
+						table.insert(lines, string.format("HEADGEAR %s %-12s spans off=%s size=%s weld=%s Part0=%s%s Part1=%s", fname, p.Name,
+							hs > 0 and v3f(rel.Position / hs) or "-", hs > 0 and v3f(p.Size / hs) or "-", w and w.ClassName or "NONE",
+							w0 and w0.Name or "nil", (w0 and liveHead and w0 ~= liveHead and w0.Name == "Head") and "(NOT the live Head)" or "",
+							w1 and w1.Name or "nil"))
 					end
 					if p.Name == "HGShell" or p.Name == "CapCrown" or p.Name == "Crown" then
 						shell = p
 					end
-					if head and head:IsA("BasePart") and rel.Position.Magnitude < head.Size.X * 0.25 and p.Size.X < head.Size.X * 0.9 then
+					if liveHead and rel.Position.Magnitude < liveHead.Size.X * 0.25 and p.Size.X < liveHead.Size.X * 0.9 then
 						inside += 1
 					end
 				end
 			end
 			table.insert(lines, string.format("%s: %d parts, %d of them small and centred in the head", fname:lower(), n, inside))
+			local fitSize = attr(f, "HeadSize")
+			table.insert(lines, string.format("HEADGEAR %s fitted to HeadSize=%s HeadClass=%s HeadMesh=%s Detail=%s Sig=%s; live: %d parts, %d no weld, %d on another head, %d far from the head",
+				fname, v3(fitSize), tostring(attr(f, "HeadClass")), tostring(attr(f, "HeadMesh")), tostring(attr(f, "Detail")), tostring(attr(f, "Sig")), n, loose, otherHead, far))
+			if n > 0 then
+				if loose > 0 then
+					table.insert(verdicts, string.format("BAD  %s detached: %d parts with no weld%s (the Humanoid died with BreakJointsOnDeath or the rig broke; they fall or stay behind)", fname:lower(), loose,
+						far > 0 and string.format(", %d of them more than 2 heads away", far) or ""))
+				elseif otherHead > 0 then
+					table.insert(verdicts, string.format("BAD  %s welded to a head that is no longer in the model (%d parts): the engine replaced the Head after the gear was fitted", fname:lower(), otherHead))
+				elseif liveHead and typeof(fitSize) == "Vector3" and (fitSize - liveHead.Size).Magnitude > 1e-3 then
+					table.insert(verdicts, string.format("BAD  %s fitted to a %s head, the head is now %s: the head was rescaled after the gear was built and no re-fit ran", fname:lower(), v3(fitSize), v3(liveHead.Size)))
+				elseif liveHead and type(attr(f, "HeadClass")) == "string" and attr(f, "HeadClass") ~= liveHead.ClassName then
+					table.insert(verdicts, string.format("BAD  %s fitted to a %s head, the head is now a %s", fname:lower(), tostring(attr(f, "HeadClass")), liveHead.ClassName))
+				elseif far > 0 then
+					table.insert(verdicts, string.format("BAD  %s: %d parts more than 2 heads away from the head although welded (the weld's C0 is wrong)", fname:lower(), far))
+				else
+					table.insert(verdicts, string.format("OK   %s: %d parts welded to the live head, fitted to its size", fname:lower(), n))
+				end
+			end
 			if shell and head and head:IsA("BasePart") then
 				local hs = math.min(head.Size.X, head.Size.Y, head.Size.Z)
 				if shell.Size.X < hs * 0.98 then
@@ -26616,11 +27048,11 @@ function Diag.Report(model, ctx)
 	if okB and pose.LowerTorso and pose.LeftFoot and pose.RightFoot then
 		local lf, rf = model:FindFirstChild("LeftFoot"), model:FindFirstChild("RightFoot")
 		local sole = math.min(pose.LeftFoot.Position.Y - (lf and lf.Size.Y or 0.3) / 2, pose.RightFoot.Position.Y - (rf and rf.Size.Y or 0.3) / 2)
-		local function jy(holder, mname)
-			local h = model:FindFirstChild(holder)
-			local m = h and h:FindFirstChild(mname)
-			local base = m and m:IsA("Motor6D") and m.Part0 and pose[m.Part0.Name]
-			return base and (base * m.C0).Position.Y - sole or nil
+		local function jy(_, mname)
+			local m = RigJoints.Find(model, mname)
+			local p0 = m and RigJoints.Part0(m)
+			local base = p0 and pose[p0.Name]
+			return base and (base * RigJoints.C0(m)).Position.Y - sole or nil
 		end
 		local hs = { Root = jy("LowerTorso", "Root"), Waist = jy("UpperTorso", "Waist"), RightHip = jy("RightUpperLeg", "RightHip"),
 			RightKnee = jy("RightLowerLeg", "RightKnee"), RightAnkle = jy("RightFoot", "RightAnkle"), Neck = jy("Head", "Neck"), RightShoulder = jy("RightUpperArm", "RightShoulder") }
@@ -26763,10 +27195,9 @@ end
 -- and horizontal travel while it is down, the hip / knee / elbow bend from the live Transforms, and whether any
 -- Animate track was playing. Diag.NewSample() -> S; Diag.SampleTick(S, model, t); Diag.SampleLines(S) -> { lines, verdicts }
 ------------------------------------------------------------------------
-local function bend(model, holder, mname)
-	local h = model:FindFirstChild(holder)
-	local m = h and h:FindFirstChild(mname)
-	if not (m and m:IsA("Motor6D")) then
+local function bend(model, _, mname)
+	local m = RigJoints.Find(model, mname)
+	if not m then
 		return nil
 	end
 	local x = m.Transform:ToEulerAnglesXYZ()
@@ -30676,6 +31107,7 @@ return FightRead
 --   kdPower      the knockdown odds of his own head shots (Power Build: the biggest single punch)
 --   handSpeed    the punch wind-up (and so the recovery) is DIVIDED by it: 1.1 = 10% faster hands
 --   footSpeed    his walking speed in the ring
+--   tank         the size of his stamina tank (the max; the second wind and the rounds' erosion scale with it)
 --   staminaDrain the stamina every punch costs
 --   powerDrain   on top of it for the power punches (everything but the jab)
 --   staminaRegen the stamina coming back, in the round and in the corner
@@ -30691,7 +31123,7 @@ return FightRead
 --                reaches him sooner from his real size)
 local FrameTraits = {}
 
-FrameTraits.Keys = { "power", "kdPower", "handSpeed", "footSpeed", "staminaDrain", "powerDrain", "staminaRegen", "chin", "bodyAbsorb", "reachBonus",
+FrameTraits.Keys = { "power", "kdPower", "handSpeed", "footSpeed", "tank", "staminaDrain", "powerDrain", "staminaRegen", "chin", "bodyAbsorb", "reachBonus",
 	"kdResist", "getUpTime", "clinch", "insideBonus", "dodgeWindow", "target" }
 
 -- ai: how the AI fights to the frame. range = its preferred distance as a share of the jab range (added to the
@@ -30700,15 +31132,15 @@ FrameTraits.Keys = { "power", "kdPower", "handSpeed", "footSpeed", "staminaDrain
 FrameTraits.Data = {
 	Lean = {
 		name = "Lean", short = "Lean", tag = "Fast hands, long jab",
-		power = 0.90, kdPower = 0.92, handSpeed = 1.10, footSpeed = 1.08, staminaDrain = 0.92, powerDrain = 1, staminaRegen = 1.08,
-		chin = 0.90, bodyAbsorb = 0.86, reachBonus = 1.04, kdResist = 0.90, getUpTime = 0.95, clinch = 0.88, insideBonus = 0.95, dodgeWindow = 1.10, target = 0.96,
-		ai = { range = 0.06, aggr = -0.05, clinch = 0.0, inside = 0.8, press = 0 },
+		power = 0.93, kdPower = 0.90, handSpeed = 1.10, footSpeed = 1.08, tank = 1.04, staminaDrain = 0.92, powerDrain = 1, staminaRegen = 1.10,
+		chin = 0.96, bodyAbsorb = 0.90, reachBonus = 1.04, kdResist = 0.96, getUpTime = 0.95, clinch = 0.88, insideBonus = 0.95, dodgeWindow = 1.15, target = 0.92,
+		ai = { range = 0.04, aggr = 0.02, clinch = 0.0, inside = 0.8, press = 0 },
 		pros = { "Fastest hands: shorter punch windows, quicker recovery", "Quick feet and longer slip and dodge windows", "Spends less stamina a punch, recovers more", "Long arms: reaches further at the same height" },
 		cons = { "Less power behind every punch", "A softer chin: goes down easier", "Body shots hurt more and take more gas" },
 	},
 	Athletic = {
 		name = "Athletic", short = "Athletic", tag = "The all-rounder",
-		power = 1, kdPower = 1, handSpeed = 1, footSpeed = 1, staminaDrain = 0.97, powerDrain = 1, staminaRegen = 1.05,
+		power = 1, kdPower = 1, handSpeed = 1, footSpeed = 1, tank = 1.02, staminaDrain = 0.97, powerDrain = 1, staminaRegen = 1.05,
 		chin = 1, bodyAbsorb = 1, reachBonus = 1, kdResist = 1, getUpTime = 1, clinch = 1, insideBonus = 1, dodgeWindow = 1, target = 1,
 		ai = { range = 0, aggr = 0, clinch = 0, inside = 1, press = 0 },
 		pros = { "No weaknesses: the baseline frame", "A little more stamina and recovery" },
@@ -30716,24 +31148,24 @@ FrameTraits.Data = {
 	},
 	Muscular = {
 		name = "Muscular", short = "Muscular", tag = "Power with a chin",
-		power = 1.06, kdPower = 1.04, handSpeed = 0.96, footSpeed = 1, staminaDrain = 1, powerDrain = 1.06, staminaRegen = 1,
-		chin = 1.06, bodyAbsorb = 1.02, reachBonus = 1, kdResist = 1.05, getUpTime = 1, clinch = 1.04, insideBonus = 1.03, dodgeWindow = 0.98, target = 1,
+		power = 1.04, kdPower = 1.02, handSpeed = 0.97, footSpeed = 1, tank = 1, staminaDrain = 1, powerDrain = 1.06, staminaRegen = 1,
+		chin = 1.03, bodyAbsorb = 1.02, reachBonus = 1, kdResist = 1.03, getUpTime = 1, clinch = 1.04, insideBonus = 1.03, dodgeWindow = 0.98, target = 1.01,
 		ai = { range = -0.02, aggr = 0.04, clinch = 0.02, inside = 1.08, press = 0.05 },
 		pros = { "More power in every punch", "A better chin, harder to drop", "Normal footwork" },
 		cons = { "Slightly slower hands", "Power punches drain a little more stamina" },
 	},
 	["Power Build"] = {
 		name = "Power Build", short = "Power", tag = "One-punch power inside",
-		power = 1.12, kdPower = 1.16, handSpeed = 0.92, footSpeed = 0.94, staminaDrain = 1.06, powerDrain = 1.06, staminaRegen = 0.92,
-		chin = 1.10, bodyAbsorb = 1.04, reachBonus = 1, kdResist = 1.14, getUpTime = 1.05, clinch = 1.12, insideBonus = 1.12, dodgeWindow = 0.94, target = 1.02,
-		ai = { range = -0.08, aggr = 0.08, clinch = 0.06, inside = 1.3, press = 0.12 },
+		power = 1.06, kdPower = 1.06, handSpeed = 0.93, footSpeed = 0.94, tank = 0.96, staminaDrain = 1.06, powerDrain = 1.06, staminaRegen = 0.92,
+		chin = 1.04, bodyAbsorb = 1.04, reachBonus = 1, kdResist = 1.06, getUpTime = 1.05, clinch = 1.12, insideBonus = 1.08, dodgeWindow = 0.94, target = 1.03,
+		ai = { range = -0.08, aggr = 0.08, clinch = 0.06, inside = 1.2, press = 0.12 },
 		pros = { "The biggest single punch and knockdown chance", "A hard chin: very hard to drop", "Strong in the clinch and inside: hooks and uppercuts land harder" },
 		cons = { "Slower hands and feet", "Gasses in the later rounds", "Easier to outbox at range" },
 	},
 	["Heavyweight Build"] = {
 		name = "Heavyweight Build", short = "Heavyweight", tag = "Raw power, slow burn",
-		power = 1.16, kdPower = 1.10, handSpeed = 0.88, footSpeed = 0.88, staminaDrain = 1.10, powerDrain = 1.06, staminaRegen = 0.86,
-		chin = 1.14, bodyAbsorb = 1.14, reachBonus = 1, kdResist = 1.20, getUpTime = 1.18, clinch = 1.20, insideBonus = 1.06, dodgeWindow = 0.90, target = 1.06,
+		power = 1.10, kdPower = 1.04, handSpeed = 0.88, footSpeed = 0.88, tank = 0.92, staminaDrain = 1.12, powerDrain = 1.06, staminaRegen = 0.84,
+		chin = 1.07, bodyAbsorb = 1.12, reachBonus = 1, kdResist = 1.10, getUpTime = 1.18, clinch = 1.20, insideBonus = 1.06, dodgeWindow = 0.90, target = 1.08,
 		ai = { range = -0.10, aggr = 0.1, clinch = 0.09, inside = 1.2, press = 0.15 },
 		pros = { "The strongest raw power", "Absorbs body shots best and is the hardest to knock down", "The heaviest clinch: holds and wears the other man" },
 		cons = { "The slowest feet and hands", "The worst stamina", "The biggest target, and slower up off the canvas" },
@@ -44544,6 +44976,138 @@ return Officials
       </Item>
       <Item class="ModuleScript" referent="44">
         <Properties>
+          <string name="Name">RigJoints</string>
+          <string name="Source"><![CDATA[-- RigJoints: one way to find and read an R15 rig's joints whatever class the engine gave them.
+-- [Studio] Workspace.AvatarJointUpgrade (the Avatar Joint Upgrade rollout) builds player characters, NPCs made by
+-- CreateHumanoidModelFromDescription and ApplyDescription'd rigs with an AnimationConstraint per joint instead of a
+-- Motor6D: the constraint sits under the CHILD part (Head.Neck, LeftUpperLeg.LeftHip...), has no Part0 / Part1 / C0 / C1
+-- but Attachment0 (in the parent part) / Attachment1 (in the child part) - the two RigAttachments - and a Transform
+-- written exactly as a Motor6D's: child = parent * A0.CFrame * Transform * A1.CFrame^-1 (a Motor6D's
+-- Part1 = Part0 * C0 * Transform * C1^-1 with C0 = A0.CFrame, C1 = A1.CFrame), so a pose written to either reads the
+-- same. Reading .Part1 on an AnimationConstraint throws, and did: the Animator's rig measurement failed on every
+-- upgraded rig in Studio (in setup, outside its per-frame pcall) and those rigs were never driven - feet sliding,
+-- knees straight. Everything that touches a joint (the Animator, AnimRig, the client Ragdoll, Diag) goes through here.
+local RigJoints = {}
+
+-- the part each R15 joint drives (where the Motor6D / AnimationConstraint lives) and the part it hangs from
+RigJoints.CHILD = {
+	Root = "LowerTorso", Waist = "UpperTorso", Neck = "Head",
+	RightShoulder = "RightUpperArm", RightElbow = "RightLowerArm", RightWrist = "RightHand",
+	LeftShoulder = "LeftUpperArm", LeftElbow = "LeftLowerArm", LeftWrist = "LeftHand",
+	RightHip = "RightUpperLeg", RightKnee = "RightLowerLeg", RightAnkle = "RightFoot",
+	LeftHip = "LeftUpperLeg", LeftKnee = "LeftLowerLeg", LeftAnkle = "LeftFoot",
+}
+RigJoints.PARENT = {
+	Root = "HumanoidRootPart", Waist = "LowerTorso", Neck = "UpperTorso",
+	RightShoulder = "UpperTorso", RightElbow = "RightUpperArm", RightWrist = "RightLowerArm",
+	LeftShoulder = "UpperTorso", LeftElbow = "LeftUpperArm", LeftWrist = "LeftLowerArm",
+	RightHip = "LowerTorso", RightKnee = "RightUpperLeg", RightAnkle = "RightLowerLeg",
+	LeftHip = "LowerTorso", LeftKnee = "LeftUpperLeg", LeftAnkle = "LeftLowerLeg",
+}
+RigJoints.NAMES = { "Root", "Waist", "Neck", "RightShoulder", "RightElbow", "RightWrist", "LeftShoulder", "LeftElbow", "LeftWrist",
+	"RightHip", "RightKnee", "RightAnkle", "LeftHip", "LeftKnee", "LeftAnkle" }
+
+local I = CFrame.identity
+
+-- is this instance a joint the rig can be posed through?
+function RigJoints.IsJoint(inst)
+	return inst ~= nil and (inst:IsA("Motor6D") or inst:IsA("AnimationConstraint"))
+end
+
+-- the joint's parent and child parts (Motor6D: Part0 / Part1; AnimationConstraint: the attachments' parts)
+function RigJoints.Parts(j)
+	if not j then
+		return nil, nil
+	end
+	if j:IsA("Motor6D") then
+		return j.Part0, j.Part1
+	end
+	local a0, a1 = j.Attachment0, j.Attachment1
+	local p0 = a0 and a0.Parent
+	local p1 = a1 and a1.Parent
+	return (p0 and p0:IsA("BasePart")) and p0 or nil, (p1 and p1:IsA("BasePart")) and p1 or nil
+end
+function RigJoints.Part0(j)
+	local p0 = RigJoints.Parts(j)
+	return p0
+end
+function RigJoints.Part1(j)
+	local _, p1 = RigJoints.Parts(j)
+	return p1
+end
+
+-- the rest pose: the joint's frame in the parent part (C0) and in the child part (C1)
+function RigJoints.C0(j)
+	if j:IsA("Motor6D") then
+		return j.C0
+	end
+	local a = j.Attachment0
+	return a and a.CFrame or I
+end
+function RigJoints.C1(j)
+	if j:IsA("Motor6D") then
+		return j.C1
+	end
+	local a = j.Attachment1
+	return a and a.CFrame or I
+end
+
+-- the Transform the joint shows between its parts right now (child = parent * C0 * T * C1^-1), or nil
+function RigJoints.Measure(j)
+	local p0, p1 = RigJoints.Parts(j)
+	if not (p0 and p1) then
+		return nil
+	end
+	return RigJoints.C0(j):Inverse() * p0.CFrame:Inverse() * p1.CFrame * RigJoints.C1(j)
+end
+
+-- find the joint `name` ("Neck", "LeftHip"...) of an R15 model: the Motor6D or AnimationConstraint under the child part
+-- (where both rig flavours keep it), else one under the parent part, else anywhere in the model by name and class
+-- (an AnimationConstraint only when its attachments join the right two parts: a Ragdoll's or a gear's constraints never)
+function RigJoints.Find(model, name)
+	if not model then
+		return nil
+	end
+	local childName, parentName = RigJoints.CHILD[name], RigJoints.PARENT[name]
+	local child = childName and model:FindFirstChild(childName)
+	local j = child and child:FindFirstChild(name)
+	if RigJoints.IsJoint(j) then
+		return j
+	end
+	local parent = parentName and model:FindFirstChild(parentName)
+	j = parent and parent:FindFirstChild(name)
+	if RigJoints.IsJoint(j) then
+		return j
+	end
+	for _, d in ipairs(model:GetDescendants()) do
+		if d.Name == name and RigJoints.IsJoint(d) then
+			if d:IsA("Motor6D") then
+				return d
+			end
+			local p0, p1 = RigJoints.Parts(d)
+			if p0 and p1 and (p0.Name == parentName or parentName == nil) and (p1.Name == childName or childName == nil) then
+				return d
+			end
+		end
+	end
+	return nil
+end
+
+-- every R15 joint of the model by name (missing ones absent)
+function RigJoints.All(model)
+	local out = {}
+	for _, name in ipairs(RigJoints.NAMES) do
+		out[name] = RigJoints.Find(model, name)
+	end
+	return out
+end
+
+return RigJoints
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="45">
+        <Properties>
           <string name="Name">Signage</string>
           <string name="Source"><![CDATA[-- Signage: the game's places and their logo lockups - one system for the signs in the world and the badges
 -- in the menus, so a location looks the same on its shop front, in the Career Hub, on a fight offer and on
@@ -44939,7 +45503,7 @@ return Signage
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="45">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">Tournaments</string>
           <string name="Source"><![CDATA[-- Tournaments: the bracket events of the career (data + pure helpers, shared by the server's Tourney module,
@@ -45200,7 +45764,7 @@ return Tournaments
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="46">
+      <Item class="ModuleScript" referent="47">
         <Properties>
           <string name="Name">TrainingPlan</string>
           <string name="Source"><![CDATA[-- TrainingPlan: the rules of the training system both sides read (pure: nothing here touches a
@@ -45778,7 +46342,7 @@ return TP
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="47">
+      <Item class="ModuleScript" referent="48">
         <Properties>
           <string name="Name">Traits</string>
           <string name="Source"><![CDATA[-- Traits: the AI boxers' ring traits (resistances to a way of fighting), the scouting of them, and the player's
@@ -46154,7 +46718,7 @@ return Traits
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="48">
+      <Item class="ModuleScript" referent="49">
         <Properties>
           <string name="Name">Tutorial</string>
           <string name="Source"><![CDATA[-- Tutorial: the guided fights. Shared and pure (no Roblox services), so the server (FightEngine, Main), the client
@@ -46680,29 +47244,31 @@ return Tutorial
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="49">
+      <Item class="ModuleScript" referent="50">
         <Properties>
           <string name="Name">Typography</string>
           <string name="Source"><![CDATA[-- Typography: the game's type faces in one place, for the menus (Shared.UI) and for the signs in the world
 -- (Signage, the Venues / GymDecor / CityMap / CityProps builders, the client detail layers), so the whole
 -- game changes face together. No services, no client-only requires: a server sign builder can use it.
 --
--- The look: a loud sports-poster display face for everything that shouts (titles, buttons, call-outs, the
--- HUD's big counters, the signs on Main Street), a condensed face for the numbers that line up in columns,
--- a round geometric sans for the reading.
+-- The look: a plain sports-broadcast system. One geometric grotesque (Gotham) for everything that is read as
+-- a label - titles, headings, buttons, captions - a humanist sans (Builder Sans) for running text, and a
+-- condensed face (Oswald) for the big numbers only: the round clock, the scores, the stat tiles. The loud
+-- poster face (Bangers) is kept for the WCB wordmark on the brand ribbon and the signs out in the world.
 --
---   role         face                         use
---   display      Bangers                      titles, the logo lockups, call-outs, sign wordmarks
---   displayMed   Bangers                      buttons, tabs, section heads
---   number       Oswald Bold                  tabular numbers: stats, clocks, records, money
---   numberMed    Oswald SemiBold              smaller readouts, the round text
---   heading      Montserrat ExtraBold         small headings, emphasised labels (GothamBlack under title size)
---   label        Montserrat Bold              captions, chips, kickers, row labels, a sign's second line
---   body         Montserrat Medium            body copy, inputs, descriptions
---   mono         RobotoMono Medium            technical readouts, monitors
---   sign         = display                    the world's default sign face
---   signSub      = label
---   plate        Oswald Bold                  the engraved look: belt plates
+--   role         face                         size   use
+--   display      Gotham Bold                  24-28  the one title size: window titles, the result headline
+--   displayMed   Gotham Bold                  14-16  buttons, tabs, the call-outs
+--   heading      Gotham Bold                  16-18  section headings, a row's name, emphasised labels
+--   label        Gotham Medium                11-13  captions, chips, kickers, row labels, key caps
+--   body         Builder Sans Medium          13-15  body copy, inputs, descriptions, hints
+--   number       Oswald SemiBold              20-50  the big numbers: the clock, scores, records, money
+--   numberMed    Gotham Bold                  13-16  smaller readouts (tabular figures): the round text
+--   mono         RobotoMono Medium                   technical readouts, monitors
+--   brand        Bangers                             the WCB wordmark on the ribbon (nothing else)
+--   sign         Bangers                             the world's sign face (the shop lockups, the venues)
+--   signSub      Gotham Medium                       a sign's second line
+--   plate        Oswald Bold                         the engraved look: belt plates
 -- Flavour faces for particular props stay Enum.Font values (their families resolve inside the engine):
 --   marker (hand-written placards), serif (the museum, an estate's gate), tech (a car dealer), led (LED
 --   clocks), hand (fans' signs), screen (old monitors).
@@ -46712,9 +47278,10 @@ return Tutorial
 local Typography = {}
 
 Typography.Families = {
-	display = "Bangers",
+	display = "GothamSSm",
+	text = "BuilderSans",
 	number = "Oswald",
-	text = "Montserrat",
+	brand = "Bangers",
 	mono = "RobotoMono",
 }
 
@@ -46726,28 +47293,31 @@ local function face(family, weight)
 end
 Typography.Face = face
 
-local display = face("Bangers", Enum.FontWeight.Regular)
-local numberBold = face("Oswald", Enum.FontWeight.Bold)
+local gothamBold = face("GothamSSm", Enum.FontWeight.Bold)
+local gothamMedium = face("GothamSSm", Enum.FontWeight.Medium)
+local brand = face("Bangers", Enum.FontWeight.Regular)
 Typography.Fonts = {
-	display = display,
-	displayMed = display,
-	sign = display,
-	number = numberBold,
-	numberMed = face("Oswald", Enum.FontWeight.SemiBold),
-	plate = numberBold,
-	heading = face("Montserrat", Enum.FontWeight.ExtraBold),
-	label = face("Montserrat", Enum.FontWeight.Bold),
-	signSub = face("Montserrat", Enum.FontWeight.Bold),
-	body = face("Montserrat", Enum.FontWeight.Medium),
+	display = gothamBold,
+	displayMed = gothamBold,
+	heading = gothamBold,
+	label = gothamMedium,
+	body = face("BuilderSans", Enum.FontWeight.Medium),
+	number = face("Oswald", Enum.FontWeight.SemiBold),
+	numberMed = gothamBold,
+	plate = face("Oswald", Enum.FontWeight.Bold),
 	mono = face("RobotoMono", Enum.FontWeight.Medium),
+	brand = brand,
+	sign = brand,
+	signSub = gothamMedium,
 }
 
--- the nearest Enum.Font of each role (no Montserrat enum exists: Gotham stands in)
+-- the nearest Enum.Font of each role
 Typography.Fallback = {
-	display = Enum.Font.Bangers, displayMed = Enum.Font.Bangers, sign = Enum.Font.Bangers,
-	number = Enum.Font.Oswald, numberMed = Enum.Font.Oswald, plate = Enum.Font.Oswald,
-	heading = Enum.Font.GothamBlack, label = Enum.Font.GothamBold, signSub = Enum.Font.GothamBold, body = Enum.Font.GothamMedium,
+	display = Enum.Font.GothamBold, displayMed = Enum.Font.GothamBold, heading = Enum.Font.GothamBold, label = Enum.Font.GothamMedium,
+	body = Enum.Font.BuilderSansMedium,
+	number = Enum.Font.Oswald, numberMed = Enum.Font.GothamBold, plate = Enum.Font.Oswald,
 	mono = Enum.Font.RobotoMono,
+	brand = Enum.Font.Bangers, sign = Enum.Font.Bangers, signSub = Enum.Font.GothamMedium,
 }
 
 Typography.Flavour = {
@@ -46766,24 +47336,29 @@ Typography.RoleOf = {
 	[Enum.Font.GothamBold] = "label",
 	[Enum.Font.GothamMedium] = "body",
 	[Enum.Font.Gotham] = "body",
+	[Enum.Font.BuilderSans] = "body",
+	[Enum.Font.BuilderSansMedium] = "body",
+	[Enum.Font.BuilderSansBold] = "heading",
 	[Enum.Font.Oswald] = "number",
-	[Enum.Font.Bangers] = "display",
+	[Enum.Font.Bangers] = "brand",
 	[Enum.Font.RobotoMono] = "mono",
 }
 
 -- the width one character of an UPPERCASE line takes, in em, per role (a generous estimate for layouts
--- measured before the text draws: Bangers caps run about 0.41 em and its space 0.2, Oswald Bold caps
--- 0.53, Montserrat Bold caps 0.73; TextService measures Enum fonts only)
+-- measured before the text draws: Gotham Bold caps run about 0.68 em and its space 0.28, Builder Sans
+-- Medium caps 0.64, Oswald SemiBold caps 0.53, Bangers caps 0.41 with a 0.2 space; TextService measures
+-- Enum fonts only)
 Typography.Em = {
-	display = 0.46, displayMed = 0.46, sign = 0.46,
-	number = 0.56, numberMed = 0.55, plate = 0.56,
-	heading = 0.8, label = 0.76, signSub = 0.76, body = 0.74,
+	display = 0.72, displayMed = 0.72, heading = 0.72, label = 0.7, signSub = 0.7, numberMed = 0.7,
+	body = 0.66,
+	number = 0.56, plate = 0.56,
 	mono = 0.64,
+	brand = 0.46, sign = 0.46,
 }
 
--- Bangers' capitals stand 0.72 em (Oswald's 0.81): the display roles draw a little larger than the size
--- asked for, so a title keeps the presence it had
-Typography.Scale = { display = 1.12, displayMed = 1.12, sign = 1 }
+-- a role that draws larger than the size asked for (none now: every face in the system keeps its em; the
+-- table stays for callers that scale a role's size)
+Typography.Scale = {}
 
 -- the size a role really draws at
 function Typography.SizeOf(role, size)
@@ -46797,20 +47372,26 @@ end
 -- the Enum.Font nearest a role / a Font / an Enum.Font (for APIs that take only an enum: TextService)
 function Typography.Enum(spec)
 	if type(spec) == "string" then
-		return Typography.Fallback[spec] or Typography.Flavour[spec] or Enum.Font.GothamBlack
+		return Typography.Fallback[spec] or Typography.Flavour[spec] or Enum.Font.GothamBold
 	end
 	if typeof(spec) == "EnumItem" then
 		return spec
 	end
 	if typeof(spec) == "Font" then
 		local fam = tostring(spec.Family or "")
+		local wt = tostring(spec.Weight or "")
+		for role, f in pairs(Typography.Fonts) do
+			if f and tostring(f.Family) == fam and tostring(f.Weight) == wt then
+				return Typography.Fallback[role]
+			end
+		end
 		for role, f in pairs(Typography.Fonts) do
 			if f and tostring(f.Family) == fam then
 				return Typography.Fallback[role]
 			end
 		end
 	end
-	return Enum.Font.GothamBlack
+	return Enum.Font.GothamBold
 end
 
 -- puts a face on a text object: spec = a role name, a Font, an Enum.Font or nil (the sign face)
@@ -46826,7 +47407,7 @@ function Typography.Apply(obj, spec)
 				return obj
 			end
 		end
-		obj.Font = Typography.Fallback[spec] or Typography.Flavour[spec] or Enum.Font.GothamBlack
+		obj.Font = Typography.Fallback[spec] or Typography.Flavour[spec] or Enum.Font.GothamBold
 		return obj
 	end
 	if typeof(spec) == "Font" then
@@ -46834,7 +47415,7 @@ function Typography.Apply(obj, spec)
 			obj.FontFace = spec
 		end)
 		if not ok then
-			obj.Font = Enum.Font.GothamBlack
+			obj.Font = Enum.Font.GothamBold
 		end
 		return obj
 	end
@@ -46850,7 +47431,7 @@ function Typography.Props(role, props)
 	if f then
 		props.FontFace = f
 	else
-		props.Font = Typography.Fallback[role] or Typography.Flavour[role] or Enum.Font.GothamBlack
+		props.Font = Typography.Fallback[role] or Typography.Flavour[role] or Enum.Font.GothamBold
 	end
 	return props
 end
@@ -46859,22 +47440,55 @@ end
 function Typography.Width(text, size, role)
 	text = tostring(text or "")
 	local n = utf8.len(text) or #text
-	return math.ceil(n * size * (Typography.Em[role or "label"] or 0.76))
+	return math.ceil(n * size * (Typography.Em[role or "label"] or 0.7))
+end
+
+-- words shouted in capitals turned into Title Case ("MOVE DOWN" -> "Move Down"), for the kit's buttons and
+-- titles: a plain look speaks in mixed case. Short tokens and known initialisms (KO, PVP, WBC, OVR, R1,
+-- W/A/S/D) stay as they are; text that already has lower-case letters is returned untouched.
+local KEEP = { KO = true, TKO = true, PVP = true, OVR = true, OK = true, HP = true, XP = true, UI = true, AI = true, ID = true, TV = true, VS = true, KOS = true, KD = true,
+	WBC = true, WBA = true, IBF = true, WBO = true, USA = true, UK = true, HUD = true, FPS = true, RD = true, MMA = true, LB = true, LBS = true, DNA = true, NPC = true, CPU = true,
+	GPU = true, VSYNC = true, FX = true, SFX = true, BGM = true, PC = true, II = true, III = true, IV = true, VI = true, VII = true, VIII = true, IX = true, GYM = true, PRO = true }
+local SMALL = { ["a"] = true, ["an"] = true, ["and"] = true, ["at"] = true, ["by"] = true, ["for"] = true, ["in"] = true, ["of"] = true, ["on"] = true, ["or"] = true, ["the"] = true, ["to"] = true, ["vs"] = true, ["v"] = true }
+function Typography.TitleCase(text)
+	text = tostring(text or "")
+	if text:find("%l") or not text:find("%u%u") then
+		return text
+	end
+	local first = true
+	local out = text:gsub("(%a[%a']*)", function(word)
+		local keep = KEEP[word] or #word <= 2 and word:find("^%u%d*$") ~= nil
+		if keep or word:find("%d") then
+			first = false
+			return word
+		end
+		local lower = word:lower()
+		local res
+		if SMALL[lower] and not first then
+			res = lower
+		else
+			res = lower:sub(1, 1):upper() .. lower:sub(2)
+		end
+		first = false
+		return res
+	end)
+	return out
 end
 
 return Typography
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="50">
+      <Item class="ModuleScript" referent="51">
         <Properties>
           <string name="Name">UI</string>
-          <string name="Source"><![CDATA[-- UI: the game's design system - "fight night broadcast", championship-belt finish.
--- Near-black glass panels lit from the top, championship gold (with a metallic sheen on titles, the
--- primary button and lit bars) and fight red accents, a sports-poster display face (Bangers) for titles,
--- buttons and call-outs, condensed Oswald for every number, Montserrat for body copy (Shared.Typography
--- holds the faces), a 4 px spacing grid, tight corners, hairline strokes, soft stacked
--- shadows and quick ease-out motion. Icons come from the game's own icon set (tools/ui -> Shared.IconData:
+          <string name="Source"><![CDATA[-- UI: the game's design system - a plain sports-broadcast look.
+-- Flat near-black panels with a 1 px rule, one accent (the pack's red: live, danger, the opponent) and the
+-- pack's gold kept for titles, the primary action and the player's side, no glows, no gradients, no
+-- drop shadows. Type (Shared.Typography): Gotham for titles, headings, buttons and captions, Builder Sans
+-- for running text, Oswald for the big numbers only, Bangers on the WCB wordmark alone. Titles and buttons
+-- speak in mixed case (the kit turns shouted capitals into Title Case), captions in small capitals. An
+-- 8 / 12 / 16 spacing grid, 4 px corners, quick ease-out motion. Icons come from the game's own icon set (tools/ui -> Shared.IconData:
 -- flat white glyphs tinted per use, no emoji): UI.Icon, UI.IconTile, and an `icon` option on buttons,
 -- chips, stat tiles, kickers, section headers, tabs, windows and toasts. Every button has hover, press,
 -- gamepad-selected (a gold ring) and disabled (UI.SetEnabled) states. Every widget the menus are built from lives here
@@ -46910,21 +47524,22 @@ end
 ------------------------------------------------------------------------
 UI.Theme = {
 	-- surfaces
-	bg = rgb(11, 15, 23), -- window base (deep ink with a cold tint)
-	panel = rgb(22, 28, 39), -- cards
-	panel2 = rgb(35, 43, 57), -- raised: inactive buttons, tracks, rows
-	line = rgb(72, 83, 103), -- dividers and quiet strokes
-	ink = rgb(5, 6, 9),
+	bg = rgb(17, 18, 21), -- window base (neutral near-black)
+	panel = rgb(26, 27, 31), -- cards
+	panel2 = rgb(38, 40, 46), -- raised: inactive buttons, tracks, rows
+	line = rgb(64, 67, 75), -- the 1 px rules and strokes
+	ink = rgb(8, 8, 10),
 	-- type
-	text = rgb(242, 244, 248),
-	sub = rgb(178, 188, 205),
-	dim = rgb(137, 151, 172),
+	text = rgb(240, 240, 238),
+	sub = rgb(178, 180, 186),
+	dim = rgb(128, 131, 138),
 	white = rgb(255, 255, 255),
 	-- accents
-	gold = rgb(255, 205, 83), -- championship gold: primary actions, titles, the player
-	goldDeep = rgb(208, 148, 43),
-	red = rgb(243, 65, 76), -- fight red: danger, the opponent, live
-	redDeep = rgb(150, 18, 30),
+	gold = rgb(236, 190, 76), -- the pack's gold: titles, the primary action, the player
+	goldDeep = rgb(190, 140, 40),
+	red = rgb(220, 44, 56), -- the pack's red: live, danger, the opponent
+	redDeep = rgb(140, 20, 30),
+	brandRed = rgb(243, 65, 76), -- the ribbon of the WCB emblem (the asset's own red)
 	blue = rgb(58, 142, 255), -- info, stamina, the blue corner
 	blueDeep = rgb(24, 80, 190),
 	green = rgb(50, 214, 126), -- health, success
@@ -46945,9 +47560,9 @@ local T = UI.Theme
 
 -- spacing grid (4 px) and corner radii
 UI.S = { xs = 4, sm = 8, md = 12, lg = 16, xl = 24, xxl = 32, xxxl = 48 }
-UI.R = { sm = 4, md = 8, lg = 12, xl = 16, pill = 999 }
--- hairline strokes: [transparency] of a white stroke on glass, by strength
-UI.Hair = { faint = 0.93, soft = 0.88, strong = 0.75 }
+UI.R = { sm = 3, md = 4, lg = 6, xl = 8, pill = 999 }
+-- hairline strokes: [transparency] of a white stroke on a panel, by strength
+UI.Hair = { faint = 0.9, soft = 0.84, strong = 0.7 }
 
 -- the championship gold as a metallic ramp (top to bottom): titles, the primary button, lit bars
 UI.GoldRamp = { Color3.fromRGB(255, 244, 205), Color3.fromRGB(255, 212, 92), Color3.fromRGB(226, 160, 40), Color3.fromRGB(255, 214, 110) }
@@ -47170,7 +47785,7 @@ end
 function UI.TextWidth(text, size, font)
 	text = tostring(text or "")
 	local role = type(font) == "string" and font or (font ~= nil and Typography.RoleOf[font]) or "body"
-	local k = (role == "body" or role == "label" or role == "heading" or role == "signSub") and 1.08 or 1
+	local k = (role == "body" or role == "label" or role == "heading" or role == "signSub" or role == "display" or role == "displayMed") and 1.04 or 1
 	local w = (utf8.len(text) or #text) * size * 0.6 * (k > 1 and 1.07 or 1)
 	local enum = Typography.Enum(type(font) == "string" and font or (font or role))
 	local ok, v = pcall(function()
@@ -47285,7 +47900,8 @@ end
 function UI.Title(parent, text, props)
 	props = props or {}
 	props.Face = props.Face or "display"
-	props.TextSize = props.TextSize or 32
+	props.TextSize = props.TextSize or 26
+	text = Typography.TitleCase(text)
 	props.TextWrapped = props.TextWrapped or false
 	return UI.Text(parent, text, props)
 end
@@ -47559,8 +48175,7 @@ function UI.IconTile(parent, name, size, color, props)
 		end
 	end
 	UI.Corner(tile, props.radius or math.floor(size * 0.28))
-	UI.New("UIStroke", { Color = color, Transparency = 0.6, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = tile })
-	UI.Gradient(tile, { Color3.new(1, 1, 1), Color3.fromRGB(170, 170, 170) }, 90)
+	UI.New("UIStroke", { Color = color, Transparency = 0.7, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = tile })
 	local s = math.floor(size * (props.iconScale or 0.6))
 	UI.Icon(tile, name, s, color, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = tile.ZIndex })
 	return tile
@@ -47576,12 +48191,11 @@ function UI.Brand(parent, size, props)
 	for key, value in pairs(props) do
 		badge[key] = value
 	end
-	UI.Corner(badge, size * 0.22)
-	UI.Stroke(badge, T.gold, math.max(1, size / 48), 0.12)
-	UI.Gradient(badge, { Color3.new(1, 1, 1), Color3.fromRGB(153, 166, 190) }, 55)
+	UI.Corner(badge, math.max(3, math.floor(size * 0.14)))
+	UI.Stroke(badge, T.gold, math.max(1, size / 48), 0.25)
 	UI.Icon(badge, "glove", size * 0.62, T.gold, { Name = "Glove", ZIndex = badge.ZIndex + 1,
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.50, 0.39), Rotation = -12 })
-	local ribbon = UI.Frame(badge, { Name = "Ribbon", BackgroundColor3 = T.red,
+	local ribbon = UI.Frame(badge, { Name = "Ribbon", BackgroundColor3 = T.brandRed,
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.50, 0.81),
 		Size = UDim2.fromScale(0.86, 0.22), ZIndex = badge.ZIndex + 2 })
 	UI.Corner(ribbon, math.max(2, size * 0.04))
@@ -47589,7 +48203,7 @@ function UI.Brand(parent, size, props)
 	local mark = UI.New("TextLabel", { Name = "Wordmark", Text = "WCB", TextColor3 = T.white,
 		BackgroundTransparency = 1, Font = T.bold, TextScaled = true, TextWrapped = false,
 		Size = UDim2.fromScale(1, 1), ZIndex = badge.ZIndex + 3, Parent = ribbon })
-	UI.SetFace(mark, "display")
+	UI.SetFace(mark, "brand")
 	return badge
 end
 
@@ -47767,28 +48381,32 @@ function UI.Button(parent, text, props, onClick)
 	props.AutoButtonColor = false
 	props.BackgroundColor3 = props.BackgroundColor3 or T.panel2
 	props.TextColor3 = props.TextColor3 or VARIANT_TEXT[variant] or T.text
-	props.TextSize = props.TextSize or 16
+	props.TextSize = props.TextSize or 15
 	local role = textRole(props)
 	if not role and props.Font == nil then
-		-- buttons speak in the display face (a touch larger: it is narrow)
+		-- buttons speak in the button face (Gotham Bold), mixed case
 		role = "displayMed"
-		props.TextSize = Typography.SizeOf(role, props.TextSize + 2)
 	end
 	props.Font = props.Font or T.bold
 	props.TextWrapped = true
 	props.Size = props.Size or UDim2.new(0, 160, 0, 38)
 	props.BorderSizePixel = 0
+	-- a shouted label reads as Title Case ("MOVE DOWN" -> "Move Down"); a key cap or an initialism stays
+	props.Text = Typography.TitleCase(props.Text)
 	local b = UI.New("TextButton", props)
 	applyFace(b, props, role)
 	registerText(b, props)
 	UI.Corner(b, UI.R.md)
+	-- (a caller setting the text later gets the same case)
+	b:GetPropertyChangedSignal("Text"):Connect(function()
+		local t = Typography.TitleCase(b.Text)
+		if t ~= b.Text then
+			b.Text = t
+		end
+	end)
 	if b.BackgroundTransparency < 0.98 then
 		if variant == "secondary" then
-			UI.New("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.78, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = b })
-			UI.Gradient(b, { Color3.new(1, 1, 1), Color3.fromRGB(205, 208, 216) }, 90)
-		else
-			-- a lit top edge on the solid colours
-			UI.Gradient(b, { Color3.new(1, 1, 1), Color3.fromRGB(224, 224, 224) }, 90)
+			UI.New("UIStroke", { Color = T.line, Transparency = 0, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = b })
 		end
 		UI.Hover(b)
 	else
@@ -47876,20 +48494,13 @@ end
 
 function UI.Bar(parent, props, color)
 	local bg = UI.Frame(parent, props)
-	bg.BackgroundColor3 = T.ink
-	bg.BackgroundTransparency = 0.15
+	bg.BackgroundColor3 = T.panel2
+	bg.BackgroundTransparency = 0
 	local h = bg.Size.Y.Offset
-	local r = h > 0 and math.min(4, math.ceil(h / 2)) or 3
+	local r = h > 0 and math.min(2, math.ceil(h / 2)) or 2
 	UI.Corner(bg, r)
 	local fill = UI.Frame(bg, { Name = "Fill", Size = UDim2.fromScale(1, 1), BackgroundColor3 = color or T.green })
 	UI.Corner(fill, r)
-	UI.Gradient(fill, { Color3.new(1, 1, 1), Color3.fromRGB(190, 190, 190) }, 90)
-	-- the sheen: a light band along the fill's top half (a lit, glassy meter); bars of 6 px and up
-	if h >= 6 then
-		local sheen = UI.Frame(fill, { Name = "Sheen", Size = UDim2.new(1, 0, 0.45, 0), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.72, ZIndex = fill.ZIndex })
-		UI.Corner(sheen, r)
-		UI.Gradient(sheen, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(0.5, 0.2), NumberSequenceKeypoint.new(1, 0.7) }))
-	end
 	local function set(f, c)
 		fill.Size = UDim2.fromScale(math.clamp(f, 0, 1), 1)
 		if c then
@@ -48021,16 +48632,12 @@ function UI.FightBar(parent, props, opts)
 		bg = bg, right = opts.side == "R", slant = opts.slant or 0.8, n = math.clamp(opts.segments or 0, 0, 5), low = opts.low,
 		v = 1, disp = 1, ghostV = 1, capV = 1, hold = 0, flashA = 1, healA = 1, healLo = 1, stun = 0, stunOn = false, shimP = -1,
 		riseAt = -1, clock = 0, a = 0.03, absKey = "", heal = opts.heal ~= false, gainA = 1, layers = {},
-		trackColor = opts.track or T.ink, lowOn = false,
+		trackColor = opts.track or T.panel2, lowOn = false,
 	}, FightBar)
 	bar.track = barLayer(bar, "Track", 0, 1, bar.trackColor, z)
 	bar.ghostL = barLayer(bar, "Ghost", 0, 1, opts.ghost or T.red, z + 1)
 	-- the fill: a touch darker at the corner end, lit toward the leading edge
-	bar.fillL = barLayer(bar, "Fill", 0, 1, opts.color or T.green, z + 2,
-		ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.fromRGB(178, 178, 178)), ColorSequenceKeypoint.new(0.75, Color3.fromRGB(236, 236, 236)), ColorSequenceKeypoint.new(1, WHITE) }))
-	-- the bevel: a lit top band and a shaded bottom edge
-	bar.sheenL = barLayer(bar, "Sheen", 0, 0.42, WHITE, z + 3)
-	bar.shadeL = barLayer(bar, "Shade", 0.72, 1, Color3.new(0, 0, 0), z + 3)
+	bar.fillL = barLayer(bar, "Fill", 0, 1, opts.color or T.green, z + 2)
 	bar.healL = barLayer(bar, "Heal", 0, 1, Color3.fromRGB(200, 255, 220), z + 4)
 	if opts.shimmer then
 		bar.shimL = barLayer(bar, "Shimmer", 0, 1, WHITE, z + 4)
@@ -48126,11 +48733,9 @@ function FightBar:_band(l, fa, fb, alpha)
 end
 function FightBar:_apply()
 	local d = self.disp
-	self:_band(self.track, 0, 1, 0.12)
+	self:_band(self.track, 0, 1, 0)
 	self:_band(self.ghostL, 0, self.ghostV > d + 0.001 and self.ghostV or 0, 0.05)
 	self:_band(self.fillL, 0, d, 0)
-	self:_band(self.sheenL, 0, d, 0.7)
-	self:_band(self.shadeL, 0, d, 0.72)
 	self:_band(self.healL, math.min(self.healLo, d), d, self.healA)
 	if self.shimL then
 		local p = self.shimP
@@ -48278,23 +48883,16 @@ function UI.Meter(parent, props, opts)
 	if not (props and props.Name) then
 		bg.Name = "Meter"
 	end
-	bg.BackgroundColor3 = T.ink
-	bg.BackgroundTransparency = 0.2
+	bg.BackgroundColor3 = T.panel2
+	bg.BackgroundTransparency = 0
 	local h = bg.Size.Y.Offset
-	local r = h > 0 and math.ceil(h / 2) or 4
+	local r = h > 0 and math.min(2, math.ceil(h / 2)) or 2
 	UI.Corner(bg, r)
-	UI.Stroke(bg, WHITE, 1, 0.92)
 	local z = bg.ZIndex
 	local ghost = UI.Frame(bg, { Name = "Ghost", Size = UDim2.fromScale(1, 1), BackgroundColor3 = opts.ghost or T.redLight, BackgroundTransparency = 1, ZIndex = z + 1 })
 	UI.Corner(ghost, r)
 	local fill = UI.Frame(bg, { Name = "Fill", Size = UDim2.fromScale(1, 1), BackgroundColor3 = opts.color or T.green, ZIndex = z + 2 })
 	UI.Corner(fill, r)
-	UI.Gradient(fill, { WHITE, Color3.fromRGB(180, 180, 180) }, 90)
-	if h >= 5 then
-		local sheen = UI.Frame(fill, { Name = "Sheen", Size = UDim2.new(1, 0, 0.45, 0), BackgroundColor3 = WHITE, BackgroundTransparency = 0.7, ZIndex = z + 3 })
-		UI.Corner(sheen, r)
-		UI.Gradient(sheen, WHITE, 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(0.5, 0.2), NumberSequenceKeypoint.new(1, 0.7) }))
-	end
 	local glow = UI.Frame(fill, { Name = "Glow", Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 1, ZIndex = z + 3 })
 	UI.Corner(glow, r)
 	return setmetatable({ bg = bg, fill = fill, ghost = ghost, glow = glow, v = -1, disp = 0, ghostV = 0, hold = 0, glowA = 1 }, Meter)
@@ -48404,9 +49002,9 @@ function UI.LevelBar(parent, props, opts)
 	if not props.Name then
 		bg.Name = "Level"
 	end
-	bg.BackgroundColor3 = T.ink
-	bg.BackgroundTransparency = 0.05
-	UI.Corner(bg, UI.R.sm)
+	bg.BackgroundColor3 = T.panel2
+	bg.BackgroundTransparency = 0
+	UI.Corner(bg, 2)
 	local function f01(v)
 		return math.clamp((tonumber(v) or 0) / 100, 0, 1)
 	end
@@ -48438,16 +49036,16 @@ end
 -- a big number over a small caption (stat tile)
 function UI.Stat(parent, value, caption, props)
 	props = props or {}
-	local f = UI.Frame(parent, { Size = props.Size or UDim2.fromOffset(110, 64), BackgroundColor3 = props.color or T.panel2, BackgroundTransparency = props.transparency or 0.25, LayoutOrder = props.order or 0 })
+	local f = UI.Frame(parent, { Size = props.Size or UDim2.fromOffset(110, 64), BackgroundColor3 = props.color or T.panel, BackgroundTransparency = props.transparency or 0, LayoutOrder = props.order or 0 })
 	UI.Corner(f, UI.R.md)
 	local v = UI.Text(f, tostring(value), { Face = "number", TextSize = props.valueSize or 28, TextColor3 = props.valueColor or T.text, TextXAlignment = props.align or Enum.TextXAlignment.Left,
 		Position = UDim2.fromOffset(12, 6), Size = UDim2.new(1, -24, 0.62, -6), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextScaled = props.scaled == true })
 	if props.scaled then
 		UI.New("UITextSizeConstraint", { MaxTextSize = props.valueSize or 28, MinTextSize = 10, Parent = v })
 	end
-	local c = UI.Text(f, string.upper(caption or ""), { Font = T.semi, TextSize = 11, TextColor3 = T.sub, TextXAlignment = props.align or Enum.TextXAlignment.Left,
+	local c = UI.Text(f, string.upper(caption or ""), { Font = T.semi, TextSize = 11, TextColor3 = T.dim, TextXAlignment = props.align or Enum.TextXAlignment.Left,
 		Position = UDim2.new(0, 12, 0.62, 0), Size = UDim2.new(1, -24, 0.38, -6), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-	UI.Stroke(f, Color3.new(1, 1, 1), 1, UI.Hair.faint)
+	UI.Stroke(f, T.line, 1, 0)
 	if props.icon then
 		-- a quiet icon in the tile's top right corner (the caption's colour, or props.iconColor); the value
 		-- keeps clear of it
@@ -48465,7 +49063,7 @@ function UI.Chip(parent, text, color, props)
 	-- outline chips sit on a dark fill so they read on any backdrop (blurred 3D, glass, photos)
 	local f = UI.Frame(parent, {
 		Size = props.Size or UDim2.fromOffset(0, props.h or 22), AutomaticSize = props.Size and Enum.AutomaticSize.None or Enum.AutomaticSize.X,
-		BackgroundColor3 = props.solid and color or T.bg:Lerp(color, 0.12), BackgroundTransparency = props.solid and 0 or 0.2, LayoutOrder = props.order or 0, Name = props.Name or "Chip",
+		BackgroundColor3 = props.solid and color or T.bg, BackgroundTransparency = props.solid and 0 or 0.1, LayoutOrder = props.order or 0, Name = props.Name or "Chip",
 	})
 	if props.Position then
 		f.Position = props.Position
@@ -48475,7 +49073,7 @@ function UI.Chip(parent, text, color, props)
 	end
 	UI.Corner(f, props.radius or UI.R.sm)
 	if not props.solid then
-		UI.Stroke(f, color, 1, 0.55)
+		UI.Stroke(f, color, 1, 0.45)
 	end
 	local t = UI.Text(f, string.upper(text), { Font = T.semi, TextSize = props.TextSize or 11, TextColor3 = props.solid and (props.textColor or T.ink) or color, Size = UDim2.new(0, 0, 1, 0),
 		AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
@@ -48504,13 +49102,10 @@ end
 -- a thin divider line (fades at both ends)
 function UI.Divider(parent, props)
 	props = props or {}
-	local d = UI.Frame(parent, { Name = "Divider", Size = props.Size or UDim2.new(1, 0, 0, 1), BackgroundColor3 = props.color or Color3.new(1, 1, 1), BackgroundTransparency = 0, LayoutOrder = props.order or 0 })
+	local d = UI.Frame(parent, { Name = "Divider", Size = props.Size or UDim2.new(1, 0, 0, 1), BackgroundColor3 = props.color or T.line, BackgroundTransparency = props.alpha and math.max(0, props.alpha - 0.6) or 0, LayoutOrder = props.order or 0 })
 	if props.Position then
 		d.Position = props.Position
 	end
-	UI.Gradient(d, Color3.new(1, 1, 1), 0, NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.15, props.alpha or 0.88), NumberSequenceKeypoint.new(0.85, props.alpha or 0.88), NumberSequenceKeypoint.new(1, 1),
-	}))
 	return d
 end
 
@@ -48525,35 +49120,38 @@ function UI.Kicker(parent, text, color, props)
 		f.Visible = props.Visible
 	end
 	local x = 10
+	-- (the old gold eyebrow reads as the plain caption colour; a colour meant as a signal - red, green,
+	-- orange - keeps it)
+	local textColor = (color == nil or color == T.gold) and T.sub or color
 	if props.icon then
-		UI.Icon(f, props.icon, 14, color or T.gold, { Name = "KickerIcon", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5) })
+		UI.Icon(f, props.icon, 14, textColor, { Name = "KickerIcon", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5) })
 		x = 20
 	else
-		UI.Frame(f, { Size = UDim2.fromOffset(3, 12), Position = UDim2.new(0, 0, 0.5, -6), BackgroundColor3 = color or T.gold })
+		UI.Frame(f, { Size = UDim2.fromOffset(2, 12), Position = UDim2.new(0, 0, 0.5, -6), BackgroundColor3 = color or T.red })
 	end
-	UI.Text(f, string.upper(text), { Font = T.semi, TextSize = props.TextSize or 12, TextColor3 = color or T.gold, Position = UDim2.fromOffset(x, 0), Size = UDim2.new(1, -x, 1, 0),
-		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	UI.Text(f, string.upper(text), { Font = T.semi, TextSize = props.TextSize or 11, TextColor3 = textColor, Position = UDim2.fromOffset(x, 0), Size = UDim2.new(1, -x, 1, 0),
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	return f
 end
 
 -- glass styling for an existing frame: dark translucent body, lit top edge, hairline stroke
+-- (the name stays from the glass days: a flat panel with a 1 px rule)
 function UI.Glass(frame, opts)
 	opts = opts or {}
 	frame.BackgroundColor3 = opts.color or T.bg
-	frame.BackgroundTransparency = opts.transparency or 0.08
+	frame.BackgroundTransparency = math.min(opts.transparency or 0.04, 0.2)
 	frame.BorderSizePixel = 0
 	if opts.radius ~= false then
-		UI.Corner(frame, opts.radius or UI.R.lg)
+		UI.Corner(frame, math.min(opts.radius or UI.R.lg, UI.R.xl))
 	end
-	UI.Gradient(frame, { Color3.new(1, 1, 1), Color3.fromRGB(176, 180, 190) }, 90)
-	UI.New("UIStroke", { Color = opts.stroke or Color3.new(1, 1, 1), Transparency = opts.strokeT or 0.88, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = frame })
+	UI.New("UIStroke", { Color = opts.stroke or T.line, Transparency = opts.stroke and (opts.strokeT or 0.4) or 0, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = frame })
 	return frame
 end
 
 -- soft shadow layers (stacked translucent frames) inside `holder`, behind a child of the same size
 function UI.Shadow(holder, radius, strength)
 	strength = strength or 1
-	for i, spec in ipairs({ { 3, 0.82 }, { 8, 0.9 }, { 16, 0.95 } }) do
+	for i, spec in ipairs({ { 6, 0.86 } }) do
 		local grow = spec[1]
 		local s = UI.Frame(holder, {
 			Name = "Shadow" .. i, BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1 - (1 - spec[2]) * strength,
@@ -49124,10 +49722,9 @@ function UI.Window(gui, name, w, h, title, opts)
 	UI.Shadow(holder, UI.R.xl, 1)
 	local win = UI.Frame(holder, { Name = "Win", BackgroundColor3 = T.bg, Size = UDim2.fromScale(1, 1), ZIndex = z })
 	win.Active = true
-	UI.Glass(win, { transparency = opts.noShade and 0.06 or 0.03, radius = UI.R.xl })
-	-- broadcast accent: a thin gold line glowing along the top edge
-	local accent = UI.Frame(win, { Name = "Accent", Position = UDim2.new(0, 28, 0, 0), Size = UDim2.new(1, -56, 0, 2), BackgroundColor3 = opts.accent or T.gold, ZIndex = z })
-	UI.Gradient(accent, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0.15), NumberSequenceKeypoint.new(0.8, 0.15), NumberSequenceKeypoint.new(1, 1) }))
+	UI.Glass(win, { transparency = 0, radius = UI.R.xl })
+	-- the accent: a 3 px bar down the left edge of the header in the window's colour (red by default)
+	UI.Frame(win, { Name = "Accent", Position = UDim2.new(0, 0, 0, 0), Size = UDim2.new(0, 3, 0, 1), BackgroundColor3 = opts.accent or T.red, ZIndex = z, Visible = false })
 	local top = 16
 	-- the close button: finger-sized on touch (then it sits nearer the top edge and the header grows
 	-- around it)
@@ -49143,21 +49740,22 @@ function UI.Window(gui, name, w, h, title, opts)
 	if title then
 		local kick = opts.kicker and not short
 		if kick then
-			UI.Text(win, string.upper(opts.kicker), { Name = "Kicker", Font = T.semi, TextSize = 12, TextColor3 = opts.accent or T.gold, Position = UDim2.fromOffset(40, 14), Size = UDim2.new(1, -120, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+			UI.Text(win, string.upper(opts.kicker), { Name = "Kicker", Font = T.semi, TextSize = 11, TextColor3 = (opts.accent and opts.accent ~= T.gold) and opts.accent or T.sub, Position = UDim2.fromOffset(62, 16), Size = UDim2.new(1, -140, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		end
-		local ty = kick and 26 or (short and 8 or 14)
-		local ts = short and 26 or 32
-		UI.Brand(win, short and 28 or 34, { Position = UDim2.fromOffset(20, ty + 2), ZIndex = z + 1 })
-		UI.Text(win, string.upper(title), { Name = "Title", Face = "display", TextSize = ts, TextColor3 = T.text, Position = UDim2.fromOffset(64, ty), Size = UDim2.new(1, -math.max(134, 64 + (cs or 0) + 24), 0, ts + 6),
+		local ty = kick and 30 or (short and 10 or 18)
+		local ts = short and 20 or 24
+		local bs = short and 26 or 32
+		UI.Brand(win, bs, { Position = UDim2.fromOffset(20, kick and 16 or ty + math.floor((ts + 4 - bs) / 2)), ZIndex = z + 1 })
+		UI.Text(win, Typography.TitleCase(title), { Name = "Title", Face = "display", TextSize = ts, TextColor3 = T.text, Position = UDim2.fromOffset(62, ty), Size = UDim2.new(1, -math.max(134, 62 + (cs or 0) + 24), 0, ts + 4),
 			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		top = ty + ts + (short and 14 or 20)
 		if cs then
 			top = math.max(top, cy + cs + (short and 8 or 12))
 		end
-		UI.Divider(win, { Position = UDim2.new(0, 16, 0, top - (short and 6 or 8)), Size = UDim2.new(1, -32, 0, 1) })
+		UI.Divider(win, { Position = UDim2.new(0, 0, 0, top - (short and 6 or 8)), Size = UDim2.new(1, 0, 0, 1) })
 	end
 	if cs then
-		local close = UI.Button(win, "", { Name = "Close", Size = UDim2.fromOffset(cs, cs), Position = UDim2.new(1, -(cs + 14), 0, cy), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.2 }, function()
+		local close = UI.Button(win, "", { Name = "Close", Size = UDim2.fromOffset(cs, cs), Position = UDim2.new(1, -(cs + 14), 0, cy), BackgroundColor3 = T.panel2, BackgroundTransparency = 0 }, function()
 			opts.onClose()
 		end)
 		UI.Icon(close, "close", cs >= 48 and 17 or 14, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
@@ -49203,18 +49801,16 @@ end
 
 function UI.Card(parent, props)
 	props = props or {}
-	local f = UI.Frame(parent, { Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = props.color or T.panel, BackgroundTransparency = props.transparency or 0.05, LayoutOrder = props.order or 0 })
+	local f = UI.Frame(parent, { Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = props.color or T.panel, BackgroundTransparency = props.transparency or 0, LayoutOrder = props.order or 0 })
 	UI.Corner(f, UI.R.lg)
-	UI.Pad(f, props.pad or 14)
-	UI.List(f, props.gap or 6)
+	UI.Pad(f, props.pad or 16)
+	UI.List(f, props.gap or 8)
 	if props.stroke then
-		-- highlighted card: tinted stroke plus a glow of the accent fading from the left edge
-		UI.Stroke(f, props.stroke, 1.5, 0.3)
-		f.BackgroundColor3 = (props.color or T.panel):Lerp(props.stroke, 0.16)
-		UI.Gradient(f, { Color3.new(1, 1, 1), Color3.fromRGB(212, 216, 226) }, 0)
+		-- a highlighted card: a 1 px rule in the accent and a 3 px bar down its left edge
+		UI.Stroke(f, props.stroke, 1, 0.5)
+		UI.Frame(f, { Name = "Edge", Position = UDim2.new(0, -(props.pad or 16), 0, -(props.pad or 16)), Size = UDim2.new(0, 3, 1, 2 * (props.pad or 16)), BackgroundColor3 = props.stroke })
 	else
-		UI.New("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.86, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = f })
-		UI.Gradient(f, { Color3.new(1, 1, 1), Color3.fromRGB(222, 228, 240) }, 90)
+		UI.New("UIStroke", { Color = T.line, Transparency = 0, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = f })
 	end
 	return f
 end
@@ -49253,26 +49849,25 @@ function UI.Header(parent, text, color, icon)
 	if icon == nil then
 		icon = headerIcon(text)
 	end
-	local f = UI.Frame(parent, { Name = "Header", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34) })
-	local x = 12
+	local f = UI.Frame(parent, { Name = "Header", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 32) })
+	local x = 10
 	if icon then
-		UI.Icon(f, icon, 18, color or T.gold, { Name = "HeaderIcon", Position = UDim2.fromOffset(0, 11) })
-		x = 26
+		UI.Icon(f, icon, 16, color or T.sub, { Name = "HeaderIcon", Position = UDim2.fromOffset(0, 8) })
+		x = 24
 	else
-		UI.Frame(f, { Size = UDim2.fromOffset(3, 16), Position = UDim2.new(0, 0, 0, 13), BackgroundColor3 = color or T.gold })
+		UI.Frame(f, { Size = UDim2.fromOffset(2, 14), Position = UDim2.new(0, 0, 0, 9), BackgroundColor3 = color or T.red })
 	end
-	local t = UI.Text(f, string.upper(text), { Face = "displayMed", TextSize = 20, TextColor3 = color or T.text, Position = UDim2.fromOffset(x, 6), Size = UDim2.new(1, -x, 0, 28),
+	local t = UI.Text(f, Typography.TitleCase(text), { Face = "heading", TextSize = 16, TextColor3 = (color and color ~= T.gold) and color or T.text, Position = UDim2.fromOffset(x, 4), Size = UDim2.new(1, -x, 0, 24),
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-	-- a hairline running out from the title (fades to the right)
-	local rule = UI.Frame(f, { Name = "Rule", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, x, 1, 0), Size = UDim2.new(1, -x, 0, 1), BackgroundColor3 = color or T.gold })
-	UI.Gradient(rule, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(0.6, 0.9), NumberSequenceKeypoint.new(1, 1) }))
+	-- the 1 px rule under the heading
+	UI.Frame(f, { Name = "Rule", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.line })
 	return t
 end
 
 -- metallic gold on a display label (titles, the record, OVR): the gold ramp as a gradient over white text
 function UI.GoldText(label)
-	label.TextColor3 = Color3.new(1, 1, 1)
-	return UI.Gradient(label, UI.GoldRamp, 90)
+	label.TextColor3 = T.gold
+	return label
 end
 
 function UI.Row(parent, h)
@@ -49362,9 +49957,9 @@ UI.DragTracker = dragTracker
 
 -- the shared row every input sits in: label left, control right
 local function inputRow(parent, label, h)
-	local f = UI.Frame(parent, { Size = UDim2.new(1, 0, 0, h or 44), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.45 })
+	local f = UI.Frame(parent, { Size = UDim2.new(1, 0, 0, h or 44), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.5 })
 	UI.Corner(f, UI.R.md)
-	UI.Text(f, label, { Name = "Label", Position = UDim2.fromOffset(14, 0), Size = UDim2.new(0.36, -14, 1, 0), TextColor3 = T.sub, TextSize = 14, Font = T.semi,
+	UI.Text(f, label, { Name = "Label", Position = UDim2.fromOffset(14, 0), Size = UDim2.new(0.36, -14, 1, 0), TextColor3 = T.text, TextSize = 14, Font = T.semi,
 		AutomaticSize = Enum.AutomaticSize.None, TextTruncate = Enum.TextTruncate.AtEnd })
 	return f
 end
@@ -49457,24 +50052,23 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
 	local side = resetLow and rs + 8 or 0 -- room right of [+] for the reset button on the stepper line
 	UI.Text(f, label, { Name = "Label", Position = UDim2.fromOffset(14, lc - 11), Size = UDim2.new(0.5, -14, 0, 22), TextColor3 = T.text, TextSize = 15, Font = T.semi,
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-	local valText = UI.Text(f, "", { Name = "Value", Face = "displayMed", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -right, 0, lc - 13), Size = UDim2.new(0.5, 8 - right, 0, 26),
-		TextXAlignment = Enum.TextXAlignment.Right, TextSize = 18, TextColor3 = T.gold, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	local valText = UI.Text(f, "", { Name = "Value", Face = "numberMed", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -right, 0, lc - 13), Size = UDim2.new(0.5, 8 - right, 0, 26),
+		TextXAlignment = Enum.TextXAlignment.Right, TextSize = 14, TextColor3 = T.text, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	if hint then
 		UI.Text(f, hint, { Name = "Hint", Position = UDim2.fromOffset(14, lc + 11), Size = UDim2.new(1, -28, 0, 16), TextSize = 12, TextColor3 = T.sub,
 			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	end
-	local track = UI.Frame(f, { Name = "Track", Position = UDim2.new(0, bs + 26, 0, y0 + math.floor(bs / 2) - 4), Size = UDim2.new(1, -(2 * bs + 52 + side), 0, 8), BackgroundColor3 = T.ink, BackgroundTransparency = 0.1 })
-	UI.Corner(track, 4)
+	local track = UI.Frame(f, { Name = "Track", Position = UDim2.new(0, bs + 26, 0, y0 + math.floor(bs / 2) - 3), Size = UDim2.new(1, -(2 * bs + 52 + side), 0, 6), BackgroundColor3 = T.ink, BackgroundTransparency = 0 })
+	UI.Corner(track, 3)
 	local fill = UI.Frame(track, { Name = "Fill", Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.gold })
-	UI.Corner(fill, 4)
-	UI.Gradient(fill, { T.goldDeep:Lerp(Color3.new(1, 1, 1), 0.2), Color3.new(1, 1, 1) }, 0)
+	UI.Corner(fill, 3)
 	if hasDefault and max > min then
 		local da = math.clamp((opts.default - min) / (max - min), 0, 1)
 		UI.Frame(track, { Name = "Notch", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(da, 0.5), Size = UDim2.fromOffset(2, 20), BackgroundColor3 = T.text, BackgroundTransparency = 0.35 })
 	end
-	local knob = UI.Frame(track, { Name = "Knob", Size = UDim2.fromOffset(24, 24), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), BackgroundColor3 = T.white })
-	UI.Corner(knob, 12)
-	UI.Stroke(knob, T.gold, 3)
+	local knob = UI.Frame(track, { Name = "Knob", Size = UDim2.fromOffset(20, 20), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), BackgroundColor3 = T.white })
+	UI.Corner(knob, 10)
+	UI.Stroke(knob, T.bg, 2)
 	-- the hit area: the whole line between [-] and [+] (wider and taller than the bar itself)
 	local hit = UI.New("TextButton", { Name = "Hit", Parent = f, Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.new(0, bs + 14, 0, y0 - 4),
 		Size = UDim2.new(1, -(2 * bs + 28 + side), 0, bs + 8), Selectable = false })
@@ -49741,8 +50335,8 @@ function UI.Swatches(parent, label, colors, selected, onPick, opts)
 	local head = UI.Frame(f, { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 20), LayoutOrder = 0 })
 	UI.Text(head, label, { Name = "Label", Size = UDim2.new(0.6, 0, 1, 0), TextColor3 = T.text, TextSize = 15, Font = T.semi, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
 		TextTruncate = Enum.TextTruncate.AtEnd })
-	local nameText = UI.Text(head, "", { Name = "Value", AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0.4, 0, 1, 0), Face = "displayMed", TextSize = 17,
-		TextColor3 = T.gold, TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	local nameText = UI.Text(head, "", { Name = "Value", AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0.4, 0, 1, 0), Face = "label", TextSize = 13,
+		TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	local holder = UI.Frame(f, { Name = "Grid", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1 })
 	UI.Grid(holder, size, size, 8)
 	holder:FindFirstChildOfClass("UIGridLayout").HorizontalAlignment = Enum.HorizontalAlignment.Left
@@ -49891,7 +50485,7 @@ function UI.TextInput(parent, label, value, placeholder, maxLen, onChange)
 	UI.Pad(box, 0, 10)
 	local stroke = UI.New("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.85, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = box })
 	box.Focused:Connect(function()
-		stroke.Color, stroke.Transparency = T.gold, 0.1
+		stroke.Color, stroke.Transparency = T.text, 0.3
 	end)
 	box.FocusLost:Connect(function()
 		stroke.Color, stroke.Transparency = Color3.new(1, 1, 1), 0.85
@@ -49935,13 +50529,10 @@ function UI.Tabs(parent, names, current, onSelect, props)
 	end
 	local holder = UI.Frame(bar, { Name = "Buttons", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -3) })
 	UI.List(holder, 4, true)
-	UI.Frame(bar, { Name = "Track", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.88 })
-	local under = UI.Frame(bar, { Name = "Underline", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1 / #names, -4, 0, 3), BackgroundColor3 = T.gold, ZIndex = 2 })
-	UI.Corner(under, 2)
-	-- the open tab's pill: a faint gold wash rising from the underline
-	local pill = UI.Frame(bar, { Name = "Pill", Position = UDim2.fromScale(0, 0), Size = UDim2.new(1 / #names, -4, 1, -3), BackgroundColor3 = T.gold, BackgroundTransparency = 0, ZIndex = 0 })
-	UI.Corner(pill, UI.R.md)
-	UI.Gradient(pill, Color3.new(1, 1, 1), 90, NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0.86) }))
+	UI.Frame(bar, { Name = "Track", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.line })
+	local under = UI.Frame(bar, { Name = "Underline", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1 / #names, -4, 0, 2), BackgroundColor3 = T.gold, ZIndex = 2 })
+	-- (the open tab is told by its white label and the underline alone: no wash behind it)
+	local pill = UI.Frame(bar, { Name = "Pill", Position = UDim2.fromScale(0, 0), Size = UDim2.new(1 / #names, -4, 1, -3), BackgroundTransparency = 1, ZIndex = 0 })
 	local buttons = {}
 	local function pick(name, animate)
 		local idx = table.find(names, name) or 1
@@ -49963,7 +50554,7 @@ function UI.Tabs(parent, names, current, onSelect, props)
 		end
 	end
 	for i, name in ipairs(names) do
-		buttons[name] = UI.Button(holder, string.upper(name), { Size = UDim2.new(1 / #names, -4, 1, 0), TextSize = 14, LayoutOrder = i, BackgroundTransparency = 1,
+		buttons[name] = UI.Button(holder, name, { Size = UDim2.new(1 / #names, -4, 1, 0), TextSize = 14, LayoutOrder = i, BackgroundTransparency = 1,
 			icon = icons and icons[name] or nil }, function()
 			pick(name, true)
 			onSelect(name)
@@ -50064,8 +50655,8 @@ function UI.Toast(gui, text, color, duration, opts)
 	color = color or T.gold
 	local f = UI.Frame(toastHolder, { Name = "Toast", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ZIndex = 50 })
 	local card = UI.Frame(f, { Name = "Card", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromOffset(60, 0), BackgroundColor3 = T.bg, BackgroundTransparency = 1, ZIndex = 50 })
-	UI.Corner(card, UI.R.lg)
-	local stroke = UI.New("UIStroke", { Color = color, Transparency = 1, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = card })
+	UI.Corner(card, UI.R.md)
+	local stroke = UI.New("UIStroke", { Color = T.line, Transparency = 1, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = card })
 	local iconName = opts and opts.icon
 	if iconName == nil then
 		iconName = TOAST_ICONS[color] or "info"
@@ -50085,8 +50676,8 @@ function UI.Toast(gui, text, color, duration, opts)
 		end
 	end
 	local label = UI.Text(card, text, { TextXAlignment = Enum.TextXAlignment.Left, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), ZIndex = 51, Font = T.semi, TextSize = 15, TextTransparency = 1 })
-	UI.Tween(card, { Position = UDim2.fromOffset(0, 0), BackgroundTransparency = 0.06 }, UI.Motion.base)
-	UI.Tween(stroke, { Transparency = 0.55 }, UI.Motion.base)
+	UI.Tween(card, { Position = UDim2.fromOffset(0, 0), BackgroundTransparency = 0 }, UI.Motion.base)
+	UI.Tween(stroke, { Transparency = 0 }, UI.Motion.base)
 	UI.Tween(accent, { BackgroundTransparency = 0 }, UI.Motion.base)
 	UI.Tween(label, { TextTransparency = 0 }, UI.Motion.base)
 	local kids = toastHolder:GetChildren()
@@ -50121,7 +50712,7 @@ return UI
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="51">
+      <Item class="ModuleScript" referent="52">
         <Properties>
           <string name="Name">WorldAssetData</string>
           <string name="Source"><![CDATA[-- WorldAssetData: the world's detail textures as uploaded Image assets. GENERATED by
@@ -50168,15 +50759,15 @@ return WorldAssetData
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="52">
+  <Item class="ServerScriptService" referent="53">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="53">
+    <Item class="Folder" referent="54">
       <Properties>
         <string name="Name">BoxerModules</string>
       </Properties>
-      <Item class="ModuleScript" referent="54">
+      <Item class="ModuleScript" referent="55">
         <Properties>
           <string name="Name">Ambient</string>
           <string name="Source"><![CDATA[-- Ambient: gym members, coaches and staff that bring the training complex to life.
@@ -50376,6 +50967,8 @@ local function spawnMember(folder, def)
 		hum.BreakJointsOnDeath = false
 	end
 	npc.Parent = folder
+	-- the headgear re-fitted once the engine's post-parent passes have run (Builder.OnPlaced; a no-op while it fits)
+	Builder.OnPlaced(npc)
 	local spot = getSpot(def.spot)
 	local at = (spot and spot.pos) or def.at or (def.walk and def.walk[1]) or V3(0, 0, 0)
 	local yaw = yawTo(at, def.look or (at + V3(0, 0, -1)))
@@ -50488,7 +51081,7 @@ return Ambient
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="55">
+      <Item class="ModuleScript" referent="56">
         <Properties>
           <string name="Name">Career</string>
           <string name="Source"><![CDATA[-- Career: character creation, fight offers, camps, economy, titles, promotions,
@@ -51988,7 +52581,7 @@ return Career
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="56">
+      <Item class="ModuleScript" referent="57">
         <Properties>
           <string name="Name">CityHomes</string>
           <string name="Source"><![CDATA[-- CityHomes: the players' home interiors. Per player and server-built (a teleported character must
@@ -52499,7 +53092,7 @@ return CityHomes
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="57">
+      <Item class="ModuleScript" referent="58">
         <Properties>
           <string name="Name">CityKit</string>
           <string name="Source"><![CDATA[-- CityKit: the pieces the town is built from, at real-world scale for the R15 rig (Config.City:
@@ -53726,7 +54319,7 @@ return K
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="58">
+      <Item class="ModuleScript" referent="59">
         <Properties>
           <string name="Name">CityMap</string>
           <string name="Source"><![CDATA[-- CityMap: the town around the gym, at real-world scale (Config.City: 1 stud = 0.28 m). The gym
@@ -55557,7 +56150,7 @@ return CityMap
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="59">
+      <Item class="ModuleScript" referent="60">
         <Properties>
           <string name="Name">CityShops</string>
           <string name="Source"><![CDATA[-- CityShops: the Main Street shop fronts and their walk-in interiors (barbershop, diner, supplements,
@@ -56357,7 +56950,7 @@ return CityShops
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="60">
+      <Item class="ModuleScript" referent="61">
         <Properties>
           <string name="Name">Crowd</string>
           <string name="Source"><![CDATA[-- Crowd: the fight venues' spectators and stands. Venues.buildTemplate calls Crowd.Build on every venue template
@@ -57462,7 +58055,7 @@ return Crowd
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="61">
+      <Item class="ModuleScript" referent="62">
         <Properties>
           <string name="Name">DataManager</string>
           <string name="Source"><![CDATA[-- DataManager: loads/saves each player's career with DataStoreService.
@@ -58084,7 +58677,7 @@ return DataManager
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="62">
+      <Item class="ModuleScript" referent="63">
         <Properties>
           <string name="Name">FightAI</string>
           <string name="Source"><![CDATA[-- FightAI: the opponent's brain. One per AI fighter (FightEngine.Run makes the blue corner's; the balance sims in
@@ -59206,7 +59799,7 @@ return FightAI
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="63">
+      <Item class="ModuleScript" referent="64">
         <Properties>
           <string name="Name">FightEngine</string>
           <string name="Source"><![CDATA[-- FightEngine: server-authoritative real-time boxing.
@@ -59514,7 +60107,8 @@ local function makeFighter(data, model, player)
 		data.chinApplied = true
 		s.Chin = math.clamp(s.Chin + mods.chinAdd, 10, Config.StatCap)
 	end
-	local maxStam = (100 + (s.Stamina - 50) * 0.8) * (mods.staminaMul or 1)
+	local frameTraits = FrameTraits.For(data) -- [FrameTraits] (F.frame below)
+	local maxStam = (100 + (s.Stamina - 50) * 0.8) * (mods.staminaMul or 1) * frameTraits.tank -- [FrameTraits] the tank
 	local fatigueFactor = 1 - math.max(0, (data.fatigue or 0) - 50) / 150
 	-- career head trauma and an unhealed concussion mean the fighter walks in already "shaky"
 	local conc = (tonumber(data.trauma) or 0) * CONC.startFromTrauma + (data.concussed and CONC.activeInjury or 0)
@@ -59524,7 +60118,7 @@ local function makeFighter(data, model, player)
 		hum = model:FindFirstChildOfClass("Humanoid"), root = model:FindFirstChild("HumanoidRootPart"),
 		style = style, classScale = 0.85 + (data.class - 1) * 0.045,
 		-- [FrameTraits] the body frame's permanent traits (data.app.body.frame; Athletic without one)
-		frame = FrameTraits.For(data),
+		frame = frameTraits,
 		powerMul = mods.powerMul or 1, speedMul = mods.speedMul or 1, moveMul = mods.moveMul or 1,
 		maxStam = maxStam, stamCap = maxStam, stamina = maxStam * fatigueFactor, stamErosion = 0,
 		health = 100, healthCap = 100, body = 100, bodyCap = 100,
@@ -59708,23 +60302,85 @@ function Fight:HitTest(F, O, ptype, body, dist, mul)
 end
 
 -- the closest the two bodies get, centre to centre (the pair's scaled spacing, and no less than their real torsos
--- and gloves need: HitGeometry.MinSep)
+-- and gloves need: HitGeometry.MinSep), and no less than two BLADED torsos need: a boxer stands turned
+-- ~BLADE rad off square, so the chest he presents across the line between the roots is torsoHalfD x cos +
+-- torsoHalfW x sin (a Heavyweight frame's 1.17-wide chest is what meets the other man, not its depth alone),
+-- plus both pairs of gloves (SEP_GLOVE x the glove radii, as HitGeometry.MinSep) and SEP_AIR of air. The unit
+-- (Athletic) pair gives the balanced 3.25 either way; a Heavyweight pair 3.57 by depth, 3.70 bladed.
+local BLADE, SEP_GLOVE, SEP_AIR = math.rad(35), 1.6, 0.53
+local function bladedHalf(G)
+	return G.torsoHalfD * math.cos(BLADE) + G.torsoHalfW * math.sin(BLADE)
+end
 function Fight:MinSep()
 	local base = (self.sp or SPACING).minSep
 	if not self.minSepGeo then
 		local G, OG = self:Geo(self.P), self:Geo(self.O)
-		self.minSepGeo = (G and OG) and HitGeometry.MinSep(G, OG) or 0
+		if G and OG then
+			local bladed = bladedHalf(G) + bladedHalf(OG) + SEP_GLOVE * (G.glove + OG.glove) + SEP_AIR * (G.hScale + OG.hScale) / 2
+			self.minSepGeo = math.max(HitGeometry.MinSep(G, OG), bladed)
+		else
+			self.minSepGeo = 0
+		end
 	end
 	return math.max(base, self.minSepGeo)
 end
 
+-- a body's share of a separation push: the lighter man gives more ground (his torso's volume from the frame,
+-- x the height: a Heavyweight at 1.17 x 1.16 x 1 against a Lean man at 0.92 x 0.94 gives ~60 / 40)
+function Fight:BodyMass(F)
+	local G = self:Geo(F)
+	if not G then
+		return 1
+	end
+	return math.max(0.2, G.torsoHalfW * G.torsoHalfD * G.hScale / (0.795 * 0.485))
+end
+
+-- the spacing the pair keeps right now, centre to centre: the clinch distance while they hold, else MinSep
+function Fight:SepRadius()
+	if self.P.state == "clinch" or self.O.state == "clinch" then
+		return self:ClinchSep()
+	end
+	return self:MinSep()
+end
+
+-- pos (a goal, a glide step, a lunge) pushed back out of the other man's body: a spot nearer than radius
+-- (SepRadius) to O's root, read where O will be in a moment (his MoveDirection x WalkSpeed x LOOKAHEAD, so two
+-- men closing on each other stop short together instead of each walking into where the other was), comes out
+-- along the line from O to it (a spot right on him comes out toward F). Nothing is clamped against a man on
+-- the canvas, or for one (the fall rooms and the corner walks are theirs).
+local LOOKAHEAD = 0.08
+function Fight:KeepOut(F, pos, radius)
+	local O = self:Other(F)
+	if not (O and O.root and F.root) or O.state == "down" or F.state == "down" then
+		return pos
+	end
+	radius = radius or self:SepRadius()
+	local op = O.root.Position
+	local hum = O.hum
+	if hum and hum.WalkSpeed and hum.WalkSpeed > 0 and hum.MoveDirection then
+		local mv = flat(hum.MoveDirection)
+		if mv.Magnitude > 0.1 then
+			op += mv * (hum.WalkSpeed * LOOKAHEAD)
+		end
+	end
+	local d = flat(pos - op)
+	local m = d.Magnitude
+	if m >= radius then
+		return pos
+	end
+	local dir = m > 0.05 and d.Unit or unitOr(flat(F.root.Position - op), flat(F.root.CFrame.LookVector) * -1)
+	local out = op + dir * radius
+	return Vector3.new(out.X, pos.Y, out.Z)
+end
+
 -- how far out F can tie the other man up: his arms' reach (HitGeometry.ClinchRange), never inside the bodies
+-- and never inside the distance the clinch itself is held at (ClinchSep: the tie-up slides the pair out to it)
 function Fight:ClinchRange(F)
 	local G, OG = self:Geo(F), self:Geo(self:Other(F))
 	if not (G and OG) then
-		return (self.sp or SPACING).clinch
+		return math.max((self.sp or SPACING).clinch, self:ClinchSep() + 0.3)
 	end
-	F.clinchRange = F.clinchRange or math.max(HitGeometry.ClinchRange(G, OG), self:MinSep() + 0.4)
+	F.clinchRange = F.clinchRange or math.max(HitGeometry.ClinchRange(G, OG), self:MinSep() + 0.4, self:ClinchSep() + 0.3)
 	return F.clinchRange
 end
 
@@ -61672,6 +62328,9 @@ local function ensureGroups()
 				end
 			end
 			PhysicsService:CollisionGroupSetCollidable(REF_GROUP, BOXER_GROUP, false)
+			-- (said out loud: the two boxers' bodies DO collide with each other and with the world)
+			PhysicsService:CollisionGroupSetCollidable(BOXER_GROUP, BOXER_GROUP, true)
+			PhysicsService:CollisionGroupSetCollidable(BOXER_GROUP, "Default", true)
 		end)
 		groupsReady = ok
 		if not ok then
@@ -61681,23 +62340,39 @@ local function ensureGroups()
 	return groupsReady
 end
 
--- puts a fighter's colliding parts in "Boxers", remembering the group each had
+-- puts a fighter's colliding parts in "Boxers", remembering the group each had. A body part swapped in later
+-- (Humanoid:ReplaceBodyPartR15: BuilderTiers' tier MeshParts, BuilderHead's classic head, the engine's own
+-- ApplyDescription) arrives in the Default group with the template's CanCollide: DescendantAdded puts every new
+-- part directly under the model (the R15 body parts) in the group as it lands, so the two bodies keep colliding
+-- with each other and passing through the referee for the whole fight
 local function joinBoxers(F)
 	if not F.model or F.groupWas then
 		return
 	end
 	F.groupWas = {}
-	for _, d in ipairs(F.model:GetDescendants()) do
-		if d:IsA("BasePart") and (d.Parent == F.model or d.CanCollide) then
+	local function join(d)
+		if d:IsA("BasePart") and (d.Parent == F.model or d.CanCollide) and d.CollisionGroup ~= BOXER_GROUP then
 			F.groupWas[d] = d.CollisionGroup
 			d.CollisionGroup = BOXER_GROUP
 		end
 	end
+	for _, d in ipairs(F.model:GetDescendants()) do
+		join(d)
+	end
+	F.groupConn = F.model.DescendantAdded:Connect(function(d)
+		if F.groupWas then
+			task.defer(join, d) -- (the swap parents the part before it sets its properties)
+		end
+	end)
 end
 
 local function leaveBoxers(F)
 	local was = F.groupWas
 	F.groupWas = nil
+	if F.groupConn then
+		F.groupConn:Disconnect()
+		F.groupConn = nil
+	end
 	if was then
 		for part, g in pairs(was) do
 			if part.Parent then
@@ -61738,6 +62413,8 @@ function Fight:SpawnReferee()
 	local y = center.Y + standHeight(hum, root)
 	model:PivotTo(CFrame.lookAt(Vector3.new(pos.X, y, pos.Z), Vector3.new(center.X, y, center.Z)))
 	model.Parent = self.arena
+	-- the cap / headgear re-fitted once the engine's post-parent passes have run (Builder.OnPlaced)
+	Builder.OnPlaced(model)
 	if root then
 		pcall(function()
 			root:SetNetworkOwner(nil)
@@ -61768,7 +62445,7 @@ function Fight:SpawnReferee()
 		end)
 	end
 	if hum and root then
-		hum.WalkSpeed = 11
+		hum.WalkSpeed = 9 -- (REF.walk: a walk; the knockdown's jog is set in UpdateReferee)
 		hum.AutoRotate = false
 		local att = Instance.new("Attachment")
 		att.Name = "RefFacingAtt"
@@ -61796,58 +62473,179 @@ function Fight:RefAct(act)
 	end
 end
 
+-- The referee's beat (UpdateReferee, every 0.3 s of a live round). He is OUT of the action: on the orbit,
+-- REF.orbit studs from the midpoint of the two men on the perpendicular to their line, on the side away from
+-- the hard camera (Fight:HardSide: the side PostFight faces) unless that side is up against the ropes, and he
+-- never crosses between the men to change sides (he goes round an end: past the nearer man, REF.round beyond
+-- him). He comes in for a reason, on its timing, and goes back out after:
+--   * a clinch that has HELD REF.clinchHold seconds (not the instant they touch): to the near side of the pair,
+--     outside both bodies (never nearer than MinSep to either root), to break them
+--   * a knockdown: a jog in as the fall lands, standing over the fallen man at REF.count studs for the count
+--     (the one place he comes inside MinSep), the knockout on the feet (RefCatch) likewise
+--   * the bell: in the last REF.bellIn seconds of the round he steps in toward the midpoint, so he is between the
+--     men as it goes (Rest sends them to the corners; HoldCorners sends him back to the orbit for the countdown)
+-- A walk (REF.walk) everywhere but the knockdown (REF.jog); the Humanoid's MoveTo paces the steps.
+--   * a man coming at him (the fighters pass through the referee: the Referee collision group): a step out of his
+--     way to REF.evade clear, at a jog, as soon as one is inside MinSep + REF.evadeAt
+-- A walk (REF.walk; REF.brisk when his spot is more than REF.briskAt away) everywhere but the knockdown and the
+-- evasion (REF.jog); the Humanoid's MoveTo paces the steps.
+local REF = { orbit = 7.0, round = 1.6, walk = 9, brisk = 12, briskAt = 4, jog = 16, clinchHold = 1.5, breakGap = 0.4, count = 3, bellIn = 0.6, sideHold = 1.0, evadeAt = 1.5, evade = 2.2, tick = 0.1 }
+FightEngine.REF = REF
+
+-- the hard camera's side: the way the post-fight scene faces (between the red corner and the next post)
+function Fight:HardSide()
+	if not self.hardFace then
+		local c = self.anchors.RingCenter.Position
+		local toRed = self.anchors.RedCorner and flat(self.anchors.RedCorner.Position - c) or Vector3.new(0, 0, -1)
+		toRed = toRed.Magnitude > 0.1 and toRed.Unit or Vector3.new(0, 0, -1)
+		self.hardFace = CFrame.Angles(0, math.rad(45), 0):VectorToWorldSpace(toRed)
+	end
+	return self.hardFace
+end
+
+-- pos kept at least r from both fighters' roots (out of the nearer man along the line from him)
+function Fight:RefKeepOut(pos, r)
+	if r <= 0 then
+		return pos
+	end
+	for _ = 1, 2 do
+		for _, F in ipairs({ self.P, self.O }) do
+			if F.root then
+				local fp = F.root.Position
+				local d = flat(pos - fp)
+				if d.Magnitude < r then
+					local dir = unitOr(d, Vector3.new(1, 0, 0))
+					pos = Vector3.new(fp.X + dir.X * r, pos.Y, fp.Z + dir.Z * r)
+				end
+			end
+		end
+	end
+	return pos
+end
+
+-- the referee's orbit spot for a pair standing at pP / pO (pure in the positions: the sim's test reads it)
+function Fight:RefOrbit(R, pP, pO)
+	local mid = (pP + pO) / 2
+	local line = unitOr(flat(pO - pP), Vector3.new(1, 0, 0))
+	local perp = Vector3.new(-line.Z, 0, line.X)
+	local want = perp:Dot(self:HardSide()) > 0 and -1 or 1 -- away from the camera
+	-- the ropes: the side the clamp pulls in by more than half a stud gives way to the other when it is clearer
+	local function pull(sgn)
+		local a = mid + perp * (sgn * REF.orbit)
+		return flat(self:ClampToRing(a) - a).Magnitude
+	end
+	if pull(want) > 0.5 and pull(-want) + 1.0 < pull(want) then
+		want = -want
+	end
+	local now = self:Now()
+	if R.side == nil then
+		R.side = want
+	elseif want ~= R.side then
+		-- (a side held for REF.sideHold before he goes round: the line between the men swings every step)
+		if (R.sideWant or 0) ~= want then
+			R.sideWant, R.sideSince = want, now
+		elseif now - (R.sideSince or now) >= REF.sideHold then
+			R.side = want
+		end
+	else
+		R.sideWant = nil
+	end
+	local target = mid + perp * (R.side * REF.orbit)
+	-- on the wrong side of the line: round the nearer end first, never between the men
+	if R.root then
+		local rp = R.root.Position
+		local across = flat(rp - mid):Dot(perp) * R.side
+		local along = flat(rp - mid):Dot(line)
+		local half = flat(pO - pP).Magnitude / 2
+		if across < 0.5 and math.abs(along) < half + REF.round * 0.5 then
+			local endP = along >= 0 and pO or pP
+			local out = along >= 0 and line or -line
+			target = endP + out * (self:MinSep() + REF.round)
+		end
+	end
+	return target, mid
+end
+
 function Fight:UpdateReferee(now)
 	local R = self.ref
 	if not (R and R.root and R.hum and R.model.Parent) or now < R.nextMove then
 		return
 	end
-	R.nextMove = now + 0.3
+	R.nextMove = now + REF.tick
 	local P, O = self.P, self.O
 	if not (P.root and O.root) then
 		return
 	end
 	local target, look
+	local speed, keep = REF.walk, self:MinSep()
+	local rp = R.root.Position
+	local nearF = flat(rp - P.root.Position).Magnitude <= flat(rp - O.root.Position).Magnitude and P or O
+	local nearD = flat(rp - nearF.root.Position).Magnitude
 	local down = (P.state == "down" and P) or (O.state == "down" and O) or nil
 	local catching = R.catching
 	if catching and now > catching.untilT then
 		R.catching = nil
 		catching = nil
 	end
+	local pP, pO = P.root.Position, O.root.Position
+	local mid = (pP + pO) / 2
+	local clinchHeld = (P.state == "clinch" or O.state == "clinch") and (now - math.max(P.clinchAt or 0, O.clinchAt or 0)) or nil
+	local bell = self.live and self.roundEnd and (self.roundEnd - now) <= REF.bellIn and not self.paused
+	local mode = "orbit"
 	if catching then
 		-- holding up a fighter knocked out on his feet
 		target, look = catching.at, catching.look
 		R.nextMove = now + 0.1
-		if R.hum and R.hum.WalkSpeed < 16 then
-			R.hum.WalkSpeed = 16
-		end
+		speed, keep = REF.jog, 0
+		mode = "catch"
 	elseif down then
 		-- stand over the downed fighter, between him and the other man (who is in the neutral corner)
 		local other = self:Other(down)
 		local d = unitOr(flat(other.root.Position - down.root.Position), Vector3.new(1, 0, 0))
-		target = down.root.Position + d * 3
+		target = down.root.Position + d * REF.count
 		look = down.root.Position
-	else
-		local mid = (P.root.Position + O.root.Position) / 2
-		local line = unitOr(flat(O.root.Position - P.root.Position), Vector3.new(1, 0, 0))
+		speed, keep = REF.jog, 0
+		mode = "count"
+	elseif clinchHeld and clinchHeld >= REF.clinchHold then
+		-- the break: the near side of the clinch, outside both bodies
+		local line = unitOr(flat(pO - pP), Vector3.new(1, 0, 0))
 		local perp = Vector3.new(-line.Z, 0, line.X)
-		if P.state == "clinch" then
-			target = mid + perp * 1.6 -- steps in to break them
-		else
-			-- off the fight line, on the side nearer the ring centre so he never ends up on the ropes
-			local c = self.anchors.RingCenter.Position
-			local a, b = mid + perp * 4.5, mid - perp * 4.5
-			R.side = R.side or 1
-			local cur, alt = R.side == 1 and a or b, R.side == 1 and b or a
-			if flat(alt - c).Magnitude + 1.5 < flat(cur - c).Magnitude then
-				R.side = -R.side
-				cur = alt
-			end
-			target = cur
-		end
+		local half = flat(pO - pP).Magnitude / 2
+		local d = math.max(2.2, math.sqrt(math.max(0, keep * keep - half * half)) + REF.breakGap)
+		target = mid + perp * ((R.side or 1) * d)
 		look = mid
+		mode = "break"
+	elseif nearD < keep + REF.evadeAt and nearF.state ~= "down" then
+		-- a man on top of him: out of his way, away from the nearer one (and off the fight line)
+		local line = unitOr(flat(pO - pP), Vector3.new(1, 0, 0))
+		local perp = Vector3.new(-line.Z, 0, line.X)
+		local away = unitOr(flat(rp - nearF.root.Position), perp * (R.side or 1))
+		if math.abs(away:Dot(perp)) < 0.3 then
+			away = unitOr(away + perp * ((R.side or 1) * 0.8), perp)
+		end
+		target = nearF.root.Position + away * (keep + REF.evade)
+		look = mid
+		speed = REF.jog
+		mode = "evade"
+	elseif bell then
+		-- the bell: in between them as it goes
+		target, look = mid, mid
+		mode = "bell"
+	else
+		target, look = self:RefOrbit(R, pP, pO)
 	end
-	target = self:ClampToRing(target)
+	if mode ~= R.mode then
+		R.mode, R.modeAt = mode, now
+	end
+	target = self:RefKeepOut(self:ClampToRing(target), keep)
+	R.target = target
 	local p = R.root.Position
+	if mode == "orbit" and flat(target - p).Magnitude > REF.briskAt then
+		speed = REF.brisk
+	end
+	if R.hum.WalkSpeed ~= speed then
+		R.hum.WalkSpeed = speed
+	end
 	if flat(target - p).Magnitude > (catching and 0.3 or 0.8) then
 		R.hum:MoveTo(Vector3.new(target.X, p.Y, target.Z))
 	end
@@ -61856,6 +62654,24 @@ function Fight:UpdateReferee(now)
 		if dir.Magnitude > 0.1 then
 			R.align.CFrame = CFrame.lookAt(Vector3.zero, dir.Unit)
 		end
+	end
+end
+
+-- the countdown: the referee walks back out to his orbit of the two corners' midpoint (the ring centre)
+function Fight:RefToOrbit()
+	local R = self.ref
+	if not (R and R.root and R.hum and R.model.Parent and self.P.root and self.O.root) then
+		return
+	end
+	local target = self:RefKeepOut(self:ClampToRing((self:RefOrbit(R, self.P.root.Position, self.O.root.Position))), self:MinSep())
+	R.target = target
+	R.mode = "orbit"
+	if R.hum.WalkSpeed ~= REF.walk then
+		R.hum.WalkSpeed = REF.walk
+	end
+	local p = R.root.Position
+	if flat(target - p).Magnitude > 0.8 then
+		R.hum:MoveTo(Vector3.new(target.X, p.Y, target.Z))
 	end
 end
 
@@ -61932,7 +62748,9 @@ function Fight:Glide(F, goal, speed, onArrive)
 		local v, acc = 0, speed * 4
 		while F.glideId == id and self.id == fightId and not self.aborted and F.root and F.root.Parent do
 			local dt = RunService.Heartbeat:Wait()
-			local d = flat(goal - F.root.Position)
+			-- (the spot itself never inside the other man's body: a goal set a moment ago may be where he now stands)
+			local kept = self:KeepOut(F, goal)
+			local d = flat(kept - F.root.Position)
 			local m = d.Magnitude
 			-- brake into the spot (v^2 = 2 a s), never slower than a shuffle until there
 			v = math.min(speed, v + acc * dt, math.sqrt(2 * acc * m))
@@ -62379,14 +63197,23 @@ end
 -- heavyweight; heavy against heavy needs 4.15 studs (3.7 x), power against heavy 3.85.
 local CLINCH_SEP, CLINCH_CHEST, CLINCH_DEPTH = 3.25, 1.55, 1.03
 
+-- Without the parts (the headless sims' stub rigs) the frames' torso depths (HitGeometry: the same ut.Size.Z /
+-- 2 when there is a rig) stand in; and never under MinSep + CLINCH_OVER: a Heavyweight pair's bodies need 3.57
+-- apart, the old 3.25 clinch floor let their chests sink into each other for the whole hold.
+local CLINCH_OVER = 0.1
 function Fight:ClinchSep()
 	local sep = CLINCH_SEP * (self.rigK or 1)
 	local a = self.P.model and self.P.model:FindFirstChild("UpperTorso")
 	local b = self.O.model and self.O.model:FindFirstChild("UpperTorso")
 	if a and b and a:IsA("BasePart") and b:IsA("BasePart") then
 		sep = math.max(sep, CLINCH_CHEST + CLINCH_DEPTH * (a.Size.Z + b.Size.Z))
+	else
+		local G, OG = self:Geo(self.P), self:Geo(self.O)
+		if G and OG then
+			sep = math.max(sep, CLINCH_CHEST + 2 * CLINCH_DEPTH * (G.torsoHalfD + OG.torsoHalfD))
+		end
 	end
-	return sep
+	return math.max(sep, self:MinSep() + CLINCH_OVER)
 end
 
 -- cut (optional, 0..1): ring generalship - stand on the ring-centre side of him rather than wherever he leads,
@@ -62421,6 +63248,7 @@ function Fight:MoveAI(F, range, circle, cut)
 			end
 		end
 	end
+	target = self:KeepOut(F, target)
 	-- pace: cover the way in about the AI's decision interval (never slower than a shuffle)
 	local togo = flat(target - F.root.Position).Magnitude
 	F.aiStepSpeed = math.clamp(togo / 0.42, 4, 30)
@@ -62437,16 +63265,26 @@ function Fight:MoveAI(F, range, circle, cut)
 	F.hum:MoveTo(target)
 end
 
--- keep the two bodies apart (the AI side gives ground; the player's own movement is never fought)
-function Fight:Separate()
+-- keep the two bodies apart, every Heartbeat (Update calls it once per step):
+--   * an NPC's live walk goal (MoveAI's spot, issued against where the other man stood up to 0.4 s ago) is
+--     re-clamped out of where he now stands and is heading (KeepOut) and re-issued when that moved it
+--   * an overlap (a walk that got there first, a lunge, a stumble, the player's own movement) is resolved by a
+--     push along the line between the roots: both men move, the lighter one more (BodyMass), at SEP_RATE of the
+--     overlap per second (a soft shove: ~70 % of it per frame at 60 Hz, all of it past SEP_SNAP, where someone
+--     was set down inside the other man); a player's own root is client-owned and never shifted by the server
+--     (his client's collision does it), so the NPC gives all of the ground against him
+local SEP_RATE, SEP_SNAP = 40, 0.4
+function Fight:Separate(dt)
 	local P, O = self.P, self.O
 	if not (P.root and O.root) or P.state == "down" or O.state == "down" then
 		return
 	end
+	dt = dt or 1 / 60
 	local minSep = self:MinSep()
 	local d = flat(O.root.Position - P.root.Position)
 	local m = d.Magnitude
-	if P.state == "clinch" or O.state == "clinch" then
+	local clinch = P.state == "clinch" or O.state == "clinch"
+	if clinch then
 		-- the clinch distance; while the tie-up slides the pair there, no closer than they are (or the minimum)
 		local cs = self:ClinchSep()
 		if self.tieUntil and self:Now() < self.tieUntil then
@@ -62454,23 +63292,65 @@ function Fight:Separate()
 		end
 		minSep = cs
 	end
+	-- the NPCs' walk goals, kept out of the other man as he moves (and off the referee, who is walked through
+	-- otherwise: his own collision group lets the fighters pass; he steps out of the way too)
+	if not clinch then
+		local R = self.ref
+		local refP = R and R.root and R.mode ~= "count" and R.mode ~= "catch" and R.root.Position or nil
+		for _, F in ipairs(self.pair or { P, O }) do
+			local goal = F.aiTarget
+			if goal and F.hum and not F.isPlayer and F.state ~= "clinch" then
+				local kept = self:KeepOut(F, goal, minSep)
+				if refP then
+					local d = flat(kept - refP)
+					local r = minSep * 0.8
+					if d.Magnitude < r then
+						local out = refP + unitOr(d, unitOr(flat(F.root.Position - refP), Vector3.new(1, 0, 0))) * r
+						kept = Vector3.new(out.X, kept.Y, out.Z)
+					end
+				end
+				if flat(kept - goal).Magnitude > 0.1 then
+					F.aiTarget = kept
+					F.hum:MoveTo(kept)
+				end
+			end
+		end
+	end
 	if m >= minSep then
 		return
 	end
 	local dir = m > 0.05 and d.Unit or flat(P.root.CFrame.LookVector).Unit -- stacked: put them back in front
-	local movers = {}
-	if not O.isPlayer then
-		table.insert(movers, { O, dir })
+	local overlap = minSep - m
+	local k = overlap > SEP_SNAP and 1 or math.min(1, SEP_RATE * dt)
+	local wP, wO = self:BodyMass(O), self:BodyMass(P) -- (each moves by the OTHER man's share of the mass)
+	if P.isPlayer then
+		wP = 0
 	end
-	if not P.isPlayer then
-		table.insert(movers, { P, -dir })
+	if O.isPlayer then
+		wO = 0
 	end
-	local share = (minSep - m) / math.max(1, #movers)
-	for _, mv in ipairs(movers) do
-		local X, v = mv[1], mv[2]
-		local p = X.root.Position
-		local goal = self:ClampToRing(p + v * share)
-		shift(X, goal - p)
+	local total = wP + wO
+	if total <= 0 then
+		return -- (two players: their own clients' collision keeps them apart)
+	end
+	-- (a man on the ropes cannot give his share: the clamp's shortfall goes to the other man)
+	local want = overlap * k
+	local order = wO >= wP and { { O, dir, wO }, { P, -dir, wP } } or { { P, -dir, wP }, { O, dir, wO } }
+	local carry = 0
+	for i, mv in ipairs(order) do
+		local X, v, w = mv[1], mv[2], mv[3]
+		if w > 0 then
+			local share = want * w / total + carry
+			local p = X.root.Position
+			local goal = self:ClampToRing(p + v * share)
+			shift(X, goal - p)
+			local moved = flat(goal - p):Dot(v)
+			if i == 1 then
+				carry = math.max(0, share - moved)
+			end
+		elseif i == 1 then
+			carry = 0
+		end
 	end
 end
 
@@ -62826,7 +63706,7 @@ function Fight:Update(dt)
 		end
 		self:UpdateMovement(F, dt)
 		if F == self.O then
-			self:Separate()
+			self:Separate(dt)
 		end
 		self:UpdateGuard(F)
 		-- nobody can punch during a count / eight count / referee check, so "not answering back" means nothing
@@ -63531,6 +64411,7 @@ local COUNT_BEAT = 0.8
 FightEngine.COUNT_BEAT = COUNT_BEAT
 function Fight:HoldCorners()
 	local red, blue = self.anchors.RedCorner.Position, self.anchors.BlueCorner.Position
+	self:RefToOrbit()
 	for _, X in ipairs({ { self.P, red, blue }, { self.O, blue, red } }) do
 		local F = X[1]
 		if F.root and F.model and F.model.Parent then
@@ -64011,6 +64892,23 @@ local function setPose(model, pose)
 	end
 end
 
+-- a scene's body frame for any rig in the ring (HitGeometry.Frame off its parts; the unit frame without them):
+-- the referee and the official have no fighter table for Fight:Geo
+function Fight:SceneFrame(model)
+	if not (HitGeometry and model) then
+		return nil
+	end
+	local root = model:FindFirstChild("HumanoidRootPart")
+	local hum = model:FindFirstChildOfClass("Humanoid")
+	local soleY = root and (root.Position.Y - standHeight(hum, root)) or nil
+	local ok, fr = pcall(HitGeometry.Frame, model, soleY, HitGeometry.Unit())
+	return ok and fr or HitGeometry.Unit()
+end
+
+-- the celebration's spacing (studs of air between the bodies; the rest comes from the frames: shoulderHalf /
+-- torsoHalfD off the live rigs, so a Heavyweight stands his own width from the referee and the official)
+local CER_SIDE_GAP, CER_FRONT_GAP = 0.9, 1.15
+
 function Fight:Ceremony(spec)
 	local P, O = self.P, self.O
 	local B = Tournaments and Tournaments.Ceremony
@@ -64023,9 +64921,23 @@ function Fight:Ceremony(spec)
 	-- he faces a ring side (between his corner and the next post), the hard camera's side
 	local face = CFrame.Angles(0, math.rad(45), 0):VectorToWorldSpace(toRed)
 	local right = face:Cross(Vector3.yAxis)
+	local held = {} -- roots anchored for the scene (physics and the Humanoids cannot slide them), freed at its end
+	local function hold(root)
+		if root and not root.Anchored then
+			pcall(function()
+				root.Anchored = true
+			end)
+			table.insert(held, root)
+		end
+	end
 	self:Place(P, center, center + face * 10)
-	if O.model and O.model.Parent then
-		self:Place(O, self.anchors.BlueCorner.Position, center)
+	hold(P.root)
+	if O.model and O.model.Parent and O.root then
+		-- the loser walks to his corner (a glide at a walking pace: the Animator gives him steps), never set down
+		-- inside the winner
+		if O.state ~= "down" then
+			self:Glide(O, self:KeepOut(O, self.anchors.BlueCorner.Position, self:MinSep()), 6)
+		end
 	end
 	if P.hum then
 		P.hum.WalkSpeed = 0
@@ -64044,14 +64956,16 @@ function Fight:Ceremony(spec)
 			root.AssemblyLinearVelocity = Vector3.zero
 		end
 	end
-	-- the referee at his right shoulder, facing the same way (his left hand takes the winner's right)
+	local G = self:Geo(P) or (HitGeometry and HitGeometry.Unit()) or { shoulderHalf = 0.95, torsoHalfD = 0.49 }
+	-- the referee at his right shoulder, facing the same way (his left hand takes the winner's right): a shoulder
+	-- width each plus the air between
 	local refModel = self.ref and self.ref.model
+	local refG = self:SceneFrame(refModel) or G
+	local refSide = G.shoulderHalf + refG.shoulderHalf + CER_SIDE_GAP
 	if refModel and refModel.Parent then
-		local at = center + right * 2.1
+		local at = center + right * refSide
 		stand(refModel, at, at + face * 5)
-		if self.ref.hum then
-			self.ref.hum:MoveTo(at)
-		end
+		hold(self.ref.root)
 	end
 	-- the official with the belt, waiting by the ropes in front of him
 	local official
@@ -64068,7 +64982,15 @@ function Fight:Ceremony(spec)
 			end
 		end
 		official.Parent = self.arena
+		Builder.OnPlaced(official)
 		stand(official, center + face * 6.5 - right * 1.2, center)
+		if HitGeometry then
+			-- (the official's own frame once he stands: Officials' builds differ)
+			local offG = self:SceneFrame(official)
+			if offG then
+				G = { shoulderHalf = G.shoulderHalf, torsoHalfD = G.torsoHalfD, front = G.torsoHalfD + offG.torsoHalfD + CER_FRONT_GAP }
+			end
+		end
 		local oroot = official:FindFirstChild("HumanoidRootPart")
 		if oroot then
 			pcall(function()
@@ -64092,16 +65014,23 @@ function Fight:Ceremony(spec)
 		{ B.walkIn, function()
 			setPose(refModel, "cerClap")
 			setPose(P.model, "cerProud")
+			-- (the official comes in to a torso's depth each plus the air for the belt between his hands; the
+			-- referee steps back and out of his way, by his own and the winner's shoulders)
 			if ohum then
-				ohum:MoveTo(center + face * 1.75)
+				ohum:MoveTo(center + face * (G.front or 1.75))
 			end
-			if refModel and self.ref.hum then
-				self.ref.hum:MoveTo(center + right * 3.1 - face * 0.9)
+			if refModel and self.ref.root then
+				pcall(function()
+					self.ref.root.Anchored = false
+				end)
+				if self.ref.hum then
+					self.ref.hum:MoveTo(center + right * (refSide + 1.0) - face * 0.9)
+				end
 			end
 		end },
 		{ B.strap, function()
 			if official then
-				stand(official, center + face * 1.75, center)
+				stand(official, center + face * (G.front or 1.75), center)
 			end
 			setPose(official, "cerStrap")
 			setPose(P.model, "cerStrapped")
@@ -64134,6 +65063,11 @@ function Fight:Ceremony(spec)
 	setPose(P.model, nil)
 	setPose(refModel, nil)
 	CollectionService:RemoveTag(P.model, "Trainee")
+	for _, root in ipairs(held) do
+		pcall(function()
+			root.Anchored = false
+		end)
+	end
 	if official then
 		official:Destroy()
 	end
@@ -64234,6 +65168,7 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 			return nil
 		end
 		npc.Parent = arena
+		Builder.OnPlaced(npc)
 		local npcRoot = npc:FindFirstChild("HumanoidRootPart")
 		if npcRoot then
 			npcRoot:SetNetworkOwner(nil)
@@ -64477,7 +65412,7 @@ return FightEngine
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="64">
+      <Item class="ModuleScript" referent="65">
         <Properties>
           <string name="Name">GymDecor</string>
           <string name="Source"><![CDATA[-- GymDecor: everything that turns the training complex from a box into a real boxing gym.
@@ -66001,7 +66936,7 @@ return GymDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="65">
+      <Item class="ModuleScript" referent="66">
         <Properties>
           <string name="Name">Judging</string>
           <string name="Source"><![CDATA[-- Judging: the three ringside judges (pure: no engine state, no Instances; tools/sim/test_judging.luau pins it).
@@ -66449,7 +67384,7 @@ return Judging
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="66">
+      <Item class="ModuleScript" referent="67">
         <Properties>
           <string name="Name">MapBuilder</string>
           <string name="Source"><![CDATA[-- MapBuilder: builds the training complex entirely from parts.
@@ -67475,7 +68410,7 @@ return MapBuilder
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="67">
+      <Item class="ModuleScript" referent="68">
         <Properties>
           <string name="Name">Poser</string>
           <string name="Source"><![CDATA[-- Poser: puts a character (player or NPC) at a training spot in the right posture
@@ -67669,7 +68604,7 @@ return Poser
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="68">
+      <Item class="ModuleScript" referent="69">
         <Properties>
           <string name="Name">PostFight</string>
           <string name="Source"><![CDATA[-- PostFight: the scene after the final bell of every fight (FightEngine.Run calls PostFight.Run(fight, res, opts) once
@@ -67752,8 +68687,10 @@ local function remote()
 end
 PostFight.Remote = remote
 
--- stand a model at pos facing look (flat), and point its facing constraint the same way so it is not fought
-local function stand(fight, F, model, pos, look, center)
+-- stand a model at pos facing look (flat), point its facing constraint the same way so it is not fought, and
+-- anchor its root for the scene (the Humanoids' own physics, a push from the other body, a client walking its
+-- character cannot slide him out of the picture); held lists the roots to free at the end
+local function stand(fight, F, model, pos, look, center, held)
 	local root = partOf(model, "HumanoidRootPart")
 	local hum = model and model:FindFirstChildOfClass("Humanoid")
 	if not root then
@@ -67776,6 +68713,72 @@ local function stand(fight, F, model, pos, look, center)
 			align.Enabled = true
 		end)
 	end
+	if held and not root.Anchored then
+		local ok = pcall(function()
+			root.Anchored = true
+		end)
+		if ok then
+			table.insert(held, root)
+		end
+	end
+end
+
+-- the frames the scene is spaced on (HitGeometry: shoulderHalf = half the shoulder width off the live rig,
+-- torsoHalfD half the chest's depth; the unit frame when a rig cannot be read)
+local HitGeometry
+do
+	local ok, mod = pcall(function()
+		return require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HitGeometry"))
+	end)
+	HitGeometry = ok and type(mod) == "table" and mod or nil
+end
+local UNIT_FRAME = { shoulderHalf = 0.955, torsoHalfD = 0.485, torsoHalfW = 0.795, arm = 2.578, glove = 0.32, hScale = 1 }
+local function frameOf(fight, F, model)
+	if F and fight and fight.Geo then
+		local ok, g = pcall(fight.Geo, fight, F)
+		if ok and type(g) == "table" and g.shoulderHalf then
+			return g
+		end
+	end
+	if HitGeometry and model then
+		local root = partOf(model, "HumanoidRootPart")
+		local hum = model:FindFirstChildOfClass("Humanoid")
+		local soleY = root and (root.Position.Y - standHeight(hum, root)) or nil
+		local ok, fr = pcall(HitGeometry.Frame, model, soleY, HitGeometry.Unit())
+		if ok and type(fr) == "table" then
+			return fr
+		end
+	end
+	return UNIT_FRAME
+end
+
+-- The scene's places, from the frames (pure: tools/sim/test_spacing.luau reads it). center = the ring centre, face
+-- = the way the picture faces (toward the hard camera), frames = { red, blue, ref } (HitGeometry frames), and
+-- redDown / blueDown for a man still on the canvas. Returns { red, blue, ref } (flat positions at center's height).
+--   * the referee stands in the middle, SIDE_BACK behind the men's line (his arms reach forward to their wrists)
+--   * each man stands a shoulder width of his own plus a shoulder width of the referee's plus SIDE_GAP of air to
+--     the side: the raised arms (the referee's up at 2.6 rad, the winner's inside arm at 2.72 rad, both past
+--     vertical and away from the other body) and the referee's held-out hands never cross into a body, and a
+--     Heavyweight Build (1.17 x the unit shoulder) stands his own width further out than a Lean man
+--   * one man down: the standing man and the referee share the centre, the same spacing between them
+PostFight.SIDE_GAP, PostFight.SIDE_BACK, PostFight.SIDE_FWD = 0.9, 0.45, 0.1
+function PostFight.Layout(center, face, frames, redDown, blueDown)
+	frames = frames or {}
+	local red, blue, ref = frames.red or UNIT_FRAME, frames.blue or UNIT_FRAME, frames.ref or UNIT_FRAME
+	local right = face:Cross(Vector3.yAxis)
+	local sideRed = red.shoulderHalf + ref.shoulderHalf + PostFight.SIDE_GAP
+	local sideBlue = blue.shoulderHalf + ref.shoulderHalf + PostFight.SIDE_GAP
+	local refAt = center - face * PostFight.SIDE_BACK
+	local redAt = center - right * sideRed + face * PostFight.SIDE_FWD
+	local blueAt = center + right * sideBlue + face * PostFight.SIDE_FWD
+	if redDown and not blueDown then
+		blueAt = center + right * (sideBlue / 2) + face * PostFight.SIDE_FWD
+		refAt = center - right * (sideBlue / 2) - face * PostFight.SIDE_BACK
+	elseif blueDown and not redDown then
+		redAt = center - right * (sideRed / 2) + face * PostFight.SIDE_FWD
+		refAt = center + right * (sideRed / 2) - face * PostFight.SIDE_BACK
+	end
+	return { red = redAt, blue = blueAt, ref = refAt, sideRed = sideRed, sideBlue = sideBlue }
 end
 
 -- the crowd's table: who won, how, the names, the bout
@@ -67806,7 +68809,6 @@ function PostFight.Run(fight, res, opts)
 	toRed = toRed.Magnitude > 0.1 and toRed.Unit or Vector3.new(0, 0, -1)
 	-- they face a ring side (between the red corner and the next post), the hard camera's side
 	local face = CFrame.Angles(0, math.rad(45), 0):VectorToWorldSpace(toRed)
-	local right = face:Cross(Vector3.yAxis)
 	local names = { P.data.name, O.data.name }
 	local title = type(opts.ceremony) == "table" and opts.ceremony or nil
 	local endSeconds = nil
@@ -67820,25 +68822,25 @@ function PostFight.Run(fight, res, opts)
 	local winner = script_.winner == "red" and P or (script_.winner == "blue" and O or nil)
 	local loser = winner and fight:Other(winner) or nil
 
-	-- places: red at the referee's left, blue at his right (a man still down stays down)
+	-- places: red at the referee's left, blue at his right (a man still down stays down), spaced from the rigs
 	local redDown, blueDown = P.state == "down", O.state == "down"
 	local refModel = fight.ref and fight.ref.model
-	local refAt = center - face * 0.4
-	local redAt = center - right * 1.75 + face * 0.1
-	local blueAt = center + right * 1.75 + face * 0.1
-	if redDown and not blueDown then
-		blueAt = center + right * 0.95
-		refAt = center - right * 0.95
-	elseif blueDown and not redDown then
-		redAt = center - right * 0.95
-		refAt = center + right * 0.95
-	end
-	local look = center + face * 12
+	local L = PostFight.Layout(center, face, { red = frameOf(fight, P, P.model), blue = frameOf(fight, O, O.model), ref = frameOf(nil, nil, refModel) }, redDown, blueDown)
+	local redAt, blueAt, refAt = L.red, L.blue, L.ref
+	local held = {} -- the roots anchored for the scene
 	local tagged = {}
 	for _, X in ipairs({ { P, redAt, redDown }, { O, blueAt, blueDown } }) do
 		local F, at, down = X[1], X[2], X[3]
 		if F.model and F.model.Parent and not down then
-			stand(fight, F, F.model, at, at + face * 10, center)
+			-- (a walk in progress - a glide, the AI's last MoveTo - is cancelled: the placement wins)
+			F.glideId = (F.glideId or 0) + 1
+			F.aiTarget = nil
+			if F.hum then
+				pcall(function()
+					F.hum:MoveTo(at)
+				end)
+			end
+			stand(fight, F, F.model, at, at + face * 10, center, held)
 			-- the poses come from the Animator's Trainee path (a Fighter plays guards only)
 			CollectionService:RemoveTag(F.model, "Fighter")
 			CollectionService:AddTag(F.model, "Trainee")
@@ -67847,12 +68849,12 @@ function PostFight.Run(fight, res, opts)
 		end
 	end
 	if refModel and refModel.Parent then
-		stand(fight, fight.ref, refModel, refAt, refAt + face * 10, center)
 		if fight.ref.hum then
 			pcall(function()
 				fight.ref.hum:MoveTo(refAt)
 			end)
 		end
+		stand(fight, fight.ref, refModel, refAt, refAt + face * 10, center, held)
 		setPose(refModel, (redDown or blueDown) and "pfWait" or "pfHold")
 	end
 
@@ -67926,7 +68928,13 @@ function PostFight.Run(fight, res, opts)
 		return { t = "postfightEnd", skipped = fight.ceremonySkip == true }
 	end)
 	fight.ceremonySkip = false
-	-- hand the rigs back (Cleanup takes the Fighter attributes off; the belt ceremony re-tags its winner)
+	-- hand the rigs back (Cleanup takes the Fighter attributes off; the belt ceremony re-tags its winner): the
+	-- roots freed first, so nothing is left anchored
+	for _, root in ipairs(held) do
+		pcall(function()
+			root.Anchored = false
+		end)
+	end
 	for _, F in ipairs(tagged) do
 		setPose(F.model, nil)
 		CollectionService:RemoveTag(F.model, "Trainee")
@@ -67941,7 +68949,7 @@ return PostFight
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="69">
+      <Item class="ModuleScript" referent="70">
         <Properties>
           <string name="Name">PvP</string>
           <string name="Source"><![CDATA[-- PvP: player vs player boxing in the same server.
@@ -68498,7 +69506,7 @@ return PvP
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="70">
+      <Item class="ModuleScript" referent="71">
         <Properties>
           <string name="Name">Ragdoll</string>
           <string name="Source"><![CDATA[-- Ragdoll (server): the physics side of a knockdown / knockout. The Animator (AnimDown) draws the fall on every
@@ -68780,7 +69788,7 @@ return Ragdoll
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="71">
+      <Item class="ModuleScript" referent="72">
         <Properties>
           <string name="Name">RingWalk</string>
           <string name="Source"><![CDATA[-- RingWalk: the pre-fight entrance on the server (FightEngine's Fight:Entrance hands over to RingWalk.Run).
@@ -69185,7 +70193,7 @@ return RingWalk
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="72">
+      <Item class="ModuleScript" referent="73">
         <Properties>
           <string name="Name">Tourney</string>
           <string name="Source"><![CDATA[-- Tourney: the career side of the tournaments (Shared.Tournaments has the events, their rules, prizes and belts).
@@ -69900,7 +70908,7 @@ return Tourney
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="73">
+      <Item class="ModuleScript" referent="74">
         <Properties>
           <string name="Name">Training</string>
           <string name="Source"><![CDATA[-- Training: the advanced training system.
@@ -73657,7 +74665,7 @@ return Training
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="74">
+      <Item class="ModuleScript" referent="75">
         <Properties>
           <string name="Name">TutorialFight</string>
           <string name="Source"><![CDATA[-- TutorialFight: the first-time tutorial bout's cast and night (Shared.Tutorial has the steps and the rules).
@@ -73744,7 +74752,7 @@ return TutorialFight
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="75">
+      <Item class="ModuleScript" referent="76">
         <Properties>
           <string name="Name">Venues</string>
           <string name="Source"><![CDATA[-- Venues: fight-night ring system. Builds one template per venue in ServerStorage at boot and
@@ -75853,6 +76861,16 @@ function Venues.New(kind, opts)
 		end
 	end
 	arena.Parent = workspace
+	-- the template's athletes come in as clones (no head watch of their own): every rig in the copy gets the late
+	-- headgear re-fit once the engine's post-parent passes have run (Builder.OnPlaced; a no-op while it fits)
+	pcall(function()
+		local Builder = require(Shared:WaitForChild("Builder"))
+		for _, d in ipairs(arena:GetDescendants()) do
+			if d:IsA("Humanoid") and d.Parent and d.Parent:IsA("Model") then
+				Builder.OnPlaced(d.Parent)
+			end
+		end
+	end)
 	return arena
 end
 
@@ -75860,7 +76878,7 @@ return Venues
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="76">
+      <Item class="ModuleScript" referent="77">
         <Properties>
           <string name="Name">World</string>
           <string name="Source"><![CDATA[-- World: generates and maintains the AI boxing world (270 boxers), rankings for
@@ -76382,7 +77400,7 @@ return World
         </Properties>
       </Item>
     </Item>
-    <Item class="Script" referent="77">
+    <Item class="Script" referent="78">
       <Properties>
         <string name="Name">Main</string>
         <token name="RunContext">0</token>
@@ -79119,17 +80137,17 @@ print("[Boxer] " .. Config.GameName .. " server ready")
       </Properties>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="78">
+  <Item class="StarterPlayer" referent="79">
     <Properties>
       <string name="Name">StarterPlayer</string>
       <float name="CharacterWalkSpeed">6.5</float>
       <bool name="EnableMouseLockOption">false</bool>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="79">
+    <Item class="StarterPlayerScripts" referent="80">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="80">
+      <Item class="LocalScript" referent="81">
         <Properties>
           <string name="Name">Animator</string>
           <string name="Source"><![CDATA[-- Animator: motion-capture-feeling procedural animation for everyone in the game, no animation
@@ -80612,11 +81630,11 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="81">
+      <Item class="Folder" referent="82">
         <Properties>
           <string name="Name">BoxerClient</string>
         </Properties>
-        <Item class="ModuleScript" referent="82">
+        <Item class="ModuleScript" referent="83">
           <Properties>
             <string name="Name">Activities</string>
             <string name="Source"><![CDATA[-- Activities: every training session and its minigame.
@@ -86841,7 +87859,7 @@ return Activities
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="83">
+        <Item class="ModuleScript" referent="84">
           <Properties>
             <string name="Name">Ambience</string>
             <string name="Source"><![CDATA[-- Ambience: brings the gym and the town to life on the client.
@@ -88085,7 +89103,7 @@ return Ambience
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="84">
+        <Item class="ModuleScript" referent="85">
           <Properties>
             <string name="Name">AnatomyClient</string>
             <string name="Source"><![CDATA[-- AnatomyClient: the client-built meshes on every character: today only the HAIR (the uploaded hair cards,
@@ -90879,7 +91897,7 @@ return AnatomyClient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="85">
+        <Item class="ModuleScript" referent="86">
           <Properties>
             <string name="Name">AnatomyStatus</string>
             <string name="Source"><![CDATA[-- AnatomyStatus: tells the player (and the Output) whether the organic mesh characters are on.
@@ -91136,7 +92154,7 @@ return AnatomyStatus
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="86">
+        <Item class="ModuleScript" referent="87">
           <Properties>
             <string name="Name">AnimCeremony</string>
             <string name="Source"><![CDATA[-- AnimCeremony: the poses of the celebration cutscene (FightEngine's Fight:Ceremony sets them as Pose on a
@@ -91444,7 +92462,7 @@ return AnimCeremony
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="87">
+        <Item class="ModuleScript" referent="88">
           <Properties>
             <string name="Name">AnimDown</string>
             <string name="Source"><![CDATA[-- AnimDown: knockdowns, knockouts, the count and the get-up.
@@ -93364,7 +94382,7 @@ return AnimDown
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="88">
+        <Item class="ModuleScript" referent="89">
           <Properties>
             <string name="Name">AnimEntrance</string>
             <string name="Source"><![CDATA[-- AnimEntrance: the ring walk's body language on the client - the entrance celebrations, the climb up the ring
@@ -93998,7 +95016,7 @@ return AnimEntrance
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="89">
+        <Item class="ModuleScript" referent="90">
           <Properties>
             <string name="Name">AnimFight</string>
             <string name="Source"><![CDATA[-- AnimFight: everything a boxer does on his feet in the ring.
@@ -97527,7 +98545,7 @@ return AnimFight
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="90">
+        <Item class="ModuleScript" referent="91">
           <Properties>
             <string name="Name">AnimGym</string>
             <string name="Source"><![CDATA[-- AnimGym: training poses that work the right muscles, flex poses, gym life and the people who
@@ -98780,7 +99798,7 @@ return AnimGym
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="91">
+        <Item class="ModuleScript" referent="92">
           <Properties>
             <string name="Name">AnimKit</string>
             <string name="Source"><![CDATA[-- AnimKit: the pure math behind the procedural animation (no Instances, no Roblox services), so it
@@ -99240,7 +100258,7 @@ return AnimKit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="92">
+        <Item class="ModuleScript" referent="93">
           <Properties>
             <string name="Name">AnimLoco</string>
             <string name="Source"><![CDATA[-- AnimLoco: locomotion and feet for the procedural Animator.
@@ -101531,7 +102549,7 @@ return AnimLoco
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="93">
+        <Item class="ModuleScript" referent="94">
           <Properties>
             <string name="Name">AnimRig</string>
             <string name="Source"><![CDATA[-- AnimRig: rig geometry, inverse kinematics and the pose building blocks shared by the Animator
@@ -101546,8 +102564,17 @@ return AnimLoco
 -- Everything works on the rig table the Animator keeps per character; nothing here allocates
 -- tables per frame.
 local K = require(script.Parent:WaitForChild("AnimKit"))
+-- [Studio] the joints may be Motor6Ds or (Workspace.AvatarJointUpgrade) AnimationConstraints: every joint lookup, rest
+-- pose (C0 / C1 vs Attachment0 / Attachment1) and part read goes through Shared.RigJoints (see there)
+local RigJoints = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("RigJoints"))
 
 local AnimRig = {}
+AnimRig.RigJoints = RigJoints
+-- AnimRig.FindJoint(model, "Neck") -> the Motor6D or AnimationConstraint; JointParts(j) -> parent part, child part
+AnimRig.FindJoint = RigJoints.Find
+AnimRig.JointParts = RigJoints.Parts
+AnimRig.IsJoint = RigJoints.IsJoint
+local part1 = RigJoints.Part1
 
 local A = CFrame.Angles
 local CF = CFrame.new
@@ -101672,29 +102699,11 @@ local CAP_PAD = { RS = -0.2, LS = -0.2 }
 -- foot box), the hips and trunks seat and the chest (proud of their boxes), the face (in front of the head's
 -- sphere: a guard's gloves); by the joint that drives the part
 local MESH_OF = { Root = "LowerTorso", W = "UpperTorso", RA = "RightFoot", LA = "LeftFoot", Neck = "Head" }
-local function jointC0(m)
-	if m:IsA("Motor6D") then
-		return m.C0
-	end
-	local a = m.Attachment0
-	return a and a.CFrame or I
-end
-local function jointC1(m)
-	if m:IsA("Motor6D") then
-		return m.C1
-	end
-	local a = m.Attachment1
-	return a and a.CFrame or I
-end
+local jointC0, jointC1 = RigJoints.C0, RigJoints.C1
+AnimRig.jointC0, AnimRig.jointC1 = jointC0, jointC1
 
 local function findJoint(model, key)
-	local path = JOINTS[key]
-	local p = model:FindFirstChild(path[1])
-	local m = p and p:FindFirstChild(path[2])
-	if m and (m:IsA("Motor6D") or m:IsA("AnimationConstraint")) then
-		return m
-	end
-	return nil
+	return RigJoints.Find(model, JOINTS[key][2])
 end
 
 -- (re)resolve joint motors: the Builder's head swap (ReplaceBodyPartR15) replaces the Neck, body
@@ -101760,7 +102769,7 @@ function AnimRig.computeGeo(rig)
 		leg.ankle0 = ankleCF.Position
 		leg.hip0 = (lt0 * leg.hipC0).Position
 		leg.footRest = (ankleCF * ankleC1:Inverse()).Rotation
-		local foot = ankleM.Part1
+		local foot = part1(ankleM)
 		local fs = foot and foot.Size or V3(0.7, 0.4, 1)
 		local footCF = ankleCF * ankleC1:Inverse()
 		local sole = footCF.Position.Y - fs.Y / 2
@@ -101803,8 +102812,8 @@ function AnimRig.computeGeo(rig)
 	do
 		local fw, tw = 0, 0
 		for _, s in ipairs(SIDES) do
-			local ft = J[s .. "A"].motor.Part1
-			local th = J[s .. "H"].motor.Part1
+			local ft = part1(J[s .. "A"].motor)
+			local th = part1(J[s .. "H"].motor)
 			fw = max(fw, ft and ft.Size.X or 0.7)
 			tw = max(tw, th and th.Size.X or 1)
 		end
@@ -101816,7 +102825,7 @@ function AnimRig.computeGeo(rig)
 		local H = 2.25 * ((g.rootY or rootC0.Position.Y) - lowest)
 		if J.Neck then
 			local head = lt0 * g.waistC0 * g.waistC1inv * jointC0(J.Neck.motor) * jointC1(J.Neck.motor):Inverse()
-			local hp = J.Neck.motor.Part1
+			local hp = part1(J.Neck.motor)
 			H = head.Position.Y + (hp and hp.Size.Y or 1.2) / 2 - lowest
 		end
 		FL = clamp(0.155 * H, 0.55, 1.4) * (rig.a and rig.a.Female == true and 0.96 or 1)
@@ -101845,7 +102854,7 @@ function AnimRig.computeGeo(rig)
 	g.legLen = (g.L.l1 + g.L.l2 + g.R.l1 + g.R.l2) / 2
 	g.hipW = abs(g.L.hip0.X - g.R.hip0.X)
 	-- torso size: guard targets are authored for a 2 x 1.6 x 1 UpperTorso and scale with the body
-	local utPart = J.W.motor.Part1
+	local utPart = part1(J.W.motor)
 	local us = utPart and utPart.Size or V3(2, 1.6, 1)
 	g.utScale = V3(us.X / 2, us.Y / 1.6, us.Z)
 	g.utSize = us
@@ -101864,7 +102873,7 @@ function AnimRig.computeGeo(rig)
 			arm.u0 = (arm.c1inv * arm.elbowC0).Position
 			arm.a = max(0.3, arm.u0.Magnitude)
 			arm.elbowRot = (arm.c1inv * arm.elbowC0).Rotation
-			local hand = wr.motor.Part1
+			local hand = part1(wr.motor)
 			local f0 = (jointC1(el.motor):Inverse() * jointC0(wr.motor)).Position
 			local ext = hand and hand.Size.Y * 0.55 or 0.35
 			arm.v0 = f0.Magnitude > 1e-3 and f0 + f0.Unit * ext or V3(0, -0.8, 0) -- elbow frame
@@ -101872,7 +102881,7 @@ function AnimRig.computeGeo(rig)
 			-- the forearm itself (punches keep it off the boxer's own head): the wrist's share of the elbow
 			-- to fist line and a radius for the arm drawn over the (fatter) R15 box
 			arm.fw = f0.Magnitude > 1e-3 and clamp(f0.Magnitude / arm.b, 0.5, 1) or 0.85
-			local fa = el.motor.Part1
+			local fa = part1(el.motor)
 			local fs = fa and fa.Size or V3(0.6, 1, 0.6)
 			arm.rf = clamp(min(fs.X, fs.Z) * 0.24, 0.12, 0.25)
 			-- hinge geometry for solveArm: the hinge axis in the shoulder frame, the bones split into
@@ -101900,7 +102909,7 @@ function AnimRig.computeGeo(rig)
 		if j then
 			g.jc0[key] = jointC0(j.motor)
 			g.jc1i[key] = jointC1(j.motor):Inverse()
-			local part = j.motor.Part1
+			local part = part1(j.motor)
 			g.sz[key] = part and part.Size or V3(1, 1, 1)
 		else
 			g.jc0[key] = nil
@@ -101924,7 +102933,7 @@ function AnimRig.computeGeo(rig)
 	for k, pn in pairs(MESH_OF) do
 		local mp = folder and folder:FindFirstChild("Anatomy" .. pn)
 		local weld = mp and mp:FindFirstChild("AnatomyWeld")
-		local part = J[k] and J[k].motor.Part1
+		local part = J[k] and part1(J[k].motor)
 		if weld and weld:IsA("Weld") and part and weld.Part0 == part and mp:IsA("BasePart") then
 			local m = g.mesh[k] or {}
 			m.cf = weld.C0 * weld.C1:Inverse()
@@ -102665,7 +103674,7 @@ return AnimRig
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="94">
+        <Item class="ModuleScript" referent="95">
           <Properties>
             <string name="Name">BodyMap</string>
             <string name="Source"><![CDATA[-- BodyMap: an anatomical body map (front + back views), one region per Config.MuscleParts id.
@@ -103534,7 +104543,7 @@ return BodyMap
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="95">
+        <Item class="ModuleScript" referent="96">
           <Properties>
             <string name="Name">Ceremony</string>
             <string name="Source"><![CDATA[-- Ceremony: the celebration cutscene in the ring after a won tournament final or a new title (10.5 s, skippable).
@@ -104244,7 +105253,7 @@ return Ceremony
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="96">
+        <Item class="ModuleScript" referent="97">
           <Properties>
             <string name="Name">CharacterLight</string>
             <string name="Source"><![CDATA[-- CharacterLight: a camera-aware fill and rim light for the boxers on screen (client only).
@@ -104468,7 +105477,7 @@ return CharacterLight
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="97">
+        <Item class="ModuleScript" referent="98">
           <Properties>
             <string name="Name">CityDetail</string>
             <string name="Source"><![CDATA[-- CityDetail: the town's fine-detail layer (client-only; WorldDetail streams it per cell by Graphics
@@ -105213,7 +106222,7 @@ return CityDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="98">
+        <Item class="ModuleScript" referent="99">
           <Properties>
             <string name="Name">CityStores</string>
             <string name="Source"><![CDATA[-- CityStores: the counters of the city's walk-in shops (prompts in CityMap, dispatched through
@@ -105514,7 +106523,7 @@ return CityStores
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="99">
+        <Item class="ModuleScript" referent="100">
           <Properties>
             <string name="Name">CityVisuals</string>
             <string name="Source"><![CDATA[-- CityVisuals: the city reflects YOUR career. Everything here is client-side (workspace.LocalCity
@@ -107393,7 +108402,7 @@ return CityVisuals
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="100">
+        <Item class="ModuleScript" referent="101">
           <Properties>
             <string name="Name">ComboHud</string>
             <string name="Source"><![CDATA[-- ComboHud: the fight HUD's combo counter (FightClient mounts it in its HUD root and feeds it the server's
@@ -107562,7 +108571,7 @@ return ComboHud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="101">
+        <Item class="ModuleScript" referent="102">
           <Properties>
             <string name="Name">ControlsMenu</string>
             <string name="Source"><![CDATA[-- ControlsMenu: the Moves & Controls window. Opened from the main menu (CONTROLS, or Settings > Controls),
@@ -108322,7 +109331,7 @@ return ControlsMenu
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="102">
+        <Item class="ModuleScript" referent="103">
           <Properties>
             <string name="Name">Creator</string>
             <string name="Source"><![CDATA[-- Creator: the character creator, as seven steps with Back / Next and a step bar (jump to any step).
@@ -110163,7 +111172,7 @@ return Creator
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="103">
+        <Item class="ModuleScript" referent="104">
           <Properties>
             <string name="Name">CrowdFX</string>
             <string name="Source"><![CDATA[-- CrowdFX: the crowd, alive, on the fighting client (VenueFX owns the session and calls in; nothing replicates).
@@ -110997,7 +112006,7 @@ return CrowdFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="104">
+        <Item class="ModuleScript" referent="105">
           <Properties>
             <string name="Name">DetailKit</string>
             <string name="Source"><![CDATA[-- DetailKit: the building blocks of the world's client-side detail layer (WorldDetail: the gym and the city;
@@ -111489,7 +112498,7 @@ return K
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="105">
+        <Item class="ModuleScript" referent="106">
           <Properties>
             <string name="Name">DiagClient</string>
             <string name="Source"><![CDATA[-- DiagClient: runs the rig diagnostic (Shared.Diag) on this client and asks the server for its own view of the same
@@ -111649,7 +112658,7 @@ return DiagClient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="106">
+        <Item class="ModuleScript" referent="107">
           <Properties>
             <string name="Name">EntranceFX</string>
             <string name="Source"><![CDATA[-- EntranceFX: the ring-walk cinematic on the client. The server (RingWalk) sends one "entrance" message per walk with
@@ -112438,7 +113447,7 @@ return EntranceFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="107">
+        <Item class="ModuleScript" referent="108">
           <Properties>
             <string name="Name">EntrancePicker</string>
             <string name="Source"><![CDATA[-- EntrancePicker: the Locker Room's ENTRANCE window (State.open.Entrance): the ring walk's celebrations (one at the
@@ -112581,7 +113590,7 @@ return EntrancePicker
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="108">
+        <Item class="ModuleScript" referent="109">
           <Properties>
             <string name="Name">FaceFX</string>
             <string name="Source"><![CDATA[-- FaceFX: a face that is alive. Client-only, driven by the Animator every frame (FaceFX.Update; Hit / Effort /
@@ -113376,7 +114385,7 @@ return FaceFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="109">
+        <Item class="ModuleScript" referent="110">
           <Properties>
             <string name="Name">FightIntel</string>
             <string name="Source"><![CDATA[-- FightIntel: the fight HUD's small reads of the deeper fight (FightClient mounts it in its HUD root and feeds it
@@ -113613,7 +114622,7 @@ return FightIntel
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="110">
+        <Item class="ModuleScript" referent="111">
           <Properties>
             <string name="Name">FighterCard</string>
             <string name="Source"><![CDATA[-- FighterCard: the professional fighter card / tale of the tape for the local boxer.
@@ -114493,7 +115502,7 @@ return FighterCard
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="111">
+        <Item class="ModuleScript" referent="112">
           <Properties>
             <string name="Name">Flags</string>
             <string name="Source"><![CDATA[-- Flags: simplified national flags drawn from frames (no image assets) for every Config.Nationalities
@@ -114828,7 +115837,7 @@ return Flags
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="112">
+        <Item class="ModuleScript" referent="113">
           <Properties>
             <string name="Name">GymDetail</string>
             <string name="Source"><![CDATA[-- GymDetail: the training complex's extra detail layer (client-only, WorldDetail streams it by Graphics level
@@ -115808,7 +116817,7 @@ return GymDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="113">
+        <Item class="ModuleScript" referent="114">
           <Properties>
             <string name="Name">GymDetail2</string>
             <string name="Source"><![CDATA[-- GymDetail2: the training complex's second detail pass (client-only, on DetailKit's Streamer like GymDetail, which
@@ -116444,7 +117453,7 @@ return GymDetail2
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="114">
+        <Item class="ModuleScript" referent="115">
           <Properties>
             <string name="Name">GymFacility</string>
             <string name="Source"><![CDATA[-- GymFacility: what YOUR gym looks like as a whole, drawn on your client only (everyone shares
@@ -118672,7 +119681,7 @@ return GymFacility
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="115">
+        <Item class="ModuleScript" referent="116">
           <Properties>
             <string name="Name">GymMirror</string>
             <string name="Source"><![CDATA[-- GymMirror: a live mirror at the shadow-boxing station. While you are within a few strides of
@@ -119054,7 +120063,7 @@ return GymMirror
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="116">
+        <Item class="ModuleScript" referent="117">
           <Properties>
             <string name="Name">GymSound</string>
             <string name="Source"><![CDATA[-- GymSound: every gym sound effect on the client, played from ONE pool of positional sounds
@@ -119299,7 +120308,7 @@ return GymSound
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="117">
+        <Item class="ModuleScript" referent="118">
           <Properties>
             <string name="Name">GymVisuals</string>
             <string name="Source"><![CDATA[-- GymVisuals: draws YOUR gym's equipment (client side) at every station, matched to
@@ -122815,7 +123824,7 @@ return GymVisuals
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="118">
+        <Item class="ModuleScript" referent="119">
           <Properties>
             <string name="Name">HairAssets</string>
             <string name="Source"><![CDATA[-- HairAssets: the asset hair (tools/hair/CONTRACT.md): hair-card meshes modelled in Blender and uploaded as
@@ -123514,7 +124523,7 @@ return HairAssets
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="119">
+        <Item class="ModuleScript" referent="120">
           <Properties>
             <string name="Name">HairFX</string>
             <string name="Source"><![CDATA[-- HairFX: hair that moves like hair. Client-only, driven by the Animator every frame (HairFX.Update) and on
@@ -125490,7 +126499,7 @@ return HairFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="120">
+        <Item class="ModuleScript" referent="121">
           <Properties>
             <string name="Name">Hub</string>
             <string name="Source"><![CDATA[-- Hub: the Career Hub window.
@@ -127914,7 +128923,7 @@ return Hub
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="121">
+        <Item class="ModuleScript" referent="122">
           <Properties>
             <string name="Name">KnockFX</string>
             <string name="Source"><![CDATA[-- KnockFX: the local player's "lights going out" screen. FightClient calls it on its own knockdown /
@@ -128173,7 +129182,7 @@ return KnockFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="122">
+        <Item class="ModuleScript" referent="123">
           <Properties>
             <string name="Name">LightLevels</string>
             <string name="Source"><![CDATA[-- LightLevels: the game's exposure targets in one place, plus the player's brightness preference.
@@ -128366,7 +129375,7 @@ return LightLevels
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="123">
+        <Item class="ModuleScript" referent="124">
           <Properties>
             <string name="Name">LookKit</string>
             <string name="Source"><![CDATA[-- LookKit: the look editors' shared parts (Creator, barber): plain-word readouts, short labels and
@@ -128805,7 +129814,7 @@ return LookKit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="124">
+        <Item class="ModuleScript" referent="125">
           <Properties>
             <string name="Name">MainMenu</string>
             <string name="Source"><![CDATA[-- MainMenu: the title screen. Your boxer stands in his corner of a ring in a gym at night (MenuStage: a
@@ -130443,7 +131452,7 @@ return MainMenu
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="125">
+        <Item class="ModuleScript" referent="126">
           <Properties>
             <string name="Name">MenuDetail</string>
             <string name="Source"><![CDATA[-- MenuDetail: the title-screen set's extra dressing (MenuStage). Built into the set's folder, in the set's own
@@ -130708,7 +131717,7 @@ return MenuDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="126">
+        <Item class="ModuleScript" referent="127">
           <Properties>
             <string name="Name">MenuStage</string>
             <string name="Source"><![CDATA[-- MenuStage: the main menu's set. A closed boxing-gym corner built on this client, far above the map,
@@ -131353,7 +132362,7 @@ return MenuStage
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="127">
+        <Item class="ModuleScript" referent="128">
           <Properties>
             <string name="Name">MuscleScreen</string>
             <string name="Source"><![CDATA[-- MuscleScreen: the Muscle Progression screen (Hub Body tab "3D MUSCLE VIEW", training result "MUSCLES").
@@ -132375,7 +133384,7 @@ return MuscleScreen
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="128">
+        <Item class="ModuleScript" referent="129">
           <Properties>
             <string name="Name">Perf</string>
             <string name="Source"><![CDATA[-- Perf: the one performance level every client system reads (optimization pass).
@@ -132703,7 +133712,7 @@ return Perf
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="129">
+        <Item class="ModuleScript" referent="130">
           <Properties>
             <string name="Name">PostFightUI</string>
             <string name="Source"><![CDATA[-- PostFightUI: the results screen after every fight (the "result" message: FightClient's handler calls
@@ -133096,7 +134105,7 @@ return PostFightUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="130">
+        <Item class="ModuleScript" referent="131">
           <Properties>
             <string name="Name">PvP</string>
             <string name="Source"><![CDATA[-- PvP (client): challenge other players, answer challenges, Find Match, the PvP record.
@@ -133862,7 +134871,7 @@ return PvP
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="131">
+        <Item class="ModuleScript" referent="132">
           <Properties>
             <string name="Name">Ragdoll</string>
             <string name="Source"><![CDATA[-- Ragdoll (client): the Animator's side of a knockout's physics ragdoll (server Ragdoll: the limbs' Motor6Ds
@@ -133881,18 +134890,16 @@ local Ragdoll = {}
 
 local I = CFrame.identity
 local HST = Enum.HumanoidStateType
+-- [Studio] Motor6D or AnimationConstraint joints (Workspace.AvatarJointUpgrade): Shared.RigJoints reads either
+local RigJoints = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("RigJoints"))
 
--- the limb's pose as the motor would show it: Part1 = Part0 * C0 * Transform * C1^-1
+-- the limb's pose as the joint would show it: child = parent * C0 * Transform * C1^-1
 local function measure(m)
-	local p0, p1 = m.Part0, m.Part1
-	if not (p0 and p1) then
-		return nil
-	end
-	return m.C0:Inverse() * p0.CFrame:Inverse() * p1.CFrame * m.C1
+	return RigJoints.Measure(m)
 end
 
 local function isReleased(m)
-	return m ~= nil and m.Parent ~= nil and m:IsA("Motor6D") and m.Enabled == false
+	return m ~= nil and m.Parent ~= nil and RigJoints.IsJoint(m) and m.Enabled == false
 end
 
 function Ragdoll.released(rig)
@@ -133959,7 +134966,7 @@ return Ragdoll
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="132">
+        <Item class="ModuleScript" referent="133">
           <Properties>
             <string name="Name">Scorecards</string>
             <string name="Source"><![CDATA[-- Scorecards: the judges' cards and the punch statistics on the player's screen (the WCB gold-glove UI kit).
@@ -134345,7 +135352,7 @@ return Scorecards
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="133">
+        <Item class="ModuleScript" referent="134">
           <Properties>
             <string name="Name">Services</string>
             <string name="Source"><![CDATA[-- Services: the gym's service windows.
@@ -135171,7 +136178,7 @@ return Services
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="134">
+        <Item class="ModuleScript" referent="135">
           <Properties>
             <string name="Name">Settings</string>
             <string name="Source"><![CDATA[-- Settings: the player's options, applied on this client straight away.
@@ -135462,7 +136469,7 @@ return Settings
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="135">
+        <Item class="ModuleScript" referent="136">
           <Properties>
             <string name="Name">SparExit</string>
             <string name="Source"><![CDATA[-- SparExit: the way out of a sparring session, at any time. A LEAVE SPARRING button on the spar HUD (and an entry
@@ -135609,7 +136616,7 @@ return SparExit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="136">
+        <Item class="ModuleScript" referent="137">
           <Properties>
             <string name="Name">State</string>
             <string name="Source"><![CDATA[-- State: shared client state and helpers (latest profile, server requests, toasts,
@@ -135776,7 +136783,7 @@ return State
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="137">
+        <Item class="ModuleScript" referent="138">
           <Properties>
             <string name="Name">TourneyUI</string>
             <string name="Source"><![CDATA[-- TourneyUI: the Career Hub's Tournaments tab (Hub's R.Tournaments) and the belt badge the FighterCard, the Hub and
@@ -136177,7 +137184,7 @@ return TourneyUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="138">
+        <Item class="ModuleScript" referent="139">
           <Properties>
             <string name="Name">Tutorial</string>
             <string name="Source"><![CDATA[-- Tutorial (client): the guided fights around the real fight HUD (FightClient).
@@ -136860,7 +137867,7 @@ return Tutorial
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="139">
+        <Item class="ModuleScript" referent="140">
           <Properties>
             <string name="Name">VenueDetail</string>
             <string name="Source"><![CDATA[-- VenueDetail: the fight venues' extra detail layer, built by VenueFX.Start on the fighting client only (inside
@@ -137437,7 +138444,7 @@ return VenueDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="140">
+        <Item class="ModuleScript" referent="141">
           <Properties>
             <string name="Name">VenueFX</string>
             <string name="Source"><![CDATA[-- VenueFX: client-only fight-night presentation for the player's own venue (stream G).
@@ -139748,7 +140755,7 @@ return VenueFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="141">
+        <Item class="ModuleScript" referent="142">
           <Properties>
             <string name="Name">WorldDetail</string>
             <string name="Source"><![CDATA[-- WorldDetail: the client-side detail layer of the gym and the city (GymDetail, CityDetail on DetailKit's
@@ -139933,7 +140940,7 @@ return WorldDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="142">
+        <Item class="ModuleScript" referent="143">
           <Properties>
             <string name="Name">WorldLOD</string>
             <string name="Source"><![CDATA[-- WorldLOD: the Graphics level (Perf) applied to the world's own lights, signs, particles and shadow
@@ -140525,7 +141532,7 @@ return WorldLOD
           </Properties>
         </Item>
       </Item>
-      <Item class="LocalScript" referent="143">
+      <Item class="LocalScript" referent="144">
         <Properties>
           <string name="Name">ClientMain</string>
           <string name="Source"><![CDATA[-- ClientMain: wires the client together - main menu at join, the gym HUD (player plate, condition
@@ -141478,7 +142485,7 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="LocalScript" referent="144">
+      <Item class="LocalScript" referent="145">
         <Properties>
           <string name="Name">FightClient</string>
           <string name="Source"><![CDATA[-- FightClient: fight-night presentation and controls (also used for gym sparring).
@@ -147259,7 +148266,7 @@ end)
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="145">
+  <Item class="Workspace" referent="146">
     <Properties>
 			<token name="AvatarJointUpgrade">1</token>
       <string name="Name">Workspace</string>

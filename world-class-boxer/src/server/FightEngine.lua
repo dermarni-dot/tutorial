@@ -2685,7 +2685,7 @@ end
 --     way to REF.evade clear, at a jog, as soon as one is inside MinSep + REF.evadeAt
 -- A walk (REF.walk; REF.brisk when his spot is more than REF.briskAt away) everywhere but the knockdown and the
 -- evasion (REF.jog); the Humanoid's MoveTo paces the steps.
-local REF = { orbit = 7.0, round = 1.6, walk = 9, brisk = 12, briskAt = 4, jog = 16, clinchHold = 1.5, breakGap = 0.4, count = 3, bellIn = 0.6, sideHold = 1.0, evadeAt = 1.0, evade = 1.8, tick = 0.15 }
+local REF = { orbit = 7.0, round = 1.6, walk = 9, brisk = 12, briskAt = 4, jog = 16, clinchHold = 1.5, breakGap = 0.4, count = 3, bellIn = 0.6, sideHold = 1.0, evadeAt = 1.5, evade = 2.2, tick = 0.1 }
 FightEngine.REF = REF
 
 -- the hard camera's side: the way the post-fight scene faces (between the red corner and the next post)
@@ -3488,12 +3488,23 @@ function Fight:Separate(dt)
 		end
 		minSep = cs
 	end
-	-- the NPCs' walk goals, kept out of the other man as he moves
+	-- the NPCs' walk goals, kept out of the other man as he moves (and off the referee, who is walked through
+	-- otherwise: his own collision group lets the fighters pass; he steps out of the way too)
 	if not clinch then
+		local R = self.ref
+		local refP = R and R.root and R.mode ~= "count" and R.mode ~= "catch" and R.root.Position or nil
 		for _, F in ipairs(self.pair or { P, O }) do
 			local goal = F.aiTarget
 			if goal and F.hum and not F.isPlayer and F.state ~= "clinch" then
 				local kept = self:KeepOut(F, goal, minSep)
+				if refP then
+					local d = flat(kept - refP)
+					local r = minSep * 0.8
+					if d.Magnitude < r then
+						local out = refP + unitOr(d, unitOr(flat(F.root.Position - refP), Vector3.new(1, 0, 0))) * r
+						kept = Vector3.new(out.X, kept.Y, out.Z)
+					end
+				end
 				if flat(kept - goal).Magnitude > 0.1 then
 					F.aiTarget = kept
 					F.hum:MoveTo(kept)
@@ -3518,12 +3529,23 @@ function Fight:Separate(dt)
 	if total <= 0 then
 		return -- (two players: their own clients' collision keeps them apart)
 	end
-	for _, mv in ipairs({ { O, dir, wO }, { P, -dir, wP } }) do
+	-- (a man on the ropes cannot give his share: the clamp's shortfall goes to the other man)
+	local want = overlap * k
+	local order = wO >= wP and { { O, dir, wO }, { P, -dir, wP } } or { { P, -dir, wP }, { O, dir, wO } }
+	local carry = 0
+	for i, mv in ipairs(order) do
 		local X, v, w = mv[1], mv[2], mv[3]
 		if w > 0 then
+			local share = want * w / total + carry
 			local p = X.root.Position
-			local goal = self:ClampToRing(p + v * (overlap * k * w / total))
+			local goal = self:ClampToRing(p + v * share)
 			shift(X, goal - p)
+			local moved = flat(goal - p):Dot(v)
+			if i == 1 then
+				carry = math.max(0, share - moved)
+			end
+		elseif i == 1 then
+			carry = 0
 		end
 	end
 end
