@@ -4793,6 +4793,10 @@ function handlers.start(msg)
 		end
 	end
 	F.pvp = msg.pvp == true
+	-- a gym spar can be left at any time (BoxerClient.SparExit's button; the menu has the entry too)
+	if KM.modules.SparExit then
+		pcall(KM.modules.SparExit.Show, F.spar ~= nil and not F.pvp)
+	end
 	local oppTag = type(msg.tape.opp.player) == "string" and (" (" .. msg.tape.opp.player .. ")") or ""
 	if F.tutorial and F.tutorial.debut then
 		-- the guided debut: a real amateur bout (the step card is BoxerClient.Tutorial's)
@@ -5594,6 +5598,10 @@ end
 
 function handlers.final(msg)
 	F.active = false
+	-- (a spar's leave prompt, if it is still up: the session is over)
+	if KM.modules.SparExit then
+		pcall(KM.modules.SparExit.Reset)
+	end
 	-- down and not getting up: COUNTED OUT holds on the panel; a knockout's screen stays heavy, then fades
 	-- toward the result
 	if F.down and getup.Visible and KM.getupUI.state == "down" then

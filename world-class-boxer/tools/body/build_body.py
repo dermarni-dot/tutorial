@@ -829,6 +829,16 @@ T_KNOTS = [2.45, 2.75, 3.05, 3.30, 3.48, 3.58]
 NECK_S = [3.58, 3.66, 3.74, 3.84]  # the shoulder top row, the trapezius slope, the neck column (into the head at 3.811)
 
 
+class Sec:
+    """a callable profile from a function"""
+
+    def __init__(self, fn):
+        self.fn = fn
+
+    def __call__(self, s, m):
+        return self.fn(s, m)
+
+
 def torso_section(fr):
     """the UpperTorso's section for a frame: the legacy section under the trunks (<= 2.45), the frame's own ribcage
     and shoulder width above (tx / tf / tb at T_KNOTS), and from the shoulder top row (3.58) its trapezius slope into a

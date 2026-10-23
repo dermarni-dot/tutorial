@@ -1735,6 +1735,19 @@ function AnimDown.pose(p, rig, t, dt)
 		p.Root = A(0, yaw * k, 0) * p.Root
 	end
 	AnimDown.flavour(p, rig, d, el - (d.delay or 0))
+	-- the landing's slide: the body's momentum carries it a little way along the canvas, friction stops it
+	if d.settleT then
+		if d.slide == nil then
+			local v = p.Root.Position
+			v = V3(v.X, 0, v.Z)
+			local last = d.keys[#d.keys][2]
+			d.slide = (not d.timber and NO_SLIDE[last]) and false or (v.Magnitude > 0.1 and v.Unit or false)
+		end
+		if d.slide then
+			local amt = (ko and SLIDE_KO or SLIDE_KD) * (1 - math.exp(-(t - d.settleT) / SLIDE_TAU))
+			p.Root = CF(d.slide * amt) * p.Root
+		end
+	end
 	if ko then
 		-- out cold: limp, head lolled to one side, arms wider
 		local lim = smooth((el - d.delay - 0.6) / 0.6)
@@ -1757,10 +1770,14 @@ function AnimDown.pose(p, rig, t, dt)
 		end
 		rig.exprHint = "dazed"
 	end
+	-- no joint past human range, then the whole of it on the canvas (settling onto it once he has landed)
+	limits(p)
 	if d.pose == "corner" then
 		clearCorner(rig, p, d)
 	end
-	onCanvas(rig, p)
+	local clear = clearance(d, t)
+	rig.downClear = clear
+	onCanvas(rig, p, clear)
 	return true
 end
 
