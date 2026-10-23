@@ -136,14 +136,18 @@ local function run(name, spec)
 			if prevR and mode ~= "count" and mode ~= "catch" and flat(rp - prevR).Magnitude > REF.walk * dt + 0.05 then
 				st.fast += 1
 			end
-			-- never across the men's line between them (his own walk; the count's walk to the fallen man aside)
-			if prevR and not down and mode ~= "count" and mode ~= "catch" and segHit(prevR, rp, P.root.Position, O.root.Position) then
+			-- never across the men's line between them (his own walk; the count's walk to the fallen man aside): his
+			-- step crossing the line between them both where they stood and where they stand (the men swinging their
+			-- line over a referee standing still is theirs, not his)
+			if prevR and st.prevLP and not down and mode ~= "count" and mode ~= "catch" and segHit(prevR, rp, P.root.Position, O.root.Position)
+				and segHit(prevR, rp, st.prevLP, st.prevLO) then
 				st.cross += 1
 				if #st.crossAt < 3 then
 					table.insert(st.crossAt, string.format("t%.1f %s", now, mode))
 				end
 			end
 			prevR = rp
+			st.prevLP, st.prevLO = P.root.Position, O.root.Position
 			if mode == "count" then
 				st.sawCount = true
 			end

@@ -13,6 +13,15 @@
 --   * the engine: PunchRange is the geometry's (floored at the close spacing), Resolve misses "short" / lands /
 --     turns a head shot into a body shot the way the geometry says, a leave mid-spar ends the session on the cards
 --     with the share boxed
+--   * the animation: every punch (head and body) thrown at every frame pairing from below the separation out to its
+--     reach + 0.5 lands then misses once (a monotone boundary) and that boundary is within 0.25 stud of where
+--     AnimFight's glove visibly reaches the target (tools/sim/anim_reach.json, measured by v9_anim --clips reach on
+--     the tier-3 rigs; the frames the server reads off those rigs); MinSep + 0.3 < PunchRange(jab) both ways for
+--     every pairing, the rigs' and the sims' scale frames at 60 / 70 / 84 inches
+--   * the facing: a straight thrown off the line it faces goes wide, a hook finds a head well off it
+--   * lag compensation at 80-150 ms against a man backing off (and circling): the hit his screen showed stands when
+--     the live miss is movement within LAG_TOL; a press his screen showed short, one with no stamp and one the man
+--     got a stud clear of stay misses
 --   lune run tools/sim/test_hitdetect.luau
 local process = require("@lune/process")
 local FS = require("./fightsim")
@@ -100,14 +109,18 @@ end }, 100, U).stand == U.stand)
 ------------------------------------------------------------------------
 -- calibration and the same height
 ------------------------------------------------------------------------
--- (HitGeometry.TARGET: where the animation's glove visibly lands, tools/sim/v9_anim's punch clip; the old balanced
--- spacing BASE x range was 0.8-1.6 studs SHORT of it, so punches the player saw land came back "short")
+-- (HitGeometry.TARGET: where the animation's glove visibly lands on the Athletic rig, tools/sim/v9_anim's reach clip;
+-- the old balanced spacing BASE x range was 0.8-1.6 studs SHORT of it, so punches the player saw land came back
+-- "short". HitGeometry.RIG is that rig as the server reads it; the sims' unit frame lands within a quarter stud)
+local RIG = HG.RIG
 for _, p in ipairs(PUNCHES) do
 	local T = HG.TARGET[p]
-	check("calibration: " .. p .. " lands at the animation's distance", near(HG.Range(U, U, p, false), T.head, 0.01), HG.Range(U, U, p, false) .. " vs " .. T.head)
-	local body = HG.Range(U, U, p, true)
+	check("calibration: " .. p .. " lands at the animation's distance (the Athletic rig)", near(HG.Range(RIG, RIG, p, false), T.head, 0.01), HG.Range(RIG, RIG, p, false) .. " vs " .. T.head)
+	local body = HG.Range(RIG, RIG, p, true)
 	check("calibration: " .. p .. " to the body at its own", near(body, T.body, 0.01), body .. " vs " .. T.body)
 	check("calibration: " .. p .. " reaches further than the old spacing did", T.head > HG.BASE * Config.Punches[p].range)
+	check("calibration: the sims' unit frame's " .. p .. " within a quarter stud of the rig's", math.abs(HG.Range(U, U, p, false) - T.head) <= 0.25 and math.abs(HG.Range(U, U, p, true) - T.body) <= 0.25,
+		string.format("%.2f / %.2f vs %.2f / %.2f", HG.Range(U, U, p, false), HG.Range(U, U, p, true), T.head, T.body))
 end
 check("calibration: the unit pair's separation is the old spacing", near(HG.MinSep(U, U), HG.MIN_SEP, 0.01), HG.MinSep(U, U))
 check("calibration: the unit pair's clinch reach is the old spacing", near(HG.ClinchRange(U, U), HG.CLINCH, 0.01), HG.ClinchRange(U, U))
@@ -221,9 +234,12 @@ do
 	local P, O = f.P, f.O
 	check("engine: a stub rig's frame comes from the tape", f:Geo(P) and f:Geo(P).source == "scales")
 	for _, p in ipairs(PUNCHES) do
-		-- (PunchRange is where the punch LANDS: the further of the head's and the body's reach, an overhand the head's)
-		local want = math.max(f:Floor(), p == "overhand" and HG.TARGET[p].head or math.max(HG.TARGET[p].head, HG.TARGET[p].body))
-		check("engine: PunchRange " .. p .. " is the animation's number at 70 / 70", near(f:PunchRange(P, p), want, 0.02), f:PunchRange(P, p) .. " vs " .. want)
+		-- (PunchRange is where the punch LANDS: the further of the head's and the body's reach, an overhand the head's -
+		-- the geometry's number on the pair's frames, and the animation's within a quarter stud)
+		local want = math.max(f:Floor(), HG.Reach(f:Geo(P), f:Geo(O), p, { floor = f:Floor() }))
+		local anim = p == "overhand" and HG.TARGET[p].head or math.max(HG.TARGET[p].head, HG.TARGET[p].body)
+		check("engine: PunchRange " .. p .. " is the geometry's reach at 70 / 70", near(f:PunchRange(P, p), want, 0.02), f:PunchRange(P, p) .. " vs " .. want)
+		check("engine: PunchRange " .. p .. " is the animation's number within a quarter stud", math.abs(f:PunchRange(P, p) - anim) <= 0.25, f:PunchRange(P, p) .. " vs " .. anim)
 	end
 	check("engine: the floor is the separation plus the air a jab needs", near(f:Floor(), math.max(S.H.require("FightMotion").Spacing.min, f:MinSep() + 0.3), 1e-6), f:Floor())
 	check("engine: MinSep is the fight spacing for the unit pair", near(f:MinSep(), S.H.require("FightMotion").Spacing.minSep, 0.02), f:MinSep())
@@ -310,6 +326,214 @@ do
 	check("engine: FightAI's range for the tall man is a reach, not a jump", ai:Range() > 3 and ai:Range() < 7, ai:Range())
 	local ai2 = S.FightAI.new(P, O, f)
 	check("engine: FightAI's range for the short man is shorter than the tall man's", ai2:Range() < ai:Range(), ai2:Range() .. " vs " .. ai:Range())
+end
+------------------------------------------------------------------------
+-- the boundary against the animation, every frame pairing: each punch (head and body) thrown from below the pair's
+-- separation out to its reach + 0.5 in 0.02 steps lands, then misses, once (a monotone boundary: never a miss
+-- inside a hit), and the last distance it lands from is within 0.25 stud of where AnimFight's glove visibly
+-- reaches the target (tools/sim/anim_reach.json: v9_anim --clips reach on the tier-3 rigs of the five frames, the
+-- frames HitGeometry.Frame read off the same rigs - the server's frames in Studio). And the invariant the spacing
+-- keeps: MinSep + 0.3 < PunchRange(jab) both ways, through the engine, for every pairing
+------------------------------------------------------------------------
+do
+	local fs = require("@lune/fs")
+	local serde = require("@lune/serde")
+	local AR = serde.decode("json", fs.readFile(S.H.root .. "/tools/sim/anim_reach.json"))
+	local KEYS = { "jab", "cross", "leadhook", "rearhook", "uppercut", "overhand", "jab|body", "cross|body", "leadhook|body", "rearhook|body", "uppercut|body" }
+	local worst, worstWhat, n, nonMono = 0, "", 0, 0
+	local FE = S.FightEngine
+	local pairsSeen = 0
+	for _, pr in ipairs(AR.pairs) do
+		local A, B = pr.geoA, pr.geoB
+		pairsSeen += 1
+		local sep = HG.MinSep(A, B)
+		local floor = sep + FE.FLOOR_AIR
+		for _, key in ipairs(KEYS) do
+			local p, z = key:match("^(%a+)|?(%a*)$")
+			local body = z == "body"
+			local anim = pr.boundary[key]
+			local reach = HG.Range(A, B, p, body, { floor = floor })
+			local last, missed, mono = nil, false, true
+			local d = sep - 0.4
+			while d <= reach + 0.5 do
+				local ok = HG.Test(A, B, p, body, d, { floor = floor, noRedirect = true }).ok
+				if ok then
+					if missed then
+						mono = false
+					end
+					last = d
+				else
+					missed = true
+				end
+				d += 0.02
+			end
+			n += 1
+			if not mono then
+				nonMono += 1
+				print(string.format("  non-monotone: %s -> %s %s", pr.frame, pr.oframe, key))
+			end
+			local e = last and math.abs(last - anim) or math.huge
+			if e > worst then
+				worst, worstWhat = e, string.format("%s -> %s %s: hit test %.2f, animation %.2f", pr.frame, pr.oframe, key, last or -1, anim)
+			end
+			check(string.format("boundary: %s -> %s %s lands out to the animation's reach (%.2f vs %.2f)", pr.frame, pr.oframe, key, last or -1, anim), last ~= nil and e <= 0.25)
+		end
+		-- the invariant, through the engine on these frames
+		local f = fight(data("BoxerPuncher", 70), data("BoxerPuncher", 70))
+		f.P.geo, f.O.geo = A, B
+		f.minSepGeo = nil
+		local s2 = f:MinSep()
+		local jP, jO = f:PunchRange(f.P, "jab"), f:PunchRange(f.O, "jab")
+		check(string.format("invariant: %s vs %s MinSep + 0.3 < PunchRange(jab) both ways (%.2f / %.2f / %.2f)", pr.frame, pr.oframe, s2, jP, jO), s2 + 0.3 < jP and s2 + 0.3 < jO)
+	end
+	check("boundary: all 25 frame pairings measured", pairsSeen == 25, pairsSeen)
+	check("boundary: every punch's hit / miss boundary is monotone", nonMono == 0, nonMono)
+	print(string.format("  boundary: worst |hit test - animation| %.3f stud over %d punches (%s)", worst, n, worstWhat))
+end
+-- the same invariant on the sims' frames (FrameFromScales: the five frames at 60, 70 and 84 inches, every pairing)
+do
+	local FRAMES = { "Lean", "Athletic", "Muscular", "Power Build", "Heavyweight Build" }
+	local bad, n = {}, 0
+	for _, fa in ipairs(FRAMES) do
+		for _, fb in ipairs(FRAMES) do
+			for _, ha in ipairs({ 60, 70, 84 }) do
+				for _, hb in ipairs({ 60, 70, 84 }) do
+					local f = fight(data("BoxerPuncher", ha), data("BoxerPuncher", hb))
+					f.P.geo, f.O.geo = frame(ha, fa), frame(hb, fb)
+					f.minSepGeo = nil
+					local sep = f:MinSep()
+					local jP, jO = f:PunchRange(f.P, "jab"), f:PunchRange(f.O, "jab")
+					n += 1
+					if not (sep + 0.3 < jP and sep + 0.3 < jO) then
+						table.insert(bad, string.format("%s %d vs %s %d: %.2f / %.2f / %.2f", fa, ha, fb, hb, sep, jP, jO))
+					end
+				end
+			end
+		end
+	end
+	check(string.format("invariant: MinSep + 0.3 < PunchRange(jab) on all %d scale-frame pairings", n), #bad == 0, bad[1])
+end
+------------------------------------------------------------------------
+-- the facing: a straight goes where the shoulders point, a hook comes round to a head off the line
+------------------------------------------------------------------------
+do
+	local R = HG.RIG
+	check("facing: a jab 20 degrees off the line lands", HG.Test(R, R, "jab", false, 4.4, { facing = 20 }).ok)
+	local w = HG.Test(R, R, "jab", false, 4.4, { facing = 45 })
+	check("facing: a jab 45 degrees off the line goes wide", not w.ok and w.why == "wide" and w.margin < 0, w.why)
+	check("facing: a lead hook 50 degrees off it still finds the head", HG.Test(R, R, "leadhook", false, 4.0, { facing = 50 }).ok)
+	check("facing: a hook 75 degrees off it is wide", HG.Test(R, R, "leadhook", false, 4.0, { facing = 75 }).why == "wide")
+	check("facing: the cones by kind (straight < uppercut < overhand < hook)", HG.FACING.straight < HG.FACING.uppercut and HG.FACING.uppercut < HG.FACING.overhand and HG.FACING.overhand < HG.FACING.hook)
+	-- through the engine: P turned 45 degrees off O
+	local f = fight(data("BoxerPuncher", 70), data("BoxerPuncher", 70))
+	local P, O = f.P, f.O
+	O.ai = nil
+	local V, CF = S.H.globals.Vector3, S.H.globals.CFrame
+	P.root.CFrame = CF.lookAt(V.new(0, 3.2, 0), V.new(4, 3.2, 4))
+	O.root.CFrame = CF.lookAt(V.new(4.2, 3.2, 0), V.new(0, 3.2, 0))
+	local why = nil
+	f.Send = function(_, m)
+		if m.t == "miss" then
+			why = m.why
+		end
+	end
+	f:Resolve(P, O, "jab", false, 1)
+	check("facing: the engine calls a jab thrown 45 degrees off him wide", why == "wide" and P.lastHit and P.lastHit.why == "wide", why)
+	f:Resolve(P, O, "leadhook", false, 1)
+	check("facing: and lets the hook from there reach him", P.lastHit and P.lastHit.ok, P.lastHit and P.lastHit.why)
+	-- /wcbdiag's FIGHT block shows the verdict (and the AI's read when there is a brain)
+	O.ai = S.FightAI.new(O, P, f)
+	local okD, lines = pcall(S.H.require("Diag").FightLines, f)
+	local text = okD and table.concat(lines, "\n") or tostring(lines)
+	check("diag: the FIGHT block prints the last punch's verdict and the AI's read", text:find("last punch leadhook", 1, true) ~= nil and text:find("AI read:", 1, true) ~= nil, text:sub(1, 200))
+end
+
+------------------------------------------------------------------------
+-- lag compensation: a player's punch at 80-150 ms of one-way delay against a man moving away (and across). His
+-- client pressed when its screen showed the opponent inside the reach; the server resolves it a delay and a
+-- wind-up later, when the man has moved on. A miss by movement within LAG_TOL stands as the hit his client showed;
+-- a punch his screen showed out of reach, or one the man got well clear of, stays a miss; an AI's punch is never
+-- compensated. The server's clock is the scheduler's (the client stamps workspace:GetServerTimeNow())
+------------------------------------------------------------------------
+do
+	S.H.Service("Workspace")._props.GetServerTimeNow = function()
+		return S.now()
+	end
+	local FE = S.FightEngine
+	local V, CF = S.H.globals.Vector3, S.H.globals.CFrame
+	local INTERP = 0.1 -- (FightEngine's POSE_INTERP)
+	-- one press: the opponent walks at vel (studs/s, flat: x = away along the line, z = across) the whole time; the
+	-- client's screen at the press shows him `seenGap` past the jab's boundary (negative = inside it). Returns the
+	-- engine's verdict on the punch (P.lastHit) and the live / press-time numbers
+	local function press(lag, seenGap, vel, opts)
+		opts = opts or {}
+		S.setClock(2000)
+		local f = fight(data("BoxerPuncher", 70), data("BoxerPuncher", 70))
+		local P, O = f.P, f.O
+		P.isPlayer = true
+		O.ai = nil
+		f.Send = function() end
+		-- (the reach the engine gates on: the head's, or the body's where a head shot falls there)
+		local R = f:PunchRange(P, "jab")
+		local windup = Config.Punches.jab.windup * 1.0
+		-- where O must be on the press's screen, and so where he is at every moment (his walk is a straight line)
+		local tPress = 2000.5
+		local tSeen = tPress - lag - INTERP
+		local seenX = R + seenGap
+		local function oAt(t)
+			return V.new(seenX + vel.X * (t - tSeen), 3.2, vel.Z * (t - tSeen))
+		end
+		P.root.CFrame = CF.lookAt(V.new(0, 3.2, 0), oAt(tSeen))
+		local resolved = false
+		local arrive = tPress + lag
+		local dt = 1 / 60
+		while S.now() < arrive + 0.6 do
+			local now = S.now()
+			O.root.CFrame = CF.lookAt(oAt(now), V.new(0, 3.2, 0))
+			f:RecordPose(P, now)
+			f:RecordPose(O, now)
+			if not resolved and now >= arrive then
+				resolved = true
+				P.busyUntil, P.state, P.stamina = 0, "idle", P.maxStam
+				local stamp = tPress
+				if opts.noStamp then
+					stamp = nil
+				end
+				f:Punch(P, "jab", false, nil, nil, stamp)
+				windup = P.busyUntil > now and tonumber(tostring(P.model:GetAttribute("Act")):match("^[^|]*|[^|]*|[^|]*|([%d%.]+)")) or windup
+			end
+			S.advance(dt)
+		end
+		local liveD = (oAt(arrive + windup) - V.new(0, 3.2, 0)).Magnitude
+		return P.lastHit, R, liveD
+	end
+	for _, ms in ipairs({ 80, 100, 120, 150 }) do
+		local lag = ms / 1000
+		-- backing away at a walk: the press was 0.15 inside the reach, he drifts 0.15-0.35 past it by the contact
+		local span = 2 * lag + INTERP + Config.Punches.jab.windup
+		local v = (0.15 + 0.3) / span
+		local h, R, live = press(lag, -0.15, V.new(v, 0, 0))
+		R = R or 5
+		check(string.format("lag %d ms: the jab his screen showed land on a man backing off lands (live %.2f > reach %.2f)", ms, live, R),
+			h and h.ok and h.lagComp == true and h.liveWhy == "short", h and string.format("ok=%s comp=%s why=%s margin=%s", tostring(h.ok), tostring(h.lagComp), tostring(h.why), tostring(h.margin)))
+		-- the same man moving across the line as well (circling at 2 studs/s while he backs off), 0.2 past the reach
+		-- at the contact (the radial speed solved for it)
+		local side = 2 * span
+		local radial = (math.sqrt(math.max(0, (R + 0.2) ^ 2 - side * side)) - (R - 0.15)) / span
+		local h2 = press(lag, -0.15, V.new(radial, 0, 2))
+		check(string.format("lag %d ms: and on a man circling away", ms), h2 and h2.ok, h2 and tostring(h2.why))
+		-- without the stamp (an old client) the same punch is the live miss
+		local h3 = press(lag, -0.15, V.new(v, 0, 0), { noStamp = true })
+		check(string.format("lag %d ms: no press stamp, no compensation (the live miss)", ms), h3 and not h3.ok and not h3.lagComp, h3 and string.format("ok=%s why=%s dist=%.2f zone=%s comp=%s lag=%s", tostring(h3.ok), tostring(h3.why), h3.dist or -1, tostring(h3.zone), tostring(h3.lagComp), tostring(h3.lag)))
+		-- his screen showed him out of reach: a miss on both screens
+		local h4 = press(lag, 0.25, V.new(v, 0, 0))
+		check(string.format("lag %d ms: a press his screen showed short stays short", ms), h4 and not h4.ok and h4.why == "short", h4 and tostring(h4.ok))
+		-- he got well clear (a stud past the reach by the contact): more than movement can excuse
+		local vFar = (0.15 + 1.0) / span
+		local h5 = press(lag, -0.15, V.new(vFar, 0, 0))
+		check(string.format("lag %d ms: a man a stud clear at the contact is a miss (LAG_TOL %.2f)", ms, FE.LAG_TOL), h5 and not h5.ok and not h5.lagComp, h5 and tostring(h5.margin))
+	end
+	check("lag: the tolerance is about a third of a stud", FE.LAG_TOL >= 0.3 and FE.LAG_TOL <= 0.4, FE.LAG_TOL)
 end
 do
 	-- leaving a spar: the cards so far, the share boxed, no stuck round

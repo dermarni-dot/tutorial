@@ -1869,7 +1869,7 @@ PLAN.massage = function(segs, lv, r, Wt, params)
 		sore[i] = math.floor(sore[i] * 100 + 0.5) / 100
 	end
 	table.insert(segs, { j = "massage", groups = table.clone(G), sore = sore, rounds = 3, chooseT = 6, strokes = 4, beat = 0.9, firstStroke = 0.8,
-		hitW = 0.42, perfW = 0.2, gap = Wt.intro })
+		hitW = 0.45, perfW = 0.2, gap = Wt.intro })
 end
 PLAN.chamber = function(segs, lv, r, Wt)
 	local f = lvf(lv)

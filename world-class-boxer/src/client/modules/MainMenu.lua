@@ -508,6 +508,10 @@ end
 local function itemMetrics()
 	local small = compact()
 	local h, pad = small and 36 or 44, small and 2 or 6
+	if not small and UserInputService.TouchEnabled and layers.home then
+		-- (a touch screen's pills stay a fingertip tall after the canvas scale: 44 screen px)
+		h = math.max(h, UI.MinHit(layers.home))
+	end
 	if twoColumns() and #items > 0 then
 		local perCol = math.ceil(#items / 2)
 		local avail = canvasH - menuTop() - 8

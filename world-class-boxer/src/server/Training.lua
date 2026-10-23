@@ -3341,7 +3341,7 @@ function Training.DrillPlan(act, lv, params)
 		local slams = 5 + math.floor(2 * tight + 0.5)
 		for rep = 1, slams do
 			-- (the zone stays a third of a second of the lift wide at the top: never a frame-perfect release)
-			local width = math.max(0.1, tw(0.32, 0.26) - rep * 0.005)
+			local width = math.max(0.1, tw(0.32, 0.28) - rep * 0.005)
 			local lo = math.clamp(0.6 + r:NextNumber() * 0.12, 0.5, 0.97 - width)
 			table.insert(segs, { j = "lift", mode = "slam", rep = rep, lo = lo, width = width, speed = tw(0.75, 0.9) + rep * 0.02, wait = 5, gap = rep == 1 and W.intro or (W.slam + W.catch) })
 		end
@@ -3417,7 +3417,7 @@ function Training.DrillPlan(act, lv, params)
 			end
 			-- (hold and release: the jump's window and the double under's charge are widest on the first rope)
 			table.insert(segs, { j = "rope", name = ph.name, mode = ph.mode, jumps = jumps, omega = ph.mode == "speed" and 7.8 or 6.5, cues = cues,
-				early = tw(0.6, 0.55), late = tw(0.16, 0.13), perfW = tw(0.09, 0.07), charge = tw(0.18, 0.24), gap = i == 1 and W.intro or (W.restShort + W.round) })
+				early = tw(0.6, 0.55), late = tw(0.16, 0.13), perfW = tw(0.09, 0.07), charge = tw(0.16, 0.2), gap = i == 1 and W.intro or (W.restShort + W.round) })
 		end
 	elseif kind == "hold" then
 		table.insert(segs, { j = "breath", breaths = 4, inhale = 2.4, exhale = 2.4, gap = W.intro })

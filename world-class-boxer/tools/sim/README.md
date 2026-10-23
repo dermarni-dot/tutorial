@@ -248,6 +248,14 @@ lune run tools/sim/test_ui_layout.luau --only menu,hub
 python3 tools/ui/render_mock.py --all tools/sim/out/ui --only menu,hub --devices desktop,phone --out DIR
 ```
 
+Images are drawn with their ScaleType (guisim dumps `style.scale`: Stretch, the engine's default, Fit or Crop), and
+text up to 600 characters. `GS.ImagesLoad = false` before a client is built leaves every ImageLabel's `IsLoaded`
+false (a bad id, no network): `hub_body_fallback` checks the body map gives way to frames after its 2 s grace;
+`hub_body` checks the sheet layers (IconData.bodyMap), the figure's aspect and the "Frame:" line; `muscle` lays out
+the muscle screen. The body map sheet: `python3 tools/ui/build_bodymap.py [--preview OUT]`, then
+`python3 tools/ui/publish_icons.py --bodymap` (the id goes into `IconData.bodyMap`). Fonts: the real Oswald and
+Bangers; Gotham (proprietary) is drawn as Montserrat narrowed to its widths, Builder Sans as Inter.
+
 The icon set and the logo: `python3 tools/ui/build_icons.py` (SVG through cairosvg -> `tools/ui/out`), then
 `python3 tools/ui/publish_icons.py` (Open Cloud upload, hash cache `tools/ui/uploaded.json`, moderation check, writes
 `src/shared/IconData.lua`). `test_ui_layout` fails a screen that shows an icon name neither the sheets nor UI.Icon's
@@ -300,15 +308,32 @@ seed, onTick })`; `FS.new({ root = DIR })` runs another checkout (a `git archive
 
 ## Training drills: test_drills
 
-`lune run tools/sim/test_drills.luau [--judges] [--only Bench,Sauna] [-v]` (~30 s) plays every training drill with
-simulated players (`drillbots.luau`: a perfect, an average and an idle player for every DrillScore / DrillWorkouts
-judge). Part A: the server's plan (`Training.DrillPlan`, levels 1 / 3 / 5) through the judges on a virtual clock;
-the input stream through `DrillScore.Replay` must give the score the judges gave live; perfect >= 0.85, idle <= 0.15
-(the sauna 0.3), average in between, never "too quick", no easier at the top level. Part B (`drillsim.luau`): the real
+`lune run tools/sim/test_drills.luau [--judges] [--only Bench,Sauna,Mechanics] [-v]` (~90 s) plays every training
+drill with simulated players (`drillbots.luau`: perfect, high, average, low and idle players for every DrillScore /
+DrillWorkouts judge). Part A: the server's plan (`Training.DrillPlan`, levels 1 / 3 / 5) through the judges on a
+virtual clock; the input stream through `DrillScore.Replay` must give the score the judges gave live; perfect >= 0.85,
+idle <= 0.15 (the sauna 0.4, the chamber 0.2), average in between (<= 0.975 and 0.025 under perfect; no ceiling on
+the ice bath / chamber), every played session under 40 s, never "too quick", no easier at the top level; plus
+hand-made checks of the v10 mechanics (the rope's hold-and-release and loaded double unders, the pull-up grip, the
+sled push, the hold gauge, the road lane's breaths, the combo's key-bounce forgiveness). Part B (`drillsim.luau`): the real
 client drill (`Activities.Start`) on guisim with a fake server and a virtual clock, played through each device's own
 path (keys, pad buttons / stick flicks, on-screen buttons): the session hands in, client score = server replay,
 every action reachable, the prompts name the device's controls, the stats table is valid, the pose attributes move.
 `test_ui_layout` lays the drills out mid-session (`drill_*` screens) through the same `drillsim.luau`.
+
+```sh
+lune run tools/sim/drillmeasure.luau [--src DIR] [--only HeavyBag,Rope] [--runs 6] [--skills low,average,high] [--levels 1,3,5] [--byjudge]
+lune run tools/sim/drillpreview.luau [--out tools/sim/out/training] [--only pullup_grip,sled_push] [--devices phone,desktop]
+python3 tools/ui/render_mock.py --all tools/sim/out/training --out previews/final/v10/training
+```
+
+`drillmeasure` measures how the drills feel: every drill x station level x bot skill over several plan draws, the
+session's length (the client's pacing included), the score and the reps graded perfect / good / miss by each judge's
+own idea of a rep (`--byjudge` splits them per segment judge); the summary counts the rows against the targets (a
+low-skill player good-or-better on >= 70% of reps, every session under 40 s). `--src` measures another tree (a
+`git archive` of an older commit: the "before"). `drillpreview` writes every drill's board mid-session (the real client
+drill played by the average bot up to the segment the board belongs to), the sparring picker with its drill focus and
+a session's report card, for `render_mock.py`.
 
 ## The world: world_scene, world_render, test_worlddetail
 

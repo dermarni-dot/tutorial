@@ -365,6 +365,132 @@ check("work: the debut floor is well over the minimum", Config.FightAI.Tier(0).f
 check("work: the elite reacts quicker and reads more", Config.FightAI.Tier(90).react < Config.FightAI.Tier(20).react and Config.FightAI.Tier(90).read > Config.FightAI.Tier(20).read)
 
 ------------------------------------------------------------------------
+-- the brain: reads and openings (FightAI on a fightsim fight: the stub rigs, the scheduler's clock)
+------------------------------------------------------------------------
+do
+	local FightAI = S.FightAI
+	local Random = H.globals.Random
+	local function newFight(blueStyle, level)
+		S.setClock(9000)
+		local rng = Random.new(3)
+		local red = S.Boxer({ style = "BoxerPuncher", level = level or 60 }, rng)
+		local blue = S.Boxer({ style = blueStyle or "BoxerPuncher", level = level or 60 }, rng)
+		local f = S.NewFight(red, blue, 3, 5)
+		f.live, f.round = true, 1
+		f.roundEnd = S.now() + 60
+		for _, F in ipairs({ f.P, f.O }) do
+			F.health, F.body, F.stamina, F.balance, F.traits = 100, 100, F.maxStam, 100, {}
+		end
+		local ai = FightAI.new(f.O, f.P, f)
+		ai.rng = Random.new(7)
+		f.O.ai = ai
+		return f, ai
+	end
+	-- (a fixed-roll rng: every chance passes)
+	local function always(ai)
+		ai.rng = { NextNumber = function(_, a, b)
+			return a and (a + (b - a) * 0.0) or 0
+		end, NextInteger = function(_, a)
+			return a
+		end }
+	end
+	-- his miss: the opening is fired into a perception delay later
+	do
+		local f, ai = newFight("CounterPuncher", 70)
+		always(ai)
+		ai:OnOppMiss("cross", "evaded")
+		check("brain: his miss opens a window a perception delay later", ai.openAt > S.now() and ai.openUntil > ai.openAt and ai.openWhy:find("cross") ~= nil, ai.openWhy)
+		local g, ai2 = newFight("CounterPuncher", 70)
+		always(ai2)
+		ai2:OnOppMiss("jab", "short")
+		check("brain: a punch that fell short opens nothing", ai2.openUntil == 0)
+	end
+	-- the exploits: a covering man gets the body hooks or the uppercut up the middle; a hurt man the head
+	do
+		local f, ai = newFight("BoxerPuncher", 70)
+		always(ai)
+		local c = ai:ExploitCombo("covering", 3.6)
+		local body, upper = 0, 0
+		for _, step in ipairs(c or {}) do
+			if step.body then
+				body += 1
+			end
+			if step.p == "uppercut" then
+				upper += 1
+			end
+		end
+		check("brain: a man shelled up gets the body (or the uppercut through the middle)", c ~= nil and (body > 0 or upper > 0), c and #c)
+		local h = ai:ExploitCombo("hurt", 3.6)
+		local headOnly = h ~= nil
+		for _, step in ipairs(h or {}) do
+			headOnly = headOnly and not step.body
+		end
+		check("brain: a hurt man is finished upstairs", headOnly)
+		check("brain: nothing fits from across the ring", ai:ExploitCombo("hurt", 12) == nil)
+	end
+	-- survival is for the stun and the first seconds of a daze, not the rest of the bout
+	do
+		local f, ai = newFight("BoxerPuncher", 60)
+		f.O.health, f.O.tier = 25, 1
+		ai:UpdateMode()
+		check("brain: freshly dazed it survives (holds, covers, moves)", ai.mode == "survive", ai.mode)
+		S.advance(12)
+		ai.nextMode = 0
+		ai:UpdateMode()
+		check("brain: a dazed boxer then boxes on, guarded (never a whole round running)", ai.mode == "guarded", ai.mode)
+		f.P.tier, f.P.health = 1, 25
+		ai.nextMode = 0
+		ai:UpdateMode()
+		check("brain: both of them hurt, it goes for the finish", ai.mode == "finish", ai.mode)
+		local g, ai2 = newFight("BoxerPuncher", 60)
+		g.O.health = 31
+		ai2:UpdateMode()
+		check("brain: low on health but clear-headed it keeps fighting", ai2.mode ~= "survive", ai2.mode)
+	end
+	-- the read of his feet: a man who keeps backing away
+	do
+		local f, ai = newFight("Swarmer", 60)
+		local V3, CF = H.globals.Vector3, H.globals.CFrame
+		for i = 1, 60 do
+			f.P.root.CFrame = CF.new(V3.new(-3 - i * 0.05, 3.2, 0))
+			ai:Observe(1 / 30)
+		end
+		check("brain: it reads a man backing away (his retreat speed)", ai.oBack > 1, ai.oBack)
+	end
+	-- the prediction it trusts only while it works: wrong guesses against a man with no pattern switch it off
+	do
+		local f, ai = newFight("CounterPuncher", 80)
+		ai.predAcc = 0.5
+		for i = 1, 12 do
+			ai.expect = { p = "cross", conf = 0.9, at = S.now() }
+			ai:OnOppPunch("leadhook", false, 0.3, { hand = "L" })
+		end
+		check("brain: its guesses keep missing, its prediction rate falls", ai.predAcc < 0.3, ai.predAcc)
+	end
+	-- the style's brain: a counter-puncher counters and punishes more than a swarmer, a swarmer presses harder
+	do
+		local T = FightAI.TACTICS
+		check("brain: a counter-puncher counters most", T.CounterPuncher.counter > T.BoxerPuncher.counter and T.BoxerPuncher.counter > T.Swarmer.counter)
+		check("brain: a swarmer presses and works inside", T.Swarmer.press > T.OutBoxer.press and T.Swarmer.inside > T.OutBoxer.inside)
+		check("brain: an out-boxer's volume is at range", T.OutBoxer.volume > T.OutBoxer.inside)
+	end
+	-- the harder default: every level's work floor, the tiers' reaction and read
+	do
+		local C = Config.FightAI
+		check("tiers: the debut floor is a real work rate (>= 24 a minute)", C.Tier(0).floor >= 24, C.Tier(0).floor)
+		check("tiers: the elite floor is a champion's (>= 48 a minute)", C.Tier(99).floor >= 48, C.Tier(99).floor)
+		check("tiers: the floor never drops with the level", (function()
+			for l = 0, 98 do
+				if C.Tier(l + 1).floor < C.Tier(l).floor then
+					return false
+				end
+			end
+			return true
+		end)())
+	end
+end
+
+------------------------------------------------------------------------
 -- the act pipeline: an NPC punch resolves on the server alone
 ------------------------------------------------------------------------
 do

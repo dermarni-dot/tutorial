@@ -832,7 +832,10 @@ end
 -- a bout: per fighter his mode and state, stamina, how long he is still busy, the distance, PunchRange (jab / cross /
 -- hook), the separation and the floor, HitTest(jab, head) with why, the hit geometry's frame and its fallback, the
 -- punches thrown / landed so far and the AI's last decisions with their reasons ("out of range 4.8 > 4.1", "busy",
--- "attack (work floor)", "clinch"). Every read is guarded: a field the engine does not have prints as "?"
+-- "attack (work floor)", "clinch"), the last punch's verdict (why it missed, its margin, the facing, the network
+-- delay and whether the lag compensation stood the client's hit) and the AI's read of the man in front of it (his
+-- retreat, his circling, its prediction rate, his favourite punch and guard). Every read is guarded: a field the
+-- engine does not have prints as "?"
 ------------------------------------------------------------------------
 local function try(fn, ...)
 	local ok, v = pcall(fn, ...)
@@ -880,6 +883,13 @@ function Diag.FightLines(fight)
 				ht and ((ht.why and (" why=" .. ht.why) or "") .. (ht.redirected and " (falls to the body)" or "") .. (type(ht.margin) == "number" and string.format(" margin=%.2f", ht.margin) or "")) or "",
 				geo and (tostring(geo.source) .. string.format(" stand=%.2f arm=%.2f glove=%.2f", geo.stand or 0, geo.arm or 0, geo.glove or 0)) or "none",
 				F.geoFallback and (" FALLBACK: " .. tostring(F.geoFallback)) or ""))
+			local lh = F.lastHit
+			if type(lh) == "table" then
+				table.insert(lines, string.format("   last punch %s %.1fs ago: %s%s zone=%s margin=%s dist=%s facing=%s lag=%s%s | lag-compensated hits %s",
+					tostring(lh.p), now - (tonumber(lh.t) or now), lh.ok and "LANDS" or "MISSES", lh.why and (" (" .. tostring(lh.why) .. ")") or "", tostring(lh.zone),
+					n2(lh.margin), n2(lh.dist), type(lh.facing) == "number" and string.format("%.0fdeg", lh.facing) or "?", lh.lag and string.format("%.0fms", lh.lag * 1000) or "-",
+					lh.lagComp and (" COMPENSATED (live: " .. tostring(lh.liveWhy) .. ")") or "", tostring(F.lagComps or 0)))
+			end
 			local tot, tal = F.totals or {}, F.tally or {}
 			local ppm = elapsed > 5 and (tonumber(tot.thrown) or 0) / elapsed * 60 or nil
 			table.insert(lines, string.format("   punches fight thrown=%s landed=%s (%s/min) round thrown=%s landed=%s kd=%s | last throw %s ago",
@@ -897,6 +907,16 @@ function Diag.FightLines(fight)
 				table.insert(lines, string.format("   AI aggression=%s range=%s skill=%s tier work=%s floor=%s/min react=%s read=%s reachableSince=%s",
 					n2(try(ai.Aggression, ai)), n2(try(ai.Range, ai)), n2(ai.skill), n2(ai.tier and ai.tier.work), n2(ai.tier and ai.tier.floor),
 					n2(ai.tier and ai.tier.react), n2(ai.tier and ai.tier.read), ai.reachableSince and f2(now - ai.reachableSince) or "-"))
+				local fav, share = nil, nil
+				if ai.read and ai.read.Favourite then
+					local okF, a, b = pcall(ai.read.Favourite, ai.read)
+					if okF then
+						fav, share = a, b
+					end
+				end
+				table.insert(lines, string.format("   AI read: his favourite %s (%s) guard %s retreat %s studs/s circling %s prediction rate %s | style %s",
+					tostring(fav), n2(share), n2(ai.read and try(ai.read.BlockShare, ai.read)), n2(ai.oBack), n2(ai.oCircle), n2(ai.predAcc),
+					tostring(ai.style and ai.style.id)))
 			end
 			if F.geoFallback then
 				table.insert(verdicts, "BAD  " .. name .. ": hit geometry fell back (" .. tostring(F.geoFallback) .. ")")

@@ -764,7 +764,13 @@ do
 			return nil
 		end
 		local d = (me.Position - opp.Position) * Vector3.new(1, 0, 1)
-		local ok, r = pcall(HG.Test, geo.you, geo.opp, p, body == true, d.Magnitude, { floor = geo.floor, bend = KM.oppBend(), noRedirect = p == "overhand" })
+		-- (the facing, as the server's Fight:OffLine: the chest's flat facing against the line to him)
+		local facing = nil
+		local lv = me.CFrame.LookVector * Vector3.new(1, 0, 1)
+		if d.Magnitude > 0.05 and lv.Magnitude > 0.05 then
+			facing = math.deg(math.acos(math.clamp((-d.Unit):Dot(lv.Unit), -1, 1)))
+		end
+		local ok, r = pcall(HG.Test, geo.you, geo.opp, p, body == true, d.Magnitude, { floor = geo.floor, bend = KM.oppBend(), noRedirect = p == "overhand", facing = facing })
 		return ok and r or nil
 	end
 	KM.rangeTag, KM.rangeLabel = UI.Chip(hud, "RANGE", T.sub, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 214), h = 22, TextSize = 12 })
@@ -3641,9 +3647,13 @@ function KM.predictPunch(p, body, counter, buffered)
 	if verdict then
 		if verdict.redirected and not body then
 			body = true
+			-- (shown at the press: the head shot goes to the body, the act says so, the server's redirect confirms it)
+			if showFlash and flash then
+				showFlash(flash, "TO THE BODY", T.orange, 0.4)
+			end
 		end
 		if not verdict.ok and showFlash and flash then
-			showFlash(flash, verdict.why == "high" and "TOO HIGH  ·  GO TO THE BODY" or (verdict.why == "low" and "TOO LOW" or "OUT OF RANGE"), T.sub, 0.4)
+			showFlash(flash, verdict.why == "high" and "TOO HIGH  ·  GO TO THE BODY" or (verdict.why == "low" and "TOO LOW" or (verdict.why == "wide" and "WIDE  ·  SQUARE UP" or "OUT OF RANGE")), T.sub, 0.4)
 		end
 	end
 	char:SetAttribute("PredAct", string.format("%s|%s|%s|%.2f", p, hand, body and "body" or "head", windup) .. (pred.chainN >= 2 and ("||" .. pred.chainN) or ""))
@@ -5329,6 +5339,8 @@ function handlers.miss(msg)
 		showFlash(flash, "OVER HIS HEAD?  TOO HIGH  ·  GO TO THE BODY", T.sub, 0.6)
 	elseif msg.who == "you" and msg.why == "low" then
 		showFlash(flash, "TOO LOW", T.sub, 0.5)
+	elseif msg.who == "you" and msg.why == "wide" then
+		showFlash(flash, "WIDE  ·  SQUARE UP", T.sub, 0.5)
 	end
 end
 

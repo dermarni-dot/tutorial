@@ -101,13 +101,13 @@ local MISTAKES = { straight = { "duck", "weave" }, hook = { "parry", "parry", "s
 -- defence; punish = how often it fires into his misses and the end of his combinations; press = its work rate
 -- while it walks him down (his back to the ropes, him retreating); volume = the work rate at range; inside =
 -- the work rate up close (a swarmer lives there, an out-boxer leaves); smother = how readily it ties up a man
--- who rushes it; body = its extra share to the body; power = how much it loads its shots when he opens up
+-- who rushes it; body = its extra share to the body
 local TACTICS = {
-	OutBoxer = { counter = 1.1, punish = 1.15, press = 0.85, volume = 1.25, inside = 0.8, smother = 1.1, body = 0, power = 0.9 },
-	Swarmer = { counter = 0.85, punish = 1.05, press = 1.35, volume = 1.1, inside = 1.35, smother = 0.5, body = 0.12, power = 1 },
-	Slugger = { counter = 0.9, punish = 1.2, press = 1.2, volume = 0.9, inside = 1.15, smother = 0.8, body = 0.05, power = 1.35 },
-	CounterPuncher = { counter = 1.5, punish = 1.45, press = 0.85, volume = 0.95, inside = 0.95, smother = 1, body = 0, power = 1.05 },
-	BoxerPuncher = { counter = 1.2, punish = 1.2, press = 1.05, volume = 1.05, inside = 1.05, smother = 0.9, body = 0.04, power = 1.1 },
+	OutBoxer = { counter = 1.1, punish = 1.15, press = 0.85, volume = 1.25, inside = 0.8, smother = 1.1, body = 0 },
+	Swarmer = { counter = 0.85, punish = 1.05, press = 1.35, volume = 1.1, inside = 1.35, smother = 0.5, body = 0.12 },
+	Slugger = { counter = 0.9, punish = 1.2, press = 1.2, volume = 0.9, inside = 1.15, smother = 0.8, body = 0.05 },
+	CounterPuncher = { counter = 1.5, punish = 1.45, press = 0.85, volume = 0.95, inside = 0.95, smother = 1, body = 0 },
+	BoxerPuncher = { counter = 1.2, punish = 1.2, press = 1.05, volume = 1.05, inside = 1.05, smother = 0.9, body = 0.04 },
 }
 FightAI.TACTICS = TACTICS
 local DEFAULT_TACTICS = TACTICS.BoxerPuncher
@@ -182,10 +182,9 @@ function FightAI.new(F, O, engine)
 	self.oPrev = nil
 	self.nextRhythm = 0
 	-- its read of how he gives ground (a running mean of how fast he backs away, studs/s: a man who keeps
-	-- retreating is walked down and cut off) and the last time it saw him shell up
+	-- retreating is walked down and cut off)
 	self.oBack = 0
 	self.oDistPrev = nil
-	self.coverSeen = 0
 	-- the style's fight brain (TACTICS)
 	self.tactics = TACTICS[style.id] or DEFAULT_TACTICS
 	-- the decision log: the last few reasons it did or did not punch (/wcbdiag's FIGHT block, Diag.FightLines)
@@ -245,9 +244,6 @@ function FightAI:Observe(dt)
 			end
 		end
 		self.oDistPrev = d
-	end
-	if O.blocking then
-		self.coverSeen = self.engine:Now()
 	end
 	self.read:Tick(dt, O.blocking == true, O.stamina < O.maxStam * 0.3)
 	-- what he did after his last combination (FightRead.After), a beat after it ended
@@ -523,8 +519,9 @@ function FightAI:OnOppPunch(ptype, body, windup, info)
 		end
 	end
 	local react = perceive * (1 - early) + motor
-	if react >= windup then
-		return -- too late
+	-- too late: a dodge counts only when it visibly started before the contact (Evasion.VISIBLE)
+	if react >= windup - (Evasion.VISIBLE or 0) then
+		return
 	end
 	local move = self:PickDefence(kind, guessBody, hand)
 	local dir = self.rng:NextNumber() < 0.5 and -1 or 1
@@ -1127,6 +1124,14 @@ function FightAI:Think(now)
 			self:Note(now, "cover (" .. self.mode .. ")")
 			return
 		end
+	end
+	-- dazed and boxing on (guarded): when he comes at it inside, a boxer who knows his trade grabs hold rather than
+	-- trade with his head still ringing - the clinch smothers the punches and buys the seconds the head needs
+	if self.mode == "guarded" and dist < clinchRange and (O.state == "punching" or F.pressured) and engine:CanClinch(F)
+		and self.rng:NextNumber() < (0.2 + 0.35 * self.skill) * (0.7 + 0.3 * self.tactics.smother) then
+		engine:Clinch(F)
+		self:Note(now, "clinch (hurt, he comes in)")
+		return
 	end
 	-- [FrameTraits] a heavy frame ties up to wear the other man down: more when he is tiring, when it is gassed itself,
 	-- or when it is being outboxed at range (never while finishing him)

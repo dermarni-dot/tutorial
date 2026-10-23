@@ -43,23 +43,40 @@ HitGeometry.UNIT = UNIT
 HitGeometry.BASE = 4.3
 HitGeometry.MIN_SEP = 3.25
 HitGeometry.CLINCH = 4.8
--- the root-to-root distance out to which the unit rig's punch VISIBLY lands on the unit rig (AnimFight's extension,
--- measured by tools/sim/v9_anim.luau's punch clip over a sweep of gaps on the Athletic tier-3 rig; the Heavyweight
--- reads within 0.1 of it, the Lean within 0.2): the glove's face within ~0.15 stud of the head / the chest at the
--- peak frame. Jab 4.75 (the flick has little lean: the glove hangs 0.2 short out to 5.5), cross 5.5 (the hip turn
--- carries it), lead hook 4.85, rear hook 5.35, uppercut 4.8, body jab 5.2; taken a tenth or two under, so the
--- server's hit test and the player's eye agree on the boundary within a quarter stud (tools/sim/test_hitdetect
--- pins it). The overhand (not in the clip) takes the rear hook's; the other body shots the body jab's share of the
--- head's. The old balanced spacing (BASE x Config.Punches[p].range: cross 4.5, hooks 3.65, uppercut 3.2) called
--- punches the player saw land "short" by up to a stud and a half
+-- the root-to-root distance out to which the punch VISIBLY lands (AnimFight's glove, lunge included, within CONTACT
+-- of the target's surface: the median of five throws, the client's variants mixed), measured by tools/sim/v9_anim.luau
+-- --clips reach on the tier-3 rigs over every pairing of the five frames (tools/sim/anim_reach.json): the Athletic
+-- pair's numbers here, on the Athletic rig as the server reads it in Studio (RIG below). The old targets (measured
+-- before AnimFight fitted its punches to the distance with a lunge) were 0.3-1.0 stud short of where the glove now
+-- lands - the jab registered to 4.86 where it visibly landed to 5.35, the hooks to the body a stud short - which is
+-- the Studio report's "all the punches are inaccurate". tools/sim/test_hitdetect holds every pairing to 0.25 stud
 local TARGET = {
-	jab = { head = 4.8, body = 5.1 },
-	cross = { head = 5.3, body = 5.15 },
-	leadhook = { head = 4.75, body = 4.65 },
-	rearhook = { head = 5.2, body = 5.05 },
-	uppercut = { head = 4.7, body = 4.6 },
-	overhand = { head = 5.2, body = 5.05 },
+	jab = { head = 5.39, body = 4.69 },
+	cross = { head = 5.71, body = 5.49 },
+	leadhook = { head = 5.18, body = 5.25 },
+	rearhook = { head = 5.38, body = 5.84 },
+	uppercut = { head = 4.76, body = 4.44 },
+	overhand = { head = 5.06, body = 5.06 },
 }
+HitGeometry.CONTACT = 0.15
+-- the Athletic tier-3 rig as HitGeometry.Frame reads it off the parts (the frame TARGET is measured on and CAL
+-- calibrated to; FrameFromScales' unit is the sims' stand-in: its head stands a quarter stud higher on the neck and
+-- its glove is smaller, so its punches land up to a fifth of a stud shorter - tools/sim/test_hitdetect bounds it)
+local RIG = { stand = 6.216, shoulderY = 4.920, shoulderHalf = 1.226, arm = 2.530, glove = 0.410, headY = 5.753, headR = 0.464, chestY = 5.393,
+	waistY = 2.342, torsoHalfW = 0.862, torsoHalfD = 0.444, hScale = 0.963, source = "rig" }
+HitGeometry.RIG = RIG
+-- the width a punch gets (studs of reach per stud of torso half width past RIG's): AnimFight swings the hooks round
+-- the shoulder and turns the cross through it, so a broad man's hooks land a stud further than a lean man's at the
+-- same height, while the jab and the uppercut barely care (fitted over the 25 pairings)
+local WIDE = {
+	jab = { head = 0.13, body = 0.62 },
+	cross = { head = 0.85, body = 0.72 },
+	leadhook = { head = 3.03, body = 1.83 },
+	rearhook = { head = 0.79, body = 1.99 },
+	uppercut = { head = -0.18, body = -0.03 },
+	overhand = { head = -0.21, body = -0.21 },
+}
+HitGeometry.WIDE = WIDE
 HitGeometry.TARGET = TARGET
 
 -- the punch's shape by kind: where it starts (origin: shoulderY + o x arm), the angles it can be thrown at (up /
@@ -340,7 +357,12 @@ end
 local CAL = {} -- ptype -> { head = multiplier, body = multiplier } (solved below)
 local function reachOf(A, ptype, zone, mul)
 	local c = CAL[ptype]
-	return (A.arm + A.glove + STEP * A.hScale) * (c and c[zone] or 1) * (mul or 1)
+	local w = WIDE[ptype]
+	-- (the width past the Athletic frame of the frame's own source: a frame off the rig against RIG, a FrameFromScales
+	-- one - the sims', a fallback - against the unit torso it was scaled from, which is narrower than the tier mesh)
+	local ref = A.source == "scales" and UNIT.utW / 2 or RIG.torsoHalfW
+	local width = w and w[zone] * (num(A.torsoHalfW, ref) - ref) or 0
+	return ((A.arm + A.glove + STEP * A.hScale) * (c and c[zone] or 1) + width) * (mul or 1)
 end
 
 -- A's punch at B: the zones B offers, from A's shoulder (heights above B's soles are A's: both stand on the
@@ -396,10 +418,34 @@ local function tryZone(A, B, kind, K, ptype, zone, dist, opts)
 	return { ok = norm <= limit, zone = zone, why = norm > limit and "short" or nil, need = need, reach = reach, margin = reach - need, dy = dy }
 end
 
+-- the facing: the most a punch can be thrown off the line the attacker's chest faces (degrees, flat), by kind. A
+-- straight goes where the shoulders point (a man turned off the line jabs the air beside the head); a hook comes
+-- round from the side and finds a head well off the line; an uppercut and an overhand sit between. Past it the
+-- punch is "wide": the margin is how far (studs, sideways at that distance) the target sits outside the cone
+local FACING = { straight = 32, hook = 62, uppercut = 42, overhand = 46 }
+HitGeometry.FACING = FACING
+function HitGeometry.Facing(ptype, offDeg, dist)
+	local kind = PUNCH_KIND[ptype] or "straight"
+	local lim = FACING[kind] or 40
+	offDeg = math.abs(num(offDeg, 0))
+	if offDeg <= lim then
+		return true, lim, 0
+	end
+	return false, lim, -math.max(0, num(dist, 4)) * math.sin(math.rad(math.min(90, offDeg - lim)))
+end
+
 function HitGeometry.Test(A, B, ptype, body, dist, opts)
 	opts = opts or {}
 	local kind = PUNCH_KIND[ptype] or "straight"
 	local K = KIND[kind]
+	-- (opts.facing: degrees between the attacker's facing and the line to the target; past the kind's cone the
+	-- punch goes wide whatever the reach)
+	if opts.facing ~= nil then
+		local okF, lim, side = HitGeometry.Facing(ptype, opts.facing, dist)
+		if not okF then
+			return { ok = false, zone = body and "body" or "head", why = "wide", need = math.huge, reach = 0, margin = side, dy = 0, facing = opts.facing, facingLimit = lim }
+		end
+	end
 	local o = { mul = opts.mul, bend = opts.bend, floor = opts.floor, body = body == true }
 	local want = body and "body" or "head"
 	local r = tryZone(A, B, kind, K, ptype, want, dist, o)
@@ -412,6 +458,12 @@ function HitGeometry.Test(A, B, ptype, body, dist, opts)
 		local b = tryZone(A, B, kind, K, ptype, "body", dist, o)
 		if b.ok then
 			b.redirected = true
+			return b
+		end
+		-- (both miss: the nearer miss is the verdict - a step closer and it lands on the body - so its margin is how
+		-- far out of reach the punch really was: FightEngine's lag compensation reads it)
+		if (b.margin or -math.huge) > (r.margin or -math.huge) then
+			b.falling = true
 			return b
 		end
 	end
@@ -527,11 +579,11 @@ function HitGeometry.PunchPrefs(A, B)
 end
 
 ------------------------------------------------------------------------
--- Calibration: the unit rig against itself lands every punch at exactly TARGET[p][zone] (where the animation's
--- glove visibly lands) with a level stance, to the head and to the body alike
+-- Calibration: the Athletic rig (RIG) against itself lands every punch at exactly TARGET[p][zone] (where the
+-- animation's glove visibly lands) with a level stance, to the head and to the body alike
 ------------------------------------------------------------------------
 do
-	local U = HitGeometry.Unit()
+	local U = RIG
 	for p in pairs(RANGE) do
 		CAL[p] = { head = 1, body = 1 }
 		for _, zone in ipairs({ "head", "body" }) do

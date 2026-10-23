@@ -759,7 +759,10 @@ for _, sid in ipairs(ORDER) do
 		blue:SetAttribute("Style", "BoxerPuncher")
 		run(all, 0.5) -- (into the rest)
 		local frames = { red = frameFor(red), blue = frameFor(blue), ref = frameFor(ref) }
-		local L = PostFight.Layout(center, face, frames, sc.redDown == true, false)
+		-- (a man still down lies where he fell: here right by the centre, the worst case - PostFight.Run passes his
+		-- root as downAt and the group steps off him)
+		local downAt = sc.redDown and (center + right * 0.6 + face * 0.4) or nil
+		local L = PostFight.Layout(center, face, frames, sc.redDown == true, false, { downAt = downAt })
 		print(string.format("%s: red shoulderHalf %.2f  blue %.2f  ref %.2f  -> red %.2f  ref %.2f  blue %.2f along the line", sid,
 			frames.red.shoulderHalf, frames.blue.shoulderHalf, frames.ref.shoulderHalf, (L.red - center):Dot(right), (L.ref - center):Dot(right), (L.blue - center):Dot(right)))
 		-- the server's staging: the men to their places (PostFight.Run's stand), the poses from the Trainee path
@@ -771,8 +774,8 @@ for _, sid in ipairs(ORDER) do
 				CS:AddTag(m, "Trainee")
 				m:SetAttribute("Pose", "pfWait")
 			else
-				-- (a man still down: AnimFight's down pose where he fell, off to the side)
-				standAt(m, center - right * 4.5 - face * 1.5, center)
+				-- (a man still down: AnimFight's down pose where he fell, by the centre)
+				standAt(m, downAt, downAt - right * 10)
 				m:SetAttribute("Guard", "down")
 				m:SetAttribute("DownPose", "back")
 			end
@@ -807,8 +810,8 @@ for _, sid in ipairs(ORDER) do
 					local dir = face * math.cos(a) + right * math.sin(a)
 					hardFrom, hardAt, fov = center + dir * 9.26 + UP * 3.52, eye, 48
 				else
+					-- (the root's own height, as BoxerClient.Ceremony's resultShot reads it: the chest, not the shorts)
 					local wp = winner:FindFirstChild("HumanoidRootPart").Position
-					wp = Vector3.new(wp.X, 0, wp.Z)
 					local toW = Vector3.new(wp.X, 0, wp.Z) - center
 					local side = toW.Magnitude > 0.1 and toW.Unit or right
 					local k = 0.6

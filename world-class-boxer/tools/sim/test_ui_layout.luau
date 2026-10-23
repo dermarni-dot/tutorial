@@ -916,7 +916,7 @@ local DRILLS = {
 		return seg.call == "numbers"
 	end, 5 },
 	{ "drill_rebound", "DoubleEnd", "rebound", 30 },
-	{ "drill_footwork", "Shadow", "notes", 150 },
+	{ "drill_footwork", "Ladder", "notes", 150 }, -- (the stepped footwork moved from Shadow Boxing to the Ladder)
 	{ "drill_bench", "Bench", "bench", 60 },
 	{ "drill_deadlift", "Barbell", "deadlift", 60 },
 	{ "drill_squat", "Squat", "squat", 60 },

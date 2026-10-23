@@ -1083,7 +1083,7 @@ end
 ------------------------------------------------------------------------
 -- Sparring
 ------------------------------------------------------------------------
-local function runSpar(player, profile, intensity)
+local function runSpar(player, profile, intensity, focusId)
 	endSession(player)
 	setBusy(player, "spar")
 	push(player)
@@ -1153,6 +1153,15 @@ local function runSpar(player, profile, intensity)
 		if thrown < 6 then
 			q = 0.4 -- you have to actually spar
 		end
+		-- the picker's optional focus goal (TrainingPlan.SparFocus): met, it lifts the session's quality
+		local focus
+		if focusId ~= nil and type(Training.SparFocusResult) == "function" then
+			local okF, fr = pcall(Training.SparFocusResult, profile, focusId, res, intensity, q)
+			if okF and fr then
+				focus = fr
+				q = fr.quality
+			end
+		end
 		local act = Training.Activity("Sparring")
 		-- (a session the player left early pays out its share: res.partial, FightEngine's Fight:LeaveSpar)
 		local out = Training.Perform(profile, act, q, { intensity = intensity, scale = SPAR_SCALE[intensity] * math.clamp(tonumber(res.partial) or 1, 0.1, 1), extraRisk = SPAR_RISK[intensity] })
@@ -1178,7 +1187,7 @@ local function runSpar(player, profile, intensity)
 			out.injury = def.name
 			table.insert(out.notes, "INJURY: " .. def.name .. " from hard sparring. No sparring until it heals.")
 		end
-		FightRemote:FireClient(player, { t = "sparResult", result = res, training = out, intensity = intensity, partner = b.name, quality = q })
+		FightRemote:FireClient(player, { t = "sparResult", result = res, training = out, intensity = intensity, partner = b.name, quality = q, focus = focus })
 		task.spawn(DataManager.Save, player)
 	else
 		FightRemote:FireClient(player, { t = "aborted", spar = true })
@@ -1916,7 +1925,7 @@ function handlers.Flex(player, profile, kind)
 	return { ok = true }
 end
 
-function handlers.StartSparring(player, profile, intensity)
+function handlers.StartSparring(player, profile, intensity, focusId)
 	if not SPAR_SCALE[intensity] then
 		intensity = "Medium"
 	end
@@ -1934,7 +1943,7 @@ function handlers.StartSparring(player, profile, intensity)
 	if not (root and hum and hum.Health > 0) then
 		return { ok = false, err = "Your character isn't ready." }
 	end
-	task.spawn(runSpar, player, profile, intensity)
+	task.spawn(runSpar, player, profile, intensity, type(focusId) == "string" and focusId or nil)
 	return { ok = true }
 end
 

@@ -1038,7 +1038,7 @@ local function setupShow()
 			l.Face = Enum.NormalId.Front
 			l.Angle = 100
 			l.Range = 60
-			l.Brightness = 1.6
+			l.Brightness = 2.2
 			l.Color = washCols[i]
 			l.Shadows = false
 			l.Parent = src

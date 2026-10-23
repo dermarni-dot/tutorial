@@ -527,13 +527,41 @@ end
 -- path against O's head or body, O's bend, the fight's close floor. Returns the test's verdict table (ok, zone,
 -- why = "short" | "high" | "low", redirected = a head shot that lands on the body); without the module, the old
 -- range check as a verdict
-function Fight:HitTest(F, O, ptype, body, dist, mul)
+-- pose (optional) = { fp, op, look }: the two flat positions and F's flat facing to test from (Resolve's lag
+-- compensation: the press as his client saw it); else where they stand now. The facing is the punch's cone
+-- (HitGeometry.FACING): a man turned off the line throws his straight past the head ("wide")
+function Fight:HitTest(F, O, ptype, body, dist, mul, pose)
 	local G, OG = self:Geo(F), self:Geo(O)
 	if not (G and OG) then
 		local ok = dist <= self:PunchRange(F, ptype, mul)
 		return { ok = ok, zone = body and "body" or "head", why = (not ok) and "short" or nil }
 	end
-	return HitGeometry.Test(G, OG, ptype, body, dist, { mul = mul, floor = self:Floor(), bend = self:Bend(O), noRedirect = ptype == "overhand" })
+	return HitGeometry.Test(G, OG, ptype, body, dist, { mul = mul, floor = self:Floor(), bend = self:Bend(O), noRedirect = ptype == "overhand",
+		facing = self:OffLine(F, O, pose) })
+end
+
+-- degrees between F's facing and the line from him to O (flat); nil when either root is missing. pose = { fp, op,
+-- look } tests a recorded moment instead of the live one
+function Fight:OffLine(F, O, pose)
+	local fp, op, look
+	if pose then
+		fp, op, look = pose.fp, pose.op, pose.look
+	elseif F.root and O.root then
+		fp, op = F.root.Position, O.root.Position
+		local ok, lv = pcall(function()
+			return F.root.CFrame.LookVector
+		end)
+		look = ok and lv or nil
+	end
+	if not (fp and op and look) then
+		return nil
+	end
+	local to = flat(op - fp)
+	local lf = flat(look)
+	if to.Magnitude < 0.05 or lf.Magnitude < 0.05 then
+		return nil
+	end
+	return math.deg(math.acos(math.clamp(to.Unit:Dot(lf.Unit), -1, 1)))
 end
 
 ------------------------------------------------------------------------
@@ -545,7 +573,12 @@ end
 -- test fails only by movement (its margin within LAG_TOL) the press-time verdict stands. An AI punch (no `at`) is
 -- never compensated: it reasons in server time.
 ------------------------------------------------------------------------
-local POSE_KEEP, POSE_INTERP, LAG_MAX, LAG_TOL = 1.0, 0.1, 0.3, 0.35
+-- POSE_KEEP = the history kept (s: the longest rewind is the wind-up plus both legs of the lag and the interpolation);
+-- POSE_INTERP = the replication's interpolation buffer the client renders the other man behind by; LAG_MAX = the
+-- most one-way delay credited; LAG_TOL = how far (studs) a live miss may be and still stand as the client's hit
+-- when the press-time test lands (the disagreement only movement); VIEW_MAX = the most a player's screen is taken
+-- to run behind the server when it decides whether he SAW a dodge start (Fight:Evaded)
+local POSE_KEEP, POSE_INTERP, LAG_MAX, LAG_TOL, VIEW_MAX = 1.5, 0.1, 0.3, 0.35, 0.25
 -- the end of the reach (Fight:Resolve): the last STRETCH share of a punch's reach is a glancing shot, its hit
 -- chance down to STRETCH_HIT[1] of itself and its damage to STRETCH_DMG[1] at the very edge
 local STRETCH, STRETCH_HIT, STRETCH_DMG = 0.18, { 0.5 }, { 0.55 }
@@ -568,12 +601,16 @@ function Fight:RecordPose(F, now)
 		F.poseHist = h
 	end
 	local p = F.root.Position
-	table.insert(h, { t = now, x = p.X, z = p.Z, bend = self:Bend(F) })
+	local okL, lv = pcall(function()
+		return F.root.CFrame.LookVector
+	end)
+	lv = okL and lv or nil
+	table.insert(h, { t = now, x = p.X, z = p.Z, bend = self:Bend(F), lx = lv and lv.X or 0, lz = lv and lv.Z or -1 })
 	while #h > 2 and now - h[1].t > POSE_KEEP do
 		table.remove(h, 1)
 	end
 end
--- F's flat position at time t (interpolated; nil without a history reaching back that far)
+-- F's flat position at time t (interpolated; nil without a history reaching back that far) and his flat facing then
 function Fight:PoseAt(F, t)
 	local h = F.poseHist
 	if not h or #h == 0 or t < h[1].t - 0.05 then
@@ -585,23 +622,35 @@ function Fight:PoseAt(F, t)
 		if cur.t >= t then
 			local span = cur.t - prev.t
 			local k = span > 1e-6 and math.clamp((t - prev.t) / span, 0, 1) or 1
-			return Vector3.new(prev.x + (cur.x - prev.x) * k, 0, prev.z + (cur.z - prev.z) * k)
+			return Vector3.new(prev.x + (cur.x - prev.x) * k, 0, prev.z + (cur.z - prev.z) * k),
+				Vector3.new((prev.lx or 0) + ((cur.lx or 0) - (prev.lx or 0)) * k, 0, (prev.lz or -1) + ((cur.lz or -1) - (prev.lz or -1)) * k)
 		end
 		prev = cur
 	end
-	return Vector3.new(prev.x, 0, prev.z)
+	return Vector3.new(prev.x, 0, prev.z), Vector3.new(prev.lx or 0, 0, prev.lz or -1)
 end
--- the root-to-root distance as the attacker's client saw it at its press: the attacker where he is now (his own
--- character replicates with the same delay), the defender where he was `lag` ago less the interpolation
-function Fight:CompDistance(F, O, lag)
+-- the press as the attacker's client saw it, for a punch resolving now after `windup` (the server's wind-up from
+-- when the press arrived) and `lag` (its one-way delay): his own character where it was when the press arrived
+-- (his client moves it and it replicates with that delay: the server's copy at the arrival is his screen at the
+-- press), the defender where his screen showed him at the press - the server's state another leg of the lag and
+-- the interpolation buffer before it. Returns { fp, op, look, dist } or nil without the history
+function Fight:PressPose(F, O, lag, windup)
 	if not (F.root and O.root) then
 		return nil
 	end
-	local op = self:PoseAt(O, self:Now() - lag - POSE_INTERP)
-	if not op then
+	local now = self:Now()
+	local arrive = now - (windup or 0)
+	local fp, look = self:PoseAt(F, arrive)
+	local op = self:PoseAt(O, arrive - 2 * (lag or 0) - POSE_INTERP)
+	if not (fp and op) then
 		return nil
 	end
-	return flat(F.root.Position - op).Magnitude
+	return { fp = fp, op = op, look = look, dist = flat(fp - op).Magnitude }
+end
+-- (the old reader: the press-time distance alone)
+function Fight:CompDistance(F, O, lag)
+	local pp = self:PressPose(F, O, lag, 0)
+	return pp and pp.dist or nil
 end
 
 -- the closest the two bodies get, centre to centre (the pair's scaled spacing, and no less than their real torsos
@@ -684,7 +733,15 @@ end
 -- tangent point slides round as he goes; returns goal when the line is clear. Nothing is routed round a man on
 -- the canvas, or for one.
 local ROUTE_AIR, DOWN_ROOM = 0.15, 0.5
-local function tangentWay(fp, goal, op, r)
+-- do the flat segments a-b and c-d cross (strictly)?
+local function segCross(a, b, c, d)
+	local function cr(o, p, q)
+		return (p.X - o.X) * (q.Z - o.Z) - (p.Z - o.Z) * (q.X - o.X)
+	end
+	return cr(c, d, a) * cr(c, d, b) < 0 and cr(a, b, c) * cr(a, b, d) < 0
+end
+-- avoid (optional): a waypoint it returns true for is not taken (the other way round is tried; nil when neither)
+local function tangentWay(fp, goal, op, r, avoid)
 	local seg = flat(goal - fp)
 	local L = seg.Magnitude
 	if L < 0.05 then
@@ -712,9 +769,12 @@ local function tangentWay(fp, goal, op, r)
 	for _, sgn in ipairs({ 1, -1 }) do
 		local w = op + CFrame.Angles(0, sgn * ang, 0):VectorToWorldSpace(au) * rr
 		local gd = flat(goal - w).Magnitude
-		if not best or gd < bestD then
+		if (not best or gd < bestD) and not (avoid and avoid(w)) then
 			best, bestD = w, gd
 		end
+	end
+	if not best then
+		return false -- (both ways round ruled out)
 	end
 	return Vector3.new(best.X, goal.Y, best.Z)
 end
@@ -1872,30 +1932,41 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	local hit = self:HitTest(F, O, ptype, body, dist, sp.range)
 	-- the player's punch against the opponent where his client saw him at the press (lag compensation): a live
 	-- miss by movement alone, within LAG_TOL of landing, stands as the client predicted it
+	-- (only a miss by movement - short of him, or past him to the side - and by no more than LAG_TOL studs: a punch
+	-- the client could not have landed, too high, too low or a stud short, is a miss on both screens)
 	local lag = sp.lag
-	if not hit.ok and lag and F.isPlayer then
-		local dC = self:CompDistance(F, O, lag + (sp.windup or 0))
-		if dC and dC < dist then
-			local hitC = self:HitTest(F, O, ptype, body, dC, sp.range)
-			if hitC.ok and (tonumber(hit.margin) or -math.huge) >= -LAG_TOL then
+	if not hit.ok and lag and F.isPlayer and (hit.why == "short" or hit.why == "wide") and (tonumber(hit.margin) or -math.huge) >= -LAG_TOL then
+		local pp = self:PressPose(F, O, lag, sp.windup or 0)
+		if pp then
+			local hitC = self:HitTest(F, O, ptype, body, pp.dist, sp.range, pp)
+			if hitC.ok then
+				hitC.lagComp = true
+				hitC.liveWhy, hitC.liveMargin = hit.why, hit.margin
 				hit = hitC
-				hit.lagComp = true
-				dist = dC
+				dist = pp.dist
 			end
 		end
 	end
+	-- (the verdict, for /wcbdiag's FIGHT block)
+	F.lastHit = { t = now, p = ptype, ok = hit.ok, why = hit.why, zone = hit.zone, margin = hit.margin, dist = dist, lag = lag, lagComp = hit.lagComp,
+		liveWhy = hit.liveWhy, redirected = hit.redirected, facing = hit.facing }
+	if hit.lagComp then
+		F.lagComps = (F.lagComps or 0) + 1
+	end
 	if not hit.ok then
 		self:ChainResult(F, O, sp, "miss")
-		self:Miss(F, O, ptype, hit.why == "high" and "high" or (hit.why == "low" and "low" or "short"))
+		self:Miss(F, O, ptype, (hit.why == "high" or hit.why == "low" or hit.why == "wide") and hit.why or "short")
 		return
 	end
 	if hit.redirected and not body then
 		body = true
 		self:Send({ t = "redirect", who = self:Who(F), punch = ptype })
 	end
-	-- (a dodge against the player's punch counts only when it began before the contact his client showed him:
-	-- the resolve less the delay his press arrived with)
-	if self:Evaded(F, O, ptype, body, now, lag and (now - lag) or nil) then
+	-- (a dodge counts only when it VISIBLY began before the contact: Evasion.VISIBLE of its act on the attacker's
+	-- screen before the glove arrived. A player's screen shows the contact at the resolve less his press's delay and
+	-- shows the dodge another leg of the lag and the interpolation late; an AI attacker sees it as it happens)
+	local seen = lag and (lag + math.min(VIEW_MAX, lag + POSE_INTERP)) or 0
+	if self:Evaded(F, O, ptype, body, now, now - seen - Evasion.VISIBLE) then
 		if F.ai and F.ai.obs then
 			F.ai.obs.slips += 1
 		end
@@ -3183,11 +3254,8 @@ function Fight:UpdateReferee(now)
 		-- the fall is still playing: he holds his ground (out of it) until it lands
 		target, look = rp, down.root.Position
 		mode = "kdwait"
-	elseif warn and nearD < keep then
-		-- (the call goes on, but a man on top of him first: out to the orbit zone on his own side)
-		target, look = self:RefOrbit(R, pP, pO, mySide)
-		mode = "evade"
-	elseif warn then
+	elseif warn and nearD >= keep then
+		-- (the call goes on; a man on top of him first sends him out of the way: the evasion below)
 		-- at the offender's side, square to the men's line (his footwork in and out never walks into the referee)
 		local fp = warn.F.root.Position
 		local away = unitOr(perp * mySide * 0.85 + unitOr(flat(rp - fp), perp * mySide) * 0.15, perp * mySide)
@@ -3229,15 +3297,22 @@ function Fight:UpdateReferee(now)
 	-- standing man)
 	if mode ~= "catch" then
 		local list = keepFrom and { keepFrom } or (nearF == P and { P, O } or { O, P })
+		-- (round the outside of him: a way round that would take the referee across between the men - their line
+		-- out to half a body past either end - is not taken; with both ways ruled out he holds his spot this beat)
+		local ext = line * (self:MinSep() * 0.5)
+		local eA, eB = pP - ext, pO + ext
+		local avoid = mode ~= "count" and function(w)
+			return segCross(rp, w, eA, eB)
+		end or nil
 		for _, F in ipairs(list) do
-			local way = F.state ~= "down" and tangentWay(rp, target, F.root.Position, self:MinSep() + 0.3) or nil
-			if way then
-				-- (round the outside of him: a detour that would take the referee across the men's line is mirrored
-				-- back onto his side, the same distance from both of them)
-				local acr = flat(way - mid):Dot(perp)
-				if mode ~= "count" and mode ~= "orbit" and acr * mySide < 0 then
-					way -= perp * (2 * acr)
-				end
+			local way = nil
+			if F.state ~= "down" then
+				way = tangentWay(rp, target, F.root.Position, self:MinSep() + 0.3, avoid)
+			end
+			if way == false then
+				target = rp
+				break
+			elseif way then
 				target = way
 				break
 			end
@@ -3351,7 +3426,9 @@ function Fight:Glide(F, goal, speed, onArrive)
 		local v, acc = 0, speed * 4
 		local model = F.model
 		local lastG
-		while F.glideId == id and self.id == fightId and not self.aborted and F.root and F.root.Parent do
+		-- (a glide the other man keeps standing in the way of gives up: never a walk that runs on for ever)
+		local giveUp = self:Now() + flat(goal - F.root.Position).Magnitude / math.max(speed, 1) * 3 + 1.5
+		while F.glideId == id and self.id == fightId and not self.aborted and F.root and F.root.Parent and self:Now() < giveUp do
 			local dt = RunService.Heartbeat:Wait()
 			-- (the spot itself never inside the other man's body: a goal set a moment ago may be where he now stands;
 			-- the way there round him, never through him: RouteAround)

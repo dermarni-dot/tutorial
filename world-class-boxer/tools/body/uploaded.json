@@ -16247,9 +16247,9 @@
   "at": "2026-10-23T19:51:17Z",
   "file": "out/frames/lean/tier4/LeftLowerLeg.mesh",
   "id": 94309782092356,
-  "moderation": "error",
+  "moderation": "Approved",
   "name": "WCB Body lean T4 LeftLowerLeg",
-  "state": "GET https://apis.roblox.com/assets/v1/assets/94309782092356?readMask=moderationR",
+  "state": "Active",
   "type": "Mesh"
  },
  "cf9ee87f5156b99c61bd3d97a796e895b27b8331bbcb334a0d1a790e9e282df8": {

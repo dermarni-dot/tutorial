@@ -5,9 +5,10 @@
 -- server's plan (Training.DrillPlan) is played by a perfect, an average and an idle player through the shared
 -- judges (DrillScore / DrillWorkouts) on a virtual clock, with the client's pacing (each segment's gap). The
 -- input stream goes through the server's replay (DrillScore.Replay) and must give the same score the judges
--- gave live; perfect >= 0.85, idle <= 0.15 (the sauna's coach pull-out: <= 0.3), average in between and clear
--- of both; a perfect session is never "too quick" (plan.minTime); the average player does no better on the
--- top level than on the first (difficulty scales).
+-- gave live; perfect >= 0.85, idle <= 0.15 (IDLE_MAX: the sauna's coach pull-out, the chamber), average in between
+-- and clear of both (LIMITS, the v10 bands); every played session under 40 s; a perfect session is never "too quick"
+-- (plan.minTime); the average player does no better on the top level than on the first (difficulty scales). Then
+-- the v10 mechanics judge by judge (--only Mechanics).
 --
 -- Part B (the real client, one process per activity): Activities.Start on guisim with a fake server
 -- (StartActivity hands over the real plan; ActivityInput is recorded; FinishActivity replays it) and a virtual
@@ -241,7 +242,7 @@ if not isChild and (not only or only.Mechanics) then
 		return j.result(), hits, j
 	end
 	-- the rope: the release is the jump; a double under wants the charge held first
-	local w = 6.5 * 1.7
+	local w = 6.5 * DrillScore.ROPE_DOUBLE
 	local pass = math.pi / w -- the first pass of a double-under turn (the rope starts overhead)
 	local ropeSeg = { j = "rope", jumps = 1, omega = 6.5, cues = { "double" }, charge = 0.2 }
 	-- (the first pass comes ~0.28 s in: pressed at the start the hold reaches the charge, pressed 0.1 s before not)

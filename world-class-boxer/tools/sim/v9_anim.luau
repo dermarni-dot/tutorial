@@ -2202,6 +2202,10 @@ local function reachClip(tier)
 		end
 		for _, pd in ipairs(REACH_LIST) do
 			local name, act = pd[1], pd[2]
+			-- (--only jab|body,cross: just those punches)
+			if args.only and not ("," .. args.only .. ","):find("," .. name .. ",", 1, true) then
+				continue
+			end
 			local hand = act:match("^[^|]*|(%a)")
 			local glove
 			for _, d in ipairs(a:GetDescendants()) do

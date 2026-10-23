@@ -24,6 +24,11 @@ Evasion.CAUGHT_HIT, Evasion.CAUGHT_DMG = 0.1, 1.15
 Evasion.COUNTER_HIT = 0.08
 Evasion.CANCEL = 0.35
 Evasion.GAP = 0.08 -- the shortest stretch of a dodge's recovery after its window (gap = true: the new dodges)
+-- a dodge beats a punch only when it VISIBLY began before the contact: its act had this long (two frames at 60 Hz)
+-- to move the head before the glove arrived, as the attacker's screen showed it (FightEngine:Evaded; a player's
+-- punch also counts the delay before his client saw the dodge start). FightAI does not start a dodge it cannot get
+-- going in time
+Evasion.VISIBLE = 0.035
 
 -- window = base + reflexes x Reflexes + head x HeadMovement + feet x Footwork (stats 0..100), times the
 -- concussion / daze factor (FightEngine:DefenseMul)

@@ -360,7 +360,7 @@ local function buildLights(st)
 	-- the coloured washes on the brick either side of it
 	for _, w in ipairs({ { V3(-16, floorY + 11, -24), rgb(255, 70, 170) }, { V3(13, floorY + 11, -24), rgb(60, 110, 255) } }) do
 		local holder = rig("WashLight", w[1], w[1] + V3(0, 0, -1))
-		light(holder, "PointLight", { Range = 24, Brightness = 1.3, Color = w[2], Shadows = false })
+		light(holder, "PointLight", { Range = 28, Brightness = 2.2, Color = w[2], Shadows = false })
 	end
 end
 

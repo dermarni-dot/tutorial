@@ -226,44 +226,59 @@ A.breath = function(seg, j, t, M, mem, sk, rng)
 end
 A.rope = function(seg, j, t, M, mem, sk, rng)
 	-- hold and release: JUMP goes down ahead of the pass (longer ahead for a double under: the charge)
-	-- and comes up as the rope reaches the feet; the foot calls are presses of the called foot
+	-- and comes up as the rope reaches the feet; the foot calls are presses of the called foot. Like a
+	-- player, the bot crouches for the next jump as soon as it has released the last one (the next pass is
+	-- estimated until the judge has moved on to it)
 	local out = {}
 	if t < j.tripped or not j.w then
 		if mem.down then
 			mem.down = nil
 			table.insert(out, { "jump", false })
 		end
+		mem.plan = {}
 		return out
 	end
 	local a = j.angle(t)
 	local k = math.floor(a / TWO_PI) + 1
 	local toPass = (TWO_PI * k - a) / j.w
 	mem.plan = mem.plan or {}
+	-- the jump this pass is: the judged count, plus one while the last jump's pass is still to be judged
+	local prev = mem.plan[j.done]
 	local key = j.done
+	local passT = t + toPass
+	if j.pending or (prev and prev.done and prev.passT and t < prev.passT + 0.2) then
+		key = j.done + 1
+		local cue = seg.cues[j.ci + 1] or "jump"
+		local base = j.pending or (prev and prev.passT) or passT
+		passT = base + TWO_PI / (j.omega * (cue == "double" and 1.5 or 1))
+	end
 	local p = mem.plan[key]
-	if not p and not j.pending then
+	if not p then
 		local charge = j.charge or 0.3
+		local cue = key == j.done and j.cue or (seg.cues[j.ci + 1] or "jump")
 		-- (nobody jumps more than half a second before the rope: the slow player's error is capped)
-		p = { lead = math.min(0.5, mix(sk, 0.05, rng:NextNumber() * 0.42)), skip = rng:NextNumber() < 0.12 * sk.w, cue = j.cue }
-		p.hold = p.cue == "double" and (charge + mix(sk, 0.06, -0.02 + rng:NextNumber() * 0.22)) or mix(sk, 0.12, 0.06 + rng:NextNumber() * 0.2)
+		p = { lead = math.min(0.5, mix(sk, 0.05, rng:NextNumber() * 0.42)), skip = rng:NextNumber() < 0.12 * sk.w, cue = cue }
+		p.hold = cue == "double" and (charge + mix(sk, 0.06, -0.02 + rng:NextNumber() * 0.22)) or mix(sk, 0.12, 0.06 + rng:NextNumber() * 0.2)
 		mem.plan[key] = p
 	end
-	if not p or p.skip then
+	p.passT = passT
+	if p.skip then
 		return out
 	end
+	local left = passT - t
 	if p.cue == "footL" or p.cue == "footR" then
-		if not p.done and toPass <= p.lead then
+		if not p.done and left <= p.lead then
 			p.done = true
 			tap(out, p.cue)
 		end
 		return out
 	end
-	if not p.pressed and toPass <= p.lead + p.hold then
+	if not p.pressed and not mem.down and left <= p.lead + p.hold then
 		p.pressed = true
 		mem.down = true
 		table.insert(out, { "jump", true })
 	end
-	if p.pressed and not p.done and (toPass <= p.lead or j.pending) then
+	if p.pressed and not p.done and left <= p.lead then
 		p.done = true
 		mem.down = nil
 		table.insert(out, { "jump", false })
@@ -513,7 +528,18 @@ A.bike = function(seg, j, t, M, mem, sk, rng)
 		if every(mem, "g", t, 1.2 * sk.k) and math.abs(j.gear - ideal) >= (sk.k > 1 and 2 or 1) then
 			tap(out, j.gear < ideal and "gearUp" or "gearDn")
 		end
-		if every(mem, "p", t, 0.36 + rng:NextNumber() * 0.12 * sk.k) then
+		-- (the cadence readout is in view: now and then the player speeds up or eases off toward the band)
+		mem.iv = mem.iv or (0.4 + rng:NextNumber() * 0.1)
+		if every(mem, "look", t, mix(sk, 0.1, 0.8)) and j.lastTap then
+			local rpm = j.rpm(t)
+			local m = (seg.hi - seg.lo) * 0.2
+			if rpm < seg.lo + m then
+				mem.iv = math.max(0.22, mem.iv * 0.9)
+			elseif rpm > seg.hi - m then
+				mem.iv = math.min(0.7, mem.iv * 1.1)
+			end
+		end
+		if every(mem, "p", t, mem.iv + rng:NextNumber() * 0.06 * sk.k) then
 			mem.side = mem.side == "L" and "R" or "L"
 			tap(out, mem.side)
 		end
