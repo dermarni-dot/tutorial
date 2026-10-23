@@ -608,19 +608,19 @@ Config.FightAI = {
 	-- its chance to attack each think; stepIn = how far outside its reach it steps in to punch rather than wait
 	-- (studs); openWork = the extra work when the man in front of it is open (idle in range, hands down, on the
 	-- ropes, just missed); floorMin = the fewest punches a minute even the most forgiving bout's AI throws
-	think = { 0.24, 0.13 }, work = 1.12, stepIn = 1.0, openWork = 1.5, floorMin = 12,
+	think = { 0.24, 0.13 }, work = 0.72, stepIn = 1.0, openWork = 1.25, floorMin = 10,
 	-- the difficulty by level (Config.FightAI.Tier(level): the career's tiers, interpolated between the rows).
 	-- react = the perception and motor delays x this; read = how much it leans on its read of him (prediction,
 	-- adaptation, the rhythm counter); work = its punch rate x this; floor = the fewest punches a minute it throws
 	-- while it can reach him (the work-rate floor: a debut opponent is easier, never passive); mistake = its wrong
 	-- defences x this
 	tiers = {
-		{ level = 0, name = "Debut", react = 1.15, read = 0.7, work = 1.0, floor = 26, mistake = 1.1 },
-		{ level = 30, name = "Prospect", react = 1.0, read = 0.9, work = 1.08, floor = 30, mistake = 0.9 },
-		{ level = 50, name = "Regional", react = 0.9, read = 1.1, work = 1.16, floor = 36, mistake = 0.7 },
-		{ level = 70, name = "National", react = 0.8, read = 1.3, work = 1.25, floor = 42, mistake = 0.45 },
-		{ level = 85, name = "World", react = 0.72, read = 1.45, work = 1.33, floor = 48, mistake = 0.2 },
-		{ level = 99, name = "Elite", react = 0.66, read = 1.6, work = 1.4, floor = 52, mistake = 0.08 },
+		{ level = 0, name = "Debut", react = 1.15, read = 0.7, work = 0.78, floor = 14, mistake = 1.1 },
+		{ level = 30, name = "Prospect", react = 1.0, read = 0.9, work = 0.82, floor = 17, mistake = 0.9 },
+		{ level = 50, name = "Regional", react = 0.9, read = 1.1, work = 0.86, floor = 20, mistake = 0.7 },
+		{ level = 70, name = "National", react = 0.8, read = 1.3, work = 0.9, floor = 24, mistake = 0.45 },
+		{ level = 85, name = "World", react = 0.72, read = 1.45, work = 0.95, floor = 28, mistake = 0.2 },
+		{ level = 99, name = "Elite", react = 0.66, read = 1.6, work = 1.0, floor = 32, mistake = 0.08 },
 	},
 }
 -- the AI difficulty at an overall level: the row's numbers, interpolated between the tiers

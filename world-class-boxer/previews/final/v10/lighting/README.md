@@ -10,13 +10,24 @@ profiles (`scene.venueLighting`, `VenueFX.Profiles`): the sun, the sky and the f
 
 | File | What it shows |
 |---|---|
-| `gym_ring_before.jpg` | The main hall before this pass (the same view, the old Lighting) |
-| `gym_ring.jpg` | The main hall: warm window keys, the neon zone signs, the red / blue apron LEDs and gel washes over the ring, the magenta / cyan accent spots, the glowing round timer |
-| `venue_t3_title.jpg` | The Arena on a world title night, ringside: white ring keys, gold corner glows and apron LEDs, the gold fascia trims, the spots in their title gels, the tinted house wash over the stands |
+| `gym_ring_before.jpg` | The main hall before this pass (the same view, the old Lighting, built from `5cff75c`'s src) |
+| `gym_ring.jpg` | The main hall: warm window keys, the roof wash lifting the ceiling and trusses, glowing pendant reflectors, the neon zone signs, the red / blue apron LEDs and gel washes over the ring, the glowing round timers |
+| `gym_bags.jpg` | The bags and stations: the magenta / cyan accent spots, the blue mirror-wall and apron LEDs, the zone neon |
+| `venue_t3_title.jpg` | The Arena on a world title night, ringside, walkout: white ring keys, gold corner glows and apron LEDs, gold fascia trims, the spots in their title gels, the gold / amber crowd wash |
 | `venue_t3_title_wide.jpg` | The same night from high in the bowl |
-| `city_main_day.jpg` | Main Street by day: the warm sun, the saturated sky, the shop neon and the gold billboard frames |
-| `city_main_night.jpg` | Main Street after dark: a blue night fill, the coloured shop neon and its pools, the lit billboards, the magenta / cyan / gold / green accents under alternate street lights, the lit windows |
-| `menu_stage.jpg` | The title screen: the warm key, the magenta rim and cyan kicker, the gradient backdrop with its magenta / blue wall washes |
+| `venue_t3_card.jpg` | A regular card's walkout, ringside: red / blue corner glows and apron LEDs, red / blue fascias, the sweeping spots' coloured gel pools on the canvas, the red / magenta and blue / cyan crowd wash |
+| `venue_t3_card_wide.jpg` | The same walkout from high in the bowl |
+| `venue_t3_wide_before.jpg` | The Arena from high in the bowl before this pass (no show rig in the old preview) |
+| `city_main_day.jpg` | Main Street by day: the warm sun, saturated materials, the shop neon and the gold billboard frames (the preview's sky is paler than the game's: Cycles' sky does not model the Atmosphere's blue Decay) |
+| `city_main_night.jpg` | Main Street after dark: a blue night fill, the coloured shop neon and its pools, the lit billboards, the magenta / cyan / gold / green accents under alternate street lights |
+| `menu_stage.jpg` | The title screen: the warm key, the magenta rim and cyan kicker, the magenta-to-blue gradient backdrop, the magenta / blue wall washes |
+| `menu_stage_before.jpg` | The title screen before this pass |
+
+Fixes found while rendering: the gym's apron LEDs never built (GymDecor looked for `GymRing` in its `Decor` folder; the
+ring is MapBuilder's, a sibling); the menu's gradient backdrop faced the brick (SurfaceGui on the Front face, the room
+is the Back); the follow-spot floor pools took a degenerate `CFrame.lookAt` (a floor normal along the default up).
+The renderer now adds `Lighting.Ambient` (the venue profile's ambient on fight nights) as a flat fill on every surface,
+as Future lighting does indoors (`AMBIENT_FILL`), and the main hall's zone exposure (GymWarm +0.15).
 
 ## Lighting values (the world outside fights)
 
@@ -25,7 +36,7 @@ profiles (`scene.venueLighting`, `VenueFX.Profiles`): the sun, the sky and the f
 | Technology | Future | Future |
 | ClockTime | 13.6 | 13.6 |
 | Brightness | 3.6 | 4.4 |
-| ExposureCompensation (base) | 0.1 (Ambience then set 0 outdoors, 0.18 in the hall) | 0.35 base; Ambience adds the zone offset (hall +0.1, night outdoors +0.2) |
+| ExposureCompensation (base) | 0.1 (Ambience then set 0 outdoors, 0.18 in the hall) | 0.35 base; Ambience adds the zone offset (hall +0.15, night outdoors +0.2) |
 | Ambient | (138, 132, 126) | (156, 150, 146) |
 | OutdoorAmbient | (150, 158, 172) | (166, 178, 204) |
 | ColorShift_Top | (255, 240, 216) | (255, 234, 196) |
@@ -53,4 +64,19 @@ Ring keys (255, 250, 242) at 5.0 (were (255, 242, 224) at 4.2), kickers 3.0, the
 white. The follow spots step through a gel palette (magenta, cyan, gold, red, blue, green; gold and white on a title
 night) while they sweep the house, and go back to their lamp colours on the boxers in the rounds. Client-local: corner
 glows (red / blue, gold on a title night) at the four posts, apron LED strips, a glowing trim on every LED fascia, the
-house lights tinted red side / blue side. Pyro flashes at 8 (were 5), range 56, in the corner's colour.
+house lights tinted red side / blue side, a static coloured crowd wash (4 wide shadowless spots from the rig onto
+the stands at 2.2, 2 on Low: red / magenta and blue / cyan, gold / amber on a title night). Pyro flashes at 8 (were
+5), range 56, in the corner's colour, the pyro particles recoloured white-hot to the corner's colour (gold on a title
+night), the stadium fireworks in four colour pairs.
+
+## The gym and the menu (this pass)
+
+| | before | after |
+|---|---|---|
+| Pendant lamps | 2.1 .. 2.7 by zone, reflector SmoothPlastic | 2.5 .. 3.0, reflector warm Neon |
+| Roof wash | none | 6 PointLights (255, 232, 198), range 60, 0.9, no shadows, under the roof deck |
+| Window keys | none | a warm SpotLight (255, 238, 200) inside every window, 115 deg, range 48, 1.5, no shadows |
+| Accent colour | none | 5 neon zone signs (1 light each), red / blue apron LEDs (4 lights), red / blue gel cans over the ring, magenta / cyan spots over the bags and stations, red LED frames on the round timers |
+| GymWarm zone exposure | +0.1 | +0.15 |
+| Menu key / rim / kicker / fill | 2.6 warm / 4.4 gold / 2.2 cool / 0.45 | 3.2 warm / 7 magenta (255, 70, 170) / 4.5 cyan (70, 205, 255) / 0.7 |
+| Menu backdrop | brick | magenta -> violet -> blue gradient panel (LightInfluence 0.15) with magenta / blue wall washes at 2.2, range 28 |

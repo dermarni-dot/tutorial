@@ -313,7 +313,7 @@ function FightAI:OnOppMiss(ptype, why)
 	end
 	local kind = Config.Punches[ptype] and Config.Punches[ptype].kind or "straight"
 	-- (a skilled boxer makes him pay for most of his misses; the style's punish: a counter-puncher lives on them)
-	local chance = (0.22 + 0.45 * self.skill) * self.tier.read * self.tactics.punish * (kind == "straight" and 0.75 or 1) * math.min(1, engine.aiWork or 1)
+	local chance = (0.12 + 0.3 * self.skill) * math.min(1.15, self.tier.read) * self.tactics.punish * (kind == "straight" and 0.75 or 1) * math.min(1, engine.aiWork or 1)
 	if self.rng:NextNumber() > chance then
 		return
 	end
@@ -417,7 +417,7 @@ function FightAI:ExploitCombo(open, dist)
 			if not ok then
 				break
 			end
-			ok = dist <= engine:PunchRange(F, step[1]) + (i == 1 and 0.25 or 0.6)
+			ok = self:Fits(step[1], dist - (i == 1 and 0 or 0.5))
 		end
 		if ok then
 			table.insert(pool, c)
@@ -466,7 +466,7 @@ function FightAI:OnOppPunch(ptype, body, windup, info)
 	end
 	local s = F.data.stats
 	-- (the tier's read: a world-class boxer defends more of what he sees, a debut's less)
-	local chance = (s.Reflexes * 0.5 + s.RingIQ * 0.3 + s.HeadMovement * 0.2) / 100 * 0.62 * (0.85 + 0.25 * self.tier.read)
+	local chance = (s.Reflexes * 0.5 + s.RingIQ * 0.3 + s.HeadMovement * 0.2) / 100 * 0.75 * (0.85 + 0.25 * self.tier.read)
 	chance += (self.anticipate[ptype] or 0) * 0.3
 	-- slip the punch he throws most (the read of tonight); a body puncher's shots are expected low
 	chance += self.read:Share(ptype) * 0.25 * self.arch.adapt
@@ -778,13 +778,17 @@ end
 -- is this punch worth throwing from dist? A straight goes out to its reach (and a quarter stud over: the step it
 -- takes); a hook or an uppercut is thrown where it lands solid, inside the last INSIDE share of its reach (a hook
 -- that just reaches from range is a glancing shot: FightEngine's stretch), never at the edge
+-- and a boxer throws them from where they are THOSE punches, not off a lunge: the animation carries a hook out past
+-- the jab on a long lunge (HitGeometry measures where the glove visibly lands, and a punch the player saw land
+-- registers), but the AI chooses its hooks and uppercuts inside, a share of its own jab's reach (INSIDE_JAB)
 local INSIDE = { hook = 0.9, uppercut = 0.9, overhand = 0.95 }
+local INSIDE_JAB = { hook = 0.8, uppercut = 0.75, overhand = 0.92 }
 function FightAI:Fits(ptype, dist)
 	local range = self.engine:PunchRange(self.F, ptype)
 	local kind = Config.Punches[ptype] and Config.Punches[ptype].kind or "straight"
 	local k = INSIDE[kind]
 	if k then
-		return dist <= range * k
+		return dist <= math.min(range * k, self.engine:PunchRange(self.F, "jab") * INSIDE_JAB[kind])
 	end
 	return dist <= range + 0.25
 end
@@ -923,7 +927,7 @@ function FightAI:PickPlan(dist)
 		end
 		for i, step in ipairs(plan) do
 			-- (the later punches are thrown a step closer: only the first must reach from here, the rest nearly)
-			if dist > self.engine:PunchRange(F, step[1]) + (i == 1 and 0.25 or 0.6) then
+			if not self:Fits(step[1], dist - (i == 1 and 0 or 0.5)) then
 				return false
 			end
 		end
@@ -1162,7 +1166,7 @@ function FightAI:Think(now)
 	end
 	-- its own defence worked (a slip, a parry, a roll: the engine's counter window): fire back - the timed counter a
 	-- boxer drills, more from a counter-puncher and a high tier
-	local counterK = math.clamp((0.45 + 0.45 * self.skill) * self.tactics.counter * math.min(1.25, self.tier.read), 0.2, 0.95)
+	local counterK = math.clamp((0.2 + 0.35 * self.skill) * self.tactics.counter * math.min(1.15, self.tier.read), 0.15, 0.8)
 	if now < F.counterUntil and self:Fits("jab", dist) and self.rng:NextNumber() < counterK then
 		self:Throw(self:CounterPunch(dist), false)
 		self:Note(now, "counter")
@@ -1270,10 +1274,10 @@ function FightAI:Think(now)
 			end
 			return
 		end
-		-- (between its punches a boxer keeps his feet moving; the guard held still in range is the raw one's habit)
-		if self.rng:NextNumber() < (1 - aggr) * 0.18 * (0.6 + self.arch.block) * (engine.aiDefense or 1) * (1.2 - 0.5 * self.skill) then
-			engine:SetBlock(F, true)
-			self.blockUntil = now + 0.4
+		-- between its punches, in his reach, a boxer keeps his hands up: the guard costs it no punch (its next one drops
+		-- it) and turns his head shots into chips - the defence quality that keeps a harder AI's fights going the
+		-- rounds rather than a slugfest over in a minute; a raw boxer's hands hang more often
+		if self:HandsUp(now, dist) then
 			self:Note(now, "guard")
 			return
 		end
@@ -1285,10 +1289,30 @@ function FightAI:Think(now)
 		self.closeUntil = now + 0.7
 		self.nextMove = 0
 		self.nextThink = math.min(self.nextThink, now + 0.15)
+		self:HandsUp(now, dist) -- (walking in behind the guard)
 		self:Note(now, string.format("step in %.1f > %.1f", dist, jab))
 	else
+		self:HandsUp(now, dist)
 		self:Note(now, string.format("out of range %.1f > %.1f", dist, jab))
 	end
+end
+
+-- the guard between its punches: inside his reach (his cross and a step) a boxer keeps his hands up whenever he
+-- is not throwing - it costs no punch (its next one drops it), turns his head shots into chips and softens the
+-- body shots: the defence quality that keeps a harder, busier AI's fights going the rounds instead of a slugfest
+-- over in a minute. A raw boxer's hands hang more often; a blocking archetype and a high tier keep them up more
+function FightAI:HandsUp(now, dist)
+	local F, O, engine = self.F, self.O, self.engine
+	if dist > engine:PunchRange(O, "cross") + 0.6 or F.state == "punching" then
+		return false
+	end
+	local k = (0.6 + 0.4 * self.skill) * (0.8 + self.arch.block) * (0.85 + 0.15 * self.tier.read) * (engine.aiDefense or 1)
+	if self.rng:NextNumber() < k then
+		engine:SetBlock(F, true)
+		self.blockUntil = math.max(self.blockUntil, now + 0.45 + 0.25 * self.skill)
+		return true
+	end
+	return false
 end
 
 -- its own combination is out: a skilled boxer turns off at an angle now and then, a raw one drops its hands
