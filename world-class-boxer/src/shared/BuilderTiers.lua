@@ -147,21 +147,49 @@ function BuilderTiers.Template(tier, name, lite, frame)
 end
 
 -- load every uploaded template in the background (server start), so the first boxers do not wait on them: the
--- default family and the lite set first, then the other frames' families
-function BuilderTiers.Preload()
+-- default family first, then its lite set, then the other frames' families. Paced: PRELOAD_GAP seconds between
+-- loads (a load the preloader has not reached yet is made on demand by the boxer that needs it, and one in
+-- flight is shared), and the other families start PRELOAD_DEFER seconds in. The whole set is ~420
+-- CreateMeshPartAsync calls (5 frames x 5 tiers x 14 parts + the lite set): fired back to back, in Studio (one
+-- process for the server and the client) they saturated the asset pipeline for the first minute, while the
+-- player's own parts, the menu's clone and the Creator's previews waited behind them.
+-- opts (optional): { gap = seconds, defer = seconds, families = false (the default family only) }
+BuilderTiers.PRELOAD_GAP = 0.1
+BuilderTiers.PRELOAD_DEFER = 15
+function BuilderTiers.Preload(opts)
+	opts = type(opts) == "table" and opts or {}
+	local gap = tonumber(opts.gap) or BuilderTiers.PRELOAD_GAP
+	local defer = tonumber(opts.defer) or BuilderTiers.PRELOAD_DEFER
+	local function pace()
+		if gap > 0 then
+			task.wait(gap)
+		end
+	end
 	task.spawn(function()
 		for _, lite in ipairs({ false, true }) do
 			for tier = 1, BodyTiers.TIERS do
 				for _, name in ipairs(BodyTiers.PARTS) do
-					BuilderTiers.Template(tier, name, lite)
+					if BodyTiers.PartEntry(tier, name, nil, lite) then
+						BuilderTiers.Template(tier, name, lite)
+						pace()
+					end
 				end
 			end
+		end
+		if opts.families == false then
+			return
+		end
+		if defer > 0 then
+			task.wait(defer)
 		end
 		for _, frame in ipairs(BodyTiers.Frames()) do
 			if frame ~= BodyTiers.DEFAULT_FRAME then
 				for tier = 1, BodyTiers.TIERS do
 					for _, name in ipairs(BodyTiers.PARTS) do
-						BuilderTiers.Template(tier, name, false, frame)
+						if BodyTiers.PartEntry(tier, name, nil, false, frame) then
+							BuilderTiers.Template(tier, name, false, frame)
+							pace()
+						end
 					end
 				end
 			end

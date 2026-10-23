@@ -107,7 +107,8 @@ local function scrollTo(S, name)
 		return false
 	end
 	local y = obj.AbsolutePosition.Y - sc.AbsolutePosition.Y + sc.CanvasPosition.Y
-	sc.CanvasPosition = roblox.Vector2.new(0, math.max(0, y - 150))
+	-- (a phone's short window: the panel right under the top edge; a tall one: the grid stays in view above it)
+	sc.CanvasPosition = roblox.Vector2.new(0, math.max(0, y - (S.H < 500 and 36 or 150)))
 	S.settle(0.2)
 	return true
 end
@@ -146,3 +147,5 @@ for _, dev in ipairs(devices) do
 	end
 end
 print(string.format("v10_frames: %d screens", #files))
+-- (the clients leave threads behind: leave explicitly)
+process.exit(0)

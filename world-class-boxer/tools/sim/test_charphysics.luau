@@ -429,6 +429,49 @@ for _, frame in ipairs({ "Lean", "Athletic", "Power Build", "Heavyweight Build" 
 	end
 end
 
+------------------------------------------------------------------------
+-- [Studio] HipHeight vs the soles: the engine's AutomaticScaling rewrites HipHeight after a part swap and the Humanoid then
+-- holds the root higher or lower than the legs reach. The Animator's floor follows HipHeight (the ground is where the
+-- Humanoid keeps it) when the two disagree by more than 0.05, never on an anchored root (a preview / a posed puppet) and
+-- never for a nonsense value, and goes back to the soles' height once FixHipHeight has put HipHeight back
+------------------------------------------------------------------------
+do
+	local app = Looks.Defaults(1)
+	local _, b = buildFor(app, 3)
+	local sc = Builder.Scales(app, b)
+	local model, hum = newRig(Vector3.new(sc.width, sc.height, sc.depth), 1.2 * sc.head, false)
+	model.Parent = E.workspace
+	local ok = pcall(Builder.Cosmetics, model, app, b, nil, { hands = "gloves", detail = "low" })
+	check("hip-floor rig builds", ok)
+	local root = model:FindFirstChild("HumanoidRootPart")
+	root.Anchored = false
+	local legs = hum.HipHeight
+	local g0 = geoOf(model).geo
+	check(string.format("hip-floor: floor %.3f = the soles' with HipHeight right", -g0.groundY), math.abs(-g0.groundY - (legs + root.Size.Y / 2)) < 0.02 and g0.floorFix == 0)
+	hum.HipHeight = legs + 0.4
+	local g1 = geoOf(model).geo
+	check(string.format("hip-floor: HipHeight 0.4 too high -> floor %.3f follows it (fix %.2f)", -g1.groundY, g1.floorFix),
+		math.abs(-g1.groundY - (legs + 0.4 + root.Size.Y / 2)) < 0.02 and math.abs(g1.floorFix + 0.4) < 0.02 and math.abs(-g1.geoGroundY - (legs + root.Size.Y / 2)) < 0.02)
+	hum.HipHeight = legs - 0.3
+	local g2 = geoOf(model).geo
+	check(string.format("hip-floor: HipHeight 0.3 too low -> floor %.3f follows it", -g2.groundY), math.abs(-g2.groundY - (legs - 0.3 + root.Size.Y / 2)) < 0.02)
+	root.Anchored = true
+	local g3 = geoOf(model).geo
+	check("hip-floor: an anchored root keeps the soles' floor", math.abs(g3.groundY - g0.groundY) < 1e-6 and g3.floorFix == 0)
+	root.Anchored = false
+	hum.HipHeight = legs + 2.5
+	local g4 = geoOf(model).geo
+	check("hip-floor: a nonsense HipHeight is kept out", math.abs(g4.groundY - g0.groundY) < 1e-6)
+	hum.HipHeight = 0
+	local g5 = geoOf(model).geo
+	check("hip-floor: HipHeight 0 is kept out", math.abs(g5.groundY - g0.groundY) < 1e-6)
+	hum.HipHeight = legs
+	check("hip-floor: FixHipHeight is a no-op with the legs' value", BuilderTiers.FixHipHeight(model) == nil)
+	local g6 = geoOf(model).geo
+	check("hip-floor: back to the soles' floor once HipHeight is right", math.abs(g6.groundY - g0.groundY) < 1e-6)
+	model:Destroy()
+end
+
 print(string.format("test_charphysics: %d passed, %d failed", pass, fail))
 if fail > 0 then
 	require("@lune/process").exit(1)

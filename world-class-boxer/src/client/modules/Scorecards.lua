@@ -149,13 +149,13 @@ function Scorecards.Grid(parent, judging, names, opts)
 		UI.Text(cells, (compact and "" or "R") .. i, { Font = T.semi, TextSize = compact and 10 or 11, TextColor3 = i <= #rounds and T.sub or T.dim, Position = UDim2.new((i - 1) / nR, 0, 0, 0), Size = UDim2.new(1 / nR, 0, 1, 0),
 			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 	end
-	UI.Text(box, "TOTAL", { Font = T.semi, TextSize = compact and 10 or 11, TextColor3 = T.gold, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(totalW, rowH),
+	UI.Text(box, "TOTAL", { Font = T.semi, TextSize = compact and 10 or 11, TextColor3 = T.text, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(totalW, rowH),
 		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 	local judgeNames = judging.judgeNames or {}
 	for j = 1, 3 do
 		local y = rowH * j + 2
-		local rowF = UI.Frame(box, { Name = "Judge" .. j, BackgroundColor3 = T.panel2, BackgroundTransparency = j % 2 == 0 and 0.55 or 0.75, Position = UDim2.fromOffset(0, y), Size = UDim2.new(1, 0, 0, rowH) })
-		UI.Corner(rowF, UI.R.sm)
+		local rowF = UI.Frame(box, { Name = "Judge" .. j, BackgroundColor3 = T.panel2, BackgroundTransparency = j % 2 == 0 and 0.6 or 1, Position = UDim2.fromOffset(0, y), Size = UDim2.new(1, 0, 0, rowH) })
+		UI.Frame(rowF, { Name = "Rule", Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.line })
 		local lean = judgeNames[j] and judgeNames[j].lean or nil
 		local leanKey = lean and ({ ["Effective aggression"] = "aggression", ["Clean punching"] = "clean", ["Defence and ring control"] = "defence" })[lean] or nil
 		UI.Text(rowF, compact and ("JUDGE " .. j) or Scorecards.JudgeLabel(j, leanKey), { Font = T.semi, TextSize = compact and 10 or 11, TextColor3 = T.text, Position = UDim2.fromOffset(10, 0), Size = UDim2.fromOffset(labelW - 12, rowH),
@@ -178,9 +178,8 @@ function Scorecards.Grid(parent, judging, names, opts)
 		end
 		local tot = judging.cards and judging.cards[j]
 		local a, b = tot and num(tot[1]) or 0, tot and num(tot[2]) or 0
-		local tf = UI.Frame(rowF, { Name = "Total", BackgroundColor3 = a > b and T.red or (b > a and T.blue or T.panel2), BackgroundTransparency = a == b and 0.3 or 0.72, AnchorPoint = Vector2.new(1, 0.5),
-			Position = UDim2.new(1, -3, 0.5, 0), Size = UDim2.fromOffset(totalW - 6, rowH - 6) })
-		UI.Corner(tf, UI.R.sm)
+		local tf = UI.Frame(rowF, { Name = "Total", BackgroundColor3 = a > b and T.red or (b > a and T.blue or T.panel2), BackgroundTransparency = a == b and 0.3 or 0.72, AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(totalW, rowH) })
 		UI.Text(tf, string.format("%d-%d", a, b), { Face = "number", TextSize = compact and 13 or 16, TextColor3 = T.text, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None,
 			TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 	end
@@ -246,15 +245,14 @@ function Scorecards.OpenRest(rest, ctx)
 	-- the panel: a glass band in the middle of the screen (the HUD's scoreboard above, the ticker below)
 	local W = math.min(compact and 900 or 1080, canvas.X - (compact and 48 or 120))
 	local panel = UI.Frame(root, { Name = "Scorecard", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, compact and 0.53 or 0.55, 0), Size = UDim2.fromOffset(W, 0), AutomaticSize = Enum.AutomaticSize.Y })
-	UI.Glass(panel, { transparency = 0.1, radius = UI.R.xl })
+	UI.Glass(panel, { transparency = 0, radius = UI.R.sm })
 	UI.New("UIPadding", { PaddingTop = UDim.new(0, compact and 10 or 16), PaddingBottom = UDim.new(0, compact and 10 or 16), PaddingLeft = UDim.new(0, compact and 14 or 22), PaddingRight = UDim.new(0, compact and 14 or 22), Parent = panel })
 	UI.List(panel, compact and 6 or 10)
-	local stripe = UI.Frame(panel, { Name = "Stripe", Size = UDim2.new(1, 0, 0, 3), BackgroundColor3 = T.gold, LayoutOrder = 0 })
-	UI.Gradient(stripe, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.7, 0.2), NumberSequenceKeypoint.new(1, 1) }))
+	UI.Frame(panel, { Name = "Stripe", Size = UDim2.new(1, 0, 0, 2), BackgroundColor3 = T.gold, LayoutOrder = 0 })
 	-- the head: the kicker and the round, the totals so far
 	local head = UI.Frame(panel, { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, compact and 46 or 56), LayoutOrder = 1 })
-	UI.Kicker(head, string.format("END OF ROUND %d  ·  UNOFFICIAL SCORECARD", n), T.gold, { Size = UDim2.new(0.6, 0, 0, 16), icon = "contract" })
-	UI.Title(head, compact and "YOUR CORNER" or "YOUR CORNER  ·  BETWEEN ROUNDS", { TextSize = compact and 22 or 30, Position = UDim2.fromOffset(0, compact and 16 or 20), Size = UDim2.new(0.6, 0, 0, compact and 24 or 34),
+	UI.Kicker(head, string.format("End of round %d  ·  unofficial scorecard", n), nil, { Size = UDim2.new(0.6, 0, 0, 16), icon = "contract" })
+	UI.Title(head, compact and "Your corner" or "Your corner  ·  between rounds", { TextSize = compact and 20 or 24, Position = UDim2.fromOffset(0, compact and 18 or 22), Size = UDim2.new(0.6, 0, 0, compact and 24 or 30),
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	-- the three totals at the right: you - opp on each card
 	local totals = UI.Frame(head, { Name = "Totals", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0.4, 0, 1, 0) })
@@ -262,9 +260,9 @@ function Scorecards.OpenRest(rest, ctx)
 	for j = 1, 3 do
 		local c = card.cards and card.cards[j] or { 0, 0 }
 		local a, b = num(c[1]), num(c[2])
-		local f = UI.Frame(totals, { Size = UDim2.fromOffset(compact and 70 or 84, compact and 44 or 52), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.3, LayoutOrder = j })
-		UI.Corner(f, UI.R.md)
-		UI.Stroke(f, a > b and T.red or (b > a and T.blue or Color3.new(1, 1, 1)), 1, a == b and UI.Hair.soft or 0.35)
+		local f = UI.Frame(totals, { Size = UDim2.fromOffset(compact and 70 or 84, compact and 44 or 52), BackgroundColor3 = T.panel, BackgroundTransparency = 0, LayoutOrder = j })
+		UI.Stroke(f, a > b and T.red or (b > a and T.blue or T.line), 1, 0)
+		UI.Frame(f, { Name = "Mark", Size = UDim2.new(1, 0, 0, 2), BackgroundColor3 = a > b and T.red or (b > a and T.blue or T.line) })
 		UI.Text(f, string.format("%d-%d", a, b), { Face = "number", TextSize = compact and 16 or 22, TextColor3 = T.text, Size = UDim2.new(1, 0, 0.64, 0), AutomaticSize = Enum.AutomaticSize.None,
 			TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 		UI.Text(f, "JUDGE " .. j, { Font = T.semi, TextSize = 9, TextColor3 = T.sub, Position = UDim2.new(0, 0, 0.62, 0), Size = UDim2.new(1, 0, 0.38, 0), AutomaticSize = Enum.AutomaticSize.None,
@@ -273,9 +271,8 @@ function Scorecards.OpenRest(rest, ctx)
 	-- the body: the round's card (left) and the punch stats (right)
 	local body = UI.Frame(panel, { Name = "Body", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 })
 	UI.List(body, compact and 10 or 16, true)
-	local left = UI.Frame(body, { Name = "Round", BackgroundColor3 = T.panel, BackgroundTransparency = 0.35, Size = UDim2.new(0.42, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1 })
-	UI.Corner(left, UI.R.lg)
-	UI.Stroke(left, Color3.new(1, 1, 1), 1, UI.Hair.faint)
+	local left = UI.Frame(body, { Name = "Round", BackgroundColor3 = T.panel, BackgroundTransparency = 0, Size = UDim2.new(0.42, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1 })
+	UI.Stroke(left, T.line, 1, 0)
 	UI.New("UIPadding", { PaddingTop = UDim.new(0, compact and 8 or 12), PaddingBottom = UDim.new(0, compact and 8 or 12), PaddingLeft = UDim.new(0, compact and 10 or 14), PaddingRight = UDim.new(0, compact and 10 or 14), Parent = left })
 	UI.List(left, compact and 4 or 6)
 	local function surname(name)
@@ -289,8 +286,7 @@ function Scorecards.OpenRest(rest, ctx)
 		local a, b = num(rc[1]), num(rc[2])
 		local rowH = compact and 34 or 40
 		local row = UI.Frame(left, { Name = "J" .. j, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, rowH), LayoutOrder = j })
-		local mark = UI.Frame(row, { Size = UDim2.new(0, 4, 1, -8), Position = UDim2.fromOffset(0, 4), BackgroundColor3 = a > b and T.red or (b > a and T.blue or T.line) })
-		UI.Corner(mark, 2)
+		UI.Frame(row, { Size = UDim2.new(0, 3, 1, -8), Position = UDim2.fromOffset(0, 4), BackgroundColor3 = a > b and T.red or (b > a and T.blue or T.line) })
 		UI.Text(row, Scorecards.JudgeLabel(j, jd.id), { Font = T.semi, TextSize = compact and 10 or 11, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -80, 0, 14), AutomaticSize = Enum.AutomaticSize.None,
 			TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		UI.Text(row, jd.reason or (a == b and "An even round" or "The better work"), { Font = T.font, TextSize = compact and 11 or 13, TextColor3 = T.text, Position = UDim2.fromOffset(12, compact and 13 or 16), Size = UDim2.new(1, -80, 0, compact and 15 or 20),

@@ -37,7 +37,7 @@ FrameTraits.Data = {
 	Lean = {
 		name = "Lean", short = "Lean", tag = "Fast hands, long jab",
 		power = 0.93, kdPower = 0.90, handSpeed = 1.10, footSpeed = 1.08, tank = 1.04, staminaDrain = 0.92, powerDrain = 1, staminaRegen = 1.10,
-		chin = 0.96, bodyAbsorb = 0.90, reachBonus = 1.04, kdResist = 0.96, getUpTime = 0.95, clinch = 0.88, insideBonus = 0.95, dodgeWindow = 1.15, target = 0.92,
+		chin = 0.97, bodyAbsorb = 0.90, reachBonus = 1.04, kdResist = 0.98, getUpTime = 0.95, clinch = 0.88, insideBonus = 0.95, dodgeWindow = 1.15, target = 0.92,
 		ai = { range = 0.04, aggr = 0.02, clinch = 0.0, inside = 0.8, press = 0 },
 		pros = { "Fastest hands: shorter punch windows, quicker recovery", "Quick feet and longer slip and dodge windows", "Spends less stamina a punch, recovers more", "Long arms: reaches further at the same height" },
 		cons = { "Less power behind every punch", "A softer chin: goes down easier", "Body shots hurt more and take more gas" },
@@ -60,22 +60,37 @@ FrameTraits.Data = {
 	},
 	["Power Build"] = {
 		name = "Power Build", short = "Power", tag = "One-punch power inside",
-		power = 1.05, kdPower = 1.06, handSpeed = 0.93, footSpeed = 0.94, tank = 0.96, staminaDrain = 1.06, powerDrain = 1.06, staminaRegen = 0.92,
-		chin = 1.04, bodyAbsorb = 1.04, reachBonus = 1, kdResist = 1.06, getUpTime = 1.05, clinch = 1.12, insideBonus = 1.08, dodgeWindow = 0.94, target = 1.03,
+		power = 1.04, kdPower = 1.05, handSpeed = 0.93, footSpeed = 0.94, tank = 0.96, staminaDrain = 1.06, powerDrain = 1.06, staminaRegen = 0.92,
+		chin = 1.03, bodyAbsorb = 1.04, reachBonus = 1, kdResist = 1.05, getUpTime = 1.05, clinch = 1.12, insideBonus = 1.06, dodgeWindow = 0.94, target = 1.03,
 		ai = { range = -0.08, aggr = 0.08, clinch = 0.06, inside = 1.2, press = 0.12 },
 		pros = { "The biggest single punch and knockdown chance", "A hard chin: very hard to drop", "Strong in the clinch and inside: hooks and uppercuts land harder" },
 		cons = { "Slower hands and feet", "Gasses in the later rounds", "Easier to outbox at range" },
 	},
 	["Heavyweight Build"] = {
 		name = "Heavyweight Build", short = "Heavyweight", tag = "Raw power, slow burn",
-		power = 1.10, kdPower = 1.04, handSpeed = 0.88, footSpeed = 0.88, tank = 0.92, staminaDrain = 1.12, powerDrain = 1.06, staminaRegen = 0.84,
-		chin = 1.07, bodyAbsorb = 1.12, reachBonus = 1, kdResist = 1.10, getUpTime = 1.18, clinch = 1.20, insideBonus = 1.06, dodgeWindow = 0.90, target = 1.08,
+		power = 1.09, kdPower = 1.03, handSpeed = 0.88, footSpeed = 0.88, tank = 0.92, staminaDrain = 1.12, powerDrain = 1.06, staminaRegen = 0.84,
+		chin = 1.06, bodyAbsorb = 1.12, reachBonus = 1, kdResist = 1.08, getUpTime = 1.18, clinch = 1.20, insideBonus = 1.06, dodgeWindow = 0.90, target = 1.08,
 		ai = { range = -0.10, aggr = 0.1, clinch = 0.09, inside = 1.2, press = 0.15 },
 		pros = { "The strongest raw power", "Absorbs body shots best and is the hardest to knock down", "The heaviest clinch: holds and wears the other man" },
 		cons = { "The slowest feet and hands", "The worst stamina", "The biggest target, and slower up off the canvas" },
 	},
 }
 FrameTraits.Order = { "Lean", "Athletic", "Muscular", "Power Build", "Heavyweight Build" }
+
+-- [FrameTraits] how fast the frame's stats grow in training (Training.GainMultiplier): small, the frame's nature.
+-- A stat not listed grows at the usual rate.
+FrameTraits.Growth = {
+	Lean = { PunchSpeed = 1.08, Footwork = 1.08, Reflexes = 1.05, Power = 0.94, Chin = 0.95 },
+	Athletic = { Stamina = 1.04, Recovery = 1.04 },
+	Muscular = { Power = 1.05, Chin = 1.04, PunchSpeed = 0.97 },
+	["Power Build"] = { Power = 1.08, Chin = 1.06, PunchSpeed = 0.95, Footwork = 0.95 },
+	["Heavyweight Build"] = { Power = 1.08, Chin = 1.08, Endurance = 1.04, PunchSpeed = 0.94, Footwork = 0.93, Stamina = 0.96 },
+}
+function FrameTraits.GrowthMul(id, statKey)
+	local g = FrameTraits.Growth[id]
+	local v = g and g[statKey]
+	return type(v) == "number" and v or 1
+end
 
 local NEUTRAL = {}
 for _, k in ipairs(FrameTraits.Keys) do

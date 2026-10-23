@@ -1328,24 +1328,28 @@ R.Body = function(body, P)
 	for _, part in ipairs(Config.MuscleParts) do
 		dev[part.id] = partLevel(P, part.id)
 	end
-	-- the physique hero: the body map coloured by development toward the frame's potential (dark =
-	-- untrained, gold = at the potential) beside the physique and the three muscles to train next
-	local c = UI.Card(body, { stroke = T.gold })
-	local mapW, mapH = compact and 220 or 330, compact and 290 or 420
-	local top = UI.Frame(c, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, mapH) })
-	local map = BodyMap.new(top, { Size = UDim2.fromOffset(mapW, mapH), legend = true })
+	-- the composition of this screen (its own shape in the hub): the figure on a dark stage at the left, a
+	-- stacked column of readouts at the right - the physique, a ledger of the three muscles to train next, a
+	-- vertical timeline of the growth logged day by day - and the body's numbers under them
+	local c = UI.Frame(body, { Name = "Physique", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+	local mapW, mapH = compact and 220 or 300, compact and 290 or 400
+	local stageW = mapW + 32
+	local stage = UI.Frame(c, { Name = "Stage", BackgroundColor3 = T.ink, Size = UDim2.fromOffset(stageW, mapH + 32) })
+	UI.Corner(stage, UI.R.lg)
+	UI.Stroke(stage, T.line, 1, 0)
+	local map = BodyMap.new(stage, { Size = UDim2.fromOffset(mapW, mapH), Position = UDim2.fromOffset(16, 16), legend = true })
 	map:SetDevelopment(dev, cap)
-	local info = UI.Frame(top, { BackgroundTransparency = 1, Position = UDim2.fromOffset(mapW + 24, 0), Size = UDim2.new(1, -(mapW + 24), 1, 0) })
-	UI.List(info, 6)
-	UI.Kicker(info, "PHYSIQUE", T.gold, { order = 1 })
-	UI.Title(info, tostring(P.physique or "?"):upper(), { TextSize = compact and 32 or 40, Size = UDim2.new(1, 0, 0, compact and 36 or 44), LayoutOrder = 2, TextTruncate = Enum.TextTruncate.AtEnd })
+	local info = UI.Frame(c, { Name = "Readouts", BackgroundTransparency = 1, Position = UDim2.fromOffset(stageW + 20, 0), Size = UDim2.new(1, -(stageW + 20), 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+	UI.List(info, 8)
+	UI.Kicker(info, "Physique", nil, { order = 1 })
+	UI.Title(info, tostring(P.physique or "?"), { TextSize = compact and 22 or 26, Size = UDim2.new(1, 0, 0, compact and 26 or 30), LayoutOrder = 2, TextTruncate = Enum.TextTruncate.AtEnd })
 	if P.physiqueDesc and P.physiqueDesc ~= "" then
-		UI.Line(info, P.physiqueDesc, { TextSize = 14, LayoutOrder = 3, TextColor3 = T.sub })
+		UI.Line(info, P.physiqueDesc, { TextSize = 13, LayoutOrder = 3, TextColor3 = T.sub })
 	end
 	if P.physiquePinned and not compact then
-		UI.Line(info, "Look chosen in the creator: training still grows every muscle, the silhouette keeps this archetype.", { TextColor3 = T.sub, TextSize = 13, LayoutOrder = 4 })
+		UI.Line(info, "The look chosen in the creator stays; training still builds every muscle.", { TextColor3 = T.sub, TextSize = 13, LayoutOrder = 4 })
 	end
-	-- the three least developed muscles (against the potential), each with the exercise that builds it
+	-- the ledger: the three least developed muscles (against the potential), each with the exercise that builds it
 	local order = {}
 	for _, part in ipairs(Config.MuscleParts) do
 		table.insert(order, { id = part.id, v = dev[part.id] or 0 })
@@ -1356,41 +1360,101 @@ R.Body = function(body, P)
 		end
 		return a.id < b.id
 	end)
-	UI.Kicker(info, "TRAIN NEXT  ·  YOUR WEAKEST MUSCLES", T.red, { order = 5 })
+	UI.Kicker(info, "Train next  ·  your weakest muscles", T.red, { order = 5 })
+	local ledger = UI.Frame(info, { Name = "TrainNext", BackgroundColor3 = T.panel, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 6 })
+	UI.Stroke(ledger, T.line, 1, 0)
+	UI.List(ledger, 0)
 	for i = 1, 3 do
 		local e = order[i]
 		if not e then
 			break
 		end
 		local ex = bestExerciseFor(e.id)
-		local trainH = hit(info, 34)
-		local rowH = math.max(54, trainH + 10)
-		-- a phone's row is finger-high: the exercise gets a line of its own under the muscle (one line
-		-- cut "BARBELL DEADLI..." at the text floor)
-		local twoLines = rowH >= 64
-		local row = UI.Frame(info, { BackgroundColor3 = T.panel2, BackgroundTransparency = 0.45, Size = UDim2.new(1, 0, 0, rowH), LayoutOrder = 5 + i })
-		UI.Corner(row, UI.R.md)
-		UI.Text(row, string.upper(BodyMap.Short(e.id)) .. (ex and string.format('<font color="#%s">%s%s</font>', T.sub:ToHex(), twoLines and "\n" or "  ·  ", string.upper(ex.name)) or ""), {
-			Face = "displayMed", TextSize = twoLines and 16 or 18, RichText = true, Position = UDim2.fromOffset(12, 4), Size = UDim2.new(1, -150, 0, twoLines and rowH - 22 or 22), AutomaticSize = Enum.AutomaticSize.None,
-			TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, TextYAlignment = Enum.TextYAlignment.Top })
-		UI.LevelBar(row, { Position = UDim2.new(0, 12, 0, rowH - 22), Size = UDim2.new(1, -196, 0, 8) }, { value = e.v, cap = cap, color = BodyMap.DevColor(e.v / cap) })
-		UI.Text(row, string.format("%d / %d", math.floor(e.v + 0.5), math.floor(cap + 0.5)), { Face = "number", TextSize = 15, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -140, 0, rowH - 28),
+		local trainH = hit(info, 32)
+		local rowH = math.max(52, trainH + 16)
+		local row = UI.Frame(ledger, { Name = "Next" .. i, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, rowH), LayoutOrder = i })
+		if i > 1 then
+			UI.Frame(row, { Name = "Rule", Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.line })
+		end
+		UI.Text(row, BodyMap.Short(e.id), { Face = "heading", TextSize = 14, Position = UDim2.fromOffset(12, 8), Size = UDim2.new(0.5, -12, 0, 18), AutomaticSize = Enum.AutomaticSize.None,
+			TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		if ex then
+			UI.Text(row, ex.name, { TextSize = 12, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 27), Size = UDim2.new(0.5, -12, 0, 16), AutomaticSize = Enum.AutomaticSize.None,
+				TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		end
+		UI.LevelBar(row, { Position = UDim2.new(0.5, 0, 0, math.floor(rowH / 2) - 3), Size = UDim2.new(0.5, -(trainH * 3 + 72), 0, 6) }, { value = e.v, cap = cap, color = BodyMap.DevColor(e.v / cap) })
+		UI.Text(row, string.format("%d / %d", math.floor(e.v + 0.5), math.floor(cap + 0.5)), { Face = "numberMed", TextSize = 13, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -(trainH * 3 + 12), 0.5, 0),
 			Size = UDim2.fromOffset(52, 18), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
 		if ex then
-			UI.Button(row, "TRAIN THIS", { Size = UDim2.fromOffset(120, trainH), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), BackgroundColor3 = T.gold, TextColor3 = T.bg, TextSize = 14 }, function()
+			UI.Button(row, "Train", { Size = UDim2.fromOffset(trainH * 3 - 8, trainH), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), BackgroundColor3 = T.gold, TextColor3 = T.ink, TextSize = 13 }, function()
 				startExercise(ex)
 			end)
 		end
 	end
-	-- the 3D muscle view: the figure to turn, every group lit, growth over time
+	-- the muscle screen: the figure to turn, every group lit, growth over time
 	if MuscleScreen then
-		local b = UI.Button(info, "3D MUSCLE VIEW  ·  GROWTH OVER TIME", { Name = "MuscleView", Size = UDim2.new(1, 0, 0, hit(info, 36)), LayoutOrder = 9, BackgroundColor3 = T.panel2, TextSize = 14 }, function()
+		UI.Button(info, "Muscle view and growth", { Name = "MuscleView", Size = UDim2.new(1, 0, 0, hit(info, 34)), LayoutOrder = 7, BackgroundColor3 = T.panel2, TextSize = 13 }, function()
 			openMuscleScreen(nil)
 		end)
-		UI.Stroke(b, T.gold, 1, 0.5)
+	end
+	-- the growth timeline: the days the server logged (GetMuscleHistory: one row per day with every group's
+	-- level), the total of the groups and what each day added, newest at the bottom
+	do
+		local okH, hres = pcall(State.req, "GetMuscleHistory")
+		local hist = (okH and type(hres) == "table" and type(hres.history) == "table") and hres.history or {}
+		local rows = {}
+		for _, r in ipairs(hist) do
+			local total, d = 0, tonumber(r.d)
+			for _, k in ipairs(Config.MuscleKeys) do
+				total += tonumber(r[k]) or 0
+			end
+			if d then
+				table.insert(rows, { d = d, v = total })
+			end
+		end
+		local live = 0
+		for _, k in ipairs(Config.MuscleKeys) do
+			live += tonumber(P.body[k]) or 0
+		end
+		if #rows == 0 or rows[#rows].d < (P.day or 1) then
+			table.insert(rows, { d = P.day or 1, v = live, today = true })
+		else
+			rows[#rows].v, rows[#rows].today = live, true
+		end
+		local first = math.max(1, #rows - 5)
+		UI.Kicker(info, "Growth  ·  muscle logged day by day", nil, { order = 8 })
+		local tl = UI.Frame(info, { Name = "Timeline", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 9 })
+		UI.List(tl, 0)
+		local n = #rows - first + 1
+		if n <= 1 and #hist == 0 then
+			UI.Line(tl, "No days logged yet. Train, eat and sleep: every night adds a line here.", { TextSize = 13, TextColor3 = T.sub })
+		end
+		for i = first, #rows do
+			local r = rows[i]
+			local prev = rows[i - 1]
+			local delta = prev and (r.v - prev.v) or nil
+			local rowH = 30
+			local row = UI.Frame(tl, { Name = "Day" .. r.d, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, rowH), LayoutOrder = i })
+			-- the spine: a line through the dots, a filled dot for today
+			if i > first then
+				UI.Frame(row, { Size = UDim2.new(0, 1, 0.5, 0), Position = UDim2.fromOffset(5, 0), BackgroundColor3 = T.line })
+			end
+			if i < #rows then
+				UI.Frame(row, { Size = UDim2.new(0, 1, 0.5, 0), Position = UDim2.new(0, 5, 0.5, 0), BackgroundColor3 = T.line })
+			end
+			local dot = UI.Frame(row, { Size = UDim2.fromOffset(9, 9), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 6, 0.5, 0), BackgroundColor3 = r.today and T.gold or T.panel2 })
+			UI.Corner(dot, 5)
+			UI.Stroke(dot, r.today and T.gold or T.sub, 1, 0)
+			UI.Text(row, r.today and string.format("Day %d  ·  today", r.d) or string.format("Day %d", r.d), { Font = T.semi, TextSize = 13, TextColor3 = r.today and T.text or T.sub,
+				Position = UDim2.fromOffset(22, 0), Size = UDim2.new(0.5, -22, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+			UI.Text(row, string.format("%.1f", r.v), { Face = "numberMed", TextSize = 13, TextColor3 = T.text, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -64, 0, 0), Size = UDim2.fromOffset(70, rowH),
+				AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+			UI.Text(row, delta and string.format("%s%.1f", delta >= 0 and "+" or "", delta) or "", { Face = "numberMed", TextSize = 13, TextColor3 = (delta or 0) > 0.05 and T.green or ((delta or 0) < -0.05 and T.orange or T.dim),
+				AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(56, rowH), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+		end
 	end
 	-- the archetype ladder: where this build sits among the physiques the game recognises
-	local row = UI.Frame(c, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26) })
+	local row = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 26) })
 	UI.List(row, 6, true)
 	for i, ph in ipairs(Config.Physiques) do
 		local cur = ph.id == P.physiqueId or ph.name == P.physique
@@ -1400,24 +1464,27 @@ R.Body = function(body, P)
 			UI.Chip(row, ph.name, T.sub, { order = i, h = 26, TextSize = 12 })
 		end
 	end
+	-- the body's numbers: what the frame is (the body type picked in the creator, which sets the potential every
+	-- muscle grows toward) is said as such, apart from what the training made of it
+	local facts = UI.Card(body, { gap = 6 })
 	local fat = P.body.fat or 14
 	local ph = Config.FindById(Config.Physiques, P.physiqueId or "")
 	local def = Config.Definition(fat, ph and ph.defBonus or 0)
-	UI.Line(c, string.format("Height %s  ·  Reach %d in  ·  Weight %.1f lbs  ·  Frame: %s (potential %d)",
-		Config.HeightText(P.physical.height), P.physical.reach, P.weight, P.appearance.body.frame, math.floor(cap + 0.5)), { TextSize = 14 })
-	UI.StatRow(c, "Body fat", fat - 6, 24, fat > 18 and T.orange or T.green, string.format("%.1f%%", fat))
-	UI.StatRow(c, "Definition", def * 100, 100, Color3.fromRGB(150, 200, 255), string.format("%d%%", math.floor(def * 100 + 0.5)))
-	UI.StatRow(c, "Vascularity", P.body.vasc or 0, 100, Color3.fromRGB(110, 150, 230), string.format("%d", math.floor(P.body.vasc or 0)))
-	local fat2 = fat >= Config.BodyFat.bellyAt and "A soft belly is showing - cardio and clean meals bring the abs back."
-		or (def >= Config.BodyFat.absRow4Def and "Shredded: full eight-pack, veins and muscle separation on show."
-		or (def >= 0.4 and "Abs are visible; drop a little more fat for full separation." or "Muscles are smooth under the skin - lower body fat brings out definition."))
-	UI.Line(c, fat2, { TextColor3 = T.sub, TextSize = 13 })
+	UI.Line(facts, string.format("Height %s  ·  Reach %d in  ·  Weight %.1f lbs", Config.HeightText(P.physical.height), P.physical.reach, P.weight), { TextSize = 14 })
+	UI.Line(facts, string.format("Body type %s (picked in the creator)  ·  muscle potential %d", (tostring(frameDef.id):gsub(" Build$", "")), math.floor(cap + 0.5)), { TextSize = 13, TextColor3 = T.sub })
+	UI.StatRow(facts, "Body fat", fat - 6, 24, fat > 18 and T.orange or T.green, string.format("%.1f%%", fat))
+	UI.StatRow(facts, "Definition", def * 100, 100, T.blue, string.format("%d%%", math.floor(def * 100 + 0.5)))
+	UI.StatRow(facts, "Vascularity", P.body.vasc or 0, 100, T.blue, string.format("%d", math.floor(P.body.vasc or 0)))
+	local fat2 = fat >= Config.BodyFat.bellyAt and "A soft belly is showing. Cardio and clean meals bring the abs back."
+		or (def >= Config.BodyFat.absRow4Def and "Shredded: a full eight-pack, veins and muscle separation on show."
+		or (def >= 0.4 and "The abs are visible; a little less fat brings full separation." or "The muscles are smooth under the skin; lower body fat brings out definition."))
+	UI.Line(facts, fat2, { TextColor3 = T.sub, TextSize = 13 })
 
 	-- every muscle under its group: the level bar (fill = level, gold tick = your frame's potential)
 	local sore = P.condition and P.condition.sore or {}
 	local m = UI.Card(body)
-	UI.Kicker(m, "MUSCLE DEVELOPMENT", T.gold)
-	UI.Line(m, string.format("Bars fill toward 100; the gold tick is your frame's potential (%d). Soreness shows in orange.", math.floor(cap + 0.5)), { TextColor3 = T.sub, TextSize = 13 })
+	UI.Kicker(m, "Muscle development")
+	UI.Line(m, string.format("Each bar fills toward 100; the gold tick is your body type's potential (%d). Soreness shows in orange.", math.floor(cap + 0.5)), { TextColor3 = T.sub, TextSize = 13 })
 	-- a group row's "3D" button: finger-sized on touch (the row grows to it)
 	local viewH = hit(m, 22)
 	local viewW = math.max(34, viewH)
@@ -1444,7 +1511,7 @@ R.Body = function(body, P)
 		local rowH = MuscleScreen and math.max(26, viewH + 4) or 26
 		-- a finger-high row has room for two lines: the soreness goes under the name
 		local twoLines = soreText ~= nil and rowH >= 40
-		local gname = Config.MuscleNames[k]:upper() .. ((soreText and not twoLines) and ("  ·  " .. soreText) or "")
+		local gname = Config.MuscleNames[k] .. ((soreText and not twoLines) and ("  ·  " .. soreText) or "")
 		local groupRow = levelRow(m, gname, tonumber(P.body[k]) or 0, rowH, true, sv >= 0.4 and T.orange or nil, twoLines and soreText or nil)
 		if MuscleScreen then
 			-- the group's own page of the muscle screen (its figure lit, its growth graph)
@@ -1459,7 +1526,7 @@ R.Body = function(body, P)
 
 	-- flex in front of the mirror: shows off the pump, veins and every muscle you built
 	local fl = UI.Card(body)
-	UI.Kicker(fl, "FLEX", T.gold)
+	UI.Kicker(fl, "Flex")
 	UI.Line(fl, "Strike a pose wherever you stand. Freshly trained muscles show a pump and the veins come up.", { TextColor3 = T.sub, TextSize = 13 })
 	local flexH = hit(fl, 32)
 	local flexRow = UI.Row(fl, flexH + 2)
@@ -1475,7 +1542,7 @@ R.Body = function(body, P)
 	end
 
 	local g = UI.Card(body)
-	UI.Kicker(g, "WHAT BUILDS WHAT", T.gold)
+	UI.Kicker(g, "What builds what")
 	for _, line in ipairs(exerciseGuide()) do
 		UI.Line(g, line, { TextSize = 13, TextColor3 = T.sub })
 	end

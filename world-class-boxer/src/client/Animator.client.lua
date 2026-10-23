@@ -239,12 +239,12 @@ local function stopTracks(rig)
 end
 
 local function applyAnimate(rig)
-	local drive = rig.isPlayer and not rig.released
+	local drive = not rig.released
 	local s = rig.animateScript
-	if s and s.Parent and s.Disabled ~= drive then
+	if rig.isPlayer and s and s.Parent and s.Disabled ~= drive then
 		s.Disabled = drive
 	end
-	if rig.model.Parent and (rig.model:GetAttribute("ProcAnim") == true) ~= drive then
+	if rig.isPlayer and rig.model.Parent and (rig.model:GetAttribute("ProcAnim") == true) ~= drive then
 		rig.model:SetAttribute("ProcAnim", drive or nil)
 	end
 	if drive then
@@ -252,11 +252,34 @@ local function applyAnimate(rig)
 	end
 end
 
+-- [Studio] any track playing on a rig we drive - even at weight 0 - makes the engine's animation step reset every joint's
+-- Transform just before PreSimulation, so a frame we skip or lose shows the bind pose or Roblox's walk between two of
+-- ours: a shake. Tracks reach a rig from its own Animate script (the local character: cloned in on EVERY spawn, and the
+-- Humanoid / Animator can be replaced by Builder.Apply's ApplyDescription), from other players' replicated tracks, and
+-- on NPCs from anything the server might play (it plays nothing: checked). So every rig with an Animator - players and
+-- NPCs - gets AnimationPlayed hooked and its tracks stopped; a late Animator (it arrives after the Humanoid) is caught by
+-- the Humanoid's ChildAdded; and a track found playing anyway on a later frame is stopped and reported once per rig
 local function hookAnimate(rig)
-	if not rig.isPlayer then
-		return
-	end
 	local hum = rig.hum
+	if not (hum and hum.Parent) then
+		hum = rig.model:FindFirstChildOfClass("Humanoid")
+		rig.hum = hum
+	end
+	if hum ~= rig.hookedHum then
+		if rig.humChildConn then
+			rig.humChildConn:Disconnect()
+		end
+		rig.hookedHum = hum
+		rig.humChildConn = hum and hum.ChildAdded:Connect(function(c)
+			if c:IsA("Animator") then
+				task.defer(function()
+					if rigs[rig.model] == rig then
+						hookAnimate(rig)
+					end
+				end)
+			end
+		end) or nil
+	end
 	local an = hum and hum:FindFirstChildOfClass("Animator")
 	if an ~= rig.animator then
 		if rig.animConn then
@@ -268,6 +291,10 @@ local function hookAnimate(rig)
 				pcall(track.Stop, track, 0)
 			end
 		end) or nil
+	end
+	if not rig.isPlayer then
+		applyAnimate(rig)
+		return
 	end
 	local s = rig.model:FindFirstChild("Animate")
 	if not (s and s:IsA("LuaSourceContainer")) then
@@ -288,8 +315,33 @@ local function hookAnimate(rig)
 	applyAnimate(rig)
 end
 
+-- [Studio] a track that slipped past AnimationPlayed (started before the hook, replicated in a burst): polled every
+-- POLL_TRACKS s, stopped, and reported once per rig so a /wcbdiag sample with ANIMATE ticks has a matching Output line
+local POLL_TRACKS = 0.5
+local function pollTracks(rig, t)
+	if rig.released or t < (rig.nextTrackPoll or 0) then
+		return
+	end
+	rig.nextTrackPoll = t + POLL_TRACKS
+	local an = rig.animator
+	if not (an and an.Parent) then
+		return
+	end
+	local ok, tracks = pcall(an.GetPlayingAnimationTracks, an)
+	if ok and #tracks > 0 then
+		for _, tr in ipairs(tracks) do
+			pcall(tr.Stop, tr, 0)
+		end
+		if not rig.trackWarned then
+			rig.trackWarned = true
+			warn(string.format("[Animator] %s: %d animation track(s) were playing on a procedurally driven rig (stopped; they reset the joints every frame)",
+				rig.model.Name, #tracks))
+		end
+	end
+end
+
 local function dropConns(rig)
-	for _, k in ipairs({ "conn", "hipConn", "childConn", "humChildConn", "animConn", "animateConn" }) do
+	for _, k in ipairs({ "conn", "hipConn", "childConn", "humChildConn", "animConn", "animateConn", "descConn" }) do
 		if rig[k] then
 			rig[k]:Disconnect()
 			rig[k] = nil
@@ -357,10 +409,20 @@ local function setup(model)
 		end)
 	end
 	rig.isPlayer = Players:GetPlayerFromCharacter(model) ~= nil
+	-- [Studio] a body part or a joint arriving (ReplaceBodyPartR15 on a tier / frame swap, the classic head swap, a
+	-- respawn's parts streaming in, the Avatar Joint Upgrade's constraints): the joints are re-resolved and the legs
+	-- re-measured on the next frame, not up to a second later - between the swap and the next resolve our writes went
+	-- to the dead joint and the new one showed the bind pose (a pop, legs stiff or into the body)
+	rig.descConn = model.DescendantAdded:Connect(function(d)
+		if R.IsJoint(d) or (d:IsA("BasePart") and d.Parent == model) then
+			rig.resolveNow = true
+			rig.geoNow = true
+		end
+	end)
 	rig.childConn = model.ChildAdded:Connect(function(c)
 		if c.Name == "Anatomy" and c:IsA("Folder") then
 			watchAnatomy(rig, c)
-		elseif rig.isPlayer and (c.Name == "Animate" or c:IsA("Humanoid")) then
+		elseif c.Name == "Animate" or c:IsA("Humanoid") then
 			-- (a character's children arrive after CharacterAdded on a client: the Animate script and the Humanoid
 			-- with its Animator come in later)
 			if c:IsA("Humanoid") then
@@ -378,7 +440,14 @@ local function setup(model)
 		watchAnatomy(rig, af)
 	end
 	R.resolveJoints(rig)
-	R.computeGeo(rig)
+	-- [Studio] a measurement that throws (a joint class with other members, a part mid-replacement) must never leave the
+	-- rig unregistered - that is how every upgraded rig in Studio went undriven: the rig registers regardless, is measured
+	-- again on its first frames (geo.ok false -> retried every 0.4 s) and the failure is reported once
+	local okG, errG = pcall(R.computeGeo, rig)
+	if not okG then
+		rig.geo.ok = false
+		warn("[Animator] " .. model.Name .. ": rig measurement failed (retrying): " .. tostring(errG))
+	end
 	hookAnimate(rig)
 	-- (its turn when it is a still figure drawn at a reduced rate: a crowd that streamed in together spreads
 	-- evenly over the frames instead of updating all on one - an even cost, not a spike every other frame)
@@ -870,6 +939,11 @@ local SLOW_GUARD = { rest = true, win = true, lose = true, walkout = true, clinc
 
 local function updateRig(rig, model, t, dt, lod, rdt)
 	-- joints get replaced (head swap, rescale, respawn): re-resolve dead motors
+	if rig.resolveNow then
+		rig.resolveNow = false
+		R.resolveJoints(rig)
+		rig.nextGeo = 0
+	end
 	if t >= rig.nextResolve then
 		rig.nextResolve = t + 1
 		for _, k in ipairs(KEYS) do
@@ -881,11 +955,10 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 			end
 		end
 		rig.head = model:FindFirstChild("Head")
-		if rig.isPlayer then
-			-- (a late Animator / Animate script, a replaced Humanoid; and any track that slipped past AnimationPlayed)
-			hookAnimate(rig)
-		end
+		-- (a late Animator / Animate script, a replaced Humanoid - on every rig, NPCs too)
+		hookAnimate(rig)
 	end
+	pollTracks(rig, t)
 	if (t >= rig.nextGeo and lod >= 2) or rig.geoNow then
 		rig.nextGeo = rig.geoNow and t + 0.5 or t + 2.5
 		rig.geoNow = false
@@ -1242,6 +1315,15 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 			end
 			if springs then
 				v = R.springOut(rig, k, v)
+			end
+			-- [Studio] a knee never bends backward: whatever wrote it (a filter lerping between two solutions, a spring's
+			-- overshoot, a keyed pose on a leg of another length) a positive pitch on the knee joint - the shin swung
+			-- forward through the thigh - is clipped at the output; the R15 knee flexes about -X only
+			if k == "LK" or k == "RK" then
+				local kx, ky, kz = v:ToEulerAnglesXYZ()
+				if kx > 0.02 then
+					v = CF(v.Position) * CFrame.fromEulerAnglesXYZ(0.02, ky, kz)
+				end
 			end
 			out[k] = v
 		else

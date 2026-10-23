@@ -236,6 +236,22 @@ local function windowFrame(parent, axis, c, along, width, y0, y1)
 	box("WindowSill", 0, winY0 - 0.15, winW + 1, 0.5, 3.2, Color3.fromRGB(150, 146, 140), Enum.Material.Concrete)
 	box("WindowMullion", 0, midY, 0.25, h, 0.5, frameColor, nil, { CanCollide = false })
 	box("WindowTransom", 0, winY0 + h * 0.66, winW, 0.22, 0.5, frameColor, nil, { CanCollide = false })
+	-- daylight key: a warm, wide, shadowless spot just inside each window, aimed into the building (the
+	-- sun itself only reaches the floor through the glass at some hours; this keeps the window walls
+	-- bright and warm all day). Inward = towards the origin on the window's axis (the hall is centred
+	-- on it and the Elite wing's windows face outward on +X / +Z)
+	local inward = c > 0 and -1 or 1
+	local src = box("WindowLight", 0, midY, 0.2, 0.2, 0.2, frameColor, Enum.Material.SmoothPlastic, { Transparency = 1, CanCollide = false, CanQuery = false, CastShadow = false })
+	src.CFrame = CFrame.lookAt(src.Position, src.Position + (axis == "X" and V3(0, 0, inward) or V3(inward, 0, 0)))
+	local wl = Instance.new("SpotLight")
+	wl.Name = "WindowKey"
+	wl.Face = Enum.NormalId.Front
+	wl.Angle = 115
+	wl.Range = 48
+	wl.Brightness = 1.5
+	wl.Color = Color3.fromRGB(255, 238, 200)
+	wl.Shadows = false
+	wl.Parent = src
 end
 
 local function zoneSign(parent, text, cf, color)
@@ -952,31 +968,32 @@ function MapBuilder.BuildGym()
 		warn("[Boxer] city map failed: " .. tostring(err))
 	end
 
-	-- lighting tuned for Future lighting (build.py sets Lighting.Technology): the roof blocks
-	-- the sun indoors so the gym's own lamps light it, daylight streams through the windows.
-	-- Future lights in linear space, so Ambient is a real fill: (64, 60, 56) was ~4% grey and left
-	-- every surface a lamp missed near black. A warm ~15% fill keeps shadows readable while the
-	-- lamps, windows and CharacterLight still do the shaping (not flat). Soft shadows for the same
-	-- reason. The client's Ambience sets the exposure per place (LightLevels) and the time of day.
-	-- A bright, vibrant early afternoon: a strong warm sun (Brightness 3.6, ColorShift_Top warm),
-	-- a soft neutral fill so shadows stay open and readable, crisp shadows (ShadowSoftness 0.2).
-	Lighting.ClockTime = 13.6
-	Lighting.Brightness = 3.6
-	Lighting.Ambient = Color3.fromRGB(138, 132, 126)
-	Lighting.OutdoorAmbient = Color3.fromRGB(150, 158, 172)
-	Lighting.ColorShift_Top = Color3.fromRGB(255, 240, 216)
-	Lighting.ColorShift_Bottom = Color3.fromRGB(210, 220, 240)
-	Lighting.ExposureCompensation = 0.1
-	Lighting.GeographicLatitude = 34
+	-- the global look (Config.Lighting; Technology Future is set by build.py). Future lights in linear
+	-- space, so Ambient is a real fill: the old (64, 60, 56) was ~4% grey and left every surface a lamp
+	-- missed near black. A warm ~35% fill keeps every room readable while the lamps, windows and
+	-- CharacterLight still do the shaping. The client's Ambience sets the exposure per place
+	-- (LightLevels) and the time of day; VenueFX owns the picture on fight nights.
+	local L = Config.Lighting
+	local col = Config.LightingColor
+	local G = L.Global
+	Lighting.ClockTime = G.ClockTime
+	Lighting.Brightness = G.Brightness
+	Lighting.Ambient = col(G.Ambient)
+	Lighting.OutdoorAmbient = col(G.OutdoorAmbient)
+	Lighting.ColorShift_Top = col(G.ColorShift_Top)
+	Lighting.ColorShift_Bottom = col(G.ColorShift_Bottom)
+	Lighting.ExposureCompensation = G.ExposureCompensation
+	Lighting.GeographicLatitude = G.GeographicLatitude
 	pcall(function()
-		Lighting.EnvironmentDiffuseScale = 1
-		Lighting.EnvironmentSpecularScale = 0.7
-		Lighting.ShadowSoftness = 0.2
+		Lighting.EnvironmentDiffuseScale = G.EnvironmentDiffuseScale
+		Lighting.EnvironmentSpecularScale = G.EnvironmentSpecularScale
+		Lighting.ShadowSoftness = G.ShadowSoftness
 	end)
 	pcall(function()
 		local sky = Lighting:FindFirstChildOfClass("Sky") or Instance.new("Sky")
-		sky.SunAngularSize = 14
-		sky.MoonAngularSize = 11
+		sky.SunAngularSize = L.Sky.SunAngularSize
+		sky.MoonAngularSize = L.Sky.MoonAngularSize
+		sky.StarCount = L.Sky.StarCount
 		sky.Parent = Lighting
 	end)
 	local function effect(class, name, props)
@@ -987,31 +1004,33 @@ function MapBuilder.BuildGym()
 			e.Parent = Lighting
 		end
 		for k, v in pairs(props) do
-			e[k] = v
+			e[k] = type(v) == "table" and col(v) or v
 		end
 		return e
 	end
-	-- FightClient finds these by name and switches them off on fight nights
-	-- a gentle global grade: the zone grades (Ambience) add the per-room look on top, so this one
-	-- stays near neutral (stacked contrast crushed the shadows)
-	-- (a touch more saturation and contrast than before: the town is meant to read colourful by day)
-	effect("ColorCorrectionEffect", "GymGrade", { Brightness = 0.03, Contrast = 0.08, Saturation = 0.14, TintColor = Color3.fromRGB(255, 250, 244) })
-	effect("BloomEffect", "GymBloom", { Intensity = 0.3, Size = 28, Threshold = 1.6 })
-	effect("SunRaysEffect", "GymSunRays", { Intensity = 0.08, Spread = 0.7 })
-	-- a thin, bright atmosphere: low density with a little haze so the far skyline and hills recede
+	-- FightClient / VenueFX find these by name and switch them off on fight nights.
+	-- The global grade: +saturation and a little contrast with a warm tint (the zone grades in Ambience
+	-- add the per-room look on top, so they stay gentle); bloom low-threshold enough to catch the Neon
+	-- signs and LED strips; light sun rays
+	effect("ColorCorrectionEffect", "GymGrade", L.Grade)
+	effect("BloomEffect", "GymBloom", L.Bloom)
+	effect("SunRaysEffect", "GymSunRays", L.SunRays)
+	-- a thin, bright atmosphere: low density, a saturated blue decay so the sky reads vivid, a little
+	-- glare and haze so the far skyline and hills recede
 	local atm = Lighting:FindFirstChildOfClass("Atmosphere") or Instance.new("Atmosphere")
-	atm.Density = 0.28
-	atm.Offset = 0.3
-	atm.Color = Color3.fromRGB(222, 228, 238)
-	atm.Decay = Color3.fromRGB(150, 172, 204)
-	atm.Glare = 0.25
-	atm.Haze = 1.6
+	local A = L.Atmosphere
+	atm.Density = A.Density
+	atm.Offset = A.Offset
+	atm.Color = col(A.Color)
+	atm.Decay = col(A.Decay)
+	atm.Glare = A.Glare
+	atm.Haze = A.Haze
 	atm.Parent = Lighting
 	pcall(function()
 		local clouds = workspace.Terrain:FindFirstChildOfClass("Clouds") or Instance.new("Clouds")
-		clouds.Cover = 0.38
-		clouds.Density = 0.5
-		clouds.Color = Color3.fromRGB(255, 255, 255)
+		clouds.Cover = L.Clouds.Cover
+		clouds.Density = L.Clouds.Density
+		clouds.Color = col(L.Clouds.Color)
 		clouds.Parent = workspace.Terrain
 	end)
 	return gym

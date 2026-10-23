@@ -611,11 +611,49 @@ screen("hub_training", function(dev)
 	S.settle(0.6)
 	return S
 end)
--- Moves & Controls
+-- Moves & Controls, and its KEYBOARD tab (the keyboard glyph map over the remap rows)
 screen("controls", function(dev)
 	local S = client(dev)
 	S.require("Client/ControlsMenu").Open({})
 	S.settle(0.6)
+	return S
+end)
+screen("controls_keyboard", function(dev)
+	local S = client(dev)
+	S.require("Client/ControlsMenu").Open({ tab = "kbd" })
+	S.settle(0.6)
+	check("controls_keyboard@" .. dev .. ": the keyboard map", named(S, "KeyboardMap") ~= nil and named(S, "Key_F") ~= nil)
+	return S
+end)
+-- the Body tab: the figure (the image sheet, or frames where it has no id), the train-next ledger, the growth timeline
+screen("hub_body", function(dev)
+	local S = client(dev)
+	S.require("Client/Hub").Open("Body")
+	S.settle(0.8)
+	check("hub_body@" .. dev .. ": the figure, the ledger and the timeline", named(S, "BodyMap") ~= nil and named(S, "TrainNext") ~= nil and named(S, "Timeline") ~= nil)
+	-- (no checkerboard can show: the figure is image layers or frames, never an editable image here)
+	local painted = false
+	for _, d in ipairs(S.playerGui:GetDescendants()) do
+		if d.Name == "Paint" and d:IsA("ImageLabel") then
+			painted = true
+		end
+	end
+	check("hub_body@" .. dev .. ": no editable-image figure", not painted)
+	return S
+end)
+-- the results screen (BoxerClient.PostFightUI): the full-bleed result band, the scorecard ledger, the statistics
+screen("postfight", function(dev)
+	local S = client(dev)
+	local PF = S.require("Client/PostFightUI")
+	PF.Open({
+		venue = "Grand Arena", opp = "Dmitri Volkovsky", earnings = 250000, rounds = 12,
+		notes = { "WORLD CHAMPION: you won the WBC belt", "NEW SPECIAL MOVE: Liver Shot" },
+		result = { outcome = "win", method = "KO", round = 7, reason = "Left hook to the liver", cards = { { 59, 55 }, { 58, 56 }, { 60, 54 } },
+			landed = 143, oppLanded = 88, thrown = 402, oppThrown = 377, kdFor = 2, kdAgainst = 0, headTaken = 40, bodyTaken = 22,
+			combos = { chains = 31, landed = 12, best = 6, bestName = "DEMPSEY FINISH", named = {} }, oppCombos = { landed = 7, best = 4 } },
+	})
+	S.settle(0.8)
+	check("postfight@" .. dev .. ": the result band", named(S, "Band") ~= nil)
 	return S
 end)
 -- the character creator (a new career) and the gym services
@@ -908,7 +946,7 @@ screen("drill_report", function(dev)
 end)
 
 local DEVICES = { "phone", "phone_small", "tablet", "desktop", "console" }
-local PAD_SELECT = { entrance = true, hub = true, hub_life = true, city_store = true, hub_training = true, hub_plan = true, hub_tournaments = true, hub_bracket = true, controls = true, result = true, menu_career = true, tutorial_offer = true, tutorial_done = true, debut_offer = true }
+local PAD_SELECT = { entrance = true, hub = true, hub_body = true, postfight = true, controls_keyboard = true, hub_life = true, city_store = true, hub_training = true, hub_plan = true, hub_tournaments = true, hub_bracket = true, controls = true, result = true, menu_career = true, tutorial_offer = true, tutorial_done = true, debut_offer = true }
 -- (the tutorial's step card is checked with the fight HUD's pieces: on the screen, below the top bar, finger-sized
 -- on touch, apart from the scoreboard, the touch pads, the key strip and the stance chips)
 -- the fight HUD also on a phone with a controller and a short laptop window (the key strip on small canvases)

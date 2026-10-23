@@ -153,7 +153,7 @@ function PostFightUI.Open(data)
 	local canvas = UI.CanvasSize(gui)
 	local short = canvas.Y < 560
 	local compact = canvas.Y < 640
-	local bodyTop = short and 100 or 142
+	local bodyTop = short and 108 or 146
 	body.Position = UDim2.fromOffset(24, bodyTop)
 	body.Size = UDim2.new(1, -48, 1, -(bodyTop + 72))
 	local P = State.P or {}
@@ -169,38 +169,43 @@ function PostFightUI.Open(data)
 		end
 	end
 
-	-- the head: the kicker, the emblem, the headline and the method line
-	local kickerText = titleNote and (won and "CHAMPIONSHIP NIGHT  ·  AND NEW" or "CHAMPIONSHIP NIGHT") or ("FIGHT NIGHT" .. ((data.venue and data.venue ~= "") and ("  ·  " .. string.upper(tostring(data.venue))) or ""))
-	UI.Kicker(win, kickerText, titleNote and T.gold or T.sub, { Position = UDim2.fromOffset(28, short and 14 or 20), Size = UDim2.new(1, -130, 0, 18), icon = titleNote and "belt" or "bell" })
+	-- the head: a full-bleed band across the top of the window in the result's colour (the shape of this
+	-- screen), the kicker and the headline on it in ink, the emblem at its right; the method line under it
+	local bandH = short and 96 or 132
+	local band = UI.Frame(win, { Name = "Band", Size = UDim2.new(1, 0, 0, bandH), BackgroundColor3 = won and T.gold or (lost and T.red or T.panel2), ZIndex = win.ZIndex })
+	UI.Corner(band, UI.R.xl)
+	UI.Frame(band, { Name = "Square", Position = UDim2.new(0, 0, 1, -UI.R.xl), Size = UDim2.new(1, 0, 0, UI.R.xl), BackgroundColor3 = band.BackgroundColor3 })
+	UI.Frame(win, { Name = "BandRule", Position = UDim2.new(0, 0, 0, bandH), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.line })
+	local ink = (won or lost) and T.ink or T.text
+	local kickerText = titleNote and (won and "Championship night  ·  and new" or "Championship night") or ("Fight night" .. ((data.venue and data.venue ~= "") and ("  ·  " .. tostring(data.venue)) or ""))
+	UI.Text(win, string.upper(kickerText), { Font = T.semi, TextSize = 11, TextColor3 = ink, TextTransparency = 0.25, Position = UDim2.fromOffset(28, short and 14 or 20), Size = UDim2.new(1, -130, 0, 16),
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = win.ZIndex + 1 })
 	local emblem = won and (stoppage and "ko" or (titleNote and "belt" or "trophy")) or (lost and (stoppage and "ko" or "glove") or "versus")
 	local es = short and 50 or 72
-	local tile = UI.IconTile(win, emblem, es, col, { Name = "Emblem", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -84, 0, short and 28 or 38), iconScale = 0.62 })
+	local tile = UI.IconTile(win, emblem, es, ink, { Name = "Emblem", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -84, 0, short and 24 or 30), iconScale = 0.62, fill = band.BackgroundColor3, fillT = 0 })
 	local tileScale = UI.New("UIScale", { Scale = 0.6, Parent = tile })
 	UI.Tween(tileScale, { Scale = 1 }, UI.Motion.spring)
-	local headline = won and "VICTORY" or (lost and "DEFEAT" or "DRAW")
-	local big = UI.Title(win, headline, { TextSize = short and 44 or 70, TextColor3 = col, Position = UDim2.fromOffset(24, short and 32 or 40), Size = UDim2.new(1, -140, 0, short and 48 or 76), TextTransparency = 1,
-		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	local headline = won and "Victory" or (lost and "Defeat" or "Draw")
+	local big = UI.Title(win, headline, { TextSize = short and 40 or 56, TextColor3 = ink, Position = UDim2.fromOffset(26, short and 30 or 40), Size = UDim2.new(1, -140, 0, short and 44 or 60), TextTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, ZIndex = win.ZIndex + 1 })
 	UI.Tween(big, { TextTransparency = 0 }, UI.Motion.slow)
-	if won then
-		UI.GoldText(big)
-	end
 	local scores = type(res.scores) == "table" and #res.scores > 0 and (" (" .. table.concat(res.scores, ", ") .. ")") or ""
-	UI.Text(win, string.format("%s%s  ·  ROUND %d  ·  vs %s", string.upper(METHOD[res.method] or tostring(res.method or "")), scores, num(res.round), string.upper(oppName)),
-		{ Font = T.semi, TextSize = short and 13 or 15, TextColor3 = T.text, Position = UDim2.fromOffset(28, short and 78 or 114), Size = UDim2.new(1, -140, 0, 20), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
-			TextTruncate = Enum.TextTruncate.AtEnd })
+	UI.Text(win, string.format("%s%s  ·  Round %d  ·  vs %s", METHOD[res.method] or tostring(res.method or ""), scores, num(res.round), oppName),
+		{ Font = T.semi, TextSize = short and 13 or 14, TextColor3 = ink, Position = UDim2.fromOffset(28, short and 74 or 104), Size = UDim2.new(1, -140, 0, 20), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
+			TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = win.ZIndex + 1 })
 
 	-- the announcer's call (a line of the ring announcer's script)
 	local call
 	if res.outcome == "draw" then
 		call = "\"...this bout is declared a draw.\""
 	elseif stoppage then
-		call = string.format("\"...the winner, by %s... %s!\"", string.upper(METHOD[res.method] or res.method), string.upper(won and youName or oppName))
+		call = string.format("\"...the winner, by %s: %s.\"", string.lower(METHOD[res.method] or res.method), won and youName or oppName)
 	else
-		call = string.format("\"...and the winner, by %s... %s!\"", string.upper(res.decisionText or METHOD[res.method] or "decision"), string.upper(won and youName or oppName))
+		call = string.format("\"...and the winner, by %s: %s.\"", string.lower(res.decisionText or METHOD[res.method] or "decision"), won and youName or oppName)
 	end
 	UI.Line(body, call, { Font = T.semi, TextSize = compact and 13 or 15, TextColor3 = T.sub, LayoutOrder = 1 })
 	if titleNote then
-		UI.Line(body, titleNote, { Face = "displayMed", TextSize = compact and 18 or 24, TextColor3 = T.gold, LayoutOrder = 2 })
+		UI.Line(body, titleNote, { Face = "heading", TextSize = compact and 16 or 18, TextColor3 = T.gold, LayoutOrder = 2 })
 	end
 	if res.reason and res.reason ~= "" and res.reason ~= "Decision" then
 		UI.Line(body, tostring(res.reason), { TextColor3 = T.sub, TextSize = 13, LayoutOrder = 3 })
@@ -210,7 +215,7 @@ function PostFightUI.Open(data)
 	local J = type(res.judging) == "table" and res.judging or nil
 	local hasCards = res.cards and res.cards[1] and (num(res.cards[1][1]) + num(res.cards[1][2])) > 0
 	if hasCards then
-		UI.Kicker(body, stoppage and "SCORECARDS AT THE STOPPAGE" or "OFFICIAL SCORECARDS", T.gold, { icon = "contract", order = 10 })
+		UI.Kicker(body, stoppage and "Scorecards at the stoppage" or "Official scorecards", nil, { icon = "contract", order = 10 })
 		local card = UI.Card(body, { pad = compact and 10 or 14, order = 11 })
 		Scorecards.Grid(card, J or { cards = res.cards }, names, { rounds = (data.rounds or (J and #J.rounds) or num(res.round)), compact = compact })
 		-- the judges' leanings
@@ -226,7 +231,7 @@ function PostFightUI.Open(data)
 	end
 
 	-- FIGHT STATISTICS
-	UI.Kicker(body, "FIGHT STATISTICS  ·  RED = YOU, BLUE = " .. string.upper(oppName), T.sub, { icon = "chart", order = 20 })
+	UI.Kicker(body, "Fight statistics  ·  red you, blue " .. oppName, T.sub, { icon = "chart", order = 20 })
 	local stats = UI.Card(body, { pad = compact and 10 or 16, order = 21 })
 	local you = J and J.totals and J.totals.you or { landed = res.landed, thrown = res.thrown, power = 0, kd = res.kdFor }
 	local opp = J and J.totals and J.totals.opp or { landed = res.oppLanded, thrown = res.oppThrown, power = 0, kd = res.kdAgainst }
@@ -251,7 +256,7 @@ function PostFightUI.Open(data)
 
 	-- KNOCKDOWNS
 	local kds = type(res.knockdowns) == "table" and res.knockdowns or {}
-	UI.Kicker(body, string.format("KNOCKDOWNS  ·  %d", #kds), T.sub, { icon = "ko", order = 30 })
+	UI.Kicker(body, string.format("Knockdowns  ·  %d", #kds), T.sub, { icon = "ko", order = 30 })
 	local kdCard = UI.Card(body, { pad = compact and 10 or 14, gap = 4, order = 31 })
 	if #kds == 0 then
 		UI.Line(kdCard, "Nobody went down.", { TextColor3 = T.sub, TextSize = 13 })
@@ -267,7 +272,7 @@ function PostFightUI.Open(data)
 	end
 
 	-- DAMAGE REPORT
-	UI.Kicker(body, "DAMAGE REPORT", T.orange, { icon = "injury", order = 40 })
+	UI.Kicker(body, "Damage report", T.orange, { icon = "injury", order = 40 })
 	local dmg = UI.Card(body, { pad = compact and 10 or 14, gap = 6, order = 41 })
 	local cols = UI.Frame(dmg, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
 	UI.List(cols, 12, true)
@@ -309,10 +314,11 @@ function PostFightUI.Open(data)
 	end
 
 	-- EARNINGS & RANKINGS
-	UI.Kicker(body, "EARNINGS & RANKINGS", T.green, { icon = "coin", order = 50 })
+	UI.Kicker(body, "Earnings and rankings", T.green, { icon = "coin", order = 50 })
 	local money = UI.Card(body, { pad = compact and 10 or 14, gap = 6, order = 51 })
 	local prow = UI.Frame(money, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, compact and 40 or 50) })
-	UI.Title(prow, Config.Money(num(data.earnings)), { TextSize = compact and 30 or 40, TextColor3 = T.green, Size = UDim2.new(0.5, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	UI.Title(prow, Config.Money(num(data.earnings)), { Face = "number", TextSize = compact and 28 or 36, TextColor3 = T.green, Size = UDim2.new(0.5, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextScaled = true })
+	UI.New("UITextSizeConstraint", { MaxTextSize = compact and 28 or 36, MinTextSize = 16, Parent = prow:FindFirstChildWhichIsA("TextLabel") })
 	local rankLabel = UI.Text(prow, "", { Font = T.semi, TextSize = compact and 12 or 13, TextColor3 = T.text, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0.5, 0, 1, 0),
 		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = true })
 	local function refreshRank()
@@ -350,7 +356,7 @@ function PostFightUI.Open(data)
 	end))
 
 	local cbh = math.max(48, UI.MinHit(win))
-	UI.PadStart(UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 260, 0, cbh), Position = UDim2.new(0.5, -130, 1, -(14 + cbh)), BackgroundColor3 = T.gold }, close))
+	UI.PadStart(UI.Button(win, "Continue", { Size = UDim2.new(0, 260, 0, cbh), Position = UDim2.new(0.5, -130, 1, -(14 + cbh)), BackgroundColor3 = T.gold }, close))
 	-- ClientMain's result window, when it comes after this one, is closed (this screen is the result)
 	for _, delay in ipairs({ 0.2, 0.7, 1.4 }) do
 		task.delay(delay, function()

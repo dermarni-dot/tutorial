@@ -45,7 +45,7 @@ do
 	local i = 1
 	while i <= #a do
 		local k = a[i]
-		if k == "--no-regen" or k == "--no-mesh" or k == "--dbgfoot" or k == "--nopen" then
+		if k == "--no-regen" or k == "--no-mesh" or k == "--dbgfoot" or k == "--nopen" or k == "--npc" then
 			args[k:gsub("^%-%-", "")] = true
 			i += 1
 		else
@@ -79,7 +79,8 @@ local FTAG = FRAME and ("_" .. FRAME:lower():gsub("[^%w]", "")) or ""
 -- Studio builds for players and CreateHumanoidModelFromDescription), else Motor6Ds; the clip ids carry "_ac"
 local JOINTS_AC = args.joints == "ac"
 local JTAG = JOINTS_AC and "_ac" or ""
-HTAG = HTAG .. FTAG .. JTAG
+local NTAG = args.npc ~= nil and "_npc" or ""
+HTAG = HTAG .. FTAG .. JTAG .. NTAG
 
 ------------------------------------------------------------------------
 -- host: fake engine, virtual clock, the asset simulator (Content)
@@ -684,11 +685,15 @@ end
 -- the physics advanced the root by (studio: whole 240 Hz steps, the remainder carried to the next frame)
 local function timingOf(mode)
 	local n, acc = 0, 0
-	local nominal = mode == "hz240" and 1 / 240 or 1 / 60
+	local nominal = mode == "hz240" and 1 / 240 or (mode == "hz30" and 1 / 30 or 1 / 60)
 	local function tick()
 		n += 1
-		if mode == "steady" or mode == "hz240" then
+		if mode == "steady" or mode == "hz240" or mode == "hz30" then
 			return nominal, nominal
+		elseif mode == "replicated" then
+			-- [Studio] a server-owned root as a client sees it: its position arrives in replication steps (~20 Hz), held
+			-- for the frames between - two frames of no travel, then three frames' worth at once
+			return nominal, (n % 3 == 0) and 3 * nominal or 0
 		elseif mode == "spike" then
 			if n % 47 == 0 then
 				return 0.1, 0.1
@@ -972,8 +977,17 @@ local function walkClip(clip, tier, timing)
 		animator.AnimationPlayed:Fire(tr)
 	end
 	playTrack()
-	player.Character = model
-	player.CharacterAdded:Fire(model)
+	-- --npc: an Ambient gym member on Loop = walk (a server-moved NPC) instead of the local player's character: the
+	-- Animator senses its gait from the replicated root (and the Humanoid's MoveDirection / WalkSpeed as the intent)
+	local NPC = args.npc ~= nil
+	if NPC then
+		hum.WalkSpeed = SPEEDS[clip]
+		model:SetAttribute("Loop", "walk")
+		CS:AddTag(model, "Ambient")
+	else
+		player.Character = model
+		player.CharacterAdded:Fire(model)
+	end
 	local hrp = model:FindFirstChild("HumanoidRootPart")
 	local y0 = hrp.CFrame.Y
 	local speed = SPEEDS[clip]
@@ -1007,6 +1021,11 @@ local function walkClip(clip, tier, timing)
 		frame({ model }, fdt)
 		local smp = sample(t)
 		smp.v = v
+		-- the speed the Animator sensed this frame (the gait runs on it): its spikes are the NPC jitter
+		do
+			local rg = H.require("AnimRig").rigs[model]
+			smp.sensed = rg and rg.loco.speed or 0
+		end
 		if args.debugrig and t > tonumber(args.debugrig) and t < tonumber(args.debugrig) + 0.4 then
 			local rg = H.require("AnimRig").rigs[model]
 			local f = rg and rg.foot.L
@@ -1103,9 +1122,19 @@ local function walkClip(clip, tier, timing)
 			jit[k] = r4(jit[k])
 		end
 	end
+	-- the sensed speed over the steady stretch: its peak over the true pace and its largest frame-to-frame step
+	local spdMax, spdStep, spdMin, prevS = 0, 0, math.huge, nil
+	for _, smp in ipairs(S) do
+		local sv = smp.sensed or 0
+		spdMax, spdMin = math.max(spdMax, sv), math.min(spdMin, sv)
+		if prevS then
+			spdStep = math.max(spdStep, math.abs(sv - prevS))
+		end
+		prevS = sv
+	end
 	local rec = { clip = clip, tier = tier, speed = speed, period = r4(period), pelvisSwayX = r4(maxX - minX), chestSwayX = r4(maxU - minU),
 		headSwayX = r4(maxH - minH), pelvisRollDeg = r4(math.deg(maxR - minR)), hipHeight = r4(hum.HipHeight), worstPen = {}, timing = timing,
-		jitter = jit, frames = nSteps }
+		jitter = jit, frames = nSteps, sensedMax = r4(spdMax), sensedMin = r4(spdMin), sensedStep = r4(spdStep), npc = NPC or nil }
 	-- record NFRAMES frames over one more cycle
 	local out = { clip = clip, tier = tier, speed = speed, frames = {} }
 	local nCycle = math.max(1, math.floor(period / nominal + 0.5))
@@ -1205,8 +1234,9 @@ local function walkClip(clip, tier, timing)
 	print(string.format("      Animate: %s, %d tracks playing (%d started), ProcAnim %s%s", rec.animate.disabled and "disabled" or "ENABLED",
 		rec.animate.playing, rec.animate.started, tostring(rec.animate.procAnim), timing == "steady" and string.format(", climbing: %s, back: %s",
 		rec.animate.climbEnabled and "enabled" or "STILL OFF", rec.animate.backDisabled and "disabled" or "STILL ON") or ""))
-	print(string.format("      timing %s (%d frames): roughness per 1/60 s  trunk pitch %.2f (rms %.3f) roll %.2f yaw %.2f  head pitch %.2f roll %.2f  pelvis x %.4f y %.4f  head x %.4f%s",
-		timing, nSteps, jit.pitch, jit.pitchRms, jit.roll, jit.yaw, jit.headPitch, jit.headRoll, jit.ltX, jit.ltY, jit.headX, jit.nan and "  NaN!" or ""))
+	print(string.format("      timing %s (%d frames): roughness per 1/60 s  trunk pitch %.2f (rms %.3f) roll %.2f yaw %.2f  head pitch %.2f roll %.2f  pelvis x %.4f y %.4f  head x %.4f%s  sensed speed %.2f..%.2f (step %.2f)",
+		timing, nSteps, jit.pitch, jit.pitchRms, jit.roll, jit.yaw, jit.headPitch, jit.headRoll, jit.ltX, jit.ltY, jit.headX, jit.nan and "  NaN!" or "",
+		spdMin, spdMax, spdStep))
 	local file = string.format("%s_t%d%s%s.json", clip, tier, HTAG, TTAG)
 	Host.WriteJSON(OUT .. "/" .. file, out)
 	table.insert(index.clips, { id = string.format("%s_t%d%s%s", clip, tier, HTAG, TTAG), file = file, clip = clip, tier = tier, n = #out.frames, timing = timing })
@@ -1215,7 +1245,11 @@ local function walkClip(clip, tier, timing)
 	print(string.format("%-5s T%d v=%4.1f period %.3f  pelvis sway %.3f  chest sway %.3f  head sway %.3f  pelvis roll %.1f deg  hip %.3f  worst pelvis-in-thigh %d verts %.3f (%s @%.2f)",
 		clip, tier, speed, period, rec.pelvisSwayX, rec.chestSwayX, rec.headSwayX, rec.pelvisRollDeg, rec.hipHeight, worst.n, worst.deep,
 		tostring(worst.key), worst.phase or 0))
-	player.Character = nil
+	if NPC then
+		CS:RemoveTag(model, "Ambient")
+	else
+		player.Character = nil
+	end
 	model:Destroy()
 	for _ = 1, 3 do
 		frame({})

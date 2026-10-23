@@ -645,6 +645,12 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 	else
 		tgtP = clamp(-0.004 * fwdV * w - 0.012 * fwdA, -0.3, 0.2)
 	end
+	-- jammed in on the other man (AnimFight's rig.jam: his hips inside 4.3 studs, 1 at the bodies' floor): no
+	-- momentum lean of the chest INTO him - the forward lean fades out with the room, a lean back stays
+	local jam = rig.jam
+	if jam and jam > 0 and tgtP < 0 then
+		tgtP = tgtP * (1 - min(1, jam))
+	end
 	-- (into a turn: about the centripetal tilt, atan(v w / g) - of a HELD turn. A Humanoid's AutoRotate spins the root
 	-- round at tens of rad/s on every change of direction, many times any human turn, and swings its velocity with it
 	-- (a lateral acceleration of 40-80 studs/s^2 for a tenth of a second); read raw, those banked the body 14 degrees
@@ -702,8 +708,13 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 			-- ([Studio] capped at 2 degrees either way: with the lean's bank that keeps the pelvis roll under 4 degrees at
 			-- a walk - the obliquity rides the Root joint and a bigger one read as the body rocking side to side)
 			local obl = clamp(-lerp(0.065, 0.05, run) * prof.pelvis * cos(2 * PI * (ph - midL)) * w, -0.035, 0.035)
-			rollP += obl
-			wRoll -= obl * 0.9
+			-- (low-passed at its source, so the pelvis roll and the chest's counter-roll stay one motion: a replicated
+			-- root's phase steps never twitch the hips; dt-correct)
+			local os_ = lo.oblS or obl
+			os_ += (obl - os_) * (1 - exp(-dt * 14))
+			lo.oblS = os_
+			rollP += os_
+			wRoll -= os_ * 0.9
 			-- (a diagonal: the pelvis turned toward the way he goes, the chest kept facing)
 			local ly = lo.legYaw or 0
 			yawP -= ly
@@ -747,7 +758,7 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 		wYaw -= lag
 	end
 	-- [Studio] the offsets that turn or roll the body on the Root joint are rate-limited frame to frame and the pelvis
-	-- roll low-passed: a Humanoid's AutoRotate snaps the root's yaw tens of degrees in one frame and a replicated root
+	-- obliquity low-passed: a Humanoid's AutoRotate snaps the root's yaw tens of degrees in one frame and a replicated root
 	-- steps, and the counter-rotations computed from that frame's read (the pelvis against the step, the chest against
 	-- the pelvis, the head's lead) jumped with it - a twitch of the whole trunk on every WASD tap or replication step.
 	-- (dt-correct: exp(-k dt) and rate x dt, never a per-frame fraction - a 240 Hz Studio frame is a quarter of a 60 Hz one)
@@ -763,13 +774,10 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 	yawP = limited("yawPS", yawP, 4)
 	wYaw = limited("wYawS", wYaw, 4)
 	nYaw = limited("nYawS", nYaw, 4)
-	if kind then
-		local rs = lo.rollS or rollP
-		rs += (rollP - rs) * (1 - exp(-dt * 14))
-		lo.rollS = rs
-		rollP = walking and clamp(rs, -0.1, 0.1) or rs
+	if walking then
+		rollP = clamp(rollP, -0.1, 0.1)
 	else
-		lo.rollS = nil
+		lo.oblS = nil
 	end
 	-- the head keeps the eyes level: it counters the trunk's pitch and roll on a soft spring, so it trails
 	-- the body's bob and sway a beat late (overlapping action) instead of riding it rigidly

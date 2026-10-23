@@ -91,8 +91,8 @@ end
 
 local function keycap(parent, text, order, color)
 	local cap = UI.Frame(parent, { Size = UDim2.fromOffset(0, 26), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = color or T.panel2, BackgroundTransparency = 0.1, LayoutOrder = order })
-	UI.Corner(cap, 4)
-	UI.Stroke(cap, Color3.new(1, 1, 1), 1, 0.8)
+	UI.Corner(cap, 3)
+	UI.Stroke(cap, color or T.line, 1, color and 0.4 or 0)
 	local t = UI.Text(cap, text, { Font = T.semi, TextSize = 12, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 	UI.Pad(t, 0, 8)
 	return cap, t
@@ -127,12 +127,12 @@ local function movesTab()
 				local isUnlocked = M and unlocked[a.special] == true
 				local card = UI.Card(content, { order = order, pad = 10, gap = 4, stroke = (M and isUnlocked) and T.gold or nil, transparency = 0.25 })
 				local head = UI.Frame(card, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = 1 })
-				UI.Text(head, (M and M.name or a.label):upper(), { Face = "displayMed", TextSize = small and 15 or 17, Size = UDim2.new(0.55, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
+				UI.Text(head, M and M.name or a.label, { Face = "heading", TextSize = small and 14 or 15, Size = UDim2.new(0.55, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
 					TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 				local caps = UI.Frame(head, { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 1), Size = UDim2.fromOffset(0, 26), AutomaticSize = Enum.AutomaticSize.X })
 				UI.List(caps, 6, true, Enum.HorizontalAlignment.Right)
 				if M then
-					keycap(caps, isUnlocked and "UNLOCKED" or "LOCKED", 0, isUnlocked and T.green or T.red)
+					keycap(caps, isUnlocked and "Unlocked" or "Locked", 0, isUnlocked and T.green or T.red)
 				end
 				for i, text in ipairs(capTexts(a.id, device)) do
 					keycap(caps, text, i)
@@ -158,12 +158,12 @@ local function movesTab()
 		local owned = sig and Combos.SignatureUnlockedBy(c.id, info) ~= nil
 		local card = UI.Card(content, { order = order, pad = 10, gap = 4, stroke = owned and T.gold or nil, transparency = 0.25 })
 		local head = UI.Frame(card, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = 1 })
-		UI.Text(head, c.name, { Face = "displayMed", TextSize = small and 15 or 17, Size = UDim2.new(0.55, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
+		UI.Text(head, c.name, { Face = "heading", TextSize = small and 14 or 15, Size = UDim2.new(0.55, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
 			TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		local caps = UI.Frame(head, { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 1), Size = UDim2.fromOffset(0, 26), AutomaticSize = Enum.AutomaticSize.X })
 		UI.List(caps, 6, true, Enum.HorizontalAlignment.Right)
 		if sig then
-			keycap(caps, owned and "UNLOCKED" or "LOCKED", 0, owned and T.green or T.red)
+			keycap(caps, owned and "Unlocked" or "Locked", 0, owned and T.green or T.red)
 		end
 		keycap(caps, (c.patterns[1]:gsub(" ", " - ")), 1)
 		UI.Text(card, c.desc, { TextSize = 13, TextColor3 = T.text, LayoutOrder = 2 })
@@ -436,6 +436,70 @@ unbindCapture = function()
 	pcall(ContextActionService.UnbindAction, ContextActionService, CAPTURE_ACTION)
 end
 
+-- the keyboard glyph map at the top of the KEYBOARD tab: the keys of a laptop keyboard as caps, the bound
+-- ones coloured by what they do (punches gold, defence blue, special moves orange, the rest grey), the
+-- action's name under its key where the cap has room (one letter keys), so the layout is read at a glance
+local KEY_ROWS = {
+	{ { "Backquote", "`" }, { "One", "1" }, { "Two", "2" }, { "Three", "3" }, { "Four", "4" }, { "Five", "5" }, { "Six", "6" }, { "Seven", "7" }, { "Eight", "8" }, { "Nine", "9" }, { "Zero", "0" }, { "Minus", "-" }, { "Equals", "=" } },
+	{ { "Tab", "TAB", 1.5 }, { "Q", "Q" }, { "W", "W" }, { "E", "E" }, { "R", "R" }, { "T", "T" }, { "Y", "Y" }, { "U", "U" }, { "I", "I" }, { "O", "O" }, { "P", "P" }, { "LeftBracket", "[" }, { "RightBracket", "]" } },
+	{ { "CapsLock", "CAPS", 1.8 }, { "A", "A" }, { "S", "S" }, { "D", "D" }, { "F", "F" }, { "G", "G" }, { "H", "H" }, { "J", "J" }, { "K", "K" }, { "L", "L" }, { "Semicolon", ";" }, { "Quote", "'" }, { "Return", "ENTER", 1.6 } },
+	{ { "LeftShift", "SHIFT", 2.3 }, { "Z", "Z" }, { "X", "X" }, { "C", "C" }, { "V", "V" }, { "B", "B" }, { "N", "N" }, { "M", "M" }, { "Comma", "," }, { "Period", "." }, { "Slash", "/" } },
+	{ { "LeftControl", "CTRL", 1.6 }, { "LeftAlt", "ALT", 1.4 }, { "Space", "SPACE", 6 } },
+}
+local SECTION_COLOR = { punch = T.gold, advanced = T.blue, special = T.orange, basic = T.sub }
+local SHORT_ACTION = { leadhook = "L hook", rearhook = "R hook", uppercut = "Upper", overhand = "Overhand", moveslist = "Moves", legend = "Strip", getup = "Get up", slipL = "Slip L", slipR = "Slip R",
+	pivotL = "Pivot L", pivotR = "Pivot R", body = "Body", block = "Block", parry = "Parry", dodge = "Dodge", sprint = "Sprint", clinch = "Clinch", jab = "Jab", cross = "Cross" }
+local function keyboardMap(m, order)
+	-- the key each action's first keyboard binding starts on ("2xA" -> A, "Q+MouseButton1" -> Q)
+	local bound = {}
+	for _, a in ipairs(Keymap.Actions) do
+		local list = m.kbd and m.kbd[a.id]
+		for _, b in ipairs(type(list) == "table" and list or {}) do
+			if type(b) == "string" then
+				local key = b:gsub("^2x", ""):match("^([^+]+)")
+				if key and not bound[key] then
+					bound[key] = a
+				end
+			end
+		end
+	end
+	local short = UI.CanvasSize(gui).Y < 560
+	local unit, gap, capH = short and 40 or 48, 4, short and 36 or 44
+	local holder = UI.Frame(content, { Name = "KeyboardMap", BackgroundColor3 = T.panel, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order })
+	UI.Stroke(holder, T.line, 1, 0)
+	UI.Corner(holder, UI.R.lg)
+	UI.Pad(holder, 12, 14)
+	UI.List(holder, gap)
+	for r, row in ipairs(KEY_ROWS) do
+		local f = UI.Frame(holder, { Name = "KeyRow" .. r, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, capH), LayoutOrder = r })
+		UI.List(f, gap, true)
+		-- (the rows stagger a little, as the keys do)
+		UI.New("UIPadding", { PaddingLeft = UDim.new(0, (r - 1) * math.floor(unit * 0.25)), Parent = f })
+		for i, key in ipairs(row) do
+			local a = bound[key[1]]
+			local color = a and (SECTION_COLOR[a.section] or T.sub) or nil
+			local cap = UI.Frame(f, { Name = "Key_" .. key[1], Size = UDim2.fromOffset(math.floor(unit * (key[3] or 1)), capH), BackgroundColor3 = color and T.bg:Lerp(color, 0.18) or T.panel2, LayoutOrder = i })
+			UI.Corner(cap, 3)
+			UI.Stroke(cap, color or T.line, 1, 0)
+			UI.Text(cap, key[2], { Font = T.semi, TextSize = 12, TextColor3 = color or T.sub, Position = UDim2.fromOffset(6, 4), Size = UDim2.new(1, -12, 0, 14), AutomaticSize = Enum.AutomaticSize.None,
+				TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+			if a then
+				local label = SHORT_ACTION[a.id] or a.label
+				-- (the action's name, cut short where the cap is narrow: the list under the map says it in full)
+				UI.Text(cap, label, { Name = "Action", TextSize = 11, TextColor3 = T.text, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 6, 1, -4), Size = UDim2.new(1, -12, 0, 14), AutomaticSize = Enum.AutomaticSize.None,
+					TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = Enum.TextXAlignment.Left })
+			end
+		end
+	end
+	local legend = UI.Frame(holder, { Name = "Legend", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = 20 })
+	UI.List(legend, 8, true)
+	UI.Chip(legend, "Punches", T.gold, { order = 1 })
+	UI.Chip(legend, "Defence and footwork", T.blue, { order = 2 })
+	UI.Chip(legend, "Special moves", T.orange, { order = 3 })
+	UI.Chip(legend, "Other", T.sub, { order = 4 })
+	return holder
+end
+
 local function remapTab(dev)
 	local m = map()
 	local conflicts = Keymap.Conflicts(m)
@@ -447,7 +511,11 @@ local function remapTab(dev)
 		end
 	end
 	local order = 1
-	UI.Text(content, dev == "kbd" and "Click a key cap and press the new key. Hold one key and press another for a chord, tap a key twice for a double tap. BACKSPACE clears the slot, ESC cancels. A key another action uses is swapped over."
+	if dev == "kbd" then
+		keyboardMap(m, order)
+		order += 1
+	end
+	UI.Text(content, dev == "kbd" and "Click a key cap and press the new key. Hold one key and press another for a chord, tap a key twice for a double tap. Backspace clears the slot, Esc cancels. A key another action uses is swapped over."
 		or "Select a button cap and press the new button. Hold a button and press another for a chord, flick the right stick for a flick. " .. (Gamepad and Gamepad.Label(K.ButtonB) or "B") .. " cancels.",
 		{ TextSize = 13, TextColor3 = T.sub, LayoutOrder = order })
 	if #conflicts > 0 then
@@ -647,7 +715,7 @@ function ControlsMenu.Open(opts)
 	-- (opts.kicker: a fight says whether the round waits for you; a phone's window has no kicker line, so
 	-- there the note goes into the title)
 	local title = (opts.kicker and short) and ("Moves & Controls  ·  " .. opts.kicker) or "Moves & Controls"
-	local _, win, body = UI.Window(root, "ControlsMenu", 1100, 760, title, { kicker = opts.kicker or "HOW TO FIGHT", onClose = ControlsMenu.Close, scroll = false, z = 12 })
+	local _, win, body = UI.Window(root, "ControlsMenu", 1100, 760, title, { kicker = opts.kicker or "How to fight", onClose = ControlsMenu.Close, scroll = false, z = 12 })
 	-- (opts.extra = { text, onClick }: one action of the caller's in the title line - a spar's LEAVE SPARRING
 	-- (FightClient's openMoves / BoxerClient.SparExit); the menu closes first, then the action runs)
 	if type(opts.extra) == "table" and opts.extra.text then

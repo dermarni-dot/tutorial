@@ -3,9 +3,12 @@
 -- result the growth each muscle got, the Body tab how far each muscle is developed toward the
 -- frame's potential (dark = untrained, gold = at the potential).
 --
--- The figure is painted into an EditableImage: a smooth silhouette (a soft union of the body's
--- pieces, anti-aliased) with shaded muscle bellies. Where EditableImage is unavailable (the
--- experience's mesh / image APIs off, the memory budget spent) it falls back to plain Frames.
+-- The figure is composed from plain ImageLabels over one uploaded image sheet (Shared.BodyMapData, built
+-- by tools/ui/build_bodymap.py): the smooth silhouette of each view and one shaded mask per muscle belly,
+-- each tinted with ImageColor3 by its level. Cheap and deterministic: nothing is painted at run time.
+-- The older EditableImage painter is kept behind Config.BodyMap.editable (off by default), and where the
+-- sheet has no id, or an image has not loaded after a few seconds, the figure falls back to plain Frames
+-- - a checkerboard (an invalid editable image) can never show.
 --   local map = BodyMap.new(parent, { Size = UDim2.fromOffset(300, 340), views = "both", legend = true })
 --   map:SetTargets(act.parts, color)   map:SetGrowth(result.parts)   map:SetDevelopment(P.body, cap)
 --   map:SetSoreness(condition.sore)   map:Lit() -> { { id, w } } strongest first      map:Pulse()      BodyMap.Short(id) -> "Pecs"
@@ -14,9 +17,20 @@ local AssetService = game:GetService("AssetService")
 local UI = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("UI"))
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local T = UI.Theme
+-- the uploaded sheet (nil = not built / no id yet: frames)
+local SheetData
+do
+	local ok, m = pcall(function()
+		return require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("BodyMapData", 5))
+	end)
+	SheetData = (ok and type(m) == "table" and (tonumber(m.id) or 0) > 0) and m or nil
+end
+local IMAGE_LOAD_GRACE = 3 -- seconds an ImageLabel may take to load before the figure falls back to frames
+local WHITE3 = Color3.new(1, 1, 1)
 
 local BodyMap = {}
 BodyMap.__index = BodyMap
+BodyMap.Sheet = SheetData -- the uploaded sheet's manifest (nil: the figure draws with frames)
 
 local SKIN = Color3.fromRGB(46, 51, 64) -- the silhouette
 local MUSCLE = Color3.fromRGB(70, 77, 96) -- an idle muscle
@@ -465,6 +479,33 @@ local function frameView(self, parent, list, x, W, H)
 end
 
 ------------------------------------------------------------------------
+-- The sheet figure (ImageLabels over Shared.BodyMapData)
+------------------------------------------------------------------------
+-- the sheet's shading is baked white: a tint of c * 1.25 draws the belly at BodyMap's painted brightness
+local function tintOf(c)
+	return Color3.new(math.min(1, c.R * 1.25), math.min(1, c.G * 1.25), math.min(1, c.B * 1.25))
+end
+local SKIN_TINT = Color3.new(math.min(1, SKIN.R * 1.43), math.min(1, SKIN.G * 1.43), math.min(1, SKIN.B * 1.43))
+local function sheetImage(parent, name, cell, x, y, w, h, color, z)
+	return UI.New("ImageLabel", { Name = name, BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(w, h),
+		Image = "rbxassetid://" .. tostring(SheetData.id), ImageRectOffset = Vector2.new(cell.x, cell.y), ImageRectSize = Vector2.new(cell.w, cell.h),
+		ImageColor3 = color, ScaleType = Enum.ScaleType.Stretch, ZIndex = z or 1, Parent = parent })
+end
+local function sheetView(self, parent, view, x, W, H)
+	local v = UI.New("Frame", { Name = "View", BackgroundTransparency = 1, Position = UDim2.fromOffset(x, 0), Size = UDim2.fromOffset(W, H), Parent = parent })
+	local sil = sheetImage(v, "Silhouette", SheetData.views[view], 0, 0, W, H, SKIN_TINT, 1)
+	table.insert(self.imageLayers, sil)
+	for _, m in ipairs(SheetData.masks[view] or {}) do
+		local f = sheetImage(v, m.id, m, math.floor(m.bx * W + 0.5), math.floor(m.by * H + 0.5), math.max(1, math.ceil(m.bw * W)), math.max(1, math.ceil(m.bh * H)), tintOf(MUSCLE), 2)
+		f:SetAttribute("Part", m.id)
+		self.regions[m.id] = self.regions[m.id] or {}
+		table.insert(self.regions[m.id], f)
+		table.insert(self.imageLayers, f)
+	end
+	return v
+end
+
+------------------------------------------------------------------------
 -- The map
 ------------------------------------------------------------------------
 -- opts: Size (offset UDim2), views = "both" | "front" | "back", Position, AnchorPoint, LayoutOrder,
@@ -492,10 +533,33 @@ function BodyMap.new(parent, opts)
 	self.figW, self.figH = W, figH
 	local fig = UI.New("Frame", { Name = "Figure", BackgroundTransparency = 1, Size = UDim2.fromOffset(W, figH), Parent = frame })
 	self.fig = fig
+	-- the figure: the uploaded sheet (the default), the EditableImage painter (Config.BodyMap.editable), or
+	-- frames (opts.frames, no sheet, no editable image)
+	local editable = Config.BodyMap and Config.BodyMap.editable == true
+	if not opts.frames and not editable and SheetData then
+		self.imageLayers = {}
+		self:_buildSheet()
+		-- the watchdog: an image that has not loaded after the grace period (a bad id, a rejected upload, no
+		-- network) gives way to the frame figure, so nothing broken is ever shown
+		local sil = self.imageLayers[1]
+		task.delay(IMAGE_LOAD_GRACE, function()
+			if not frame.Parent or not self.imageLayers then
+				return
+			end
+			local loaded = true
+			pcall(function()
+				loaded = sil.IsLoaded == true
+			end)
+			if not loaded then
+				warn("[BodyMap] the body map sheet did not load, using frames")
+				self:_fallback()
+			end
+		end)
+	end
 	-- the painted figure (its mask builds over a few frames the first time a size is used), or frames
 	local density = lv.density
 	local iw, ih = math.min(MAX_SIDE, math.ceil(W * density)), math.min(MAX_SIDE, math.ceil(figH * density))
-	local img = (not opts.frames) and newImage(iw, ih) or nil
+	local img = (editable and not opts.frames and not self.imageLayers) and newImage(iw, ih) or nil
 	local label = img and imageLabel(fig, "Paint", img, 1) or nil
 	if label then
 		self.image, self.paintLabel = img, label
@@ -530,7 +594,7 @@ function BodyMap.new(parent, opts)
 			img:Destroy()
 		end)
 	end
-	if not self.image then
+	if not self.image and not self.imageLayers then
 		self:_buildFrames()
 	end
 	if labels then
@@ -551,6 +615,19 @@ function BodyMap.new(parent, opts)
 	end
 	self:Paint()
 	return self
+end
+
+function BodyMap:_buildSheet()
+	local fig, W, H = self.fig, self.figW, self.figH
+	if self.views == "both" then
+		local vw = math.floor(W / 2)
+		sheetView(self, fig, "front", 0, vw, H)
+		sheetView(self, fig, "back", W - vw, vw, H)
+	elseif self.views == "back" then
+		sheetView(self, fig, "back", 0, W, H)
+	else
+		sheetView(self, fig, "front", 0, W, H)
+	end
 end
 
 function BodyMap:_buildFrames()
@@ -583,6 +660,11 @@ function BodyMap:_fallback()
 		end
 	end
 	self.image, self.glowImage, self.paintLabel, self.glowLabel, self.mask = nil, nil, nil, nil, nil
+	for _, l in ipairs(self.imageLayers or {}) do
+		l:Destroy()
+	end
+	self.imageLayers = nil
+	self.regions = {}
 	self:_buildFrames()
 	local colors, weights = self.colors, self.weights
 	self.colors, self.weights = {}, {}
@@ -679,6 +761,12 @@ function BodyMap:_apply(colors, weights)
 	eachRegion(self, function(id, f)
 		local c = colors[id]
 		local k = weights[id] or 0
+		if f:IsA("ImageLabel") then
+			-- the sheet figure: the belly's tint, lifted toward white by its glow weight
+			local tint = tintOf(c or MUSCLE)
+			f.ImageColor3 = k > 0.01 and tint:Lerp(WHITE3, 0.3 * k) or tint
+			return
+		end
 		local stroke = f:FindFirstChild("Glow")
 		f.BackgroundColor3 = c or MUSCLE
 		if c and k > 0.01 then
@@ -835,15 +923,16 @@ function BodyMap:Pulse(times)
 	end
 	eachRegion(self, function(id, f)
 		if (self.weights[id] or 0) > 0.01 then
-			local base = f.BackgroundColor3
+			local prop = f:IsA("ImageLabel") and "ImageColor3" or "BackgroundColor3"
+			local base = f[prop]
 			task.spawn(function()
 				for _ = 1, times or 2 do
 					if not f.Parent then
 						return
 					end
-					UI.Tween(f, { BackgroundColor3 = UI.Shade(base, 0.35) }, 0.25)
+					UI.Tween(f, { [prop] = UI.Shade(base, 0.35) }, 0.25)
 					task.wait(0.28)
-					UI.Tween(f, { BackgroundColor3 = base }, 0.35)
+					UI.Tween(f, { [prop] = base }, 0.35)
 					task.wait(0.4)
 				end
 			end)
@@ -851,9 +940,13 @@ function BodyMap:Pulse(times)
 	end)
 end
 
--- true when the figure is painted (EditableImage), false on the Frame fallback
+-- true when the figure is drawn from images (the sheet or an EditableImage), false on the Frame fallback
 function BodyMap:IsPainted()
-	return self.image ~= nil
+	return self.image ~= nil or self.imageLayers ~= nil
+end
+-- how the figure is drawn: "sheet" | "editable" | "frames"
+function BodyMap:Mode()
+	return self.imageLayers and "sheet" or (self.image and "editable" or "frames")
 end
 
 BodyMap.Colors = { skin = SKIN, muscle = MUSCLE, edge = EDGE }

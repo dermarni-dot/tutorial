@@ -39,7 +39,7 @@ local function luneBin()
 	return "lune"
 end
 
-local TIMINGS = { "steady", "studio", "wander", "hz240", "spike" }
+local TIMINGS = { "steady", "studio", "wander", "hz240", "hz30", "spike" }
 local args = { "run", "tools/sim/v9_anim.luau", "--tiers", "3", "--clips", "walk,snapturn,turn,curve,startstop", "--no-mesh", "--nopen",
 	"--frames", "1", "--timing", table.concat(TIMINGS, ","), "--out", OUT }
 local r = process.exec(luneBin(), args, { cwd = root })
@@ -63,6 +63,8 @@ end
 local CAP = {
 	steady = { pitch = 0.5, roll = 1.0, yaw = 1.0, headPitch = 0.4, headRoll = 0.3, headX = 0.006, ltX = 0.012, ltY = 0.07 },
 	hz240 = { pitch = 0.5, roll = 1.0, yaw = 1.0, headPitch = 0.4, headRoll = 0.3, headX = 0.006, ltX = 0.012, ltY = 0.07 },
+	-- (a 30 Hz phone: every frame is two 60 Hz ones, the roughness per 1/60 s window reads a whole frame's motion)
+	hz30 = { pitch = 0.8, roll = 2.0, yaw = 2.0, headPitch = 0.8, headRoll = 0.6, headX = 0.012, ltX = 0.024, ltY = 0.14 },
 	wander = { pitch = 0.6, roll = 1.6, yaw = 1.8, headPitch = 0.5, headRoll = 0.35, headX = 0.008, ltX = 0.02, ltY = 0.09 },
 	studio = { pitch = 0.6, roll = 1.6, yaw = 1.8, headPitch = 0.5, headRoll = 0.35, headX = 0.008, ltX = 0.02, ltY = 0.09 },
 	spike = { pitch = 1.0, roll = 4.0, yaw = 9.0, headPitch = 0.9, headRoll = 0.6, headX = 0.015, ltX = 0.05, ltY = 0.16 },
@@ -75,8 +77,10 @@ for _, timing in ipairs(TIMINGS) do
 	if m then
 		local j = m.jitter
 		check("walk " .. timing .. ": no NaN", j.nan == false)
+		-- ([Studio] "sways side to side": the pelvis offset is capped at 0.06 peak to peak and its roll at 4 degrees + the
+		-- bank; the head stays on its line)
 		check("walk " .. timing .. string.format(": head sway %.3f, pelvis sway %.3f, pelvis roll %.1f", m.headSwayX, m.pelvisSwayX, m.pelvisRollDeg),
-			m.headSwayX <= 0.06 and m.pelvisSwayX <= 0.14 and m.pelvisRollDeg <= 11)
+			m.headSwayX <= 0.06 and m.pelvisSwayX <= 0.07 and m.pelvisRollDeg <= 5)
 		local cap = CAP[timing]
 		local bad = {}
 		for k, lim in pairs(cap) do
@@ -153,6 +157,59 @@ if ss then
 	local g = ss.gait
 	check(string.format("start: the forward lean bounded (trunk pitch %.1f)", g.trunkPitch[1]), g.trunkPitch[1] >= -10 and g.trunkPitch[1] <= -3)
 	check(string.format("start / stop: no bank (trunk roll %.1f..%.1f)", g.trunkRoll[1], g.trunkRoll[2]), within(g.trunkRoll, -1.5, 1.5))
+end
+
+------------------------------------------------------------------------
+-- [Studio] dt independence: the same walk at 30, 60 and 240 Hz (Studio runs at 240 Hz with the frame rate uncapped, a
+-- phone at 30): every filter is exp(-k dt), so the stride, the sway and the roll come out the same
+------------------------------------------------------------------------
+do
+	local a, b, c = byKey.walk_hz30, byKey.walk_steady, byKey.walk_hz240
+	if a and b and c then
+		local function near(k, tol)
+			return math.abs(a[k] - b[k]) <= tol and math.abs(c[k] - b[k]) <= tol
+		end
+		check(string.format("dt independence: period %.3f / %.3f / %.3f (30 / 60 / 240 Hz)", a.period, b.period, c.period), near("period", 0.03))
+		check(string.format("dt independence: pelvis sway %.3f / %.3f / %.3f", a.pelvisSwayX, b.pelvisSwayX, c.pelvisSwayX), near("pelvisSwayX", 0.01))
+		check(string.format("dt independence: pelvis roll %.1f / %.1f / %.1f", a.pelvisRollDeg, b.pelvisRollDeg, c.pelvisRollDeg), near("pelvisRollDeg", 0.8))
+		check(string.format("dt independence: head sway %.3f / %.3f / %.3f", a.headSwayX, b.headSwayX, c.headSwayX), near("headSwayX", 0.015))
+		check(string.format("dt independence: knee range %.0f..%.0f / %.0f..%.0f / %.0f..%.0f", a.gait.kneeL[1], a.gait.kneeL[2], b.gait.kneeL[1],
+			b.gait.kneeL[2], c.gait.kneeL[1], c.gait.kneeL[2]),
+			math.abs(a.gait.kneeL[2] - b.gait.kneeL[2]) <= 4 and math.abs(c.gait.kneeL[2] - b.gait.kneeL[2]) <= 4)
+	else
+		check("dt independence: the three timings recorded", false)
+	end
+end
+
+------------------------------------------------------------------------
+-- [Studio] a server-moved NPC (an Ambient walker on MoveTo) as a client sees it: the root's position arrives in
+-- replication steps (held two frames, then three frames' travel at once) while its replicated velocity reads steady.
+-- The gait must run on a smooth speed - no spikes, no fast jitter - with the planted feet holding and the knees bending
+------------------------------------------------------------------------
+local OUT_NPC = OUT .. "_npc"
+local rN = process.exec(luneBin(), { "run", "tools/sim/v9_anim.luau", "--tiers", "3", "--clips", "walk", "--no-mesh", "--nopen", "--frames", "1",
+	"--timing", "replicated,steady", "--npc", "--out", OUT_NPC }, { cwd = root })
+check("v9_anim runs the NPC walk on a replicated root", rN.ok, (rN.stderr or "") .. (rN.stdout or ""):sub(-600))
+if rN.ok then
+	local byT = {}
+	for _, m in ipairs(serde.decode("json", fs.readFile(OUT_NPC .. "/metrics.json"))) do
+		if m.clip == "walk" then
+			byT[m.timing] = m
+		end
+	end
+	local m, ms = byT.replicated, byT.steady
+	check("NPC replicated walk recorded", m ~= nil and ms ~= nil)
+	if m and ms then
+		local v = m.speed
+		check(string.format("NPC: the sensed speed never spikes (%.2f..%.2f at %.1f, largest step %.2f / frame)", m.sensedMin, m.sensedMax, v, m.sensedStep),
+			m.sensedMax <= v * 1.12 and m.sensedMin >= v * 0.85 and m.sensedStep <= 0.35)
+		check(string.format("NPC: a smooth gait (sensed step %.2f on the steady root)", ms.sensedStep), ms.sensedStep <= 0.2)
+		check(string.format("NPC: the knees bend (%.0f..%.0f)", m.gait.kneeL[1], m.gait.kneeL[2]), m.gait.kneeL[2] > 40)
+		check(string.format("NPC: head sway %.3f, pelvis roll %.1f on the stepping root", m.headSwayX, m.pelvisRollDeg), m.headSwayX <= 0.07 and m.pelvisRollDeg <= 5.5)
+		check(string.format("NPC: roughness on the stepping root (trunk roll %.2f yaw %.2f head x %.4f)", m.jitter.roll, m.jitter.yaw, m.jitter.headX),
+			m.jitter.roll <= 2.0 and m.jitter.yaw <= 2.5 and m.jitter.headX <= 0.012 and m.jitter.nan == false)
+		check(string.format("NPC: the same stride as a steady root (period %.3f vs %.3f)", m.period, ms.period), math.abs(m.period - ms.period) <= 0.05)
+	end
 end
 
 ------------------------------------------------------------------------

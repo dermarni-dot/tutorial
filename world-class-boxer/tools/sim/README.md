@@ -280,6 +280,16 @@ seed, onTick })`; `FS.new({ root = DIR })` runs another checkout (a `git archive
 - `lune run tools/sim/balance.luau [n] [styles|levels|bots|traits|adapt] [--root DIR]`: the balance tables (AI vs AI
   by style and by level gap, scripted players by level, each trait against the types it resists, the adapting player
   against each trait). About 0.5 s a fight.
+- `lune run tools/sim/test_frametraits.luau [--quick] [--table]` (a few minutes): the body frames' ring traits
+  (`Shared.FrameTraits`: the multipliers, Athletic the baseline, the orderings), where the engine applies them (the
+  punch window and the client's mirror, the stamina a punch costs, the feet, the reach, the dodge windows, head and body
+  damage taken, the get-up, the clinch, the tape), the AI fighting to its frame, and the balance at equal level
+  (Heavyweight vs Lean about even, the heavyweight stopping more and the Lean winning on the cards more; every frame
+  near even against Athletic). `--table` prints the whole frame x frame matrix. `fightsim` takes `frame = <BodyTypes id>`
+  in a corner's spec.
+- `lune run tools/sim/v10_frames.luau --out tools/sim/out/frames` then `python3 tools/ui/render_mock.py --all
+  tools/sim/out/frames --out previews/final/v10/frames`: the creator's Body step with the frame's pros / cons panel, one
+  screen per frame and device.
 - `lune run tools/sim/test_fightai.luau [--quick]` (a few minutes): the ring traits (`Shared.Traits`: seed, style,
   level, caps, scouting, reveal, each effect and its counter), the fighting type, the read (`Shared.FightRead`),
   FightAI's perception delay / prediction / adaptation / mistakes / feints, the feint, the second wind, accuracy with
@@ -464,3 +474,22 @@ lune run tools/sim/test_crowd.luau [--keep]      # ~25 s
   platforms, sponsor boards, printed rows, the bowl), the keep-outs (ring, lanes, stool corners, the venue's floor
   cameras), the part caps per venue, and the reaction (rigs up and arms up near the ring, printed arms swung, the
   wave outward, `Crowd.React`'s attribute).
+
+## Spacing: test_spacing, v10_postfight_scene
+
+```sh
+lune run tools/sim/test_spacing.luau [-v]                 # ~8 s
+lune run tools/sim/v10_postfight_scene.luau [--out DIR] [--frames heavy,mixed,down] [--times 1.2,4.0]
+/opt/bpyenv/bin/python tools/sim/v10_postfight_render.py DIR previews/final/v10/postfight_scene [--samples N]
+```
+
+- `test_spacing.luau`: whole fights for every body-frame pairing (Lean .. Heavyweight Build, AI vs AI and bots) with a
+  stub referee (`spec.ref`): the root-to-root distance never drops below the pair's `Fight:MinSep` (the clinch
+  distance while they hold) minus one 20 Hz sim tick of walking; `MinSep` / `ClinchSep` / `ClinchRange` grow with the
+  frames; `KeepOut` and `BodyMass`; the referee never inside a standing man's body and inside `MinSep` only on a few
+  ticks (the fighters pass through him and cover 12 studs/s), inside 4.5 studs only for a reason (a clinch held
+  `REF.clinchHold`, the count, the bell), out on his orbit for most of the open play; `PostFight.Layout` from the frames.
+- `v10_postfight_scene.luau` (v9_ceremony's harness: the fake rig, Builder.Cosmetics, the real Animator): two
+  heavyweights and a referee at `PostFight.Layout`'s places from `HitGeometry.Frame` off the built rigs, the pf* poses
+  before and after the hand goes up; per frame the smallest body gaps and the deepest mesh-box overlap. The render:
+  top view and the hard camera (Ceremony.resultShot) per frame, plus the sheet `postfight_scene.jpg`.

@@ -11,6 +11,7 @@ local Catalog = require(Shared:WaitForChild("Catalog"))
 local Looks = require(Shared:WaitForChild("Looks"))
 local DrillScore = require(Shared:WaitForChild("DrillScore"))
 local TP = require(Shared:WaitForChild("TrainingPlan"))
+local FrameTraits = require(Shared:WaitForChild("FrameTraits")) -- [FrameTraits] the frame's stat growth (GainMultiplier)
 -- the AI boxers' ring traits and their scouting (fight system; optional: the coach tips read them if present)
 local Traits
 do
@@ -404,6 +405,8 @@ function Training.GainMultiplier(profile, statKey, act)
 	m += homeGymBonus(profile)
 	local _, lv = Training.StationLevel(profile, act.station)
 	m *= lv and lv.mult or 1
+	-- [FrameTraits] the frame's nature: a Lean's hands and feet come quicker, a heavy frame's power and chin
+	m *= FrameTraits.GrowthMul(Training.Frame(profile).id, statKey)
 	if (profile.gym.cond[act.station] or 100) < 30 then
 		m *= 0.8
 	end

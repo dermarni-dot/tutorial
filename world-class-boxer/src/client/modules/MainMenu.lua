@@ -126,14 +126,26 @@ local function unwatchBoxer()
 end
 
 local stageBoxer, watchBoxerSafe
+-- one pending re-stage per scene: every call moves its time out (the latest character wins), and one thread waits for
+-- it. A server rebuild of the look adds hundreds of descendants in a burst, each a call here: a delayed thread per
+-- call (the old way) was hundreds of timers and closures per rebuild for one re-stage
 local function restageSoon(char, delay)
 	if not scene then
 		return
 	end
-	scene.stageToken = (scene.stageToken or 0) + 1
-	local mine, s = scene.stageToken, scene
-	task.delay(delay or RESTAGE_DELAY, function()
-		if scene == s and mine == s.stageToken and isOpen and player.Character == char then
+	local s = scene
+	s.stageAt = os.clock() + (delay or RESTAGE_DELAY)
+	s.stageChar = char
+	if s.stagePending then
+		return
+	end
+	s.stagePending = true
+	task.spawn(function()
+		while scene == s and os.clock() < s.stageAt do
+			task.wait(math.max(0.05, s.stageAt - os.clock()))
+		end
+		s.stagePending = false
+		if scene == s and isOpen and player.Character == s.stageChar then
 			stageBoxer()
 		end
 	end)

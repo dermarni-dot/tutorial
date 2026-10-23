@@ -508,14 +508,42 @@ end
 ------------------------------------------------------------------------
 -- warm key light from the pendants: a boxer under the grid reads at mid grey (the lamps were tuned
 -- for a much darker hall; Future's falloff over the 19 studs to chest height needs ~2.5)
+-- (brighter still with the lifted global Ambient of Config.Lighting: every room reads, no dark corners;
+-- each zone keeps its own warmth so the hall is not one flat colour)
 local LIGHT = {
-	boxing = { color = Color3.fromRGB(255, 236, 210), brightness = 2.7 },
-	weights = { color = Color3.fromRGB(255, 238, 218), brightness = 2.6 },
-	cardio = { color = Color3.fromRGB(230, 240, 255), brightness = 2.6 },
-	recovery = { color = Color3.fromRGB(255, 226, 192), brightness = 2.1 },
-	services = { color = Color3.fromRGB(255, 228, 196), brightness = 2.3 },
-	lobby = { color = Color3.fromRGB(255, 232, 200), brightness = 2.4 },
+	boxing = { color = Color3.fromRGB(255, 234, 204), brightness = 3.0 },
+	weights = { color = Color3.fromRGB(255, 238, 216), brightness = 2.9 },
+	cardio = { color = Color3.fromRGB(226, 238, 255), brightness = 2.9 },
+	recovery = { color = Color3.fromRGB(255, 222, 184), brightness = 2.5 },
+	services = { color = Color3.fromRGB(255, 228, 196), brightness = 2.6 },
+	lobby = { color = Color3.fromRGB(255, 230, 196), brightness = 2.8 },
 }
+-- the accent palette (neon signs, LED strips, gel washes)
+local ACCENT = {
+	red = Color3.fromRGB(255, 50, 60), blue = Color3.fromRGB(60, 130, 255), gold = Color3.fromRGB(255, 200, 60),
+	magenta = Color3.fromRGB(255, 80, 200), cyan = Color3.fromRGB(70, 225, 255), teal = Color3.fromRGB(80, 230, 200),
+}
+
+-- a hanging neon sign: a dark plate with bright text on both faces, a neon tube border in the sign's
+-- colour and a coloured pool of light under it (6 parts, 2 guis, 1 light)
+local function neonSign(parent, text, cf, w, color, font)
+	local m = model(parent, "NeonSign")
+	local h = w * 0.26
+	local plate = part(m, "NeonPlate", V3(w, h, 0.3), cf, Color3.fromRGB(14, 14, 18), M.SmoothPlastic, { shadow = false })
+	for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
+		sign(plate, face, text, color, nil, 30, 0, font or "sign")
+	end
+	for _, e in ipairs({ { 0, h / 2 + 0.12, w + 0.5, 0.22 }, { 0, -h / 2 - 0.12, w + 0.5, 0.22 }, { -w / 2 - 0.14, 0, 0.22, h }, { w / 2 + 0.14, 0, 0.22, h } }) do
+		part(m, "NeonTube", V3(e[3], e[4], 0.22), cf * CF(e[1], e[2], 0), color, M.Neon, { shadow = false })
+	end
+	for _, x in ipairs({ -w / 2 + 0.6, w / 2 - 0.6 }) do
+		local top = (cf * CF(x, h / 2, 0)).Position
+		part(m, "SignCable", V3(0.08, math.max(0.5, 28 - top.Y), 0.08), CF(top.X, (top.Y + 28) / 2, top.Z), C.black, M.Metal, { shadow = false })
+	end
+	point(emitter(m, cf * CF(0, -h / 2 - 0.6, 0)), color, 22, 1.1)
+	tag(m, "NeonFlicker")
+	return m
+end
 
 local function zoneLight(x, z)
 	if math.abs(x) <= 45 then
@@ -582,8 +610,45 @@ local function buildLights(root)
 	-- recovery: soft teal glow along the divider top
 	part(f, "LEDStrip", V3(40, 0.2, 0.3), CF(88, 9.5, 20), Color3.fromRGB(90, 220, 200), M.Neon, { shadow = false })
 	for _, x in ipairs({ 78, 98 }) do
-		point(emitter(f, CF(x, 8.6, 22.5)), Color3.fromRGB(110, 230, 210), 16, 0.6)
+		point(emitter(f, CF(x, 8.6, 22.5)), Color3.fromRGB(110, 230, 210), 16, 0.9)
 	end
+	-- colour: LED strips round the sparring ring's apron (red on the north / east faces, blue on the
+	-- south / west: the corner colours), each with a small pool of its colour on the floor
+	local ring = root:FindFirstChild("GymRing")
+	local base = ring and ring:FindFirstChild("RingBase")
+	if base then
+		local bc, bs = base.Position, base.Size
+		local y = bc.Y + bs.Y / 2 - 0.4
+		for _, e in ipairs({ { 0, -1, "red" }, { 1, 0, "red" }, { 0, 1, "blue" }, { -1, 0, "blue" } }) do
+			local col = ACCENT[e[3]]
+			local along = e[1] == 0 and bs.X or bs.Z
+			local pos = V3(bc.X + e[1] * (bs.X / 2 + 0.08), y, bc.Z + e[2] * (bs.Z / 2 + 0.08))
+			part(f, "ApronLED", e[1] == 0 and V3(along, 0.18, 0.14) or V3(0.14, 0.18, along), CF(pos), col, M.Neon, { shadow = false })
+			point(emitter(f, CF(pos + V3(e[1] * 2.5, 0.5, e[2] * 2.5))), col, 15, 0.7)
+		end
+	end
+	-- gel washes over the ring: red from the north rail of the canopy, blue from the south (soft, no
+	-- shadows: the white cans still model the boxers; these colour the canvas and the ropes)
+	for _, e in ipairs({ { -1, "red" }, { 1, "blue" } }) do
+		local pos = rc + V3(0, y - 0.9, e[1] * 9)
+		local col = ACCENT[e[2]]
+		local can = part(f, "GelCan", V3(0.9, 0.9, 1.4), CFrame.lookAt(pos, rc + V3(0, 3, -e[1] * 2)), C.black, M.Metal, { shadow = false })
+		part(f, "GelLens", V3(0.7, 0.7, 0.06), can.CFrame * CF(0, 0, -0.72), col, M.Neon, { shadow = false })
+		spot(emitter(f, can.CFrame * CF(0, 0, -1.0)), Enum.NormalId.Front, col, 34, 1.5, 64, false)
+	end
+	-- coloured spots over the members' bags (magenta) and the station row east of the ring (cyan)
+	for _, e in ipairs({ { V3(-30, 21, -30), "magenta" }, { V3(30, 21, -30), "cyan" } }) do
+		local col = ACCENT[e[2]]
+		local src = emitter(f, CF(e[1]))
+		part(f, "GelLens", V3(0.8, 0.06, 0.8), CF(e[1] + V3(0, 0.3, 0)), col, M.Neon, { shadow = false })
+		spot(src, Enum.NormalId.Bottom, col, 32, 1.3, 78, false)
+	end
+	-- neon signs hanging from the trusses, one per zone in that zone's colour
+	neonSign(f, "TRAIN HARD", CF(0, 21, -8), 12, ACCENT.red)
+	neonSign(f, "NO DAYS OFF", CF(-60, 21, 15) * ANG(0, RAD(90), 0), 11, ACCENT.gold)
+	neonSign(f, "CARDIO", CF(60, 21, -45) * ANG(0, RAD(90), 0), 9, ACCENT.blue)
+	neonSign(f, "RECOVER", CF(90, 21, 45) * ANG(0, RAD(90), 0), 9, ACCENT.teal)
+	neonSign(f, "CHAMPIONS TRAIN HERE", CF(0, 20, 30), 16, ACCENT.magenta)
 end
 
 ------------------------------------------------------------------------
@@ -1432,8 +1497,13 @@ function GymDecor.RoundTimer(parent, cf, width, doubleSided, wallMounted)
 	end
 	for i, colr in ipairs({ Color3.fromRGB(40, 220, 80), Color3.fromRGB(250, 200, 40), Color3.fromRGB(240, 50, 40) }) do
 		local lamp = part(m, ({ "LampGo", "LampWarn", "LampRest" })[i], V3(0.8, 0.8, 0.8), cf * CF((i - 2) * 1.1, h / 2 + 0.45, 0), colr, M.Neon, { shape = Enum.PartType.Ball, shadow = false })
-		lamp.Transparency = 0.6
+		lamp.Transparency = 0.4
 	end
+	-- the board glows: a red LED frame round the clock and a small pool of its light
+	for _, e in ipairs({ { 0, h / 2 + 0.06, width + 0.3, 0.12 }, { 0, -h / 2 - 0.06, width + 0.3, 0.12 }, { -width / 2 - 0.06, 0, 0.12, h }, { width / 2 + 0.06, 0, 0.12, h } }) do
+		part(m, "TimerLED", V3(e[3], e[4], 0.5), cf * CF(e[1], e[2], 0), Color3.fromRGB(255, 60, 50), M.Neon, { shadow = false })
+	end
+	point(emitter(m, cf * CF(0, 0, -1.2)), Color3.fromRGB(255, 90, 70), 12, 0.6)
 	if not wallMounted then
 		for _, x in ipairs({ -width / 2 + 0.6, width / 2 - 0.6 }) do
 			local top = (cf * CF(x, h / 2, 0)).Position

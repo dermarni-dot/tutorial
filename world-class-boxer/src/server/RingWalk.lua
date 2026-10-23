@@ -326,6 +326,11 @@ function RingWalk.Run(fight, env)
 			if not W.isPlayer and W.hum then
 				W.hum.WalkSpeed = speed
 				W.hum:MoveTo(Vector3.new(pos.X, pos.Y, pos.Z))
+				-- [Studio] the intended velocity for the clients' Animator (its gait on a replicated root follows this)
+				if W.root then
+					local d = Vector3.new(pos.X - W.root.Position.X, 0, pos.Z - W.root.Position.Z)
+					W.model:SetAttribute("Gait", d.Magnitude > 0.5 and d.Unit * speed or nil)
+				end
 			end
 		end
 		for _, b in ipairs(beats) do
@@ -358,6 +363,11 @@ function RingWalk.Run(fight, env)
 				moveNPC(pts.inside, plan.speed)
 			elseif b.id == "ring" then
 				moveNPC(pts.corner, Entrance.SPEED.ring)
+				task.delay(6, function()
+					if W.model and W.model.Parent then
+						W.model:SetAttribute("Gait", nil)
+					end
+				end)
 			elseif b.id == "robe" then
 				hold(w0 + b.t0 + 0.5)
 				if Builder then

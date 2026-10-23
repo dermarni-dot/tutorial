@@ -1677,6 +1677,48 @@ function UI.Shadow(holder, radius, strength)
 	end
 end
 
+-- a cut corner on a flat frame (the fight presentation's angled panels): the frame's own background is
+-- clipped along a 45-degree line `px` design px from the corner, through one UIGradient on its transparency
+-- (no extra frames: the children draw as before). which = "tl" | "tr" | "bl" | "br" (one corner) or
+-- "tl+br" / "tr+bl" (the two opposite corners: a lozenge). A UIStroke on the frame follows the cut.
+function UI.Cut(frame, px, which)
+	which = which or "br"
+	px = tonumber(px) or 10
+	local abs = frame.AbsoluteSize
+	local w, h = abs.X, abs.Y
+	if w < 2 or h < 2 then
+		local sz = frame.Size
+		w, h = math.max(2, sz.X.Offset), math.max(2, sz.Y.Offset)
+	end
+	-- along the diagonal (0..1) a cut of px on both edges spans px / (w + h) of the gradient's length
+	local k = math.clamp(px / math.max(1, w + h), 0, 0.45)
+	local flip = which:find("tr") ~= nil or which:find("bl") ~= nil
+	local g = frame:FindFirstChild("Cut") or UI.New("UIGradient", { Name = "Cut", Parent = frame })
+	g.Rotation = flip and -45 or 45
+	local first = which:find("tl") ~= nil or which:find("tr") ~= nil
+	local last = which:find("br") ~= nil or which:find("bl") ~= nil
+	local keys = {}
+	local function add(t, v)
+		keys[#keys + 1] = NumberSequenceKeypoint.new(t, v)
+	end
+	if first then
+		add(0, 1)
+		add(k, 1)
+		add(k + 0.001, 0)
+	else
+		add(0, 0)
+	end
+	if last then
+		add(1 - k - 0.001, 0)
+		add(1 - k, 1)
+		add(1, 1)
+	else
+		add(1, 0)
+	end
+	g.Transparency = NumberSequence.new(keys)
+	return g
+end
+
 function UI.Clear(frame)
 	for _, c in ipairs(frame:GetChildren()) do
 		if not (c:IsA("UIListLayout") or c:IsA("UIPadding") or c:IsA("UIGridLayout") or c:IsA("UICorner") or c:IsA("UIStroke") or c:IsA("UISizeConstraint") or c:IsA("UIGradient") or c:IsA("UIScale")) then

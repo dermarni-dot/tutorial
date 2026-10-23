@@ -178,34 +178,41 @@ POSES.pfWait = function(p, rig, t, d, w, model, dt)
 	return p
 end
 
+-- (the arms hang a little out, REF_OUT rad: PostFight.Layout stands each man a shoulder width of each plus its
+-- SIDE_GAP of air from the referee, with his own arm a touch out toward him - the hanging hands meet the wrists
+-- there; an arm held 0.9 rad out reached into the man's forearm)
+local REF_OUT = 0.25
 POSES.pfHold = function(p, rig, t, d, w, model, dt)
 	local k = into(rig, "pfHold", dt, 0.5)
 	base(p, rig, t, dt)
 	to(p, "W", A(0.04, 0, 0), k)
 	to(p, "Neck", A(0.04, 0, 0), k)
-	to(p, "RS", A(-0.1, 0, 0.9), k)
+	to(p, "RS", A(-0.1, 0, REF_OUT), k)
 	to(p, "RE", A(0.2, 0, 0), k)
-	to(p, "LS", A(-0.1, 0, -0.9), k)
+	to(p, "LS", A(-0.1, 0, -REF_OUT), k)
 	to(p, "LE", A(0.2, 0, 0), k)
 	rig.lookW = 0.4
 	return p
 end
 
+local REF_UP, WIN_UP = 2.75, 2.9
 local function refRaise(p, rig, t, dt, k, left, both)
 	to(p, "W", A(0.04, left and 0.1 or -0.1, 0), k)
 	to(p, "Neck", A(0.12, both and 0 or (left and 0.45 or -0.45), 0), k)
+	-- (the raised arm nearly straight up, REF_UP rad: the winner's goes up at WIN_UP beside it, the two hands meet
+	-- over the gap between the bodies instead of crossing into the other man)
 	if left or both then
-		to(p, "LS", A(0.18, 0, -2.6), k)
+		to(p, "LS", A(0.18, 0, -REF_UP), k)
 		to(p, "LE", A(0.3, 0, 0), k)
 	else
-		to(p, "LS", A(-0.1, 0, -0.9), k)
+		to(p, "LS", A(-0.1, 0, -REF_OUT), k)
 		to(p, "LE", A(0.2, 0, 0), k)
 	end
 	if (not left) or both then
-		to(p, "RS", A(0.18, 0, 2.6), k)
+		to(p, "RS", A(0.18, 0, REF_UP), k)
 		to(p, "RE", A(0.3, 0, 0), k)
 	else
-		to(p, "RS", A(-0.1, 0, 0.9), k)
+		to(p, "RS", A(-0.1, 0, REF_OUT), k)
 		to(p, "RE", A(0.2, 0, 0), k)
 	end
 	rig.lookW = 0
@@ -237,12 +244,12 @@ local function handUp(p, rig, t, dt, k, rightArm)
 	to(p, "W", A(0.12 + b, 0, rightArm and -0.05 or 0.05), k)
 	to(p, "Neck", A(0.16, rightArm and -0.12 or 0.12, 0), k)
 	if rightArm then
-		to(p, "RS", A(0.12, 0, 2.72), k)
+		to(p, "RS", A(0.12, 0, WIN_UP), k)
 		to(p, "RE", A(0.22, 0, 0), k)
 		to(p, "LS", A(0.2, 0, -0.38), k)
 		to(p, "LE", A(0.9, 0, 0), k)
 	else
-		to(p, "LS", A(0.12, 0, -2.72), k)
+		to(p, "LS", A(0.12, 0, -WIN_UP), k)
 		to(p, "LE", A(0.22, 0, 0), k)
 		to(p, "RS", A(0.2, 0, 0.38), k)
 		to(p, "RE", A(0.9, 0, 0), k)

@@ -85,7 +85,9 @@ local function rig(hs)
 	end }
 end
 local R1 = HG.Frame(rig(1), 100, U)
-check("rig: a frame off the parts", R1.source == "rig" and near(R1.headY, 5.99, 0.01) and near(R1.torsoHalfD, 0.485, 0.01) and near(R1.arm, 1.0 + 0.93 + 0.73, 0.01) and near(R1.glove, 0.305, 0.01), R1.arm)
+-- (the arm is the hanging chain, shoulder pivot (0.2 under the upper arm's top) to the glove's bottom: 4.7 - 2.235)
+check("rig: a frame off the parts", R1.source == "rig" and R1.fallback == nil and near(R1.headY, 5.99, 0.01) and near(R1.torsoHalfD, 0.485, 0.01) and near(R1.arm, 4.7 - 2.235, 0.02) and near(R1.glove, 0.305, 0.01), R1.arm)
+check("rig: the arm is never the sum of the part boxes", R1.arm < 1.0 + 0.93 + 0.73 - 0.1, R1.arm)
 local R12 = HG.Frame(rig(1.2), 100, U)
 check("rig: a 1.2 x rig is 1.2 x taller with 1.2 x the arm", near(R12.stand, R1.stand * 1.2, 0.02) and near(R12.arm, R1.arm * 1.2, 0.02))
 check("rig: no root, the fallback", HG.Frame({ FindFirstChild = function()
@@ -217,7 +219,7 @@ do
 		local old = math.max(3.4, HG.BASE * Config.Punches[p].range)
 		check("engine: PunchRange " .. p .. " is the old number at 70 / 70", near(f:PunchRange(P, p), old, 0.02), f:PunchRange(P, p) .. " vs " .. old)
 	end
-	check("engine: MinSep is the old spacing for the unit pair", near(f:MinSep(), 3.25, 0.01), f:MinSep())
+	check("engine: MinSep is the fight spacing for the unit pair", near(f:MinSep(), S.H.require("FightMotion").Spacing.minSep, 0.02), f:MinSep())
 	check("engine: the clinch reach is the old spacing for the unit pair", near(f:ClinchRange(P), 4.8, 0.01), f:ClinchRange(P))
 	check("engine: a longer tape reaches further", (function()
 		local g = fight(data("BoxerPuncher", 70, 78), data("BoxerPuncher", 70))
@@ -274,12 +276,12 @@ do
 	check("engine: the short man's jab from 3.9 is thrown to the tall man's body", redirects == 30 and bodyHits > 0 and bodyHits == P.totals.landed, redirects .. " / " .. bodyHits)
 	check("engine: the short man's jab from 4.4 reaches nothing on the tall man", not f:HitTest(P, O, "jab", false, 4.4).ok and f:HitTest(P, O, "jab", false, 4.4).why == "short")
 	check("engine: the tall man's jab from 4.4 is a head shot", f:HitTest(O, P, "jab", false, 4.4).ok and f:HitTest(O, P, "jab", false, 4.4).zone == "head")
-	check("engine: the short man's jab inside reaches the chin", f:HitTest(P, O, "jab", false, 3.4).zone == "head")
-	check("engine: a rolling tall man is a head target from range", (function()
-		O.rollUntil = f:Now() + 1
-		local t = f:HitTest(P, O, "jab", false, 3.8)
-		O.rollUntil = 0
-		return t.ok and t.zone == "head"
+	-- (Builder.Scales puts 2.6 studs between these two crowns: inside, the jab lands - on the chin when the angle
+	-- allows, else it falls to the body; it never comes back "short")
+	check("engine: the short man's jab inside lands (chin or body)", f:HitTest(P, O, "jab", false, 3.4).ok and f:HitTest(P, O, "jab", false, 3.4).why == nil)
+	check("engine: a rolling tall man is a head target from closer than a standing one", (function()
+		local G, OG = f:Geo(P), f:Geo(O)
+		return HG.Range(G, OG, "jab", false, { bend = 1 }) > HG.Range(G, OG, "jab", false) + 0.3 and f:HitTest(P, O, "jab", false, 3.4).ok
 	end)())
 	check("engine: a Punch at a tall man from range is thrown to the body (the act says so)", (function()
 		place(3.9)

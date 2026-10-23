@@ -200,7 +200,29 @@ local function geoFrame(F)
 	local root = F.root
 	local soleY = root and root.Position and (root.Position.Y - standHeight(F.hum, root)) or nil
 	local okF, frame = pcall(HitGeometry.Frame, F.model, soleY, fallback)
-	frame = okF and frame or fallback
+	-- the fallback is explicit: why the rig was not used (HitGeometry.Frame's reason, an error, a frame with a hole
+	-- in it), kept on the fighter for the diagnostic and warned once per fighter - never a frame with reach 0 / NaN
+	local why = nil
+	if not okF then
+		why, frame = "Frame errored: " .. tostring(frame), fallback
+	elseif type(frame) ~= "table" then
+		why, frame = "no frame", fallback
+	elseif frame.fallback then
+		why = tostring(frame.fallback)
+	end
+	if HitGeometry.Invalid and HitGeometry.Invalid(frame) then
+		why = (why and (why .. "; ") or "") .. "fallback invalid (" .. tostring(HitGeometry.Invalid(frame)) .. "): the unit frame"
+		frame = HitGeometry.Unit()
+	end
+	F.geoFallback = why
+	if why and not F.geoWarned then
+		F.geoWarned = true
+		-- (the headless sims' stub rigs are a root alone: not worth a line)
+		if not why:find("a root alone", 1, true) then
+			warn(string.format("[Boxer] hit geometry: fallback for %s: %s (%s)", tostring(data.name or (F.model and F.model.Name) or "?"), why,
+				HitGeometry.Describe and HitGeometry.Describe(frame) or "frame"))
+		end
+	end
 	-- [FrameTraits] a long-armed frame reaches further at the same height (the client gets this frame in `start`)
 	local reachBonus = (F.frame or FrameTraits.For(data)).reachBonus or 1
 	if type(frame) == "table" and type(frame.arm) == "number" and reachBonus ~= 1 then
@@ -415,17 +437,34 @@ end
 -- (FightMotion.Spacing; the client fits each punch to the actual distance)
 -- mul (optional) = a special move's range multiplier (Moves.Data.range): applied BEFORE the floor, so a short
 -- move (liver shot 0.95, lead uppercut 0.9) still reaches a man standing as close as the bodies allow
-function Fight:PunchRange(F, ptype, mul)
+-- the fight's close floor, root to root: inside it every punch reaches and only the height decides
+-- (HitGeometry.Test; the client's prediction is handed the same number in `start`). The pair's scaled spacing,
+-- and never under the bodies' separation plus FLOOR_AIR: so wherever the engine lets the two men stand
+-- (Fight:MinSep, Fight:Separate) a jab reaches - the invariant MinSep + 0.3 < PunchRange(jab), tested in
+-- tools/sim/test_hitdetect against frames off the real part sizes
+local FLOOR_AIR = 0.3
+FightEngine.FLOOR_AIR = FLOOR_AIR
+function Fight:Floor()
 	local floor = (self.sp or SPACING).min
+	if self.P and self.O then
+		floor = math.max(floor, self:MinSep() + FLOOR_AIR)
+	end
+	return floor
+end
+
+function Fight:PunchRange(F, ptype, mul)
+	local floor = self:Floor()
 	local G, OG = self:Geo(F), self:Geo(self:Other(F))
 	if G and OG then
-		-- the live rigs (HitGeometry): how far out this man's punch reaches the other's head at a level stance;
-		-- the frames never change in a fight, so each punch is worked out once
+		-- the live rigs (HitGeometry.Reach): how far out this man's punch LANDS on the other - on the head at a
+		-- level stance, or on the body where a head shot falls there (a short man's jab at a tall head is thrown
+		-- from where it lands low: Resolve's HitTest redirects it, it does not refuse it); the frames never change
+		-- in a fight, so each punch is worked out once
 		local key = ptype .. "|" .. tostring(mul or 1)
 		F.rangeCache = F.rangeCache or {}
 		local r = F.rangeCache[key]
 		if not r then
-			r = HitGeometry.Range(G, OG, ptype, false, { mul = mul, floor = floor })
+			r = HitGeometry.Reach(G, OG, ptype, { mul = mul, floor = floor })
 			F.rangeCache[key] = r
 		end
 		-- never shorter than the closest the bodies get, so every punch can land up close (the height still
@@ -494,7 +533,71 @@ function Fight:HitTest(F, O, ptype, body, dist, mul)
 		local ok = dist <= self:PunchRange(F, ptype, mul)
 		return { ok = ok, zone = body and "body" or "head", why = (not ok) and "short" or nil }
 	end
-	return HitGeometry.Test(G, OG, ptype, body, dist, { mul = mul, floor = (self.sp or SPACING).min, bend = self:Bend(O), noRedirect = ptype == "overhand" })
+	return HitGeometry.Test(G, OG, ptype, body, dist, { mul = mul, floor = self:Floor(), bend = self:Bend(O), noRedirect = ptype == "overhand" })
+end
+
+------------------------------------------------------------------------
+-- Lag compensation for the player's punches. The client predicts a punch at the press (FightClient's PredAct) against
+-- the opponent where it sees him; the server resolves it a network delay and the wind-up later, when he may have
+-- moved. Every fighter's flat position is recorded each frame (RecordPose, POSE_KEEP seconds), the client stamps
+-- its press with workspace:GetServerTimeNow() (`at`), and Resolve also tests the punch against the opponent's
+-- position at the press as the client saw it (the press time less the replication's interpolation): when the live
+-- test fails only by movement (its margin within LAG_TOL) the press-time verdict stands. An AI punch (no `at`) is
+-- never compensated: it reasons in server time.
+------------------------------------------------------------------------
+local POSE_KEEP, POSE_INTERP, LAG_MAX, LAG_TOL = 1.0, 0.1, 0.3, 0.35
+FightEngine.LAG_TOL = LAG_TOL
+local function serverTime()
+	local ok, t = pcall(function()
+		return workspace:GetServerTimeNow()
+	end)
+	return ok and tonumber(t) or nil
+end
+FightEngine.ServerTime = serverTime
+function Fight:RecordPose(F, now)
+	if not F.root then
+		return
+	end
+	local h = F.poseHist
+	if not h then
+		h = {}
+		F.poseHist = h
+	end
+	local p = F.root.Position
+	table.insert(h, { t = now, x = p.X, z = p.Z, bend = self:Bend(F) })
+	while #h > 2 and now - h[1].t > POSE_KEEP do
+		table.remove(h, 1)
+	end
+end
+-- F's flat position at time t (interpolated; nil without a history reaching back that far)
+function Fight:PoseAt(F, t)
+	local h = F.poseHist
+	if not h or #h == 0 or t < h[1].t - 0.05 then
+		return nil
+	end
+	local prev = h[1]
+	for i = 2, #h do
+		local cur = h[i]
+		if cur.t >= t then
+			local span = cur.t - prev.t
+			local k = span > 1e-6 and math.clamp((t - prev.t) / span, 0, 1) or 1
+			return Vector3.new(prev.x + (cur.x - prev.x) * k, 0, prev.z + (cur.z - prev.z) * k)
+		end
+		prev = cur
+	end
+	return Vector3.new(prev.x, 0, prev.z)
+end
+-- the root-to-root distance as the attacker's client saw it at its press: the attacker where he is now (his own
+-- character replicates with the same delay), the defender where he was `lag` ago less the interpolation
+function Fight:CompDistance(F, O, lag)
+	if not (F.root and O.root) then
+		return nil
+	end
+	local op = self:PoseAt(O, self:Now() - lag - POSE_INTERP)
+	if not op then
+		return nil
+	end
+	return flat(F.root.Position - op).Magnitude
 end
 
 -- the closest the two bodies get, centre to centre (the pair's scaled spacing, and no less than their real torsos
@@ -503,7 +606,7 @@ end
 -- torsoHalfW x sin (a Heavyweight frame's 1.17-wide chest is what meets the other man, not its depth alone),
 -- plus both pairs of gloves (SEP_GLOVE x the glove radii, as HitGeometry.MinSep) and SEP_AIR of air. The unit
 -- (Athletic) pair gives the balanced 3.25 either way; a Heavyweight pair 3.57 by depth, 3.70 bladed.
-local BLADE, SEP_GLOVE, SEP_AIR = math.rad(35), 1.6, 0.53
+local BLADE, SEP_GLOVE, SEP_AIR = math.rad(35), 1.6, 0.5194
 local function bladedHalf(G)
 	return G.torsoHalfD * math.cos(BLADE) + G.torsoHalfW * math.sin(BLADE)
 end
@@ -1132,7 +1235,7 @@ end
 -- Combinations (Shared.Combos): a punch thrown inside the last one's chain window continues its chain; a press
 -- up to Combos.BUFFER before the recovery ends is held and thrown on the frame it ends (fromBuffer); an earlier
 -- one is refused and counted against the chain as a mash
-function Fight:Punch(F, ptype, body, counter, fromBuffer)
+function Fight:Punch(F, ptype, body, counter, fromBuffer, pressAt)
 	local P = Config.Punches[ptype]
 	if P and F.state == "clinch" and not self.finished and self.live and not self.paused then
 		-- in the clinch a punch is inside work: a short shot to the body (Fight:ClinchWork)
@@ -1152,7 +1255,7 @@ function Fight:Punch(F, ptype, body, counter, fromBuffer)
 				task.delay(F.busyUntil - now, function()
 					if self.id == fightId and not self.finished then
 						F.buffered = false
-						self:Punch(F, ptype, body, counter, true)
+						self:Punch(F, ptype, body, counter, true, pressAt)
 					end
 				end)
 			elseif F.chain and not F.chain.closed then
@@ -1233,7 +1336,18 @@ function Fight:Punch(F, ptype, body, counter, fromBuffer)
 		end
 	end
 	local fightId = self.id
-	local opts = { counterPunch = outOfSlip or nil, chain = item, chainRef = chain }
+	local opts = { counterPunch = outOfSlip or nil, chain = item, chainRef = chain, windup = windup }
+	-- the player's press time (the client's workspace:GetServerTimeNow()): the network delay it arrived with, for
+	-- Resolve's lag compensation; nothing for an AI punch or a stamp that makes no sense
+	if F.isPlayer and type(pressAt) == "number" and pressAt == pressAt then
+		local st = serverTime()
+		if st then
+			local lag = st - pressAt
+			if lag >= -0.05 and lag <= 1 then
+				opts.lag = math.clamp(lag, 0, LAG_MAX)
+			end
+		end
+	end
 	task.delay(windup, function()
 		if self.id == fightId and not self.finished then
 			self:Resolve(F, O, ptype, body, stamPct, opts)
@@ -1500,8 +1614,12 @@ function Fight:Special(F, id)
 	end
 end
 
-function Fight:Evaded(F, O, ptype, body, now)
+function Fight:Evaded(F, O, ptype, body, now, contactAt)
 	local kind = Config.Punches[ptype].kind
+	-- a dodge that began after the visible contact (contactAt: the player's press-delay before now) beat nothing
+	if contactAt and type(O.defAt) == "number" and O.defAt > contactAt then
+		return false
+	end
 	-- a punch from the side of a closing eye (or a cut bleeding into it) is one he never saw: a dodge beats it
 	-- only part of the time (Config.FightDepth.blindDodge). F's left hand lands on O's right side.
 	local landSide = F.hand == "L" and 1 or -1
@@ -1683,6 +1801,20 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	-- man's real head or body at this distance, his bend, the fight's close floor. A head shot that cannot get up
 	-- to a much taller chin lands on the body when it reaches that far
 	local hit = self:HitTest(F, O, ptype, body, dist, sp.range)
+	-- the player's punch against the opponent where his client saw him at the press (lag compensation): a live
+	-- miss by movement alone, within LAG_TOL of landing, stands as the client predicted it
+	local lag = sp.lag
+	if not hit.ok and lag and F.isPlayer then
+		local dC = self:CompDistance(F, O, lag + (sp.windup or 0))
+		if dC and dC < dist then
+			local hitC = self:HitTest(F, O, ptype, body, dC, sp.range)
+			if hitC.ok and (tonumber(hit.margin) or -math.huge) >= -LAG_TOL then
+				hit = hitC
+				hit.lagComp = true
+				dist = dC
+			end
+		end
+	end
 	if not hit.ok then
 		self:ChainResult(F, O, sp, "miss")
 		self:Miss(F, O, ptype, hit.why == "high" and "high" or (hit.why == "low" and "low" or "short"))
@@ -1692,7 +1824,9 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		body = true
 		self:Send({ t = "redirect", who = self:Who(F), punch = ptype })
 	end
-	if self:Evaded(F, O, ptype, body, now) then
+	-- (a dodge against the player's punch counts only when it began before the contact his client showed him:
+	-- the resolve less the delay his press arrived with)
+	if self:Evaded(F, O, ptype, body, now, lag and (now - lag) or nil) then
 		if F.ai and F.ai.obs then
 			F.ai.obs.slips += 1
 		end
@@ -2118,6 +2252,10 @@ function Fight:Miss(F, O, ptype, why)
 	F.stamina = math.max(0, F.stamina - 1)
 	if why == "miss" and O.data.stats.Countering > 55 then
 		O.counterUntil = self:Now() + 0.45
+	end
+	-- (the AI in front of him saw him miss: FightAI.OnOppMiss, its opening)
+	if O.ai and O.ai.OnOppMiss then
+		O.ai:OnOppMiss(ptype, why)
 	end
 	-- whiffing a big shot pulls the fighter off balance (worse when gassed or dazed)
 	if why ~= "short" and Config.Punches[ptype].kind ~= "straight" then
@@ -2945,6 +3083,8 @@ function Fight:Glide(F, goal, speed, onArrive)
 	local id, fightId = F.glideId, self.id
 	task.spawn(function()
 		local v, acc = 0, speed * 4
+		local model = F.model
+		local lastG
 		while F.glideId == id and self.id == fightId and not self.aborted and F.root and F.root.Parent do
 			local dt = RunService.Heartbeat:Wait()
 			-- (the spot itself never inside the other man's body: a goal set a moment ago may be where he now stands)
@@ -2962,6 +3102,17 @@ function Fight:Glide(F, goal, speed, onArrive)
 				break
 			end
 			shift(F, d * (step / m))
+			-- [Studio] Gait: the glide's intended velocity for the clients' Animator (quantised: a change-only attribute)
+			if model and model.Parent and m > 1e-3 then
+				local q = d / m * (math.floor(v * 2 + 0.5) * 0.5)
+				if not lastG or (q - lastG).Magnitude > 0.4 then
+					lastG = q
+					model:SetAttribute("Gait", q)
+				end
+			end
+		end
+		if model and model.Parent and F.glideId == id then
+			model:SetAttribute("Gait", nil)
 		end
 	end)
 end
@@ -3844,6 +3995,7 @@ function Fight:Update(dt)
 	local rdt = self.menuHold and 0 or dt
 	for _, F in ipairs(self.pair or { self.P, self.O }) do
 		self:SampleDevice(F, now)
+		self:RecordPose(F, now)
 		if F.state == "punching" and now >= F.busyUntil then
 			F.state = F.blocking and "blocking" or "idle"
 		end
@@ -4526,6 +4678,17 @@ function Fight:WalkOut(W, steps, pyro)
 	if not W.isPlayer and W.hum then
 		W.hum.WalkSpeed = 8
 		W.hum:MoveTo(steps)
+		-- [Studio] the intended velocity for the clients' Animator (its gait on a replicated root follows this)
+		if W.root and W.model then
+			local d = Vector3.new(steps.X - W.root.Position.X, 0, steps.Z - W.root.Position.Z)
+			W.model:SetAttribute("Gait", d.Magnitude > 0.5 and d.Unit * 8 or nil)
+			local m = W.model
+			task.delay(math.clamp(d.Magnitude / 8 + 1, 2, 20), function()
+				if m.Parent then
+					m:SetAttribute("Gait", nil)
+				end
+			end)
+		end
 	end
 end
 
@@ -4777,7 +4940,7 @@ function Fight:Run()
 			-- the special moves this viewer may throw (ids) and the aim-assist level the server will honour
 			moves = movesList(V), assist = V.assist,
 			-- the hit detection's frames (HitGeometry): the client's prediction and range read-out run on these
-			geo = { you = V.geo, opp = X.geo, floor = (self.sp or SPACING).min },
+			geo = { you = V.geo, opp = X.geo, floor = self:Floor() },
 			-- the first-time tutorial: the client puts its step card up
 			tutorial = self.tutorial and Tutorial and { total = #(self.tutorial.steps or Tutorial.STEPS), special = self.tutorial.special or (not self.debut and Tutorial.SPECIAL) or nil,
 				debut = self.debut or nil } or nil,
@@ -5527,7 +5690,7 @@ function FightEngine.Input(player, msg)
 		end
 	end
 	if t == "punch" and Config.Punches[msg.p] then
-		fight:Punch(F, msg.p, msg.body == true, msg.counter == true)
+		fight:Punch(F, msg.p, msg.body == true, msg.counter == true, nil, tonumber(msg.at))
 	elseif t == "special" then
 		fight:Special(F, msg.id)
 	elseif t == "block" then

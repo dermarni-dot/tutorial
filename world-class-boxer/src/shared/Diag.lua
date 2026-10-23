@@ -608,8 +608,11 @@ function Diag.Report(model, ctx)
 			local root = model:FindFirstChild("HumanoidRootPart")
 			local want = root and (hum.HipHeight + root.Size.Y / 2) or nil
 			local have = g.floorH - g.rootY
+			local geo = g.geoGroundY and -g.geoGroundY or have
 			if want and math.abs(have - want) > 0.05 then
 				table.insert(verdicts, string.format("BAD  Animator floor %.2f under the root vs HipHeight's %.2f: the planted feet and the Humanoid disagree about the ground", have, want))
+			elseif want and math.abs(geo - want) > 0.05 then
+				table.insert(verdicts, string.format("WARN Animator floor %.2f follows HipHeight; the soles' own bind height says %.2f (HipHeight %.2f off the legs: BuilderTiers.FixHipHeight pending or not taken)", have, geo, geo - want))
 			else
 				table.insert(verdicts, string.format("OK   Animator floor %.2f under the root matches HipHeight", have))
 			end
@@ -720,10 +723,23 @@ function Diag.SampleTick(S, model, t)
 		S.tracks += 1
 	end
 	local vel = root.AssemblyLinearVelocity
+	local rcf = root.CFrame
+	-- [Studio] "sways side to side": the root's own lateral travel relative to its facing since the last tick (studs) and
+	-- its roll (deg) - what the Humanoid / physics does to the ROOT, which no joint write can cause
+	local lat, roll = 0, 0
+	do
+		local prev = S.ticks[#S.ticks]
+		if prev and prev.pos then
+			local d = rcf.Position - prev.pos
+			lat = Vector3.new(d.X, 0, d.Z):Dot(rcf.RightVector)
+		end
+		local _, _, rz = rcf:ToOrientation()
+		roll = math.deg(rz)
+	end
 	local tick = {
 		t = t, vx = Vector3.new(vel.X, 0, vel.Z).Magnitude, rootY = root.Position.Y, lY = lf.Position.Y, rY = rf.Position.Y,
 		lP = lf.Position, rP = rf.Position, hip = bend(model, "RightUpperLeg", "RightHip"), knee = bend(model, "RightLowerLeg", "RightKnee"),
-		elbow = bend(model, "RightLowerArm", "RightElbow"), playing = playing,
+		elbow = bend(model, "RightLowerArm", "RightElbow"), playing = playing, pos = rcf.Position, lat = lat, roll = roll,
 	}
 	table.insert(S.ticks, tick)
 	-- a foot is "down" when it is within 0.12 of the lowest foot height seen so far; its travel then is slide
@@ -762,10 +778,25 @@ function Diag.SampleLines(S)
 	end
 	table.insert(lines, string.format("sample %d ticks over %.1fs: vmax=%.2f rootY %.2f..%.2f (bob %.2f) lowestFootY=%.2f animateTicks=%d slideL=%.2f/%d slideR=%.2f/%d",
 		n, S.ticks[n].t - S.ticks[1].t, vmax, rootMin, rootMax, rootMax - rootMin, lo, S.tracks, S.slideL, S.downL, S.slideR, S.downR))
+	local latMax, rollMax = 0, 0
 	for _, k in ipairs(S.ticks) do
-		table.insert(lines, string.format("  t=%.1f v=%.2f rootY=%.2f footL=%.2f footR=%.2f hip=%s knee=%s elbow=%s%s", k.t, k.vx, k.rootY, k.lY, k.rY,
+		latMax = math.max(latMax, math.abs(k.lat or 0))
+		rollMax = math.max(rollMax, math.abs(k.roll or 0))
+		table.insert(lines, string.format("  t=%.1f v=%.2f rootY=%.2f footL=%.2f footR=%.2f hip=%s knee=%s elbow=%s lat=%+.3f roll=%+.1f%s", k.t, k.vx, k.rootY, k.lY, k.rY,
 			k.hip and string.format("%d", k.hip) or "-", k.knee and string.format("%d", k.knee) or "-", k.elbow and string.format("%d", k.elbow) or "-",
-			k.playing and " ANIMATE" or ""))
+			k.lat or 0, k.roll or 0, k.playing and " ANIMATE" or ""))
+	end
+	-- the root itself (not the joints): a sideways travel per tick past 0.1 studs or a roll past 5 degrees is the
+	-- Humanoid / physics rocking the character - a collider, a mass off the axis, a mover on the root
+	if latMax > 0.1 then
+		table.insert(verdicts, string.format("BAD  the ROOT sways sideways %.2f studs per tick relative to its facing: physics / the Humanoid moves it (a part with mass off the axis, a mover, HipHeight written per frame), not the joints", latMax))
+	else
+		table.insert(verdicts, string.format("OK   root lateral travel %.3f studs per tick", latMax))
+	end
+	if rollMax > 5 then
+		table.insert(verdicts, string.format("BAD  the ROOT rolls %.1f degrees: the HumanoidRootPart itself tips (physics), the joint poses cannot do that", rollMax))
+	else
+		table.insert(verdicts, string.format("OK   root roll %.1f degrees", rollMax))
 	end
 	local moving = vmax > 2
 	if not moving then

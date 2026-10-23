@@ -2562,6 +2562,21 @@ local function onCharacter(player, char)
 	if hum then
 		-- the town pace is a walk (StarterPlayer's CharacterWalkSpeed says so too); Shift runs (FightClient)
 		hum.WalkSpeed = Config.TownWalkSpeed
+		-- [Studio] the engine clones its Animate LocalScript into the character on every spawn; the client Animator
+		-- disables it, but the server's view (and the diagnostic) still showed it ENABLED with no ProcAnim: disabled
+		-- here too - the Disabled flag replicates - and ProcAnim set server-side, so every view agrees the joints are
+		-- the Animator's. RequiresNeck off: a head swap / headgear rebuild / ragdoll that leaves the Neck joint out for a
+		-- frame would otherwise kill the character (state Dead, BreakJointsOnDeath: every joint gone - seen in Studio)
+		pcall(function()
+			hum.RequiresNeck = false
+		end)
+		char:SetAttribute("ProcAnim", true)
+		task.spawn(function()
+			local an = char:FindFirstChild("Animate") or char:WaitForChild("Animate", 5)
+			if an and an:IsA("LuaSourceContainer") and char.Parent then
+				an.Disabled = true
+			end
+		end)
 		hum.Died:Connect(function()
 			if sessions[player] then
 				endSession(player, true)

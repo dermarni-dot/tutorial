@@ -244,8 +244,12 @@ local function walker(npc, def)
 			if flat.Magnitude < 4 or os.clock() - started > limit then
 				break
 			end
+			-- [Studio] Gait: the intended world velocity, for the clients' Animator (a replicated root's own travel
+			-- stutters; the gait follows this and only checks it against the travel - CONTRACTS section 7)
+			npc:SetAttribute("Gait", -flat.Unit * hum.WalkSpeed)
 			task.wait(1)
 		end
+		npc:SetAttribute("Gait", nil)
 		if def.loop == "walk" then
 			-- the coach stops to watch for a moment
 			hum:MoveTo(root.Position)

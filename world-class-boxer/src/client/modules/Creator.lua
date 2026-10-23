@@ -326,6 +326,10 @@ local function lookSlider(tbl, key, def, head, withHint)
 	end
 	local opts, num = LookKit.Opts(e, def and def[key], withHint)
 	opts.onEnd = gestureEnd
+	-- a slider the whole body follows (skin smoothness, the seed) previews when it is let go: every change is a
+	-- full server rebuild (~800 instances replicated), so a drag sends one, not two a second; the head sliders
+	-- (a partial rebuild) stay live. [-] / [+], the wheel and a gamepad step preview at once either way
+	opts.onRelease = not head or nil
 	return UI.Slider(body, LookKit.Label(e), e.min, e.max, tbl[key] or (def and def[key]) or 0, e.step, function(v)
 		pushUndo(key)
 		tbl[key] = v
@@ -914,6 +918,8 @@ local function pageBody()
 	UI.Line(body, string.format("%s: %s", ft.id, modsText(ft.mods)), { TextColor3 = T.sub, TextSize = 13 })
 	frameTraitsPanel(ft.id)
 	UI.Header(body, "SIZE")
+	-- (onRelease: a height is a rescale and a full rebuild of the character on the server, ~800 instances
+	-- replicated each time; a drag previews once when it is let go, the steppers and the wheel at once)
 	UI.Slider(body, "Height", 60, 84, C.look.height, 1, function(v)
 		pushUndo("height")
 		C.look.height = v
@@ -921,7 +927,7 @@ local function pageBody()
 	end, function(v)
 		return Config.HeightText(v)
 	end, {
-		default = def.height, hint = LookKit.Hints.height, onEnd = gestureEnd,
+		default = def.height, hint = LookKit.Hints.height, onEnd = gestureEnd, onRelease = true,
 		words = function(v)
 			return v < 66 and "Short" or (v <= 71 and "Average" or (v <= 76 and "Tall" or "Very tall"))
 		end,

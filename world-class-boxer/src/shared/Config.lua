@@ -1309,6 +1309,12 @@ end
 -- Anatomy meshes (EditableMesh characters built on each client from the server's LookData; the round-1
 -- parts stay as the fallback). AnatomyClient reads these; ANATOMY_CONTRACTS.md is the full contract.
 -- tris = triangle budgets per section and level of detail (the generators must stay under them).
+-- the Body tab's muscle map (BoxerClient.BodyMap): drawn from the uploaded image sheet (Shared.BodyMapData)
+-- when it has an id, else from plain Frames. editable = true paints it into an EditableImage instead (the
+-- old path: needs the experience's Image APIs and the editable memory budget; off by default, a budget
+-- that runs out drew a checkerboard where the figure should be)
+Config.BodyMap = { editable = false }
+
 Config.Anatomy = {
 	enabled = true, -- master switch; false = everyone keeps the part-built look
 	maxFull = 6, -- full-detail characters near the camera besides the local player and the fight opponent
@@ -1596,6 +1602,40 @@ function Config.Overall(stats)
 		total += stats[k] or 0
 	end
 	return math.floor(total / #Config.StatKeys + 0.5)
+end
+
+------------------------------------------------------------------------
+-- Lighting: the global look (MapBuilder applies it; Ambience / VenueFX layer the per-place exposure and
+-- grades on top; tools/sim/world_scene.luau exports it for the offline previews). Technology stays Future
+-- (build.py sets it). The brief: bright, vivid and colourful by day, warm sun, lifted ambient so no interior
+-- ever goes muddy, a saturated grade with a touch of bloom on the emissives.
+------------------------------------------------------------------------
+Config.Lighting = {
+	-- Lighting service properties (a bright, warm early afternoon)
+	Global = {
+		ClockTime = 13.6, GeographicLatitude = 34,
+		Brightness = 4.4, ExposureCompensation = 0.35,
+		Ambient = { 156, 150, 146 }, OutdoorAmbient = { 166, 178, 204 },
+		ColorShift_Top = { 255, 234, 196 }, ColorShift_Bottom = { 196, 214, 244 },
+		EnvironmentDiffuseScale = 1, EnvironmentSpecularScale = 0.8, ShadowSoftness = 0.38,
+	},
+	-- the global grade (ColorCorrectionEffect "GymGrade"), bloom and sun rays
+	Grade = { Brightness = 0.04, Contrast = 0.1, Saturation = 0.25, TintColor = { 255, 248, 238 } },
+	Bloom = { Intensity = 0.5, Size = 34, Threshold = 1.2 },
+	SunRays = { Intensity = 0.14, Spread = 0.8 },
+	-- a thin, bright atmosphere with a saturated sky and a little glow round the sun
+	Atmosphere = { Density = 0.2, Offset = 0.32, Color = { 228, 236, 250 }, Decay = { 96, 150, 230 }, Glare = 0.42, Haze = 1.9 },
+	Sky = { SunAngularSize = 16, MoonAngularSize = 11, StarCount = 1500 },
+	Clouds = { Cover = 0.34, Density = 0.45, Color = { 255, 255, 255 } },
+	-- after dark (Ambience eases to these once the day cycle passes dusk): a colourful blue night, not grey
+	Night = { OutdoorAmbient = { 82, 98, 164 }, Ambient = { 120, 118, 140 }, AtmosphereColor = { 150, 130, 200 }, AtmosphereDecay = { 40, 48, 120 } },
+}
+-- (r, g, b) tables above -> Color3 (a Color3 passes through)
+function Config.LightingColor(c)
+	if typeof(c) == "Color3" then
+		return c
+	end
+	return Color3.fromRGB(c[1], c[2], c[3])
 end
 
 return Config

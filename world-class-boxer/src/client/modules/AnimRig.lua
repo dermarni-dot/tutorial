@@ -211,6 +211,30 @@ function AnimRig.computeGeo(rig)
 		leg.ankleC1rot = ankleC1.Rotation
 		leg.l1 = max(0.3, (leg.hipC1inv * leg.kneeC0).Position.Magnitude)
 		leg.l2 = max(0.3, (leg.kneeC1inv * leg.ankleC0).Position.Magnitude)
+		-- [Studio] the engine's deferred scaling (AutomaticScalingEnabled after ReplaceBodyPartR15 / ApplyDescription) moves
+		-- a part's RigAttachments first and re-aims its Motor6D C0 / C1 a step later: measured from the joints in between,
+		-- a leg of the new frame families (longer or shorter than the part box implied) was the old length, and the foot
+		-- targets planned on it were unreachable - the knee locked or the pelvis sank into the thighs. The RigAttachment
+		-- chain (hip -> knee -> ankle) is the truth whenever the two disagree (an AnimationConstraint rig IS its attachments)
+		do
+			local long = s == "L" and "Left" or "Right"
+			local ul, ll = part1(hipM), part1(kneeM)
+			local function attLen(part, a, b)
+				local pa, pb = part and part:FindFirstChild(a), part and part:FindFirstChild(b)
+				if pa and pb and pa:IsA("Attachment") and pb:IsA("Attachment") then
+					return (pa.CFrame.Position - pb.CFrame.Position).Magnitude
+				end
+				return nil
+			end
+			local a1 = attLen(ul, long .. "HipRigAttachment", long .. "KneeRigAttachment")
+			local a2 = attLen(ll, long .. "KneeRigAttachment", long .. "AnkleRigAttachment")
+			if a1 and a1 > 0.3 and abs(a1 - leg.l1) > 0.02 then
+				leg.l1 = a1
+			end
+			if a2 and a2 > 0.3 and abs(a2 - leg.l2) > 0.02 then
+				leg.l2 = a2
+			end
+		end
 		local ankleCF = lt0 * leg.hipC0 * leg.hipC1inv * leg.kneeC0 * leg.kneeC1inv * leg.ankleC0
 		leg.ankle0 = ankleCF.Position
 		leg.hip0 = (lt0 * leg.hipC0).Position
@@ -253,6 +277,27 @@ function AnimRig.computeGeo(rig)
 		end
 	end
 	g.groundY = lowest
+	g.geoGroundY = lowest
+	g.floorFix = 0
+	-- [Studio] where the ground really is: the Humanoid holds its root HipHeight + root / 2 above it. After a
+	-- ReplaceBodyPartR15 / ApplyDescription the engine's AutomaticScaling rewrites HipHeight (BuilderTiers.FixHipHeight
+	-- puts the legs' value back at 0.25 / 1.5 s; the Animator re-measures on every HipHeight change) and until it does -
+	-- or when the fix did not take - the soles' bind height and HipHeight disagree: planted at the soles' height the feet
+	-- stood in the air or under the floor, the stance knees locked or folded and the pelvis sank "into the body". The
+	-- measured floor follows HipHeight when they differ by more than 0.05 (a free root only: an anchored preview or a
+	-- posed puppet stands where its parts were put; a stale HipHeight of 0 or a difference past a stud is nonsense and kept out)
+	do
+		local hum = rig.hum
+		if hum and hum.Parent and root:IsA("BasePart") and not root.Anchored then
+			local hh = hum.HipHeight
+			local want = -(hh + root.Size.Y * 0.5)
+			local d = want - lowest
+			if hh > 0.5 and abs(d) > 0.05 and abs(d) < 1.0 then
+				g.groundY = want
+				g.floorFix = d
+			end
+		end
+	end
 	-- the feet's and thighs' widths (the walking track keeps the feet and the thighs from passing through each
 	-- other: AnimLoco's track and WALK_GAP)
 	do

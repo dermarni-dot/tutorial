@@ -463,10 +463,11 @@ do
 		local accent = left and T.red or T.blue
 		local f = UI.Frame(board, { Name = left and "You" or "Opponent", Size = UDim2.new(0.5, -96, 1, 0), Position = left and UDim2.fromScale(0, 0) or UDim2.fromScale(1, 0),
 			AnchorPoint = left and Vector2.new(0, 0) or Vector2.new(1, 0), Visible = false })
-		UI.Glass(f, { transparency = 0.12, radius = UI.R.lg })
-		-- the corner colour along the outer edge
-		local edge = UI.Frame(f, { Name = "Corner", AnchorPoint = Vector2.new(left and 0 or 1, 0), Position = left and UDim2.fromOffset(0, 10) or UDim2.new(1, 0, 0, 10), Size = UDim2.new(0, 4, 1, -20), BackgroundColor3 = accent })
-		UI.Corner(edge, 2)
+		UI.Glass(f, { transparency = 0.06, radius = UI.R.sm })
+		-- the broadcast shape: the inner bottom corner is cut on a slant (the clock's lozenge between them)
+		UI.Cut(f, 22, left and "br" or "bl")
+		-- the corner colour along the outer edge (red corner left, blue corner right)
+		UI.Frame(f, { Name = "Corner", AnchorPoint = Vector2.new(left and 0 or 1, 0), Position = left and UDim2.fromOffset(0, 0) or UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 4, 1, 0), BackgroundColor3 = accent })
 		local align = left and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right
 		local outer = Vector2.new(left and 0 or 1, 0)
 		local flagHolder = UI.Frame(f, { Name = "FlagHolder", BackgroundTransparency = 1, Size = UDim2.fromOffset(30, 20), AnchorPoint = outer })
@@ -611,17 +612,19 @@ do
 	-- center: the round and the clock (the network's LIVE tag sits in the clock's top band, inside the
 	-- scoreboard); the crowd meter under the time
 	clock = UI.Frame(board, { Name = "Clock", Size = UDim2.new(0, 176, 1, 0), Position = UDim2.fromScale(0.5, 0), AnchorPoint = Vector2.new(0.5, 0), Visible = false })
-	UI.Glass(clock, { transparency = 0.06, radius = UI.R.lg, color = T.ink })
-	local clockTop = UI.Frame(clock, { Name = "Top", Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = T.gold })
-	UI.Corner(clockTop, UI.R.lg)
-	UI.Frame(clockTop, { Position = UDim2.new(0, 0, 1, -10), Size = UDim2.new(1, 0, 0, 10), BackgroundColor3 = T.gold })
+	UI.Glass(clock, { transparency = 0, radius = UI.R.sm, color = T.ink })
+	-- the lozenge: both bottom corners cut on a slant, matching the panels either side
+	UI.Cut(clock, 18, "tl+br")
+	-- the top band: the LIVE tag and the round on a dark band under a 2 px gold rule
+	local clockTop = UI.Frame(clock, { Name = "Top", Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = T.panel })
+	UI.Frame(clockTop, { Name = "Rule", Position = UDim2.new(0, 0, 1, -2), Size = UDim2.new(1, 0, 0, 2), BackgroundColor3 = T.gold })
 	local liveTag = UI.Frame(clockTop, { Name = "Live", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 5, 0.5, 0), Size = UDim2.fromOffset(0, 20),
 		AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.red, ZIndex = 2 })
 	UI.Corner(liveTag, 4)
 	local liveText = UI.Text(liveTag, "LIVE", { Font = T.semi, TextSize = 13, TextColor3 = Color3.new(1, 1, 1), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
 		TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, ZIndex = 3 })
 	UI.Pad(liveText, 0, 5)
-	roundText = UI.Text(clockTop, "ROUND 1", { Face = "displayMed", TextSize = 18, TextColor3 = T.ink, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(44, 0),
+	roundText = UI.Text(clockTop, "ROUND 1", { Face = "numberMed", TextSize = 14, TextColor3 = T.text, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(44, 0),
 		Size = UDim2.new(1, -48, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	-- the round text starts where the SPAR / LIVE tag ends (a phone's text floor makes the tag wider than its
 	-- 44 px slot, and "SPAR" over "ROUND 1 / 1" read as one word). Where "ROUND 1 / 3" does not fit the room
@@ -659,8 +662,8 @@ do
 	-- the crowd: a two-sided meter (red fills left when they are behind you, blue right when they back
 	-- him), a glow that pulses on big shots, the mood in words under it
 	local crowdBox = UI.Frame(clock, { Name = "Crowd", BackgroundTransparency = 1, Position = UDim2.new(0, 12, 1, -46), Size = UDim2.new(1, -24, 0, 40) })
-	local crowdBar = UI.Frame(crowdBox, { Name = "Meter", Position = UDim2.fromOffset(0, 4), Size = UDim2.new(1, 0, 0, 8), BackgroundColor3 = Color3.fromRGB(26, 28, 36) })
-	UI.Corner(crowdBar, 4)
+	local crowdBar = UI.Frame(crowdBox, { Name = "Meter", Position = UDim2.fromOffset(0, 4), Size = UDim2.new(1, 0, 0, 6), BackgroundColor3 = T.panel2 })
+	UI.Corner(crowdBar, 2)
 	local crowdGlow = UI.Frame(crowdBox, { Name = "Glow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0, 8), Size = UDim2.new(1, 10, 0, 18), BackgroundColor3 = T.gold,
 		BackgroundTransparency = 1, ZIndex = 0 })
 	UI.Corner(crowdGlow, 9)
@@ -669,7 +672,7 @@ do
 	local crowdRight = UI.Frame(crowdBar, { Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.blue })
 	UI.Corner(crowdRight, 4)
 	local crowdMid = UI.Frame(crowdBar, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 2, 1, 6), BackgroundColor3 = Color3.new(1, 1, 1) })
-	local crowdLabel = UI.Text(crowdBox, "CROWD  ·  QUIET", { Name = "Mood", Font = T.semi, TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromOffset(0, 16), Size = UDim2.new(1, 0, 0, 18),
+	local crowdLabel = UI.Text(crowdBox, "CROWD  ·  QUIET", { Name = "Mood", Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(0, 16), Size = UDim2.new(1, 0, 0, 18),
 		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 	crowdMeter = { level = 0.2, lean = 0, shownLevel = -1, shownLean = 99, quiet = 0, lastBanner = -100 }
 	local CROWD_WORDS = { { 0.85, "ON THEIR FEET" }, { 0.6, "CROWD  ·  ROARING" }, { 0.35, "CROWD  ·  BUZZING" }, { 0, "CROWD  ·  QUIET" } }
@@ -931,10 +934,10 @@ do
 	-- the lower third: live commentary
 	local ticker = UI.Frame(hud, { Name = "Ticker", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -14), Size = UDim2.new(1, -48, 0, 40), BackgroundColor3 = T.bg })
 	UI.New("UISizeConstraint", { MaxSize = Vector2.new(1080, 40), Parent = ticker })
-	UI.Glass(ticker, { transparency = 0.12, radius = UI.R.md })
+	UI.Glass(ticker, { transparency = 0.04, radius = UI.R.sm })
 	local tickerTag = UI.Frame(ticker, { Size = UDim2.new(0, 140, 1, 0), BackgroundColor3 = T.red })
-	UI.Corner(tickerTag, UI.R.md)
-	UI.Frame(tickerTag, { Position = UDim2.new(1, -8, 0, 0), Size = UDim2.new(0, 8, 1, 0), BackgroundColor3 = T.red })
+	UI.Corner(tickerTag, UI.R.sm)
+	UI.Cut(tickerTag, 14, "br")
 	local liveDot = UI.Frame(tickerTag, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), Size = UDim2.fromOffset(8, 8), BackgroundColor3 = Color3.new(1, 1, 1) })
 	UI.Corner(liveDot, 4)
 	UI.Text(tickerTag, "COMMENTARY", { Font = T.semi, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Position = UDim2.fromOffset(26, 0), Size = UDim2.new(1, -26, 1, 0),
@@ -945,7 +948,7 @@ do
 	-- held (or always, with the setting); touch players get the pads instead
 	-- packed to the screen's width (KM.packStrip): one row on a wide screen, more on a narrow one
 	controls = UI.Frame(hud, { Name = "Controls", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -62), Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY })
-	UI.Glass(controls, { transparency = 0.35, radius = 16 })
+	UI.Glass(controls, { transparency = 0.15, radius = UI.R.md })
 	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 14), PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4), Parent = controls })
 	UI.List(controls, 2, false, Enum.HorizontalAlignment.Center)
 	-- Row1 / Row2 / Row2b: the moves (as many rows as the width needs); Row3 / Row4: the special moves
@@ -983,8 +986,8 @@ do
 		ctlItems[i], ctlSpec[i] = f, k
 		UI.List(f, 5, true)
 		local cap = UI.Frame(f, { Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.panel2, BackgroundTransparency = 0, LayoutOrder = 1 })
-		UI.Corner(cap, 4)
-		UI.Stroke(cap, Color3.new(1, 1, 1), 1, 0.85)
+		UI.Corner(cap, 3)
+		UI.Stroke(cap, T.line, 1, 0)
 		local t = UI.Text(cap, "", { Font = T.semi, TextSize = 12, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 		UI.Pad(t, 0, 6)
 		UI.BindHint(t, function(mode)
@@ -1860,8 +1863,10 @@ do
 		UI.Corner(b, math.floor(size / 2))
 		b.Selectable = false
 		UI.New("UIStroke", { Color = color, Thickness = 2.5, Transparency = 0.15, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = b })
-		UI.Text(b, text, { Face = "displayMed", TextSize = size >= 80 and 20 or 17, TextColor3 = Color3.new(1, 1, 1), Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None,
-			TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = true })
+		-- (a long caption - GAZELLE, OVERHAND - steps down to fit the pad, never under the readability floor)
+		local t = UI.Text(b, text, { Face = "displayMed", TextSize = size >= 80 and 18 or 15, TextColor3 = Color3.new(1, 1, 1), Size = UDim2.new(1, -6, 1, 0), Position = UDim2.fromOffset(3, 0),
+			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = true, TextScaled = true })
+		UI.New("UITextSizeConstraint", { MaxTextSize = size >= 80 and 18 or 15, MinTextSize = 11, Parent = t })
 		return b
 	end
 
@@ -3560,7 +3565,8 @@ throwPunch = function(p, body, counter)
 	if F.countdown then
 		return -- held in the corner until BOX! (the server refuses it anyway)
 	end
-	send({ t = "punch", p = p, body = body, counter = counter or nil, pad = padFlag() })
+	-- (at: the press on the shared clock, for the server's lag compensation of the hit test: FightEngine.Resolve)
+	send({ t = "punch", p = p, body = body, counter = counter or nil, pad = padFlag(), at = workspace:GetServerTimeNow() })
 	-- the server drops the guard for a punch: a tapped guard drops with it; a held one comes back up
 	-- once the punch is out. A tapped body modifier is spent on this punch.
 	if Tog.on.block then

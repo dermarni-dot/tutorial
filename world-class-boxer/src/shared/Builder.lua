@@ -646,6 +646,10 @@ local function buildRecord(model)
 	local hum = model:FindFirstChildOfClass("Humanoid")
 	if hum then
 		setAttr(model, "HipHeightAtBuild", hum.HipHeight)
+		-- [Studio] a Neck joint missing for a frame (a head swap, a headgear rebuild, a ragdoll) must never kill the rig
+		pcall(function()
+			hum.RequiresNeck = false
+		end)
 	end
 	for _, delay in ipairs({ 0.25, 1.5 }) do
 		task.delay(delay, function()

@@ -27,26 +27,28 @@ DrillScore.MAX_EVENTS = 1200
 -- the drill's pacing: what the client waits between one segment's end and the next one's start (the
 -- round banners, the rests, the beat after each combination / rep). Activities.lua waits exactly these,
 -- Training.DrillPlan writes each segment's sum into seg.gap and the replay holds the stream to it.
+-- (kept short on purpose: a workout is 20-40 s of input, the banners flash and the breathers are a
+-- second - the dead time between reps and sets is what made the sessions feel slow)
 DrillScore.WAIT = {
-	intro = 1.4, -- the first round's banner (ctx.round)
-	round = 1.0, -- a later round's / set's banner
-	rest = 3, -- the breather between rounds and sets (ctx.rest)
-	restLong = 3.5, -- the mitt coach's breather
-	restShort = 2.5, -- the rope's and the ladder's breather
-	combo = 0.7, -- after a heavy bag combination
-	shot = 1.0, -- after a power shot
-	react = 0.35, -- after a double-end cue
-	counter = 0.45, -- after a slip & counter
-	mitt = 0.75, -- after a called mitt combination
-	move = 0.3, -- after a shadow boxing cue
-	flow = 0.7, -- after a shadow boxing flow
-	lower = 0.55, -- lowering the weight after a rep
-	rerack = 0.25, -- the beat before the next rep
-	slam = 0.22, -- the ball driven down after a slam
-	catch = 0.35, -- the catch off the bounce
-	ladder = 0.6, -- after a ladder drill
-	rebound = 0.45, -- after a double-end rebound
-	steps = 0.4, -- after the shadow boxing footwork pattern
+	intro = 0.6, -- the first round's banner (ctx.round)
+	round = 0.5, -- a later round's / set's banner
+	rest = 1.0, -- the breather between rounds and sets (ctx.rest)
+	restLong = 1.2, -- the mitt coach's breather
+	restShort = 1.0, -- the rope's and the ladder's breather
+	combo = 0.4, -- after a heavy bag combination
+	shot = 0.5, -- after a power shot
+	react = 0.25, -- after a double-end cue
+	counter = 0.3, -- after a slip & counter
+	mitt = 0.45, -- after a called mitt combination
+	move = 0.2, -- after a shadow boxing cue
+	flow = 0.4, -- after a shadow boxing flow
+	lower = 0.3, -- lowering the weight after a rep
+	rerack = 0.15, -- the beat before the next rep
+	slam = 0.2, -- the ball driven down after a slam
+	catch = 0.25, -- the catch off the bounce
+	ladder = 0.4, -- after a ladder drill
+	rebound = 0.3, -- after a double-end rebound
+	steps = 0.3, -- after the shadow boxing footwork pattern
 }
 -- an "@" may come this much before the plan's pacing allows (clock rounding); earlier, the segment
 -- starts at the allowed time and what the client did before it counts for nothing
@@ -66,12 +68,15 @@ end
 
 local J = {}
 
--- a sequence (combinations, called mitt combos, shadow flows, named ladder drills): press the ids in
--- order before the limit; a wrong press is counted and the sequence waits for the right one
+-- a sequence (combinations, shadow flows): press the ids in order before the limit; a wrong press is
+-- counted and the sequence waits for the right one. With seg.beat (the heavy bag's rhythm combos) every
+-- hit after the first is also timed against the one before it: a beat apart is on the beat (perfect
+-- inside 35% of it, good inside 70%), the rest is off (the chain still goes on: nothing resets).
 J.seq = function(seg, M)
 	local ids, n = seg.ids, #seg.ids
 	local endT = M + seg.limit
-	local s = { idx = 1, wrong = 0, presses = 0, closed = false }
+	local beat = tonumber(seg.beat)
+	local s = { idx = 1, wrong = 0, presses = 0, perfectHits = 0, goodHits = 0, closed = false }
 	function s.input(id, down, t)
 		if not down or s.closed or t < M then
 			return nil
@@ -84,11 +89,22 @@ J.seq = function(seg, M)
 		local at = s.idx
 		if id == ids[at] then
 			s.idx += 1
+			local tempo
+			if beat and s.lastHit then
+				local e = math.abs(t - s.lastHit - beat)
+				tempo = e <= beat * 0.35 and "perfect" or (e <= beat * 0.7 and "good" or "off")
+				if tempo == "perfect" then
+					s.perfectHits += 1
+				elseif tempo == "good" then
+					s.goodHits += 1
+				end
+			end
+			s.lastHit = t
 			if s.idx > n then
 				s.doneAt = t
 				s.closed = true
 			end
-			return { ok = true, idx = at }
+			return { ok = true, idx = at, tempo = tempo }
 		end
 		s.wrong += 1
 		return { ok = false, idx = at }
@@ -105,7 +121,10 @@ J.seq = function(seg, M)
 	function s.result()
 		local done = s.idx - 1
 		local frac = (done == n and s.doneAt) and math.max(0, 1 - (s.doneAt - M) / seg.limit) or 0
-		return { done = done, n = n, wrong = s.wrong, presses = s.presses, frac = frac, complete = done == n, time = s.doneAt and (s.doneAt - M) or nil }
+		-- the share of the timed hits on the beat (nil without a beat)
+		local beatQ = beat and n > 1 and (s.perfectHits + 0.75 * s.goodHits) / (n - 1) or nil
+		return { done = done, n = n, wrong = s.wrong, presses = s.presses, frac = frac, complete = done == n, time = s.doneAt and (s.doneAt - M) or nil,
+			beatQ = beatQ, perfectHits = s.perfectHits, goodHits = s.goodHits }
 	end
 	function s.endsAt()
 		return s.doneAt or endT
@@ -146,6 +165,104 @@ J.cue = function(seg, M)
 	end
 	function s.endsAt()
 		return M + (s.answered and s.rt or seg.window)
+	end
+	return s
+end
+
+-- call & response (the mitts): the coach calls the moves one at a time - call k comes at
+-- M + lead + (k - 1) * call and stays open for `window` - and each is answered with its move inside its
+-- window (perfect inside half of it, good after). A FEINT call (id "feint") is one you must NOT bite on:
+-- any press inside its window is bitten, nothing is a feint held. A wrong move answers (and spends)
+-- the call; a press with no call open is a stray. Nothing resets: a missed call is just a missed call.
+J.call = function(seg, M)
+	local ids, n = seg.ids, #seg.ids
+	local calls = {}
+	for k, id in ipairs(ids) do
+		calls[k] = { id = id, t = M + seg.lead + (k - 1) * seg.call, feint = id == "feint" }
+	end
+	local last = calls[n]
+	local endT = (last and last.t or M) + seg.window
+	local s = { calls = calls, closed = false, perfect = 0, good = 0, wrong = 0, missed = 0, held = 0, bitten = 0, stray = 0, feints = 0, endT = endT }
+	for _, c in ipairs(calls) do
+		if c.feint then
+			s.feints += 1
+		end
+	end
+	local function resolve(c, how, at)
+		c.judged, c.how, c.at = true, how, at
+		s[how] += 1
+	end
+	-- the calls whose window went by unanswered (the client's MISS / FEINT HELD)
+	function s.advance(t)
+		local out
+		for k, c in ipairs(calls) do
+			if not c.judged and t - c.t >= seg.window then
+				resolve(c, c.feint and "held" or "missed", c.t + seg.window)
+				out = out or {}
+				table.insert(out, { k = k, how = c.how })
+			end
+		end
+		if t >= endT then
+			s.closed = true
+		end
+		return out
+	end
+	function s.input(id, down, t)
+		if not down or s.closed or t < M then
+			return nil
+		end
+		s.advance(t)
+		if s.closed then
+			return nil
+		end
+		-- the earliest open call for this move; failing that, the earliest open call (windows may overlap:
+		-- the move of the next call, thrown while a missed one is still open, answers the next one)
+		local c, k, first, firstK
+		for i, cc in ipairs(calls) do
+			if not cc.judged and t >= cc.t and t - cc.t < seg.window then
+				if not first then
+					first, firstK = cc, i
+				end
+				if cc.id == id then
+					c, k = cc, i
+					break
+				end
+			end
+		end
+		if not c then
+			c, k = first, firstK
+		end
+		if not c then
+			s.stray += 1
+			return { stray = true, id = id }
+		end
+		local rt = t - c.t
+		if c.feint then
+			resolve(c, "bitten", t)
+			return { k = k, how = "bitten", id = id, rt = rt }
+		elseif id == c.id then
+			local how = rt <= seg.window * 0.5 and "perfect" or "good"
+			resolve(c, how, t)
+			return { k = k, how = how, id = id, rt = rt }
+		end
+		resolve(c, "wrong", t)
+		return { k = k, how = "wrong", id = id, rt = rt }
+	end
+	function s.finish(t)
+		s.advance(t)
+		s.closed = true
+	end
+	function s.result()
+		return { n = n, real = n - s.feints, perfect = s.perfect, good = s.good, wrong = s.wrong, missed = s.missed,
+			feints = s.feints, held = s.held, bitten = s.bitten, stray = s.stray }
+	end
+	-- the last call resolved (answered, or its window gone)
+	function s.endsAt()
+		local e = M
+		for _, c in ipairs(calls) do
+			e = math.max(e, c.at or (c.t + seg.window))
+		end
+		return e
 	end
 	return s
 end
@@ -293,10 +410,17 @@ end
 -- beats on two lanes (speed bag rhythm, russian twists): a press takes the nearest open note of its
 -- lane inside hitW; |dt| under perfectW is perfect (the twists' "on the beat"), under goodW good. A
 -- press with no note of its lane in reach is a stray (mashing both hands scores nothing)
+-- With seg.accel (< 1) the tempo picks up: each gap is the last one times accel, never under
+-- seg.minInterval (the speed bag's accelerating rhythm, the ladder's quickening feet).
 J.notes = function(seg, M)
 	local notes = {}
+	local accel = tonumber(seg.accel) or 1
+	local minIv = tonumber(seg.minInterval) or seg.interval * 0.5
+	local at, iv = M + seg.lead, seg.interval
 	for i, lane in ipairs(seg.lanes) do
-		notes[i] = { t = M + seg.lead + (i - 1) * seg.interval, lane = lane }
+		notes[i] = { t = at, lane = lane }
+		at += iv
+		iv = math.max(minIv, iv * accel)
 	end
 	local last = notes[#notes]
 	local endT = (last and last.t or M) + seg.hitW
@@ -449,17 +573,18 @@ J.lift = function(seg, M)
 		local pressed = s.holdStart ~= nil and (s.failed or s.endT ~= nil)
 		local f, lo, width = s.f, seg.lo, seg.width
 		local q, verdict = 0, "none"
+		-- (a rep that misses the zone still counts for something: failing a rep costs little)
 		if not pressed then
 			q = 0
 		elseif s.failed then
-			q, verdict = seg.mode == "slam" and 0.35 or 0, "over"
+			q, verdict = seg.mode == "slam" and 0.4 or 0.25, "over"
 		elseif f >= lo and f <= lo + width then
 			local center = math.abs(f - (lo + width / 2)) / (width / 2)
-			q, verdict = center < 0.35 and 1 or 0.85, center < 0.35 and "perfect" or "good"
+			q, verdict = center < 0.5 and 1 or 0.85, center < 0.5 and "perfect" or "good"
 		elseif f < lo then
-			q, verdict = 0.45, "short"
+			q, verdict = 0.55, "short"
 		else
-			q, verdict = seg.mode == "slam" and 0.4 or 0.3, "long"
+			q, verdict = seg.mode == "slam" and 0.5 or 0.45, "long"
 		end
 		return { pressed = pressed, f = f, failed = s.failed == true, q = q, verdict = verdict }
 	end
@@ -586,9 +711,11 @@ J.breath = function(seg, M)
 end
 
 -- the jump rope: the rope turns at omega (x1.9 on a double under) from overhead; it passes the feet at
--- every full turn and the pass is judged 0.1 s later on the presses from 0.32 s before to 0.1 s after
--- it (a press earlier than that, since the last pass, is a jump on nothing: mistimed - mashing the
--- button trips). A clean jump speeds the rope up; a trip stops it for 0.8 s and slows it.
+-- every full turn and the pass is judged 0.12 s later on the presses from 0.42 s before to 0.12 s after
+-- it. One press earlier than that since the last pass is forgiven (a nervous hop); two or more are
+-- jumping on nothing: mistimed - mashing the button trips. A clean jump speeds the rope up; a trip
+-- stops it for 0.45 s and slows it a little (the rhythm is lost, not the progress).
+local ROPE_EARLY, ROPE_LATE, ROPE_TRIP = 0.42, 0.12, 0.45
 J.rope = function(seg, M)
 	local cues = seg.cues
 	local s = { phase = math.pi, tau = M, omega = seg.omega, ci = 1, done = 0, clean = 0, doubles = 0, pressed = {}, tripped = M, closed = false }
@@ -600,13 +727,16 @@ J.rope = function(seg, M)
 	-- judgements made since the last call (the client's feedback)
 	local function judge(out)
 		local pass = s.pending
-		local J0 = pass + 0.1
-		local count, good, early = 0, true, false
+		local J0 = pass + ROPE_LATE
+		local count, good, early, earlyN = 0, true, false, 0
 		local keep = {}
 		for _, p in ipairs(s.pressed) do
-			if p.t < pass - 0.32 then
-				good, early = false, true
-			elseif p.t <= pass + 0.1 then
+			if p.t < pass - ROPE_EARLY then
+				earlyN += 1
+				if earlyN >= 2 then
+					good, early = false, true
+				end
+			elseif p.t <= pass + ROPE_LATE then
 				count += 1
 				if s.passCue == "jump" or s.passCue == "double" then
 					good = good and p.id == "jump"
@@ -631,8 +761,8 @@ J.rope = function(seg, M)
 			end
 			s.omega = math.min(11.5, s.omega + 0.12)
 		else
-			s.tripped = J0 + 0.8
-			s.omega = math.max(6, s.omega - 0.6)
+			s.tripped = J0 + ROPE_TRIP
+			s.omega = math.max(6, s.omega - 0.35)
 			s.phase = math.pi
 		end
 		table.insert(out, { cue = s.passCue, clean = clean, count = count, early = early, t = J0 })
@@ -658,7 +788,7 @@ J.rope = function(seg, M)
 				s.pressed = keep
 			end
 			if s.pending then
-				if t < s.pending + 0.1 then
+				if t < s.pending + ROPE_LATE then
 					break
 				end
 				judge(out)
@@ -739,7 +869,8 @@ J.lights = function(seg, M)
 		local rt = t - s.lightAt
 		if id == ids[s.idx] and rt >= RT_FLOOR then
 			s.correct += 1
-			s.score += math.max(0.3, 1 - rt / 1.2)
+			-- (a human half-second is a good step; only a real hesitation costs)
+			s.score += math.max(0.4, 1 - math.max(0, rt - 0.25) / 1.4)
 			s.lit = false
 			s.nextLight = t + (seg.delays[s.idx] or 0.2)
 			s.idx += 1
@@ -787,16 +918,19 @@ end
 -- Session score from the segments' results (missing = not played)
 ------------------------------------------------------------------------
 local AGG = {}
+-- a wrong press costs this much of a step (the chain itself never resets)
+DrillScore.WRONG_COST = 0.35
 AGG.combo = function(plan, res)
-	local good, total, speed, combos, powerSum, shots, speedScore = 0, 0, 0, 0, 0, 0, 0
+	local good, total, rhythm, combos, powerSum, shots, speedScore = 0, 0, 0, 0, 0, 0, 0
 	for i, seg in ipairs(plan.segs) do
 		local r = res[i]
 		if seg.j == "seq" then
 			combos += 1
 			total += #seg.ids
 			if r then
-				good += math.max(0, r.done - r.wrong * 0.5)
-				speed += r.frac
+				good += math.max(0, r.done - r.wrong * DrillScore.WRONG_COST)
+				-- the rhythm of the hits (a combo without a beat: how quickly it came)
+				rhythm += r.beatQ or clamp(r.frac / 0.6, 0, 1)
 			end
 		elseif seg.j == "needle" then
 			shots += 1
@@ -805,17 +939,22 @@ AGG.combo = function(plan, res)
 			speedScore = clamp(r.count / seg.dur / seg.target, 0, 1)
 		end
 	end
-	local comboScore = clamp(0.7 * good / math.max(1, total) + 0.3 * speed / math.max(1, combos) / 0.6, 0, 1)
+	local comboScore = clamp(0.7 * good / math.max(1, total) + 0.3 * rhythm / math.max(1, combos), 0, 1)
 	local powerScore = clamp(powerSum / math.max(1, shots), 0, 1)
 	return 0.5 * comboScore + 0.25 * powerScore + 0.25 * speedScore
 end
+-- a round of notes: perfect 1, good 0.75, a stray press -0.35 (mashing both hands scores nothing)
+local function notesShare(seg, r)
+	if not r then
+		return 0
+	end
+	return clamp((r.perfect + r.good * 0.75 - 0.35 * (r.stray or 0)) / math.max(1, #seg.lanes), 0, 1)
+end
+DrillScore.NotesShare = notesShare
 AGG.rhythm = function(plan, res)
 	local sum = 0
 	for i, seg in ipairs(plan.segs) do
-		local r = res[i]
-		if r then
-			sum += math.max(0, r.perfect + r.good * 0.65 - 0.5 * (r.stray or 0)) / math.max(1, #seg.lanes)
-		end
+		sum += notesShare(seg, res[i])
 	end
 	return sum / math.max(1, #plan.segs)
 end
@@ -829,18 +968,18 @@ AGG.reaction = function(plan, res)
 		elseif seg.j == "cue" then
 			n1 += 1
 			if r and r.correct then
-				s1 += 1 - 0.4 * (r.rt / seg.window)
+				s1 += 1 - 0.3 * (r.rt / seg.window)
 			end
 		elseif seg.j == "counter" then
 			n2 += 1
 			if r and r.step == 3 and r.rt then
-				s2 += 0.6 + 0.4 * clamp(1 - r.rt / seg.cw, 0, 1)
+				s2 += 0.7 + 0.3 * clamp(1 - r.rt / seg.cw, 0, 1)
 			elseif r and r.step == 2 then
-				s2 += 0.3
+				s2 += 0.4
 			end
 		end
 	end
-	local react, counter = clamp(s1 / math.max(1, n1) / 0.85, 0, 1), clamp(s2 / math.max(1, n2) / 0.9, 0, 1)
+	local react, counter = clamp(s1 / math.max(1, n1) / 0.8, 0, 1), clamp(s2 / math.max(1, n2) / 0.9, 0, 1)
 	if n3 == 0 then
 		return 0.55 * react + 0.45 * counter
 	end
@@ -851,13 +990,27 @@ function DrillScore.SeqScore(r, partW, fastW, cap)
 	if not r then
 		return 0
 	end
-	local part = math.max(0, r.done - r.wrong * 0.5) / math.max(1, r.n)
+	local part = math.max(0, r.done - r.wrong * DrillScore.WRONG_COST) / math.max(1, r.n)
 	return math.min(cap, part * partW + r.frac * fastW)
+end
+-- a called combination (J.call): the answers (perfect 1, good 0.85, a wrong move a quarter) over the real
+-- calls, times the feints held (biting on half of them costs a quarter)
+function DrillScore.CallScore(r)
+	if not r then
+		return 0
+	end
+	local answers = (r.perfect + 0.85 * r.good + 0.25 * r.wrong) / math.max(1, r.real)
+	local feint = 1 - 0.5 * r.bitten / math.max(1, r.feints)
+	return clamp(answers * feint - 0.1 * (r.stray or 0) / math.max(1, r.real), 0, 1)
 end
 AGG.mitts = function(plan, res)
 	local sum = 0
-	for i in ipairs(plan.segs) do
-		sum += DrillScore.SeqScore(res[i], 0.8, 0.35, 1.15)
+	for i, seg in ipairs(plan.segs) do
+		if seg.j == "call" then
+			sum += DrillScore.CallScore(res[i])
+		else
+			sum += DrillScore.SeqScore(res[i], 0.8, 0.35, 1.15)
+		end
 	end
 	return sum / math.max(1, #plan.segs)
 end
@@ -867,20 +1020,18 @@ AGG.shadow = function(plan, res)
 		local r = res[i]
 		if seg.j == "notes" then
 			n3 += 1
-			if r then
-				s3 += math.max(0, r.perfect + r.good * 0.6 - 0.5 * (r.stray or 0)) / math.max(1, #seg.lanes)
-			end
+			s3 += notesShare(seg, r)
 		elseif seg.j == "cue" then
 			n1 += 1
 			if r and r.correct then
-				s1 += 1 - 0.35 * r.rt / seg.window
+				s1 += 1 - 0.3 * r.rt / seg.window
 			end
 		else
 			n2 += 1
 			s2 += DrillScore.SeqScore(r, 0.8, 0.4, 1)
 		end
 	end
-	local moves, flows = clamp(s1 / math.max(1, n1) / 0.85, 0, 1), clamp(s2 / math.max(1, n2), 0, 1)
+	local moves, flows = clamp(s1 / math.max(1, n1) / 0.8, 0, 1), clamp(s2 / math.max(1, n2), 0, 1)
 	if n3 == 0 then
 		return 0.5 * moves + 0.5 * flows
 	end
@@ -894,17 +1045,20 @@ AGG.reps = function(plan, res)
 	return sum / math.max(1, #plan.segs)
 end
 AGG.medball = function(plan, res)
-	local slam, slams, twist = 0, 0, 0
+	local slam, slams, core = 0, 0, 0
 	for i, seg in ipairs(plan.segs) do
 		local r = res[i]
 		if seg.j == "lift" then
 			slams += 1
 			slam += r and r.q or 0
-		elseif seg.j == "notes" and r then
-			twist = math.max(0, r.perfect - 0.5 * (r.stray or 0)) / math.max(1, #seg.lanes)
+		elseif seg.j == "notes" then
+			core = notesShare(seg, r)
+		elseif seg.j == "wobble" and r then
+			-- the plank: the time held in the green (Workouts.TIMED_FULL of it is full marks), a slip costs a tenth
+			core = clamp(r.acc / math.max(0.1, r.duration) / Workouts.TIMED_FULL - 0.1 * (r.lost or 0), 0, 1)
 		end
 	end
-	return 0.55 * slam / math.max(1, slams) + 0.45 * twist
+	return 0.55 * slam / math.max(1, slams) + 0.45 * core
 end
 -- this share of the cardio session spent in the zone is full marks (Activities grades each interval
 -- on the same scale for the live QUALITY tile)
@@ -921,12 +1075,22 @@ AGG.ladder = function(plan, res)
 			if seg.j == "lights" then
 				score += r.score
 				total += r.total
+				if r.complete then
+					completed += 1
+				end
+			elseif seg.j == "notes" then
+				-- the stepped pattern: the steps on the beat; a drill with most of its steps is run through
+				score += math.max(0, r.perfect + 0.8 * r.good - 0.35 * (r.stray or 0))
+				total += r.count
+				if r.hits >= 0.6 * r.count then
+					completed += 1
+				end
 			else
 				score += r.done
 				total += r.presses
-			end
-			if r.complete then
-				completed += 1
+				if r.complete then
+					completed += 1
+				end
 			end
 		end
 	end
@@ -1027,7 +1191,10 @@ function DrillScore.MinTime(plan)
 		elseif j == "burst" then
 			total += seg.dur
 		elseif j == "notes" then
-			total += math.max(0, seg.lead + (#seg.lanes - 1) * seg.interval - seg.hitW)
+			local notes = J.notes(seg, 0).notes
+			total += math.max(0, (notes[#notes] and notes[#notes].t or 0) - seg.hitW)
+		elseif j == "call" then
+			total += seg.lead + (#seg.ids - 1) * seg.call + RT_FLOOR
 		elseif j == "lift" then
 			total += seg.lo / seg.speed
 		elseif j == "pace" then

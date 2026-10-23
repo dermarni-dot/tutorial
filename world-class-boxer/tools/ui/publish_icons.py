@@ -90,7 +90,23 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--zero", action="store_true")
+    ap.add_argument("--bodymap", action="store_true", help="upload tools/ui/out/bodymap.png (build_bodymap.py) and write its id into src/shared/BodyMapData.lua")
     a = ap.parse_args()
+    if a.bodymap:
+        cache = load_cache()
+        sheet = os.path.join(OUT, "bodymap.png")
+        e = ensure(cache, sheet, "WCB Body Map", "World Class Boxer: the Body tab's muscle map (white masks, tinted in game).")
+        st, state = moderation(e["id"])
+        e["moderation"] = st
+        save_cache(cache)
+        manifest = os.path.join(ROOT, "src", "shared", "BodyMapData.lua")
+        with open(manifest) as fh:
+            txt = fh.read()
+        txt = txt.replace("BodyMapData.id = 0", f"BodyMapData.id = {e['id']}")
+        with open(manifest, "w") as fh:
+            fh.write(txt)
+        print(f"bodymap.png: {e['id']}  moderation {st}  state {state}; wrote {os.path.relpath(manifest, ROOT)}")
+        return
     with open(os.path.join(OUT, "icons.json")) as fh:
         doc = json.load(fh)
     cache = load_cache()

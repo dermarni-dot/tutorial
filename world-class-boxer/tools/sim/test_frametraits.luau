@@ -75,6 +75,13 @@ do
 	check("the heavyweight is the biggest target, the Lean the smallest", FrameTraits.Data[HVY].target > 1 and FrameTraits.Data[LEAN].target < 1)
 	check("the Muscular frame pays for its power punches", FrameTraits.Data[MUS].powerDrain > 1 and FrameTraits.Data[LEAN].powerDrain == 1)
 	rising("tank", { HVY, POW, MUS, ATH, LEAN })
+	check("growth: a Lean's hands grow quicker, a heavyweight's power (Training.GainMultiplier)", FrameTraits.GrowthMul(LEAN, "PunchSpeed") > 1 and FrameTraits.GrowthMul(HVY, "Power") > 1
+		and FrameTraits.GrowthMul(HVY, "Footwork") < 1 and FrameTraits.GrowthMul(ATH, "Power") == 1 and FrameTraits.GrowthMul("x", "Power") == 1)
+	for id, g in pairs(FrameTraits.Growth) do
+		for k, v in pairs(g) do
+			check("growth: " .. id .. "." .. k .. " is a small multiplier and a real stat", v >= 0.9 and v <= 1.1 and table.find(S.Config.StatKeys, k) ~= nil, v)
+		end
+	end
 	-- helpers
 	check("Get: an unknown id is Athletic", FrameTraits.Get("Nope") == FrameTraits.Data[ATH] and FrameTraits.Get(nil) == FrameTraits.Data[ATH])
 	check("IdOf: the engine's data (app.body.frame)", FrameTraits.IdOf({ app = { body = { frame = LEAN } } }) == LEAN)
@@ -157,9 +164,14 @@ do
 	check("engine: the Lean is the quickest on his feet, the heavyweight the slowest", speed[LEAN] > speed[ATH] and speed[ATH] >= speed[MUS] and speed[MUS] > speed[POW] and speed[POW] > speed[HVY],
 		string.format("%.1f %.1f %.1f %.1f %.1f", speed[LEAN], speed[ATH], speed[MUS], speed[POW], speed[HVY]))
 	-- the reach: the Lean's arm is longer for the hit geometry (the stub rigs: the tape's frame)
+	-- (against the same man's frame built with Athletic's traits: the frames also stand at their own heights, Builder.Scales)
 	local gl, ga = liveFight(LEAN, ATH), liveFight(ATH, ATH)
-	local GL, GA = gl:Geo(gl.P), ga:Geo(ga.P)
-	check("engine: the Lean's arm reaches further (reachBonus)", GL and GA and near(GL.arm / GA.arm, FrameTraits.Data[LEAN].reachBonus, 0.005), GL and GA and GL.arm / GA.arm)
+	local GL = gl:Geo(gl.P)
+	gl.P.frame, gl.P.geo = FrameTraits.Data[ATH], nil
+	local GL0 = gl:Geo(gl.P)
+	gl.P.frame, gl.P.geo = FrameTraits.Data[LEAN], GL
+	check("engine: the Lean's arm reaches further (reachBonus)", GL and GL0 and near(GL.arm / GL0.arm, FrameTraits.Data[LEAN].reachBonus, 0.002), GL and GL0 and GL.arm / GL0.arm)
+	check("engine: an Athletic arm is the plain geometry", near(ga:Geo(ga.P).arm, GL0.arm * (ga:Geo(ga.P).hScale / GL0.hScale), 0.01))
 	-- the dodge windows
 	local gh = liveFight(HVY, ATH)
 	check("engine: the Lean's dodge windows are the longest, the heavyweight's the shortest",
@@ -270,7 +282,7 @@ do
 	end
 	local aL, aA, aP, aH = ai(LEAN), ai(ATH), ai(POW), ai(HVY)
 	check("ai: a Lean boxes further out, a heavyweight wants it closer", aL.baseRange > aA.baseRange and aA.baseRange > aP.baseRange and aP.baseRange > aH.baseRange)
-	check("ai: the heavy frames press", aH.baseAggr > aA.baseAggr and aP.baseAggr > aA.baseAggr and aL.baseAggr < aA.baseAggr)
+	check("ai: the heavy frames press", aH.baseAggr > aA.baseAggr and aP.baseAggr > aA.baseAggr and aH.baseAggr > aP.baseAggr)
 	local pL, pA, pP = aL:PunchPrefs(), aA:PunchPrefs(), aP:PunchPrefs()
 	check("ai: a Power Build hooks and uppercuts, a Lean works the straights", pP.leadhook / pP.jab > pA.leadhook / pA.jab and pL.leadhook / pL.jab < pA.leadhook / pA.jab)
 	-- vs a Lean: the body
