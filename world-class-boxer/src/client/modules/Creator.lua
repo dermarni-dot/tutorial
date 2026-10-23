@@ -24,6 +24,7 @@ local Catalog = require(Shared:WaitForChild("Catalog"))
 local UI = require(Shared:WaitForChild("UI"))
 local State = require(script.Parent:WaitForChild("State"))
 local LookKit = require(script.Parent:WaitForChild("LookKit"))
+local FrameTraits = require(Shared:WaitForChild("FrameTraits")) -- [FrameTraits] the frames' ring traits (the body-type panel)
 local okFlags, Flags = pcall(function()
 	return require(script.Parent:WaitForChild("Flags", 5))
 end)
@@ -865,6 +866,33 @@ local function pageHair()
 	end
 end
 
+-- [FrameTraits] the frame's permanent ring traits: its tag line, then the pros (green plus) and the cons (red minus)
+-- as two short lists side by side (stacked on a narrow column)
+local function frameTraitsPanel(frameId)
+	local FT = FrameTraits.Get(frameId)
+	local panel = UI.Frame(body, { Name = "FrameTraits", BackgroundColor3 = T.panel2, BackgroundTransparency = 0.5, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+	UI.Corner(panel, UI.R.md)
+	UI.Pad(panel, 10, 12)
+	UI.List(panel, 6)
+	UI.Kicker(panel, string.format("%s  ·  %s", FrameTraits.ShortName(frameId), FT.tag or ""), T.gold, { order = 1, icon = "muscle" })
+	local narrow = body.AbsoluteSize.X > 0 and body.AbsoluteSize.X < 520
+	local cols = UI.Frame(panel, { Name = "Columns", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 })
+	UI.New("UIListLayout", { FillDirection = narrow and Enum.FillDirection.Vertical or Enum.FillDirection.Horizontal, SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, narrow and 6 or 12), Parent = cols })
+	local function list(name, lines, icon, color, order)
+		local col = UI.Frame(cols, { Name = name, BackgroundTransparency = 1, Size = narrow and UDim2.new(1, 0, 0, 0) or UDim2.new(0.5, -6, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order })
+		UI.List(col, 4)
+		for i, text in ipairs(lines) do
+			local row = UI.Frame(col, { Name = "Row", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = i })
+			UI.Icon(row, icon, 12, color, { Name = "Sign", Position = UDim2.fromOffset(0, 3) })
+			UI.Text(row, text, { Position = UDim2.fromOffset(18, 0), Size = UDim2.new(1, -18, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextSize = 13, TextColor3 = T.text, TextWrapped = true })
+		end
+	end
+	list("Pros", FT.pros or {}, "plus", T.green, 1)
+	list("Cons", FT.cons or {}, "minus", T.red, 2)
+	return panel
+end
+
 local function pageBody()
 	local b = C.look.body
 	local def = defaults()
@@ -884,6 +912,7 @@ local function pageBody()
 	end)
 	local ft = Config.FindById(Config.BodyTypes, b.frame) or Config.BodyTypes[2]
 	UI.Line(body, string.format("%s: %s", ft.id, modsText(ft.mods)), { TextColor3 = T.sub, TextSize = 13 })
+	frameTraitsPanel(ft.id)
 	UI.Header(body, "SIZE")
 	UI.Slider(body, "Height", 60, 84, C.look.height, 1, function(v)
 		pushUndo("height")

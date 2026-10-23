@@ -1462,6 +1462,8 @@ function Career.Summary(profile, storeOk)
 		history = hist, pastCareers = profile.pastCareers, final = profile.final,
 		className = Config.WeightClasses[profile.physical.weightClass].name,
 		body = body, physique = Training.Physique(profile), physiqueId = physique.id, physiqueDesc = physique.desc,
+		-- [FrameTraits] the body frame (Shared.FrameTraits reads its ring traits for the cards)
+		frame = profile.appearance and profile.appearance.body and profile.appearance.body.frame or "Athletic",
 		physiquePinned = physique.pinned == true,
 		weight = r2(wi.weight), weightLimit = wi.limit, overWeight = r2(wi.over),
 		condition = {

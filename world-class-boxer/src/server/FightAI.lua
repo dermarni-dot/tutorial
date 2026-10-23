@@ -59,6 +59,8 @@ local Combos = require(ReplicatedStorage.Shared:WaitForChild("Combos"))
 local Evasion = require(ReplicatedStorage.Shared:WaitForChild("Evasion"))
 local FightRead = require(ReplicatedStorage.Shared:WaitForChild("FightRead"))
 local Traits = require(ReplicatedStorage.Shared:WaitForChild("Traits"))
+-- [FrameTraits] the body frame it fights to (Shared.FrameTraits .ai): a heavyweight presses and ties up, a Lean boxes at range
+local FrameTraits = require(ReplicatedStorage.Shared:WaitForChild("FrameTraits"))
 
 local AIC = Config.FightAI
 
@@ -105,8 +107,11 @@ function FightAI.new(F, O, engine)
 	self.rng = Random.new()
 	self.style = style
 	self.arch = arch and arch.ai or DEFAULT_ARCH
-	self.baseRange = style.ai.range
-	self.baseAggr = style.ai.aggression + ((F.data.mental.Aggression or 50) - 50) / 200 + self.arch.aggr
+	-- [FrameTraits] its own frame and the one in front of it (the engine's F.frame; the headless sims' too)
+	self.frame = F.frame or FrameTraits.For(F.data)
+	self.oFrame = O.frame or FrameTraits.For(O.data)
+	self.baseRange = style.ai.range + self.frame.ai.range
+	self.baseAggr = style.ai.aggression + ((F.data.mental.Aggression or 50) - 50) / 200 + self.arch.aggr + self.frame.ai.aggr
 	self.jabRate = style.ai.jabRate
 	self.comboMax = style.fight.combo >= 1.2 and 4 or 3
 	self.queue = {}
@@ -443,6 +448,8 @@ function FightAI:UpdateMode()
 	if self.mode == "finish" then
 		self.bodyBias *= 0.3 -- head hunting
 	end
+	-- [FrameTraits] a boxer who knows his trade goes to a Lean man's body (and not a heavyweight's)
+	self.bodyBias += (1 - (self.oFrame.bodyAbsorb or 1)) * 0.6 * self.skill
 	self.bodyBias = math.clamp(self.bodyBias, 0, 0.7)
 	self.exploitGassed = O.stamina < O.maxStam * 0.3
 end
@@ -567,6 +574,16 @@ function FightAI:PunchPrefs()
 				pref[p] *= 1 + (m - 1) * lean
 			end
 		end
+	end
+	-- [FrameTraits] the frame's game: a power frame hooks and uppercuts inside, a Lean one works the straights
+	local inside = self.frame.ai.inside or 1
+	if inside ~= 1 then
+		pref.leadhook *= inside
+		pref.rearhook *= inside
+		pref.uppercut *= inside
+		local straight = math.clamp(2 - inside, 0.6, 1.4)
+		pref.jab *= straight
+		pref.cross *= straight
 	end
 	return pref
 end
@@ -809,6 +826,16 @@ function FightAI:Think(now)
 			return
 		end
 	end
+	-- [FrameTraits] a heavy frame ties up to wear the other man down: more when he is tiring, when it is gassed itself,
+	-- or when it is being outboxed at range (never while finishing him)
+	local fc = self.frame.ai.clinch or 0
+	if fc > 0 and self.mode ~= "finish" and self.mode ~= "gamble" and dist < (engine.ClinchRange and engine:ClinchRange(F) or SPACING.clinch * rk) then
+		local want = fc * (1 + (O.stamina < O.maxStam * 0.5 and 0.6 or 0) + (F.stamina < F.maxStam * 0.4 and 0.6 or 0) + (F.pressured and 0.4 or 0))
+		if self.rng:NextNumber() < want and engine:CanClinch(F) then
+			engine:Clinch(F)
+			return
+		end
+	end
 	-- he bit on its feint: fire now (it saw him react)
 	if now < (F.feintOpenUntil or 0) and self:Fits("cross", dist) then
 		self:Throw(self:CounterPunch(dist), self.rng:NextNumber() < self.bodyBias)
@@ -929,6 +956,10 @@ function FightAI:Move(now, dist)
 		circle = self.circleDir * 0.1
 	end
 	local cut = M.cut or 0
+	-- [FrameTraits] a pressing frame cuts the ring (when it is coming forward at all)
+	if cut > 0 or self.mode == "stalk" or self.mode == "swarm" or self.mode == "plan" then
+		cut += self.frame.ai.press or 0
+	end
 	local oRope = engine.RopeDist and engine:RopeDist(O) or 99
 	if cut > 0 then
 		-- cut the ring off for real only when he is near the ropes; a skilled boxer does it better

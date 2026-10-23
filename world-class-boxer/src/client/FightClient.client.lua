@@ -43,6 +43,7 @@ local T = UI.Theme
 local Gamepad = UI.Gamepad -- input device and button names (optional)
 local Keymap = require(Shared:WaitForChild("Keymap")) -- the control map (actions, defaults, labels)
 local Moves = require(Shared:WaitForChild("Moves")) -- the special moves (names, hands, cooldowns)
+local FrameTraits = require(Shared:WaitForChild("FrameTraits")) -- [FrameTraits] the body frames' ring traits (the punch windows, the tape)
 local K = Enum.KeyCode
 local FightRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Fight")
 
@@ -3549,7 +3550,9 @@ end
 -- the predicted wind-up (the server's, roughly: fatigue and daze slow it)
 local function predWindup(base)
 	local stam = F.me and F.me.max and F.me.stam / math.max(1, F.me.max) or 1
-	return base * (stam < 0.3 and 1.25 or 1) * (1 + 0.08 * ((F.me and F.me.tier) or 0))
+	-- [FrameTraits] the frame's hand speed, as the server's punchSpeed divides by it (the tape carries the frame)
+	local hand = FrameTraits.Mul(F.tape and F.tape.you and F.tape.you.frame, "handSpeed")
+	return base * (stam < 0.3 and 1.25 or 1) * (1 + 0.08 * ((F.me and F.me.tier) or 0)) / hand
 end
 
 -- counter = a counter jab / cross out of a slip (Q + click): the server lets it through the slip's recovery
@@ -4924,12 +4927,16 @@ local function buildTape()
 		ovRow(string.format("%d in", y.reach or 0), "Reach", string.format("%d in", o.reach or 0))
 	end
 	ovRow(string.upper(y.style or "-"), "Style", string.upper(o.style or "-"))
+	-- [FrameTraits] the frames on the tape, and the read of his
+	if y.frame or o.frame then
+		ovRow(string.upper(FrameTraits.ShortName(y.frame or "Athletic")), "Frame", string.upper(FrameTraits.ShortName(o.frame or "Athletic")))
+	end
 	if not compact then
 		ovRow(string.upper(y.nat or "-"), "Nationality", string.upper(o.nat or "-"))
 	end
 	ovRow(y.overall or 0, "Overall", o.overall or 0, true)
 	if o.archetype and not compact then
-		ovNote("Scouting", o.archetype, T.blue)
+		ovNote("Scouting", o.archetype .. (o.frame and FrameTraits.Read(o.frame) and ("  ·  " .. FrameTraits.Read(o.frame)) or ""), T.blue)
 	end
 	-- his ring traits as far as the scouting report knows them (the rest are revealed in the fight)
 	local traitLine = KM.intel and KM.intel.TapeLine(o.traits)
