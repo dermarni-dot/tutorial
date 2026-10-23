@@ -1,0 +1,48 @@
+{
+ "id": "kd_back",
+ "kdAt": 0.54,
+ "frames": [
+  {
+   "dt": 0.0,
+   "t": 0.5333,
+   "lowest": 0.059,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.614,
+   "headY": 5.499
+  },
+  {
+   "dt": 0.2,
+   "t": 0.7333,
+   "lowest": 0.0,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.126,
+   "headY": 4.527
+  },
+  {
+   "dt": 0.5,
+   "t": 1.0667,
+   "lowest": 0.082,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 0.806,
+   "headY": 3.668
+  },
+  {
+   "dt": 1.0,
+   "t": 1.5333,
+   "lowest": 0.089,
+   "lowestPart": "LowerTorso",
+   "pelvisY": 0.562,
+   "headY": 0.586
+  },
+  {
+   "dt": 2.0,
+   "t": 2.5333,
+   "lowest": 0.012,
+   "lowestPart": "LowerTorso",
+   "pelvisY": 0.542,
+   "headY": 0.475
+  }
+ ],
+ "slideAfter": 2.21,
+ "slideMaxStep": 0.178
+}

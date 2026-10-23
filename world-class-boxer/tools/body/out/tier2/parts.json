@@ -78,7 +78,7 @@
    "depth": 0.611
   },
   "shoulderSpan": 2.571,
-  "chestDepth": 0.839
+  "chestDepth": 0.841
  },
  "armAxisX": 0.9652,
  "parts": {
@@ -87,58 +87,58 @@
    "size": [
     1.5901,
     2.4858,
-    0.8388
+    0.8412
    ],
    "rest_center": [
     0.0,
     4.1497,
-    0.0036
+    0.0048
    ],
    "attachments": {
     "NeckRigAttachment": [
      0.0,
      1.1395,
-     -0.0036
+     -0.0048
     ],
     "WaistRigAttachment": [
      0.0,
      -0.9549,
-     -0.0036
+     -0.0048
     ],
     "RightShoulderRigAttachment": [
      0.9652,
      0.7702,
-     -0.0036
+     -0.0048
     ],
     "LeftShoulderRigAttachment": [
      -0.9652,
      0.7702,
-     -0.0036
+     -0.0048
     ],
     "BodyFrontAttachment": [
      0.0,
      0.0923,
-     -0.3698
+     -0.371
     ],
     "BodyBackAttachment": [
      0.0,
      0.0923,
-     0.3703
+     0.3691
     ],
     "NeckAttachment": [
      0.0,
      1.1395,
-     -0.0036
+     -0.0048
     ],
     "RightCollarAttachment": [
      0.7915,
      0.8211,
-     -0.0036
+     -0.0048
     ],
     "LeftCollarAttachment": [
      -0.7915,
      0.8211,
-     -0.0036
+     -0.0048
     ]
    },
    "nv": 1722,

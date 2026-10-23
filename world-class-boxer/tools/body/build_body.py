@@ -1009,7 +1009,8 @@ def upper_torso(tr, fr):
         Lb(106, 20, 3.00, 3.22, 3.42, g("lat", 0.008, 0.05, 0.004)),            # the lat's outer sweep under the armpit
         Lb(168, 14, 2.34, 2.72, 3.12, g("lat", 0.005, 0.025, 0.004)),           # erector columns
         Lb(180, 5, 2.34, 2.90, 3.42, g("lat", -0.007, -0.012, -0.015)),         # spine groove (ends under the traps)
-        Lb(180, 44, 3.16, 3.44, 3.70, g("trap", 0.008, 0.042, 0.0)),            # the traps' diamond, into the slope
+        Lb(180, 56, 3.16, 3.46, 3.74, g("trap", 0.010, 0.046, 0.0)),            # the traps' diamond, into the slope
+        Lb(180, 48, 3.46, 3.60, 3.74, g("trap", 0.010, 0.035, 0.0)),            # the upper traps between the blades
         Lb(180, 14, 2.94, 3.14, 3.34, g("trap", 0.003, 0.012, 0.004)),          # its tail
         Lb(150, 22, 3.18, 3.34, 3.50, g("lat", 0.004, 0.028, 0.006)),           # infraspinatus
         Lb(118, 16, 3.14, 3.26, 3.40, g("lat", 0.003, 0.02, 0.005)),            # teres major
