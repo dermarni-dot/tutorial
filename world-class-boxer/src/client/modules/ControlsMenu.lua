@@ -533,14 +533,16 @@ local function remapTab(dev)
 		for _, a in ipairs(Keymap.Actions) do
 			if a.section == sec.id and not a.fixed and not (dev == "pad" and a.padFixed) then
 				order += 1
-				local row = UI.Frame(content, { Name = "Row_" .. a.id, Size = UDim2.new(1, -8, 0, 40), BackgroundColor3 = T.panel, BackgroundTransparency = 0.35, LayoutOrder = order })
+				-- (the caps are finger-sized on touch: the row grows around them)
+				local capH = math.max(30, UI.MinHit(content))
+				local row = UI.Frame(content, { Name = "Row_" .. a.id, Size = UDim2.new(1, -8, 0, capH + 10), BackgroundColor3 = T.panel, BackgroundTransparency = 0.35, LayoutOrder = order })
 				UI.Corner(row, UI.R.md)
 				if clash[a.id] then
 					UI.Stroke(row, T.red, 1.5, 0.2)
 				end
 				UI.Text(row, a.label .. (clash[a.id] and ("   (also " .. labelOf(clash[a.id]) .. ")") or ""), { Font = T.semi, TextSize = 14, TextColor3 = clash[a.id] and T.red or T.text, Position = UDim2.fromOffset(14, 0),
 					Size = UDim2.new(0.5, -14, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-				local caps = UI.Frame(row, { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X })
+				local caps = UI.Frame(row, { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(0, capH), AutomaticSize = Enum.AutomaticSize.X })
 				UI.List(caps, 6, true, Enum.HorizontalAlignment.Right)
 				local slots = dev == "kbd" and 2 or 1
 				for slot = 1, slots do
@@ -552,9 +554,9 @@ local function remapTab(dev)
 						b = m.pad[a.id]
 					end
 					local text = b and Keymap.Label(b, Gamepad) or "-"
-					local btn = UI.Button(caps, text, { Name = "Cap" .. slot, Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X, TextSize = 12, LayoutOrder = slot,
+					local btn = UI.Button(caps, text, { Name = "Cap" .. slot, Size = UDim2.fromOffset(0, capH), AutomaticSize = Enum.AutomaticSize.X, TextSize = 12, LayoutOrder = slot,
 						BackgroundColor3 = T.panel2 })
-					UI.Pad(btn, 0, 10)
+					UI.Pad(btn, 0, math.max(10, math.floor(capH / 2.4)))
 					btn.TextColor3 = clash[a.id] and T.red or Color3.new(1, 1, 1)
 					btn.MouseButton1Click:Connect(function()
 						beginCapture(a.id, dev, slot, btn, btn)
@@ -565,7 +567,7 @@ local function remapTab(dev)
 					end
 				end
 				-- back to this action's default on this device
-				local reset = UI.Button(caps, "", { Name = "Reset", Size = UDim2.fromOffset(30, 30), LayoutOrder = 9, BackgroundColor3 = T.panel2, BackgroundTransparency = 0.3 }, function()
+				local reset = UI.Button(caps, "", { Name = "Reset", Size = UDim2.fromOffset(capH, capH), LayoutOrder = 9, BackgroundColor3 = T.panel2, BackgroundTransparency = 0.3 }, function()
 					local def = Keymap.Default()
 					local new = Keymap.Resolve(Settings.Values.keymap)
 					if dev == "kbd" then

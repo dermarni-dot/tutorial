@@ -331,7 +331,7 @@ A.pullup = function(seg, j, t, M, mem, sk, rng)
 		end
 	else
 		toggle(out, mem, "hollow", j.hollow.on == true, j.A > 0.6 or (j.hollow.on and j.A > 0.35), t, 0.4)
-		if not j.hollow.on and off < mix(sk, 0.2, 0.65) and every(mem, "p", t, 0.35) then
+		if not j.hollow.on and off < mix(sk, 0.55, 0.65) and every(mem, "p", t, 0.35) then
 			mem.side = (mem.side == "L" and rng:NextNumber() < 0.9) and "R" or "L"
 			tap(out, mem.side)
 		end
@@ -552,7 +552,7 @@ A.chamber = function(seg, j, t, M, mem, sk, rng)
 		end
 	elseif every(mem, "look", t, mix(sk, 0, 0.7)) then
 		local tg = j.target(t)
-		local db = mix(sk, 0.008, 0.07)
+		local db = mix(sk, 0.008, 0.08)
 		hold(out, mem, "up", j.P < tg - db)
 		hold(out, mem, "down", j.P > tg + db)
 		if j.ear > 0.9 then

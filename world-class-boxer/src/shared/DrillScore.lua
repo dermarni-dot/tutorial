@@ -71,7 +71,7 @@ local J = {}
 -- a sequence (combinations, shadow flows): press the ids in order before the limit; a wrong press is
 -- counted and the sequence waits for the right one. With seg.beat (the heavy bag's rhythm combos) every
 -- hit after the first is also timed against the one before it: a beat apart is on the beat (perfect
--- inside 35% of it, good inside 70%), the rest is off (the chain still goes on: nothing resets).
+-- inside 30% of it, good inside 60%), the rest is off (the chain still goes on: nothing resets).
 J.seq = function(seg, M)
 	local ids, n = seg.ids, #seg.ids
 	local endT = M + seg.limit
@@ -92,7 +92,7 @@ J.seq = function(seg, M)
 			local tempo
 			if beat and s.lastHit then
 				local e = math.abs(t - s.lastHit - beat)
-				tempo = e <= beat * 0.35 and "perfect" or (e <= beat * 0.7 and "good" or "off")
+				tempo = e <= beat * 0.3 and "perfect" or (e <= beat * 0.6 and "good" or "off")
 				if tempo == "perfect" then
 					s.perfectHits += 1
 				elseif tempo == "good" then
@@ -979,7 +979,7 @@ AGG.reaction = function(plan, res)
 			end
 		end
 	end
-	local react, counter = clamp(s1 / math.max(1, n1) / 0.8, 0, 1), clamp(s2 / math.max(1, n2) / 0.9, 0, 1)
+	local react, counter = clamp(s1 / math.max(1, n1) / 0.9, 0, 1), clamp(s2 / math.max(1, n2) / 0.9, 0, 1)
 	if n3 == 0 then
 		return 0.55 * react + 0.45 * counter
 	end
@@ -1031,7 +1031,7 @@ AGG.shadow = function(plan, res)
 			s2 += DrillScore.SeqScore(r, 0.8, 0.4, 1)
 		end
 	end
-	local moves, flows = clamp(s1 / math.max(1, n1) / 0.8, 0, 1), clamp(s2 / math.max(1, n2), 0, 1)
+	local moves, flows = clamp(s1 / math.max(1, n1) / 0.9, 0, 1), clamp(s2 / math.max(1, n2), 0, 1)
 	if n3 == 0 then
 		return 0.5 * moves + 0.5 * flows
 	end
