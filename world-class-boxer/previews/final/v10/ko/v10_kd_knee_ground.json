@@ -21,18 +21,18 @@
   {
    "dt": 0.5,
    "t": 1.0667,
-   "lowest": 0.064,
+   "lowest": 0.087,
    "lowestPart": "LeftFoot",
-   "pelvisY": 2.174,
-   "headY": 4.769
+   "pelvisY": 2.287,
+   "headY": 4.882
   },
   {
    "dt": 1.0,
    "t": 1.5333,
-   "lowest": 0.167,
+   "lowest": 0.232,
    "lowestPart": "LeftFoot",
-   "pelvisY": 2.266,
-   "headY": 4.097
+   "pelvisY": 2.408,
+   "headY": 4.238
   },
   {
    "dt": 2.0,
@@ -43,6 +43,6 @@
    "headY": 2.874
   }
  ],
- "slideAfter": 0.727,
- "slideMaxStep": 0.055
+ "slideAfter": 0.728,
+ "slideMaxStep": 0.054
 }

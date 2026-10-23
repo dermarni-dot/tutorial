@@ -13,34 +13,34 @@
   {
    "dt": 0.2,
    "t": 0.7333,
-   "lowest": 0.069,
+   "lowest": 0.112,
    "lowestPart": "RightFoot",
-   "pelvisY": 2.688,
-   "headY": 5.446
+   "pelvisY": 2.804,
+   "headY": 5.562
   },
   {
    "dt": 0.5,
    "t": 1.0667,
-   "lowest": 0.151,
+   "lowest": 0.129,
    "lowestPart": "LeftFoot",
-   "pelvisY": 2.493,
-   "headY": 4.798
+   "pelvisY": 2.743,
+   "headY": 5.048
   },
   {
    "dt": 1.0,
    "t": 1.5333,
-   "lowest": 0.12,
-   "lowestPart": "RightFoot",
-   "pelvisY": 1.714,
-   "headY": 3.585
+   "lowest": 0.132,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 1.963,
+   "headY": 3.835
   },
   {
    "dt": 2.0,
    "t": 2.5333,
-   "lowest": 0.05,
+   "lowest": 0.055,
    "lowestPart": "LowerTorso",
-   "pelvisY": 0.523,
-   "headY": 0.58
+   "pelvisY": 0.53,
+   "headY": 0.583
   }
  ],
  "slideAfter": 0.002,
