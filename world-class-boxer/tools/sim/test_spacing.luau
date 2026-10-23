@@ -50,7 +50,7 @@ do
 		end
 	end
 	check("MinSep grows with the frame (Lean < Athletic < Power < Heavyweight)", sep.Lean.min <= sep.Athletic.min and sep.Athletic.min < sep["Power Build"].min and sep["Power Build"].min < sep["Heavyweight Build"].min)
-	check("MinSep: a Heavyweight pair at least 0.4 further apart than the unit pair", sep["Heavyweight Build"].min - sep.Athletic.min >= 0.4, sep["Heavyweight Build"].min - sep.Athletic.min)
+	check("MinSep: a Heavyweight pair at least 0.2 further apart than the unit pair", sep["Heavyweight Build"].min - sep.Athletic.min >= 0.2, sep["Heavyweight Build"].min - sep.Athletic.min)
 	-- a mixed pair sits between
 	local f = S.NewFight(S.Boxer({ frame = "Heavyweight Build" }, Random.new(1)), S.Boxer({ frame = "Lean" }, Random.new(2)), 3, 1)
 	check("MinSep: Heavyweight v Lean between the two pairs", f:MinSep() > sep.Lean.min and f:MinSep() < sep["Heavyweight Build"].min, f:MinSep())

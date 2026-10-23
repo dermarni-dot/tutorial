@@ -113,84 +113,194 @@ function HitGeometry.Unit()
 	return HitGeometry.FrameFromScales(nil, nil)
 end
 
+-- the numbers a frame must carry, all finite and positive (a frame with one missing or zero would read as a man
+-- with no reach: never handed out)
+local FRAME_KEYS = { "stand", "shoulderY", "shoulderHalf", "arm", "glove", "headY", "headR", "chestY", "waistY", "torsoHalfW", "torsoHalfD", "hScale" }
+HitGeometry.FRAME_KEYS = FRAME_KEYS
+local function finitePositive(v)
+	return type(v) == "number" and v == v and v > 0 and v < math.huge
+end
+-- nil when the frame is sound, else what is wrong with it
+function HitGeometry.Invalid(F)
+	if type(F) ~= "table" then
+		return "no frame"
+	end
+	for _, k in ipairs(FRAME_KEYS) do
+		if not finitePositive(F[k]) then
+			return k .. "=" .. tostring(F[k])
+		end
+	end
+	if not (F.stand > 3 and F.headY > F.chestY and F.chestY > F.waistY) then
+		return string.format("heights out of order (stand %.2f head %.2f chest %.2f waist %.2f)", F.stand, F.headY, F.chestY, F.waistY)
+	end
+	if not (F.arm > 1 and F.arm < 6) then
+		return string.format("arm %.2f", F.arm)
+	end
+	return nil
+end
+HitGeometry.Valid = function(F)
+	return HitGeometry.Invalid(F) == nil
+end
+
+-- the joint chain of a mesh arm against its parts' bounding boxes (BodyAssetData: the shoulder-to-elbow and
+-- elbow-to-wrist rig attachments over the parts' Size.Y; the boxes overlap at the joints, so a box sum reads an arm
+-- half as long again as it is)
+local ARM_BOX = { upper = 0.63, lower = 0.70 }
+-- the shoulder pivot under the upper arm's top, the fist's padding past the hand (x the part's Size.Y)
+local SHOULDER_UNDER_TOP, FIST_PAST_HAND = 0.2, 0.35
+
 -- from the live rig: model = the character, soleY = the height of its soles in world space (the caller knows the
 -- rig's HipHeight: FightEngine.StandHeight), fallback = a frame to fill anything the rig does not have (optional).
--- Sizes come from the parts (exact and replicated), heights from their rest-pose positions over the root
--- (the server sees the rig in rest; the client is handed the server's frames in the fight's start message).
+-- Sizes come from the parts (exact and replicated), heights from their rest-pose positions over the root (the
+-- server sees the rig in rest, arms hanging; the client is handed the server's frames in the fight's start
+-- message). The arm is measured down the hanging chain, shoulder pivot (the ShoulderRigAttachment when the part
+-- has one) to the glove's face, never as a sum of part boxes.
+-- Returns the frame. F.source = "rig" when it came off the parts; otherwise the fallback's, with F.fallback = why
+-- the rig was not used (the caller logs it once). Never a frame with a zero or NaN in it (HitGeometry.Invalid).
 function HitGeometry.Frame(model, soleY, fallback)
 	local base = fallback or HitGeometry.Unit()
-	local F = table.clone(base)
-	F.source = "rig"
-	if not model then
-		F.source = base.source
+	if HitGeometry.Invalid(base) then
+		base = HitGeometry.Unit()
+	end
+	local function giveUp(why)
+		local F = table.clone(base)
+		F.fallback = why
 		return F
+	end
+	if not model then
+		return giveUp("no model")
+	end
+	local function vec(v)
+		local ok, x, y, z = pcall(function()
+			return v.X, v.Y, v.Z
+		end)
+		if ok and type(x) == "number" and type(y) == "number" and type(z) == "number" and x == x and y == y and z == z then
+			return x, y, z
+		end
+		return nil
 	end
 	local function part(n)
 		local ok, p = pcall(function()
 			return model:FindFirstChild(n)
 		end)
-		if ok and p and (typeof(p) ~= "Instance" or p:IsA("BasePart")) and p.Size then
-			return p
+		if not (ok and p) then
+			return nil
+		end
+		if typeof(p) == "Instance" and not p:IsA("BasePart") then
+			return nil
+		end
+		local sx, sy, sz = vec(p.Size)
+		local _, py = vec(p.Position)
+		if not (sx and py) or sx <= 0 or sy <= 0 or sz <= 0 then
+			return nil
+		end
+		return { X = sx, Y = sy, Z = sz, posY = py, inst = p }
+	end
+	-- a rig attachment's height in world space (the rest pose stands upright: the part's Y plus the attachment's)
+	local function attY(p, name)
+		if not p then
+			return nil
+		end
+		local ok, a = pcall(function()
+			return p.inst:FindFirstChild(name)
+		end)
+		if ok and a then
+			local _, y = vec(a.Position)
+			if y then
+				return p.posY + y
+			end
 		end
 		return nil
 	end
 	local root = part("HumanoidRootPart")
 	if not root then
-		F.source = base.source
-		return F
+		return giveUp("no HumanoidRootPart")
 	end
-	local sole = num(soleY, root.Position.Y - 3.2)
+	local sole = num(soleY, root.posY - 3.2)
 	local function top(p)
-		return p.Position.Y + p.Size.Y / 2 - sole
+		return p.posY + p.Y / 2 - sole
 	end
 	local function bottom(p)
-		return p.Position.Y - p.Size.Y / 2 - sole
+		return p.posY - p.Y / 2 - sole
 	end
 	local head, ut, lt = part("Head"), part("UpperTorso"), part("LowerTorso")
-	local ua, la = part("LeftUpperArm") or part("RightUpperArm"), part("LeftLowerArm") or part("RightLowerArm")
-	local hand, glove = part("LeftHand") or part("RightHand"), part("GloveL") or part("GloveR")
+	local side = part("LeftUpperArm") and "Left" or "Right"
+	local ua, la = part(side .. "UpperArm"), part(side .. "LowerArm")
+	local hand, glove = part(side .. "Hand"), part("Glove" .. side:sub(1, 1))
 	if not (head or ut) then
 		-- (a root alone: the headless sims' stub rigs)
-		F.source = base.source
-		return F
+		return giveUp("no Head / UpperTorso (a root alone)")
 	end
+	local F = table.clone(base)
+	F.source = "rig"
+	F.fallback = nil
 	if head then
-		F.headR = math.max(head.Size.X, head.Size.Y) / 2
-		F.headY = head.Position.Y - sole
-		F.stand = F.headY + head.Size.Y / 2
+		F.headR = math.max(head.X, head.Y) / 2
+		F.headY = head.posY - sole
+		F.stand = F.headY + head.Y / 2
 	end
 	if ut then
 		F.chestY = top(ut)
-		F.torsoHalfW = ut.Size.X / 2
-		F.torsoHalfD = ut.Size.Z / 2
+		F.torsoHalfW = ut.X / 2
+		F.torsoHalfD = ut.Z / 2
 		-- the shoulder pivot sits a little under the torso's top, out at its side
-		F.shoulderY = F.chestY - ut.Size.Y * 0.16
-		F.shoulderHalf = ut.Size.X / 2 + (ua and ua.Size.X / 2 or 0.25)
+		F.shoulderY = F.chestY - ut.Y * 0.16
+		F.shoulderHalf = ut.X / 2 + (ua and ua.X / 2 or 0.25)
 	end
 	if lt then
 		F.waistY = bottom(lt)
 	elseif ut then
 		F.waistY = bottom(ut) - 0.5
 	end
+	F.hScale = math.clamp(F.stand / UNIT.stand, 0.5, 2)
 	if ua and la then
-		-- the arm hangs in rest: the chain's lengths, not where the parts happen to be
-		local gl = glove and glove.Size.Y or (hand and hand.Size.Y * 1.15 or UNIT.gloveLen * F.hScale)
-		F.arm = ua.Size.Y + la.Size.Y + gl
-		if ua.Size.Y + la.Size.Y > 0.5 then
-			F.shoulderY = math.min(F.shoulderY, F.chestY) -- (never above the torso)
+		-- the shoulder pivot: the rig attachment, else just under the upper arm's top
+		local pivot = attY(ua, side .. "ShoulderRigAttachment") or (ua.posY + ua.Y / 2 - ua.Y * SHOULDER_UNDER_TOP)
+		-- the glove's striking face: the glove's bottom, else the fist's padding past the hand, else the wrist
+		local face
+		if glove then
+			face = glove.posY - glove.Y / 2
+		elseif hand then
+			face = hand.posY - hand.Y / 2 - hand.Y * FIST_PAST_HAND
+		else
+			face = (attY(la, side .. "WristRigAttachment") or (la.posY - la.Y / 2 + la.Y * 0.1)) - UNIT.gloveLen * F.hScale
+		end
+		-- the chain by the joints when the parts carry them, else the boxes corrected for their overlap
+		local upper = attY(ua, side .. "ShoulderRigAttachment") and attY(ua, side .. "ElbowRigAttachment")
+			and math.abs(attY(ua, side .. "ShoulderRigAttachment") - attY(ua, side .. "ElbowRigAttachment")) or ua.Y * ARM_BOX.upper
+		local lower = attY(la, side .. "ElbowRigAttachment") and attY(la, side .. "WristRigAttachment")
+			and math.abs(attY(la, side .. "ElbowRigAttachment") - attY(la, side .. "WristRigAttachment")) or la.Y * ARM_BOX.lower
+		local gl = glove and glove.Y * 0.95 or (hand and hand.Y * (1 + FIST_PAST_HAND) or UNIT.gloveLen * F.hScale)
+		local chain = upper + lower + gl
+		local hanging = pivot - face
+		-- the hanging measure when the arm really hangs (a rig caught mid-pose reads short or long: the chain then)
+		F.arm = (hanging > chain * 0.8 and hanging < chain * 1.25) and hanging or chain
+		F.shoulderY = math.min(pivot - sole, F.chestY)
+		if F.shoulderY < F.waistY then
+			F.shoulderY = F.chestY - (ut and ut.Y * 0.16 or 0.3)
 		end
 	end
 	if glove then
-		F.glove = math.max(glove.Size.X, glove.Size.Z) / 2
+		F.glove = math.max(glove.X, glove.Z) / 2
 	elseif hand then
-		F.glove = math.max(hand.Size.X, hand.Size.Z) * 0.75
+		F.glove = math.max(hand.X, hand.Z) * 0.75
 	end
-	F.hScale = math.clamp(F.stand / UNIT.stand, 0.5, 2)
-	-- sanity: a rig whose numbers make no sense keeps the fallback
-	if not (F.stand > 3 and F.headY > F.chestY and F.chestY > F.waistY and F.arm > 1 and F.arm < 6) then
-		return table.clone(base)
+	-- sanity: a rig whose numbers make no sense keeps the fallback (and says why)
+	local bad = HitGeometry.Invalid(F)
+	if bad then
+		return giveUp("rig reads " .. bad)
 	end
 	return F
+end
+
+-- one line on a frame for a log / a diagnostic
+function HitGeometry.Describe(F)
+	if type(F) ~= "table" then
+		return "none"
+	end
+	return string.format("%s stand %.2f shoulder %.2f arm %.2f glove %.2f head %.2f/%.2f chest %.2f waist %.2f torso %.2fx%.2f",
+		tostring(F.source), num(F.stand, 0), num(F.shoulderY, 0), num(F.arm, 0), num(F.glove, 0), num(F.headY, 0), num(F.headR, 0),
+		num(F.chestY, 0), num(F.waistY, 0), num(F.torsoHalfW, 0), num(F.torsoHalfD, 0))
 end
 
 ------------------------------------------------------------------------
@@ -314,15 +424,42 @@ function HitGeometry.Range(A, B, ptype, body, opts)
 	return lo
 end
 
+-- the root-to-root distance out to which A's punch LANDS on B at all: on the head, or - where the head is out of
+-- its angles and the glove still gets there - on the body, as Test lets a head shot fall (an overhand never falls:
+-- FightEngine's HitTest runs it noRedirect). This is the reach the fight gates a punch on (FightEngine:PunchRange,
+-- FightAI's "in range"): a short man's jab at a tall head is thrown from where it lands low, not refused
+function HitGeometry.Reach(A, B, ptype, opts)
+	local head = HitGeometry.Range(A, B, ptype, false, opts)
+	if ptype == "overhand" or (opts and opts.headOnly) then
+		return head
+	end
+	return math.max(head, HitGeometry.Range(A, B, ptype, true, opts))
+end
+
 ------------------------------------------------------------------------
 -- Bodies: separation and the clinch
 ------------------------------------------------------------------------
 -- centre-to-centre spacing two bodies need so chests and the gloves held up in front of them never sink into each
 -- other: both torsos' half depths, both pairs of gloves, and a little air that grows with the pair (the unit pair
--- gives FightMotion.Spacing.minSep)
+-- gives FightMotion.Spacing.minSep). Never so far apart that either man's jab cannot land from there: the pair's
+-- shorter jab reach (head or body) less SEP_REACH, down to the bodies' own minimum (torsos and gloves touching).
+-- A 60-inch heavyweight against an 84-inch man otherwise stood where neither jab reached (his separation 4.05, his
+-- jab 4.0): the AI never saw itself in range
 local SEP_GLOVE, SEP_AIR = 1.6, 1.256
-function HitGeometry.MinSep(A, B)
+local SEP_REACH = 0.35
+HitGeometry.SEP_REACH = SEP_REACH
+function HitGeometry.MinSepRaw(A, B)
 	return A.torsoHalfD + B.torsoHalfD + SEP_GLOVE * (A.glove + B.glove) + SEP_AIR * (A.hScale + B.hScale) / 2
+end
+function HitGeometry.MinSep(A, B)
+	local raw = HitGeometry.MinSepRaw(A, B)
+	local reach = math.min(HitGeometry.Reach(A, B, "jab"), HitGeometry.Reach(B, A, "jab"))
+	local bodies = A.torsoHalfD + B.torsoHalfD + 2 * (A.glove + B.glove) + 0.1
+	local sep = math.min(raw, reach - SEP_REACH)
+	if sep ~= sep or sep == math.huge or sep == -math.huge then
+		sep = raw
+	end
+	return math.max(bodies, sep)
 end
 
 -- how far out A can tie B up: A's arm and glove wrap past B's chest, plus the step in (the unit pair gives

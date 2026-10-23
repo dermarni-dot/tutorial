@@ -2808,7 +2808,10 @@ function Fight:UpdateReferee(now)
 		local perp = Vector3.new(-line.Z, 0, line.X)
 		local half = flat(pO - pP).Magnitude / 2
 		local d = math.max(2.2, math.sqrt(math.max(0, keep * keep - half * half)) + REF.breakGap)
-		target = mid + perp * ((R.side or 1) * d)
+		-- (on the side he is actually on: the near side of the pair, never through them)
+		local onSide = flat(rp - mid):Dot(perp)
+		local side = math.abs(onSide) > 0.3 and (onSide > 0 and 1 or -1) or (R.side or 1)
+		target = mid + perp * (side * d)
 		look = mid
 		mode = "break"
 	elseif nearD < keep + REF.evadeAt and nearF.state ~= "down" then
@@ -3650,12 +3653,12 @@ function Fight:UpdateMovement(F, dt)
 		-- a special's leap / step back (NPCs; the player's client drives its own)
 		if now < F.lungeUntil and F.lungeVel and not F.isPlayer and F.state ~= "down" then
 			local p = F.root.Position
-			shift(F, self:ClampToRing(p + F.lungeVel * dt) - p)
+			shift(F, self:KeepOut(F, self:ClampToRing(p + F.lungeVel * dt)) - p)
 		end
 		if stumbling and F.stumbleVel and not F.isPlayer and F.state ~= "down" then
 			local p = F.root.Position
 			local want = p + F.stumbleVel * dt
-			local goal = self:ClampToRing(want)
+			local goal = self:KeepOut(F, self:ClampToRing(want))
 			if flat(goal - want).Magnitude > 0.05 then
 				-- into the ropes: they catch and push back a little
 				F.stumbleVel = -F.stumbleVel * 0.25

@@ -164,7 +164,7 @@ function AnimLoco.sense(rig, dt)
 	if lo.pos == nil or (p - lo.pos).Magnitude > 6 then
 		lo.pos, lo.yaw = p, yaw
 		lo.vel, lo.acc, lo.accF, lo.rawV, lo.yawRate, lo.speed = ZERO, ZERO, ZERO, nil, 0, 0
-		lo.lv, lo.la = ZERO, ZERO
+		lo.lv, lo.la, lo.dispV = ZERO, ZERO, nil
 		lo.jumpOff, lo.jumpYaw = nil, 0
 		lo.teleported = true
 		lo.vy = 0
@@ -212,8 +212,44 @@ function AnimLoco.sense(rig, dt)
 			lo.jumpYaw = 0
 		end
 	end
-	if not rig.isLocal and phys.Magnitude > raw.Magnitude * 0.6 and phys.Magnitude < raw.Magnitude * 1.6 + 1 then
-		raw = raw:Lerp(phys, 0.5)
+	if not rig.isLocal then
+		-- [Studio] a server-owned character (every NPC: MoveTo / Glide on the server; another player's character too)
+		-- reaches this client as replicated positions at ~20 Hz, interpolated: the root's travel frame to frame comes in
+		-- bursts and holds, and read as travel / dt (even blended with the replicated AssemblyLinearVelocity, which lags
+		-- and steps) the speed jumped 30-60 % from one frame to the next - the gait's phase, lean and arm swing shook
+		-- with it (the "fast jitter" on NPCs). The measured velocity is the displacement filtered over 0.15 s (longer
+		-- than a replication interval, shorter than a step), and when the server says where it is sending him - the
+		-- model's Gait attribute (a Vector3: the intended world velocity, set with MoveTo / Glide), else the Humanoid's
+		-- replicated MoveDirection x WalkSpeed - that intent sets the direction and the pace, believed only while the
+		-- body really travels (a walker stopped by a wall, a seat or a door shows intent and no travel: measured wins)
+		local km = 1 - exp(-dt / 0.15)
+		local dv = lo.dispV or raw
+		dv += (raw - dv) * km
+		lo.dispV = dv
+		local meas = dv
+		local a = rig.a
+		local iv = a and a.Gait
+		local intent
+		if typeof(iv) == "Vector3" and iv.Magnitude > 0.2 then
+			intent = V3(iv.X, 0, iv.Z)
+		else
+			local hum = rig.hum
+			if hum and hum.Parent then
+				local md = hum.MoveDirection
+				local ws = hum.WalkSpeed
+				if md.Magnitude > 0.1 and ws > 0.1 then
+					intent = V3(md.X, 0, md.Z).Unit * ws
+				end
+			end
+		end
+		if intent then
+			local is, ms = intent.Magnitude, meas.Magnitude
+			local trust = clamp((ms / max(is, 0.1) - 0.25) / 0.35, 0, 1)
+			local tv = intent.Unit * min(is, ms * 1.5 + 0.6)
+			raw = meas:Lerp(tv, trust)
+		else
+			raw = meas
+		end
 	end
 	local k = 1 - exp(-dt * 20)
 	local vel = lo.vel + (raw - lo.vel) * k
@@ -357,7 +393,10 @@ local function walkTiming(lo, v, Ls, kL, vh, prof)
 	-- stance, never into a flight: one foot is always down at a walk)
 	local duty = lerp(0.685 - 0.053 * vh, 0.48 - 0.032 * vh, run)
 	-- (a leg reaches less to the side: a side step sweeps a little over a third of a forward one)
-	local reach = Ls * lerp(clamp(0.66 + 0.26 * vh, 0.8, 1.2), 1.05, run) * (1 - 0.6 * lo.side)
+	-- [Studio] a walker's step never sweeps further than 0.9 of the leg (hip to sole): the new frame families' legs are
+	-- longer or shorter than the part boxes the old measurement implied, and a foot asked to reach past the leg pulled
+	-- the pelvis down into the thighs (legs "into the body") or locked the knee straight; shorter, quicker steps instead
+	local reach = Ls * lerp(min(0.9, clamp(0.66 + 0.26 * vh, 0.8, 1.2)), 1.05, run) * (1 - 0.6 * lo.side)
 	if run < 0.5 and v * T * duty > reach then
 		-- (a quick man's own tempo still shows when the reach sets the step: shorter, quicker steps; a slow
 		-- one cannot step further than his legs reach)
@@ -618,7 +657,9 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 		local ks = 1 - exp(-dt * 4)
 		lo.turnS = (lo.turnS or 0) + (yrH - (lo.turnS or 0)) * ks
 		lo.latS = (lo.latS or 0) + (clamp(latA, -25, 25) - (lo.latS or 0)) * ks
-		tgtR = clamp(0.008 * lo.latS - 0.006 * lo.speed * lo.turnS, -0.12, 0.12)
+		-- ([Studio] the bank into a held curve stays under 4 degrees: a Humanoid's velocity swings with its AutoRotate
+		-- snaps and the lateral push read off a replicated root is noisy; read as a lean it was "the body tilts")
+		tgtR = clamp(0.008 * lo.latS - 0.006 * lo.speed * lo.turnS, -0.07, 0.07)
 	else
 		lo.turnS, lo.latS = 0, 0
 		tgtR = clamp(0.008 * latA - 0.004 * lo.speed * yrH, -0.25, 0.25)
@@ -645,7 +686,9 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 			local fw = lo.fwd
 			-- sway over the stance leg (a little: the tier body's hips are its own width apart and the feet track
 			-- nearly under them, so the weight shifts less than on a line walk; v8's 0.072 swung the whole figure)
-			rootX = -lerp(0.045, 0.03, run) * amp * prof.pelvis * cos(2 * PI * (ph - midL)) * w
+			-- ([Studio] and never more than 0.03 studs either way - 0.06 peak to peak - whatever the body and the style:
+			-- the pelvis offset is applied on the Root joint, so on a tall tier body it swung the whole figure)
+			rootX = clamp(-lerp(0.03, 0.02, run) * amp * prof.pelvis * cos(2 * PI * (ph - midL)) * w, -0.03, 0.03)
 			-- pelvis rotation (the stepping leg's hip goes with the step), shoulders counter-rotate
 			local c1 = cos(2 * PI * (ph - landL)) * fw
 			local pyA = lerp(0.075, 0.13, run) * amp * prof.pelvis
@@ -656,7 +699,9 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 			-- the swing side's hip drops (pelvic obliquity: ~4 degrees, the stance hip takes the weight)
 			-- (the spine bends back over it: the chest stays level, so the obliquity rolls the pelvis only and never
 			-- rocks the shoulders and head side to side about the hips)
-			local obl = -lerp(0.065, 0.05, run) * prof.pelvis * cos(2 * PI * (ph - midL)) * w
+			-- ([Studio] capped at 2 degrees either way: with the lean's bank that keeps the pelvis roll under 4 degrees at
+			-- a walk - the obliquity rides the Root joint and a bigger one read as the body rocking side to side)
+			local obl = clamp(-lerp(0.065, 0.05, run) * prof.pelvis * cos(2 * PI * (ph - midL)) * w, -0.035, 0.035)
 			rollP += obl
 			wRoll -= obl * 0.9
 			-- (a diagonal: the pelvis turned toward the way he goes, the chest kept facing)
@@ -700,6 +745,31 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 		local lag = clamp(-0.06 * yrH, -0.24, 0.24) * tk
 		yawP += lag
 		wYaw -= lag
+	end
+	-- [Studio] the offsets that turn or roll the body on the Root joint are rate-limited frame to frame and the pelvis
+	-- roll low-passed: a Humanoid's AutoRotate snaps the root's yaw tens of degrees in one frame and a replicated root
+	-- steps, and the counter-rotations computed from that frame's read (the pelvis against the step, the chest against
+	-- the pelvis, the head's lead) jumped with it - a twitch of the whole trunk on every WASD tap or replication step.
+	-- (dt-correct: exp(-k dt) and rate x dt, never a per-frame fraction - a 240 Hz Studio frame is a quarter of a 60 Hz one)
+	local function limited(key, v, rate)
+		local prev = lo[key]
+		if prev then
+			local m = rate * dt
+			v = prev + clamp(v - prev, -m, m)
+		end
+		lo[key] = v
+		return v
+	end
+	yawP = limited("yawPS", yawP, 4)
+	wYaw = limited("wYawS", wYaw, 4)
+	nYaw = limited("nYawS", nYaw, 4)
+	if kind then
+		local rs = lo.rollS or rollP
+		rs += (rollP - rs) * (1 - exp(-dt * 14))
+		lo.rollS = rs
+		rollP = walking and clamp(rs, -0.1, 0.1) or rs
+	else
+		lo.rollS = nil
 	end
 	-- the head keeps the eyes level: it counters the trunk's pitch and roll on a soft spring, so it trails
 	-- the body's bob and sway a beat late (overlapping action) instead of riding it rigidly
@@ -2124,8 +2194,10 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			local A = trueCF:PointToWorldSpace(targets[s])
 			local dtA = t - (f.ankT or -1)
 			if f.ankW and dtA > 0 and dtA < 0.1 then
-				f.ankV = (f.ankV or ZERO):Lerp((A - f.ankW) / dtA, 0.7)
-				f.kVel = lerp(f.kVel or 0, (kf - (f.kAct or kf)) / dtA, 0.7)
+				-- ([Studio] dt-correct: 0.7 a frame at 60 Hz is exp(-72 dt), the same settle at 240 Hz or on a long frame)
+				local ka = 1 - exp(-72 * dtA)
+				f.ankV = (f.ankV or ZERO):Lerp((A - f.ankW) / dtA, ka)
+				f.kVel = lerp(f.kVel or 0, (kf - (f.kAct or kf)) / dtA, ka)
 			else
 				f.ankV, f.kVel = ZERO, 0
 			end

@@ -40,6 +40,12 @@ deltopectoral line, biceps / triceps). The refined surface's normals are what th
 meshes store per-vertex normals), so the forms read at game triangle counts with clean quad topology. Bony
 landmarks (knuckles, ankle bones, kneecap) stay small local bumps (bell).
 
+The height (v13): the frame changes the build, not the height. Each frame's unit (frames[id].unit: neckHeight, head,
+standingHeight) lets Builder.Scales normalise the HeightScale so every frame stands the chosen inches; the skeletons
+are solved so the HipHeight matches too (FRAMES skel). The neck column ends inside the frame's own head (FRAMES head,
+neck, neck_s; NECK_TOP), the lofts are finer (22,320 tris per body) and the sheets (Stage.figure) show the frames as
+the game builds them, normalised: height_norm.
+
 Frames: the FRAMES table. The silhouette lives in the base profiles (the ribcage's width and depth, the shoulder
 top, the trapezius slope into a real neck column, the arm and calf girths) and in the arm axis: the shoulder pivot
 sits where the frame's upper arm rests against the frame's torso (arm_x), so a Lean frame's shoulders are narrow
@@ -105,6 +111,7 @@ for _k in list(J):
 J["Root"] = (0.0, Y_LT, 0.0)  # the block LowerTorso centre (RootRigAttachment: copy from the live rig)
 HEAD_C = (0.0, J["Neck"][1] + 0.6, 0.0)
 ARM_X, LEG_X = 1.5, 0.5  # ARM_X: the R15 Block arm axis (reference only; the frames use arm_x below)
+ATHLETIC_STAND = 6.2161  # the Athletic unit's standing height (neck 5.2892 + head 0.9269): every frame is normalised to it
 
 # the shoulder pivot (v9): on the arm's own axis, where the upper arm's top dome is centred, a little under the R15
 # height (the dome is a ball joint: it turns in place, never swinging out through the chest or up past the neck).
@@ -250,6 +257,17 @@ RTHRO = {  # Classic -> Rthro Normal (x, y, z) per part, the engine's scaling at
 SLIM_W, SLIM_D = 0.77, 0.84         # Builder.lua
 HEAD_FRAME = 0.82                   # Builder FRAME_PROPORTIONS.Athletic.head (= FRAMES["Athletic"]["head"])
 HEAD_SIZE = 1.2 * HEAD_FRAME * RTHRO["Head"][0]  # 0.927: the Athletic head; the game's HeadScale = 0.82 x 0.942
+
+
+def height_norm(parts):
+    """the Y scale the game gives this frame's rig so it stands the Athletic unit's height (Builder.Scales' HeightScale
+    at 70 inches: (standing - head) / the frame's neck height; the head is not scaled) and the 4 x 4 matrix of it
+    (about the floor): the sheets show the frames as the game builds them, all the same height"""
+    G = parts["_J"]
+    hs = (ATHLETIC_STAND - head_size(parts.get("_frame"))) / float(G["Neck"][1])
+    M = np.eye(4)
+    M[1, 1] = hs
+    return hs, M
 
 
 def head_size(fr=None):
@@ -1759,15 +1777,17 @@ class Stage:
             self.headmats[face] = self.material("head_" + face, SKIN, face_png(face))
         return self.headmats[face]
 
-    def figure(self, tag, parts, x, yaw=0.0, guard=False, face="smile", z=0.0, only=None):
+    def figure(self, tag, parts, x, yaw=0.0, guard=False, face="smile", z=0.0, only=None, norm=True):
         place = M4(roty(yaw), (x, 0, z))
+        # (v13) the game's height normalisation: the body scaled in Y so every frame stands the Athletic unit's height
+        hs, S = height_norm(parts) if norm else (1.0, np.eye(4))
         pm = pose_mats(parts.get("_J"), guard=guard)
         for name, lp in parts.items():
             if name.startswith("_") or (only and name not in only):
                 continue
-            self.add("%s_%s" % (tag, name), lp, place @ pm[name], self.skin)
-        # the classic head sits on the neck pivot (no neck lift), at the frame's head size
-        neck = np.array(parts["_J"]["Neck"])
+            self.add("%s_%s" % (tag, name), lp, place @ S @ pm[name], self.skin)
+        # the classic head sits on the neck pivot (no neck lift), at the frame's head size (not height-scaled)
+        neck = np.array(parts["_J"]["Neck"]) * np.array([1.0, hs, 1.0])
         hd = head_size(parts.get("_frame"))
         self.add(tag + "_Head", None, place, self.headmat(face), D=head_mesh(neck + np.array([0, hd / 2, 0]), hd))
 
@@ -1864,9 +1884,10 @@ def render_arm_strip(bpy, built, tiers, samples):
             for j, el in enumerate((7.0, 110.0)):
                 x = -((2 * i + j) - (2 * len(fs) - 1) / 2) * sp
                 place = M4(roty(-30), (x, 0, 0))
+                _, S = height_norm(parts)
                 pm = pose_mats(parts["_J"], sh=12.0, el=el)
                 for name in only:
-                    st.add("A%d_%d_%s" % (i, j, name), parts[name], place @ pm[name], st.skin)
+                    st.add("A%d_%d_%s" % (i, j, name), parts[name], place @ S @ pm[name], st.skin)
                 labels.append("%s %s" % (f.split(" ")[0], "straight" if j == 0 else "bent 110"))
         p = st.shoot(os.path.join(SCRATCH, "arms_t%d.png" % n), 0, 4.1, 2 * len(fs) * sp + 0.4, elev=4)
         label(p, labels, "Right arm close-ups, tier %d (%s): shoulder into delt, elbow seam, forearm taper, hand" % (n, TIERS[n]["name"]))
@@ -1890,10 +1911,11 @@ def render_heads_necks(bpy, built, tiers, samples):
             for j, yaw in enumerate((0.0, 90.0)):
                 x = -((2 * i + j) - (2 * len(fs) - 1) / 2) * sp
                 place = M4(roty(yaw), (x, dy, 0))
+                hs, S = height_norm(parts)
                 pm = pose_mats(parts["_J"], sh=5.0, el=7.0)
                 for name in only:
-                    st.add("H%d_%d_%d_%s" % (r, i, j, name), parts[name], place @ pm[name], st.skin)
-                neck = np.array(parts["_J"]["Neck"])
+                    st.add("H%d_%d_%d_%s" % (r, i, j, name), parts[name], place @ S @ pm[name], st.skin)
+                neck = np.array(parts["_J"]["Neck"]) * np.array([1.0, hs, 1.0])
                 hd = head_size(f)
                 st.add("H%d_%d_%d_Head" % (r, i, j), None, place, st.headmat("determined"),
                        D=head_mesh(neck + np.array([0, hd / 2, 0]), hd))

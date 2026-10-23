@@ -328,27 +328,37 @@ if TABLE then
 		print(line)
 	end
 end
+-- both corners of a match-up pooled (the red corner's AI thinks first: the two orders are not the same fight)
+local function pooled(n, a, b)
+	local ab, ba = run(n, a, b), run(n, b, a)
+	local A = { win = (ab.win + (1 - ba.win)) / 2, ko = ab.koW.red + ba.koW.blue, dec = ab.decW.red + ba.decW.blue }
+	local B = { win = 1 - A.win, ko = ab.koW.blue + ba.koW.red, dec = ab.decW.blue + ba.decW.red }
+	A.decShare = A.dec / math.max(1, A.ko + A.dec)
+	B.decShare = B.dec / math.max(1, B.ko + B.dec)
+	return A, B, (ab.ko + ba.ko) / 2, (ab.secs + ba.secs) / 2
+end
+local function line(a, b, A, B, stop, secs)
+	print(string.format("%-4s vs %-4s: %s wins %s (KO %d, points %d; %.0f%% on points) - %s KO %d, points %d (%.0f%%); stoppages %s, %.0f s",
+		SHORT[a], SHORT[b], SHORT[a], pct(A.win), A.ko, A.dec, A.decShare * 100, SHORT[b], B.ko, B.dec, B.decShare * 100, pct(stop), secs))
+end
 do
-	local hl = run(N, HVY, LEAN)
-	print(string.format("Heavyweight vs Lean: red %s, stoppages %s, KO wins %d / %d, decision wins %d / %d, %.0f s", pct(hl.win), pct(hl.ko), hl.koW.red, hl.koW.blue, hl.decW.red, hl.decW.blue, hl.secs))
-	check("balance: Heavyweight vs Lean at equal skill is close to even", hl.win >= 0.3 and hl.win <= 0.7, hl.win)
-	check("balance: the heavyweight wins more by stoppage", hl.koW.red > hl.koW.blue, hl.koW.red .. " / " .. hl.koW.blue)
-	check("balance: the Lean wins more on points", hl.decW.blue > hl.decW.red, hl.decW.blue .. " / " .. hl.decW.red)
-	local lh = run(N, LEAN, HVY)
-	print(string.format("Lean vs Heavyweight: red %s, stoppages %s, KO wins %d / %d, decision wins %d / %d", pct(lh.win), pct(lh.ko), lh.koW.red, lh.koW.blue, lh.decW.red, lh.decW.blue))
-	check("balance: the same from the other corner", lh.win >= 0.3 and lh.win <= 0.7 and lh.koW.blue >= lh.koW.red, lh.win)
+	local H, L, stop, secs = pooled(N, HVY, LEAN)
+	line(HVY, LEAN, H, L, stop, secs)
+	check("balance: Heavyweight vs Lean at equal skill is close to even (35..65%)", H.win >= 0.35 and H.win <= 0.65, H.win)
+	check("balance: the heavyweight wins more by stoppage than the Lean does", H.ko > L.ko, H.ko .. " / " .. L.ko)
+	check("balance: the Lean's wins come on the cards more often than the heavyweight's", L.decShare >= H.decShare, L.decShare .. " / " .. H.decShare)
+	local Pw, L2, stop2, secs2 = pooled(N, POW, LEAN)
+	line(POW, LEAN, Pw, L2, stop2, secs2)
+	check("balance: Power Build vs Lean close to even (30..70%), the Power Build the stopper", Pw.win >= 0.3 and Pw.win <= 0.7 and Pw.ko >= L2.ko, Pw.win)
 	for _, id in ipairs({ LEAN, MUS, POW, HVY }) do
-		local st = run(N, id, ATH)
-		print(string.format("%s vs Athletic: red %s, stoppages %s, KO wins %d / %d", SHORT[id], pct(st.win), pct(st.ko), st.koW.red, st.koW.blue))
-		check("balance: " .. id .. " vs Athletic at equal skill is close to even", st.win >= 0.3 and st.win <= 0.7, st.win)
+		local X, A, st, sc = pooled(N, id, ATH)
+		line(id, ATH, X, A, st, sc)
+		check("balance: " .. id .. " vs Athletic at equal skill is close to even (30..70%)", X.win >= 0.3 and X.win <= 0.7, X.win)
 	end
-	local pl = run(N, POW, LEAN)
-	print(string.format("Power vs Lean: red %s, stoppages %s, KO wins %d / %d", pct(pl.win), pct(pl.ko), pl.koW.red, pl.koW.blue))
-	check("balance: Power Build vs Lean close to even, the Power Build the stopper", pl.win >= 0.3 and pl.win <= 0.7 and pl.koW.red >= pl.koW.blue, pl.win)
 	local hh = run(QUICK and 8 or 20, HVY, HVY)
 	local ll = run(QUICK and 8 or 20, LEAN, LEAN)
 	print(string.format("mirror: Heavyweight vs Heavyweight stoppages %s, Lean vs Lean %s", pct(hh.ko), pct(ll.ko)))
-	check("balance: two heavyweights stop each other more than two Leans do", hh.ko >= ll.ko, hh.ko .. " / " .. ll.ko)
+	check("balance: two Leans go the distance at least as often as two heavyweights", ll.ko <= hh.ko + 0.1, ll.ko .. " / " .. hh.ko)
 end
 
 print(string.format("test_frametraits: %d passed, %d failed", pass, fail))

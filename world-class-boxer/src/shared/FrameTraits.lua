@@ -60,7 +60,7 @@ FrameTraits.Data = {
 	},
 	["Power Build"] = {
 		name = "Power Build", short = "Power", tag = "One-punch power inside",
-		power = 1.06, kdPower = 1.06, handSpeed = 0.93, footSpeed = 0.94, tank = 0.96, staminaDrain = 1.06, powerDrain = 1.06, staminaRegen = 0.92,
+		power = 1.05, kdPower = 1.06, handSpeed = 0.93, footSpeed = 0.94, tank = 0.96, staminaDrain = 1.06, powerDrain = 1.06, staminaRegen = 0.92,
 		chin = 1.04, bodyAbsorb = 1.04, reachBonus = 1, kdResist = 1.06, getUpTime = 1.05, clinch = 1.12, insideBonus = 1.08, dodgeWindow = 0.94, target = 1.03,
 		ai = { range = -0.08, aggr = 0.08, clinch = 0.06, inside = 1.2, press = 0.12 },
 		pros = { "The biggest single punch and knockdown chance", "A hard chin: very hard to drop", "Strong in the clinch and inside: hooks and uppercuts land harder" },
