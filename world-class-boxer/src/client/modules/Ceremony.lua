@@ -529,15 +529,20 @@ end
 
 -- the camera: t = seconds in, raiseAt = the hand's beat; group = { center, face, right, winner (root pos or nil),
 -- ref (root pos or nil) } -> CFrame, fov
+-- group.top (optional): the highest crown of the three above the centre (studs; a heavyweight pair stands ~7 tall)
+-- - the drift frames all three head to toe, whatever their heights (a fixed 2.2-stud aim cut tall men off at the neck)
 local function resultShot(t, raiseAt, group, draw)
 	local center, face, right = group.center, group.face, group.right
-	local eye = center + UP * 2.2
+	local top = math.clamp(tonumber(group.top) or 5.6, 4, 10)
+	local eye = center + UP * (top * 0.5)
 	if t < raiseAt or draw then
-		-- the three of them from the camera side, a slow drift from the winner's side across to the other
+		-- the three of them from the camera side, a slow drift from the winner's side across to the other; far enough
+		-- back that the crowns and the boots are both in (half the 48 degree view over the height plus a margin)
 		local k = math.clamp(t / math.max(raiseAt, 6), 0, 1)
 		local a = math.rad(-22 + 44 * k)
 		local dir = face * math.cos(a) + right * math.sin(a)
-		local from = center + dir * (9.5 - 1.2 * k) + UP * (3.6 - 0.4 * k)
+		local back = math.max(9.5, (top * 0.5 + 0.9) / math.tan(math.rad(24)))
+		local from = center + dir * (back - 1.2 * k) + UP * (top * 0.62 - 0.4 * k)
 		return CFrame.lookAt(from, eye), 48
 	end
 	-- the hand goes up: a push in on the winner, the referee at his shoulder
@@ -634,8 +639,19 @@ function Ceremony.PlayPostFight(msg)
 			end
 		end)
 	end
-	-- the camera
+	-- the camera (the top of the group: the highest head of the three, read once)
 	local group = { center = center, face = face, right = right }
+	do
+		local top = nil
+		for _, m in ipairs({ msg.winner, msg.loser, msg.ref }) do
+			local head = partOf(m, "Head")
+			if head then
+				local y = head.Position.Y + head.Size.Y / 2 - center.Y
+				top = math.max(top or 0, y)
+			end
+		end
+		group.top = top
+	end
 	scene.conn = RunService.RenderStepped:Connect(function()
 		if scene.done then
 			return
