@@ -757,7 +757,8 @@ local NORTH_SHOPS = {
 }
 CityShops.NORTH_SHOPS = NORTH_SHOPS
 
-function CityShops.BuildNorthRow(parent, rowCF, rowYaw, x0, x1, rng)
+-- gaps = { { a, b } } row-local x ranges no building may cover (the streets crossing the row)
+function CityShops.BuildNorthRow(parent, rowCF, rowYaw, x0, x1, rng, gaps)
 	ROW, ROW_YAW = rowCF, rowYaw or 0
 	parent:SetAttribute("RowX", rowCF.Position.X)
 	parent:SetAttribute("RowZ", rowCF.Position.Z)
@@ -767,6 +768,11 @@ function CityShops.BuildNorthRow(parent, rowCF, rowYaw, x0, x1, rng)
 	while true do
 		i += 1
 		local d = NORTH_SHOPS[(i - 1) % #NORTH_SHOPS + 1]
+		for _, g in ipairs(gaps or {}) do
+			if x < g[2] and x + d.w > g[1] then
+				x = g[2] + 1.2
+			end
+		end
 		if x + d.w > x1 then
 			break
 		end

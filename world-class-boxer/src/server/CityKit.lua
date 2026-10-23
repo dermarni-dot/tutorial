@@ -202,11 +202,12 @@ function K.lawn(parent, x1, x2, z1, z2, rng, opts)
 	local base = slab(parent, "Lawn", x1, x2, z1, z2, top, opts.color or K.GRASS, opts.material or M.Grass, true)
 	if rng then
 		local w, d = x2 - x1, z2 - z1
-		for _ = 1, opts.patches or 2 do
+		for k = 1, opts.patches or 2 do
 			local pw, pd = rng:NextNumber(w * 0.2, w * 0.45), rng:NextNumber(d * 0.2, d * 0.45)
 			local px, pz = rng:NextNumber(x1 + pw / 2, x2 - pw / 2), rng:NextNumber(z1 + pd / 2, z2 - pd / 2)
 			local tone = ({ K.GRASS_DRY, K.GRASS_DARK, Color3.fromRGB(104, 150, 78) })[rng:NextInteger(1, 3)]
-			part(parent, "LawnPatch", V3(pw, 0.06, pd), CF(px, top + 0.04, pz), tone, M.Grass, { shadow = false })
+			-- (each patch a hair higher than the last: overlapping patches never share a face)
+			part(parent, "LawnPatch", V3(pw, 0.04, pd), CF(px, top + 0.03 + k * 0.012, pz), tone, M.Grass, { shadow = false })
 		end
 	end
 	return base

@@ -480,7 +480,8 @@ local function buildDowntown(root)
 	-- the rows of shops: the south row facing north (towards the gym), the north row facing south
 	CityShops.BuildRow(f, CF(0, 0, MAIN.frontS), 0, rng)
 	local north = folder(root, "NorthRow")
-	CityShops.BuildNorthRow(north, CF(0, 0, MAIN.frontN) * ANG(0, math.pi, 0), math.pi, -MAIN.northRowX[2], -MAIN.northRowX[1], rng)
+	-- (row-local x runs west: Champion Ave's sidewalks, x -22.5..22.5, stay open)
+	CityShops.BuildNorthRow(north, CF(0, 0, MAIN.frontN) * ANG(0, math.pi, 0), math.pi, -MAIN.northRowX[2], -MAIN.northRowX[1], rng, { { -AVE.x - AVE.w / 2 - 12, -AVE.x + AVE.w / 2 + 12 } })
 	-- the service alley behind the north row and its dumpsters
 	slab(north, "Alley", MAIN.northRowX[1], MAIN.northRowX[2], LOOP.z1 + LW + OUTER + 0.6, MAIN.frontN - 46, ROAD_Y - 0.02, K.ASPHALT_OLD, M.Asphalt)
 	for x = MAIN.northRowX[1] + 30, MAIN.northRowX[2] - 20, 90 do
