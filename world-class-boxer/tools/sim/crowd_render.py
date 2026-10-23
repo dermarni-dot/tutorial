@@ -94,6 +94,21 @@ def draw_gui(g, W_, Hh):
 
 W.draw_gui = draw_gui
 
+# a decal on a head-mesh part (the fans' faces: SpecialMesh Head, Scale 1.2) draws on the mesh, outside the part's box
+_orig_add_decal = W.Builder.add_decal
+
+
+def add_decal(self, dc, part):
+    mesh = part.get("mesh")
+    if mesh and mesh.get("k") == "Head":
+        p2 = dict(part)
+        p2["s"] = [a * b for a, b in zip(part["s"], mesh.get("s", [1, 1, 1]))]
+        return _orig_add_decal(self, dc, p2)
+    return _orig_add_decal(self, dc, part)
+
+
+W.Builder.add_decal = add_decal
+
 
 def rel(scene, root, eye, target, **kw):
     cam = scene["cameras"].get(root)
