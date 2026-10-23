@@ -269,29 +269,78 @@ local function lookLines(model, lines, verdicts)
 	else
 		table.insert(verdicts, "BAD  no Hands folder: the gloves / wraps step never ran (or was removed)")
 	end
+	-- HEADGEAR block: the live head (class, Size, its span = the smallest axis every head-worn part is sized from, the
+	-- SpecialMesh's type / Scale or the MeshPart's id / MeshSize) against what the gear folders were fitted to (their
+	-- HeadSize / HeadClass / HeadMesh), every gear part's offset and size in head spans and its weld's class and
+	-- Part0 / Part1; a VERDICT per folder: detached (no weld), welded to a head no longer in the model, fitted to
+	-- another head, or OK
+	local liveHead = head and head:IsA("BasePart") and head or nil
+	local hs = liveHead and math.min(liveHead.Size.X, liveHead.Size.Y, liveHead.Size.Z) or 0
+	if liveHead then
+		local sm = liveHead:FindFirstChildOfClass("SpecialMesh")
+		table.insert(lines, string.format("HEADGEAR head %s size=%s span=%.3f mesh=%s meshScale=%s meshSize=%s HeadSizeAtBuild=%s refits=%s last=%s",
+			liveHead.ClassName, v3f(liveHead.Size), hs,
+			sm and tostring(get(sm, "MeshType")):gsub("^Enum%.MeshType%.", "") or (liveHead:IsA("MeshPart") and tostring(get(liveHead, "MeshId") or ""):gsub("rbxassetid://", "") or "none"),
+			sm and v3(get(sm, "Scale")) or "-", liveHead:IsA("MeshPart") and v3(get(liveHead, "MeshSize")) or "-",
+			v3(attr(model, "HeadSizeAtBuild")), tostring(attr(model, "HeadgearRefits") or 0), tostring(attr(model, "HeadgearRefitLast"))))
+	else
+		table.insert(lines, "HEADGEAR head MISSING")
+	end
 	for _, fname in ipairs({ "Headgear", "Hat" }) do
 		local f = look:FindFirstChild(fname)
 		if f then
-			local n, inside, shell = 0, 0, nil
+			local n, inside, shell, loose, otherHead, far = 0, 0, nil, 0, 0, 0
 			for _, p in ipairs(f:GetDescendants()) do
 				if p:IsA("BasePart") then
 					n += 1
-					local rel = head and head:IsA("BasePart") and head.CFrame:ToObjectSpace(p.CFrame) or p.CFrame
-					local w = p:FindFirstChildOfClass("WeldConstraint") or p:FindFirstChildOfClass("Weld")
+					local rel = liveHead and liveHead.CFrame:ToObjectSpace(p.CFrame) or p.CFrame
+					local w = p:FindFirstChildOfClass("Weld") or p:FindFirstChildOfClass("WeldConstraint")
 					local to = w and ((w.Part0 == p and w.Part1) or w.Part0)
+					local w0, w1 = w and w.Part0, w and w.Part1
+					if not (w and w0 and w1) then
+						loose += 1
+					elseif liveHead and w0 ~= liveHead and w1 ~= liveHead then
+						otherHead += 1
+					end
+					if liveHead and rel.Position.Magnitude > liveHead.Size.X * 2 then
+						far += 1
+					end
 					if n <= 12 then
 						table.insert(lines, string.format("%s %-12s %-8s size=%s relHead=%s color=%d,%d,%d massless=%s coll=%s weld->%s", fname:lower(), p.Name, p.ClassName,
 							v3(p.Size), cfs(rel), p.Color.R * 255, p.Color.G * 255, p.Color.B * 255, tostring(p.Massless), tostring(p.CanCollide), to and to.Name or "NONE"))
+						table.insert(lines, string.format("HEADGEAR %s %-12s spans off=%s size=%s weld=%s Part0=%s%s Part1=%s", fname, p.Name,
+							hs > 0 and v3f(rel.Position / hs) or "-", hs > 0 and v3f(p.Size / hs) or "-", w and w.ClassName or "NONE",
+							w0 and w0.Name or "nil", (w0 and liveHead and w0 ~= liveHead and w0.Name == "Head") and "(NOT the live Head)" or "",
+							w1 and w1.Name or "nil"))
 					end
 					if p.Name == "HGShell" or p.Name == "CapCrown" or p.Name == "Crown" then
 						shell = p
 					end
-					if head and head:IsA("BasePart") and rel.Position.Magnitude < head.Size.X * 0.25 and p.Size.X < head.Size.X * 0.9 then
+					if liveHead and rel.Position.Magnitude < liveHead.Size.X * 0.25 and p.Size.X < liveHead.Size.X * 0.9 then
 						inside += 1
 					end
 				end
 			end
 			table.insert(lines, string.format("%s: %d parts, %d of them small and centred in the head", fname:lower(), n, inside))
+			local fitSize = attr(f, "HeadSize")
+			table.insert(lines, string.format("HEADGEAR %s fitted to HeadSize=%s HeadClass=%s HeadMesh=%s Detail=%s Sig=%s; live: %d parts, %d no weld, %d on another head, %d far from the head",
+				fname, v3(fitSize), tostring(attr(f, "HeadClass")), tostring(attr(f, "HeadMesh")), tostring(attr(f, "Detail")), tostring(attr(f, "Sig")), n, loose, otherHead, far))
+			if n > 0 then
+				if loose > 0 then
+					table.insert(verdicts, string.format("BAD  %s detached: %d parts with no weld%s (the Humanoid died with BreakJointsOnDeath or the rig broke; they fall or stay behind)", fname:lower(), loose,
+						far > 0 and string.format(", %d of them more than 2 heads away", far) or ""))
+				elseif otherHead > 0 then
+					table.insert(verdicts, string.format("BAD  %s welded to a head that is no longer in the model (%d parts): the engine replaced the Head after the gear was fitted", fname:lower(), otherHead))
+				elseif liveHead and typeof(fitSize) == "Vector3" and (fitSize - liveHead.Size).Magnitude > 1e-3 then
+					table.insert(verdicts, string.format("BAD  %s fitted to a %s head, the head is now %s: the head was rescaled after the gear was built and no re-fit ran", fname:lower(), v3(fitSize), v3(liveHead.Size)))
+				elseif liveHead and type(attr(f, "HeadClass")) == "string" and attr(f, "HeadClass") ~= liveHead.ClassName then
+					table.insert(verdicts, string.format("BAD  %s fitted to a %s head, the head is now a %s", fname:lower(), tostring(attr(f, "HeadClass")), liveHead.ClassName))
+				elseif far > 0 then
+					table.insert(verdicts, string.format("BAD  %s: %d parts more than 2 heads away from the head although welded (the weld's C0 is wrong)", fname:lower(), far))
+				else
+					table.insert(verdicts, string.format("OK   %s: %d parts welded to the live head, fitted to its size", fname:lower(), n))
+				end
+			end
 			if shell and head and head:IsA("BasePart") then
 				local hs = math.min(head.Size.X, head.Size.Y, head.Size.Z)
 				if shell.Size.X < hs * 0.98 then

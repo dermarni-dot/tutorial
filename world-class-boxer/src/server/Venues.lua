@@ -2104,6 +2104,16 @@ function Venues.New(kind, opts)
 		end
 	end
 	arena.Parent = workspace
+	-- the template's athletes come in as clones (no head watch of their own): every rig in the copy gets the late
+	-- headgear re-fit once the engine's post-parent passes have run (Builder.OnPlaced; a no-op while it fits)
+	pcall(function()
+		local Builder = require(Shared:WaitForChild("Builder"))
+		for _, d in ipairs(arena:GetDescendants()) do
+			if d:IsA("Humanoid") and d.Parent and d.Parent:IsA("Model") then
+				Builder.OnPlaced(d.Parent)
+			end
+		end
+	end)
 	return arena
 end
 

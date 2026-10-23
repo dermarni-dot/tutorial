@@ -153,7 +153,7 @@ TIERS = {
 # Lean keeps longer shins and forearms, Power Build shorter / thicker limbs, within the same height.
 FRAMES = {
     "Lean": dict(
-        key="lean", head=0.79, neck_s=[3.58, 3.64, 3.72, 3.875],
+        key="lean", head=0.79, neck_s=[3.58, 3.64, 3.72, 3.86],
         skel=dict(torso=1.03, leg=1.03, lowerleg=1.07, arm=1.02, forearm=1.06, armw=0.92, hand=0.90, lower=(0.90, 0.92), foot=0.90),
         tx=[0.95, 0.90, 0.92, 0.93, 0.92, 0.90], tf=[0.95, 0.90, 0.93, 0.95, 0.96, 0.98], tb=[0.95, 0.92, 0.95, 0.96, 0.97, 0.98],
         neck=([0.54, 0.40, 0.377], [0.27, 0.26, 0.27], [0.30, 0.31, 0.325]), p=-0.45,
@@ -162,7 +162,7 @@ FRAMES = {
         gain=dict(pec=0.7, delt=0.8, lat=0.85, trap=0.5, arm=0.8, fore=0.9, calf=0.85, abs=1.2, leg=1.0, defin=1.35),
         soft=0.0, fat=0.0, ribs=1.0, knobs=1.0),
     "Athletic": dict(
-        key="athletic", head=0.82, neck_s=[3.58, 3.66, 3.74, 3.875],
+        key="athletic", head=0.82, neck_s=[3.58, 3.66, 3.74, 3.86],
         skel=dict(torso=1.0, leg=1.0, lowerleg=1.0, arm=1.0, forearm=1.0, armw=1.0, hand=1.0, lower=(1.0, 1.0), foot=1.0),
         tx=[0.97, 0.95, 1.02, 1.07, 1.07, 1.05], tf=[0.98, 0.97, 1.02, 1.04, 1.03, 1.0], tb=[0.98, 0.98, 1.03, 1.05, 1.04, 1.0],
         neck=([0.70, 0.44, 0.415], [0.31, 0.30, 0.30], [0.35, 0.355, 0.357]), p=-0.3,
@@ -171,28 +171,28 @@ FRAMES = {
         gain=dict(pec=1.0, delt=1.0, lat=1.0, trap=1.0, arm=1.0, fore=1.0, calf=1.0, abs=1.0, leg=1.0, defin=1.0),
         soft=0.0, fat=0.0, ribs=0.3, knobs=0.3),
     "Muscular": dict(
-        key="muscular", head=0.835, neck_s=[3.58, 3.67, 3.75, 3.875],
+        key="muscular", head=0.835, neck_s=[3.58, 3.67, 3.75, 3.86],
         skel=dict(torso=1.0, leg=1.01, lowerleg=1.0, arm=1.0, forearm=1.0, armw=1.10, hand=1.06, lower=(1.06, 1.04), foot=1.04),
         tx=[0.98, 0.96, 1.08, 1.17, 1.19, 1.16], tf=[1.0, 1.0, 1.08, 1.12, 1.10, 1.03], tb=[1.0, 1.02, 1.10, 1.14, 1.12, 1.04],
-        neck=([0.80, 0.49, 0.453], [0.34, 0.32, 0.32], [0.38, 0.39, 0.39]), p=-0.2,
+        neck=([0.80, 0.49, 0.44], [0.34, 0.32, 0.315], [0.38, 0.39, 0.385]), p=-0.2,
         arm=[1.0, 1.03, 1.05, 1.05, 1.04], fore=[1.0, 1.01, 1.03, 1.04, 1.04], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
         calf=[1.0, 1.02, 1.07, 1.09, 1.05, 1.0], calf_pk=0.74,
         gain=dict(pec=1.3, delt=1.4, lat=1.4, trap=1.3, arm=1.35, fore=1.15, calf=1.15, abs=1.0, leg=1.0, defin=1.0),
         soft=0.0, fat=0.0, ribs=0.0, knobs=0.0, built=1.0),
     "Power Build": dict(
-        key="power", head=0.85, neck_s=[3.58, 3.70, 3.77, 3.875],
+        key="power", head=0.85, neck_s=[3.58, 3.70, 3.77, 3.86],
         skel=dict(torso=0.99, leg=0.99, lowerleg=0.96, arm=0.97, forearm=0.97, armw=1.16, hand=1.12, lower=(1.10, 1.14), foot=1.06),
         tx=[1.0, 1.06, 1.12, 1.16, 1.17, 1.17], tf=[1.02, 1.12, 1.20, 1.22, 1.16, 1.06], tb=[1.02, 1.10, 1.18, 1.20, 1.16, 1.06],
-        neck=([0.96, 0.60, 0.503], [0.39, 0.37, 0.36], [0.46, 0.44, 0.433]), p=-0.1,
+        neck=([0.92, 0.55, 0.46], [0.38, 0.35, 0.335], [0.45, 0.42, 0.40]), p=-0.1,
         arm=[1.0, 1.04, 1.06, 1.06, 1.05], fore=[1.0, 1.05, 1.12, 1.14, 1.12], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
         calf=[1.0, 1.02, 1.08, 1.10, 1.05, 1.0], calf_pk=0.70,
         gain=dict(pec=1.2, delt=1.4, lat=1.3, trap=2.0, arm=1.3, fore=1.6, calf=1.2, abs=0.7, leg=1.0, defin=0.75),
         soft=0.2, fat=0.25, ribs=0.0, knobs=0.0, built=0.6),
     "Heavyweight Build": dict(
-        key="heavy", head=0.865, neck_s=[3.58, 3.69, 3.76, 3.875],
+        key="heavy", head=0.865, neck_s=[3.58, 3.69, 3.76, 3.86],
         skel=dict(torso=1.0, leg=1.0, lowerleg=0.98, arm=0.98, forearm=0.98, armw=1.10, hand=1.12, lower=(1.16, 1.14), foot=1.12),
         tx=[1.0, 1.10, 1.12, 1.12, 1.10, 1.08], tf=[1.02, 1.16, 1.20, 1.16, 1.10, 1.04], tb=[1.02, 1.10, 1.14, 1.14, 1.10, 1.04],
-        neck=([0.90, 0.57, 0.503], [0.40, 0.375, 0.36], [0.45, 0.42, 0.42]), p=-0.35,
+        neck=([0.88, 0.53, 0.46], [0.39, 0.355, 0.335], [0.44, 0.40, 0.39]), p=-0.35,
         arm=[1.0, 1.03, 1.05, 1.05, 1.04], fore=[1.0, 1.02, 1.05, 1.06, 1.05], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
         calf=[1.0, 1.02, 1.09, 1.10, 1.05, 1.0], calf_pk=0.70,
         gain=dict(pec=1.1, delt=1.0, lat=1.1, trap=1.2, arm=1.1, fore=1.1, calf=1.15, abs=0.35, leg=1.0, defin=0.35),
@@ -864,10 +864,10 @@ class Scaled:
 # ------------------------------------------------------------------------------------------ the frame's sections
 T_KNOTS = [2.45, 2.75, 3.05, 3.30, 3.48, 3.58]
 # the shoulder top row, the trapezius slope, the neck column, its top (FRAMES[id].neck_s; the head's base is at 3.811).
-# (v13) the column runs NECK_TOP - 3.811 = 0.064 prototype = 0.08 game studs up INTO the head, so the classic head's
+# (v13) the column runs NECK_TOP - 3.811 = 0.05 prototype = 0.065 game studs up INTO the head (its cap ~0.1), so the classic head's
 # rounded underside closes over the neck's top ring from outside whatever the frame's neck width (no ledge where a thick
 # neck met the head's flat base, no gap under a thin one), and a nod does not open it
-NECK_S = [3.58, 3.66, 3.74, 3.875]
+NECK_S = [3.58, 3.66, 3.74, 3.86]
 NECK_TOP = NECK_S[-1]
 
 
@@ -1120,7 +1120,7 @@ def upper_torso(tr, fr):
     ]
     sd = ([YW, 2.32, 2.36, 3.36, 3.42, 3.54, 3.57, NECK_TOP], [0.6, 0.6, 1.3, 1.3, 0.9, 0.9, 1.7, 1.7])
     # (v13) 52 x 56: the rings are ~0.03 prototype apart over the chest (no banding on the super-elliptic sections)
-    return loft(torso_sec(fr), tr["m"], YW, NECK_TOP, (0.22, 1.0, 2, 0.88), (0.04, 1.0, 2), nb=52, nseg=56, bias=0.5,
+    return loft(torso_sec(fr), tr["m"], YW, NECK_TOP, (0.22, 1.0, 2, 0.88), (0.03, 1.0, 2), nb=52, nseg=56, bias=0.5,
                 sdens=sd, lobes=L)
 
 
@@ -1985,6 +1985,7 @@ def main():
     ap.add_argument("--frames", default=",".join(FRAMES[f]["key"] for f in FRAME_ORDER), help="frame keys (lean,athletic,...)")
     ap.add_argument("--frame-sheet-tiers", default="1,5")
     ap.add_argument("--no-blend", action="store_true")
+    ap.add_argument("--no-export", action="store_true", help="render only: leave tools/body/out alone")
     a = ap.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:])
     import bpy
     os.makedirs(SCRATCH, exist_ok=True)
@@ -1996,7 +1997,7 @@ def main():
         for n in want_tiers:
             parts = build_tier(bpy, n, frame=fid)
             built[(fid, n)] = parts
-            if n >= 1:
+            if n >= 1 and not a.no_export:
                 d = export_tier(n, parts, fid)
                 summary.setdefault(fid, {})[n] = d
                 print("%-17s tier %d %-9s %5d tris  armX %.3f  span %.2f  chest %.2f  neck %.2f" % (
@@ -2026,7 +2027,7 @@ def main():
     tiers_rec = dict(old.get("tiers") or {})
     for n, d in ath.items():
         tiers_rec[str(n)] = d
-    if unit is not None:
+    if unit is not None and not a.no_export:
         with open(bt_path, "w") as f:
             json.dump({"unit": unit, "prototype_skeleton": {k: list(v) for k, v in J.items()},
                        "r15_block_reference": R15_BLOCK, "tiers": tiers_rec, "frames": frames_rec,

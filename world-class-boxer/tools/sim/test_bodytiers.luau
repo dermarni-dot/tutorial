@@ -251,8 +251,18 @@ do
 		end
 		-- the frames' own rig heights and gear scales
 		local lu, pu = BodyTiers.Unit("Lean", REAL), BodyTiers.Unit("Power Build", REAL)
-		check("frame units: the Lean frame stands taller than the Power Build (longer legs)", lu and pu and lu.standingHeight > pu.standingHeight + 0.2
-			and lu.hipHeight > pu.hipHeight, lu and lu.standingHeight)
+		-- (v13: every frame's unit carries its own neck height and head; the skeletons differ (Lean's longer shins,
+		-- Power Build's shorter legs) but Builder.Scales normalises the height, so the units stand within 3 % of each
+		-- other and the hip share of the standing height within 1 %)
+		check("frame units: own neck height, head and standing height per frame", lu and pu and lu.neckHeight > pu.neckHeight
+			and lu.head < pu.head and math.abs(lu.standingHeight - pu.standingHeight) < 0.2 and lu.hipHeight > pu.hipHeight, lu and lu.standingHeight)
+		local au = REAL.unit
+		for _, fid in ipairs({ "Lean", "Muscular", "Power Build", "Heavyweight Build" }) do
+			local u = BodyTiers.Unit(fid, REAL)
+			local share = u.hipHeight / u.neckHeight
+			check(fid .. ": the hip's share of the neck height within 1 % of the Athletic's", math.abs(share / (au.hipHeight / au.neckHeight) - 1) < 0.0125,
+				string.format("%.4f vs %.4f", share, au.hipHeight / au.neckHeight))
+		end
 		check("Unit(): the default family's for Athletic / unknown", BodyTiers.Unit("Athletic", REAL) == REAL.unit and BodyTiers.Unit("x", REAL) == REAL.unit)
 		local gs = BodyTiers.GearScale("Heavyweight Build", "LowerTorso", REAL)
 		check("GearScale: the heavyweight's pelvis is wider, the default family's is 1", gs[1] > 1.1 and BodyTiers.GearScale("Athletic", "LowerTorso", REAL)[1] == 1)
@@ -830,14 +840,37 @@ do
 		string.format("%.3f %.3f %.3f %.4f", sc.height, sc.width, sc.depth, sc.head))
 	local trained = Builder.Scales(man, build(95))
 	check("training never widens the frame", near(trained.width, sc.width) and near(trained.depth, sc.depth))
-	check("ScaleKey p3 and training-independent", Builder.ScaleKey(man, build(8)) == Builder.ScaleKey(man, build(95))
-		and Builder.ScaleKey(man, build(8)):sub(-2) == "p3")
+	check("ScaleKey p4 and training-independent", Builder.ScaleKey(man, build(8)) == Builder.ScaleKey(man, build(95))
+		and Builder.ScaleKey(man, build(8)):sub(-2) == "p4")
 	local woman = Looks.Defaults(2)
 	local ws = Builder.Scales(woman, build(8))
 	check("women: narrower shoulders, smaller head", near(ws.width, 0.92) and near(ws.depth, 0.94) and near(ws.head, 0.7724 * 0.97, 1e-4))
 	man.body.frame = "Heavyweight Build"
 	local hs = Builder.Scales(man, build(8))
-	check("Heavyweight frame: wider and deeper, bigger head", near(hs.width, 1.17) and near(hs.depth, 1.16) and near(hs.head, 0.85 * 0.942, 1e-4))
+	-- (v13: half of Config.BodyTypes' width / depth, the mesh family carries the rest; the frame's own head share)
+	check("Heavyweight frame: wider and deeper (half the BodyTypes value), bigger head", near(hs.width, 1 + 0.17 * Builder.FRAME_WIDTH_SHARE)
+		and near(hs.depth, 1 + 0.16 * Builder.FRAME_WIDTH_SHARE) and near(hs.head, Builder.FRAME_PROPORTIONS["Heavyweight Build"].head * 0.942, 1e-4))
+	check("the frame's head share is the one its meshes were modelled under (BodyAssetData.frames[id].unit.head)", (function()
+		for _, fid in ipairs({ "Lean", "Athletic", "Muscular", "Power Build", "Heavyweight Build" }) do
+			man.body.frame = fid
+			local u = BodyTiers.Unit(fid, REAL)
+			if not (u and near(1.2 * Builder.Scales(man, build(8)).head, u.head, 1e-3)) then
+				return false
+			end
+		end
+		man.body.frame = "Athletic"
+		return true
+	end)())
+	check("Heavyweight / Lean: the height scale differs from inches / 70 by the frame's own neck height (same standing height)", (function()
+		local tot = {}
+		for _, fid in ipairs({ "Lean", "Athletic", "Heavyweight Build" }) do
+			man.body.frame = fid
+			local s, u = Builder.Scales(man, build(8)), BodyTiers.Unit(fid, REAL)
+			tot[fid] = u.neckHeight * s.height + 1.2 * s.head
+		end
+		man.body.frame = "Athletic"
+		return near(tot.Lean, tot.Athletic, 1e-3) and near(tot["Heavyweight Build"], tot.Athletic, 1e-3) and near(tot.Athletic, REAL.unit.standingHeight, 1e-3)
+	end)())
 	man.body.frame = "Lean"
 	local ls = Builder.Scales(man, build(8))
 	check("Lean frame: narrower, smaller head", ls.width < 0.95 and ls.depth < 0.95 and ls.head < sc.head)
@@ -855,7 +888,12 @@ do
 	end)())
 	man.body.frame = "Athletic"
 	man.height = 76
-	check("height scales with inches / 70", near(Builder.Scales(man, build(8)).height, 76 / 70))
+	-- (v13: the standing height scales with the inches; the head is not height-scaled, so the body's scale is a
+	-- little more than inches / 70 above 70 and a little less below)
+	local s76 = Builder.Scales(man, build(8))
+	check("standing height scales with the inches (76 in = 76 / 70 x the unit's)", near(REAL.unit.neckHeight * s76.height + 1.2 * s76.head, REAL.unit.standingHeight * 76 / 70, 1e-3)
+		and near(Builder.StandingHeight(76), REAL.unit.standingHeight * 76 / 70, 1e-6) and s76.height > 76 / 70)
+	man.height = 70
 	check("Builder.Tiers", Builder.Tiers(Looks.Defaults(1), build(95)).UpperTorso == 5)
 end
 
@@ -1538,11 +1576,12 @@ do
 		return p and p.Color
 	end
 	-- every part welded to the model's current head
+	-- (a Weld under the part, Part0 the head: a JointInstance the engine re-points on a head swap; no WeldConstraint)
 	local function welded(model)
 		local head = model:FindFirstChild("Head")
 		for _, p in ipairs(hgParts(model)) do
-			local w = p:FindFirstChildOfClass("WeldConstraint")
-			if not (w and w.Part0 == head and w.Part1 == p) then
+			local w = p:FindFirstChildOfClass("Weld")
+			if not (w and w.Part0 == head and w.Part1 == p and p:FindFirstChildOfClass("WeldConstraint") == nil) then
 				return false, p.Name
 			end
 		end

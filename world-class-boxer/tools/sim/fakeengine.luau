@@ -231,7 +231,15 @@ function FE.new()
 			local cf = rawget(o, "_props").CFrame
 			rawget(o, "_props").CFrame = cf and (CFrame.new(v) * cf.Rotation) or CFrame.new(v)
 		else
-			rawget(o, "_props")[k] = v
+			local props = rawget(o, "_props")
+			local old = props[k]
+			props[k] = v
+			-- GetPropertyChangedSignal(k) fires on a real change (as the engine: a write of the same value is silent)
+			local ps = rawget(o, "_propSig")
+			local s = ps and ps[k]
+			if s and old ~= v then
+				s:Fire()
+			end
 		end
 		-- (optional) E.onSet(o, k, v): a property was written (guisim: the layout goes stale)
 		local hook = E.onSet
@@ -365,8 +373,14 @@ function FE.new()
 		t[k] = t[k] or Signal(o)
 		return t[k]
 	end
-	function methods.GetPropertyChangedSignal(o, _k)
-		return Signal(o)
+	function methods.GetPropertyChangedSignal(o, k)
+		local t = rawget(o, "_propSig")
+		if not t then
+			t = {}
+			rawset(o, "_propSig", t)
+		end
+		t[k] = t[k] or Signal(o)
+		return t[k]
 	end
 	function methods.GetPivot(o)
 		local cf = rawget(o, "_props").CFrame

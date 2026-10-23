@@ -53,30 +53,77 @@ end
 -- old Rthro blend made: about 6.2 studs, 7 heads), so Height / Width / Depth only carry the boxer's height, his
 -- frame's build (BodyTypes width / depth) and the women's narrower shoulders; training never widens the frame
 -- (the tiers carry the muscle). The head is the standard head at the frame's head share: FRAME_PROPORTIONS'
--- head x RTHRO_HEAD (what BodyTypeScale 1 used to take off it), so it stays the size it was (0.927 studs).
--- With every id 0 the default parts stay: the classic block body at these scales.
+-- head x RTHRO_HEAD (what BodyTypeScale 1 used to take off it): 0.927 studs on the Athletic frame, a little
+-- smaller on the Lean, bigger on the Power Build / Heavyweight (tools/body/build_body.py FRAMES[id].head is the
+-- same table: the neck column is modelled under that head). With every id 0 the default parts stay: the classic
+-- block body at these scales.
+--
+-- THE HEIGHT (v13): the frame changes the build, never the height. Every frame's mesh family has its own unit rig
+-- (BodyAssetData.frames[id].unit: the neck pivot's height neckHeight with the frame's skeleton, its head), so the
+-- HeightScale is normalised per frame: the chosen height in inches is the standing height of the Athletic unit x
+-- inches / 70 (the 70-inch Athletic man stands unit.standingHeight = 6.2161 studs, the game's inch), and
+--   HeightScale = (standing - head) / unit[frame].neckHeight     (head = 1.2 x HeadScale: the head is not height-scaled)
+-- so the sole-to-crown height, and with it the eye line, is the same for every frame at the same inches (the frames'
+-- skeletons are tuned so the hip line follows within 1 %: BuilderTiers.FixHipHeight follows the scaled legs anyway).
+-- A missing unit (no neckHeight) falls back to inches / 70.
 local FRAME_PROPORTIONS = {
-	Lean = { head = 0.81 },
+	Lean = { head = 0.79 },
 	Athletic = { head = 0.82 },
-	Muscular = { head = 0.83 },
-	["Power Build"] = { head = 0.84 },
-	["Heavyweight Build"] = { head = 0.85 },
+	Muscular = { head = 0.835 },
+	["Power Build"] = { head = 0.85 },
+	["Heavyweight Build"] = { head = 0.865 },
 }
 Builder.FRAME_PROPORTIONS = FRAME_PROPORTIONS
 local RTHRO_HEAD = 0.942
+Builder.RTHRO_HEAD = RTHRO_HEAD
+-- the classic head's nominal size the HeadScale scales (the plain head Part BuilderHead swaps in)
+local HEAD_NOMINAL = 1.2
+-- the share of Config.BodyTypes' width / depth that still goes into the description: the frames' mesh families carry
+-- the build (a Lean frame's narrow shoulders, the heavyweight's wide pelvis are IN the meshes, v12), so the whole-body
+-- Width / Depth is only the fine-tune on top; at the full BodyTypes values the pelvis of a Heavyweight came out 1.16
+-- (mesh) x 1.17 (description) = 1.36 x the Athletic one, and every hand, foot and shin with it
+local FRAME_WIDTH_SHARE = 0.5
+Builder.FRAME_WIDTH_SHARE = FRAME_WIDTH_SHARE
+
+-- the inches the creator / the records carry (Looks: 60..84), the Athletic unit's studs per 70 inches
+local HEIGHT_MIN, HEIGHT_MAX = 60, 84
+local UNIT_STAND_FALLBACK = 6.2161
+
+-- the frame's unit rig heights (BodyTiers.Unit) and the Athletic unit's standing height: nil, nil without data
+local function unitOf(frameId)
+	local ok, u = pcall(BodyTiers.Unit, frameId)
+	return ok and type(u) == "table" and u or nil
+end
+
+-- the standing height in studs a boxer of `inches` is built to (every frame): the Athletic unit's x inches / 70
+function Builder.StandingHeight(inches)
+	local ath = unitOf(BodyTiers.DEFAULT_FRAME)
+	local unitStand = ath and type(ath.standingHeight) == "number" and ath.standingHeight or UNIT_STAND_FALLBACK
+	return math.clamp(tonumber(inches) or 70, HEIGHT_MIN, HEIGHT_MAX) / 70 * unitStand
+end
 
 -- (build, opts: kept for the callers; the physique and training no longer change the scales)
 function Builder.Scales(app, build, opts)
 	local frame = frameOf(app)
 	local female = app.gender == 2
 	local pr = FRAME_PROPORTIONS[frame.id] or FRAME_PROPORTIONS.Athletic
+	local headScale = pr.head * RTHRO_HEAD * (female and 0.97 or 1)
+	local inches = math.clamp(tonumber(app.height) or 70, HEIGHT_MIN, HEIGHT_MAX)
+	-- the frame's own neck height: the height scale that puts the crown of its head at the chosen height
+	local u = unitOf(frame.id)
+	local height = inches / 70
+	if u and type(u.neckHeight) == "number" and u.neckHeight > 1 then
+		height = (Builder.StandingHeight(inches) - HEAD_NOMINAL * headScale) / u.neckHeight
+	end
+	local wk = (female and 0.92 or 1)
+	local dk = (female and 0.94 or 1)
 	return {
-		height = math.clamp((app.height or 70) / 70, 0.86, 1.2),
-		width = math.clamp(frame.width * (female and 0.92 or 1), 0.7, 1.4),
-		depth = math.clamp(frame.depth * (female and 0.94 or 1), 0.7, 1.4),
+		height = math.clamp(height, 0.8, 1.3),
+		width = math.clamp((1 + (frame.width - 1) * FRAME_WIDTH_SHARE) * wk, 0.7, 1.4),
+		depth = math.clamp((1 + (frame.depth - 1) * FRAME_WIDTH_SHARE) * dk, 0.7, 1.4),
 		bodyType = 0,
 		proportion = 0,
-		head = pr.head * RTHRO_HEAD * (female and 0.97 or 1),
+		head = headScale,
 	}
 end
 
@@ -111,15 +158,15 @@ function Builder.Description(app, build, opts)
 	return desc
 end
 
--- quantised to 0.01 so only real changes re-apply the description (which yields); "p3" = the standard R15
--- body at BodyTypeScale 0 (characters scaled under an older key re-apply once)
--- body at BodyTypeScale 0 (characters scaled under an older key re-apply once). A player's avatar hair / face
+-- quantised to 0.01 so only real changes re-apply the description (which yields); "p4" = the standard R15
+-- body at BodyTypeScale 0 with the frame-normalised height (characters scaled under an older key re-apply once).
+-- A player's avatar hair / face
 -- (opts.avatar) adds its AvatarLook.Key: a new avatar, the setting turned on / off re-apply once; the game
 -- look's key is exactly the old one
 function Builder.ScaleKey(app, build, opts)
 	local sc = Builder.Scales(app, build, opts)
 	local av = AvatarLook.Key(opts and opts.avatar)
-	return string.format("%.2f|%.2f|%.2f|%d|%.2f|%.2f|%.2f|%sp3", sc.height, sc.width, sc.depth, app.gender or 1, sc.bodyType, sc.proportion, sc.head,
+	return string.format("%.2f|%.2f|%.2f|%d|%.2f|%.2f|%.2f|%sp4", sc.height, sc.width, sc.depth, app.gender or 1, sc.bodyType, sc.proportion, sc.head,
 		av ~= "" and (av .. "|") or "")
 end
 
@@ -255,6 +302,90 @@ local function capLook(model, opts, detail)
 		Kit.seal(model, "Hat", key)
 	end
 end
+
+-- The late re-fit (BuilderHead.RefitHeadgear): the gear folders checked against the live head (its instance, Size,
+-- class, mesh; welds still there) and rebuilt from their own record when they no longer fit, each rebuild warned as
+-- "[Boxer] headgear refit <name>: ..."; a rebuilt folder is re-sealed under the key its step would have used, so the
+-- next Cosmetics keeps it. The Neck is checked too (Head.EnsureNeck: a rig the swap left without one is dead on
+-- RequiresNeck). Change-only: nil while everything fits.
+function Builder.RefitHeadgear(model)
+	if not (model and model.Parent) then
+		return nil
+	end
+	local okN, neck = pcall(Head.EnsureNeck, model)
+	if okN and neck == "rebuilt" then
+		warn("[Boxer] headgear refit " .. tostring(model.Name) .. ": no Neck joint on the rig; a Motor6D Neck was rebuilt from the RigAttachments")
+	end
+	local ok, res = pcall(Head.RefitHeadgear, model)
+	if not ok then
+		warn("[Boxer] headgear refit failed:", res)
+		return nil
+	end
+	if type(res) ~= "table" then
+		return nil
+	end
+	local head = model:FindFirstChild("Head")
+	local look = model:FindFirstChild("BoxerLook")
+	if res.Headgear then
+		local f = look and look:FindFirstChild("Headgear")
+		local col = f and f:GetAttribute("Color")
+		if f and typeof(col) == "Color3" then
+			Kit.seal(model, "Headgear", Kit.sig("HG1", col, head and head.Size or false, f:GetAttribute("Detail")))
+		end
+	end
+	if res.Hat then
+		local f = look and look:FindFirstChild("Hat")
+		if f then
+			local colors = { cap = f:GetAttribute("CapColor"), trim = f:GetAttribute("CapTrim"), badge = f:GetAttribute("CapBadge") }
+			Kit.seal(model, "Hat", Kit.sig("CAP1", f:GetAttribute("Style"), colors, head and head.Size or false, f:GetAttribute("Detail")))
+		end
+	end
+	return res
+end
+
+-- A model placed in Workspace (an NPC parented in by Ambient / Venues / FightEngine, a player after Builder.Apply):
+-- the engine's deferred passes (the Humanoid's scaling, the MeshPart head conversion, a death on a missing Neck)
+-- run after the parent, so the gear is re-fitted 0.3 s and 2 s later (Builder.RefitHeadgear; a no-op while it
+-- fits). One schedule per model at a time.
+Builder.REFIT_DELAYS = { 0.3, 2 }
+local refitPending = setmetatable({}, { __mode = "k" })
+function Builder.OnPlaced(model)
+	if model == nil or refitPending[model] then
+		return
+	end
+	refitPending[model] = true
+	local last = Builder.REFIT_DELAYS[#Builder.REFIT_DELAYS]
+	for _, delay in ipairs(Builder.REFIT_DELAYS) do
+		task.delay(delay, function()
+			if delay == last then
+				refitPending[model] = nil
+			end
+			if model.Parent then
+				Builder.RefitHeadgear(model)
+			end
+		end)
+	end
+end
+
+-- Every built character / NPC keeps its joints and its gear whatever happens to its Neck: the rigs the engine hands
+-- out now carry AnimationConstraint joints (the avatar joint upgrade) or lose the Neck in a head swap, and with
+-- RequiresNeck on the Humanoid dies and BreakJointsOnDeath then drops every weld (the headgear lying studs away,
+-- every motor gone: the Studio diagnostic). FightEngine / Ragdoll set these per fight already; this is the baseline.
+local function hardenHumanoid(model)
+	local hum = model and model:FindFirstChildOfClass("Humanoid")
+	if not hum then
+		return
+	end
+	pcall(function()
+		if hum.RequiresNeck ~= false then
+			hum.RequiresNeck = false
+		end
+		if hum.BreakJointsOnDeath ~= false then
+			hum.BreakJointsOnDeath = false
+		end
+	end)
+end
+Builder.HardenHumanoid = hardenHumanoid
 
 -- Sparring: on = the corner's colour over the boxer's own headgear, off = his own colour back. A model without its
 -- own headgear (Config.AlwaysHeadgear off, an exempt official) gets the old toggle: built on, removed off
@@ -536,6 +667,7 @@ end
 function Builder.Cosmetics(model, app, build, gear, opts)
 	opts = opts or {}
 	app = app or Looks.Defaults(1)
+	hardenHumanoid(model)
 	avatarState(model)
 	-- preview path: rebuild only the requested head folders, in order
 	if type(opts.only) == "table" then
@@ -653,6 +785,8 @@ function Builder.Apply(character, app, build, gear, opts)
 	end
 	if character.Parent then
 		Builder.Cosmetics(character, app, build, gear, opts)
+		-- the engine's deferred passes after the description (scaling, the head conversion) run after this returns
+		Builder.OnPlaced(character)
 	end
 end
 
@@ -742,6 +876,17 @@ function Builder.CreateNPC(app, build, gear, displayName, opts)
 			d.CanTouch = false
 		end
 	end
+	-- the late re-fit once the caller places it in Workspace (Builder.OnPlaced; the callers' own hook covers a clone,
+	-- which carries no connection)
+	pcall(function()
+		local conn
+		conn = model.AncestryChanged:Connect(function()
+			if model:FindFirstAncestorWhichIsA("Workspace") then
+				conn:Disconnect()
+				Builder.OnPlaced(model)
+			end
+		end)
+	end)
 	return model
 end
 

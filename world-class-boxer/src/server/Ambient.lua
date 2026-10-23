@@ -195,6 +195,8 @@ local function spawnMember(folder, def)
 		hum.BreakJointsOnDeath = false
 	end
 	npc.Parent = folder
+	-- the headgear re-fitted once the engine's post-parent passes have run (Builder.OnPlaced; a no-op while it fits)
+	Builder.OnPlaced(npc)
 	local spot = getSpot(def.spot)
 	local at = (spot and spot.pos) or def.at or (def.walk and def.walk[1]) or V3(0, 0, 0)
 	local yaw = yawTo(at, def.look or (at + V3(0, 0, -1)))

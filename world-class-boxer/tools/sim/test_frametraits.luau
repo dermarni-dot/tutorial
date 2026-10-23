@@ -74,6 +74,7 @@ do
 	check("the Lean frame has the long arms", FrameTraits.Data[LEAN].reachBonus > 1 and FrameTraits.Data[HVY].reachBonus == 1)
 	check("the heavyweight is the biggest target, the Lean the smallest", FrameTraits.Data[HVY].target > 1 and FrameTraits.Data[LEAN].target < 1)
 	check("the Muscular frame pays for its power punches", FrameTraits.Data[MUS].powerDrain > 1 and FrameTraits.Data[LEAN].powerDrain == 1)
+	rising("tank", { HVY, POW, MUS, ATH, LEAN })
 	-- helpers
 	check("Get: an unknown id is Athletic", FrameTraits.Get("Nope") == FrameTraits.Data[ATH] and FrameTraits.Get(nil) == FrameTraits.Data[ATH])
 	check("IdOf: the engine's data (app.body.frame)", FrameTraits.IdOf({ app = { body = { frame = LEAN } } }) == LEAN)
@@ -106,6 +107,12 @@ local function liveFight(redFrame, blueFrame, seed)
 	fight.resumedAt = S.now()
 	return fight
 end
+local V3, CF = S.H.globals.Vector3, S.H.globals.CFrame
+-- the two men `gap` studs apart, square on (the stub rigs start 6 apart: out of range)
+local function closeTo(fight, gap)
+	fight.P.root.CFrame = CF.lookAt(V3.new(0, 3.2, 0), V3.new(gap, 3.2, 0))
+	fight.O.root.CFrame = CF.lookAt(V3.new(gap, 3.2, 0), V3.new(0, 3.2, 0))
+end
 local function actWindup(F)
 	local act = F.model:GetAttribute("Act") or ""
 	return tonumber(act:match("^[^|]+|[^|]+|[^|]+|([%d%.]+)"))
@@ -131,13 +138,15 @@ do
 		near(w[LEAN] / w[ATH], FrameTraits.Data[ATH].handSpeed / FrameTraits.Data[LEAN].handSpeed, 0.03) and near(w[HVY] / w[ATH], FrameTraits.Data[ATH].handSpeed / FrameTraits.Data[HVY].handSpeed, 0.03),
 		string.format("%.3f %.3f", w[LEAN] / w[ATH], w[HVY] / w[ATH]))
 	check("engine: a cross costs a Lean less gas than a heavyweight", cost[LEAN] < cost[ATH] and cost[ATH] < cost[HVY], string.format("%.2f %.2f %.2f", cost[LEAN], cost[ATH], cost[HVY]))
+	check("engine: the heavyweight's tank is the smallest (tank)", liveFight(HVY).P.maxStam < liveFight(ATH).P.maxStam and liveFight(LEAN).P.maxStam >= liveFight(ATH).P.maxStam)
 	check("engine: the Muscular frame's power punch costs more than Athletic's", cost[MUS] > cost[ATH])
 	-- the jab is not a power punch: Muscular's jab costs Athletic's
 	local fm, fa = liveFight(MUS, ATH), liveFight(ATH, ATH)
 	local bm, ba = fm.P.stamina, fa.P.stamina
 	fm:Punch(fm.P, "jab", false)
 	fa:Punch(fa.P, "jab", false)
-	check("engine: the jab is not a power punch (Muscular's costs the same)", near(bm - fm.P.stamina, ba - fa.P.stamina, 1e-6))
+	check("engine: the jab is not a power punch (Muscular's costs only the frame's drain)", near((bm - fm.P.stamina) / (ba - fa.P.stamina), FrameTraits.Data[MUS].staminaDrain / FrameTraits.Data[ATH].staminaDrain, 1e-3),
+		(bm - fm.P.stamina) / (ba - fa.P.stamina))
 	-- the feet
 	local speed = {}
 	for _, id in ipairs(FRAMES) do
@@ -159,7 +168,7 @@ do
 	local function damageTo(frame, body, seed)
 		local ff = liveFight(ATH, frame, seed)
 		ff.rng = Random.new(seed)
-		ff.P.root.CFrame = ff.P.root.CFrame -- (3 studs apart: in range)
+		closeTo(ff, 3.2)
 		local h0, b0 = ff.O.health, ff.O.body
 		ff:Resolve(ff.P, ff.O, "cross", body, 1, {})
 		return h0 - ff.O.health, b0 - ff.O.body
@@ -184,6 +193,7 @@ do
 	local function damageFrom(frame, seed)
 		local ff = liveFight(frame, ATH, seed)
 		ff.rng = Random.new(seed)
+		closeTo(ff, 3.2)
 		local h0 = ff.O.health
 		ff:Resolve(ff.P, ff.O, "cross", false, 1, {})
 		return h0 - ff.O.health
@@ -214,7 +224,7 @@ do
 	-- the clinch: a heavyweight's hold lasts longer
 	local function hold(frame)
 		local ff = liveFight(frame, ATH)
-		ff.P.root.CFrame = S.H.globals.CFrame.new(-1.8, 3.2, 0) * (ff.P.root.CFrame - ff.P.root.CFrame.Position)
+		closeTo(ff, 3)
 		local now = ff:Now()
 		ff:Clinch(ff.P)
 		return ff.P.state == "clinch" and (ff.O.clinchUntil - now) or nil
@@ -234,6 +244,9 @@ do
 	ft.SpawnReferee = function() end
 	ft.ScoutTraits = function()
 		return nil
+	end
+	ft.Entrance = function()
+		coroutine.yield() -- (the start message is out: no ring walk on the stub rigs)
 	end
 	pcall(function()
 		-- (Run goes on into the walkout: only the start message is wanted)

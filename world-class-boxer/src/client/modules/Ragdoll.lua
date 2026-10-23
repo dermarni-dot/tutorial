@@ -14,18 +14,16 @@ local Ragdoll = {}
 
 local I = CFrame.identity
 local HST = Enum.HumanoidStateType
+-- [Studio] Motor6D or AnimationConstraint joints (Workspace.AvatarJointUpgrade): Shared.RigJoints reads either
+local RigJoints = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("RigJoints"))
 
--- the limb's pose as the motor would show it: Part1 = Part0 * C0 * Transform * C1^-1
+-- the limb's pose as the joint would show it: child = parent * C0 * Transform * C1^-1
 local function measure(m)
-	local p0, p1 = m.Part0, m.Part1
-	if not (p0 and p1) then
-		return nil
-	end
-	return m.C0:Inverse() * p0.CFrame:Inverse() * p1.CFrame * m.C1
+	return RigJoints.Measure(m)
 end
 
 local function isReleased(m)
-	return m ~= nil and m.Parent ~= nil and m:IsA("Motor6D") and m.Enabled == false
+	return m ~= nil and m.Parent ~= nil and RigJoints.IsJoint(m) and m.Enabled == false
 end
 
 function Ragdoll.released(rig)

@@ -617,6 +617,12 @@ local function classicHead(model, head)
 		if not clean:FindFirstChildOfClass("SpecialMesh") then
 			Head.SwapFailed(model, "the engine dropped the Head SpecialMesh from the classic head")
 		end
+		-- the Neck must survive the swap whatever joint type the rig uses (Humanoid.RequiresNeck otherwise kills the
+		-- character and BreakJointsOnDeath drops every weld): rebuilt from the RigAttachments when it is gone
+		local okN, neck = pcall(Head.EnsureNeck, model)
+		if okN and neck == "rebuilt" then
+			warn("[Boxer] classic head swap on " .. tostring(model.Name) .. " left no Neck joint: a Motor6D Neck was rebuilt from the RigAttachments")
+		end
 		return clean
 	end
 	-- the face, the headgear and the caps are built for the classic head's profile: on the engine's MeshPart head
@@ -2032,20 +2038,31 @@ function Head.SetCap(model, style, colors, detail)
 	local badgeC = typeof(colors.badge) == "Color3" and colors.badge or (ref and Color3.fromRGB(212, 172, 64) or Color3.fromRGB(238, 238, 232))
 	local hs = Head.HeadSpan(head)
 	local hcf = head.CFrame
-	-- the cap follows a head rescale after the build (followHead above)
+	-- the cap follows a head rescale / replacement after the build (followHead above); every piece (the text patches
+	-- too) is joined to the head by a Weld (weldToHead)
 	local function done()
-		followHead(folder, head, function()
+		for _, p in ipairs(folder:GetChildren()) do
+			if p:IsA("BasePart") and not p:FindFirstChildOfClass("Weld") then
+				weldToHead(p, head)
+			end
+		end
+		followHead(folder, head, function(why)
+			refitNote(model, "Hat", why)
 			Head.SetCap(model, style, colors, detail)
 		end)
 		return folder
 	end
 	local function ell(name, size, cf, c, m)
-		return mk(folder, head, name, size, cf, c, "Ellipsoid", m or FABRIC)
+		local p = mk(folder, head, name, size, cf, c, "Ellipsoid", m or FABRIC)
+		weldToHead(p, head)
+		return p
 	end
 	-- a round, flat-topped drum standing on end: diameter d, height h (fractions of the head span), its centre y up
 	-- from the head's centre (a Cylinder part's axis is its X: stood up with a 90 deg roll)
 	local function drum(name, d, h, y, c, m)
-		return mk(folder, head, name, V3(h * hs, d * hs, d * hs), hcf * CF(0, y * hs, 0) * ANG(0, 0, math.pi / 2), c, "Cylinder", m or FABRIC)
+		local p = mk(folder, head, name, V3(h * hs, d * hs, d * hs), hcf * CF(0, y * hs, 0) * ANG(0, 0, math.pi / 2), c, "Cylinder", m or FABRIC)
+		weldToHead(p, head)
+		return p
 	end
 	-- a flat ellipsoid visor reaching `reach` ahead of the forehead, its root under the band, pitched down by tilt
 	-- degrees about its root (its back end 0.1 behind the forehead, inside the head; the tip at 0.5 + reach in front

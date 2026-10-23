@@ -524,9 +524,13 @@ do
 		local bad = {}
 		for _, g in ipairs(parts) do
 			local p = g.part
-			local w = p:FindFirstChildOfClass("WeldConstraint")
-			if not (w and w.Part0 == head and w.Part1 == p) then
+			-- a Weld (a JointInstance the engine re-points on a head swap), under the part, Part0 the head, C0 the part
+			-- in head space; never a WeldConstraint
+			local w = p:FindFirstChildOfClass("Weld")
+			if not (w and w.Part0 == head and w.Part1 == p and w.Parent == p and p:FindFirstChildOfClass("WeldConstraint") == nil) then
 				table.insert(bad, g.name .. ":weld")
+			elseif (head.CFrame * w.C0 * w.C1:Inverse()).Position ~= nil and ((head.CFrame * w.C0 * w.C1:Inverse()).Position - p.Position).Magnitude > 1e-3 then
+				table.insert(bad, g.name .. ":C0")
 			end
 			if p.Massless ~= true then
 				table.insert(bad, g.name .. ":massless")

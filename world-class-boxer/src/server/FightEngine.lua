@@ -303,7 +303,8 @@ local function makeFighter(data, model, player)
 		data.chinApplied = true
 		s.Chin = math.clamp(s.Chin + mods.chinAdd, 10, Config.StatCap)
 	end
-	local maxStam = (100 + (s.Stamina - 50) * 0.8) * (mods.staminaMul or 1)
+	local frameTraits = FrameTraits.For(data) -- [FrameTraits] (F.frame below)
+	local maxStam = (100 + (s.Stamina - 50) * 0.8) * (mods.staminaMul or 1) * frameTraits.tank -- [FrameTraits] the tank
 	local fatigueFactor = 1 - math.max(0, (data.fatigue or 0) - 50) / 150
 	-- career head trauma and an unhealed concussion mean the fighter walks in already "shaky"
 	local conc = (tonumber(data.trauma) or 0) * CONC.startFromTrauma + (data.concussed and CONC.activeInjury or 0)
@@ -313,7 +314,7 @@ local function makeFighter(data, model, player)
 		hum = model:FindFirstChildOfClass("Humanoid"), root = model:FindFirstChild("HumanoidRootPart"),
 		style = style, classScale = 0.85 + (data.class - 1) * 0.045,
 		-- [FrameTraits] the body frame's permanent traits (data.app.body.frame; Athletic without one)
-		frame = FrameTraits.For(data),
+		frame = frameTraits,
 		powerMul = mods.powerMul or 1, speedMul = mods.speedMul or 1, moveMul = mods.moveMul or 1,
 		maxStam = maxStam, stamCap = maxStam, stamina = maxStam * fatigueFactor, stamErosion = 0,
 		health = 100, healthCap = 100, body = 100, bodyCap = 100,
@@ -2523,6 +2524,9 @@ local function ensureGroups()
 				end
 			end
 			PhysicsService:CollisionGroupSetCollidable(REF_GROUP, BOXER_GROUP, false)
+			-- (said out loud: the two boxers' bodies DO collide with each other and with the world)
+			PhysicsService:CollisionGroupSetCollidable(BOXER_GROUP, BOXER_GROUP, true)
+			PhysicsService:CollisionGroupSetCollidable(BOXER_GROUP, "Default", true)
 		end)
 		groupsReady = ok
 		if not ok then
@@ -2532,23 +2536,39 @@ local function ensureGroups()
 	return groupsReady
 end
 
--- puts a fighter's colliding parts in "Boxers", remembering the group each had
+-- puts a fighter's colliding parts in "Boxers", remembering the group each had. A body part swapped in later
+-- (Humanoid:ReplaceBodyPartR15: BuilderTiers' tier MeshParts, BuilderHead's classic head, the engine's own
+-- ApplyDescription) arrives in the Default group with the template's CanCollide: DescendantAdded puts every new
+-- part directly under the model (the R15 body parts) in the group as it lands, so the two bodies keep colliding
+-- with each other and passing through the referee for the whole fight
 local function joinBoxers(F)
 	if not F.model or F.groupWas then
 		return
 	end
 	F.groupWas = {}
-	for _, d in ipairs(F.model:GetDescendants()) do
-		if d:IsA("BasePart") and (d.Parent == F.model or d.CanCollide) then
+	local function join(d)
+		if d:IsA("BasePart") and (d.Parent == F.model or d.CanCollide) and d.CollisionGroup ~= BOXER_GROUP then
 			F.groupWas[d] = d.CollisionGroup
 			d.CollisionGroup = BOXER_GROUP
 		end
 	end
+	for _, d in ipairs(F.model:GetDescendants()) do
+		join(d)
+	end
+	F.groupConn = F.model.DescendantAdded:Connect(function(d)
+		if F.groupWas then
+			task.defer(join, d) -- (the swap parents the part before it sets its properties)
+		end
+	end)
 end
 
 local function leaveBoxers(F)
 	local was = F.groupWas
 	F.groupWas = nil
+	if F.groupConn then
+		F.groupConn:Disconnect()
+		F.groupConn = nil
+	end
 	if was then
 		for part, g in pairs(was) do
 			if part.Parent then
@@ -2589,6 +2609,8 @@ function Fight:SpawnReferee()
 	local y = center.Y + standHeight(hum, root)
 	model:PivotTo(CFrame.lookAt(Vector3.new(pos.X, y, pos.Z), Vector3.new(center.X, y, center.Z)))
 	model.Parent = self.arena
+	-- the cap / headgear re-fitted once the engine's post-parent passes have run (Builder.OnPlaced)
+	Builder.OnPlaced(model)
 	if root then
 		pcall(function()
 			root:SetNetworkOwner(nil)
@@ -2619,7 +2641,7 @@ function Fight:SpawnReferee()
 		end)
 	end
 	if hum and root then
-		hum.WalkSpeed = 11
+		hum.WalkSpeed = 9 -- (REF.walk: a walk; the knockdown's jog is set in UpdateReferee)
 		hum.AutoRotate = false
 		local att = Instance.new("Attachment")
 		att.Name = "RefFacingAtt"
@@ -2647,6 +2669,95 @@ function Fight:RefAct(act)
 	end
 end
 
+-- The referee's beat (UpdateReferee, every 0.3 s of a live round). He is OUT of the action: on the orbit,
+-- REF.orbit studs from the midpoint of the two men on the perpendicular to their line, on the side away from
+-- the hard camera (Fight:HardSide: the side PostFight faces) unless that side is up against the ropes, and he
+-- never crosses between the men to change sides (he goes round an end: past the nearer man, REF.round beyond
+-- him). He comes in for a reason, on its timing, and goes back out after:
+--   * a clinch that has HELD REF.clinchHold seconds (not the instant they touch): to the near side of the pair,
+--     outside both bodies (never nearer than MinSep to either root), to break them
+--   * a knockdown: a jog in as the fall lands, standing over the fallen man at REF.count studs for the count
+--     (the one place he comes inside MinSep), the knockout on the feet (RefCatch) likewise
+--   * the bell: in the last REF.bellIn seconds of the round he steps in toward the midpoint, so he is between the
+--     men as it goes (Rest sends them to the corners; HoldCorners sends him back to the orbit for the countdown)
+-- A walk (REF.walk) everywhere but the knockdown (REF.jog); the Humanoid's MoveTo paces the steps.
+local REF = { orbit = 7.0, round = 1.6, walk = 9, jog = 16, clinchHold = 1.5, breakGap = 0.4, count = 3, bellIn = 0.6, sideHold = 1.0 }
+FightEngine.REF = REF
+
+-- the hard camera's side: the way the post-fight scene faces (between the red corner and the next post)
+function Fight:HardSide()
+	if not self.hardFace then
+		local c = self.anchors.RingCenter.Position
+		local toRed = self.anchors.RedCorner and flat(self.anchors.RedCorner.Position - c) or Vector3.new(0, 0, -1)
+		toRed = toRed.Magnitude > 0.1 and toRed.Unit or Vector3.new(0, 0, -1)
+		self.hardFace = CFrame.Angles(0, math.rad(45), 0):VectorToWorldSpace(toRed)
+	end
+	return self.hardFace
+end
+
+-- pos kept at least r from both fighters' roots (out of the nearer man along the line from him)
+function Fight:RefKeepOut(pos, r)
+	if r <= 0 then
+		return pos
+	end
+	for _ = 1, 2 do
+		for _, F in ipairs({ self.P, self.O }) do
+			if F.root then
+				local fp = F.root.Position
+				local d = flat(pos - fp)
+				if d.Magnitude < r then
+					local dir = unitOr(d, Vector3.new(1, 0, 0))
+					pos = Vector3.new(fp.X + dir.X * r, pos.Y, fp.Z + dir.Z * r)
+				end
+			end
+		end
+	end
+	return pos
+end
+
+-- the referee's orbit spot for a pair standing at pP / pO (pure in the positions: the sim's test reads it)
+function Fight:RefOrbit(R, pP, pO)
+	local mid = (pP + pO) / 2
+	local line = unitOr(flat(pO - pP), Vector3.new(1, 0, 0))
+	local perp = Vector3.new(-line.Z, 0, line.X)
+	local want = perp:Dot(self:HardSide()) > 0 and -1 or 1 -- away from the camera
+	-- the ropes: the side the clamp pulls in by more than half a stud gives way to the other when it is clearer
+	local function pull(sgn)
+		local a = mid + perp * (sgn * REF.orbit)
+		return flat(self:ClampToRing(a) - a).Magnitude
+	end
+	if pull(want) > 0.5 and pull(-want) + 1.0 < pull(want) then
+		want = -want
+	end
+	local now = self:Now()
+	if R.side == nil then
+		R.side = want
+	elseif want ~= R.side then
+		-- (a side held for REF.sideHold before he goes round: the line between the men swings every step)
+		if (R.sideWant or 0) ~= want then
+			R.sideWant, R.sideSince = want, now
+		elseif now - (R.sideSince or now) >= REF.sideHold then
+			R.side = want
+		end
+	else
+		R.sideWant = nil
+	end
+	local target = mid + perp * (R.side * REF.orbit)
+	-- on the wrong side of the line: round the nearer end first, never between the men
+	if R.root then
+		local rp = R.root.Position
+		local across = flat(rp - mid):Dot(perp) * R.side
+		local along = flat(rp - mid):Dot(line)
+		local half = flat(pO - pP).Magnitude / 2
+		if across < 0.5 and math.abs(along) < half + REF.round * 0.5 then
+			local endP = along >= 0 and pO or pP
+			local out = along >= 0 and line or -line
+			target = endP + out * (self:MinSep() + REF.round)
+		end
+	end
+	return target, mid
+end
+
 function Fight:UpdateReferee(now)
 	local R = self.ref
 	if not (R and R.root and R.hum and R.model.Parent) or now < R.nextMove then
@@ -2658,46 +2769,53 @@ function Fight:UpdateReferee(now)
 		return
 	end
 	local target, look
+	local speed, keep = REF.walk, self:MinSep()
 	local down = (P.state == "down" and P) or (O.state == "down" and O) or nil
 	local catching = R.catching
 	if catching and now > catching.untilT then
 		R.catching = nil
 		catching = nil
 	end
+	local pP, pO = P.root.Position, O.root.Position
+	local mid = (pP + pO) / 2
+	local clinchHeld = (P.state == "clinch" or O.state == "clinch") and (now - math.max(P.clinchAt or 0, O.clinchAt or 0)) or nil
+	local bell = self.live and self.roundEnd and (self.roundEnd - now) <= REF.bellIn and not self.paused
+	R.mode = "orbit"
 	if catching then
 		-- holding up a fighter knocked out on his feet
 		target, look = catching.at, catching.look
 		R.nextMove = now + 0.1
-		if R.hum and R.hum.WalkSpeed < 16 then
-			R.hum.WalkSpeed = 16
-		end
+		speed, keep = REF.jog, 0
+		R.mode = "catch"
 	elseif down then
 		-- stand over the downed fighter, between him and the other man (who is in the neutral corner)
 		local other = self:Other(down)
 		local d = unitOr(flat(other.root.Position - down.root.Position), Vector3.new(1, 0, 0))
-		target = down.root.Position + d * 3
+		target = down.root.Position + d * REF.count
 		look = down.root.Position
-	else
-		local mid = (P.root.Position + O.root.Position) / 2
-		local line = unitOr(flat(O.root.Position - P.root.Position), Vector3.new(1, 0, 0))
+		speed, keep = REF.jog, 0
+		R.mode = "count"
+	elseif clinchHeld and clinchHeld >= REF.clinchHold then
+		-- the break: the near side of the clinch, outside both bodies
+		local line = unitOr(flat(pO - pP), Vector3.new(1, 0, 0))
 		local perp = Vector3.new(-line.Z, 0, line.X)
-		if P.state == "clinch" then
-			target = mid + perp * 1.6 -- steps in to break them
-		else
-			-- off the fight line, on the side nearer the ring centre so he never ends up on the ropes
-			local c = self.anchors.RingCenter.Position
-			local a, b = mid + perp * 4.5, mid - perp * 4.5
-			R.side = R.side or 1
-			local cur, alt = R.side == 1 and a or b, R.side == 1 and b or a
-			if flat(alt - c).Magnitude + 1.5 < flat(cur - c).Magnitude then
-				R.side = -R.side
-				cur = alt
-			end
-			target = cur
-		end
+		local half = flat(pO - pP).Magnitude / 2
+		local d = math.max(2.2, math.sqrt(math.max(0, keep * keep - half * half)) + REF.breakGap)
+		target = mid + perp * ((R.side or 1) * d)
 		look = mid
+		R.mode = "break"
+	elseif bell then
+		-- the bell: in between them as it goes
+		target, look = mid, mid
+		R.mode = "bell"
+	else
+		target, look = self:RefOrbit(R, pP, pO)
 	end
-	target = self:ClampToRing(target)
+	target = self:RefKeepOut(self:ClampToRing(target), keep)
+	R.target = target
+	if R.hum.WalkSpeed ~= speed then
+		R.hum.WalkSpeed = speed
+	end
 	local p = R.root.Position
 	if flat(target - p).Magnitude > (catching and 0.3 or 0.8) then
 		R.hum:MoveTo(Vector3.new(target.X, p.Y, target.Z))
@@ -2707,6 +2825,24 @@ function Fight:UpdateReferee(now)
 		if dir.Magnitude > 0.1 then
 			R.align.CFrame = CFrame.lookAt(Vector3.zero, dir.Unit)
 		end
+	end
+end
+
+-- the countdown: the referee walks back out to his orbit of the two corners' midpoint (the ring centre)
+function Fight:RefToOrbit()
+	local R = self.ref
+	if not (R and R.root and R.hum and R.model.Parent and self.P.root and self.O.root) then
+		return
+	end
+	local target = self:RefKeepOut(self:ClampToRing((self:RefOrbit(R, self.P.root.Position, self.O.root.Position))), self:MinSep())
+	R.target = target
+	R.mode = "orbit"
+	if R.hum.WalkSpeed ~= REF.walk then
+		R.hum.WalkSpeed = REF.walk
+	end
+	local p = R.root.Position
+	if flat(target - p).Magnitude > 0.8 then
+		R.hum:MoveTo(Vector3.new(target.X, p.Y, target.Z))
 	end
 end
 
@@ -2783,7 +2919,9 @@ function Fight:Glide(F, goal, speed, onArrive)
 		local v, acc = 0, speed * 4
 		while F.glideId == id and self.id == fightId and not self.aborted and F.root and F.root.Parent do
 			local dt = RunService.Heartbeat:Wait()
-			local d = flat(goal - F.root.Position)
+			-- (the spot itself never inside the other man's body: a goal set a moment ago may be where he now stands)
+			local kept = self:KeepOut(F, goal)
+			local d = flat(kept - F.root.Position)
 			local m = d.Magnitude
 			-- brake into the spot (v^2 = 2 a s), never slower than a shuffle until there
 			v = math.min(speed, v + acc * dt, math.sqrt(2 * acc * m))
@@ -3230,14 +3368,23 @@ end
 -- heavyweight; heavy against heavy needs 4.15 studs (3.7 x), power against heavy 3.85.
 local CLINCH_SEP, CLINCH_CHEST, CLINCH_DEPTH = 3.25, 1.55, 1.03
 
+-- Without the parts (the headless sims' stub rigs) the frames' torso depths (HitGeometry: the same ut.Size.Z /
+-- 2 when there is a rig) stand in; and never under MinSep + CLINCH_OVER: a Heavyweight pair's bodies need 3.57
+-- apart, the old 3.25 clinch floor let their chests sink into each other for the whole hold.
+local CLINCH_OVER = 0.1
 function Fight:ClinchSep()
 	local sep = CLINCH_SEP * (self.rigK or 1)
 	local a = self.P.model and self.P.model:FindFirstChild("UpperTorso")
 	local b = self.O.model and self.O.model:FindFirstChild("UpperTorso")
 	if a and b and a:IsA("BasePart") and b:IsA("BasePart") then
 		sep = math.max(sep, CLINCH_CHEST + CLINCH_DEPTH * (a.Size.Z + b.Size.Z))
+	else
+		local G, OG = self:Geo(self.P), self:Geo(self.O)
+		if G and OG then
+			sep = math.max(sep, CLINCH_CHEST + 2 * CLINCH_DEPTH * (G.torsoHalfD + OG.torsoHalfD))
+		end
 	end
-	return sep
+	return math.max(sep, self:MinSep() + CLINCH_OVER)
 end
 
 -- cut (optional, 0..1): ring generalship - stand on the ring-centre side of him rather than wherever he leads,
@@ -3272,6 +3419,7 @@ function Fight:MoveAI(F, range, circle, cut)
 			end
 		end
 	end
+	target = self:KeepOut(F, target)
 	-- pace: cover the way in about the AI's decision interval (never slower than a shuffle)
 	local togo = flat(target - F.root.Position).Magnitude
 	F.aiStepSpeed = math.clamp(togo / 0.42, 4, 30)
@@ -3288,16 +3436,26 @@ function Fight:MoveAI(F, range, circle, cut)
 	F.hum:MoveTo(target)
 end
 
--- keep the two bodies apart (the AI side gives ground; the player's own movement is never fought)
-function Fight:Separate()
+-- keep the two bodies apart, every Heartbeat (Update calls it once per step):
+--   * an NPC's live walk goal (MoveAI's spot, issued against where the other man stood up to 0.4 s ago) is
+--     re-clamped out of where he now stands and is heading (KeepOut) and re-issued when that moved it
+--   * an overlap (a walk that got there first, a lunge, a stumble, the player's own movement) is resolved by a
+--     push along the line between the roots: both men move, the lighter one more (BodyMass), at SEP_RATE of the
+--     overlap per second (a soft shove: ~70 % of it per frame at 60 Hz, all of it past SEP_SNAP, where someone
+--     was set down inside the other man); a player's own root is client-owned and never shifted by the server
+--     (his client's collision does it), so the NPC gives all of the ground against him
+local SEP_RATE, SEP_SNAP = 40, 0.4
+function Fight:Separate(dt)
 	local P, O = self.P, self.O
 	if not (P.root and O.root) or P.state == "down" or O.state == "down" then
 		return
 	end
+	dt = dt or 1 / 60
 	local minSep = self:MinSep()
 	local d = flat(O.root.Position - P.root.Position)
 	local m = d.Magnitude
-	if P.state == "clinch" or O.state == "clinch" then
+	local clinch = P.state == "clinch" or O.state == "clinch"
+	if clinch then
 		-- the clinch distance; while the tie-up slides the pair there, no closer than they are (or the minimum)
 		local cs = self:ClinchSep()
 		if self.tieUntil and self:Now() < self.tieUntil then
@@ -3305,23 +3463,43 @@ function Fight:Separate()
 		end
 		minSep = cs
 	end
+	-- the NPCs' walk goals, kept out of the other man as he moves
+	if not clinch then
+		for _, F in ipairs(self.pair or { P, O }) do
+			local goal = F.aiTarget
+			if goal and F.hum and not F.isPlayer and F.state ~= "clinch" then
+				local kept = self:KeepOut(F, goal, minSep)
+				if flat(kept - goal).Magnitude > 0.1 then
+					F.aiTarget = kept
+					F.hum:MoveTo(kept)
+				end
+			end
+		end
+	end
 	if m >= minSep then
 		return
 	end
 	local dir = m > 0.05 and d.Unit or flat(P.root.CFrame.LookVector).Unit -- stacked: put them back in front
-	local movers = {}
-	if not O.isPlayer then
-		table.insert(movers, { O, dir })
+	local overlap = minSep - m
+	local k = overlap > SEP_SNAP and 1 or math.min(1, SEP_RATE * dt)
+	local wP, wO = self:BodyMass(O), self:BodyMass(P) -- (each moves by the OTHER man's share of the mass)
+	if P.isPlayer then
+		wP = 0
 	end
-	if not P.isPlayer then
-		table.insert(movers, { P, -dir })
+	if O.isPlayer then
+		wO = 0
 	end
-	local share = (minSep - m) / math.max(1, #movers)
-	for _, mv in ipairs(movers) do
-		local X, v = mv[1], mv[2]
-		local p = X.root.Position
-		local goal = self:ClampToRing(p + v * share)
-		shift(X, goal - p)
+	local total = wP + wO
+	if total <= 0 then
+		return -- (two players: their own clients' collision keeps them apart)
+	end
+	for _, mv in ipairs({ { O, dir, wO }, { P, -dir, wP } }) do
+		local X, v, w = mv[1], mv[2], mv[3]
+		if w > 0 then
+			local p = X.root.Position
+			local goal = self:ClampToRing(p + v * (overlap * k * w / total))
+			shift(X, goal - p)
+		end
 	end
 end
 
@@ -3677,7 +3855,7 @@ function Fight:Update(dt)
 		end
 		self:UpdateMovement(F, dt)
 		if F == self.O then
-			self:Separate()
+			self:Separate(dt)
 		end
 		self:UpdateGuard(F)
 		-- nobody can punch during a count / eight count / referee check, so "not answering back" means nothing
@@ -4382,6 +4560,7 @@ local COUNT_BEAT = 0.8
 FightEngine.COUNT_BEAT = COUNT_BEAT
 function Fight:HoldCorners()
 	local red, blue = self.anchors.RedCorner.Position, self.anchors.BlueCorner.Position
+	self:RefToOrbit()
 	for _, X in ipairs({ { self.P, red, blue }, { self.O, blue, red } }) do
 		local F = X[1]
 		if F.root and F.model and F.model.Parent then
@@ -4919,6 +5098,7 @@ function Fight:Ceremony(spec)
 			end
 		end
 		official.Parent = self.arena
+		Builder.OnPlaced(official)
 		stand(official, center + face * 6.5 - right * 1.2, center)
 		local oroot = official:FindFirstChild("HumanoidRootPart")
 		if oroot then
@@ -5085,6 +5265,7 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 			return nil
 		end
 		npc.Parent = arena
+		Builder.OnPlaced(npc)
 		local npcRoot = npc:FindFirstChild("HumanoidRootPart")
 		if npcRoot then
 			npcRoot:SetNetworkOwner(nil)
