@@ -376,12 +376,13 @@ function Training.ConditionMultiplier(profile)
 	elseif c.nutrition < 30 then
 		m *= 0.8
 	end
+	-- (overtraining still bites past 60; a day's third session is not punished)
 	if c.fatigue > 80 then
 		m *= 0.5
 	elseif c.fatigue > 60 then
-		m *= 0.7
-	elseif c.fatigue > 40 then
-		m *= 0.85
+		m *= 0.75
+	elseif c.fatigue > 45 then
+		m *= 0.9
 	end
 	if c.energy < 25 then
 		m *= 0.8
@@ -493,7 +494,7 @@ local function injuryRoll(profile, act, extraRisk, riskMul)
 		return nil
 	end
 	risk *= 1.2 - profile.stats.Recovery / 200
-	risk *= finite(riskMul, 1)
+	risk *= finite(riskMul, 1) * tierEase(profile)
 	if c.flexible then
 		risk *= 0.6
 	end
@@ -538,6 +539,14 @@ end
 ------------------------------------------------------------------------
 -- Activities
 ------------------------------------------------------------------------
+-- Early in a career the body bounces back: a low-tier boxer's sessions cost less energy and fatigue and
+-- carry less injury risk, so a new player can train several times in a row. Tier 1, tier 2, then full.
+local TIER_EASE = { 0.65, 0.82 }
+local function tierEase(profile)
+	return TIER_EASE[math.floor(finite(profile.tier, 1))] or 1
+end
+Training.TierEase = tierEase
+
 function Training.EnergyCost(profile, act, intensity)
 	local e = act.energy or 0
 	if act.id == "Sparring" then
@@ -546,6 +555,7 @@ function Training.EnergyCost(profile, act, intensity)
 	if Training.Owned(profile, "Nutritionist") then
 		e *= 0.9
 	end
+	e *= tierEase(profile)
 	-- a grooved drill (mastery 1+) costs a little less
 	if not act.recovery then
 		e *= TP.PerkValues((Training.Mastery(profile, act.id))).energy
@@ -1787,7 +1797,7 @@ function Training.Perform(profile, act, quality, opts)
 	c.energy = clamp(c.energy - energy, 0, 100)
 	c.hydration = clamp(c.hydration - (act.hydration or 0) * scale, 0, 100)
 	c.nutrition = clamp(c.nutrition - (act.nutrition or 0) * scale, 0, 100)
-	local fat = (act.fatigue or 10) * scale * (Training.Owned(profile, "Nutritionist") and 0.85 or 1) * (mods and mods.perk.fatigue or 1)
+	local fat = (act.fatigue or 10) * scale * (Training.Owned(profile, "Nutritionist") and 0.85 or 1) * (mods and mods.perk.fatigue or 1) * tierEase(profile)
 	c.fatigue = clamp(c.fatigue + fat, 0, 100)
 	-- equipment & gear wear
 	if act.station and profile.gym.cond[act.station] then
@@ -3063,6 +3073,14 @@ function Training.MinigameParams(profile, act)
 			p.overload = ov
 		end
 	end
+	-- the boxer's own sharpness (0 at an overall of 30, 1 at 80): the drill draws a little tighter for a
+	-- better boxer (DrillPlan's tightness, never past its floor)
+	local okO, overall = pcall(function()
+		return finite(profile.overall, nil) or Config.Overall(profile.stats)
+	end)
+	if okO and type(overall) == "number" then
+		p.skill = r2(clamp((overall - 30) / 50, 0, 1))
+	end
 	if act.minigame == "mitts" then
 		p.tier = lv
 	elseif act.minigame == "rope" then
@@ -3092,7 +3110,7 @@ function Training.MinigameParams(profile, act)
 end
 
 -- the tolerances an overload step tightens on the classic drills (time limits, hit windows, zone widths)
-local OVERLOAD_KEYS = { "limit", "window", "cw", "w", "width", "hitW", "goodW", "perfectW" }
+local OVERLOAD_KEYS = { "limit", "window", "cw", "w", "width", "hitW", "goodW", "perfectW", "call", "beat", "band" }
 local CLASSIC_DRILLS = { combo = true, rhythm = true, reaction = true, mitts = true, shadow = true, reps = true, medball = true, pace = true, ladder = true, rope = true, hold = true }
 
 -- The drill as the server draws it (DrillScore judges it): every combination, zone, cue, beat and
@@ -3125,7 +3143,19 @@ function Training.DrillPlan(act, lv, params)
 	lv = math.max(1, math.floor(tonumber(lv) or 1))
 	params = type(params) == "table" and params or {}
 	local overload = clamp(math.floor(finite(params.overload, 0)), 0, TP.OVERLOAD_MAX)
+	-- how tight the drill draws, 0 (the first station and a raw boxer: the widest, friendliest windows)
+	-- .. 1 (the top station and a sharp boxer): the station level counts most, the boxer's own stats
+	-- (params.skill, Training.MinigameParams) the rest. Every window keeps a comfortable floor.
+	local skill = clamp(finite(params.skill, 0), 0, 1)
+	local tight = clamp(0.65 * DrillScore.Workouts.LevelFrac(lv) + 0.35 * skill, 0, 1)
+	-- a number between its friendliest (wide) and its tightest (narrow) draw
+	local function tw(wide, narrow)
+		return wide + (narrow - wide) * tight
+	end
+	plan.tight = math.floor(tight * 100 + 0.5) / 100
 	if kind == "combo" then
+		-- RHYTHM COMBOS: the punches in order, each on the beat of the one before (seg.beat) - the heavy
+		-- bag is cadence as much as order; then power shots on the needle and a speed burst
 		local pool = { { "jab", "cross" }, { "jab", "jab", "cross" }, { "jab", "cross", "leadhook" } }
 		if lv >= 2 then
 			table.insert(pool, { "jab", "cross", "leadhook", "cross" })
@@ -3141,6 +3171,7 @@ function Training.DrillPlan(act, lv, params)
 			table.insert(pool, { "jab", "overhand", "leadhook*" })
 			table.insert(pool, { "leadhook*", "leadhook", "cross", "uppercut" })
 		end
+		local beat = tw(0.45, 0.32)
 		for k = 1, 4 do
 			local combo = pick(pool)
 			local ids, body = {}, {}
@@ -3151,22 +3182,24 @@ function Training.DrillPlan(act, lv, params)
 			-- the coach calls some combinations by their numbers (1 jab, 2 cross, 3 lead hook, 4 rear hook,
 			-- 5 uppercut, 6 overhand): from the second bag on the last two, from the fourth all of them
 			local byNumber = (lv >= 4) or (lv >= 2 and k >= 3)
-			table.insert(segs, { j = "seq", ids = ids, body = body, call = byNumber and "numbers" or nil,
-				limit = 1.3 + #combo * 0.55 - lv * 0.05 + (byNumber and 0.35 or 0), gap = k == 1 and W.intro or W.combo })
+			table.insert(segs, { j = "seq", ids = ids, body = body, call = byNumber and "numbers" or nil, beat = beat,
+				limit = 1.4 + #combo * tw(0.8, 0.55) + (byNumber and 0.35 or 0), gap = k == 1 and W.intro or W.combo })
 		end
 		local shots = lv >= 3 and 4 or 3
 		for s = 1, shots do
-			table.insert(segs, { j = "needle", c = 0.66 + r:NextNumber() * 0.18, w = math.max(0.04, 0.065 - lv * 0.004), sweep = 0.9 + lv * 0.08 + s * 0.05, dur = 4.5,
+			table.insert(segs, { j = "needle", c = 0.66 + r:NextNumber() * 0.18, w = tw(0.09, 0.05), sweep = tw(0.8, 1.2) + s * 0.04, dur = 3.5,
 				gap = s == 1 and (W.combo + W.rest + W.round) or W.shot })
 		end
-		table.insert(segs, { j = "burst", dur = 6, target = 4.4 + lv * 0.2, gap = W.shot + W.rest + W.round })
+		table.insert(segs, { j = "burst", dur = 4, target = tw(3.4, 4.8), gap = W.shot + W.rest + W.round })
 	elseif kind == "rhythm" then
-		local baseBpm = ({ 112, 140, 168, 196 })[lv] or 140
+		-- ACCELERATING RHYTHM: a round starts on its tempo and picks up through the round (seg.accel, to a
+		-- cap): alternate hands and keep up with the bag; round two adds doubles (and triplets up top)
+		local baseBpm = math.floor(tw(96, 168))
 		local rounds = { { name = "ALTERNATING RHYTHM", bpm = baseBpm, pattern = "alt" },
-			{ name = lv >= 3 and "DOUBLES & TRIPLETS" or "DOUBLES", bpm = math.floor(baseBpm * 1.15 + 0.5), pattern = lv >= 3 and "mixed" or "doubles" } }
+			{ name = lv >= 3 and "DOUBLES & TRIPLETS" or "DOUBLES", bpm = math.floor(baseBpm * 1.1 + 0.5), pattern = lv >= 3 and "mixed" or "doubles" } }
 		for ri, rd in ipairs(rounds) do
 			local interval = 60 / rd.bpm
-			local count = math.clamp(math.floor(10 / interval), 16, 40)
+			local count = math.clamp(math.floor(9 / interval), 12, 30)
 			local lanes = {}
 			if rd.pattern == "alt" then
 				for i = 1, count do
@@ -3188,34 +3221,37 @@ function Training.DrillPlan(act, lv, params)
 					hand = hand == "L" and "R" or "L"
 				end
 			end
-			table.insert(segs, { j = "notes", name = rd.name, bpm = rd.bpm, lanes = lanes, interval = interval, lead = 1.2, hitW = 0.22, perfectW = 0.06, goodW = 0.13,
-				gap = ri == 1 and W.intro or (W.rest + W.round) })
+			table.insert(segs, { j = "notes", name = rd.name, bpm = rd.bpm, lanes = lanes, interval = interval, accel = 0.985, minInterval = interval * tw(0.72, 0.6),
+				lead = 1.0, hitW = tw(0.3, 0.24), perfectW = tw(0.11, 0.07), goodW = tw(0.2, 0.14), gap = ri == 1 and W.intro or (W.rest + W.round) })
 		end
 	elseif kind == "reaction" then
-		local window = ({ 0.95, 0.8, 0.68, 0.56 })[lv] or 0.8
+		local window = tw(1.1, 0.7)
 		local options = { "punch", "punch", "slipL", "slipR" }
 		local defs = { "slipL", "slipR" }
 		if lv >= 2 then
 			table.insert(options, "roll")
 			table.insert(defs, "roll")
 		end
-		for k = 1, 6 do
-			local delay = 0.45 + r:NextNumber() * 0.9
+		for k = 1, 5 do
+			local delay = 0.35 + r:NextNumber() * 0.6
 			table.insert(segs, { j = "cue", want = pick(options), window = window, delay = delay, gap = (k == 1 and W.intro or W.react) + delay })
 		end
-		for k = 1, 4 do
-			local delay = 0.5 + r:NextNumber() * 0.7
-			table.insert(segs, { j = "counter", want = pick(defs), window = window, cw = window * 0.9 + 0.2, delay = delay,
+		for k = 1, 3 do
+			local delay = 0.4 + r:NextNumber() * 0.5
+			table.insert(segs, { j = "counter", want = pick(defs), window = window, cw = window * 0.9 + 0.25, delay = delay,
 				gap = (k == 1 and (W.react + W.rest + W.round) or W.counter) + delay })
 		end
 		-- REBOUNDS: punch the bag, then slip it as it comes back off the punch (the side it returns on
 		-- is shown; the timing is yours to read). Better bags come back faster, with a tighter window.
-		for k = 1, 5 do
-			local delay = 0.4 + r:NextNumber() * 0.5
-			table.insert(segs, { j = "rebound", want = r:NextNumber() < 0.5 and "slipL" or "slipR", window = 1.2, ret = ({ 0.62, 0.55, 0.48, 0.42 })[math.min(lv, 4)] + r:NextNumber() * 0.12,
-				w = ({ 0.17, 0.15, 0.13, 0.11 })[math.min(lv, 4)], delay = delay, gap = (k == 1 and (W.counter + W.rest + W.round) or W.rebound) + delay })
+		for k = 1, 4 do
+			local delay = 0.3 + r:NextNumber() * 0.4
+			table.insert(segs, { j = "rebound", want = r:NextNumber() < 0.5 and "slipL" or "slipR", window = 1.2, ret = tw(0.68, 0.45) + r:NextNumber() * 0.1,
+				w = tw(0.21, 0.13), delay = delay, gap = (k == 1 and (W.counter + W.rest + W.round) or W.rebound) + delay })
 		end
 	elseif kind == "mitts" then
+		-- CALL & RESPONSE: the coach calls the combination one move at a time (seg.call apart), each
+		-- answered inside its window; from the second coach up a FEINT is slipped into some calls (a mitt
+		-- flashed and pulled: don't bite). Round two calls faster.
 		local list = {}
 		for _, c in ipairs(Config.MittCombos) do
 			if c.tier <= lv then
@@ -3228,68 +3264,64 @@ function Training.DrillPlan(act, lv, params)
 		for rd = 1, 2 do
 			for k = 1, 4 do
 				local c = pick(list)
+				local ids = table.clone(c.keys)
+				if lv >= 2 and r:NextNumber() < 0.3 + 0.1 * lv then
+					table.insert(ids, r:NextInteger(2, #ids + 1), "feint")
+				end
+				local call = tw(0.8, 0.5) * (rd == 2 and 0.88 or 1)
 				local gap = k > 1 and W.mitt or (rd == 1 and W.intro or (W.mitt + W.restLong + W.round))
-				table.insert(segs, { j = "seq", g = rd, name = c.name, ids = table.clone(c.keys), limit = math.max(1.6, 1.4 + #c.keys * 0.55 - lv * 0.12) * (rd == 2 and 0.85 or 1), gap = gap })
+				table.insert(segs, { j = "call", g = rd, name = c.name, ids = ids, call = call, window = call * 0.9 + tw(0.35, 0.2), lead = 0.5, gap = gap })
 			end
 		end
 	elseif kind == "shadow" then
-		local window = ({ 1.25, 1.0, 0.8 })[lv] or 1.0
+		-- MIRROR THE COACH: single moves on cue, then the called patterns copied in order (the ladder
+		-- owns the stepped footwork)
+		local window = tw(1.3, 0.85)
 		local prompts = { "F", "B", "L", "R", "slipL", "slipR", "roll", "jab", "cross", "leadhook" }
-		for k = 1, 6 do
+		for k = 1, 5 do
 			local delay = 0.15 + r:NextNumber() * 0.3
 			table.insert(segs, { j = "cue", want = pick(prompts), window = window, delay = delay, gap = (k == 1 and W.intro or W.move) + delay })
 		end
-		-- FOOTWORK PATTERNS: two named patterns stepped on the beat, twice through each
-		local lanes, names = {}, {}
-		for _, pat in ipairs(shuffled(DrillScore.Workouts.Footwork, 2)) do
-			table.insert(names, pat.name)
-			for _ = 1, 2 do
-				for _, st in ipairs(pat.steps) do
-					table.insert(lanes, st)
-				end
-			end
-		end
-		local bpm = 72 + math.min(lv, 4) * 8
-		table.insert(segs, { j = "notes", name = table.concat(names, " + "), bpm = bpm, lanes = lanes, interval = 60 / bpm, lead = 1.4, hitW = 0.24, perfectW = 0.07, goodW = 0.14,
-			gap = W.move + W.rest + W.round })
 		for fi, flow in ipairs(shuffled(Config.ShadowFlows, 3)) do
 			local len = lv <= 1 and 3 or (lv == 2 and (r:NextNumber() < 0.5 and 3 or 4) or 4)
 			local seq = {}
 			for k = 1, math.min(len, #flow) do
 				seq[k] = flow[k]
 			end
-			table.insert(segs, { j = "seq", ids = seq, limit = 1.4 + #seq * 0.75 - (lv - 1) * 0.2, gap = fi == 1 and (W.steps + W.rest + W.round) or W.flow })
+			table.insert(segs, { j = "seq", ids = seq, limit = 1.5 + #seq * tw(0.9, 0.6), gap = fi == 1 and (W.move + W.rest + W.round) or W.flow })
 		end
 	elseif kind == "reps" then
 		for set = 1, 2 do
-			for rep = 1, 5 do
-				local width = math.max(0.08, (0.24 - rep * 0.012 + lv * 0.01) * (set == 2 and 0.78 or 1))
+			for rep = 1, 4 do
+				local width = math.max(0.1, (tw(0.26, 0.18) - rep * 0.008) * (set == 2 and 0.85 or 1))
 				local lo = math.clamp(0.58 + r:NextNumber() * 0.2, 0.5, 0.95 - width)
 				local gap = rep > 1 and (W.lower + W.rerack) or (set == 1 and W.intro or (W.lower + W.rerack + W.rest + W.round))
-				table.insert(segs, { j = "lift", mode = "rep", set = set, rep = rep, lo = lo, width = width, speed = (0.55 + rep * 0.03) * (set == 2 and 1.08 or 1), wait = 8, gap = gap })
+				table.insert(segs, { j = "lift", mode = "rep", set = set, rep = rep, lo = lo, width = width, speed = (0.6 + rep * 0.03) * (set == 2 and 1.08 or 1), wait = 5, gap = gap })
 			end
 		end
 	elseif kind == "medball" then
-		local slams = 5 + math.min(lv, 3)
+		-- SLAMS on the bar, then the PLANK ON THE BALL (core): hands on the ball, it wants to roll - LEFT /
+		-- RIGHT taps keep the balance in the green
+		local slams = 5 + math.floor(2 * tight + 0.5)
 		for rep = 1, slams do
-			local width = math.max(0.1, 0.22 - rep * 0.008 + lv * 0.012)
+			local width = math.max(0.1, tw(0.26, 0.17) - rep * 0.006)
 			local lo = math.clamp(0.62 + r:NextNumber() * 0.16, 0.5, 0.96 - width)
-			table.insert(segs, { j = "lift", mode = "slam", rep = rep, lo = lo, width = width, speed = 0.85 + rep * 0.03 + lv * 0.05, wait = 8, gap = rep == 1 and W.intro or (W.slam + W.catch) })
+			table.insert(segs, { j = "lift", mode = "slam", rep = rep, lo = lo, width = width, speed = tw(0.9, 1.1) + rep * 0.03, wait = 5, gap = rep == 1 and W.intro or (W.slam + W.catch) })
 		end
-		local bpm = ({ 64, 76, 88, 100 })[math.clamp(lv, 1, 4)]
-		local lanes = {}
-		for i = 1, 14 + math.min(lv, 4) * 2 do
-			lanes[i] = (i % 2 == 1) and "L" or "R"
-		end
-		table.insert(segs, { j = "notes", bpm = bpm, lanes = lanes, interval = 60 / bpm, lead = 1.2, hitW = 0.25, perfectW = 0.12, gap = W.slam + W.catch + W.rest + W.round })
+		local amp = tw(0.25, 0.45)
+		table.insert(segs, { j = "wobble", name = "PLANK ON THE BALL", duration = math.floor(tw(12, 15)), band = tw(0.3, 0.2), kick = 0.22,
+			drift = { amp, 0.9 + r:NextNumber() * 0.6, r:NextNumber() * 6.28, amp * 0.6, 2.1 + r:NextNumber() * 0.9, r:NextNumber() * 6.28 },
+			bias = (r:NextNumber() < 0.5 and -1 or 1) * tw(0.14, 0.2), gap = W.slam + W.catch + W.rest + W.round })
 	elseif kind == "pace" then
-		local shrink = (lv - 1) * 0.02
+		local shrink = 0.08 * tight
 		local phases = {}
-		for i, ph in ipairs({ { 0.3, 0.5, "WARM-UP" }, { 0.6, 0.82, "SPRINT!" }, { 0.35, 0.55, "RECOVER" }, { 0.66, 0.88, "ALL OUT!" } }) do
+		for i, ph in ipairs({ { 0.28, 0.52, "WARM-UP" }, { 0.58, 0.84, "SPRINT!" }, { 0.33, 0.57, "RECOVER" }, { 0.64, 0.9, "ALL OUT!" } }) do
 			phases[i] = { ph[1] + shrink, ph[2] - shrink, ph[3] }
 		end
-		table.insert(segs, { j = "pace", duration = 28, phases = phases, v0 = 0.2, kick = 0.085, decay = 0.2, gap = W.intro })
+		table.insert(segs, { j = "pace", duration = 24, phases = phases, v0 = 0.2, kick = 0.085, decay = 0.2, gap = W.intro })
 	elseif kind == "ladder" then
+		-- STEPPED PATTERNS: a named drill's steps slide to the foot line on a beat that quickens through
+		-- the drill (seg.accel) and from drill to drill; the smart ladder (top level) adds reaction lights
 		local available = {}
 		for _, d in ipairs(Config.LadderDrills) do
 			if d.lv <= lv then
@@ -3297,34 +3329,26 @@ function Training.DrillPlan(act, lv, params)
 			end
 		end
 		local dirs = { "F", "L", "B", "R" }
+		local drills = lv >= 4 and 2 or 3
+		for p, d in ipairs(shuffled(available, drills)) do
+			local lanes = {}
+			for _ = 1, (#d.steps <= 7 and 2 or 1) do
+				for _, st in ipairs(d.steps) do
+					table.insert(lanes, st)
+				end
+			end
+			local bpm = tw(84, 120) + (p - 1) * 6
+			local interval = 60 / bpm
+			table.insert(segs, { j = "notes", name = d.name, bpm = math.floor(bpm), lanes = lanes, interval = interval, accel = 0.975, minInterval = interval * tw(0.7, 0.55), lead = 1.0,
+				hitW = tw(0.3, 0.22), perfectW = tw(0.12, 0.08), goodW = tw(0.22, 0.15), gap = p == 1 and W.intro or (W.ladder + (p == 2 and W.restShort or 0) + W.round) })
+		end
 		if lv >= 4 then
-			-- smart reaction lights: a named drill lit pad by pad, then random lights
-			local tpl = pick(available)
-			local steps, rnd = {}, {}
-			while #steps < 12 do
-				for _, s in ipairs(tpl.steps) do
-					if #steps < 12 then
-						table.insert(steps, s)
-					end
-				end
-			end
-			for i = 1, 12 do
+			local rnd, delays = {}, {}
+			for i = 1, 10 do
 				rnd[i] = pick(dirs)
+				delays[i] = 0.12 + r:NextNumber() * 0.2
 			end
-			for i, ids in ipairs({ steps, rnd }) do
-				local delays = {}
-				for k = 1, #ids do
-					delays[k] = 0.12 + r:NextNumber() * 0.2
-				end
-				table.insert(segs, { j = "lights", name = i == 1 and (tpl.name .. " (LIGHTS)") or "RANDOM REACTION", ids = ids, delays = delays, limit = 14, first = 0.2,
-					gap = i == 1 and W.intro or (W.ladder + W.rest + W.round) })
-			end
-		else
-			-- (a breather after the second drill)
-			for p, d in ipairs(shuffled(available, 4)) do
-				local gap = p == 1 and W.intro or (W.ladder + (p == 3 and W.restShort or 0) + W.round)
-				table.insert(segs, { j = "seq", name = d.name, ids = table.clone(d.steps), limit = #d.steps * 0.55 + 1, gap = gap })
-			end
+			table.insert(segs, { j = "lights", name = "RANDOM REACTION", ids = rnd, delays = delays, limit = 12, first = 0.2, gap = W.ladder + W.rest + W.round })
 		end
 	elseif kind == "rope" then
 		local phases = { { name = "BASIC BOUNCE", mode = "jump" } }
@@ -3337,9 +3361,9 @@ function Training.DrillPlan(act, lv, params)
 		if #phases == 1 then
 			table.insert(phases, { name = "SPEED SKIP", mode = "speed" })
 		end
-		local perPhase = #phases >= 3 and { 12, 10, 10 } or { 14, 14 }
+		local perPhase = #phases >= 3 and { 8, 8, 8 } or { 10, 10 }
 		for i, ph in ipairs(phases) do
-			local jumps = perPhase[i] or 10
+			local jumps = perPhase[i] or 8
 			local cues = {}
 			local footNext = r:NextNumber() < 0.5 and "footL" or "footR"
 			for k = 1, jumps + 1 do
@@ -3357,12 +3381,12 @@ function Training.DrillPlan(act, lv, params)
 			table.insert(segs, { j = "rope", name = ph.name, mode = ph.mode, jumps = jumps, omega = ph.mode == "speed" and 7.8 or 6.5, cues = cues, gap = i == 1 and W.intro or (W.restShort + W.round) })
 		end
 	elseif kind == "hold" then
-		table.insert(segs, { j = "breath", breaths = 5, inhale = 2.6, exhale = 2.6, gap = W.intro })
+		table.insert(segs, { j = "breath", breaths = 4, inhale = 2.4, exhale = 2.4, gap = W.intro })
 	else
 		-- the exercise-specific workouts (DrillWorkouts: bench, deadlift, squat, pull-ups, curls, the
 		-- cardio machines and the recovery stations)
-		-- (these draw on a continuous level: an overload step is half a station level, up to the top one)
-		local more = DrillScore.Workouts.Plan(kind, math.min(5, lv + 0.5 * overload), params, r, W)
+		-- (these draw on a continuous level from the tightness: an overload step is half a level, up to the top one)
+		local more = DrillScore.Workouts.Plan(kind, math.min(5, 1 + 4 * tight + 0.5 * overload), params, r, W)
 		if not more then
 			return nil
 		end

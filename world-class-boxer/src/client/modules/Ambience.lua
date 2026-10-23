@@ -472,19 +472,23 @@ local zones = {}
 -- ColorCorrection targets per profile; the gym's warm grade follows the facility tier
 -- (gentle: brightness is the exposure's job, and contrast here stacks on GymGrade, so a strong one
 -- crushes the shadows; the tint carries the mood)
+-- (these stack on Config.Lighting's global grade, +0.25 saturation: every place reads vivid, and each
+-- adds its own colour on top rather than taking any away)
 local GRADES = {
 	GymWarm = {
-		{ b = 0.01, c = 0.04, s = -0.03, tint = Color3.fromRGB(255, 238, 216) }, -- tired, yellowed (still readable)
-		{ b = 0.01, c = 0.03, s = 0.02, tint = Color3.fromRGB(255, 246, 236) },
-		{ b = 0.02, c = 0.04, s = 0.04, tint = Color3.fromRGB(246, 249, 255) }, -- crisp
-		{ b = 0.02, c = 0.05, s = 0.08, tint = Color3.fromRGB(255, 241, 218) }, -- rich and golden
+		{ b = 0.02, c = 0.04, s = 0.04, tint = Color3.fromRGB(255, 238, 214) }, -- tired, yellowed (still readable)
+		{ b = 0.02, c = 0.04, s = 0.08, tint = Color3.fromRGB(255, 245, 232) },
+		{ b = 0.03, c = 0.05, s = 0.1, tint = Color3.fromRGB(246, 249, 255) }, -- crisp
+		{ b = 0.03, c = 0.06, s = 0.14, tint = Color3.fromRGB(255, 240, 214) }, -- rich and golden
 	},
-	GymElite = { b = 0.01, c = 0.04, s = -0.02, tint = Color3.fromRGB(238, 245, 255) },
-	Barbershop = { b = 0.01, c = 0.04, s = 0.05, tint = Color3.fromRGB(255, 238, 216) },
-	Apartment = { b = 0, c = 0.02, s = -0.03, tint = Color3.fromRGB(255, 241, 228) },
-	Store = { b = 0.02, c = 0.03, s = 0.03, tint = Color3.fromRGB(246, 250, 255) },
-	Mansion = { b = 0.01, c = 0.05, s = 0.06, tint = Color3.fromRGB(255, 239, 212) },
-	Street = { b = 0.02, c = 0.05, s = 0.08, tint = Color3.fromRGB(255, 251, 244) }, -- bright, warm daylight outdoors (the town is meant to read colourful)
+	GymElite = { b = 0.02, c = 0.05, s = 0.06, tint = Color3.fromRGB(236, 244, 255) },
+	Barbershop = { b = 0.02, c = 0.04, s = 0.1, tint = Color3.fromRGB(255, 236, 212) },
+	Apartment = { b = 0.01, c = 0.03, s = 0.04, tint = Color3.fromRGB(255, 240, 226) },
+	Store = { b = 0.03, c = 0.04, s = 0.1, tint = Color3.fromRGB(246, 250, 255) },
+	Mansion = { b = 0.02, c = 0.05, s = 0.1, tint = Color3.fromRGB(255, 238, 208) },
+	Street = { b = 0.03, c = 0.06, s = 0.14, tint = Color3.fromRGB(255, 250, 240) }, -- bright, warm daylight outdoors (the town is meant to read colourful)
+	-- after dark the street is lit by neon and sodium: cooler, bluer, the saturation kept up so the signs pop
+	StreetNight = { b = 0.04, c = 0.08, s = 0.2, tint = Color3.fromRGB(232, 228, 255) },
 }
 local NEUTRAL = { b = 0, c = 0, s = 0, tint = Color3.new(1, 1, 1) }
 local grade -- the client-only ZoneGrade effect
@@ -539,7 +543,11 @@ local function updateGrade(dt, cam)
 		return
 	end
 	local z = zoneAt(cam)
-	local target = (z and profileGrade(z:GetAttribute("Profile"))) or NEUTRAL
+	local prof = z and z:GetAttribute("Profile")
+	if (prof == nil or prof == "Street") and nightNow() then
+		prof = "StreetNight"
+	end
+	local target = (prof and profileGrade(prof)) or NEUTRAL
 	local k = math.clamp(dt * 1.6, 0, 1)
 	gradeNow.b += (target.b - gradeNow.b) * k
 	gradeNow.c += (target.c - gradeNow.c) * k
@@ -583,8 +591,16 @@ end
 -- like an overcast day. After dusk it eases to a cooler, dimmer moonlight; the street lights then
 -- give warm pools against it (the exposure lift above keeps people readable).
 ------------------------------------------------------------------------
-local skyDay -- the server's daytime OutdoorAmbient (captured once)
-local NIGHT_OUTDOOR = Color3.fromRGB(96, 106, 136)
+local skyDay, ambDay, atmDay -- the server's daytime OutdoorAmbient / Ambient / Atmosphere colours (captured once)
+local NIGHT = (Config.Lighting and Config.Lighting.Night) or {}
+local function nightColor(key, fallback)
+	local c = NIGHT[key]
+	return c and Config.LightingColor(c) or fallback
+end
+local NIGHT_OUTDOOR = nightColor("OutdoorAmbient", Color3.fromRGB(82, 98, 164))
+local NIGHT_AMBIENT = nightColor("Ambient", Color3.fromRGB(120, 118, 140))
+local NIGHT_ATM = nightColor("AtmosphereColor", Color3.fromRGB(150, 130, 200))
+local NIGHT_DECAY = nightColor("AtmosphereDecay", Color3.fromRGB(40, 48, 120))
 local function nightFactor()
 	local h = Lighting.ClockTime
 	if h >= 19.5 or h < 4.8 then
@@ -601,9 +617,23 @@ local function updateSky()
 		return
 	end
 	skyDay = skyDay or Lighting.OutdoorAmbient
-	local c = skyDay:Lerp(NIGHT_OUTDOOR, math.clamp(nightFactor(), 0, 1))
+	ambDay = ambDay or Lighting.Ambient
+	local f = math.clamp(nightFactor(), 0, 1)
+	local c = skyDay:Lerp(NIGHT_OUTDOOR, f)
 	if Lighting.OutdoorAmbient ~= c then
 		Lighting.OutdoorAmbient = c
+	end
+	-- the interiors' fill cools a little too (the gym's lamps carry them), and the atmosphere turns
+	-- to a deep blue with a violet glow round the lights: a colourful night, not a grey one
+	local a = ambDay:Lerp(NIGHT_AMBIENT, f)
+	if Lighting.Ambient ~= a then
+		Lighting.Ambient = a
+	end
+	local atm = Lighting:FindFirstChildOfClass("Atmosphere")
+	if atm then
+		atmDay = atmDay or { color = atm.Color, decay = atm.Decay }
+		atm.Color = atmDay.color:Lerp(NIGHT_ATM, f)
+		atm.Decay = atmDay.decay:Lerp(NIGHT_DECAY, f)
 	end
 end
 

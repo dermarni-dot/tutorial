@@ -17,17 +17,18 @@ local player = Players.LocalPlayer
 local LightLevels = {}
 
 -- base ExposureCompensation per place (the scene's lights do the shaping; this only sets the level)
+-- (on top of Config.Lighting.Global.ExposureCompensation, the bright daytime base the server sets)
 LightLevels.Zones = {
-	GymWarm = 0.18, -- the main hall: warm lamps, a touch of lift so faces read at mid grey
-	GymElite = 0.1,
-	Barbershop = 0.12,
-	Apartment = 0.15,
-	Store = 0.08,
-	Mansion = 0.1,
+	GymWarm = 0.25, -- the main hall: warm lamps, a lift so faces read above mid grey
+	GymElite = 0.18,
+	Barbershop = 0.18,
+	Apartment = 0.2,
+	Store = 0.14,
+	Mansion = 0.16,
 	Street = 0,
 	Outside = 0,
 }
-LightLevels.NightOutside = 0.35 -- after dark the street lights carry the city: lift the picture
+LightLevels.NightOutside = 0.45 -- after dark the street lights and neon carry the city: lift the picture
 
 local settingsMod
 local function settingsValue()

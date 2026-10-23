@@ -62,7 +62,7 @@ local NAV_ICONS = {
 	Rivals = "people", PvP = "glove", Shop = "bag", Legacy = "crown", Tournaments = "belt",
 }
 -- (the phone's narrow rail: a shorter label where the tab's name would not fit)
-local RAIL_LABELS = { Tournaments = "TOURNEYS" }
+local RAIL_LABELS = { Tournaments = "Events", Rankings = "Ranks", Coaches = "Corner", Sponsors = "Deals", Training = "Train" }
 local TAB_HINTS = {
 	Career = "Your next step toward a world title.", Training = "Build strength. Sharpen your craft.",
 	Body = "Track your physique and recovery.", Stats = "Know your strengths. Find your edge.",
@@ -2279,7 +2279,7 @@ end
 local function styleTab(name, b)
 	local on = name == tab
 	b.BackgroundTransparency = on and 0 or 1
-	b.BackgroundColor3 = on and T.bg:Lerp(T.gold, 0.16) or T.panel2
+	b.BackgroundColor3 = on and T.panel2 or T.panel2
 	local label = b:FindFirstChild("Label")
 	if label then
 		label.TextColor3 = on and T.gold or T.sub
@@ -2308,7 +2308,7 @@ function Hub.RenderNow()
 	local summary = UI.Frame(content, { Name = "SectionIntro", BackgroundTransparency = 1,
 		Size = UDim2.new(1, -8, 0, compactHub() and 54 or 70), LayoutOrder = -100 })
 	UI.Icon(summary, NAV_ICONS[tab] or "glove", 28, T.gold, { Position = UDim2.fromOffset(0, 4) })
-	UI.Title(summary, string.upper(tab), { Position = UDim2.fromOffset(42, 0), TextSize = 28,
+	UI.Title(summary, tab, { Position = UDim2.fromOffset(42, 0), TextSize = 24,
 		Size = UDim2.new(1, -42, 0, 36), TextTruncate = Enum.TextTruncate.AtEnd })
 	UI.Text(summary, TAB_HINTS[tab] or "", { Position = UDim2.fromOffset(42, 38), TextSize = 13,
 		TextColor3 = T.sub, Size = UDim2.new(1, -42, 0, 24), AutomaticSize = Enum.AutomaticSize.None,
@@ -2397,7 +2397,7 @@ function Hub.Open(which)
 			UI.Hover(b, { amount = 0.94 })
 			local bar = UI.Frame(b, { Name = "Active", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(3, rail and 18 or 20), BackgroundColor3 = T.gold, Visible = false })
 			UI.Corner(bar, 2)
-			UI.Text(b, (rail and RAIL_LABELS[name]) or string.upper(name), { Name = "Label", Face = "displayMed", TextSize = rail and 16 or 18, TextColor3 = T.sub, Position = UDim2.fromOffset(rail and 6 or 44, 0),
+			UI.Text(b, (rail and RAIL_LABELS[name]) or name, { Name = "Label", Face = "displayMed", TextSize = rail and 12 or 15, TextColor3 = T.sub, Position = UDim2.fromOffset(rail and 4 or 44, 0),
 				Size = UDim2.new(1, rail and -8 or -50, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
 				TextXAlignment = rail and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left })
 			if not rail then

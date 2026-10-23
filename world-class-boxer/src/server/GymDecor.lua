@@ -541,7 +541,6 @@ local function neonSign(parent, text, cf, w, color, font)
 		part(m, "SignCable", V3(0.08, math.max(0.5, 28 - top.Y), 0.08), CF(top.X, (top.Y + 28) / 2, top.Z), C.black, M.Metal, { shadow = false })
 	end
 	point(emitter(m, cf * CF(0, -h / 2 - 0.6, 0)), color, 22, 1.1)
-	tag(m, "NeonFlicker")
 	return m
 end
 
