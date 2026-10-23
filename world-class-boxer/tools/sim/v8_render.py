@@ -135,6 +135,52 @@ def classic_sdf(C, x, y, z):
     return math.sqrt(ox * ox + oy * oy) + min(max(qx, qy), 0) - rr
 
 
+# The head model: "classic" (the Head SpecialMesh revolved from AnatomyHairKit.CLASSIC, what the game builds on) or
+# "box" (a worst case for the head-worn gear: a plain rounded box of the head's size, as the engine's default R15 head
+# when the classic swap did not take). v9_referee_render.py --boxhead 1 sets it.
+HEAD_MODEL = "classic"
+BOX_ROUND = 0.18  # nominal (of the 1.2 box): 0.15 of the head
+
+
+def box_sdf(C, x, y, z):
+    h, rr = C["h"], BOX_ROUND
+    q = [abs(v) - (h - rr) for v in (x, y, z)]
+    o = [max(v, 0) for v in q]
+    return math.sqrt(sum(v * v for v in o)) + min(max(q), 0) - rr
+
+
+def head_sdf(C, x, y, z):
+    return box_sdf(C, x, y, z) if HEAD_MODEL == "box" else classic_sdf(C, x, y, z)
+
+
+def rounded_box_head(C, size, nu=48, nv=28):
+    """a rounded box of the nominal 1.2 size: every direction of a uv sphere pushed out to the box's surface"""
+    P, T = uv_sphere(1, 1, 1, nu, nv)
+    out = []
+    for d in P:
+        n = np.linalg.norm(d)
+        if n < 1e-9:
+            out.append((0, C["h"], 0))
+            continue
+        d = d / n
+        lo, hi = 0.0, 1.5
+        for _ in range(40):
+            m = (lo + hi) / 2
+            if box_sdf(C, *(d * m)) > 0:
+                hi = m
+            else:
+                lo = m
+        out.append(d * lo)
+    k = np.array(size) / 1.2
+    return np.array(out) * k, T
+
+
+def head_mesh(C, size):
+    if HEAD_MODEL == "box":
+        return rounded_box_head(C, size)
+    return classic_head(C, size)
+
+
 def face_decal(C, size, n=28, lift=0.006):
     """The Front-face decal (covering the head's box front, Size.X x Size.Y) projected along +Z onto the head."""
     k = np.array(size) / 1.2
@@ -145,8 +191,8 @@ def face_decal(C, size, n=28, lift=0.006):
             x, y = (u - 0.5) * 1.2, (0.5 - v) * 1.2
             # march from the front (-Z) to the surface
             z = -1.0
-            while z < 0 and classic_sdf(C, x, y, z) > 0.0005:
-                z += max(classic_sdf(C, x, y, z), 0.0005)
+            while z < 0 and head_sdf(C, x, y, z) > 0.0005:
+                z += max(head_sdf(C, x, y, z), 0.0005)
             z = min(z, 0.0) - lift
             P.append((x * k[0], y * k[1], z * k[2]))
             # (the image as the viewer facing the head sees it: its left edge on the head's +X, the character's
@@ -244,7 +290,7 @@ def add_boxer(sc, scene_dir, d, offset=(0, 0, 0)):
         else:
             sc.add_world(P, T, m["name"], mat=sc.gear_mat(col, m["material"], m.get("reflectance", 0)), normals=m["n"])
     hd = d["head"]
-    P, T = classic_head(hd["classic"], hd["size"])
+    P, T = head_mesh(hd["classic"], hd["size"])
     sc.add_world(place(P, hd["cf"], off), T, "Head", material="skin", tint=srgb2lin(hd["color"]))
     dec = hd.get("decal")
     if dec and dec.get("file"):

@@ -27,8 +27,9 @@ local S = {
 	gui = nil, haze = nil, flash = nil, edges = nil, blur = nil, grade = nil, eq = nil, conn = nil, vigKey = -1,
 }
 -- how heavy each kind is: the peak at the impact, then where it settles
+-- (the impact flash itself is short and never a full white-out: the punch that landed stays readable)
 local KIND = {
-	wobble = { peak = 0.42, hold = 0, settle = 0, rate = 0.9 },
+	wobble = { peak = 0.3, hold = 0, settle = 0, rate = 1.1 },
 	down = { peak = 1, hold = 0.5, settle = 0.78, rate = 2.2 },
 	out = { peak = 1, hold = 0.5, settle = 1, rate = 1.6 },
 }
@@ -140,7 +141,7 @@ local function step(dt)
 	end
 	local rate = S.goal < S.level and S.rate or 6
 	S.level += (S.goal - S.level) * (1 - math.exp(-rate * dt))
-	S.flashA = math.min(1, S.flashA + dt * 1.7)
+	S.flashA = math.min(1, S.flashA + dt * 4.5)
 	if S.goal <= 0 and S.level < 0.01 and S.flashA >= 1 then
 		KnockFX.Clear()
 		return
@@ -165,8 +166,9 @@ local function step(dt)
 		S.eq.HighGain, S.eq.MidGain, S.eq.LowGain = -34 * s, -14 * s, 2 * s
 	end
 	if S.gui then
-		S.haze.BackgroundTransparency = 1 - 0.2 * s
-		S.flash.BackgroundTransparency = S.flashA
+		S.haze.BackgroundTransparency = 1 - 0.14 * s
+		-- (the flash is a brief lift of the picture, not a sheet of white over the arm that landed)
+		S.flash.BackgroundTransparency = 0.55 + 0.45 * S.flashA
 		local v = math.floor((0.82 * s + 0.08 * s * swim) * 40 + 0.5) / 40
 		if v ~= S.vigKey then
 			S.vigKey = v
@@ -206,9 +208,10 @@ function KnockFX.Hit(kind)
 	ensurePost()
 	S.mode, S.clock, S.touched = kind, 0, 0
 	S.goal, S.rate = k.peak, k.rate
-	S.level = math.max(S.level, kind == "wobble" and 0.15 or 0.55)
+	S.level = math.max(S.level, kind == "wobble" and 0.12 or 0.5)
 	S.progress, S.count = 0, 0
-	S.flashA = kind == "wobble" and 0.7 or (kind == "out" and 0.05 or 0.15)
+	-- (flashA runs 0 -> 1 in about 0.2 s: a wobble barely flashes, a knockdown / knockout a short pop)
+	S.flashA = kind == "wobble" and 0.75 or (kind == "out" and 0.15 or 0.3)
 	run()
 end
 

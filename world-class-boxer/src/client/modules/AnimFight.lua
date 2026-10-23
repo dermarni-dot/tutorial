@@ -30,6 +30,13 @@ end)
 if not okFM or type(FightMotion) ~= "table" then
 	FightMotion = {}
 end
+-- (the swing a boxer is dealt when the server sets no PunchStyle: Traits.PunchStyle, seeded)
+local okTR, Traits = pcall(function()
+	return require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Traits"))
+end)
+if not okTR or type(Traits) ~= "table" then
+	Traits = nil
+end
 
 local A = CFrame.Angles
 local CF = CFrame.new
@@ -146,14 +153,19 @@ AnimFight.SWING, AnimFight.PUNCH_STYLE = SWING, PUNCH_STYLE
 local SWING_ADD = { elbow = true, hands = true }
 function AnimFight.swing(rig)
 	local a = rig.a
-	local key = tostring(a.Style) .. "|" .. tostring(a.PunchStyle)
+	-- (no PunchStyle from the server: the boxer is dealt one from his style and seed, the same on every client)
+	local ps = a.PunchStyle
+	if ps == nil and Traits and Traits.PunchStyle then
+		ps = Traits.PunchStyle(a.Style, rig.seed)
+	end
+	local key = tostring(a.Style) .. "|" .. tostring(ps)
 	local sw = rig.swingProf
 	if sw and sw.key == key then
 		return sw
 	end
 	local base = SWING[a.Style] or SWING.BoxerPuncher
-	local over = PUNCH_STYLE[a.PunchStyle]
-	sw = { key = key }
+	local over = PUNCH_STYLE[ps]
+	sw = { key = key, punchStyle = ps }
 	local i = 0
 	for k, v in pairs(SWING.BoxerPuncher) do
 		i += 1
@@ -2302,11 +2314,8 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 			u, e = fb.body.u, fb.body.e
 		end
 		local shT, elT = armFrame(act.hand, u, fb.h, e)
-		-- (the way out passes through the wind-up: the hook's elbow comes up before the fist swings, the uppercut's
-		-- hand drops first)
-		local k = retK > 0 and ac or smooth(clamp((u and ac) or 0, 0, 1))
-		p[S] = p[S]:Lerp(shT, k)
-		p[E] = p[E]:Lerp(elT, k)
+		p[S] = p[S]:Lerp(shT, ac)
+		p[E] = p[E]:Lerp(elT, ac)
 	end
 	-- (the corkscrew turns over with the forearm through the drive, not all in the last frames on the fist's
 	-- accelerating curve: the wrist flicked 23 degrees a frame into contact)

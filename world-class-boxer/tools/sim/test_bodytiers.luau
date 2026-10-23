@@ -1443,6 +1443,74 @@ do
 	check("headgear: the Creator's head-only preview wears it", #hgParts(pm) == Head.HEADGEAR_PARTS.full)
 	pcall(Builder.Cosmetics, pm, picked, build(30), nil, { hands = "wraps", detail = "full", only = { Hair = true } })
 	check("headgear: a preview colour change follows", cnear(shellColor(pm), Color3.fromRGB(20, 140, 60)))
+	-- a colour within a hair of the skin (Looks.Palette's brown on SkinTones[9]) is nudged off it, so the headgear never
+	-- reads as a bare head; the asked colour is kept on the folder, every other colour passes through untouched
+	do
+		local brown, skin9 = Looks.Color(Looks.Palette[11]), Looks.Color(Looks.SkinTones[9])
+		local nudged, adj = Head.OffSkin(brown, skin9)
+		check("headgear: Palette brown on skin 9 is nudged off the skin", adj == true and not cnear(nudged, skin9)
+			and math.abs(nudged.R - skin9.R) + math.abs(nudged.G - skin9.G) + math.abs(nudged.B - skin9.B) > 0.2)
+		local same, adj2 = Head.OffSkin(Looks.Color(Looks.Palette[1]), skin9)
+		check("headgear: a distinct colour passes through", adj2 == false and cnear(same, Looks.Color(Looks.Palette[1])))
+		local sm9 = rig()
+		local a9 = Looks.Defaults(1)
+		a9.skin = 9
+		a9.attire.headgear = table.clone(Looks.Palette[11])
+		pcall(Builder.Cosmetics, sm9, a9, build(30), nil, { hands = "gloves", detail = "full" })
+		local h9 = sm9:FindFirstChild("Head")
+		local f9 = hg(sm9)
+		local allOff = #hgParts(sm9) == Head.HEADGEAR_PARTS.full
+		for _, p in ipairs(hgParts(sm9)) do
+			if cnear(p.Color, h9.Color) then
+				allOff = false
+			end
+		end
+		check("headgear: a brown headgear on skin 9 builds every part off the skin's colour", allOff and f9 and f9:GetAttribute("ColorAdjusted") == true
+			and cnear(f9:GetAttribute("Color"), brown), f9 and tostring(f9:GetAttribute("ColorAdjusted")))
+		check("headgear: the folder records the head size it was built for", f9 and typeof(f9:GetAttribute("HeadSize")) == "Vector3"
+			and (f9:GetAttribute("HeadSize") - h9.Size).Magnitude < 1e-6)
+		sm9:Destroy()
+	end
+	-- sized from the head's live size: the same look on a head scaled after the rig was made builds every part at
+	-- the new scale (the relative geometry in head spans is identical); Builder's cache key carries the head size
+	do
+		local function geomOf(m)
+			local head = m:FindFirstChild("Head")
+			local hs = Head.HeadSpan(head)
+			local out = {}
+			for _, p in ipairs(hgParts(m)) do
+				local rel = head.CFrame:ToObjectSpace(p.CFrame)
+				out[#out + 1] = { p.Name, rel.Position / hs, p.Size / hs }
+			end
+			table.sort(out, function(x, y)
+				return x[1] .. tostring(x[2]) < y[1] .. tostring(y[2])
+			end)
+			return out, hs
+		end
+		local a1 = Looks.Defaults(1)
+		local m1 = rig()
+		pcall(Builder.Cosmetics, m1, a1, build(30), nil, { hands = "gloves", detail = "full" })
+		local g1, hs1 = geomOf(m1)
+		local m2 = rig()
+		m2:FindFirstChild("Head").Size = Vector3.new(1.3, 1.3, 1.3)
+		pcall(Builder.Cosmetics, m2, a1, build(30), nil, { hands = "gloves", detail = "full" })
+		local g2, hs2 = geomOf(m2)
+		local same = #g1 == #g2 and #g1 == Head.HEADGEAR_PARTS.full and math.abs(hs2 - 1.3) < 1e-6 and hs1 < 1
+		for i = 1, math.min(#g1, #g2) do
+			if g1[i][1] ~= g2[i][1] or (g1[i][2] - g2[i][2]).Magnitude > 1e-3 or (g1[i][3] - g2[i][3]).Magnitude > 1e-3 then
+				same = false
+			end
+		end
+		check("headgear: the same geometry in head spans on a 0.93 and a 1.3 head (sized from the live head)", same, string.format("%.3f / %.3f", hs1, hs2))
+		-- the head rescaled after the build: the next Cosmetics rebuilds (the size is in the cache key)
+		local before = hgParts(m2)[1]
+		m2:FindFirstChild("Head").Size = Vector3.new(1.0, 1.0, 1.0)
+		pcall(Builder.Cosmetics, m2, a1, build(30), nil, { hands = "gloves", detail = "full" })
+		local g3, hs3 = geomOf(m2)
+		check("headgear: a head rescaled after the build is rebuilt to the new size", hgParts(m2)[1] ~= before and math.abs(hs3 - 1) < 1e-6 and #g3 == #g1)
+		m1:Destroy()
+		m2:Destroy()
+	end
 	pm:Destroy()
 	m:Destroy()
 
@@ -1651,6 +1719,93 @@ do
 		return nil
 	end
 	local bad = {}
+	-- Geometry without any model of the head mesh: each part's exact head-local AABB (an ellipsoid's, a drum's or a
+	-- block's extents along the head's axes) in head spans. Forbidden: any part whose AABB reaches z < -0.35 while
+	-- its centre lies below the brow line (O.top), any whose AABB covers an eye point (+-0.2, 0, -0.5); an
+	-- unrotated ellipsoid reaching z <= -0.45 must keep its skin above the brow line there. The head-hugging pads
+	-- (crown cap, brow roll, back shell, ear pads) stand >= 0.03 off the side planes |x| = 0.5, the crown cap
+	-- >= 0.03 above y = 0.5. Also: no Head mesh anywhere, no part coloured like the skin, no cap on a fighter.
+	local geomBad, geomNote = {}, {}
+	local function extents(p, rel, hs)
+		local sz = p.Size / hs
+		local sm = p:FindFirstChildOfClass("SpecialMesh")
+		local shape = sm and tostring(sm.MeshType):match("(%w+)$") or (p.Shape and tostring(p.Shape):match("(%w+)$")) or "Block"
+		local R = { rel.RightVector, rel.UpVector, rel.LookVector * -1 }
+		local a = { sz.X / 2, sz.Y / 2, sz.Z / 2 }
+		local ext = {}
+		for ai, e in ipairs({ Vector3.new(1, 0, 0), Vector3.new(0, 1, 0), Vector3.new(0, 0, 1) }) do
+			local v = 0
+			if shape == "Sphere" then
+				for i = 1, 3 do
+					v += (a[i] * R[i]:Dot(e)) ^ 2
+				end
+				v = math.sqrt(v)
+			elseif shape == "Cylinder" then
+				local d = R[1]:Dot(e)
+				v = a[1] * math.abs(d) + math.min(a[2], a[3]) * math.sqrt(math.max(1 - d * d, 0))
+			else
+				for i = 1, 3 do
+					v += a[i] * math.abs(R[i]:Dot(e))
+				end
+			end
+			ext[ai] = v
+		end
+		return shape, ext, a
+	end
+	local function hgGeom(model, label, detail)
+		local head = model:FindFirstChild("Head")
+		local hs = Head.HeadSpan(head)
+		local look = model:FindFirstChild("BoxerLook")
+		local hat = look and look:FindFirstChild("Hat")
+		if hat and #hat:GetChildren() > 0 then
+			table.insert(geomNote, label .. ": a fighter wears a cap")
+		end
+		local parts = hgParts(model)
+		if #parts ~= Head.HEADGEAR_PARTS[detail] then
+			table.insert(geomNote, label .. ": " .. #parts .. " parts")
+		end
+		for _, p in ipairs(parts) do
+			local rel = head.CFrame:ToObjectSpace(p.CFrame)
+			local c = rel.Position / hs
+			local shape, ext, a = extents(p, rel, hs)
+			local lo = { c.X - ext[1], c.Y - ext[2], c.Z - ext[3] }
+			local hi = { c.X + ext[1], c.Y + ext[2], c.Z + ext[3] }
+			local function flag(why)
+				table.insert(geomBad, string.format("%s %s: %s (x %.2f..%.2f y %.2f..%.2f z %.2f..%.2f)", label, p.Name, why, lo[1], hi[1], lo[2], hi[2], lo[3], hi[3]))
+			end
+			if shape == "Head" then
+				table.insert(geomNote, label .. " " .. p.Name .. ": a Head mesh")
+			end
+			if cnear(p.Color, head.Color) then
+				table.insert(geomNote, label .. " " .. p.Name .. ": the skin's colour")
+			end
+			if c.Y < O.top and lo[3] < -0.35 then
+				flag("reaches in front of the face below the brow line")
+			end
+			for _, ex in ipairs({ -0.2, 0.2 }) do
+				if lo[1] <= ex and hi[1] >= ex and lo[2] <= 0 and hi[2] >= 0 and lo[3] <= -0.5 and hi[3] >= -0.5 then
+					flag("covers an eye point")
+				end
+			end
+			local unrotated = math.abs(rel.RightVector.X) > 0.999 and math.abs(rel.UpVector.Y) > 0.999
+			if shape == "Sphere" and unrotated and lo[3] < -0.45 then
+				local zz = math.min(-0.45, c.Z)
+				local f = 1 - ((zz - c.Z) / a[3]) ^ 2
+				local lowY = c.Y - a[2] * math.sqrt(math.max(f, 0))
+				if lowY < O.top then
+					flag(string.format("its skin comes down to y %.3f on the forehead", lowY))
+				end
+			end
+			if p.Name == "HGTop" or p.Name == "HGBrow" or p.Name == "HGShell" or p.Name == "HGSide" or p.Name == "HGEars" then
+				if math.max(math.abs(lo[1]), math.abs(hi[1])) < 0.53 then
+					flag("grazes the side planes")
+				end
+			end
+			if p.Name == "HGTop" and hi[2] < 0.53 then
+				flag("the crown cap is not above the head's top")
+			end
+		end
+	end
 	for _, hd in ipairs({ { 2, "Lean", "smallest" }, { 1, "Athletic", "default" }, { 1, "Heavyweight Build", "largest" } }) do
 		for _, detail in ipairs({ "full", "medium", "low" }) do
 			local a = Looks.Defaults(hd[1])
@@ -1698,10 +1853,14 @@ do
 				end
 			end
 			check("headgear: face marks to check (" .. hd[3] .. ", " .. detail .. ")", nMarks >= 4, nMarks)
+			hgGeom(fm, hd[3] .. "/" .. detail, detail)
 			fm:Destroy()
 		end
 	end
 	check("headgear: the drawn face, its damage and sweat unobstructed", #bad == 0, table.concat(bad, "; ", 1, math.min(#bad, 8)))
+	check("headgear: every part clear of the forbidden front region, the eye points, the side planes and the top (no head-mesh model)",
+		#geomBad == 0, table.concat(geomBad, "; ", 1, math.min(#geomBad, 8)))
+	check("headgear: no Head-mesh part, no part coloured like the skin, no cap on a fighter", #geomNote == 0, table.concat(geomNote, "; ", 1, math.min(#geomNote, 8)))
 
 	-- the officials' caps leave the drawn face unobstructed: the same rays from the drawn ink to a camera in front and
 	-- at 3/4, level (the padded ink) and from above (the measured ink: 10 deg in front, 8 at the 3/4), hit no cap part (every style, detail and head size), and no visible cap part

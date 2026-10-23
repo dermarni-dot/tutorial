@@ -1580,36 +1580,105 @@ end
 ------------------------------------------------------------------------
 -- Headgear (every boxer's, Config.AlwaysHeadgear; else only while sparring)
 ------------------------------------------------------------------------
--- An open-face amateur headgear on the classic head. One padded shell wraps the sides, the back and the top: the
--- classic head's own shape (a Head SpecialMesh) a little larger than the head, set back and lifted, so it stands off
--- the ears and the back and the head's own face comes through it in front (the shell's front lies inside the head
--- in front of az +-HG.openAz: the face opening). The crown pad caps the forehead's top, a brow roll rings the forehead
--- just above the brows and a cheek bolster rolls each side of the opening.
--- Ear holes, the chin strap and the crown seam at full detail (the chin cup from medium). The opening is cut round the
--- drawn face's ink (Head.HEADGEAR_OPENING, checked against every drawn face by test_bodytiers): the band's lower edge
--- stays above the brows, the shell and bolsters outside the eyes, brows and mouth, the chin open.
--- detail = Config.DetailLevel: full 11 parts, medium 6, low 3 (the crowd).
--- The opening in head-size fractions on the front: the band from y = top up, nothing at |x| < side above the mouth
--- line (y > -0.1) or at |x| < sideLow below it
+-- An open-face amateur headgear built from explicit pads: the face opening is geometry, never an accident of overlap.
+-- Only shapes the engine sizes from the part (Sphere meshes = ellipsoids, Cylinder parts, Blocks): NO Head mesh (the
+-- engine scales that one uniformly by the smallest axis and never stretches it; two rebuilds were bitten by it).
+-- Everything is sized and placed from the head's live size (Head.HeadSpan, its smallest axis) in head spans
+-- (y up from the head's centre, -z the face), welded to the head, so it fits every head and follows a rescale
+-- (followHead below rebuilds it when the Head's Size changes after the build).
+-- The pads (Head.HG, in spans; see tools/sim/test_bodytiers / test_referee, which check these against the
+-- forbidden front region without any model of the head mesh):
+-- * HGBrow: the brow roll, a flat ring round the head just above the brows (its rim meets the forehead at
+--   y 0.27, above HEADGEAR_OPENING.top; 0.08 proud at the front, sunk inside the head at the back)
+-- * HGTop: the crown cap over the top, flush with the forehead under the brow roll, 0.11 thick on the crown
+-- * HGShell: the back shell, a half-dome behind the ears down to the nape (the part Diag measures)
+-- * HGCheek x2: the cheek bolsters, upright rolls beside the face from the brow roll to under the jaw, outside
+--   the eyes (|x| >= 0.37; the drawn ink ends at 0.237), never across the face (z >= -0.29)
+-- * HGSide x2 (full) / HGEars (medium: one drum through the head whose ends are the two ear pads): the ear pads
+--   flush on the side walls, 0.1 proud; HGEarHole x2 (full): the dark openings over the ears
+-- * HGStrap x2 (full): the chin strap from under each ear pad to a point under the chin
+-- Nothing in front of the face: no part reaches z < -0.35 spans below the brow line (HEADGEAR_OPENING.top), none
+-- covers the eye points (+-0.2, 0, -0.5); the ear pads stand >= 0.03 off the side planes, the crown cap >= 0.03
+-- above the top. The opening (fractions of the head): the band from y = top up, nothing at |x| < side above the
+-- mouth line (y > -0.1) or at |x| < sideLow below it; checked against every drawn face by test_bodytiers.
+-- detail = Config.DetailLevel: full 11 parts, medium 6, low 3 (the crowd: brow roll, crown cap, back shell).
 Head.HEADGEAR_OPENING = { top = 0.225, side = 0.29, sideLow = 0.24 }
 local HG_PARTS = { full = 11, medium = 6, low = 3 }
 Head.HEADGEAR_PARTS = HG_PARTS
 
 -- The engine's Head SpecialMesh is NOT stretched by the part's Size per axis (unlike the Sphere mesh): it is the one
--- head shape, scaled uniformly by the part's smallest axis (an R6 head is a 2 x 1 x 1 part that shows 1.25 wide).
--- A Head-mesh part is therefore always given a CUBE Size (Head.HeadMeshSize), and the head itself is taken as
--- uniform at its smallest axis (Head.HeadSpan). test_bodytiers / test_referee model the mesh the same way.
+-- head shape, scaled uniformly by the part's smallest axis. Every head-worn part is therefore sized from the head's
+-- smallest axis (Head.HeadSpan); the headgear and the caps use no Head mesh at all.
 function Head.HeadSpan(head)
 	local s = head.Size
 	return math.min(s.X, s.Y, s.Z)
 end
-function Head.HeadMeshSize(span)
-	return V3(span, span, span)
+
+-- the pads in head spans (centre x / y / z, then the size w x h x d; cheek: a roll of radius r and length h; strap:
+-- its end points a (under the ear pad) and b (under the chin), its width w and thickness t)
+Head.HG = {
+	brow = { y = 0.305, z = -0.04, w = 1.16, h = 0.15, d = 1.08 },
+	top = { y = 0.36, z = 0.04, w = 1.14, h = 0.5, d = 1.08 },
+	back = { y = 0.02, z = 0.2, w = 1.22, h = 0.84, d = 0.86 },
+	cheek = { x = 0.46, y = -0.06, z = -0.2, r = 0.09, h = 0.76 },
+	side = { x = 0.52, y = 0, z = -0.02, w = 0.16, h = 0.6, d = 0.62 },
+	ears = { y = 0, z = -0.02, d = 0.6, len = 1.2 },
+	hole = { x = 0.595, y = 0.02, z = -0.02, w = 0.03, h = 0.16, d = 0.12 },
+	strap = { a = { 0.5, -0.28, 0.02 }, b = { 0.08, -0.52, -0.24 }, w = 0.07, t = 0.025 },
+}
+
+-- A pad colour within a hair of the skin reads as a bare, bulging head (Looks.Palette's brown {110, 70, 40} against
+-- SkinTones[9] {112, 70, 44}: a seed-coloured NPC's headgear, a cornerman's team cap). Such a colour is nudged away
+-- from the skin: darker on a light skin, lighter on a dark one. Returns the colour and whether it was adjusted.
+function Head.OffSkin(color, skin)
+	if typeof(color) ~= "Color3" or typeof(skin) ~= "Color3" then
+		return color, false
+	end
+	local d = math.abs(color.R - skin.R) + math.abs(color.G - skin.G) + math.abs(color.B - skin.B)
+	if d >= 0.12 then
+		return color, false
+	end
+	if lum(skin) > 0.3 then
+		return darken(color, 0.6), true
+	end
+	return lerpColor(color, WHITE, 0.3), true
 end
 
--- the shell: a uniform classic head k x the head's, its centre (0, y0, z0) head sizes from the head's centre; the head's
--- round front comes through it inside az +-openAz (deg from the front: cos openAz = (k^2 / 4 - 1 / 4 - z0^2) / z0)
-Head.HG = { k = 1.18, y0 = 0.06, z0 = 0.117, openAz = 44 }
+-- The head is scaled after a build at times (ApplyDescription, a head swap kept at the engine's scale): the gear
+-- was then built for another size. The folder records the size it was built for (attribute HeadSize) and watches
+-- the head's Size while it lives; a change rebuilds it through `rebuild` (deferred: one rebuild per change burst).
+-- Builder's cache keys carry the head size too, so a Cosmetics after the change rebuilds either way; this covers a
+-- change with no Cosmetics after it. Quiet when the host has no property signals (the lune tests).
+local function followHead(folder, head, rebuild)
+	folder:SetAttribute("HeadSize", head.Size)
+	local conn
+	local ok = pcall(function()
+		conn = head:GetPropertyChangedSignal("Size"):Connect(function()
+			if folder.Parent == nil then
+				conn:Disconnect()
+				return
+			end
+			task.defer(function()
+				if folder.Parent == nil or head.Parent == nil then
+					return
+				end
+				local was = folder:GetAttribute("HeadSize")
+				if typeof(was) == "Vector3" and (head.Size - was).Magnitude > 1e-3 then
+					conn:Disconnect()
+					rebuild()
+				end
+			end)
+		end)
+	end)
+	if ok and conn then
+		-- (the folder goes with the model, a rebuild or a fight cleanup: the watch goes with it)
+		pcall(function()
+			folder.Destroying:Once(function()
+				conn:Disconnect()
+			end)
+		end)
+	end
+end
 
 function Head.SetHeadgear(model, color, on, detail)
 	local folder = getFolder(model, "Headgear")
@@ -1625,81 +1694,62 @@ function Head.SetHeadgear(model, color, on, detail)
 	local full, low = detail == "full", detail == "low"
 	folder:SetAttribute("Detail", detail)
 	color = typeof(color) == "Color3" and color or Color3.fromRGB(200, 25, 30)
+	local asked = color
+	local adjusted
+	color, adjusted = Head.OffSkin(color, head.Color)
+	folder:SetAttribute("Color", asked)
+	folder:SetAttribute("ColorAdjusted", adjusted)
 	local hs = Head.HeadSpan(head)
-	local s = V3(hs, hs, hs)
-	local L = Head.FaceLayout(head, {})
 	local hcf = head.CFrame
 	local mat = Enum.Material.Leather
-	local function add(name, size, cf, c, shape, m)
-		return mk(folder, head, name, size, cf, c, shape or "Ellipsoid", m or mat)
-	end
-	-- the classic head's shape at k x the head (uniform: the engine scales the Head mesh by the smallest axis),
-	-- centred at (y, z) fractions of the head
-	local function shell(name, k, y, z, c)
-		local p = mk(folder, head, name, Head.HeadMeshSize(hs * k), hcf * CF(0, y * hs, z * hs), c, "Block", mat)
-		local m = Instance.new("SpecialMesh")
-		m.MeshType = Enum.MeshType.Head
-		m.Parent = p
-		return p
-	end
-	-- a pad at azimuth az (degrees from the front, + toward +X), height y (fraction of s.Y): w x h along the skin
-	-- (fractions of s.X / s.Y), standing rise (fraction of s.Z) off it, rolled about its normal by roll degrees.
-	-- Sunk by the head's curve under its footprint (the sag) so the rim lies on the skin
-	local function pad(name, az, y, w, h, rise, c, roll)
-		local cf = L.shellCF(rad(az), y * s.Y, 0)
-		if roll and roll ~= 0 then
-			cf = cf * ANG(0, 0, rad(roll))
-		end
-		w, h, rise = w * s.X, h * s.Y, rise * s.Z
-		local p0 = cf.Position
-		local function sag(dx, dy)
-			return math.max(L.outside(p0 + cf.RightVector * dx + cf.UpVector * dy), 0)
-		end
-		local sg = math.max(sag(w / 2, 0), sag(-w / 2, 0), sag(0, h / 2), sag(0, -h / 2))
-		local ctr = sg * 1.15 + 0.002 * s.Z
-		local D = rise + ctr
-		local f = math.sqrt(math.max(1 - ((ctr - sg) / D) ^ 2, 0.3))
-		return add(name, V3(w / f, h / f, 2 * D), hcf * cf * CF(0, 0, ctr), c)
-	end
-	local O = Head.HEADGEAR_OPENING
 	local G = Head.HG
-	local browC, seamC, strapC = darken(color, 0.9), darken(color, 0.72), darken(color, 0.55)
-	-- the shell (sides, back and top: ~0.08 off at the ears, 0.2 at the back, 0.15 over the top; the head's front
-	-- comes through it inside az +-44: the face opening)
-	shell("HGShell", G.k, G.y0, G.z0, color)
-	-- the crown pad: over the forehead's top, where the head's own curve would graze the shell's front; its front
-	-- sinks into the forehead behind the brow roll, its sides and back inside the shell (0.03 clear of its wall)
-	add("HGTop", V3(s.X * 1.12, s.Y * 0.6, s.Z * 1.12), hcf * CF(0, 0.34 * s.Y, 0.04 * s.Z), color)
-	-- the brow roll: a flat ellipsoid round the forehead whose rim meets the skin at O.top (above every drawn brow)
-	-- and bulges ~0.075 off it in front (its sides and back sink into the shell)
-	add("HGBrow", V3(s.X * 1.11, s.Y * 0.26, s.Z * 1.125), hcf * CF(0, (O.top + 0.066) * s.Y, 0), browC)
+	local function at(x, y, z)
+		return hcf * CF(x * hs, y * hs, z * hs)
+	end
+	-- an ellipsoid pad: centre (x, y, z) and size w x h x d in spans
+	local function pad(name, x, y, z, w, h, d, c, m)
+		return mk(folder, head, name, V3(w * hs, h * hs, d * hs), at(x, y, z), c, "Ellipsoid", m or mat)
+	end
+	local browC, strapC, holeC = darken(color, 0.9), darken(color, 0.55), darken(color, 0.35)
+	-- the brow roll, the crown cap and the back shell: every detail level
+	pad("HGBrow", 0, G.brow.y, G.brow.z, G.brow.w, G.brow.h, G.brow.d, browC)
+	pad("HGTop", 0, G.top.y, G.top.z, G.top.w, G.top.h, G.top.d, color)
+	pad("HGShell", 0, G.back.y, G.back.z, G.back.w, G.back.h, G.back.d, color)
 	if low then
+		followHead(folder, head, function()
+			Head.SetHeadgear(model, asked, true, detail)
+		end)
 		return folder
 	end
+	-- the cheek bolsters: upright rolls (long ellipsoids) beside the face, outside the eyes
+	local C = G.cheek
 	for side = -1, 1, 2 do
-		-- the cheek bolster rolling the opening's side edge (outside the eyes; its foot leans in beside the mouth)
-		pad("HGCheek", side * 50, -0.05, 0.15, 0.64, 0.065, color, -side * 5)
+		pad("HGCheek", side * C.x, C.y, C.z, 2 * C.r, C.h, 2 * C.r, color)
 	end
-	-- the chin cup under the chin (the strap meets it there)
-	add("HGChin", V3(0.24 * s.X, 0.09 * s.Y, 0.16 * s.Z), hcf * CF(0, -0.47 * s.Y, -0.3 * s.Z), strapC)
 	if not full then
+		-- one drum through the head along X: its two ends are the ear pads (a Cylinder part's axis is its X)
+		local E = G.ears
+		mk(folder, head, "HGEars", V3(E.len * hs, E.d * hs, E.d * hs), at(0, E.y, E.z), color, "Cylinder", mat)
+		followHead(folder, head, function()
+			Head.SetHeadgear(model, asked, true, detail)
+		end)
 		return folder
 	end
-	-- how far the shell stands off the skin at the ears (az 90, z ~ 0): the ear hole is centred on its surface
-	local earOut = math.sqrt((G.k / 2) ^ 2 - G.z0 ^ 2) - 0.5
+	local S, Hh, St = G.side, G.hole, G.strap
 	for side = -1, 1, 2 do
-		-- the ear hole: a dark opening in the shell over the ear
-		local ecf = L.shellCF(rad(side * 90), 0.02 * s.Y, earOut * s.Z)
-		add("HGEarHole", V3(0.1 * s.Z, 0.15 * s.Y, 0.04 * s.X), hcf * ecf, darken(color, 0.35))
-		-- the chin strap: from the shell's lower edge behind the cheek along the underside of the jaw to the cup
-		local a = hcf * L.shellCF(rad(side * 66), -0.36 * s.Y, 0.03 * s.Z).Position
-		local b = hcf * V3(side * 0.08 * s.X, -0.47 * s.Y, -0.28 * s.Z)
+		-- the ear pad flush on the side wall, the dark ear hole in its outer face
+		pad("HGSide", side * S.x, S.y, S.z, S.w, S.h, S.d, color)
+		pad("HGEarHole", side * Hh.x, Hh.y, Hh.z, Hh.w, Hh.h, Hh.d, holeC)
+		-- the chin strap: from under the ear pad along the jaw to a point under the chin
+		local a = at(side * St.a[1], St.a[2], St.a[3]).Position
+		local b = at(side * St.b[1], St.b[2], St.b[3]).Position
 		local mid = (a + b) * 0.5
-		local out = mid - hcf * V3(0, -0.2 * s.Y, -0.1 * s.Z)
-		add("HGStrap", V3(0.07 * s.Y, 0.025 * s.Y, (b - a).Magnitude), CFrame.lookAt(mid, b, out.Unit), strapC, "Block", SMOOTH)
+		local out = mid - at(0, -0.1, 0).Position
+		mk(folder, head, "HGStrap", V3(St.w * hs, St.t * hs, (b - a).Magnitude), CFrame.lookAt(mid, b, out.Unit), strapC, "Block", SMOOTH)
 	end
-	-- the stitched seam over the crown (front to back), riding the shell's top
-	add("HGSeam", V3(0.045 * s.X, s.Y * (G.k + 0.01), s.Z * (G.k + 0.01)), hcf * CF(0, G.y0 * s.Y, G.z0 * s.Z), seamC)
+	followHead(folder, head, function()
+		Head.SetHeadgear(model, asked, true, detail)
+	end)
 	return folder
 end
 
@@ -1748,10 +1798,21 @@ function Head.SetCap(model, style, colors, detail)
 	colors = type(colors) == "table" and colors or {}
 	local ref = style == "referee"
 	local capC = typeof(colors.cap) == "Color3" and colors.cap or (ref and Color3.fromRGB(18, 18, 21) or Color3.fromRGB(30, 30, 34))
+	-- (a team colour within a hair of the skin reads as a bare head: nudged off it, Head.OffSkin)
+	local adjusted
+	capC, adjusted = Head.OffSkin(capC, head.Color)
+	folder:SetAttribute("ColorAdjusted", adjusted)
 	local trimC = typeof(colors.trim) == "Color3" and colors.trim or (ref and Color3.fromRGB(150, 190, 226) or darken(capC, 0.75))
 	local badgeC = typeof(colors.badge) == "Color3" and colors.badge or (ref and Color3.fromRGB(212, 172, 64) or Color3.fromRGB(238, 238, 232))
 	local hs = Head.HeadSpan(head)
 	local hcf = head.CFrame
+	-- the cap follows a head rescale after the build (followHead above)
+	local function done()
+		followHead(folder, head, function()
+			Head.SetCap(model, style, colors, detail)
+		end)
+		return folder
+	end
 	local function ell(name, size, cf, c, m)
 		return mk(folder, head, name, size, cf, c, "Ellipsoid", m or FABRIC)
 	end
@@ -1776,7 +1837,7 @@ function Head.SetCap(model, style, colors, detail)
 		drum("RCCrown", R.crownW, top - base, (base + top) / 2, capC)
 		visor("RCVisor", R.visorY, R.visorT, R.visorReach, R.visorW, R.visorTilt, darken(capC, 0.8))
 		if low then
-			return folder
+			return done()
 		end
 		drum("RCBand", R.bandW, R.bandH, R.bandLo + R.bandH / 2, trimC)
 		-- the WCB badge on the crown's front, above the band: a gold disc standing 0.02 proud, the wordmark on it
@@ -1789,13 +1850,13 @@ function Head.SetCap(model, style, colors, detail)
 			-- the gold cord across the band's front, over the visor's root
 			ell("RCCord", V3(0.78 * hs, 0.022 * hs, 0.2 * hs), hcf * CF(0, (R.bandLo + 0.04) * hs, -0.47 * hs), badgeC, Enum.Material.Metal)
 		end
-		return folder
+		return done()
 	end
 	local B = Head.BALLCAP
 	ell("BCCrown", V3(hs * B.domeW, hs * B.domeH * 2, hs * B.domeD), hcf * CF(0, B.domeY * hs, 0.01 * hs), capC)
 	visor("BCBill", B.billY, B.billT, B.billReach, B.billW, B.billTilt, trimC)
 	if low then
-		return folder
+		return done()
 	end
 	ell("BCButton", V3(0.09 * hs, 0.05 * hs, 0.09 * hs), hcf * CF(0, (B.domeY + B.domeH - 0.008) * hs, 0.01 * hs), capC)
 	-- the front panel's WCB (on the dome's front at y 0.41: inside the dome's skin there, the wordmark just out of it)
@@ -1806,7 +1867,7 @@ function Head.SetCap(model, style, colors, detail)
 	if full then
 		ell("BCSeam", V3(0.03 * hs, hs * B.domeH * 2 + 0.006, hs * B.domeD + 0.006), hcf * CF(0, B.domeY * hs, 0.01 * hs), darken(capC, 0.8))
 	end
-	return folder
+	return done()
 end
 
 ------------------------------------------------------------------------

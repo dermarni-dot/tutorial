@@ -1345,14 +1345,25 @@ local function punchClip(tier)
 	local ha, hb = a:FindFirstChild("HumanoidRootPart"), b:FindFirstChild("HumanoidRootPart")
 	ha.CFrame = CFrame.new(0, ha.CFrame.Y, GAP / 2) -- faces -Z (towards B)
 	hb.CFrame = CFrame.new(0, hb.CFrame.Y, -GAP / 2) * CFrame.Angles(0, math.pi, 0)
+	-- (--style / --pstyle / --seed: the puncher's swing - AnimFight.swing's Style, PunchStyle and AnimSeed; the clip
+	-- id carries the style so two boxers' punches can be rendered side by side)
+	local style = args.style or "BoxerPuncher"
 	for _, m in ipairs({ a, b }) do
 		m:SetAttribute("Guard", "up")
 		m:SetAttribute("Style", "BoxerPuncher")
+	end
+	a:SetAttribute("Style", style)
+	a:SetAttribute("PunchStyle", args.pstyle)
+	if tonumber(args.seed) then
+		a:SetAttribute("AnimSeed", tonumber(args.seed))
+	end
+	for _, m in ipairs({ a, b }) do
 		CS:AddTag(m, "Fighter")
 	end
 	for _ = 1, 150 do
 		frame({ a, b })
 	end
+	local clipId = string.format("punch%s_t%d", args.style and ("_" .. string.lower(style)) or "", tier)
 	local out = { clip = "punch", tier = tier, frames = {} }
 	local recs = {}
 	local actId = 0
@@ -1429,9 +1440,9 @@ local function punchClip(tier)
 		print(string.format("punch T%d %-9s reach %.3f (frame %d)  glove->target %.3f  dy %+.3f  elbow %.0f deg", tier, name, best, bestK,
 			peakPen and peakPen.toTarget or -1, peakPen and peakPen.dy or 0, peakPen and peakPen.elbowDeg or -1))
 	end
-	local file = string.format("punch_t%d.json", tier)
+	local file = clipId .. ".json"
 	Host.WriteJSON(OUT .. "/" .. file, out)
-	table.insert(index.clips, { id = string.format("punch_t%d", tier), file = file, clip = "punch", tier = tier, n = #out.frames })
+	table.insert(index.clips, { id = clipId, file = file, clip = "punch", tier = tier, n = #out.frames })
 	table.insert(metrics, { clip = "punch", tier = tier, punches = recs })
 	for _, m in ipairs({ a, b }) do
 		CS:RemoveTag(m, "Fighter")

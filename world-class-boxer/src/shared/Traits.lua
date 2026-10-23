@@ -335,4 +335,36 @@ function Traits.Resists(id, typeId)
 	return D ~= nil and D.resists[typeId] == true
 end
 
+-- SWING STYLE. Traits.PunchStyle(style, seed): the PunchStyle the client Animator lays over a boxer's style template
+-- (AnimFight.PUNCH_STYLE: Compact / Wide / Snappy / Heavy, or nil for the plain template) when the server has set
+-- none on the model. Seeded by the boxer's AnimSeed (the Animator's name hash), so every client sees the same swing
+-- and two boxers of one style still throw differently; weighted by the style: sluggers tend to swing wide and heavy,
+-- out-boxers snappy, swarmers compact, counter punchers compact or snappy.
+Traits.SwingWeights = {
+	BoxerPuncher = { none = 2.5, Compact = 1, Wide = 1, Snappy = 1.5, Heavy = 1 },
+	OutBoxer = { none = 2, Snappy = 3, Compact = 1, Wide = 0.3, Heavy = 0.2 },
+	Swarmer = { none = 2, Compact = 3, Snappy = 1, Heavy = 1, Wide = 0.3 },
+	Slugger = { none = 1.5, Wide = 2.5, Heavy = 2.5, Compact = 0.3, Snappy = 0.3 },
+	CounterPuncher = { none = 2.5, Compact = 1.5, Snappy = 1.5, Heavy = 0.5, Wide = 0.3 },
+}
+local SWING_ORDER = { "none", "Compact", "Wide", "Snappy", "Heavy" }
+function Traits.PunchStyle(style, seed)
+	local w = Traits.SwingWeights[STYLE_IDS[style] or style] or Traits.SwingWeights.BoxerPuncher
+	local total = 0
+	for _, k in ipairs(SWING_ORDER) do
+		total += w[k] or 0
+	end
+	if total <= 0 then
+		return nil
+	end
+	local r = lcg(math.floor(tonumber(seed) or 0) * 7919 + 1337)() * total
+	for _, k in ipairs(SWING_ORDER) do
+		r -= w[k] or 0
+		if r <= 0 then
+			return k ~= "none" and k or nil
+		end
+	end
+	return nil
+end
+
 return Traits

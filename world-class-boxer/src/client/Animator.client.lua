@@ -890,6 +890,11 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 		rig.nextGeo = rig.geoNow and t + 0.5 or t + 2.5
 		rig.geoNow = false
 		R.computeGeo(rig)
+		-- (a rig that could not be measured - its joints or torso not in place yet - is tried again soon: until it
+		-- is, the guard and the punches run on the authored fallback, no IK, no planted feet)
+		if not rig.geo.ok then
+			rig.nextGeo = t + 0.4
+		end
 	end
 	-- (the root moves in real time: sensing uses the real frame time, never the slowed one)
 	Loco.sense(rig, rdt)

@@ -490,8 +490,8 @@ end
 -- intended geometry: the referee's crown centred above the head's top, the band round the head just above the brows
 -- and inside the crown, the visor ahead of the forehead (-z) from under the band and pitched down, the badge proud of
 -- the crown's front, every part welded to the head, massless, no collisions / queries, nothing visible below
--- Head.CAP_CLEAR in front of the face; the coach's dome and bill the same way; the headgear shell a cube standing off
--- the ears and the back with the head's own front coming through it inside az +-44 (the face opening).
+-- Head.CAP_CLEAR in front of the face; the coach's dome and bill the same way; the headgear's pads (no Head mesh) round
+-- an explicit face opening: nothing in front of the face below the brow line.
 do
 	setup()
 	local Head = H.require("BuilderHead")
@@ -629,7 +629,7 @@ do
 	local clowY, clowWho = lowest(cp, chs, chead)
 	check("ball cap: nothing visible below Head.CAP_CLEAR in front of the face", clowY >= Head.CAP_CLEAR - 0.012, string.format("%s at y %.3f", tostring(clowWho), clowY))
 
-	-- a boxer's headgear (full): the shell as the engine draws it
+	-- a boxer's headgear (full): the pads as the engine draws them
 	local bm = newRig(Vector3.new(1, 1, 1))
 	local bapp = Looks.Defaults(1)
 	local okB, errB = pcall(Builder.Cosmetics, bm, bapp, buildOf(40), nil, { hands = "gloves", detail = "full" })
@@ -637,27 +637,102 @@ do
 	local hg, _, bhead = geom(bm, "Headgear")
 	dump("boxer's headgear (full) relative to the head:", hg)
 	flags("headgear", hg, bhead)
-	local shell = hg.HGShell
-	check("headgear: the full set, the shell a Head-mesh cube 1.1 .. 1.3 heads, set back and lifted", #hg == Head.HEADGEAR_PARTS.full and shell and shell.shape == "Head"
-		and shell.size.X == shell.size.Y and shell.size.X == shell.size.Z and shell.size.X > 1.1 and shell.size.X < 1.3 and shell.pos.Z > 0.05 and shell.pos.Y > 0
-		and math.abs(shell.pos.X) < 1e-3, shell and string.format("size %.3f at (%.3f %.3f %.3f)", shell.size.X, shell.pos.X, shell.pos.Y, shell.pos.Z))
-	-- as the engine draws it: a classic head of radius k / 2 centred (y0, z0); the head's own round front (radius 0.5)
-	-- comes through it where cos az > (k^2 / 4 - 1 / 4 - z0^2) / z0: the face opening
-	local k, z0 = shell.size.X, shell.pos.Z
-	local az = math.deg(math.acos(math.clamp((k * k / 4 - 0.25 - z0 * z0) / z0, -1, 1)))
-	check("headgear: the face opening: the head comes through the shell inside az +-40 .. 48 (eyes, brows and mouth clear, the shell from the cheeks back)",
-		az > 40 and az < 48 and math.abs(az - Head.HG.openAz) < 1.5, az)
-	check("headgear: the shell stands >= 0.06 off the ears and >= 0.1 off the back; the forehead comes >= 0.02 through its front",
-		math.sqrt((k / 2) ^ 2 - z0 * z0) - 0.5 >= 0.06 and k / 2 + z0 - 0.5 >= 0.1 and 0.5 - (k / 2 - z0) >= 0.02,
-		string.format("ears %.3f back %.3f front %.3f", math.sqrt((k / 2) ^ 2 - z0 * z0) - 0.5, k / 2 + z0 - 0.5, 0.5 - (k / 2 - z0)))
-	check("headgear: the shell over the head's top (>= 0.1), its foot about the chin", shell.pos.Y + k / 2 >= 0.6 and shell.pos.Y - k / 2 > -0.6 and shell.pos.Y - k / 2 < -0.45,
-		string.format("top %.3f foot %.3f", shell.pos.Y + k / 2, shell.pos.Y - k / 2))
-	-- the brow roll (an ellipsoid sunk into the forehead): its rim meets the skin (the forehead at z = -0.5) at
-	-- y = cy - hy sqrt(1 - (0.5 / hz)^2), which is HEADGEAR_OPENING.top (above every drawn brow)
-	local br = hg.HGBrow
-	local rim = br and (br.pos.Y - br.size.Y / 2 * math.sqrt(math.max(1 - (0.5 / (br.size.Z / 2)) ^ 2, 0)))
-	check("headgear: the brow roll's rim meets the forehead at HEADGEAR_OPENING.top, the crown pad over the forehead's top",
-		rim and rim >= Head.HEADGEAR_OPENING.top - 1e-3 and rim <= Head.HEADGEAR_OPENING.top + 0.02 and hg.HGTop and hg.HGTop.pos.Y + hg.HGTop.size.Y / 2 > 0.55, rim)
+	-- the pads (Head.HG, in head spans): no Head mesh anywhere (flags above), the brow roll a flat ring whose rim meets
+	-- the forehead above HEADGEAR_OPENING.top, the crown cap over the head's top and flush with the forehead, the
+	-- back shell (HGShell, the part Diag measures) behind the ears, the cheek rolls outside the eyes and never across
+	-- the face, the ear pads flush on the side walls, the straps meeting under the chin
+	local O = Head.HEADGEAR_OPENING
+	local names = {}
+	for _, g in ipairs(hg) do
+		names[g.name] = (names[g.name] or 0) + 1
+	end
+	check("headgear: the full set: brow roll, crown cap, back shell, 2 cheek rolls, 2 ear pads, 2 ear holes, 2 straps; no Head mesh",
+		#hg == Head.HEADGEAR_PARTS.full and names.HGBrow == 1 and names.HGTop == 1 and names.HGShell == 1 and names.HGCheek == 2 and names.HGSide == 2
+		and names.HGEarHole == 2 and names.HGStrap == 2, #hg)
+	local anyHeadMesh = false
+	for _, g in ipairs(hg) do
+		if g.shape == "Head" then
+			anyHeadMesh = true
+		end
+	end
+	check("headgear: no part carries the Head mesh", not anyHeadMesh)
+	local br, top, back = hg.HGBrow, hg.HGTop, hg.HGShell
+	-- the brow roll's rim on the forehead (z = -0.5): y = cy - hy sqrt(1 - ((0.5 + cz) / hz)^2)
+	local rim = br and (br.pos.Y - br.size.Y / 2 * math.sqrt(math.max(1 - ((-0.5 - br.pos.Z) / (br.size.Z / 2)) ^ 2, 0)))
+	check("headgear: the brow roll is a flat ring, 0.05 .. 0.12 proud of the forehead, its rim 0.03 .. 0.08 above HEADGEAR_OPENING.top",
+		br and br.shape == "Sphere" and br.size.X > 1.1 and br.size.Y < 0.2 and -(br.pos.Z - br.size.Z / 2) - 0.5 > 0.05 and -(br.pos.Z - br.size.Z / 2) - 0.5 < 0.12
+		and rim and rim > O.top + 0.03 and rim < O.top + 0.08, br and string.format("front %.3f rim %.3f", -(br.pos.Z - br.size.Z / 2), rim))
+	check("headgear: the crown cap over the top (0.08 .. 0.15 above it), 0.03 .. 0.1 off the sides, its front flush with the forehead or behind it",
+		top and top.shape == "Sphere" and top.pos.Y + top.size.Y / 2 > 0.58 and top.pos.Y + top.size.Y / 2 < 0.65 and top.size.X / 2 > 0.53 and top.size.X / 2 < 0.6
+		and top.pos.Z - top.size.Z / 2 >= -0.5 - 1e-3, top and string.format("top %.3f half-width %.3f front %.3f", top.pos.Y + top.size.Y / 2, top.size.X / 2, top.pos.Z - top.size.Z / 2))
+	check("headgear: the back shell behind the ears (front edge z > -0.3), 0.08 .. 0.2 proud of the back, over the sides",
+		back and back.shape == "Sphere" and back.pos.Z - back.size.Z / 2 > -0.3 and back.pos.Z + back.size.Z / 2 > 0.58 and back.pos.Z + back.size.Z / 2 < 0.7
+		and back.size.X / 2 > 0.55, back and string.format("front %.3f back %.3f", back.pos.Z - back.size.Z / 2, back.pos.Z + back.size.Z / 2))
+	for _, g in ipairs(hg) do
+		if g.name == "HGCheek" then
+			check("headgear: a cheek roll upright beside the face, outside the eyes (|x| >= 0.36), never across it (z >= -0.32), from the brow roll to under the jaw",
+				g.shape == "Sphere" and math.abs(g.pos.X) - g.size.X / 2 >= 0.36 and g.pos.Z - g.size.Z / 2 >= -0.32 and g.pos.Y + g.size.Y / 2 > 0.24 and g.pos.Y - g.size.Y / 2 < -0.4,
+				string.format("x %.3f z %.3f y %.3f..%.3f", math.abs(g.pos.X) - g.size.X / 2, g.pos.Z - g.size.Z / 2, g.pos.Y - g.size.Y / 2, g.pos.Y + g.size.Y / 2))
+		elseif g.name == "HGSide" then
+			check("headgear: an ear pad flush on the side wall (sunk 0.03 .. 0.1, 0.05 .. 0.15 proud), round the ear",
+				g.shape == "Sphere" and math.abs(g.pos.X) - g.size.X / 2 > 0.4 and math.abs(g.pos.X) - g.size.X / 2 < 0.47 and math.abs(g.pos.X) + g.size.X / 2 > 0.55
+				and math.abs(g.pos.X) + g.size.X / 2 < 0.65 and math.abs(g.pos.Y) < 0.1 and math.abs(g.pos.Z) < 0.1,
+				string.format("x %.3f..%.3f", math.abs(g.pos.X) - g.size.X / 2, math.abs(g.pos.X) + g.size.X / 2))
+		elseif g.name == "HGEarHole" then
+			check("headgear: an ear hole on the ear pad's outer face, dark", math.abs(g.pos.X) > 0.57 and g.part.Color.R < back.part.Color.R + 1e-3 and g.size.Y > 0.1)
+		elseif g.name == "HGStrap" then
+			local tip = g.pos + g.cf.LookVector * (g.size.Z / 2)
+			local tail = g.pos - g.cf.LookVector * (g.size.Z / 2)
+			check("headgear: a chin strap from under the ear pad to under the chin (|x| < 0.1, y < -0.5)", g.shape == "Block" and math.abs(tip.X) < 0.1 and tip.Y < -0.5
+				and math.abs(tail.X) > 0.45 and tail.Y < -0.2, string.format("tip (%.2f %.2f %.2f) tail (%.2f %.2f %.2f)", tip.X, tip.Y, tip.Z, tail.X, tail.Y, tail.Z))
+		end
+	end
+	-- nothing visible in front of the face: every part's volume sampled (as lowest() above) for points in front of
+	-- the head (z < -0.35) with |x| < 0.36 between the chin and the brow line
+	local function frontHits(parts, hs, head)
+		local L = Head.FaceLayout(head, {})
+		local hits = {}
+		for _, g in ipairs(parts) do
+			local sz = g.part.Size
+			for i = -5, 5 do
+				for j = -5, 5 do
+					for k = -5, 5 do
+						local q = Vector3.new(i / 10, j / 10, k / 10)
+						local inside = (g.shape == "Sphere" and q.Magnitude <= 0.5) or (g.shape == "Cylinder" and q.Y * q.Y + q.Z * q.Z <= 0.25) or (g.shape == "Block")
+						if inside then
+							local hp = head.CFrame:PointToObjectSpace(g.part.CFrame * Vector3.new(q.X * sz.X, q.Y * sz.Y, q.Z * sz.Z)) / hs
+							if hp.Z < -0.35 and math.abs(hp.X) < 0.36 and hp.Y > -0.45 and hp.Y < O.top and L.outside(hp * hs) > 0.002 then
+								hits[g.name] = true
+							end
+						end
+					end
+				end
+			end
+		end
+		local out = {}
+		for n in pairs(hits) do
+			out[#out + 1] = n
+		end
+		return out
+	end
+	local fh = frontHits(hg, _, bhead)
+	check("headgear (full): nothing in front of the face below the brow line", #fh == 0, table.concat(fh, ","))
+	for _, det in ipairs({ "medium", "low" }) do
+		local dm = newRig(Vector3.new(1, 1, 1))
+		pcall(Builder.Cosmetics, dm, Looks.Defaults(1), buildOf(40), nil, { hands = "gloves", detail = det })
+		local dg, dhs, dhead = geom(dm, "Headgear")
+		flags("headgear " .. det, dg, dhead)
+		local hm = false
+		for _, g in ipairs(dg) do
+			if g.shape == "Head" then
+				hm = true
+			end
+		end
+		local dfh = frontHits(dg, dhs, dhead)
+		check("headgear (" .. det .. "): the set, no Head mesh, nothing in front of the face", #dg == Head.HEADGEAR_PARTS[det] and not hm and #dfh == 0 and dg.HGBrow and dg.HGTop and dg.HGShell,
+			#dg .. " " .. table.concat(dfh, ","))
+		dm:Destroy()
+	end
 	for _, m in ipairs({ model, coach, bm }) do
 		m:Destroy()
 	end

@@ -2,7 +2,7 @@
 
     /opt/bpyenv/bin/python tools/sim/v9_referee_render.py SCENE_DIR OUT_DIR [--tag before] [--only id,id]
                                                           [--samples N] [--views front,34,side,back] [--ring 1]
-                                                          [--closeups 1] [--heads 0|1|2]
+                                                          [--closeups 1] [--heads 0|1|2] [--boxhead 0|1]
 
 Per shot: the official in front / 3/4 / side (and back) views framed on him, the two boxers behind him for scale, in a
 simple ring (canvas, corner posts, three ropes; half 12); a sheet <tag>_<shot>.jpg. Then <tag>_closeup.jpg: the stance shots'
@@ -174,6 +174,9 @@ if __name__ == "__main__":
     samples = int(opts.get("--samples", 24))
     views = opts.get("--views", "front,34,side,back").split(",")
     with_ring = opts.get("--ring", "1") != "0"
+    # --boxhead 1: the heads drawn as plain rounded boxes (the engine's default head: the worst case for the gear)
+    if opts.get("--boxhead", "0") != "0":
+        v8.HEAD_MODEL = "box"
     shots = []
     for s in idx["shots"]:
         if only and s["id"] not in only:
