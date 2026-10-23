@@ -74,6 +74,17 @@ do
 end
 local FightAI = require(script.Parent.FightAI)
 local Career = require(script.Parent.Career)
+-- the physics under a knockdown (server Ragdoll: hold the root, release the limbs after an out-cold KO):
+-- optional, and loaded here with the module rather than at the knockdown (a require inside the fight's task
+-- threads suspends the knockdown under the simulator's host)
+local RagdollS
+do
+	local node = script.Parent:FindFirstChild("Ragdoll")
+	if node then
+		local okR, modR = pcall(require, node)
+		RagdollS = okR and type(modR) == "table" and modR or nil
+	end
+end
 -- [Entrance] the ring-walk cinematic's beats (RingWalk + Shared.Entrance): optional, the old walkout runs without it
 local RingWalk
 do
@@ -2797,12 +2808,6 @@ function Fight:Knockdown(F, by, severity, fall, cause)
 	-- get-up, the end of the fight, Cleanup), so the body the Animator lays on the canvas never slides or floats.
 	-- The walk into the ropes / the corner below still moves it (CFrame shifts). Optional: the round-1 physics
 	-- when the module is missing
-	local RagdollS
-	do
-		local node = script.Parent:FindFirstChild("Ragdoll")
-		local okR, modR = pcall(require, node)
-		RagdollS = okR and type(modR) == "table" and modR or nil
-	end
 	if RagdollS then
 		pcall(RagdollS.Hold, F.model, F.hum, F.root)
 	end
@@ -4878,10 +4883,10 @@ function Fight:Ceremony(spec)
 			setPose(P.model, "cerCelebrate")
 		end },
 	}
-	local t0 = os.clock()
+	local t0 = self:Now()
 	local nextBeat = 1
-	while os.clock() - t0 < B.dur and not self.ceremonySkip and not self.aborted and P.model.Parent and (not self.player or self.player.Parent) do
-		local t = os.clock() - t0
+	while self:Now() - t0 < B.dur and not self.ceremonySkip and not self.aborted and P.model.Parent and (not self.player or self.player.Parent) do
+		local t = self:Now() - t0
 		while plan[nextBeat] and t >= plan[nextBeat][1] do
 			pcall(plan[nextBeat][2])
 			nextBeat += 1

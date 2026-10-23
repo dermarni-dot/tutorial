@@ -231,12 +231,17 @@ function PostFight.Run(fight, res, opts)
 	end
 
 	local dur = math.min(B.maxDur, script_.dur + (title and B.titleHold or B.hold))
-	local t0 = os.clock()
+	-- the fight's clock (os.clock in the game; the simulator's fake clock under lune, where a real-time wait
+	-- would spin for the whole scene on every simulated bout)
+	local now = function()
+		return fight.Now and fight:Now() or os.clock()
+	end
+	local t0 = now()
 	local function alive()
 		return not fight.aborted and P.model.Parent and (not fight.player or fight.player.Parent)
 	end
-	while os.clock() - t0 < dur and not fight.ceremonySkip and alive() do
-		local t = os.clock() - t0
+	while now() - t0 < dur and not fight.ceremonySkip and alive() do
+		local t = now() - t0
 		if t >= script_.raiseAt then
 			raise()
 		end
