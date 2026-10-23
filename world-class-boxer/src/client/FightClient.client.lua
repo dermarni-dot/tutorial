@@ -2813,9 +2813,8 @@ local function setRagdoll(on)
 				end
 			end
 			if hum then
-				-- back to the default (the server may already have replicated false before the kd message,
-				-- so the value seen when the ragdoll started is not a reliable "previous" value)
-				hum.RequiresNeck = true
+				-- [Studio] RequiresNeck stays off (Builder.hardenHumanoid): a rig with no Neck joint must never die
+				hum.RequiresNeck = false
 			end
 			for _, inst in ipairs(r.made) do
 				inst:Destroy()

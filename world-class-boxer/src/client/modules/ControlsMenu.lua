@@ -557,6 +557,7 @@ local function remapTab(dev)
 					local btn = UI.Button(caps, text, { Name = "Cap" .. slot, Size = UDim2.fromOffset(0, capH), AutomaticSize = Enum.AutomaticSize.X, TextSize = 12, LayoutOrder = slot,
 						BackgroundColor3 = T.panel2 })
 					UI.Pad(btn, 0, math.max(10, math.floor(capH / 2.4)))
+					UI.New("UISizeConstraint", { MinSize = Vector2.new(capH, capH), Parent = btn })
 					btn.TextColor3 = clash[a.id] and T.red or Color3.new(1, 1, 1)
 					btn.MouseButton1Click:Connect(function()
 						beginCapture(a.id, dev, slot, btn, btn)

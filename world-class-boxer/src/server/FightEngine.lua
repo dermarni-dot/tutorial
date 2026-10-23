@@ -5223,10 +5223,12 @@ function Fight:RestorePlayer(P)
 	if P.hum and P.neckOff then
 		-- FightClient re-enables the rig 2.2 s after "final"; Cleanup runs 3 s after it, so wait a little longer
 		-- before the neck is required again (a slow client would otherwise die on the spot)
+		-- [Studio] RequiresNeck stays off for good: a missing Neck (a head swap under the Avatar Joint Upgrade)
+		-- would otherwise kill the Humanoid and BreakJointsOnDeath strip the gear (Builder.hardenHumanoid)
 		local hum = P.hum
 		task.delay(4, function()
 			if hum.Parent then
-				hum.RequiresNeck = true
+				hum.RequiresNeck = false
 			end
 		end)
 	end
