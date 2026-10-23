@@ -3171,7 +3171,7 @@ function Training.DrillPlan(act, lv, params)
 			table.insert(pool, { "jab", "overhand", "leadhook*" })
 			table.insert(pool, { "leadhook*", "leadhook", "cross", "uppercut" })
 		end
-		local beat = tw(0.45, 0.32)
+		local beat = tw(0.42, 0.3)
 		for k = 1, 4 do
 			local combo = pick(pool)
 			local ids, body = {}, {}

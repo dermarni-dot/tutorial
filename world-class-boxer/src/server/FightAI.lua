@@ -272,8 +272,12 @@ function FightAI:OnOppMiss(ptype, why)
 	if F.state == "down" or F.state == "clinch" or engine.finished then
 		return
 	end
+	-- (a punch that fell short was thrown from out of reach: he is not open to anything from there)
+	if why == "short" or why == "high" or why == "low" then
+		return
+	end
 	local kind = Config.Punches[ptype] and Config.Punches[ptype].kind or "straight"
-	local chance = (0.25 + 0.5 * self.skill) * self.tier.read * (kind == "straight" and 0.7 or 1) * (engine.aiWork or 1)
+	local chance = (0.12 + 0.3 * self.skill) * self.tier.read * (kind == "straight" and 0.6 or 1) * (engine.aiWork or 1)
 	if self.rng:NextNumber() > chance then
 		return
 	end
@@ -1067,7 +1071,8 @@ function FightAI:Think(now)
 	end
 	local floorPPM = math.max(AIC.floorMin, self.tier.floor * (engine.aiWork or 1) * ((self.mode == "survive" or self.mode == "reset") and 0.4 or 1))
 	local gap = 60 / floorPPM
-	local overdue = self.reachableSince ~= nil and now - self.reachableSince > gap and now - self.lastThrowAt > gap and F.stamina >= 6
+	-- (the engine's lastPunch: every punch it threw counts, a special's and a buffered one too)
+	local overdue = self.reachableSince ~= nil and now - self.reachableSince > gap and now - math.max(self.lastThrowAt, F.lastPunch or -10) > gap and F.stamina >= 6
 	if fits then
 		if overdue or self.rng:NextNumber() < work then
 			self.queue = self:BuildCombo()
@@ -1285,7 +1290,7 @@ function FightAI:TrySpecial(now, dist)
 		return false
 	end
 	-- a tentative fighter keeps its specials for the right moment; an aggressive one throws them freely
-	local eager = (0.18 + self:Aggression() * 0.25 + (coming and 0.3 or 0)) * sparMul
+	local eager = (0.15 + self:Aggression() * 0.22 + (coming and 0.3 or 0)) * sparMul
 	if self.rng:NextNumber() > eager then
 		self.nextSpecial = now + 0.6
 		return false

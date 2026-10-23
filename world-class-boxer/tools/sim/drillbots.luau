@@ -361,8 +361,8 @@ end
 -- the plank on the ball: a look at the balance now and then, a shove back once it is clearly off
 A.wobble = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
-	if every(mem, "look", t, mix(sk, 0.05, 0.35)) then
-		local th = seg.band * mix(sk, 0.3, 0.6)
+	if every(mem, "look", t, mix(sk, 0.05, 0.5)) then
+		local th = seg.band * mix(sk, 0.3, 0.7)
 		if j.x > th then
 			tap(out, "L")
 		elseif j.x < -th then

@@ -1307,7 +1307,7 @@ function render()
 		titleLabel.Text = (kicker or narrow or stepKicker) and name or string.format("%d/%d  %s", cur, #PAGES, name)
 	end
 	if kicker then
-		kicker.Text = string.format("CREATE YOUR BOXER  ·  STEP %d OF %d", cur, #PAGES)
+		kicker.Text = string.format("STEP %d OF %d", cur, #PAGES)
 	end
 	if stepKicker then
 		stepKicker.Text = string.format("STEP %d OF %d", cur, #PAGES)
