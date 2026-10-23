@@ -18,7 +18,7 @@ end
 local STYLES = { "OutBoxer", "Swarmer", "Slugger", "BoxerPuncher", "CounterPuncher" }
 for _, lvl in ipairs(LV) do
 	for _, bot in ipairs(BOTS) do
-		local w, th, la, secs, ko = 0, 0, 0, 0, 0
+		local w, th, la, secs, ko, rnd = 0, 0, 0, 0, 0, 0
 		local bth, bla = 0, 0
 		for i = 1, N do
 			local r
@@ -29,9 +29,10 @@ for _, lvl in ipairs(LV) do
 			end
 			w += r.winner == "red" and 1 or (r.winner == "draw" and 0.5 or 0)
 			if r.method == "KO" or r.method == "TKO" or r.method == "RTD" then ko += 1 end
+			rnd += r.round
 			th += r.thrown.blue; la += r.landed.blue; secs += r.seconds
 			bth += r.thrown.red; bla += r.landed.red
 		end
-		print(string.format("L%2d %-9s red win %3d%% ko %3d%% | AI %5.1f/min acc %4.1f%% | red %5.1f/min acc %4.1f%%", lvl, bot, math.floor(w / N * 100 + 0.5), math.floor(ko / N * 100 + 0.5), th / secs * 60, la / math.max(1, th) * 100, bth / secs * 60, bla / math.max(1, bth) * 100))
+		print(string.format("L%2d %-9s red win %3d%% ko %3d%% r%.1f | AI %5.1f/min acc %4.1f%% | red %5.1f/min acc %4.1f%%", lvl, bot, math.floor(w / N * 100 + 0.5), math.floor(ko / N * 100 + 0.5), rnd / N, th / secs * 60, la / math.max(1, th) * 100, bth / secs * 60, bla / math.max(1, bth) * 100))
 	end
 end

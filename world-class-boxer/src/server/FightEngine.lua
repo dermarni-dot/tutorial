@@ -581,7 +581,7 @@ end
 local POSE_KEEP, POSE_INTERP, LAG_MAX, LAG_TOL, VIEW_MAX = 1.5, 0.1, 0.3, 0.35, 0.25
 -- the end of the reach (Fight:Resolve): the last STRETCH share of a punch's reach is a glancing shot, its hit
 -- chance down to STRETCH_HIT[1] of itself and its damage to STRETCH_DMG[1] at the very edge
-local STRETCH, STRETCH_HIT, STRETCH_DMG = 0.3, { 0.5 }, { 0.55 }
+local STRETCH, STRETCH_HIT, STRETCH_DMG = 0.35, { 0.4 }, { 0.45 }
 FightEngine.STRETCH = { share = STRETCH, hit = STRETCH_HIT[1], dmg = STRETCH_DMG[1] }
 FightEngine.LAG_TOL = LAG_TOL
 local function serverTime()

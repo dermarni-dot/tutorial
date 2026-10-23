@@ -20,6 +20,8 @@ Fight.HitTest = function(self, F, O, p, body, dist, ...)
 		st.n += 1; st.dist += dist
 		if h.ok then
 			st.ok += 1
+			st[h.zone .. (h.redirected and "R" or "")] = (st[h.zone .. (h.redirected and "R" or "")] or 0) + 1
+			st[p] = (st[p] or 0) + 1
 			if type(h.margin) == "number" and type(h.reach) == "number" and h.reach > 0 then
 				st.stretchSum += 1 - math.clamp(h.margin / (0.18 * h.reach), 0, 1)
 			end
@@ -43,4 +45,5 @@ for i = 1, 16 do
 end
 local t = {}
 for k, v in pairs(miss) do table.insert(t, k .. " " .. v) end
+print(string.format("hits head %d body %d redirected %d | jab %d cross %d lhook %d rhook %d upper %d over %d", st.head or 0, st.body or 0, st.bodyR or 0, st.jab or 0, st.cross or 0, st.leadhook or 0, st.rearhook or 0, st.uppercut or 0, st.overhand or 0))
 print(string.format("resolves %d: geometry ok %.0f%%, avg dist %.2f, avg stretch of hits %.2f | misses %s | AI blocking %.0f%% of time", st.n, st.ok / st.n * 100, st.dist / st.n, st.stretchSum / math.max(1, st.ok), table.concat(t, ", "), blockedT / n * 100))

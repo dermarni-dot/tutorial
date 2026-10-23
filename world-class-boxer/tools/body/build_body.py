@@ -43,7 +43,7 @@ landmarks (knuckles, ankle bones, kneecap) stay small local bumps (bell).
 The height (v13): the frame changes the build, not the height. Each frame's unit (frames[id].unit: neckHeight, head,
 standingHeight) lets Builder.Scales normalise the HeightScale so every frame stands the chosen inches; the skeletons
 are solved so the HipHeight matches too (FRAMES skel). The neck column ends inside the frame's own head (FRAMES head,
-neck, neck_s; NECK_TOP), the lofts are finer (22,320 tris per body) and the sheets (Stage.figure) show the frames as
+neck, neck_s; NECK_TOP), the lofts are finer (24,432 tris per body) and the sheets (Stage.figure) show the frames as
 the game builds them, normalised: height_norm.
 
 Frames: the FRAMES table. The silhouette lives in the base profiles (the ribcage's width and depth, the shoulder
@@ -1206,7 +1206,7 @@ def upper_arm(tr, fr):
     ]
     m = tr["m"]
     return loft(sec, m, YE, YS_PIVOT, (dome_r("UpperArm", sec, YE, m), 1.0, 2, 0.97),
-                (dome_r("UpperArm", sec, YS_PIVOT, m, L), 1.0, 4), nb=20, nseg=32, frame=VERT(X), lobes=L)
+                (dome_r("UpperArm", sec, YS_PIVOT, m, L), 1.0, 8), nb=24, nseg=40, frame=VERT(X), lobes=L)  # (v13: a round delt cap)
 
 
 def lower_arm(tr, fr):

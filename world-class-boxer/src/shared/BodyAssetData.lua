@@ -319,7 +319,7 @@ return {
 						},
 						upperArm = {
 							depth = 0.633,
-							girth = 1.942,
+							girth = 1.943,
 							width = 0.589,
 							y = 4.385,
 						},
@@ -377,12 +377,12 @@ return {
 						LeftUpperArm = {
 							attachments = {
 								LeftElbowRigAttachment = { -0.0079, -0.4841, 0.0084 },
-								LeftShoulderAttachment = { -0.0079, 0.7117, 0.0084 },
+								LeftShoulderAttachment = { -0.0079, 0.7143, 0.0084 },
 								LeftShoulderRigAttachment = { -0.0079, 0.4155, 0.0084 },
 							},
-							mesh = 72556577682665,
-							nt = 1664,
-							size = { 0.7196, 1.4335, 0.7219 },
+							mesh = 105415618711991,
+							nt = 2720,
+							size = { 0.7196, 1.4335, 0.722 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -446,12 +446,12 @@ return {
 						RightUpperArm = {
 							attachments = {
 								RightElbowRigAttachment = { 0.0079, -0.4841, 0.0084 },
-								RightShoulderAttachment = { 0.0079, 0.7117, 0.0084 },
+								RightShoulderAttachment = { 0.0079, 0.7143, 0.0084 },
 								RightShoulderRigAttachment = { 0.0079, 0.4155, 0.0084 },
 							},
-							mesh = 101257834549708,
-							nt = 1664,
-							size = { 0.7196, 1.4335, 0.7219 },
+							mesh = 100726759442822,
+							nt = 2720,
+							size = { 0.7196, 1.4335, 0.722 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -479,7 +479,7 @@ return {
 							size = { 1.7369, 2.4858, 1.0093 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 				{
 					armAxisX = 1.0919,
@@ -527,7 +527,7 @@ return {
 							width = 0.857,
 							y = 5.278,
 						},
-						shoulderSpan = 2.96,
+						shoulderSpan = 2.959,
 						thigh = {
 							depth = 0.715,
 							girth = 2.183,
@@ -535,8 +535,8 @@ return {
 							y = 2.154,
 						},
 						upperArm = {
-							depth = 0.671,
-							girth = 2.036,
+							depth = 0.67,
+							girth = 2.037,
 							width = 0.608,
 							y = 4.385,
 						},
@@ -593,13 +593,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { -0.0004, -0.4914, 0.0118 },
-								LeftShoulderAttachment = { -0.0004, 0.7235, 0.0118 },
-								LeftShoulderRigAttachment = { -0.0004, 0.4082, 0.0118 },
+								LeftElbowRigAttachment = { -0.0005, -0.4914, 0.0118 },
+								LeftShoulderAttachment = { -0.0005, 0.726, 0.0118 },
+								LeftShoulderRigAttachment = { -0.0005, 0.4082, 0.0118 },
 							},
-							mesh = 86217815453804,
-							nt = 1664,
-							size = { 0.7767, 1.4571, 0.7616 },
+							mesh = 121527233671086,
+							nt = 2720,
+							size = { 0.7765, 1.4571, 0.7615 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -662,13 +662,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { 0.0004, -0.4914, 0.0118 },
-								RightShoulderAttachment = { 0.0004, 0.7235, 0.0118 },
-								RightShoulderRigAttachment = { 0.0004, 0.4082, 0.0118 },
+								RightElbowRigAttachment = { 0.0005, -0.4914, 0.0118 },
+								RightShoulderAttachment = { 0.0005, 0.726, 0.0118 },
+								RightShoulderRigAttachment = { 0.0005, 0.4082, 0.0118 },
 							},
-							mesh = 115435908317963,
-							nt = 1664,
-							size = { 0.7767, 1.4571, 0.7616 },
+							mesh = 124862621793590,
+							nt = 2720,
+							size = { 0.7765, 1.4571, 0.7615 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -696,7 +696,7 @@ return {
 							size = { 1.7606, 2.4858, 1.0206 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 				{
 					armAxisX = 1.1142,
@@ -744,7 +744,7 @@ return {
 							width = 0.86,
 							y = 5.278,
 						},
-						shoulderSpan = 3.075,
+						shoulderSpan = 3.077,
 						thigh = {
 							depth = 0.748,
 							girth = 2.259,
@@ -752,8 +752,8 @@ return {
 							y = 2.154,
 						},
 						upperArm = {
-							depth = 0.71,
-							girth = 2.134,
+							depth = 0.709,
+							girth = 2.135,
 							width = 0.625,
 							y = 4.385,
 						},
@@ -810,13 +810,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { 0.007, -0.4986, 0.0153 },
-								LeftShoulderAttachment = { 0.007, 0.7351, 0.0153 },
-								LeftShoulderRigAttachment = { 0.007, 0.401, 0.0153 },
+								LeftElbowRigAttachment = { 0.0075, -0.4986, 0.0151 },
+								LeftShoulderAttachment = { 0.0075, 0.7377, 0.0151 },
+								LeftShoulderRigAttachment = { 0.0075, 0.401, 0.0151 },
 							},
-							mesh = 93105139810620,
-							nt = 1664,
-							size = { 0.8331, 1.4804, 0.8008 },
+							mesh = 119639182779787,
+							nt = 2720,
+							size = { 0.8339, 1.4804, 0.8013 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -879,13 +879,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { -0.007, -0.4986, 0.0153 },
-								RightShoulderAttachment = { -0.007, 0.7351, 0.0153 },
-								RightShoulderRigAttachment = { -0.007, 0.401, 0.0153 },
+								RightElbowRigAttachment = { -0.0075, -0.4986, 0.0151 },
+								RightShoulderAttachment = { -0.0075, 0.7377, 0.0151 },
+								RightShoulderRigAttachment = { -0.0075, 0.401, 0.0151 },
 							},
-							mesh = 96299186399673,
-							nt = 1664,
-							size = { 0.8331, 1.4804, 0.8008 },
+							mesh = 103846230599507,
+							nt = 2720,
+							size = { 0.8339, 1.4804, 0.8013 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -913,7 +913,7 @@ return {
 							size = { 1.7841, 2.4858, 1.0644 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 				{
 					armAxisX = 1.1352,
@@ -961,7 +961,7 @@ return {
 							width = 0.863,
 							y = 5.278,
 						},
-						shoulderSpan = 3.188,
+						shoulderSpan = 3.191,
 						thigh = {
 							depth = 0.782,
 							girth = 2.335,
@@ -969,8 +969,8 @@ return {
 							y = 2.154,
 						},
 						upperArm = {
-							depth = 0.749,
-							girth = 2.233,
+							depth = 0.753,
+							girth = 2.234,
 							width = 0.642,
 							y = 4.385,
 						},
@@ -1027,13 +1027,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { 0.0145, -0.5057, 0.0182 },
-								LeftShoulderAttachment = { 0.0145, 0.7467, 0.0182 },
-								LeftShoulderRigAttachment = { 0.0145, 0.3938, 0.0182 },
+								LeftElbowRigAttachment = { 0.0152, -0.5057, 0.0184 },
+								LeftShoulderAttachment = { 0.0152, 0.7492, 0.0184 },
+								LeftShoulderRigAttachment = { 0.0152, 0.3938, 0.0184 },
 							},
-							mesh = 123708980550744,
-							nt = 1664,
-							size = { 0.889, 1.5035, 0.8407 },
+							mesh = 84683488487591,
+							nt = 2720,
+							size = { 0.8905, 1.5035, 0.8415 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -1096,13 +1096,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { -0.0145, -0.5057, 0.0182 },
-								RightShoulderAttachment = { -0.0145, 0.7467, 0.0182 },
-								RightShoulderRigAttachment = { -0.0145, 0.3938, 0.0182 },
+								RightElbowRigAttachment = { -0.0152, -0.5057, 0.0184 },
+								RightShoulderAttachment = { -0.0152, 0.7492, 0.0184 },
+								RightShoulderRigAttachment = { -0.0152, 0.3938, 0.0184 },
 							},
-							mesh = 103817304896830,
-							nt = 1664,
-							size = { 0.889, 1.5035, 0.8407 },
+							mesh = 109463046332625,
+							nt = 2720,
+							size = { 0.8905, 1.5035, 0.8415 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -1130,7 +1130,7 @@ return {
 							size = { 1.8074, 2.4858, 1.1254 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 				{
 					armAxisX = 1.155,
@@ -1178,7 +1178,7 @@ return {
 							width = 0.866,
 							y = 5.278,
 						},
-						shoulderSpan = 3.3,
+						shoulderSpan = 3.302,
 						thigh = {
 							depth = 0.814,
 							girth = 2.412,
@@ -1186,8 +1186,8 @@ return {
 							y = 2.154,
 						},
 						upperArm = {
-							depth = 0.79,
-							girth = 2.331,
+							depth = 0.795,
+							girth = 2.332,
 							width = 0.657,
 							y = 4.385,
 						},
@@ -1244,13 +1244,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { 0.0223, -0.5128, 0.0211 },
-								LeftShoulderAttachment = { 0.0223, 0.7581, 0.0211 },
-								LeftShoulderRigAttachment = { 0.0223, 0.3868, 0.0211 },
+								LeftElbowRigAttachment = { 0.0228, -0.5128, 0.0216 },
+								LeftShoulderAttachment = { 0.0228, 0.7607, 0.0216 },
+								LeftShoulderRigAttachment = { 0.0228, 0.3868, 0.0216 },
 							},
-							mesh = 139929694282377,
-							nt = 1664,
-							size = { 0.9453, 1.5264, 0.8804 },
+							mesh = 104784029916634,
+							nt = 2720,
+							size = { 0.9462, 1.5264, 0.8813 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -1313,13 +1313,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { -0.0223, -0.5128, 0.0211 },
-								RightShoulderAttachment = { -0.0223, 0.7581, 0.0211 },
-								RightShoulderRigAttachment = { -0.0223, 0.3868, 0.0211 },
+								RightElbowRigAttachment = { -0.0228, -0.5128, 0.0216 },
+								RightShoulderAttachment = { -0.0228, 0.7607, 0.0216 },
+								RightShoulderRigAttachment = { -0.0228, 0.3868, 0.0216 },
 							},
-							mesh = 70751028730954,
-							nt = 1664,
-							size = { 0.9453, 1.5264, 0.8804 },
+							mesh = 92834344080494,
+							nt = 2720,
+							size = { 0.9462, 1.5264, 0.8813 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -1347,7 +1347,7 @@ return {
 							size = { 1.8304, 2.4858, 1.1859 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 			},
 			unit = {
@@ -1441,7 +1441,7 @@ return {
 						},
 						upperArm = {
 							depth = 0.492,
-							girth = 1.509,
+							girth = 1.51,
 							width = 0.459,
 							y = 4.412,
 						},
@@ -1498,13 +1498,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { -0.0102, -0.4927, 0.0054 },
-								LeftShoulderAttachment = { -0.0102, 0.7297, 0.0054 },
-								LeftShoulderRigAttachment = { -0.0102, 0.4435, 0.0054 },
+								LeftElbowRigAttachment = { -0.0103, -0.4927, 0.0053 },
+								LeftShoulderAttachment = { -0.0103, 0.7324, 0.0053 },
+								LeftShoulderRigAttachment = { -0.0103, 0.4435, 0.0053 },
 							},
-							mesh = 74690910154212,
-							nt = 1664,
-							size = { 0.5564, 1.4699, 0.5604 },
+							mesh = 111712071754288,
+							nt = 2720,
+							size = { 0.5564, 1.4699, 0.5603 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -1567,13 +1567,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { 0.0102, -0.4927, 0.0054 },
-								RightShoulderAttachment = { 0.0102, 0.7297, 0.0054 },
-								RightShoulderRigAttachment = { 0.0102, 0.4435, 0.0054 },
+								RightElbowRigAttachment = { 0.0103, -0.4927, 0.0053 },
+								RightShoulderAttachment = { 0.0103, 0.7324, 0.0053 },
+								RightShoulderRigAttachment = { 0.0103, 0.4435, 0.0053 },
 							},
-							mesh = 92682887400319,
-							nt = 1664,
-							size = { 0.5564, 1.4699, 0.5604 },
+							mesh = 70388886588158,
+							nt = 2720,
+							size = { 0.5564, 1.4699, 0.5603 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -1601,7 +1601,7 @@ return {
 							size = { 1.421, 2.5604, 0.7399 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 				{
 					armAxisX = 0.8739,
@@ -1658,7 +1658,7 @@ return {
 						},
 						upperArm = {
 							depth = 0.519,
-							girth = 1.581,
+							girth = 1.582,
 							width = 0.473,
 							y = 4.412,
 						},
@@ -1716,12 +1716,12 @@ return {
 						LeftUpperArm = {
 							attachments = {
 								LeftElbowRigAttachment = { -0.0049, -0.4995, 0.0076 },
-								LeftShoulderAttachment = { -0.0049, 0.7411, 0.0076 },
+								LeftShoulderAttachment = { -0.0049, 0.7437, 0.0076 },
 								LeftShoulderRigAttachment = { -0.0049, 0.4368, 0.0076 },
 							},
-							mesh = 76444439688319,
-							nt = 1664,
-							size = { 0.5999, 1.4927, 0.5903 },
+							mesh = 122599324412228,
+							nt = 2720,
+							size = { 0.5999, 1.4927, 0.5902 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -1785,12 +1785,12 @@ return {
 						RightUpperArm = {
 							attachments = {
 								RightElbowRigAttachment = { 0.0049, -0.4995, 0.0076 },
-								RightShoulderAttachment = { 0.0049, 0.7411, 0.0076 },
+								RightShoulderAttachment = { 0.0049, 0.7437, 0.0076 },
 								RightShoulderRigAttachment = { 0.0049, 0.4368, 0.0076 },
 							},
-							mesh = 131816850113362,
-							nt = 1664,
-							size = { 0.5999, 1.4927, 0.5903 },
+							mesh = 109298562145665,
+							nt = 2720,
+							size = { 0.5999, 1.4927, 0.5902 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -1818,7 +1818,7 @@ return {
 							size = { 1.437, 2.5604, 0.7757 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 				{
 					armAxisX = 0.8915,
@@ -1866,7 +1866,7 @@ return {
 							width = 0.627,
 							y = 5.339,
 						},
-						shoulderSpan = 2.427,
+						shoulderSpan = 2.428,
 						thigh = {
 							depth = 0.608,
 							girth = 1.796,
@@ -1874,8 +1874,8 @@ return {
 							y = 2.148,
 						},
 						upperArm = {
-							depth = 0.55,
-							girth = 1.658,
+							depth = 0.551,
+							girth = 1.659,
 							width = 0.487,
 							y = 4.412,
 						},
@@ -1932,13 +1932,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { 0.0004, -0.5061, 0.0099 },
-								LeftShoulderAttachment = { 0.0004, 0.7524, 0.0099 },
-								LeftShoulderRigAttachment = { 0.0004, 0.4302, 0.0099 },
+								LeftElbowRigAttachment = { 0.0008, -0.5061, 0.0098 },
+								LeftShoulderAttachment = { 0.0008, 0.755, 0.0098 },
+								LeftShoulderRigAttachment = { 0.0008, 0.4302, 0.0098 },
 							},
-							mesh = 103041101214483,
-							nt = 1664,
-							size = { 0.6428, 1.5152, 0.6199 },
+							mesh = 134780136187436,
+							nt = 2720,
+							size = { 0.6437, 1.5152, 0.6198 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -2001,13 +2001,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { -0.0004, -0.5061, 0.0099 },
-								RightShoulderAttachment = { -0.0004, 0.7524, 0.0099 },
-								RightShoulderRigAttachment = { -0.0004, 0.4302, 0.0099 },
+								RightElbowRigAttachment = { -0.0008, -0.5061, 0.0098 },
+								RightShoulderAttachment = { -0.0008, 0.755, 0.0098 },
+								RightShoulderRigAttachment = { -0.0008, 0.4302, 0.0098 },
 							},
-							mesh = 98142571789533,
-							nt = 1664,
-							size = { 0.6428, 1.5152, 0.6199 },
+							mesh = 139035192075238,
+							nt = 2720,
+							size = { 0.6437, 1.5152, 0.6198 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -2035,7 +2035,7 @@ return {
 							size = { 1.4527, 2.5604, 0.8136 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 				{
 					armAxisX = 0.9083,
@@ -2083,7 +2083,7 @@ return {
 							width = 0.635,
 							y = 5.339,
 						},
-						shoulderSpan = 2.513,
+						shoulderSpan = 2.515,
 						thigh = {
 							depth = 0.636,
 							girth = 1.859,
@@ -2091,8 +2091,8 @@ return {
 							y = 2.148,
 						},
 						upperArm = {
-							depth = 0.578,
-							girth = 1.73,
+							depth = 0.583,
+							girth = 1.731,
 							width = 0.5,
 							y = 4.412,
 						},
@@ -2149,13 +2149,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { 0.0057, -0.5127, 0.0121 },
-								LeftShoulderAttachment = { 0.0057, 0.7635, 0.0121 },
-								LeftShoulderRigAttachment = { 0.0057, 0.4236, 0.0121 },
+								LeftElbowRigAttachment = { 0.0061, -0.5127, 0.012 },
+								LeftShoulderAttachment = { 0.0061, 0.7662, 0.012 },
+								LeftShoulderRigAttachment = { 0.0061, 0.4236, 0.012 },
 							},
-							mesh = 107366421239911,
-							nt = 1664,
-							size = { 0.6855, 1.5376, 0.6491 },
+							mesh = 123939549550156,
+							nt = 2720,
+							size = { 0.6862, 1.5376, 0.6492 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -2218,13 +2218,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { -0.0057, -0.5127, 0.0121 },
-								RightShoulderAttachment = { -0.0057, 0.7635, 0.0121 },
-								RightShoulderRigAttachment = { -0.0057, 0.4236, 0.0121 },
+								RightElbowRigAttachment = { -0.0061, -0.5127, 0.012 },
+								RightShoulderAttachment = { -0.0061, 0.7662, 0.012 },
+								RightShoulderRigAttachment = { -0.0061, 0.4236, 0.012 },
 							},
-							mesh = 109077207966894,
-							nt = 1664,
-							size = { 0.6855, 1.5376, 0.6491 },
+							mesh = 93415557588165,
+							nt = 2720,
+							size = { 0.6862, 1.5376, 0.6492 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -2252,7 +2252,7 @@ return {
 							size = { 1.4683, 2.5604, 0.8497 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 				{
 					armAxisX = 0.924,
@@ -2308,8 +2308,8 @@ return {
 							y = 2.148,
 						},
 						upperArm = {
-							depth = 0.607,
-							girth = 1.8,
+							depth = 0.613,
+							girth = 1.801,
 							width = 0.512,
 							y = 4.412,
 						},
@@ -2366,13 +2366,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { 0.011, -0.5192, 0.0141 },
-								LeftShoulderAttachment = { 0.011, 0.7746, 0.0141 },
-								LeftShoulderRigAttachment = { 0.011, 0.4171, 0.0141 },
+								LeftElbowRigAttachment = { 0.0111, -0.5192, 0.0141 },
+								LeftShoulderAttachment = { 0.0111, 0.7772, 0.0141 },
+								LeftShoulderRigAttachment = { 0.0111, 0.4171, 0.0141 },
 							},
-							mesh = 73579189709096,
-							nt = 1664,
-							size = { 0.7277, 1.5596, 0.6785 },
+							mesh = 94069920729600,
+							nt = 2720,
+							size = { 0.7279, 1.5596, 0.6791 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -2435,13 +2435,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { -0.011, -0.5192, 0.0141 },
-								RightShoulderAttachment = { -0.011, 0.7746, 0.0141 },
-								RightShoulderRigAttachment = { -0.011, 0.4171, 0.0141 },
+								RightElbowRigAttachment = { -0.0111, -0.5192, 0.0141 },
+								RightShoulderAttachment = { -0.0111, 0.7772, 0.0141 },
+								RightShoulderRigAttachment = { -0.0111, 0.4171, 0.0141 },
 							},
-							mesh = 120469433427703,
-							nt = 1664,
-							size = { 0.7277, 1.5596, 0.6785 },
+							mesh = 108903306762411,
+							nt = 2720,
+							size = { 0.7279, 1.5596, 0.6791 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -2469,7 +2469,7 @@ return {
 							size = { 1.4872, 2.5604, 0.8854 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 			},
 			unit = {
@@ -2554,7 +2554,7 @@ return {
 							width = 0.744,
 							y = 5.259,
 						},
-						shoulderSpan = 2.913,
+						shoulderSpan = 2.912,
 						thigh = {
 							depth = 0.623,
 							girth = 1.925,
@@ -2562,8 +2562,8 @@ return {
 							y = 2.136,
 						},
 						upperArm = {
-							depth = 0.635,
-							girth = 1.947,
+							depth = 0.636,
+							girth = 1.948,
 							width = 0.589,
 							y = 4.353,
 						},
@@ -2620,13 +2620,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { -0.0014, -0.4955, 0.0123 },
-								LeftShoulderAttachment = { -0.0014, 0.7277, 0.0123 },
-								LeftShoulderRigAttachment = { -0.0014, 0.4224, 0.0123 },
+								LeftElbowRigAttachment = { -0.0015, -0.4955, 0.0125 },
+								LeftShoulderAttachment = { -0.0015, 0.7304, 0.0125 },
+								LeftShoulderRigAttachment = { -0.0015, 0.4224, 0.0125 },
 							},
-							mesh = 96491425740064,
-							nt = 1664,
-							size = { 0.7328, 1.4659, 0.7313 },
+							mesh = 105270314405103,
+							nt = 2720,
+							size = { 0.7326, 1.4659, 0.7317 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -2689,13 +2689,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { 0.0014, -0.4955, 0.0123 },
-								RightShoulderAttachment = { 0.0014, 0.7277, 0.0123 },
-								RightShoulderRigAttachment = { 0.0014, 0.4224, 0.0123 },
+								RightElbowRigAttachment = { 0.0015, -0.4955, 0.0125 },
+								RightShoulderAttachment = { 0.0015, 0.7304, 0.0125 },
+								RightShoulderRigAttachment = { 0.0015, 0.4224, 0.0125 },
 							},
-							mesh = 126747786165235,
-							nt = 1664,
-							size = { 0.7328, 1.4659, 0.7313 },
+							mesh = 87419751004584,
+							nt = 2720,
+							size = { 0.7326, 1.4659, 0.7317 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -2723,7 +2723,7 @@ return {
 							size = { 1.9054, 2.4858, 0.9437 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 				{
 					armAxisX = 1.1153,
@@ -2779,8 +2779,8 @@ return {
 							y = 2.136,
 						},
 						upperArm = {
-							depth = 0.683,
-							girth = 2.059,
+							depth = 0.681,
+							girth = 2.06,
 							width = 0.608,
 							y = 4.353,
 						},
@@ -2837,13 +2837,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { 0.0103, -0.5036, 0.0169 },
-								LeftShoulderAttachment = { 0.0103, 0.7404, 0.0169 },
-								LeftShoulderRigAttachment = { 0.0103, 0.4143, 0.0169 },
+								LeftElbowRigAttachment = { 0.0103, -0.5036, 0.0174 },
+								LeftShoulderAttachment = { 0.0103, 0.7431, 0.0174 },
+								LeftShoulderRigAttachment = { 0.0103, 0.4143, 0.0174 },
 							},
-							mesh = 139172735163179,
-							nt = 1664,
-							size = { 0.7982, 1.4913, 0.7755 },
+							mesh = 130681353391380,
+							nt = 2720,
+							size = { 0.7982, 1.4913, 0.7771 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -2906,13 +2906,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { -0.0103, -0.5036, 0.0169 },
-								RightShoulderAttachment = { -0.0103, 0.7404, 0.0169 },
-								RightShoulderRigAttachment = { -0.0103, 0.4143, 0.0169 },
+								RightElbowRigAttachment = { -0.0103, -0.5036, 0.0174 },
+								RightShoulderAttachment = { -0.0103, 0.7431, 0.0174 },
+								RightShoulderRigAttachment = { -0.0103, 0.4143, 0.0174 },
 							},
-							mesh = 129554800809886,
-							nt = 1664,
-							size = { 0.7982, 1.4913, 0.7755 },
+							mesh = 134115473491358,
+							nt = 2720,
+							size = { 0.7982, 1.4913, 0.7771 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -2940,7 +2940,7 @@ return {
 							size = { 1.9361, 2.4858, 1.014 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 				{
 					armAxisX = 1.1379,
@@ -2988,7 +2988,7 @@ return {
 							width = 0.763,
 							y = 5.259,
 						},
-						shoulderSpan = 3.182,
+						shoulderSpan = 3.185,
 						thigh = {
 							depth = 0.686,
 							girth = 2.067,
@@ -2996,8 +2996,8 @@ return {
 							y = 2.136,
 						},
 						upperArm = {
-							depth = 0.732,
-							girth = 2.18,
+							depth = 0.736,
+							girth = 2.181,
 							width = 0.625,
 							y = 4.353,
 						},
@@ -3054,13 +3054,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { 0.0218, -0.5117, 0.0212 },
-								LeftShoulderAttachment = { 0.0218, 0.753, 0.0212 },
-								LeftShoulderRigAttachment = { 0.0218, 0.4062, 0.0212 },
+								LeftElbowRigAttachment = { 0.0224, -0.5117, 0.0222 },
+								LeftShoulderAttachment = { 0.0224, 0.7557, 0.0222 },
+								LeftShoulderRigAttachment = { 0.0224, 0.4062, 0.0222 },
 							},
-							mesh = 99641618263127,
-							nt = 1664,
-							size = { 0.8627, 1.5165, 0.8214 },
+							mesh = 140524716742063,
+							nt = 2720,
+							size = { 0.864, 1.5165, 0.8228 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -3123,13 +3123,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { -0.0218, -0.5117, 0.0212 },
-								RightShoulderAttachment = { -0.0218, 0.753, 0.0212 },
-								RightShoulderRigAttachment = { -0.0218, 0.4062, 0.0212 },
+								RightElbowRigAttachment = { -0.0224, -0.5117, 0.0222 },
+								RightShoulderAttachment = { -0.0224, 0.7557, 0.0222 },
+								RightShoulderRigAttachment = { -0.0224, 0.4062, 0.0222 },
 							},
-							mesh = 127890327076420,
-							nt = 1664,
-							size = { 0.8627, 1.5165, 0.8214 },
+							mesh = 91179434704664,
+							nt = 2720,
+							size = { 0.864, 1.5165, 0.8228 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -3157,7 +3157,7 @@ return {
 							size = { 1.9666, 2.4858, 1.0839 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 				{
 					armAxisX = 1.1593,
@@ -3205,7 +3205,7 @@ return {
 							width = 0.772,
 							y = 5.259,
 						},
-						shoulderSpan = 3.311,
+						shoulderSpan = 3.315,
 						thigh = {
 							depth = 0.717,
 							girth = 2.138,
@@ -3213,7 +3213,7 @@ return {
 							y = 2.136,
 						},
 						upperArm = {
-							depth = 0.782,
+							depth = 0.789,
 							girth = 2.3,
 							width = 0.642,
 							y = 4.353,
@@ -3271,13 +3271,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { 0.033, -0.5197, 0.0256 },
-								LeftShoulderAttachment = { 0.033, 0.7655, 0.0256 },
-								LeftShoulderRigAttachment = { 0.033, 0.3982, 0.0256 },
+								LeftElbowRigAttachment = { 0.0341, -0.5197, 0.0258 },
+								LeftShoulderAttachment = { 0.0341, 0.7681, 0.0258 },
+								LeftShoulderRigAttachment = { 0.0341, 0.3982, 0.0258 },
 							},
-							mesh = 73474856704982,
-							nt = 1664,
-							size = { 0.9262, 1.5415, 0.8671 },
+							mesh = 115331007892377,
+							nt = 2720,
+							size = { 0.9285, 1.5415, 0.8703 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -3340,13 +3340,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { -0.033, -0.5197, 0.0256 },
-								RightShoulderAttachment = { -0.033, 0.7655, 0.0256 },
-								RightShoulderRigAttachment = { -0.033, 0.3982, 0.0256 },
+								RightElbowRigAttachment = { -0.0341, -0.5197, 0.0258 },
+								RightShoulderAttachment = { -0.0341, 0.7681, 0.0258 },
+								RightShoulderRigAttachment = { -0.0341, 0.3982, 0.0258 },
 							},
-							mesh = 99728480289574,
-							nt = 1664,
-							size = { 0.9262, 1.5415, 0.8671 },
+							mesh = 137953181102399,
+							nt = 2720,
+							size = { 0.9285, 1.5415, 0.8703 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -3374,7 +3374,7 @@ return {
 							size = { 1.9968, 2.4858, 1.1522 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 				{
 					armAxisX = 1.1795,
@@ -3422,7 +3422,7 @@ return {
 							width = 0.781,
 							y = 5.259,
 						},
-						shoulderSpan = 3.438,
+						shoulderSpan = 3.442,
 						thigh = {
 							depth = 0.747,
 							girth = 2.209,
@@ -3430,7 +3430,7 @@ return {
 							y = 2.136,
 						},
 						upperArm = {
-							depth = 0.835,
+							depth = 0.841,
 							girth = 2.418,
 							width = 0.657,
 							y = 4.353,
@@ -3488,13 +3488,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { 0.0446, -0.5276, 0.0287 },
-								LeftShoulderAttachment = { 0.0446, 0.7778, 0.0287 },
-								LeftShoulderRigAttachment = { 0.0446, 0.3903, 0.0287 },
+								LeftElbowRigAttachment = { 0.0456, -0.5276, 0.0293 },
+								LeftShoulderAttachment = { 0.0456, 0.7805, 0.0293 },
+								LeftShoulderRigAttachment = { 0.0456, 0.3903, 0.0293 },
 							},
-							mesh = 82335201230432,
-							nt = 1664,
-							size = { 0.9901, 1.5663, 0.915 },
+							mesh = 79421205951605,
+							nt = 2720,
+							size = { 0.9921, 1.5663, 0.9176 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -3557,13 +3557,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { -0.0446, -0.5276, 0.0287 },
-								RightShoulderAttachment = { -0.0446, 0.7778, 0.0287 },
-								RightShoulderRigAttachment = { -0.0446, 0.3903, 0.0287 },
+								RightElbowRigAttachment = { -0.0456, -0.5276, 0.0293 },
+								RightShoulderAttachment = { -0.0456, 0.7805, 0.0293 },
+								RightShoulderRigAttachment = { -0.0456, 0.3903, 0.0293 },
 							},
-							mesh = 136668015205639,
-							nt = 1664,
-							size = { 0.9901, 1.5663, 0.915 },
+							mesh = 72310849011588,
+							nt = 2720,
+							size = { 0.9921, 1.5663, 0.9176 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -3591,7 +3591,7 @@ return {
 							size = { 2.0268, 2.4858, 1.2197 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 			},
 			unit = {
@@ -3676,7 +3676,7 @@ return {
 							width = 0.865,
 							y = 5.232,
 						},
-						shoulderSpan = 2.994,
+						shoulderSpan = 2.993,
 						thigh = {
 							depth = 0.683,
 							girth = 2.057,
@@ -3685,7 +3685,7 @@ return {
 						},
 						upperArm = {
 							depth = 0.676,
-							girth = 2.073,
+							girth = 2.074,
 							width = 0.628,
 							y = 4.348,
 						},
@@ -3742,13 +3742,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { -0.0015, -0.482, 0.013 },
-								LeftShoulderAttachment = { -0.0015, 0.7073, 0.013 },
-								LeftShoulderRigAttachment = { -0.0015, 0.4084, 0.013 },
+								LeftElbowRigAttachment = { -0.0016, -0.482, 0.0132 },
+								LeftShoulderAttachment = { -0.0016, 0.7098, 0.0132 },
+								LeftShoulderRigAttachment = { -0.0016, 0.4084, 0.0132 },
 							},
-							mesh = 107752404405342,
-							nt = 1664,
-							size = { 0.7796, 1.4247, 0.7783 },
+							mesh = 117272179385795,
+							nt = 2720,
+							size = { 0.7793, 1.4247, 0.7787 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -3811,13 +3811,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { 0.0015, -0.482, 0.013 },
-								RightShoulderAttachment = { 0.0015, 0.7073, 0.013 },
-								RightShoulderRigAttachment = { 0.0015, 0.4084, 0.013 },
+								RightElbowRigAttachment = { 0.0016, -0.482, 0.0132 },
+								RightShoulderAttachment = { 0.0016, 0.7098, 0.0132 },
+								RightShoulderRigAttachment = { 0.0016, 0.4084, 0.0132 },
 							},
-							mesh = 92178713046691,
-							nt = 1664,
-							size = { 0.7796, 1.4247, 0.7783 },
+							mesh = 116316382000985,
+							nt = 2720,
+							size = { 0.7793, 1.4247, 0.7787 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -3845,7 +3845,7 @@ return {
 							size = { 1.8879, 2.4609, 0.9939 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 				{
 					armAxisX = 1.1331,
@@ -3901,8 +3901,8 @@ return {
 							y = 2.129,
 						},
 						upperArm = {
-							depth = 0.724,
-							girth = 2.186,
+							depth = 0.722,
+							girth = 2.187,
 							width = 0.647,
 							y = 4.348,
 						},
@@ -3959,13 +3959,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { 0.0106, -0.49, 0.0179 },
-								LeftShoulderAttachment = { 0.0106, 0.7197, 0.0179 },
-								LeftShoulderRigAttachment = { 0.0106, 0.4004, 0.0179 },
+								LeftElbowRigAttachment = { 0.0106, -0.49, 0.0183 },
+								LeftShoulderAttachment = { 0.0106, 0.7222, 0.0183 },
+								LeftShoulderRigAttachment = { 0.0106, 0.4004, 0.0183 },
 							},
-							mesh = 89225309176572,
-							nt = 1664,
-							size = { 0.8485, 1.4495, 0.825 },
+							mesh = 133258073140757,
+							nt = 2720,
+							size = { 0.8485, 1.4495, 0.8267 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -4028,13 +4028,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { -0.0106, -0.49, 0.0179 },
-								RightShoulderAttachment = { -0.0106, 0.7197, 0.0179 },
-								RightShoulderRigAttachment = { -0.0106, 0.4004, 0.0179 },
+								RightElbowRigAttachment = { -0.0106, -0.49, 0.0183 },
+								RightShoulderAttachment = { -0.0106, 0.7222, 0.0183 },
+								RightShoulderRigAttachment = { -0.0106, 0.4004, 0.0183 },
 							},
-							mesh = 123167610732013,
-							nt = 1664,
-							size = { 0.8485, 1.4495, 0.825 },
+							mesh = 89579690290614,
+							nt = 2720,
+							size = { 0.8485, 1.4495, 0.8267 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -4062,7 +4062,7 @@ return {
 							size = { 1.9185, 2.4609, 1.0711 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 				{
 					armAxisX = 1.1565,
@@ -4110,7 +4110,7 @@ return {
 							width = 0.882,
 							y = 5.232,
 						},
-						shoulderSpan = 3.275,
+						shoulderSpan = 3.277,
 						thigh = {
 							depth = 0.751,
 							girth = 2.208,
@@ -4118,8 +4118,8 @@ return {
 							y = 2.129,
 						},
 						upperArm = {
-							depth = 0.773,
-							girth = 2.307,
+							depth = 0.776,
+							girth = 2.308,
 							width = 0.666,
 							y = 4.348,
 						},
@@ -4176,13 +4176,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { 0.0225, -0.4979, 0.0223 },
-								LeftShoulderAttachment = { 0.0225, 0.7319, 0.0223 },
-								LeftShoulderRigAttachment = { 0.0225, 0.3925, 0.0223 },
+								LeftElbowRigAttachment = { 0.0232, -0.4979, 0.0234 },
+								LeftShoulderAttachment = { 0.0232, 0.7345, 0.0234 },
+								LeftShoulderRigAttachment = { 0.0232, 0.3925, 0.0234 },
 							},
-							mesh = 118511285480340,
-							nt = 1664,
-							size = { 0.9166, 1.4741, 0.8736 },
+							mesh = 80030778092638,
+							nt = 2720,
+							size = { 0.918, 1.4741, 0.8752 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -4245,13 +4245,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { -0.0225, -0.4979, 0.0223 },
-								RightShoulderAttachment = { -0.0225, 0.7319, 0.0223 },
-								RightShoulderRigAttachment = { -0.0225, 0.3925, 0.0223 },
+								RightElbowRigAttachment = { -0.0232, -0.4979, 0.0234 },
+								RightShoulderAttachment = { -0.0232, 0.7345, 0.0234 },
+								RightShoulderRigAttachment = { -0.0232, 0.3925, 0.0234 },
 							},
-							mesh = 78127179998495,
-							nt = 1664,
-							size = { 0.9166, 1.4741, 0.8736 },
+							mesh = 96869198477388,
+							nt = 2720,
+							size = { 0.918, 1.4741, 0.8752 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -4279,7 +4279,7 @@ return {
 							size = { 1.9488, 2.4609, 1.1487 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 				{
 					armAxisX = 1.1786,
@@ -4327,7 +4327,7 @@ return {
 							width = 0.891,
 							y = 5.232,
 						},
-						shoulderSpan = 3.41,
+						shoulderSpan = 3.414,
 						thigh = {
 							depth = 0.784,
 							girth = 2.284,
@@ -4335,7 +4335,7 @@ return {
 							y = 2.129,
 						},
 						upperArm = {
-							depth = 0.823,
+							depth = 0.829,
 							girth = 2.428,
 							width = 0.684,
 							y = 4.348,
@@ -4393,13 +4393,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { 0.0343, -0.5057, 0.027 },
-								LeftShoulderAttachment = { 0.0343, 0.7441, 0.027 },
-								LeftShoulderRigAttachment = { 0.0343, 0.3847, 0.027 },
+								LeftElbowRigAttachment = { 0.0355, -0.5057, 0.0275 },
+								LeftShoulderAttachment = { 0.0355, 0.7467, 0.0275 },
+								LeftShoulderRigAttachment = { 0.0355, 0.3847, 0.0275 },
 							},
-							mesh = 129171802000141,
-							nt = 1664,
-							size = { 0.9838, 1.4985, 0.922 },
+							mesh = 102600158085127,
+							nt = 2720,
+							size = { 0.9862, 1.4985, 0.9251 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -4462,13 +4462,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { -0.0343, -0.5057, 0.027 },
-								RightShoulderAttachment = { -0.0343, 0.7441, 0.027 },
-								RightShoulderRigAttachment = { -0.0343, 0.3847, 0.027 },
+								RightElbowRigAttachment = { -0.0355, -0.5057, 0.0275 },
+								RightShoulderAttachment = { -0.0355, 0.7467, 0.0275 },
+								RightShoulderRigAttachment = { -0.0355, 0.3847, 0.0275 },
 							},
-							mesh = 114490210257866,
-							nt = 1664,
-							size = { 0.9838, 1.4985, 0.922 },
+							mesh = 107439943588557,
+							nt = 2720,
+							size = { 0.9862, 1.4985, 0.9251 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -4496,7 +4496,7 @@ return {
 							size = { 1.9788, 2.4609, 1.2251 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 				{
 					armAxisX = 1.1994,
@@ -4544,7 +4544,7 @@ return {
 							width = 0.9,
 							y = 5.232,
 						},
-						shoulderSpan = 3.543,
+						shoulderSpan = 3.547,
 						thigh = {
 							depth = 0.817,
 							girth = 2.36,
@@ -4552,7 +4552,7 @@ return {
 							y = 2.129,
 						},
 						upperArm = {
-							depth = 0.875,
+							depth = 0.881,
 							girth = 2.548,
 							width = 0.7,
 							y = 4.348,
@@ -4610,13 +4610,13 @@ return {
 						},
 						LeftUpperArm = {
 							attachments = {
-								LeftElbowRigAttachment = { 0.0465, -0.5134, 0.0306 },
-								LeftShoulderAttachment = { 0.0465, 0.7562, 0.0306 },
-								LeftShoulderRigAttachment = { 0.0465, 0.377, 0.0306 },
+								LeftElbowRigAttachment = { 0.0475, -0.5134, 0.0311 },
+								LeftShoulderAttachment = { 0.0475, 0.7588, 0.0311 },
+								LeftShoulderRigAttachment = { 0.0475, 0.377, 0.0311 },
 							},
-							mesh = 102190634644286,
-							nt = 1664,
-							size = { 1.0515, 1.5226, 0.9722 },
+							mesh = 91192767504933,
+							nt = 2720,
+							size = { 1.0535, 1.5226, 0.9752 },
 						},
 						LeftUpperLeg = {
 							attachments = {
@@ -4679,13 +4679,13 @@ return {
 						},
 						RightUpperArm = {
 							attachments = {
-								RightElbowRigAttachment = { -0.0465, -0.5134, 0.0306 },
-								RightShoulderAttachment = { -0.0465, 0.7562, 0.0306 },
-								RightShoulderRigAttachment = { -0.0465, 0.377, 0.0306 },
+								RightElbowRigAttachment = { -0.0475, -0.5134, 0.0311 },
+								RightShoulderAttachment = { -0.0475, 0.7588, 0.0311 },
+								RightShoulderRigAttachment = { -0.0475, 0.377, 0.0311 },
 							},
-							mesh = 132512591152117,
-							nt = 1664,
-							size = { 1.0515, 1.5226, 0.9722 },
+							mesh = 99569067270160,
+							nt = 2720,
+							size = { 1.0535, 1.5226, 0.9752 },
 						},
 						RightUpperLeg = {
 							attachments = {
@@ -4713,7 +4713,7 @@ return {
 							size = { 2.0086, 2.4609, 1.3022 },
 						},
 					},
-					tris = 22320,
+					tris = 24432,
 				},
 			},
 			unit = {
@@ -4795,7 +4795,7 @@ return {
 				},
 				upperArm = {
 					depth = 0.551,
-					girth = 1.691,
+					girth = 1.692,
 					width = 0.513,
 					y = 4.343,
 				},
@@ -4889,9 +4889,9 @@ return {
 				},
 				LeftUpperArm = {
 					attachments = {
-						LeftElbowRigAttachment = { -0.0083, -0.4882, 0.0075 },
-						LeftShoulderAttachment = { -0.0083, 0.7205, 0.0075 },
-						LeftShoulderRigAttachment = { -0.0083, 0.4298, 0.0075 },
+						LeftElbowRigAttachment = { -0.0084, -0.4882, 0.0074 },
+						LeftShoulderAttachment = { -0.0084, 0.7231, 0.0074 },
+						LeftShoulderRigAttachment = { -0.0084, 0.4298, 0.0074 },
 					},
 					lite = {
 						attachments = {
@@ -4903,9 +4903,9 @@ return {
 						nt = 448,
 						size = { 0.6066, 1.4475, 0.6258 },
 					},
-					mesh = 103002677439016,
-					nt = 1664,
-					size = { 0.6283, 1.4513, 0.6315 },
+					mesh = 134342532380620,
+					nt = 2720,
+					size = { 0.6282, 1.4513, 0.6313 },
 				},
 				LeftUpperLeg = {
 					attachments = {
@@ -5027,9 +5027,9 @@ return {
 				},
 				RightUpperArm = {
 					attachments = {
-						RightElbowRigAttachment = { 0.0083, -0.4882, 0.0075 },
-						RightShoulderAttachment = { 0.0083, 0.7205, 0.0075 },
-						RightShoulderRigAttachment = { 0.0083, 0.4298, 0.0075 },
+						RightElbowRigAttachment = { 0.0084, -0.4882, 0.0074 },
+						RightShoulderAttachment = { 0.0084, 0.7231, 0.0074 },
+						RightShoulderRigAttachment = { 0.0084, 0.4298, 0.0074 },
 					},
 					lite = {
 						attachments = {
@@ -5041,9 +5041,9 @@ return {
 						nt = 448,
 						size = { 0.6066, 1.4475, 0.6258 },
 					},
-					mesh = 90850901886822,
-					nt = 1664,
-					size = { 0.6283, 1.4513, 0.6315 },
+					mesh = 89398467498266,
+					nt = 2720,
+					size = { 0.6282, 1.4513, 0.6313 },
 				},
 				RightUpperLeg = {
 					attachments = {
@@ -5096,7 +5096,7 @@ return {
 					size = { 1.661, 2.4858, 0.8155 },
 				},
 			},
-			tris = 22320,
+			tris = 24432,
 		},
 		{
 			fit = {
@@ -5143,7 +5143,7 @@ return {
 					width = 0.687,
 					y = 5.249,
 				},
-				shoulderSpan = 2.68,
+				shoulderSpan = 2.681,
 				thigh = {
 					depth = 0.628,
 					girth = 1.901,
@@ -5151,8 +5151,8 @@ return {
 					y = 2.128,
 				},
 				upperArm = {
-					depth = 0.585,
-					girth = 1.776,
+					depth = 0.584,
+					girth = 1.777,
 					width = 0.529,
 					y = 4.343,
 				},
@@ -5246,9 +5246,9 @@ return {
 				},
 				LeftUpperArm = {
 					attachments = {
-						LeftElbowRigAttachment = { -0.0011, -0.4953, 0.0106 },
-						LeftShoulderAttachment = { -0.0011, 0.7322, 0.0106 },
-						LeftShoulderRigAttachment = { -0.0011, 0.4226, 0.0106 },
+						LeftElbowRigAttachment = { -0.001, -0.4953, 0.0105 },
+						LeftShoulderAttachment = { -0.001, 0.7348, 0.0105 },
+						LeftShoulderRigAttachment = { -0.001, 0.4226, 0.0105 },
 					},
 					lite = {
 						attachments = {
@@ -5260,9 +5260,9 @@ return {
 						nt = 448,
 						size = { 0.6433, 1.4486, 0.6603 },
 					},
-					mesh = 82120347291328,
-					nt = 1664,
-					size = { 0.6795, 1.4747, 0.6664 },
+					mesh = 103037923786544,
+					nt = 2720,
+					size = { 0.6797, 1.4747, 0.6662 },
 				},
 				LeftUpperLeg = {
 					attachments = {
@@ -5384,9 +5384,9 @@ return {
 				},
 				RightUpperArm = {
 					attachments = {
-						RightElbowRigAttachment = { 0.0011, -0.4953, 0.0106 },
-						RightShoulderAttachment = { 0.0011, -0.7374, 0.0106 },
-						RightShoulderRigAttachment = { 0.0011, 0.4226, 0.0106 },
+						RightElbowRigAttachment = { 0.001, -0.4953, 0.0105 },
+						RightShoulderAttachment = { 0.001, 0.7348, 0.0105 },
+						RightShoulderRigAttachment = { 0.001, 0.4226, 0.0105 },
 					},
 					lite = {
 						attachments = {
@@ -5398,9 +5398,9 @@ return {
 						nt = 448,
 						size = { 0.6433, 1.4486, 0.6603 },
 					},
-					mesh = 77867848720586,
-					nt = 1664,
-					size = { 0.6795, 1.4747, 0.6664 },
+					mesh = 89355152549165,
+					nt = 2720,
+					size = { 0.6797, 1.4747, 0.6662 },
 				},
 				RightUpperLeg = {
 					attachments = {
@@ -5453,7 +5453,7 @@ return {
 					size = { 1.6847, 2.4858, 0.8703 },
 				},
 			},
-			tris = 22320,
+			tris = 24432,
 		},
 		{
 			fit = {
@@ -5500,7 +5500,7 @@ return {
 					width = 0.695,
 					y = 5.249,
 				},
-				shoulderSpan = 2.785,
+				shoulderSpan = 2.788,
 				thigh = {
 					depth = 0.66,
 					girth = 1.97,
@@ -5508,8 +5508,8 @@ return {
 					y = 2.128,
 				},
 				upperArm = {
-					depth = 0.622,
-					girth = 1.866,
+					depth = 0.623,
+					girth = 1.867,
 					width = 0.545,
 					y = 4.343,
 				},
@@ -5603,9 +5603,9 @@ return {
 				},
 				LeftUpperArm = {
 					attachments = {
-						LeftElbowRigAttachment = { 0.0061, -0.5024, 0.0138 },
-						LeftShoulderAttachment = { 0.0061, 0.7438, 0.0138 },
-						LeftShoulderRigAttachment = { 0.0061, 0.4155, 0.0138 },
+						LeftElbowRigAttachment = { 0.0067, -0.5024, 0.0134 },
+						LeftShoulderAttachment = { 0.0067, 0.7464, 0.0134 },
+						LeftShoulderRigAttachment = { 0.0067, 0.4155, 0.0134 },
 					},
 					lite = {
 						attachments = {
@@ -5617,9 +5617,9 @@ return {
 						nt = 448,
 						size = { 0.6791, 1.4499, 0.6895 },
 					},
-					mesh = 78994748068541,
-					nt = 1664,
-					size = { 0.7301, 1.498, 0.7011 },
+					mesh = 119259993813559,
+					nt = 2720,
+					size = { 0.7313, 1.498, 0.7012 },
 				},
 				LeftUpperLeg = {
 					attachments = {
@@ -5741,9 +5741,9 @@ return {
 				},
 				RightUpperArm = {
 					attachments = {
-						RightElbowRigAttachment = { -0.0061, -0.5024, 0.0138 },
-						RightShoulderAttachment = { -0.0061, 0.7438, 0.0138 },
-						RightShoulderRigAttachment = { -0.0061, 0.4155, 0.0138 },
+						RightElbowRigAttachment = { -0.0067, -0.5024, 0.0134 },
+						RightShoulderAttachment = { -0.0067, 0.7464, 0.0134 },
+						RightShoulderRigAttachment = { -0.0067, 0.4155, 0.0134 },
 					},
 					lite = {
 						attachments = {
@@ -5755,9 +5755,9 @@ return {
 						nt = 448,
 						size = { 0.6791, 1.4499, 0.6895 },
 					},
-					mesh = 116080282048457,
-					nt = 1664,
-					size = { 0.7301, 1.498, 0.7011 },
+					mesh = 118673747514840,
+					nt = 2720,
+					size = { 0.7313, 1.498, 0.7012 },
 				},
 				RightUpperLeg = {
 					attachments = {
@@ -5810,7 +5810,7 @@ return {
 					size = { 1.7082, 2.4858, 0.9255 },
 				},
 			},
-			tris = 22320,
+			tris = 24432,
 		},
 		{
 			fit = {
@@ -5857,7 +5857,7 @@ return {
 					width = 0.704,
 					y = 5.249,
 				},
-				shoulderSpan = 2.889,
+				shoulderSpan = 2.89,
 				thigh = {
 					depth = 0.689,
 					girth = 2.038,
@@ -5865,7 +5865,7 @@ return {
 					y = 2.128,
 				},
 				upperArm = {
-					depth = 0.656,
+					depth = 0.662,
 					girth = 1.954,
 					width = 0.559,
 					y = 4.343,
@@ -5960,9 +5960,9 @@ return {
 				},
 				LeftUpperArm = {
 					attachments = {
-						LeftElbowRigAttachment = { 0.0135, -0.5094, 0.0164 },
-						LeftShoulderAttachment = { 0.0135, 0.7553, 0.0164 },
-						LeftShoulderRigAttachment = { 0.0135, 0.4085, 0.0164 },
+						LeftElbowRigAttachment = { 0.0139, -0.5094, 0.0163 },
+						LeftShoulderAttachment = { 0.0139, 0.7579, 0.0163 },
+						LeftShoulderRigAttachment = { 0.0139, 0.4085, 0.0163 },
 					},
 					lite = {
 						attachments = {
@@ -5974,9 +5974,9 @@ return {
 						nt = 448,
 						size = { 0.7157, 1.4515, 0.714 },
 					},
-					mesh = 106657331131208,
-					nt = 1664,
-					size = { 0.7808, 1.521, 0.7364 },
+					mesh = 120809345988418,
+					nt = 2720,
+					size = { 0.7817, 1.521, 0.7367 },
 				},
 				LeftUpperLeg = {
 					attachments = {
@@ -6098,9 +6098,9 @@ return {
 				},
 				RightUpperArm = {
 					attachments = {
-						RightElbowRigAttachment = { -0.0135, -0.5094, 0.0164 },
-						RightShoulderAttachment = { -0.0135, 0.7553, 0.0164 },
-						RightShoulderRigAttachment = { -0.0135, 0.4085, 0.0164 },
+						RightElbowRigAttachment = { -0.0139, -0.5094, 0.0163 },
+						RightShoulderAttachment = { -0.0139, 0.7579, 0.0163 },
+						RightShoulderRigAttachment = { -0.0139, 0.4085, 0.0163 },
 					},
 					lite = {
 						attachments = {
@@ -6112,9 +6112,9 @@ return {
 						nt = 448,
 						size = { 0.7157, 1.4515, 0.714 },
 					},
-					mesh = 123598859958204,
-					nt = 1664,
-					size = { 0.7808, 1.521, 0.7364 },
+					mesh = 82446642714619,
+					nt = 2720,
+					size = { 0.7817, 1.521, 0.7367 },
 				},
 				RightUpperLeg = {
 					attachments = {
@@ -6167,7 +6167,7 @@ return {
 					size = { 1.7315, 2.4858, 0.9801 },
 				},
 			},
-			tris = 22320,
+			tris = 24432,
 		},
 		{
 			fit = {
@@ -6214,7 +6214,7 @@ return {
 					width = 0.712,
 					y = 5.249,
 				},
-				shoulderSpan = 2.989,
+				shoulderSpan = 2.99,
 				thigh = {
 					depth = 0.719,
 					girth = 2.106,
@@ -6222,8 +6222,8 @@ return {
 					y = 2.128,
 				},
 				upperArm = {
-					depth = 0.693,
-					girth = 2.04,
+					depth = 0.699,
+					girth = 2.041,
 					width = 0.573,
 					y = 4.343,
 				},
@@ -6317,9 +6317,9 @@ return {
 				},
 				LeftUpperArm = {
 					attachments = {
-						LeftElbowRigAttachment = { 0.0208, -0.5163, 0.019 },
-						LeftShoulderAttachment = { 0.0208, 0.7667, 0.019 },
-						LeftShoulderRigAttachment = { 0.0208, 0.4016, 0.019 },
+						LeftElbowRigAttachment = { 0.021, -0.5163, 0.0193 },
+						LeftShoulderAttachment = { 0.021, 0.7693, 0.0193 },
+						LeftShoulderRigAttachment = { 0.021, 0.4016, 0.0193 },
 					},
 					lite = {
 						attachments = {
@@ -6331,9 +6331,9 @@ return {
 						nt = 448,
 						size = { 0.7518, 1.4534, 0.7364 },
 					},
-					mesh = 115285473124870,
-					nt = 1664,
-					size = { 0.8308, 1.5438, 0.7717 },
+					mesh = 84529193184211,
+					nt = 2720,
+					size = { 0.8312, 1.5438, 0.7719 },
 				},
 				LeftUpperLeg = {
 					attachments = {
@@ -6455,9 +6455,9 @@ return {
 				},
 				RightUpperArm = {
 					attachments = {
-						RightElbowRigAttachment = { -0.0208, -0.5163, 0.019 },
-						RightShoulderAttachment = { -0.0208, 0.7667, 0.019 },
-						RightShoulderRigAttachment = { -0.0208, 0.4016, 0.019 },
+						RightElbowRigAttachment = { -0.021, -0.5163, 0.0193 },
+						RightShoulderAttachment = { -0.021, 0.7693, 0.0193 },
+						RightShoulderRigAttachment = { -0.021, 0.4016, 0.0193 },
 					},
 					lite = {
 						attachments = {
@@ -6469,9 +6469,9 @@ return {
 						nt = 448,
 						size = { 0.7518, 1.4534, 0.7364 },
 					},
-					mesh = 130044988422149,
-					nt = 1664,
-					size = { 0.8308, 1.5438, 0.7717 },
+					mesh = 78585579493829,
+					nt = 2720,
+					size = { 0.8312, 1.5438, 0.7719 },
 				},
 				RightUpperLeg = {
 					attachments = {
@@ -6524,7 +6524,7 @@ return {
 					size = { 1.7545, 2.4858, 1.0341 },
 				},
 			},
-			tris = 22320,
+			tris = 24432,
 		},
 	},
 	unit = {
