@@ -3543,15 +3543,29 @@ end
 ------------------------------------------------------------------------
 -- Scoring & corner
 ------------------------------------------------------------------------
+-- [Judging] the three ringside judges (BoxerModules.Judging: pure, tools/sim/test_judging.luau pins it) and the
+-- post-fight scene (BoxerModules.PostFight: the men to the centre, the announcer, the referee raises the hand).
+-- Both optional: without them the flat card below stands in and the fight ends as it did.
+local Judging, PostFight
+do
+	local okJ, modJ = pcall(require, script.Parent:FindFirstChild("Judging"))
+	Judging = okJ and type(modJ) == "table" and modJ or nil
+	local okP, modP = pcall(require, script.Parent:FindFirstChild("PostFight"))
+	PostFight = okP and type(modP) == "table" and modP or nil
+end
 -- One judge's 10-point must card for a round. diff = the judge's punch differential (positive: the
 -- first fighter did the better work), kdA / kdB = knockdowns each fighter SCORED. As real judges do:
 -- the round winner gets 10 and the loser 9; a knockdown wins the round for whoever scored it (equal
 -- knockdowns cancel and the work decides), and every net knockdown costs the man who went down one
 -- more point (one knockdown 10-8, two 10-7) - unless he dominated the rest of the round, which earns
 -- that point back (10-9). 10-10 only for a truly even round with no knockdowns; never 9-9.
+-- (Judging.MustScore is the same rule plus the fouls' point deductions; this stays as the fallback.)
 local EVEN_ROUND = 0.25 -- |diff| under this is an even round (rare: judges are told to pick a winner)
 local DOMINANT_ROUND = 3 -- a punch differential this big outweighs one knockdown point
-function FightEngine.MustScore(diff, kdA, kdB)
+function FightEngine.MustScore(diff, kdA, kdB, foulsA, foulsB)
+	if Judging then
+		return Judging.MustScore(diff, kdA, kdB, foulsA, foulsB)
+	end
 	kdA, kdB = tonumber(kdA) or 0, tonumber(kdB) or 0
 	diff = tonumber(diff) or 0
 	local net = kdA - kdB
@@ -3587,18 +3601,171 @@ function Fight:RoundPoints(F, other)
 		+ (t.inside or 0) * 0.3 + DEPTH.momScore * math.clamp(mom, -1, 1)
 end
 
+-- [Judging] the judges' observer. The tallies keep the landed / thrown / power / body / knockdown counts; what the
+-- judges also want (punches landed BY TYPE, blocks, slips, rolls, parries, the other man's misses, the time in the
+-- centre of the ring) is read off the engine's own traffic - Fight:Send's "hit" / "blocked" / "defense" / "miss"
+-- (red-corner perspective: who = "you" is P) and the 5 Hz attribute sync (the ring position while the round is
+-- live) - so the hit path carries no judging code. A sim that replaces Send per fight (tools/sim/fightsim) leaves
+-- these at zero and the tallies carry the card.
+local function judgeSide(F)
+	if not F.judge then
+		F.judge = Judging and Judging.NewSide() or { byType = {}, thrownByType = {} }
+	end
+	return F.judge
+end
+local baseSend = Fight.Send
+function Fight:Send(msg)
+	if Judging and type(msg) == "table" and self.P and self.O then
+		local who = msg.who == "you" and self.P or (msg.who == "opp" and self.O or nil)
+		if who then
+			local t = msg.t
+			if t == "hit" then
+				local S = judgeSide(who)
+				local k = msg.punch
+				if type(k) == "string" then
+					S.byType[k] = (S.byType[k] or 0) + 1
+				end
+				if msg.heavy then
+					S.heavy += 1
+				end
+				S.damage += tonumber(msg.dmg) or 0
+			elseif t == "blocked" then
+				judgeSide(who).blocked += 1 -- (who = the man whose guard took it)
+			elseif t == "defense" then
+				local S = judgeSide(who) -- (who = the man who made it miss)
+				if msg.move == "PARRIED" then
+					S.parried += 1
+				else
+					S.evaded += 1
+				end
+			elseif t == "miss" then
+				judgeSide(self:Other(who)).missed += 1 -- (who = the man who threw it)
+			end
+		end
+	end
+	return baseSend(self, msg)
+end
+local baseSyncAttrs = Fight.SyncAttrs
+function Fight:SyncAttrs(F)
+	if Judging and self.live and F and F.root and self.anchors and self.anchors.RingCenter then
+		local now = self:Now()
+		local dt = now - (F.judgeAt or now)
+		F.judgeAt = now
+		if dt > 0 and dt < 1 then
+			local S = judgeSide(F)
+			S.liveT += dt
+			local off = flat(F.root.Position - self.anchors.RingCenter.Position)
+			if math.max(math.abs(off.X), math.abs(off.Z)) <= (self.ringHalf or 11) * 0.42 then
+				S.centreT += dt
+			end
+		end
+	end
+	return baseSyncAttrs(self, F)
+end
+
+-- the observer's slate for the next round: the running fight counters are snapshotted so the round's share is
+-- their difference at the bell
+function Fight:JudgeReset(F)
+	F.judge = nil
+	F.judgeAt = nil
+	F.judgeSnap = { counters = F.typeStats.counters, pressT = F.typeStats.pressT, liveT = F.typeStats.liveT, evades = F.evades, used = table.clone(F.punchesUsed) }
+end
+
+local function plainSide(S)
+	local o = {}
+	for k, v in pairs(S) do
+		if type(v) == "number" then
+			o[k] = math.floor(v * 100) / 100
+		elseif type(v) == "table" then
+			o[k] = table.clone(v)
+		end
+	end
+	return o
+end
+
+-- the round's stats for the judges (Judging.Score's input): both corners, red first
+function Fight:RoundStats()
+	local function side(F)
+		local S = judgeSide(F)
+		local t = F.tally
+		local snap = F.judgeSnap or {}
+		S.landed, S.thrown, S.power, S.body = t.landed, t.thrown, t.power, t.body
+		S.jabs = math.max(0, t.landed - t.power)
+		S.kd, S.clinches, S.inside = t.kd, t.clinches, t.inside or 0
+		S.counters = math.max(0, F.typeStats.counters - (snap.counters or 0))
+		S.pressT = math.max(0, F.typeStats.pressT - (snap.pressT or 0))
+		if S.liveT <= 0 then
+			S.liveT = math.max(0, F.typeStats.liveT - (snap.liveT or 0))
+		end
+		for k, n in pairs(F.punchesUsed) do
+			S.thrownByType[k] = math.max(0, n - ((snap.used or {})[k] or 0))
+		end
+		-- punches a dodge made miss (the engine's own count) when the observer saw fewer
+		S.evaded = math.max(S.evaded, F.evades - (snap.evades or 0))
+		local mom = (self.momSum or 0) / math.max(1, self.roundSeconds or 60)
+		S.mom = math.clamp(F == self.P and mom or -mom, -1, 1)
+		-- (the engine hands out no fouls yet: a referee's point deduction lands here)
+		S.fouls = tonumber(F.fouls) or 0
+		return S
+	end
+	return { red = side(self.P), blue = side(self.O), seconds = self.roundSeconds or Config.RoundSeconds }
+end
+
+-- the round's scorecard for viewer V (the client's Scorecards opens it with the rest message): the three judges'
+-- round cards and reasons, the round's and the fight's punch stats of both men, the running totals
+function Fight:ScorecardFor(V, detail, n)
+	local red = V == self.P
+	local function flip2(c)
+		return red and { c[1], c[2] } or { c[2], c[1] }
+	end
+	local msg = { t = "scorecard", n = n, rounds = self.rounds, cards = {}, round = {}, judges = {}, kd = flip2(detail.kd) }
+	for j = 1, 3 do
+		msg.cards[j] = flip2(self.cards[j])
+		msg.round[j] = flip2(detail.cards[j])
+		local jd = detail.judges[j]
+		msg.judges[j] = { id = jd.id, reason = jd.reason, diff = red and jd.diff or -jd.diff }
+	end
+	local st, tot = detail.stats, self.judgeTotals
+	msg.stats = { you = red and st.red or st.blue, opp = red and st.blue or st.red }
+	msg.totals = { you = plainSide(red and tot.red or tot.blue), opp = plainSide(red and tot.blue or tot.red) }
+	return msg
+end
+
 function Fight:ScoreRound()
 	local P, O = self.P, self.O
-	local pP, pO = self:RoundPoints(P, O), self:RoundPoints(O, P)
-	local round = {}
+	local round, detail
+	if Judging then
+		local stats = self:RoundStats()
+		detail = Judging.Score(stats, self.rng)
+		detail.stats = { red = plainSide(stats.red), blue = plainSide(stats.blue) }
+		round = detail.cards
+		self.judgeRounds = self.judgeRounds or {}
+		table.insert(self.judgeRounds, detail)
+		self.judgeTotals = self.judgeTotals or { red = Judging.NewSide(), blue = Judging.NewSide() }
+		Judging.AddSide(self.judgeTotals.red, stats.red)
+		Judging.AddSide(self.judgeTotals.blue, stats.blue)
+	else
+		local pP, pO = self:RoundPoints(P, O), self:RoundPoints(O, P)
+		round = {}
+		for j = 1, 3 do
+			local diff = pP - pO + self.rng:NextNumber(-1.6, 1.6) * (j == 3 and 1.4 or 1)
+			local a, b = FightEngine.MustScore(diff, P.tally.kd, O.tally.kd)
+			round[j] = { a, b }
+		end
+	end
 	for j = 1, 3 do
-		local diff = pP - pO + self.rng:NextNumber(-1.6, 1.6) * (j == 3 and 1.4 or 1)
-		local a, b = FightEngine.MustScore(diff, P.tally.kd, O.tally.kd)
-		self.cards[j][1] += a
-		self.cards[j][2] += b
-		round[j] = { a, b }
+		self.cards[j][1] += round[j][1]
+		self.cards[j][2] += round[j][2]
 	end
 	table.insert(self.roundCards, round)
+	self:JudgeReset(P)
+	self:JudgeReset(O)
+	if detail then
+		local n = #self.roundCards
+		self:SendEach(function(V)
+			return self:ScorecardFor(V, detail, n)
+		end)
+	end
 	return round
 end
 
@@ -4239,7 +4406,8 @@ function Fight:Run()
 	if self.finished then
 		res = { outcome = self.winner == P and "win" or "loss", method = self.method, reason = self.reason, round = self.endRound or self.round }
 	else
-		res = Career.DecideCards(self.cards)
+		-- [Judging] the three judges' totals decide it (unanimous / split / majority / draw; Career's rule as the fallback)
+		res = Judging and Judging.Decide(self.cards) or Career.DecideCards(self.cards)
 		res.round = self.rounds
 		res.reason = self.spar and "Session complete" or ((self.tutorial and not self.debut) and "Tutorial complete" or "Decision")
 	end
@@ -4321,6 +4489,9 @@ function Fight:ResultFor(F, base)
 	end
 	res.oppTraits = found
 	res.feints, res.feintBites, res.secondWinds = F.feints, F.feintBites, F.winds
+	-- [Judging] the judges' report (per-round cards and reasons, the punch stats by type) and the decision as read
+	res.judging = Judging and Judging.Report(self.judgeRounds or {}, self.cards, self.judgeTotals or {}, not red) or nil
+	res.scores, res.decisionText = base.scores, base.text
 	return res
 end
 
@@ -4697,6 +4868,14 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 			return { t = "final", result = self.results and self.results[V] or res, oppName = self:Other(V).data.name, spar = self.spar, pvp = self.pvp }
 		end)
 		task.wait(3)
+		-- [Judging] the post-fight scene (PostFight: both men to the centre, the referee between them, the announcer
+		-- reads the cards, the winner's hand goes up; the crowd's "FightResult"); not for sparring or the practice bout
+		if PostFight and not self.aborted and not self.spar and not (self.tutorial and not self.debut) then
+			local okP, errP = pcall(PostFight.Run, self, res, opts)
+			if not okP then
+				warn("[Boxer] postfight:", errP)
+			end
+		end
 		-- the celebration cutscene (a won tournament final / a new title: Career's Tourney.CeremonyFor spec)
 		if type(opts.ceremony) == "table" and res.outcome == "win" and not self.aborted and not self.spar and not self.pvp and not self.tutorial then
 			local okC, errC = pcall(self.Ceremony, self, opts.ceremony)

@@ -1054,6 +1054,61 @@ Config.IceBathTempC = { 12, 8, 3 } -- plastic tub, ice bath, cryo tub
 Config.SaunaTempC = { 0, 90, 60 } -- sauna suit (no room), wooden sauna, infrared sauna
 
 ------------------------------------------------------------------------
+-- City / World layout and scale (CityMap, MapBuilder, CityVisuals, CityDetail share these)
+-- Real-world scale for the R15 rig: 1 stud = 0.28 m. Lanes 3.5 m, sidewalks 2-4 m, kerbs 0.15 m,
+-- storeys 3.2 m, doors 2.1 m, street lights 8-9 m, traffic signals 5 m, cars 4.5 x 1.6 x 1.5 m.
+-- Every street is given by its centre line and width; the gym stays at the origin (x -110..110,
+-- z -80..80, main doors on the south wall at z 80).
+------------------------------------------------------------------------
+Config.City = {
+	StudsPerMetre = 3.57,
+	RoadY = 0.3, -- top of the asphalt
+	SidewalkY = 0.8, -- top of the sidewalks (kerb 0.5 = 0.15 m)
+	Lane = 12.5,
+	ParkLane = 8.5,
+	Sidewalk = 10,
+	Storey = 11.4,
+	GroundFloor = 14,
+	Door = { w = 3.6, h = 7.5 },
+	StreetLight = 30,
+	ResidentialLight = 22,
+	Signal = 18,
+	Car = { l = 16, w = 5.7, h = 5.4 },
+	-- the ground slab (MapBuilder) and the river east of it
+	Bounds = { x0 = -1150, x1 = 1400, z0 = -1250, z1 = 1050 },
+	River = { x0 = 884, x1 = 1150 },
+	-- the roadwork loop round the gym campus (MapBuilder.Track): centre lines of its four roads
+	Loop = { x0 = -240, x1 = 240, z0 = -290, z1 = 170, w = 25 },
+	-- downtown
+	ChampionAve = { x = 0, w = 25, z0 = 182.5, z1 = 300 },
+	MainStreet = {
+		z0 = 300, z1 = 342, -- the asphalt (two 12.5 lanes between two 8.5 parking lanes)
+		x0 = -620, x1 = 860,
+		frontS = 357, -- the south row's shop fronts (the sidewalk is 15 wide)
+		frontN = 290, -- the north row's fronts
+		lanes = { { z = 327.25, dir = 1 }, { z = 314.75, dir = -1 } }, -- eastbound south of the centre line, westbound north
+		parkLanes = { 304.25, 337.75 },
+		pedLanes = { 296, 350 },
+		crosswalks = { -17, 17 }, -- across Main Street, either side of Champion Ave
+		shopsX = { -560, 560 },
+		northRowX = { -400, 250 },
+	},
+	SecondStreet = { z = 470, w = 25, x0 = -620, x1 = 780 },
+	-- west
+	OakStreet = { x = -440, w = 25, z0 = -680, z1 = 300 },
+	CedarLane = { z = -40, w = 25, x0 = -427.5, x1 = -252.5 },
+	-- east
+	RiversideDrive = { x = 760, w = 25, z0 = -640, z1 = 482.5 },
+	Park = { x0 = 265, x1 = 740, z0 = -280, z1 = 285 },
+	Boardwalk = { x0 = 860, x1 = 884 },
+	-- north
+	ArenaWay = { x = 0, w = 41, z0 = -470, z1 = -302.5 },
+	Arena = { x = 0, z = -640, r = 120 },
+	EliteWay = { x = 420, w = 25, z0 = -380, z1 = -302.5 },
+	FoundryStreet = { z = -580, w = 25, x0 = 540, x1 = 747.5 },
+}
+
+------------------------------------------------------------------------
 -- World & flavor
 ------------------------------------------------------------------------
 Config.Nationalities = {
