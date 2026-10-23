@@ -62,6 +62,8 @@ local Combos = require(Shared:WaitForChild("Combos"))
 local Evasion = require(Shared:WaitForChild("Evasion"))
 -- the AI boxers' ring traits (resistances, scouting) and the player's fighting type
 local Traits = require(Shared:WaitForChild("Traits"))
+-- [FrameTraits] the body frame's permanent ring traits (Shared.FrameTraits): multiplied in at the places marked so
+local FrameTraits = require(Shared:WaitForChild("FrameTraits"))
 -- reach and hit volumes from the live rigs (Shared.HitGeometry: the client's prediction runs the same code);
 -- optional: without it the ranges fall back to the old tape-based numbers
 local HitGeometry
@@ -198,7 +200,14 @@ local function geoFrame(F)
 	local root = F.root
 	local soleY = root and root.Position and (root.Position.Y - standHeight(F.hum, root)) or nil
 	local okF, frame = pcall(HitGeometry.Frame, F.model, soleY, fallback)
-	return okF and frame or fallback
+	frame = okF and frame or fallback
+	-- [FrameTraits] a long-armed frame reaches further at the same height (the client gets this frame in `start`)
+	local reachBonus = (F.frame or FrameTraits.For(data)).reachBonus or 1
+	if type(frame) == "table" and type(frame.arm) == "number" and reachBonus ~= 1 then
+		frame = table.clone(frame)
+		frame.arm *= reachBonus
+	end
+	return frame
 end
 
 -- server attributes are change-only (CONTRACTS ground rules)
@@ -303,6 +312,8 @@ local function makeFighter(data, model, player)
 		data = data, model = model, player = player, isPlayer = player ~= nil,
 		hum = model:FindFirstChildOfClass("Humanoid"), root = model:FindFirstChild("HumanoidRootPart"),
 		style = style, classScale = 0.85 + (data.class - 1) * 0.045,
+		-- [FrameTraits] the body frame's permanent traits (data.app.body.frame; Athletic without one)
+		frame = FrameTraits.For(data),
 		powerMul = mods.powerMul or 1, speedMul = mods.speedMul or 1, moveMul = mods.moveMul or 1,
 		maxStam = maxStam, stamCap = maxStam, stamina = maxStam * fatigueFactor, stamErosion = 0,
 		health = 100, healthCap = 100, body = 100, bodyCap = 100,
@@ -560,7 +571,8 @@ end
 
 -- how much a dazed / concussed fighter's defensive windows shrink (slip, roll, parry, pivot)
 function Fight:DefenseMul(F)
-	return math.max(0.35, (1 - CONC.tierDefense * F.tier) * (1 - CONC.defense * F.conc))
+	-- [FrameTraits] the frame's dodge windows (a Lean man slips longer, a heavyweight shorter)
+	return math.max(0.35, (1 - CONC.tierDefense * F.tier) * (1 - CONC.defense * F.conc)) * F.frame.dodgeWindow
 end
 
 ------------------------------------------------------------------------
@@ -899,6 +911,7 @@ local function punchSpeed(F, stamPct)
 	local s = F.data.stats
 	local speedMul = (1.25 - s.PunchSpeed / 200) * (stamPct < 0.3 and 1.25 or 1)
 	speedMul /= (1.08 - (F.data.class - 1) * 0.02) * F.speedMul
+	speedMul /= F.frame.handSpeed -- [FrameTraits] hand speed (FightClient.predWindup mirrors it)
 	return speedMul * (1 + CONC.tierWindup * F.tier) * (1 + CONC.windup * F.conc)
 end
 
@@ -1121,6 +1134,7 @@ function Fight:Punch(F, ptype, body, counter, fromBuffer)
 	end
 	F.lastPunch = now
 	local cost = P.stam * (body and 1.1 or 1) * (1.2 - s.Endurance / 250) * Combos.StamMul(F.combo)
+	cost *= F.frame.staminaDrain * (ptype ~= "jab" and F.frame.powerDrain or 1) -- [FrameTraits] the frame's economy
 	F.stamina = math.max(0, F.stamina - cost)
 	F.blocking = false
 	F.state = "punching"
@@ -1718,6 +1732,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	chance *= 1 - DEPTH.fatigueHit * math.max(0, DEPTH.fatigueAt - stamPct) / DEPTH.fatigueAt
 	chance *= 1 - DEPTH.damageHit * math.max(0, DEPTH.damageAt - F.health) / DEPTH.damageAt
 	vision = math.min(vision, 1 - DEPTH.visionHit * math.max(F.dmg.leftEye, F.dmg.rightEye))
+	chance *= O.frame.target -- [FrameTraits] the bigger man is the bigger target
 	chance = math.clamp(chance * vision, 0.15, 0.95)
 	-- clean = how cleanly it landed (feeds the knockdown odds); 0.5 when it comes through a guard
 	local clean = 0.5
@@ -1736,6 +1751,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 
 	-- damage
 	local dmg = P.dmg * (0.55 + s.Power / 110) * F.style.fight.power * F.classScale * F.powerMul
+	dmg *= F.frame.power -- [FrameTraits] the frame's power
 	if ptype == "jab" then
 		dmg *= F.style.fight.jab
 	end
@@ -1753,7 +1769,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	end
 	if dist < (self.sp or SPACING).inside then
 		if P.kind == "hook" or P.kind == "uppercut" then
-			dmg *= F.style.fight.inside
+			dmg *= F.style.fight.inside * F.frame.insideBonus -- [FrameTraits] the inside fighter's frame
 		else
 			dmg *= 0.85
 		end
@@ -1854,11 +1870,12 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		local ba = self:Trait(O, "BodyArmor")
 		local baCut = Traits.Effect("BodyArmor", "dmg", ba)
 		local bd = dmg * 0.8 * (1.2 - os_.Endurance / 200) * (P.body or 1) * armor * (1 - baCut)
+		bd /= O.frame.bodyAbsorb -- [FrameTraits] what his frame soaks up (a Lean body feels it more)
 		if ba > 0 then
 			self:TraitFired(O, "BodyArmor")
 		end
 		O.body = math.max(0, O.body - bd)
-		O.stamina = math.max(0, O.stamina - dmg * 0.6 * (P.body or 1) * (1 - Traits.Effect("BodyArmor", "drain", ba)))
+		O.stamina = math.max(0, O.stamina - dmg * 0.6 * (P.body or 1) * (1 - Traits.Effect("BodyArmor", "drain", ba)) / O.frame.bodyAbsorb) -- [FrameTraits]
 		O.health = math.max(0, O.health - dmg * 0.15)
 		O.lastBodyHitAt = now
 		-- rib bruising on the side that was hit (a left hand lands on the right flank)
@@ -1883,6 +1900,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	else
 		local chinMul = 1.35 - os_.Chin / 100 * 0.7
 		local hd = dmg * HEAD_SCALE * chinMul * (P.head or 1) * (O.dmg.cut > 0.5 and 1.08 or 1) * (1 + KO.tierDamage * O.tier)
+		hd /= O.frame.chin -- [FrameTraits] the frame's chin
 		-- Iron Chin (the ring trait): power shots to the head do less, and drop him less; it cracks as his body
 		-- and his gas go (the counter is the body work)
 		local ic = ptype ~= "jab" and self:Trait(O, "IronChin") or 0
@@ -1917,6 +1935,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 				trauma = O.data.trauma, composure = O.data.mental.Composure,
 			})
 			p *= sp.kd or 1
+			p *= F.frame.kdPower / O.frame.kdResist -- [FrameTraits] his one-punch power against the other man's frame
 			if self.tutorial and Tutorial and not O.isPlayer then
 				p *= Tutorial.KoMul(self.tutorial)
 			end
@@ -2276,11 +2295,13 @@ function Fight:Clinch(F)
 	F.stamina -= 4
 	F.nextClinch = now + 6
 	F.tally.clinches += 1
+	-- [FrameTraits] a heavy frame's hold keeps the other man tied up longer (a light one's is shrugged off sooner)
+	local hold = 1.8 + (F.frame.clinch - 1) * 1.5
 	for _, X in ipairs({ F, O }) do
 		X.state = "clinch"
 		X.blocking = false
-		X.clinchUntil = now + 1.8
-		X.busyUntil = now + 1.9
+		X.clinchUntil = now + hold
+		X.busyUntil = now + hold + 0.1
 		X.stumbleUntil = 0
 		X.stumbleVel = nil
 		X.strain = math.max(X.strain, 0.8)
@@ -2354,6 +2375,7 @@ function Fight:ClinchWork(F, ptype)
 	local P = Config.Punches[ptype] or Config.Punches.leadhook
 	local s, os_ = F.data.stats, O.data.stats
 	local dmg = P.dmg * DEPTH.clinchDmg * (0.55 + s.Power / 110) * F.style.fight.inside * F.classScale * self.damageScale
+	dmg *= F.frame.clinch * F.frame.power / O.frame.bodyAbsorb -- [FrameTraits] clinch strength, his power, the other man's body
 	if self.clinchBy == O then
 		dmg *= 1 - DEPTH.clinchSmother
 	end
@@ -2951,13 +2973,14 @@ function Fight:Count(F)
 			if sev == "flash" then
 				aiUpAt = self.rng:NextInteger(2, 4)
 			else
-				aiUpAt = math.clamp(math.floor(9 - ability * 6 + self.rng:NextInteger(-1, 1) + (sev == "heavy" and 1 or 0)), 3, 9)
+				aiUpAt = math.clamp(math.floor(9 - ability * 6 + self.rng:NextInteger(-1, 1) + (sev == "heavy" and 1 or 0) + (F.frame.getUpTime - 1) * 6), 3, 9) -- [FrameTraits]
 			end
 		end
 	end
 	-- presses needed (a green-zone press counts 3): a first knockdown takes a few seconds of honest work, a
 	-- third one when he's badly hurt still needs good timing on top of the mashing
 	local target = 8 + F.kdTotal * 4 + (1 - ability) * 12 + F.conc * 8
+	target *= F.frame.getUpTime -- [FrameTraits] more work to get a heavy frame up
 	if sev == "flash" then
 		target *= 0.35
 	elseif sev == "heavy" then
@@ -3011,6 +3034,7 @@ function Fight:GetUp(F, n)
 	-- every fall has its own get-up (off the back: roll, hands and knees, a knee, up)
 	local fall = F.model:GetAttribute("DownPose") or "back"
 	local upT = FightMotion and FightMotion.GetUpTime and FightMotion.GetUpTime(fall) or 0.9
+	upT *= F.frame.getUpTime -- [FrameTraits] a heavy frame is slower up (the act carries it to the Animator)
 	F.hurtUntil = now + upT + (sev == "flash" and 1.2 or 2.5)
 	F.busyUntil = now + upT
 	F.stamina = math.max(F.stamina, F.maxStam * 0.3)
@@ -3280,6 +3304,7 @@ function Fight:UpdateMovement(F, dt)
 	if F.hum then
 		local s = F.data.stats
 		local speed = (8 + s.Footwork * 0.08) * F.style.fight.move * F.moveMul
+		speed *= F.frame.footSpeed -- [FrameTraits] the frame's feet
 		local cw = F.cornerWalk
 		if cw and (not F.root or F.isPlayer or F.state == "down" or not self.paused or flat(cw - F.root.Position).Magnitude < 1.2) then
 			F.cornerWalk = nil
@@ -3546,7 +3571,7 @@ function Fight:Update(dt)
 		local s = F.data.stats
 		-- stamina ceiling: body damage and the rounds wear the gas tank down
 		F.stamCap = math.clamp(F.maxStam * (0.72 + 0.28 * F.body / 100) - F.stamErosion, F.maxStam * 0.35, F.maxStam)
-		local regen = 5 + s.Endurance * 0.06
+		local regen = (5 + s.Endurance * 0.06) * F.frame.staminaRegen -- [FrameTraits] the frame's recovery
 		if F.state == "punching" then
 			regen *= 0.2
 		elseif F.blocking then
@@ -4123,7 +4148,7 @@ function Fight:Rest()
 		F.bodyCap = math.max(40, F.bodyCap - (F.bodyCap - F.body) * 0.25)
 		F.body = math.min(F.bodyCap, F.body + 8 * nut)
 		F.stamCap = math.clamp(F.maxStam * (0.72 + 0.28 * F.body / 100) - F.stamErosion, F.maxStam * 0.35, F.maxStam)
-		F.stamina = math.min(F.stamCap, F.stamina + F.maxStam * (0.25 + s.Recovery * 0.004) * nut)
+		F.stamina = math.min(F.stamCap, F.stamina + F.maxStam * (0.25 + s.Recovery * 0.004) * nut * F.frame.staminaRegen) -- [FrameTraits]
 		F.healthCap = math.max(30, F.healthCap - (100 - F.health) * 0.12)
 		-- the minute's rest clears the stun and the corner gets a little more back
 		F.health = math.min(F.healthCap, F.health + F.stun + (2 + s.Recovery * 0.05) * nut)
@@ -4437,7 +4462,7 @@ function Fight:Run()
 	self:SpawnReferee()
 	local function tapeOf(F)
 		local t = { name = F.data.name, nick = F.data.nick, nat = F.data.nat, record = F.data.record, height = F.data.height, reach = F.data.reach, style = F.style.name,
-			overall = Config.Overall(F.data.stats), female = femaleOf(F) }
+			overall = Config.Overall(F.data.stats), female = femaleOf(F), frame = F.frame.name } -- [FrameTraits] the frame on the tape
 		if F.isPlayer then
 			-- PvP: the HUD names the Roblox account behind the boxer (and the record is the PvP one)
 			t.player = self.pvp and F.player and ("@" .. F.player.Name) or nil
