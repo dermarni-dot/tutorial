@@ -1,0 +1,48 @@
+{
+ "id": "ko_oneshot_face",
+ "kdAt": 0.6,
+ "frames": [
+  {
+   "dt": 0.0,
+   "t": 0.6,
+   "lowest": 0.048,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.583,
+   "headY": 5.466
+  },
+  {
+   "dt": 0.2,
+   "t": 0.8,
+   "lowest": 0.076,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.717,
+   "headY": 5.525
+  },
+  {
+   "dt": 0.5,
+   "t": 1.1333,
+   "lowest": 0.198,
+   "lowestPart": "RightFoot",
+   "pelvisY": 2.583,
+   "headY": 5.218
+  },
+  {
+   "dt": 1.0,
+   "t": 1.6,
+   "lowest": 0.122,
+   "lowestPart": "RightFoot",
+   "pelvisY": 1.919,
+   "headY": 3.748
+  },
+  {
+   "dt": 2.0,
+   "t": 2.6,
+   "lowest": 0.042,
+   "lowestPart": "LeftUpperLeg",
+   "pelvisY": 0.613,
+   "headY": 0.762
+  }
+ ],
+ "slideAfter": 0.002,
+ "slideMaxStep": 0.001
+}

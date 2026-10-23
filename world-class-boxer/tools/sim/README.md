@@ -443,3 +443,24 @@ FightMotion.RopeTravel sets it). AnimDown v10: the canvas is measured by a ray e
 range (AnimDown.LIMITS), nothing airborne (the final Transforms pulled onto the canvas in footLock), a landing slide
 and a settle; the physics side (the root held, the limbs released to ball sockets after an out-cold KO) is
 src/server/Ragdoll.lua + src/client/modules/Ragdoll.lua and can only be verified in Studio (no physics here).
+
+## The crowd and the stands: crowd_scene, crowd_render, test_crowd
+
+```sh
+lune run tools/sim/crowd_scene.luau [--out DIR] [--level 1|2|3] [--only Stadium,Arena]
+/opt/bpyenv/bin/python tools/sim/crowd_render.py DIR/scene.json OUT_DIR [--only view,view] [--samples N]
+lune run tools/sim/test_crowd.luau [--keep]      # ~25 s
+```
+
+- `crowd_scene.luau` (world_scene's stub layer) runs `Venues.New` per venue at a 0.41 house and a packed world-title
+  night (`Crowd.Apply`, the supporters' signs and banners), then the client's `CrowdFX` on the clone (the printed rows
+  and the bowl drawn, every rig posed; a `_react` root 0.9 s into a knockdown wave). Dumps as world_scene (GUI items
+  carry `rot` / `rt`), `crowd_counts.json` (`Crowd.Counts` per root), `cameras[root]` = the ring centre.
+- `crowd_render.py` renders through world_render with the drawn faces (tools/body uploads), rotated frames and
+  RichText rows: `previews/final/v10/crowd`.
+- `test_crowd.luau`: the fill (fewer fans at the low house, the front rows first, standing room only when packed),
+  the rigs (cheap, never physical, a head and two arms each, laps / legs, hats on some), the variety (builds, skin
+  tones, several drawn faces, clothing prints), the stands (rake, stair lights, VIP boxes, media box, camera
+  platforms, sponsor boards, printed rows, the bowl), the keep-outs (ring, lanes, stool corners, the venue's floor
+  cameras), the part caps per venue, and the reaction (rigs up and arms up near the ring, printed arms swung, the
+  wave outward, `Crowd.React`'s attribute).
