@@ -15,34 +15,34 @@
    "t": 0.7333,
    "lowest": 0.031,
    "lowestPart": "RightFoot",
-   "pelvisY": 2.089,
+   "pelvisY": 2.09,
    "headY": 4.443
   },
   {
    "dt": 0.5,
    "t": 1.0667,
-   "lowest": 0.139,
+   "lowest": 0.146,
    "lowestPart": "LeftFoot",
-   "pelvisY": 2.125,
-   "headY": 4.808
+   "pelvisY": 2.299,
+   "headY": 4.982
   },
   {
    "dt": 1.0,
    "t": 1.5333,
-   "lowest": -0.18,
+   "lowest": 0.011,
    "lowestPart": "LeftUpperArm",
-   "pelvisY": 0.95,
-   "headY": 1.241
+   "pelvisY": 1.173,
+   "headY": 1.483
   },
   {
    "dt": 2.0,
    "t": 2.5333,
-   "lowest": -0.198,
+   "lowest": 0.019,
    "lowestPart": "LeftUpperArm",
-   "pelvisY": 1.024,
-   "headY": 1.147
+   "pelvisY": 1.274,
+   "headY": 1.425
   }
  ],
- "slideAfter": 1.707,
+ "slideAfter": 1.708,
  "slideMaxStep": 0.095
 }
