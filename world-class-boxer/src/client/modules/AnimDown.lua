@@ -55,6 +55,9 @@ local HOLD_MIN, HOLD_MAX = 0.9, 1.3
 local CLEAR = 0.03 -- a body on the canvas rests this far above it (the drawn meshes' rounding), settling to CLEAR_REST
 local CLEAR_REST = 0.005
 local SETTLE = 0.5 -- seconds the landed body takes to settle onto the canvas
+-- the upper arms' boxes shrunk to the drawn arm (footLock's ground clamp), and how far at most the body is lifted
+-- onto an arm lying under it
+local ARM_PAD, ARM_LIFT_MAX = -0.1, 0.25
 -- the landing's slide (studs: the body's momentum against the canvas, stopped by friction) and its time constant
 local SLIDE_KO, SLIDE_KD, SLIDE_TAU = 0.35, 0.2, 0.16
 
@@ -1037,9 +1040,13 @@ local function timber(p, rig, d, dt, t)
 		th = d.theta - d.timber * 0.08 * sin(min(1, el / 0.35) * PI) * (1 - min(1, el / 0.35))
 	end
 	clear(p)
-	-- rotate the whole body about the ground point under the heels (backwards) / toes (forwards);
-	-- groundSolve then rests it on the canvas
+	-- rotate the whole body about the ground point under the heels (backwards) / toes (forwards) - the rig's own
+	-- heel / toe behind / in front of the ankle; groundSolve then rests it on the canvas
+	local leg = rig.geo.ok and rig.geo.L or nil
 	local pz = d.timber > 0 and 0.3 or -0.45
+	if leg and leg.ankle0 and leg.heelX and leg.toeX then
+		pz = d.timber > 0 and (leg.ankle0.Z + leg.heelX) or (leg.ankle0.Z - leg.toeX)
+	end
 	p.Root = CF(0, -fh, pz) * A(th, 0, 0) * CF(0, fh, -pz)
 	-- stiff legs, locked knees; the arms freeze (one fencing arm up, stiff)
 	p.LH = A(0.05, 0, -0.05)
@@ -1421,11 +1428,30 @@ function AnimDown.footLock(rig, out, dt)
 	-- between two keys can lift the whole body off the canvas for a few frames: here it is pulled down onto it
 	-- (never lifted: floorClamp does that after). A falling man is never airborne - he is on his feet until he is
 	-- on his knees, his seat or his back.
+	-- What touches: AnimRig.lowest's weight-bearing parts, the drawn boots (the boot box over the foot: a pitched
+	-- foot mid-fall stands on its heel edge, which the foot's rounded model holds a tenth of a stud high) and the
+	-- upper arms' boxes (a man on his side lies on his shoulder and upper arm, and the torso rests on it: the arm
+	-- is not pushed into the canvas - the body is lifted onto it, a little at most).
 	if not rig.ragdoll then
 		local clear = rig.downClear or CLEAR
 		local low = R.lowest(rig, fk)
+		for _, s in ipairs(R.SIDES) do
+			local kA = s .. "A"
+			local foot, fs = fk[kA], g.sz[kA]
+			if foot and fs then
+				local sz = V3(fs.X * 0.95, fs.Y + 2 * ((g[s] and g[s].sink) or 0) + 0.04, fs.Z * 1.12)
+				low = min(low, R.boxLow(foot, sz))
+			end
+			local kS = s .. "S"
+			if fk[kS] and g.sz[kS] then
+				low = min(low, R.boxLow(fk[kS], g.sz[kS], ARM_PAD))
+			end
+		end
 		local gap = low - (g.groundY + clear)
-		if gap > 1e-3 and gap < 3 then
+		if gap < -ARM_LIFT_MAX then
+			gap = -ARM_LIFT_MAX
+		end
+		if abs(gap) > 1e-3 and gap < 3 then
 			local sh = CF(0, -gap, 0)
 			out.Root = sh * out.Root
 			for _, k in ipairs(KEYS) do

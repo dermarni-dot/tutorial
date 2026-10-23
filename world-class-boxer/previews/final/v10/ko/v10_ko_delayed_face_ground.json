@@ -1,0 +1,48 @@
+{
+ "id": "ko_delayed_face",
+ "kdAt": 0.72,
+ "frames": [
+  {
+   "dt": 0.0,
+   "t": 0.7333,
+   "lowest": 0.058,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.641,
+   "headY": 5.507
+  },
+  {
+   "dt": 0.2,
+   "t": 0.9333,
+   "lowest": 0.019,
+   "lowestPart": "RightFoot",
+   "pelvisY": 2.413,
+   "headY": 5.179
+  },
+  {
+   "dt": 0.5,
+   "t": 1.2,
+   "lowest": 0.014,
+   "lowestPart": "RightFoot",
+   "pelvisY": 2.421,
+   "headY": 5.162
+  },
+  {
+   "dt": 1.0,
+   "t": 1.7333,
+   "lowest": 0.02,
+   "lowestPart": "RightFoot",
+   "pelvisY": 2.362,
+   "headY": 4.937
+  },
+  {
+   "dt": 2.0,
+   "t": 2.7333,
+   "lowest": 0.149,
+   "lowestPart": "RightUpperLeg",
+   "pelvisY": 1.805,
+   "headY": 4.327
+  }
+ ],
+ "slideAfter": 1.377,
+ "slideMaxStep": 0.34
+}

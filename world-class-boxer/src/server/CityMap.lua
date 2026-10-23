@@ -1161,7 +1161,7 @@ local function buildEast(root)
 		vcyl(wf, "BoatMast", 16, 0.3, bc * CF(0, 1.9, -3), C.steelLight, M.Metal)
 	end
 	-- the boathouse at the north end of the promenade
-	local bh = CF(828, 0, -300)
+	local bh = CF(828, 0, -230)
 	part(wf, "Boathouse", V3(44, 16, 30), bh * CF(0, 8, 0), Color3.fromRGB(96, 120, 140), M.WoodPlanks, { collide = true })
 	local ra = (bh * CF(0, 16 + 3.5, -7.5)).Position
 	local rb = (bh * CF(0, 16 + 3.5, 7.5)).Position
@@ -1176,16 +1176,16 @@ local function buildEast(root)
 	K.water(wf, R.x0, R.x1, B.z0, B.z1, -1.6, 7)
 	slab(wf, "FarBank", R.x1, R.x1 + 3, B.z0, B.z1, 0.6, Color3.fromRGB(110, 106, 100), M.Concrete, true, -9)
 	local bz = CITY.FoundryStreet.z
-	slab(wf, "Bridge", RD.x + 12.5, R.x1 + 2, bz - 14, bz + 14, 6, K.ASPHALT, M.Asphalt, true, 4.2)
-	K.dashesX(wf, RD.x + 12.5, R.x1, bz, K.LINE_YELLOW)
-	for _, x in ipairs({ RD.x + 12.5 + 1, R.x1 + 1 }) do
-		-- (the deck sits 5.7 above the road: ramps either side)
-		local dir = x < 900 and -1 or 1
-		local rc = CFrame.lookAt(V3(x + dir * 30, 3.15, bz), V3(x + dir * 30 + dir * 1, 3.15, bz))
-		part(wf, "BridgeRamp", V3(28, 5.7, 60), rc * ANG(0, 0, 0), K.ASPHALT, M.Asphalt, { class = "WedgePart", collide = true })
+	slab(wf, "BridgeApproach", RD.x + 12.5, 783, bz - 12.5, bz + 12.5, ROAD_Y, K.ASPHALT, M.Asphalt)
+	slab(wf, "Bridge", 843, R.x1 + 2, bz - 14, bz + 14, 6, K.ASPHALT, M.Asphalt, true, 4.2)
+	K.dashesX(wf, 843, R.x1, bz, K.LINE_YELLOW)
+	-- (the deck sits 5.7 above the road: ramps either side)
+	for _, r in ipairs({ { 813, -1 }, { 1182, 1 } }) do
+		local rc = CFrame.lookAt(V3(r[1], 3.15, bz), V3(r[1] + r[2], 3.15, bz))
+		part(wf, "BridgeRamp", V3(28, 5.7, 60), rc, K.ASPHALT, M.Asphalt, { class = "WedgePart", collide = true })
 	end
 	for _, dz in ipairs({ -14.5, 14.5 }) do
-		K.railing(wf, V3(RD.x + 12.5, 6, bz + dz), V3(R.x1 + 2, 6, bz + dz), Color3.fromRGB(60, 90, 120))
+		K.railing(wf, V3(843, 6, bz + dz), V3(R.x1 + 2, 6, bz + dz), Color3.fromRGB(60, 90, 120))
 		for x = 900, R.x1 - 20, 60 do
 			K.streetLight(wf, V3(x, 6, bz + dz), V3(0, 0, -math.sign(dz)), (x // 60) % 2 == 0, 26)
 		end
