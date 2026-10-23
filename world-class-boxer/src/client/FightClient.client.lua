@@ -2661,14 +2661,14 @@ function Impact.flash(model, partName, strength, counter)
 		e.Name = "ImpactFlash"
 		e.Texture = Impact.TEX
 		e.Rate = 0
-		e.Lifetime = NumberRange.new(0.1, 0.18)
+		e.Lifetime = NumberRange.new(0.07, 0.12)
 		e.Speed = NumberRange.new(0, 0)
 		e.LightEmission = 1
 		e.LightInfluence = 0
 		e.Rotation = NumberRange.new(0, 360)
 		e.RotSpeed = NumberRange.new(-200, 200)
 		e.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(255, 214, 150))
-		e.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.5, 0.35), NumberSequenceKeypoint.new(1, 1) })
+		e.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(0.5, 0.6), NumberSequenceKeypoint.new(1, 1) })
 		e.Parent = att
 		fx = { att = att, emitter = e }
 		Impact.fx[part] = fx
@@ -2678,7 +2678,7 @@ function Impact.flash(model, partName, strength, counter)
 		local light = Instance.new("PointLight")
 		light.Name = "ImpactLight"
 		light.Brightness = 0
-		light.Range = 7
+		light.Range = 5
 		light.Color = Color3.fromRGB(255, 236, 200)
 		light.Parent = fx.att
 		fx.light = light
@@ -2687,11 +2687,11 @@ function Impact.flash(model, partName, strength, counter)
 		fx.light = nil
 	end
 	strength = math.clamp(strength or 0.5, 0.2, 1.6)
-	local size = 1.1 + strength * 1.6
+	local size = 0.45 + strength * 0.55 -- small, at the contact point: the punch stays readable
 	fx.emitter.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, size), NumberSequenceKeypoint.new(1, size * 0.4) })
 	fx.emitter:Emit(counter and 3 or (strength > 0.9 and 2 or 1))
 	if fx.light then
-		fx.light.Brightness = 1.5 + strength * 2.5
+		fx.light.Brightness = 0.6 + strength * 0.8
 		TweenService:Create(fx.light, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Brightness = 0 }):Play()
 	end
 end
