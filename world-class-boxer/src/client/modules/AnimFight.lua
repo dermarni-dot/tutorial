@@ -3266,6 +3266,15 @@ function AnimFight.applyAct(p, rig, act, t)
 		p.RS = p.RS:Lerp(A(2.6, 0, 0.55 - 0.75 * x), e)
 		p.LE = p.LE:Lerp(A(0.2, 0, 0), e)
 		p.RE = p.RE:Lerp(A(0.2, 0, 0), e)
+	elseif k == "neutral" then
+		-- "to the neutral corner": the right arm points out and sweeps twice towards the corner, head turned
+		local e = min(1, el / 0.2) * (1 - smooth((el - act.dur + 0.3) / 0.3))
+		local sweep = 0.18 * sin(el * 9)
+		p.RS = p.RS:Lerp(A(1.55, 0, 0.75 + sweep), e)
+		p.RE = p.RE:Lerp(A(0.1, 0, 0), e)
+		p.LS = p.LS:Lerp(A(0.5, 0, -0.2), e)
+		p.LE = p.LE:Lerp(A(0.9, 0, 0), e)
+		p.Neck = p.Neck * A(0, -0.35 * e, 0)
 	elseif k == "catch" then
 		-- the referee wraps his arms round a man out on his feet and holds him up: braced, leaning in,
 		-- hands under the armpits and round the back

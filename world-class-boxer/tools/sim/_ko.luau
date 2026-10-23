@@ -1,7 +1,11 @@
 --!nocheck
 local FS = require("./fightsim")
 local process = require("@lune/process")
-local S = FS.new({ root = process.args[1] })
+local S = FS.new({ root = (process.args[1] ~= "" and process.args[1]) or nil })
+if process.args[2] and process.args[2] ~= "" then
+	local luau = require("@lune/luau")
+	luau.load(process.args[2], { environment = setmetatable({ AIC = S.Config.FightAI, S = S }, { __index = _G }) })()
+end
 local STY = { "OutBoxer", "Swarmer", "Slugger", "BoxerPuncher", "CounterPuncher" }
 local m, rounds, kds, n = {}, {}, 0, 24
 local firstKD = 0

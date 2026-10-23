@@ -594,6 +594,9 @@ onAct = function(rig, s, now, predicted)
 		act.dur = 0.95
 	elseif k == "waveoff" then
 		act.dur = 1.8
+	elseif k == "neutral" then
+		-- the referee sends the standing man to the neutral corner (FightEngine RefAct("neutral"))
+		act.dur = 1.4
 	elseif k == "catch" then
 		act.dur = clamp(tonumber(f2) or 2.5, 0.8, 6)
 	else
