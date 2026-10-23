@@ -1117,10 +1117,10 @@ def upper_torso(tr, fr):
         Lb(106, 20, 3.00, 3.22, 3.42, g("lat", 0.008, 0.05, 0.004)),            # the lat's outer sweep under the armpit
         Lb(168, 14, 2.34, 2.72, 3.12, g("lat", 0.005, 0.025, 0.004)),           # erector columns
         Lb(180, 5, 2.34, 2.90, 3.42, g("lat", -0.008, -0.013, -0.018)),         # spine groove (ends under the traps)
-        Lb(146, 9, 3.14, 3.34, 3.54, g("lat", 0.004, 0.010, 0.010)),            # the scapula's inner edge
-        Lb(128, 12, 3.42, 3.50, 3.58, g("lat", 0.003, 0.008, 0.006)),           # its spine (the shoulder blade's ridge)
+        Lb(148, 11, 3.12, 3.30, 3.50, g("lat", 0.003, 0.008, 0.008), drift=45),  # the scapula's inner edge (wider low)
+        Lb(130, 14, 3.38, 3.47, 3.56, g("lat", 0.003, 0.007, 0.005), drift=-220),  # its spine, rising out to the shoulder
         Lb(180, 56, 3.16, 3.46, 3.74, g("trap", 0.010, 0.046, 0.0)),            # the traps' diamond, into the slope
-        Lb(180, 48, 3.46, 3.60, 3.74, g("trap", 0.010, 0.035, 0.0)),            # the upper traps between the blades
+        Lb(180, 48, 3.38, 3.56, 3.74, g("trap", 0.010, 0.035, 0.0)),            # the upper traps between the blades
         Lb(180, 14, 2.94, 3.14, 3.34, g("trap", 0.003, 0.012, 0.004)),          # its tail
         Lb(150, 22, 3.18, 3.34, 3.50, g("lat", 0.004, 0.028, 0.006)),           # infraspinatus
         Lb(118, 16, 3.14, 3.26, 3.40, g("lat", 0.003, 0.02, 0.005)),            # teres major
@@ -1129,7 +1129,7 @@ def upper_torso(tr, fr):
         Lb(90, 46, 3.36, 3.56, 3.74, g("delt", 0.045, 0.04, 0.0)),
         Lb(26, 16, 3.545, 3.585, 3.625, g("pec", 0.006, 0.0, 0.006), drift=300),  # the collarbones (rising outward)
         Lb(0, 10, 3.565, 3.61, 3.66, -0.007 * tr["f"] - 0.003 * tr["d"]),       # the sternum notch at the throat
-        Lb(180, 78, 3.46, 3.58, 3.80, g("trap", 0.016, 0.045, 0.0), k=0.8),     # upper traps into the neck (the slope)
+        Lb(180, 78, 3.36, 3.58, 3.80, g("trap", 0.016, 0.045, 0.0), k=0.8),     # upper traps into the neck (the slope)
         # (v13) a real neck: the two sternocleidomastoid cords from the collarbones up behind the jaw, the throat's
         # hollow between them (the larynx a small bump in it), the nape's groove between the traps' insertions
         Lb(34, 11, 3.60, 3.72, 3.88, 0.006 + 0.004 * tr["m"] + 0.003 * tr["d"], drift=260),  # sternocleidomastoid

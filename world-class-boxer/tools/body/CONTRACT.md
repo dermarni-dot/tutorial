@@ -95,6 +95,8 @@ about the pivots) and the elbow / wrist / hip / knee / ankle heights are unchang
   SCM cords run diagonally from the notch up behind the jaw (fixed sizes, not scaled by the trap gain), the upper traps
   are one broad slope from the neck down to the shoulders (peak at the shoulder-top row, not a hump behind the neck).
   Power Build's forearm no longer flares under the elbow (fore 1.04 / 1.08 / 1.06 / 1.02, fore gain 1.35, trap 1.7).
+  On the back the shoulder blades' inner edges and spines are diagonal (no rectangular plate between the blades) and
+  the upper traps' onsets are staggered (no fold across the upper back).
 * THE SURFACE: the lofts are 52 x 56 (UpperTorso), 14 x 40, 20 x 32 (upper arm), 16 x 28, 22 x 32 (thigh), 18 x 28,
   12 x 22 (foot), 8 x 20 (hand) rings x segments (every vertex still a sample of the 4x refined loft that carries the
   muscles and the normals): 22,320 triangles per body in the full set (UpperTorso 6,272; the 10k per-mesh limit and

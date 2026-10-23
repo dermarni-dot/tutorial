@@ -803,12 +803,23 @@ for _, sid in ipairs(ORDER) do
 				local penBR, pairBR = penetration(figs[2], figs[3])
 				gaps.pen_red_ref, gaps.pen_blue_ref, gaps.pen_pairs = penRR, penBR, pairRR .. " " .. pairBR
 				-- the cameras: straight down on the centre; the result shot from the camera side (Ceremony.resultShot)
-				local eye = center + UP * 2.2
+				-- (Ceremony.resultShot's drift: framed on the highest crown of the three, group.top)
+				local top = 0
+				for _, mm in ipairs(all) do
+					local hd = mm:FindFirstChild("Head")
+					if hd then
+						top = math.max(top, hd.Position.Y + hd.Size.Y / 2 - center.Y)
+					end
+				end
+				top = math.clamp(top > 0 and top or 5.6, 4, 10)
+				local eye = center + UP * (top * 0.5)
 				local hardFrom, hardAt, fov
 				if not raised then
-					local a = math.rad(-22 + 44 * 0.2)
+					local k = math.clamp(t / 6, 0, 1)
+					local a = math.rad(-22 + 44 * k)
 					local dir = face * math.cos(a) + right * math.sin(a)
-					hardFrom, hardAt, fov = center + dir * 9.26 + UP * 3.52, eye, 48
+					local back = math.max(9.5, (top * 0.5 + 0.9) / math.tan(math.rad(24)))
+					hardFrom, hardAt, fov = center + dir * (back - 1.2 * k) + UP * (top * 0.62 - 0.4 * k), eye, 48
 				else
 					-- (the root's own height, as BoxerClient.Ceremony's resultShot reads it: the chest, not the shorts)
 					local wp = winner:FindFirstChild("HumanoidRootPart").Position

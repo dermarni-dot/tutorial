@@ -53,8 +53,8 @@ HitGeometry.CLINCH = 4.8
 local TARGET = {
 	jab = { head = 5.39, body = 4.69 },
 	cross = { head = 5.71, body = 5.49 },
-	leadhook = { head = 5.18, body = 5.25 },
-	rearhook = { head = 5.38, body = 5.84 },
+	leadhook = { head = 5.21, body = 5.26 },
+	rearhook = { head = 5.40, body = 5.84 },
 	uppercut = { head = 4.76, body = 4.44 },
 	overhand = { head = 5.06, body = 5.06 },
 }
@@ -69,12 +69,12 @@ HitGeometry.RIG = RIG
 -- the shoulder and turns the cross through it, so a broad man's hooks land a stud further than a lean man's at the
 -- same height, while the jab and the uppercut barely care (fitted over the 25 pairings)
 local WIDE = {
-	jab = { head = 0.13, body = 0.62 },
-	cross = { head = 0.85, body = 0.72 },
-	leadhook = { head = 3.03, body = 1.83 },
-	rearhook = { head = 0.79, body = 1.99 },
-	uppercut = { head = -0.18, body = -0.03 },
-	overhand = { head = -0.21, body = -0.21 },
+	jab = { head = 0.15, body = 0.67 },
+	cross = { head = 0.85, body = 0.74 },
+	leadhook = { head = 3.14, body = 1.85 },
+	rearhook = { head = 0.87, body = 2.04 },
+	uppercut = { head = -0.18, body = 0.00 },
+	overhand = { head = -0.20, body = -0.20 },
 }
 HitGeometry.WIDE = WIDE
 HitGeometry.TARGET = TARGET
