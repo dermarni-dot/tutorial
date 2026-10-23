@@ -771,10 +771,14 @@ JOINT_DOME = {"shoulder": 0.224, "elbow": 0.194, "wrist": 0.115, "hip": 0.232, "
 DOME_K = {"UpperArm": 0.869 / 1.342, "LowerArm": 0.869 / 1.342, "UpperLeg": 0.788 / 1.506, "LowerLeg": 0.788 / 1.506}
 
 
-def dome_r(base, prof, s, m):
-    """a dome height for the section prof gives at s (a near-sphere about the pivot in game space)"""
+def dome_r(base, prof, s, m, lobes=None):
+    """a dome height for the section prof gives at s (a near-sphere about the pivot in game space), the lobes' mean
+    displacement round that row included (the deltoid cap over the shoulder dome: the sphere grows with it)"""
     pr = prof(np.array([s]), m)
     r = float((pr["ax"][0] + (pr["af"][0] + pr["ab"][0]) / 2) / 2)
+    if lobes:
+        ang = np.linspace(-180, 180, 73)[None, :-1]
+        r += float(lobe_field(np.array([s]), ang, lobes).mean())
     return DOME_K[base] * r
 
 
@@ -886,15 +890,17 @@ def torso_section(fr):
         out["ab"] = out["ab"] * (lz * (1 - w) + pchip(kn, kb, s) * w)
         # a rounder ribcage (the exponent drops from the hem to the chest), the frame's own shift on top
         out["p"] = out["p"] - 0.35 * np.clip((s - 2.5) / 0.5, 0, 1) + dp * np.clip((s - 2.3) / 0.3, 0, 1)
+        def sm(x):
+            x = np.clip(x, 0, 1)
+            return x * x * (3 - 2 * x)
         if soft > 0:  # the heavyweight's layer: fuller above the hem (never under the band)
-            ws = np.clip((s - 2.5) / 0.3, 0, 1)
-            ws = ws * ws * (3 - 2 * ws) * np.clip((3.62 - s) / 0.12, 0, 1)
+            ws = sm((s - 2.5) / 0.3) * sm((3.62 - s) / 0.2)
             out["ax"] = out["ax"] + 0.02 * soft * ws
             out["af"] = out["af"] + 0.03 * soft * ws
             out["ab"] = out["ab"] + 0.015 * soft * ws
         if fat > 0:  # the belly and the flanks: a fat layer that shrinks with the tier (above the band)
             k = fat * (1.0 - 0.75 * m)
-            wb = np.clip((s - 2.42) / 0.12, 0, 1) * np.clip((3.05 - s) / 0.25, 0, 1)
+            wb = sm((s - 2.42) / 0.2) * sm((3.15 - s) / 0.4)
             out["af"] = out["af"] + 0.10 * k * wb
             out["ax"] = out["ax"] + 0.05 * k * wb
             out["ab"] = out["ab"] + 0.02 * k * wb
@@ -922,12 +928,16 @@ def torso_sec(fr):
     return torso_section(fr)
 
 
+ARM_TAPER = [1.02, 1.04, 1.07, 1.03, 0.98]     # elbow .. shoulder: the biceps / triceps belly, thinner into the delt
+FORE_TAPER = [1.0, 0.95, 1.00, 1.08, 1.02]    # wrist .. elbow: a narrow wrist, the flexor mass under the elbow
+
+
 def arm_section(fr):
-    return Scaled(LEGACY["UpperArm"], [YE, 3.00, 3.20, 3.40, 3.52], fr["arm"])
+    return Scaled(LEGACY["UpperArm"], [YE, 3.00, 3.20, 3.40, 3.52], [a * b for a, b in zip(fr["arm"], ARM_TAPER)])
 
 
 def fore_section(fr):
-    return Scaled(LEGACY["LowerArm"], [YWR, 2.30, 2.50, 2.70, YE], fr["fore"])
+    return Scaled(LEGACY["LowerArm"], [YWR, 2.30, 2.50, 2.70, YE], [a * b for a, b in zip(fr["fore"], FORE_TAPER)])
 
 
 def thigh_section(fr):
@@ -1057,7 +1067,7 @@ def upper_torso(tr, fr):
         Lb(118, 16, 3.14, 3.26, 3.40, g("lat", 0.003, 0.02, 0.005)),            # teres major
         Lb(112, 16, 3.38, 3.47, 3.58, g("delt", 0.006, 0.026, 0.0)),            # the rear delt's root on the back
         # ---- shoulders and neck: the girdle's rounding under the delt, the clavicles, the traps rising into the neck
-        Lb(90, 36, 3.42, 3.54, 3.68, g("delt", 0.012, 0.045, 0.0)),
+        Lb(90, 46, 3.36, 3.56, 3.74, g("delt", 0.045, 0.04, 0.0)),
         Lb(30, 28, 3.58, 3.62, 3.67, g("pec", 0.006, 0.0, 0.004)),              # clavicle ridge
         Lb(0, 12, 3.60, 3.65, 3.72, g("pec", -0.010, -0.004, -0.004)),           # the notch at the throat
         Lb(180, 62, 3.56, 3.70, 3.86, g("trap", 0.02, 0.07, 0.0)),               # upper traps into the neck (the slope)
@@ -1079,7 +1089,7 @@ def upper_torso(tr, fr):
     L += [
         Lb(0, 50, 2.36, 2.62, 2.98, 0.045 * fat, k=0.8),            # the belly's round
         Lb(85, 24, 2.34, 2.52, 2.70, 0.035 * fat),                  # love handles
-        Lb(0, 40, 2.95, 3.03, 3.12, -0.008 * fat),                  # the fold under the chest
+        Lb(0, 40, 2.92, 3.03, 3.14, -0.004 * fat),                  # the fold under the chest
     ]
     sd = ([YW, 2.32, 2.36, 3.36, 3.42, 3.54, 3.57, 3.84], [0.6, 0.6, 1.3, 1.3, 0.9, 0.9, 1.7, 1.7])
     return loft(torso_sec(fr), tr["m"], YW, 3.84, (0.22, 1.0, 2, 0.88), (0.05, 1.0, 2), nb=36, nseg=42, bias=0.5,
@@ -1110,7 +1120,7 @@ def upper_arm(tr, fr):
     L = [
         # the deltoid: one cap wrapping front, side and back (not the inner face), its three heads as crests, the
         # grooves between them and the insertion V over the biceps / brachialis
-        Lb(55, 150, 3.20, 3.44, 3.62, g("delt", 0.012, 0.055, 0.0), sym=False),
+        Lb(55, 150, 3.18, 3.44, 3.64, g("delt", 0.03, 0.05, 0.0), sym=False),
         Lb(-32, 30, 3.26, 3.42, 3.56, g("delt", 0.006, 0.028, 0.004), sym=False),
         Lb(88, 32, 3.26, 3.44, 3.58, g("delt", 0.008, 0.034, 0.004), sym=False),
         Lb(150, 30, 3.24, 3.40, 3.56, g("delt", 0.004, 0.02, 0.003), sym=False),
@@ -1131,8 +1141,8 @@ def upper_arm(tr, fr):
         Lb(-104, 7, 2.96, 3.12, 3.30, g("arm", 0, -0.003, -0.006), sym=False),
     ]
     m = tr["m"]
-    return loft(sec, m, YE, YS_PIVOT, (dome_r("UpperArm", sec, YE, m), 1.0, 2, 0.88),
-                (dome_r("UpperArm", sec, YS_PIVOT, m), 1.0, 4), nb=12, nseg=22, frame=VERT(X), lobes=L)
+    return loft(sec, m, YE, YS_PIVOT, (dome_r("UpperArm", sec, YE, m), 1.0, 2, 0.97),
+                (dome_r("UpperArm", sec, YS_PIVOT, m, L), 1.0, 4), nb=12, nseg=22, frame=VERT(X), lobes=L)
 
 
 def lower_arm(tr, fr):
@@ -1148,11 +1158,11 @@ def lower_arm(tr, fr):
         Lb(-20, 5, 2.20, 2.30, 2.40, g("fore", 0.003, 0.0, 0.004), sym=False),          # the wrist's tendons
     ]
     kn = fr.get("knobs", 0.0) * tr["f"]
-    b = [Bp((X + 0.11, 2.21, 0.10), (0.05, 0.05, 0.05, 0.05, 0.08, 0.08), 0.006 * tr["f"]),  # ulna's knob
+    b = [Bp((X + 0.11, 2.21, 0.10), (0.05, 0.05, 0.05, 0.05, 0.08, 0.08), 0.006 * tr["f"] + 0.012 * kn),  # ulna's knob
          Bp((X + 0.0, YE - 0.02, 0.22), (0.10, 0.10, 0.07, 0.07, 0.08, 0.08), 0.014 * kn)]   # the elbow's point (olecranon)
     m = tr["m"]
     return loft(sec, m, YWR, YE, (dome_r("LowerArm", sec, YWR, m), 1.0, 2, 0.9),
-                (dome_r("LowerArm", sec, YE, m), 1.0, 2), nb=10, nseg=20, frame=VERT(X), shrink=[(YE, 0.10, 0.06)],
+                (dome_r("LowerArm", sec, YE, m), 1.0, 2), nb=10, nseg=20, frame=VERT(X), shrink=[(YE, 0.10, 0.0)],
                 bumps=b, lobes=L)
 
 
@@ -1162,12 +1172,13 @@ def hand(tr, fr=None):
     # is the forearm's clean ring, never the two surfaces crossing). The hand is the same on every frame: the gloves
     # and wraps are one mesh for all
     pr = Prof([1.93, 2.05, YWR],
-              ax=([0.135, 0.165, 0.132], [0.01, 0.01, 0.006]),
+              ax=([0.165, 0.19, 0.132], [0.01, 0.01, 0.006]),
               af=([0.215, 0.212, 0.158], [0.01, 0.01, 0.004]),
-              p=[3.0, 3.0, 2.4], cx=[-0.02, 0.0, 0.0])
+              p=[2.8, 2.9, 2.4], cx=[-0.03, -0.01, 0.0])
     b = []
+    b.append(Bp((X + 0.13, 1.985, 0.0), (0.06, 0.06, 0.05, 0.045, 0.22, 0.22), 0.014))  # the knuckle ridge
     for z, k in ((-0.15, 1.0), (-0.05, 1.08), (0.05, 1.0), (0.148, 0.85)):
-        b.append(Bp((X + 0.12, 1.985, z), (0.06, 0.06, 0.045, 0.04, 0.042, 0.042), 0.016 * k))  # knuckle
+        b.append(Bp((X + 0.12, 1.985, z), (0.06, 0.06, 0.045, 0.04, 0.042, 0.042), 0.018 * k))  # knuckle
         b.append(Bp((X + 0.13, 2.07, z * 0.8), (0.04, 0.04, 0.08, 0.06, 0.016, 0.016), 0.004))  # tendon
     b += [
         Bp((X - 0.12, 2.05, -0.12), (0.07, 0.07, 0.08, 0.07, 0.09, 0.08), 0.024),  # thenar (the thumb's pad)
@@ -1179,8 +1190,8 @@ def hand(tr, fr=None):
     for i, (z, Lf, r) in enumerate(((-0.158, 0.17, 0.0495), (-0.053, 0.185, 0.0515), (0.052, 0.175, 0.0495),
                                     (0.152, 0.145, 0.046))):
         y0 = 1.975
-        pts = [(X - 0.005, y0, z), (X - 0.03, y0 - 0.45 * Lf, z), (X - 0.062, y0 - 0.77 * Lf, z * 1.01),
-               (X - 0.105, y0 - Lf, z * 1.02)]
+        pts = [(X - 0.005, y0, z), (X - 0.04, y0 - 0.45 * Lf, z), (X - 0.085, y0 - 0.76 * Lf, z * 1.01),
+               (X - 0.14, y0 - 0.96 * Lf, z * 1.02)]
         shells.append(tube(pts, [r * 1.02, r * 1.05, r * 0.97, r * 0.86], nside=8, kcap=2,
                            uvbox=(0.2 * i, 0.8, 0.2 * i + 0.2, 1.0)))
     pts = [(X - 0.03, 2.10, -0.16), (X - 0.065, 2.03, -0.225), (X - 0.10, 1.965, -0.25), (X - 0.128, 1.925, -0.256)]
@@ -1602,8 +1613,9 @@ SKIN = (0.36, 0.155, 0.072)  # linear; ~sRGB (162, 110, 76), a mid brown
 
 
 class Stage:
-    def __init__(self, bpy, res, samples):
+    def __init__(self, bpy, res, samples, silhouette=False):
         self.bpy = bpy
+        self.silhouette = silhouette
         bpy.ops.wm.read_factory_settings(use_empty=True)
         sc = bpy.context.scene
         self.sc = sc
@@ -1615,21 +1627,21 @@ class Stage:
         sc.render.resolution_x, sc.render.resolution_y = res
         sc.render.resolution_percentage = 100
         try:
-            sc.view_settings.view_transform = "AgX"
+            sc.view_settings.view_transform = "Standard" if silhouette else "AgX"
         except TypeError:
             sc.view_settings.view_transform = "Filmic"
         w = bpy.data.worlds.new("w")
         sc.world = w
         w.use_nodes = True
         bg = w.node_tree.nodes["Background"]
-        bg.inputs[0].default_value = (0.16, 0.18, 0.21, 1)
-        bg.inputs[1].default_value = 0.9
+        bg.inputs[0].default_value = (1, 1, 1, 1) if silhouette else (0.16, 0.18, 0.21, 1)
+        bg.inputs[1].default_value = 1.0 if silhouette else 0.9
         self.root = bpy.data.objects.new("root", None)  # game -> Blender (Y up -> Z up, face toward -Y)
         sc.collection.objects.link(self.root)
         self.root.rotation_euler = (math.pi / 2, 0, math.pi)
         self.coll = bpy.data.collections.new("Lineup")
         sc.collection.children.link(self.coll)
-        self.skin = self.material("skin", SKIN)
+        self.skin = self.material("skin", SKIN) if not silhouette else self.black()
         self.headmats = {}
         self.floormat = self.material("floor", (0.30, 0.31, 0.33), rough=0.9)
         self._lights()
@@ -1694,7 +1706,18 @@ class Stage:
         self.coll.objects.link(ob)
         return ob
 
+    def black(self):
+        m = self.bpy.data.materials.new("black")
+        m.use_nodes = True
+        nt = m.node_tree
+        em = nt.nodes.new("ShaderNodeEmission")
+        em.inputs[0].default_value = (0, 0, 0, 1)
+        nt.links.new(em.outputs[0], nt.nodes["Material Output"].inputs[0])
+        return m
+
     def headmat(self, face):
+        if self.silhouette:
+            return self.skin
         if face not in self.headmats:
             self.headmats[face] = self.material("head_" + face, SKIN, face_png(face))
         return self.headmats[face]
@@ -1761,22 +1784,56 @@ def label(path, labels, title=None, strip=44):
 CY = 3.25  # frame centre height (a 70-inch boxer stands ~6.2 studs)
 
 
-def render_frame_sheets(bpy, built, tiers, samples, views=("front", "back", "side", "34")):
-    """the five frames side by side at each of `tiers`, one image per view: <scratch>/frames_t<N>_<view>.png"""
+def render_frame_sheets(bpy, built, tiers, samples, views=("front", "back", "side", "34", "silhouette")):
+    """the five frames side by side at each of `tiers`, one image per view: <scratch>/frames_t<N>_<view>.png;
+    "silhouette" = black fills on white (front and side), the read from a distance"""
     paths = []
     frames = [f for f in FRAME_ORDER if any((f, n) in built for n in tiers)]
     yaws = {"front": 0, "back": 180, "side": 90, "34": -38}
     sp = 3.6
     for n in tiers:
         for view in views:
-            st = Stage(bpy, (1800, 760), samples)
-            st.floor()
+            sil = view == "silhouette"
+            st = Stage(bpy, (1800, 760), 8 if sil else samples, silhouette=sil)
+            if not sil:
+                st.floor()
             fs = [f for f in frames if (f, n) in built]
             for i, f in enumerate(fs):
-                st.figure("F%d" % i, built[(f, n)], -(i - (len(fs) - 1) / 2) * sp, yaw=yaws[view], face="determined")
-            p = st.shoot(os.path.join(SCRATCH, "frames_t%d_%s.png" % (n, view)), 0, CY, len(fs) * sp + 0.4, elev=3)
-            label(p, ["%s (T%d)" % (f, n) for f in fs], "Body frames, tier %d (%s): %s" % (n, TIERS[n]["name"], view))
+                if sil:
+                    x = -(i - (len(fs) - 1) / 2) * sp
+                    st.figure("F%d" % i, built[(f, n)], x - 0.95, yaw=0, face="determined")
+                    st.figure("S%d" % i, built[(f, n)], x + 0.95, yaw=90, face="determined")
+                else:
+                    st.figure("F%d" % i, built[(f, n)], -(i - (len(fs) - 1) / 2) * sp, yaw=yaws[view], face="determined")
+            p = st.shoot(os.path.join(SCRATCH, "frames_t%d_%s.png" % (n, view)), 0, CY, len(fs) * sp + 0.4, elev=0 if sil else 3)
+            label(p, ["%s (T%d)" % (f, n) for f in fs], "Body frames, tier %d (%s): %s" % (n, TIERS[n]["name"],
+                  "silhouettes (front, side)" if sil else view))
             paths.append(p)
+    return paths
+
+
+def render_arm_strip(bpy, built, tiers, samples):
+    """<scratch>/arms_t<N>.png: the right arm of every frame, straight (A-pose) and bent 110 deg at the elbow"""
+    paths = []
+    frames = [f for f in FRAME_ORDER if any((f, n) in built for n in tiers)]
+    only = ("UpperTorso", "RightUpperArm", "RightLowerArm", "RightHand")
+    for n in tiers:
+        st = Stage(bpy, (2000, 700), samples)
+        fs = [f for f in frames if (f, n) in built]
+        sp = 2.2
+        labels = []
+        for i, f in enumerate(fs):
+            parts = built[(f, n)]
+            for j, el in enumerate((7.0, 110.0)):
+                x = -((2 * i + j) - (2 * len(fs) - 1) / 2) * sp
+                place = M4(roty(-30), (x, 0, 0))
+                pm = pose_mats(parts["_J"], sh=12.0, el=el)
+                for name in only:
+                    st.add("A%d_%d_%s" % (i, j, name), parts[name], place @ pm[name], st.skin)
+                labels.append("%s %s" % (f.split(" ")[0], "straight" if j == 0 else "bent 110"))
+        p = st.shoot(os.path.join(SCRATCH, "arms_t%d.png" % n), 0, 4.1, 2 * len(fs) * sp + 0.4, elev=4)
+        label(p, labels, "Right arm close-ups, tier %d (%s): shoulder into delt, elbow seam, forearm taper, hand" % (n, TIERS[n]["name"]))
+        paths.append(p)
     return paths
 
 
@@ -1914,6 +1971,8 @@ def main():
         if "frames" in sheets:
             fst = [int(x) for x in a.frame_sheet_tiers.split(",") if int(x) in want_tiers]
             for p in render_frame_sheets(bpy, built, fst, a.samples):
+                print("sheet", p)
+            for p in render_arm_strip(bpy, built, fst, a.samples):
                 print("sheet", p)
         num = [int(x) for x in sheets if x.isdigit()]
         ath_tiers = {n: built[(DEFAULT_FRAME, n)] for n in want_tiers if (DEFAULT_FRAME, n) in built}

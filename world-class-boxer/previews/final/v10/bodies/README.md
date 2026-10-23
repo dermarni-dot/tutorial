@@ -10,9 +10,16 @@ highest muscle tier. Left to right in the front / 3-4 views: Lean, Athletic, Mus
 | tier 1 (untrained) | `bodies_t1_front.jpg` | `bodies_t1_back.jpg` | `bodies_t1_side.jpg` | `bodies_t1_34.jpg` |
 | tier 5 (elite) | `bodies_t5_front.jpg` | `bodies_t5_back.jpg` | `bodies_t5_side.jpg` | `bodies_t5_34.jpg` |
 
-Bare-body sheets (no gear, build_body.py's own stage, tiers 1 and 5, front / back / side / 3-4): `bare_t<N>_<view>.png`.
+Silhouettes (black fills on white, front and side per frame, in the game's gear): `silhouettes_t1.png`, `silhouettes_t5.png`;
+bare-body silhouettes: `bare_t<N>_silhouette.png`.
 
-What differs per frame (tools/body/CONTRACT.md "Body frames"): the arm axis (where the upper arm rests against the
+Bare-body sheets (no gear, build_body.py's own stage, tiers 1 and 5, front / back / side / 3-4): `bare_t<N>_<view>.png`.
+Right-arm close-ups, straight and bent 110 deg at the elbow, every frame: `arms_t1.png`, `arms_t5.png` (the shoulder into
+the deltoid, the elbow seam, the forearm's taper, the hand).
+
+What differs per frame (tools/body/CONTRACT.md "Body frames"): the skeleton (Lean: longer legs and forearms, a
+narrow pelvis, slim hands; Power Build: short thick limbs, a wide deep pelvis, big hands; Heavyweight: the widest
+pelvis and feet; the pivots and the standing height are the frame's own, `frames[id].unit`), the arm axis (where the upper arm rests against the
 frame's ribcage: the shoulder pivots are 2.22 studs apart on an untrained Lean and 3.37 on an elite Power Build), the
 ribcage's width and depth, the trapezius slope into the neck (a neck column under the head: Lean long and thin, Power
 Build short and as thick as the jaw), the deltoid, trap, lat and forearm gains, the arm and calf girths, the

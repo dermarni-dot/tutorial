@@ -38,15 +38,28 @@ elbow) instead of ellipsoid bumps. The pivots, the domes (now sized from each fr
 about the pivots) and the elbow / wrist / hip / knee / ankle heights are unchanged; the arm axis is per frame and tier
 (`frames[id].tiers[n].armAxisX`).
 
+* Second pass: every frame also has its own SKELETON (`FRAMES[id].skel`, `part_extra`): limb lengths (torso, upper /
+  lower leg, upper arm / forearm), the lower body's width and depth (pelvis, thighs, calves and feet together), the
+  arms' girth and the hands' size, applied as an extra per-part scale about each part's joint when the prototype is
+  mapped into game space, so the pivots differ per frame (Lean stands ~6.45 studs with longer legs, Power Build ~6.0 on
+  short thick legs). `frames[id].unit` carries the frame's joints / hipHeight / shoulderHeight (Diag compares against
+  it, `BodyTiers.Unit(frame)`); `frames[id].gearScale[<part base>]` = those factors, and `BuilderGear` multiplies a
+  piece's ratio by its part's gear scale (the frame's part IS the Athletic part scaled by them wherever the gear
+  touches: the trunks, gloves, wraps and boots fit without a refit; `BodyTiers.GearScale(frame, base)`). The torso
+  sections carry a fat layer (belly, love handles, a soft neck) that shrinks with the tier on the heavyweight, rib /
+  sternum lines on the lean frame, a built chest / lats at tier 1 on the naturally built frames, and a rounder
+  ribcage tapering to the waist on all of them. Arms: a biceps / triceps belly tapering to the elbow and a forearm
+  tapering from the flexor mass to the wrist are in the base sections (every tier), the shoulder dome is sized with
+  the deltoid cap (`dome_r(..., lobes)`), the hands are thicker and curled.
 * The Athletic frame is the DEFAULT FAMILY: `BodyAssetData.tiers` (as before, `tools/body/out/tier<N>`), with the lite
   set and the gear fit. The other four are `BodyAssetData.frames[<id>] = { key, tiers = { [1..5] = { parts, fit, tris,
   armAxisX } } }` from `tools/body/out/frames/<key>/tier<N>` (keys lean, muscular, power, heavy).
-* The gear is fitted on the Athletic family (build_gear.py): every frame keeps the Athletic (v11) section wherever the
-  gear touches - under the trunks' band and seat (the LowerTorso, the UpperTorso's hem rows s <= 2.45), the thighs under
-  the shorts legs (the Lean frame only narrower), the wrist and the ankle, and the hands and feet are the same part on
-  every frame (gloves, wraps and boots are one mesh per tier). The frame's overall mass is the description's Width /
-  Depth (Config.BodyTypes), which the gear follows. Not refitted per frame: the women's sports top and the officials'
-  clothes on the UpperTorso (fitted to the Athletic family; a bigger frame's chest may show through a tight top).
+* The gear is fitted on the Athletic family (build_gear.py): wherever the gear touches - under the trunks' band and
+  seat (the LowerTorso, the UpperTorso's hem rows s <= 2.45), the thighs under the shorts legs, the wrist, the ankle,
+  the hands and the feet - every frame's part is the Athletic section scaled by the frame's gear scale, and BuilderGear
+  scales the piece the same way. The description's Width / Depth (Config.BodyTypes) is the fine-tune on top. Not
+  refitted per frame: the women's sports top and the officials' clothes on the UpperTorso (scaled by the UpperTorso's
+  gear scale only; a bigger frame's chest may show through a tight top).
 * The lite set (the v9 meshes) stays one per tier, the default family's: a crowd NPC of any frame at the low detail
   level wears it (`BodyTiers.PartEntry(..., lite, frame)` falls back to it).
 * Game side: `BodyTiers.Tiers()` returns `tiers.frame` (BodyTiers.FrameOf: the frame id, else the BodyTypes entry with

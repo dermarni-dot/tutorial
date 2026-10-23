@@ -298,6 +298,27 @@ function BodyTiers.FrameKey(frame, d)
 	return type(fr) == "table" and type(fr.key) == "string" and fr.key or nil
 end
 
+-- the frame's gear scale on a body part base ("UpperLeg", "Hand", ...): the factors the frame's part is the default
+-- family's part scaled by (BodyAssetData.frames[id].gearScale; the trunks, gloves and boots fitted on the default
+-- family follow them, BuilderGear). { x, y, z }; 1, 1, 1 for the default family / an unknown frame
+function BodyTiers.GearScale(frame, base, d)
+	d = d or load()
+	local fr = type(d) == "table" and type(d.frames) == "table" and type(frame) == "string" and d.frames[frame] or nil
+	local g = type(fr) == "table" and type(fr.gearScale) == "table" and fr.gearScale[base] or nil
+	return vec3(g) or { 1, 1, 1 }
+end
+
+-- the frame's rig heights (BodyAssetData.frames[id].unit: joints, hipHeight, shoulderHeight, ...), the default
+-- family's unit for the default frame / an unknown one
+function BodyTiers.Unit(frame, d)
+	d = d or load()
+	local fr = type(d) == "table" and type(d.frames) == "table" and type(frame) == "string" and d.frames[frame] or nil
+	if type(fr) == "table" and type(fr.unit) == "table" then
+		return fr.unit
+	end
+	return type(d) == "table" and d.unit or nil
+end
+
 -- a tier part's entry: { id, size = {x,y,z}, attachments = { [name] = {x,y,z} }, tier, name, frame, lite }, or nil
 -- when the mesh is not uploaded (id 0) or the entry is malformed (the default body part stays). lite = true: the
 -- part's `lite` mesh (the v9 set the low detail level wears, Config.Detail.meshes), its own size and attachments; the

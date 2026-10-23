@@ -147,10 +147,11 @@ def main():
             n = td["tier"]
             parts = upload_parts(td, os.path.dirname(pj), f"{key} ", f"{fid} frame, ")
             ftiers.append({"tier": n, "name": td["name"], "tris": td["tris"], "fit": td["fit"], "parts": parts,
-                           "armAxisX": td.get("armAxisX")})
+                           "armAxisX": td.get("armAxisX"), "gearScale": td.get("gearScale"), "unit": td.get("unit")})
         if [t["tier"] for t in ftiers] != [1, 2, 3, 4, 5]:
             raise SystemExit("frame %s: expected tiers 1-5 in %s, got %s" % (key, fdir, [t["tier"] for t in ftiers]))
-        frames[fid] = {"key": key, "tiers": ftiers}
+        t3 = next((t for t in ftiers if t["tier"] == 3), ftiers[0])
+        frames[fid] = {"key": key, "tiers": ftiers, "gearScale": t3["gearScale"], "unit": t3["unit"]}
 
     with open(os.path.join(OUT, "faces", "faces.json")) as f:
         fj = json.load(f)
@@ -182,7 +183,7 @@ def main():
         "unit": unit,
         "tiers": [dict({"name": t["name"], "tris": t["tris"], "fit": t["fit"], "parts": t["parts"]},
                        **({"liteTris": t["liteTris"]} if t["liteTris"] else {})) for t in tiers],
-        "frames": {fid: {"key": fr["key"],
+        "frames": {fid: {"key": fr["key"], "gearScale": fr["gearScale"], "unit": fr["unit"],
                          "tiers": [{"name": t["name"], "tris": t["tris"], "fit": t["fit"], "parts": t["parts"],
                                     "armAxisX": t["armAxisX"]} for t in fr["tiers"]]}
                    for fid, fr in frames.items()},
@@ -202,8 +203,10 @@ def main():
             "-- tiers[n].fit: gear-fit girths / widths (studs, unscaled, convex hull) at fixed heights (rest space).\n"
             "-- parts[<Part>].lite: the same part in the lite detail set (Config.Detail.meshes = \"lite\": the v9 mesh,\n"
             "-- its own size and attachments; liteTris = that set's triangles per body).\n"
-            "-- frames[<Config.BodyTypes id>] = { key, tiers = { [1..5] = { parts, fit, tris, armAxisX } } }: that frame's own\n"
-            "-- mesh family (v12; the Athletic frame is `tiers`, the default family, with the lite set and the gear fit).\n")
+            "-- frames[<Config.BodyTypes id>] = { key, tiers = { [1..5] = { parts, fit, tris, armAxisX } }, gearScale, unit }: that\n"
+            "-- frame's own mesh family (v12; the Athletic frame is `tiers`, the default family, with the lite set and the gear\n"
+            "-- fit); gearScale[<part base>] = the factors its parts are the default family's scaled by (BuilderGear scales the\n"
+            "-- gear by them), unit = its rig heights (joints, hipHeight, shoulderHeight, ...).\n")
     if local:
         head = ("-- LOCAL manifest from tools/body/publish_body.py --local: FAKE asset ids (nothing uploaded), for\n"
                 "-- offline simulation only. Each id's file is in the .ids.json sidecar next to this file.\n")

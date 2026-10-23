@@ -209,7 +209,7 @@ do
 						-- (the hands and feet are the same part on every frame: gloves, wraps and boots are one mesh; under the
 						-- trunks the LowerTorso and thighs keep the Athletic section the trunks are fitted to, so the bigger frames
 						-- share them too - their lower body differs by the description's Width / Depth)
-						if e.id == base.id and not (n:find("Hand") or n:find("Foot") or n == "LowerTorso" or n:find("UpperLeg")) then
+						if e.id == base.id then
 							table.insert(missing, fid .. tier .. n .. "(same mesh as Athletic)")
 						end
 						for an in pairs(base.attachments) do
@@ -236,15 +236,26 @@ do
 			end
 			check(string.format("tier %d shoulder span: Lean %.2f < Athletic %.2f < Muscular %.2f < Power %.2f", tier, sp[1], sp[2], sp[3], sp[4]),
 				sp[1] < sp[2] and sp[2] < sp[3] and sp[3] < sp[4] and sp[4] / sp[1] > 1.2)
+			-- (v12 second pass: the frame's pelvis / thighs / wrist are the Athletic ones scaled by its gear scale, which
+			-- BuilderGear puts on the trunks, gloves and boots; so each measure is the Athletic one x that factor)
 			for _, fid in ipairs({ "Lean", "Muscular", "Power Build", "Heavyweight Build" }) do
+				local gl, gt, ga = BodyTiers.GearScale(fid, "LowerTorso", REAL), BodyTiers.GearScale(fid, "UpperLeg", REAL), BodyTiers.GearScale(fid, "LowerArm", REAL)
 				local a, b = fit(fid, tier, "hips"), fit("Athletic", tier, "hips")
 				local c, d = fit(fid, tier, "thigh"), fit("Athletic", tier, "thigh")
 				local w, x = fit(fid, tier, "wrist"), fit("Athletic", tier, "wrist")
-				check(fid .. " tier " .. tier .. ": hips / thigh / wrist stay within the gear's fit",
-					a.width <= b.width + 0.01 and c.width <= d.width + 0.01 and math.abs(w.width - x.width) < 0.01,
-					string.format("%.3f/%.3f %.3f/%.3f %.3f/%.3f", a.width, b.width, c.width, d.width, w.width, x.width))
+				check(fid .. " tier " .. tier .. ": hips / thigh / wrist = the Athletic ones x the frame's gear scale",
+					math.abs(a.width - b.width * gl[1]) < 0.015 and math.abs(c.width - d.width * gt[1]) < 0.015
+					and math.abs(w.width - x.width * ga[1]) < 0.012,
+					string.format("%.3f/%.3f %.3f/%.3f %.3f/%.3f", a.width, b.width * gl[1], c.width, d.width * gt[1], w.width, x.width * ga[1]))
 			end
 		end
+		-- the frames' own rig heights and gear scales
+		local lu, pu = BodyTiers.Unit("Lean", REAL), BodyTiers.Unit("Power Build", REAL)
+		check("frame units: the Lean frame stands taller than the Power Build (longer legs)", lu and pu and lu.standingHeight > pu.standingHeight + 0.2
+			and lu.hipHeight > pu.hipHeight, lu and lu.standingHeight)
+		check("Unit(): the default family's for Athletic / unknown", BodyTiers.Unit("Athletic", REAL) == REAL.unit and BodyTiers.Unit("x", REAL) == REAL.unit)
+		local gs = BodyTiers.GearScale("Heavyweight Build", "LowerTorso", REAL)
+		check("GearScale: the heavyweight's pelvis is wider, the default family's is 1", gs[1] > 1.1 and BodyTiers.GearScale("Athletic", "LowerTorso", REAL)[1] == 1)
 		-- lite: the frames wear the default family's lite set
 		local le = BodyTiers.PartEntry(3, "UpperTorso", REAL, true, "Power Build")
 		local lb = BodyTiers.PartEntry(3, "UpperTorso", REAL, true)

@@ -256,12 +256,12 @@ BuilderGear.PieceTier = pieceTier
 -- a piece of tier `tier` worn on a body part of tier `own`: the offset is in the part's space of ITS tier; the
 -- LowerTorso's rig attachments are the same rest-space points at every tier, so the difference of the RootRigAttachment's
 -- part-space positions moves the offset onto the part the model really shows
-local function onPart(e, partName, tier, own, lite)
+local function onPart(e, partName, tier, own, lite, frame)
 	if tier == own then
 		return e
 	end
-	local a = BodyTiers.PartEntry(own, partName, nil, lite)
-	local b = BodyTiers.PartEntry(tier, partName, nil, lite)
+	local a = BodyTiers.PartEntry(own, partName, nil, lite, frame)
+	local b = BodyTiers.PartEntry(tier, partName, nil, lite, frame)
 	local pa = a and a.attachments.RootRigAttachment
 	local pb = b and b.attachments.RootRigAttachment
 	if not (pa and pb) then
@@ -293,12 +293,17 @@ function BuilderGear.Resolve(model, group, style)
 		if not e then
 			return nil, "not uploaded: " .. name
 		end
-		e = onPart(e, p.part, tier, own, lite)
+		-- (v12 frames: the piece is fitted on the default family; the body part of another frame is that part scaled by
+		-- the frame's gear scale, so the piece takes the same scale on top of the engine's ratio)
+		local frame = (not lite) and body:GetAttribute("BodyFrame") or nil
+		e = onPart(e, p.part, tier, own, lite, frame)
 		local template = BuilderGear.Template(e.id, e.size)
 		if not template then
 			return nil, "failed: " .. name
 		end
 		local ratio = BuilderTiers.RatioOf(body) or V3(1, 1, 1)
+		local g = BodyTiers.GearScale(frame, BodyTiers.Group(p.part))
+		ratio = V3(ratio.X * g[1], ratio.Y * g[2], ratio.Z * g[3])
 		table.insert(out, { name = name, entry = e, body = body, template = template, ratio = ratio })
 	end
 	return out

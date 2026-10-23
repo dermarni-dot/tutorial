@@ -510,8 +510,9 @@ function Diag.Report(model, ctx)
 			RightKnee = jy("RightLowerLeg", "RightKnee"), RightAnkle = jy("RightFoot", "RightAnkle"), Neck = jy("Head", "Neck"), RightShoulder = jy("RightUpperArm", "RightShoulder") }
 		local unit = ctx.unit
 		if unit == nil then
-			local okD, d = pcall(BodyTiers.Data)
-			unit = okD and type(d) == "table" and d.unit or nil
+			-- (v12: the frame's own rig heights, BodyAssetData.frames[id].unit; the default family's otherwise)
+			local okU, u = pcall(BodyTiers.Unit, model:GetAttribute("BodyFrame") or model:GetAttribute("Frame"))
+			unit = okU and type(u) == "table" and u or nil
 		end
 		local hscale = 1
 		pcall(function()
