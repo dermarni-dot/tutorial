@@ -831,54 +831,50 @@ NECK_S = [3.58, 3.66, 3.74, 3.84]  # the shoulder top row, the trapezius slope, 
 
 def torso_section(fr):
     """the UpperTorso's section for a frame: the legacy section under the trunks (<= 2.45), the frame's own ribcage
-    and shoulder width above, and its trapezius slope into a neck column"""
+    and shoulder width above (tx / tf / tb at T_KNOTS), and from the shoulder top row (3.58) its trapezius slope into a
+    neck column (neck: (ax, af, ab) at 3.66 / 3.74 / 3.84; the head's base is at 3.811), set back a little (cz)"""
     nx, nf, nb = fr["neck"]
-    tx, tf, tb = fr["tx"], fr["tf"], fr["tb"]
-    top = lambda v: [v[-1]] + list(v)  # noqa: E731  (the shoulder top row's value, then the slope / column)
     kn = [1.58] + T_KNOTS
-    rows = (NECK_S, {
-        "ax": (top([x * 0.98 for x in nx]), top([x * 1.04 for x in nx])),
-        "af": (top(nf), top([x * 1.03 for x in nf])),
-        "ab": (top(nb), top([x * 1.05 for x in nb])),
-        "p": ([2.9, 2.6, 2.3, 2.2], [2.9, 2.6, 2.3, 2.2]),
-        "cz": ([0.0, 0.015, 0.035, 0.04], [0.0, 0.015, 0.035, 0.04]),
-    })
-    # (the top row's value is set after the slope rows start: the rows' blend begins at NECK_S[0] with weight 0)
-    rows[1]["ax"] = ([tx[-1] * 0.96 * 0.0 + nx[0] * 1.35] + [x * 0.98 for x in nx], [nx[0] * 1.4] + [x * 1.04 for x in nx])
-    sec = Scaled(LEGACY["Torso"], kn, [1.0] + list(tx), [1.0] + list(tf), dp=fr["p"], soft=0.0, rows=rows)
-    sec.kz_b = [1.0] + list(tb)
-    base_call = sec.__call__
+    kx, kf, kb = [1.0] + list(fr["tx"]), [1.0] + list(fr["tf"]), [1.0] + list(fr["tb"])
+    base = LEGACY["Torso"]
+    soft = fr["soft"]
+    dp = fr["p"]
+    neck_p = [2.6, 2.3, 2.2]
+    neck_cz = [0.015, 0.035, 0.04]
+
+    def scaled(s, m):
+        out = dict(base(s, m))
+        out["ax"] = out["ax"] * pchip(kn, kx, s)
+        out["af"] = out["af"] * pchip(kn, kf, s)
+        out["ab"] = out["ab"] * pchip(kn, kb, s)
+        out["p"] = out["p"] + dp * np.clip((s - 2.3) / 0.3, 0, 1)
+        if soft > 0:  # the heavyweight's layer: fuller above the hem (never under the band)
+            w = np.clip((s - 2.5) / 0.3, 0, 1)
+            w = w * w * (3 - 2 * w) * np.clip((3.62 - s) / 0.12, 0, 1)
+            out["ax"] = out["ax"] + 0.02 * soft * w
+            out["af"] = out["af"] + 0.03 * soft * w
+            out["ab"] = out["ab"] + 0.015 * soft * w
+        return out
 
     def call(s, m):
-        out = base_call(s, m)
-        s_ = np.asarray(s, float)
-        kb = pchip(kn, sec.kz_b, s_) / pchip(kn, sec.kz, s_)
-        out["ab"] = out["ab"] * kb
-        # the heavyweight's layer: fuller above the hem (never under the band)
-        if fr["soft"] > 0:
-            w = np.clip((s_ - 2.5) / 0.3, 0, 1)
-            w = w * w * (3 - 2 * w) * np.clip((3.62 - s_) / 0.12, 0, 1)
-            out["ax"] = out["ax"] + 0.02 * fr["soft"] * w
-            out["af"] = out["af"] + 0.03 * fr["soft"] * w
-            out["ab"] = out["ab"] + 0.015 * fr["soft"] * w
+        s = np.asarray(s, float)
+        out = scaled(s, m)
+        top = scaled(np.array([NECK_S[0]]), m)
+        hi = s > NECK_S[0]
+        if hi.any():
+            sh = s[hi]
+            tier = 1.0 + 0.05 * m  # a trained neck is a little thicker
+            for key, vals, k0 in (("ax", nx, 1.0), ("af", nf, 0.6), ("ab", nb, 0.8)):
+                v = [float(top[key][0])] + [x * (1 + (tier - 1) * k0) for x in vals]
+                out[key][hi] = pchip(NECK_S, v, sh)
+            out["p"][hi] = pchip(NECK_S, [float(top["p"][0])] + neck_p, sh)
+            out["cz"][hi] = pchip(NECK_S, [0.0] + neck_cz, sh)
         return out
-    sec.__call__ = call
-    sec.call = call
-    return sec
-
-
-class Sec:
-    """a callable profile from a function"""
-
-    def __init__(self, fn):
-        self.fn = fn
-
-    def __call__(self, s, m):
-        return self.fn(s, m)
+    return Sec(call)
 
 
 def torso_sec(fr):
-    return Sec(torso_section(fr).call)
+    return torso_section(fr)
 
 
 def arm_section(fr):
@@ -1799,8 +1795,6 @@ def main():
     bt_path = os.path.join(OUT, "body_tiers.json")
     old = json.load(open(bt_path)) if os.path.exists(bt_path) else {}
     ath = summary.get(DEFAULT_FRAME) or {}
-    if all(n in built.get and False for n in ()):  # (placeholder, never true)
-        pass
     if DEFAULT_FRAME in want_frames and all(n in ath for n in (1, 2, 3, 4, 5)):
         unit = unit_rig({n: built[(DEFAULT_FRAME, n)] for n in (1, 2, 3, 4, 5)})
     else:

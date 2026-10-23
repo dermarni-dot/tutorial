@@ -1612,6 +1612,10 @@ function AnimDown.pose(p, rig, t, dt)
 	rig.plant = false
 	p.rate = 40
 	local ko = d.ko
+	-- the physics under him: the limbs the server handed to physics (the Animator's joints follow them), and the
+	-- canvas where it really is (every ground solve below rests him on it)
+	Rag.sync(rig, t)
+	applyCanvas(rig, d, dt)
 	if ko == "standing" then
 		-- out on his feet: no fall; slumped and swaying, wobbly half steps, until the referee gets there,
 		-- then he sags forward into the referee's arms, the weight off his legs
@@ -1659,6 +1663,9 @@ function AnimDown.pose(p, rig, t, dt)
 				p[k] = d.from[k]:Lerp(p[k], blend)
 			end
 		end
+		if d.landed and not d.settleT then
+			d.settleT = d.landT
+		end
 	elseif el < d.delay then
 		-- the delayed knockout: out on his feet for a beat. The knees wobble, a half stagger step, the
 		-- guard sinks, the eyes go; the slow motion starts when the legs go
@@ -1696,7 +1703,10 @@ function AnimDown.pose(p, rig, t, dt)
 		end
 		local keys = d.keys
 		local fel = el - start
-		timeline(p, rig, d, keys, fel, t, d.from, d.speed or 1, d.impacts)
+		local ki = timeline(p, rig, d, keys, fel, t, d.from, d.speed or 1, d.impacts)
+		if ki > #keys and not d.settleT then
+			d.settleT = t -- the last key is reached: he is down, settling onto the canvas
+		end
 		-- feet stay planted while the knees give (no foot slide in the first instant of a fall)
 		local pl = d.plantT
 		if pl and fel < pl * (d.speed or 1) then

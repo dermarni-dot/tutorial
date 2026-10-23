@@ -3310,6 +3310,9 @@ local function updateFX(dt, now)
 		crowdMeter.quiet = 0
 	end
 	updateCrowd(dt)
+	if KM.rangeTick then
+		KM.rangeTick(dt)
+	end
 	refreshControls() -- the key strip's first seconds run out
 	return tier, conc, fx
 end
@@ -3732,6 +3735,10 @@ openMoves = function()
 	UI.PadHold("Fight", false)
 	local ok = pcall(CM.Open, {
 		kicker = inFight and (F.pvp and "PVP: THE FIGHT GOES ON" or "ROUND PAUSED") or nil,
+		-- a spar's way out from the menu too (BoxerClient.SparExit's prompt, once the menu has closed)
+		extra = (inFight and F.spar and not F.pvp) and { text = "LEAVE SPARRING", onClick = function()
+			task.defer(KM.sparPrompt)
+		end } or nil,
 		onClose = function()
 			if inFight then
 				send({ t = "pause", on = false })
@@ -4740,6 +4747,8 @@ function handlers.start(msg)
 	lockReset(not F.spar)
 	KM.setPlayerList(false)
 	KM.sendDevice()
+	-- the hit detection's frames (Shared.HitGeometry: the prediction and the range read-out run the server's test)
+	F.geo = type(msg.geo) == "table" and msg.geo or nil
 	L.frame.Visible, R.frame.Visible, clock.Visible, controls.Visible = false, false, false, false
 	setChip(L, nil)
 	setChip(R, nil)
@@ -5272,6 +5281,17 @@ function handlers.miss(msg)
 	end
 	if msg.who == "you" and msg.why == "short" then
 		showFlash(flash, "OUT OF RANGE", T.sub, 0.5)
+	elseif msg.who == "you" and msg.why == "high" then
+		showFlash(flash, "OVER HIS HEAD?  TOO HIGH  ·  GO TO THE BODY", T.sub, 0.6)
+	elseif msg.who == "you" and msg.why == "low" then
+		showFlash(flash, "TOO LOW", T.sub, 0.5)
+	end
+end
+
+-- a head shot the reach turned into a body shot (FightEngine: a much taller man out at range)
+function handlers.redirect(msg)
+	if msg.who == "you" then
+		showFlash(flash, "TO THE BODY", T.orange, 0.4)
 	end
 end
 

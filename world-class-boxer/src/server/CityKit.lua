@@ -830,8 +830,8 @@ function K.vendorCart(parent, cf, kind)
 	for _, x in ipairs({ -2.4, 2.4 }) do
 		cyl(m, "CartWheel", 0.5, 2.2, cf * CF(x, 1.1, 0.4), Color3.fromRGB(26, 26, 28), M.Rubber)
 	end
-	part(m, "CartSign", V3(5.6, 1.1, 0.1), cf * CF(0, 3.2, -1.66), spec.canopy, M.SmoothPlastic)
-	GymDecor.Sign(m.CartSign, Enum.NormalId.Front, spec.name, C.white, spec.canopy, 40)
+	local cs = part(m, "CartSign", V3(5.6, 1.1, 0.1), cf * CF(0, 3.2, -1.66), spec.canopy, M.SmoothPlastic)
+	GymDecor.Sign(cs, Enum.NormalId.Front, spec.name, C.white, spec.canopy, 40)
 	vcyl(m, "UmbrellaPole", 8.6, 0.25, cf * CF(1.6, 4.3, 0.2), C.steelLight, M.Metal)
 	blob(m, "Umbrella", V3(9, 2.0, 9), cf * CF(1.6, 12.4, 0.2), spec.canopy, M.Fabric, { shadow = true })
 	blob(m, "UmbrellaStripe", V3(6.2, 1.6, 6.2), cf * CF(1.6, 12.9, 0.2), spec.stripe, M.Fabric, { shadow = false })
