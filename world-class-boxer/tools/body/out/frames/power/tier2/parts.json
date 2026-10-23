@@ -13,9 +13,9 @@
  "fit": {
   "chest": {
    "y": 4.529,
-   "girth": 4.303,
+   "girth": 4.304,
    "width": 1.618,
-   "depth": 0.915
+   "depth": 0.916
   },
   "waist": {
    "y": 3.468,
@@ -78,7 +78,7 @@
    "depth": 0.733
   },
   "shoulderSpan": 2.981,
-  "chestDepth": 0.94
+  "chestDepth": 0.963
  },
  "armAxisX": 1.112,
  "parts": {
@@ -87,58 +87,58 @@
    "size": [
     1.8542,
     2.4858,
-    0.94
+    0.9631
    ],
    "rest_center": [
     0.0,
     4.1497,
-    0.013
+    0.0245
    ],
    "attachments": {
     "NeckRigAttachment": [
      0.0,
      1.1395,
-     -0.013
+     -0.0245
     ],
     "WaistRigAttachment": [
      0.0,
      -0.9549,
-     -0.013
+     -0.0245
     ],
     "RightShoulderRigAttachment": [
      1.112,
      0.7702,
-     -0.013
+     -0.0245
     ],
     "LeftShoulderRigAttachment": [
      -1.112,
      0.7702,
-     -0.013
+     -0.0245
     ],
     "BodyFrontAttachment": [
      0.0,
      0.0923,
-     -0.4083
+     -0.4198
     ],
     "BodyBackAttachment": [
      0.0,
      0.0923,
-     0.397
+     0.3854
     ],
     "NeckAttachment": [
      0.0,
      1.1395,
-     -0.013
+     -0.0245
     ],
     "RightCollarAttachment": [
      0.9118,
      0.8574,
-     -0.013
+     -0.0245
     ],
     "LeftCollarAttachment": [
      -0.9118,
      0.8574,
-     -0.013
+     -0.0245
     ]
    },
    "nv": 1722,
