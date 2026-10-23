@@ -155,6 +155,34 @@ if ss then
 	check(string.format("start / stop: no bank (trunk roll %.1f..%.1f)", g.trunkRoll[1], g.trunkRoll[2]), within(g.trunkRoll, -1.5, 1.5))
 end
 
+------------------------------------------------------------------------
+-- [Studio] the Avatar Joint Upgrade's rig: AnimationConstraints between the RigAttachments instead of Motor6Ds (what
+-- Studio built for the player and every NPC: the Animator's joint reads threw and nobody was driven - feet sliding 0.6
+-- studs a tick, knees never bending). The same walk on that rig must come out the same as on the Motor6D rig
+------------------------------------------------------------------------
+local OUT_AC = OUT .. "_ac"
+local rAC = process.exec(luneBin(), { "run", "tools/sim/v9_anim.luau", "--tiers", "3", "--clips", "walk", "--no-mesh", "--nopen", "--frames", "1",
+	"--joints", "ac", "--out", OUT_AC }, { cwd = root })
+check("v9_anim runs on an AnimationConstraint rig", rAC.ok, (rAC.stderr or "") .. (rAC.stdout or ""):sub(-600))
+if rAC.ok then
+	local mAC
+	for _, m in ipairs(serde.decode("json", fs.readFile(OUT_AC .. "/metrics.json"))) do
+		if m.clip == "walk" then
+			mAC = m
+		end
+	end
+	check("AC rig: walk recorded", mAC ~= nil)
+	if mAC and steady then
+		local g, gs = mAC.gait, steady.gait
+		check(string.format("AC rig: the knees bend as on the Motor6D rig (%.0f..%.0f vs %.0f..%.0f)", g.kneeL[1], g.kneeL[2], gs.kneeL[1], gs.kneeL[2]),
+			math.abs(g.kneeL[1] - gs.kneeL[1]) < 1.5 and math.abs(g.kneeL[2] - gs.kneeL[2]) < 1.5 and g.kneeL[2] > 40)
+		check(string.format("AC rig: the same stride (period %.3f vs %.3f)", mAC.period, steady.period), math.abs(mAC.period - steady.period) < 0.01)
+		check(string.format("AC rig: the same sway / roll (%.3f / %.1f vs %.3f / %.1f)", mAC.pelvisSwayX, mAC.pelvisRollDeg, steady.pelvisSwayX, steady.pelvisRollDeg),
+			math.abs(mAC.pelvisSwayX - steady.pelvisSwayX) < 0.005 and math.abs(mAC.pelvisRollDeg - steady.pelvisRollDeg) < 0.3)
+		check(string.format("AC rig: the planted feet hold (slide %.3f / %.3f)", g.slideL, g.slideR), g.slideL < 0.03 and g.slideR < 0.03)
+	end
+end
+
 print(string.format("test_walkstable: %d passed, %d failed", pass, fail))
 if fail > 0 then
 	process.exit(1)

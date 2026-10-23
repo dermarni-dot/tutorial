@@ -445,6 +445,253 @@ do
 	check("Diag.Block prefixes every line", block == "[WCBDIAG] a\n[WCBDIAG] b", block)
 end
 
+------------------------------------------------------------------------
+-- The headgear against what the engine does to the head AFTER the build (what the Studio diagnostic showed: every
+-- gear part weld->NONE studs away, the Humanoid dead on a missing Neck; the MeshPart head conversion; a rescale):
+--   * every head-worn part is joined by a Weld under the part (Part0 = Head, C0 = the part in head space)
+--   * the Humanoid never dies on its Neck and never breaks its joints (RequiresNeck / BreakJointsOnDeath off)
+--   * the head instance replaced by a MeshPart after the build -> the gear is rebuilt on and sized from the new head
+--   * a Size change after the build -> rebuilt to the new size (the followHead watch, through the property signal)
+--   * the late re-fit (Builder.RefitHeadgear / OnPlaced): a no-op while nothing changed; a rebuild, warned with one
+--     "[Boxer] headgear refit" line, when every weld is gone (BreakJointsOnDeath) - the cap too, from its record
+--   * Head.EnsureNeck: an AnimationConstraint neck (the avatar joint upgrade) is left alone, no neck at all is
+--     rebuilt as a Motor6D from the RigAttachments
+--   * Diag's HEADGEAR block: the head line, a line per part with its weld's Part0 / Part1, the folder's fit record,
+--     "headgear detached" when the welds are gone, OK when they hold
+------------------------------------------------------------------------
+do
+	local Head = BuilderHead
+	local function gearParts(model, fname)
+		local look = model:FindFirstChild("BoxerLook")
+		local f = look and look:FindFirstChild(fname or "Headgear")
+		local out = {}
+		for _, d in ipairs(f and f:GetDescendants() or {}) do
+			if d:IsA("BasePart") then
+				out[#out + 1] = d
+			end
+		end
+		return out, f
+	end
+	-- every part: a Weld under it, Part0 the model's live head, placed where its C0 says, no WeldConstraint
+	local function weldedTo(model, fname)
+		local head = model:FindFirstChild("Head")
+		local parts = gearParts(model, fname)
+		if #parts == 0 then
+			return false, "no parts"
+		end
+		for _, p in ipairs(parts) do
+			local w = p:FindFirstChildOfClass("Weld")
+			if not (w and w.Parent == p and w.Part0 == head and w.Part1 == p) or p:FindFirstChildOfClass("WeldConstraint") then
+				return false, p.Name .. " weld"
+			end
+			if ((head.CFrame * w.C0 * w.C1:Inverse()).Position - p.Position).Magnitude > 1e-3 then
+				return false, p.Name .. " C0"
+			end
+		end
+		return true
+	end
+	local function spanOf(model)
+		local parts = gearParts(model)
+		local head = model:FindFirstChild("Head")
+		local hs = Head.HeadSpan(head)
+		for _, p in ipairs(parts) do
+			if p.Name == "HGShell" then
+				return p.Size.X / hs, hs
+			end
+		end
+		return nil, hs
+	end
+	local function refitWarns()
+		local n = 0
+		for _, w in ipairs(warns) do
+			if w:find("[Boxer] headgear refit", 1, true) then
+				n += 1
+			end
+		end
+		return n
+	end
+
+	local a = Looks.Random(777, 1, { age = 24, class = 5 })
+	local m = Builder.CreateNPC(a, buildOf(60), gear, "Refit", { hands = "wraps", detail = "full" })
+	check("refit: the NPC builds", m ~= nil)
+	m.Parent = E.workspace
+	local hum = m:FindFirstChildOfClass("Humanoid")
+	check("refit: RequiresNeck and BreakJointsOnDeath are off on a built character", hum.RequiresNeck == false and hum.BreakJointsOnDeath == false)
+	local okW, why = weldedTo(m)
+	check("refit: every headgear part joined by a Weld under it (Part0 the head, C0 the part in head space)", okW, why)
+	local hg0, f0 = gearParts(m)
+	check("refit: the folder records the head it was fitted to", f0:GetAttribute("HeadClass") == "Part" and (f0:GetAttribute("HeadSize") - m.Head.Size).Magnitude < 1e-6
+		and tostring(f0:GetAttribute("HeadMesh")):find("SpecialMesh Head", 1, true) ~= nil, tostring(f0:GetAttribute("HeadMesh")))
+	local ratio0 = spanOf(m)
+
+	-- the late re-fit: a no-op while nothing changed
+	local refits0, wn0 = Head.Refits, refitWarns()
+	check("refit: GearStale is nil on an untouched rig", Head.GearStale(m, f0) == nil, Head.GearStale(m, f0))
+	check("refit: RefitHeadgear is a no-op while nothing changed", Builder.RefitHeadgear(m) == nil and Head.Refits == refits0 and refitWarns() == wn0
+		and gearParts(m)[1] == hg0[1] and m:GetAttribute("HeadgearRefits") == nil)
+
+	-- every weld gone (the Humanoid died with BreakJointsOnDeath): Diag says so, the re-fit rebuilds and warns
+	for _, p in ipairs(gearParts(m)) do
+		for _, c in ipairs(p:GetChildren()) do
+			if c.ClassName == "Weld" then
+				c:Destroy()
+			end
+		end
+		p.CFrame = p.CFrame * CFrame.new(0, -400, 0)
+	end
+	local okD, dlines, dverd = pcall(Diag.Report, m, {})
+	local dtext, dv = okD and table.concat(dlines, "\n") or tostring(dlines), okD and table.concat(dverd, "\n") or ""
+	check("refit: Diag on the detached gear runs", okD, dlines)
+	check("refit: Diag VERDICT 'headgear detached: 11 parts with no weld'", dv:find("BAD  headgear detached: " .. Head.HEADGEAR_PARTS.full .. " parts with no weld", 1, true) ~= nil, dv:match("[^\n]*detached[^\n]*"))
+	local hsz = m.Head.Size
+	check("refit: Diag HEADGEAR lines: the head, the parts' welds, the fit record", dtext:find(string.format("HEADGEAR head Part size=(%.3f,%.3f,%.3f) span=%.3f", hsz.X, hsz.Y, hsz.Z, math.min(hsz.X, hsz.Y, hsz.Z)), 1, true) ~= nil
+		and dtext:find("HEADGEAR Headgear HGShell", 1, true) ~= nil and dtext:find("weld=NONE Part0=nil", 1, true) ~= nil
+		and dtext:find(string.format("HEADGEAR Headgear fitted to HeadSize=(%.2f,%.2f,%.2f) HeadClass=Part", hsz.X, hsz.Y, hsz.Z), 1, true) ~= nil, dtext:match("HEADGEAR head[^\n]*"))
+	local wn2 = refitWarns()
+	local res = Builder.RefitHeadgear(m)
+	check("refit: RefitHeadgear rebuilds detached gear and says why", type(res) == "table" and tostring(res.Headgear):find("11 of 11 parts with no weld", 1, true) ~= nil
+		and weldedTo(m) and refitWarns() == wn2 + 1 and warned("Headgear 11 of 11 parts with no weld") ~= nil, res and res.Headgear)
+	local _, verd2 = Diag.Report(m, {})
+	local v2 = table.concat(verd2, "\n")
+	check("refit: Diag OK after the re-fit", v2:find("OK   headgear: 11 parts welded to the live head", 1, true) ~= nil, v2:match("[^\n]*headgear[^\n]*"))
+	local f3 = select(2, gearParts(m))
+	check("refit: the rebuilt folder is sealed again (the next Cosmetics keeps it)", f3:GetAttribute("Sig") ~= nil)
+	local keep = gearParts(m)[1]
+	pcall(Builder.Cosmetics, m, a, buildOf(60), gear, { hands = "wraps", detail = "full" })
+	check("refit: ...and Cosmetics does keep it", gearParts(m)[1] == keep)
+
+	-- the head instance replaced by a MeshPart after the build (the engine's MeshPart head conversion, a later swap)
+	local wnA = refitWarns()
+	local old = m.Head
+	local mp = E.new("MeshPart")
+	mp.Name = "Head"
+	mp.Size = Vector3.new(1.2, 1.2, 1.2)
+	mp.CFrame = old.CFrame
+	mp.MeshId = "rbxassetid://1"
+	for _, c in ipairs(old:GetChildren()) do
+		if c.ClassName == "Attachment" or c.ClassName == "Motor6D" then
+			c.Parent = mp
+			if c.ClassName == "Motor6D" then
+				c.Part1 = mp
+			end
+		end
+	end
+	mp.Parent = m
+	old:Destroy()
+	ltask.wait()
+	ltask.wait()
+	local hg1, f1 = gearParts(m)
+	local ratio1, hs1 = spanOf(m)
+	check("refit: a head replaced by a MeshPart rebuilds the headgear on the new head", f1 ~= f0 and hg1[1] ~= hg0[1] and #hg1 == #hg0 and weldedTo(m), select(2, weldedTo(m)))
+	check("refit: ...sized from the new head (the same geometry in spans of a 1.2 head)", math.abs(hs1 - 1.2) < 1e-6 and ratio1 and math.abs(ratio1 - ratio0) < 1e-6,
+		tostring(ratio1) .. " vs " .. tostring(ratio0))
+	check("refit: ...the folder now records the MeshPart", f1:GetAttribute("HeadClass") == "MeshPart" and tostring(f1:GetAttribute("HeadMesh")):find("MeshPart 1", 1, true) ~= nil)
+	check("refit: ...one [Boxer] headgear refit line naming the head change", refitWarns() == wnA + 1 and warned("headgear refit Refit: Headgear") ~= nil
+		and (warned("no longer in the model") ~= nil or warned("Part -> MeshPart") ~= nil), warns[#warns])
+	check("refit: ...counted on the model (Diag)", m:GetAttribute("HeadgearRefits") == 2 and tostring(m:GetAttribute("HeadgearRefitLast")):find("Headgear:", 1, true) ~= nil)
+
+	-- a Size change after the build (the Humanoid's deferred scaling pass)
+	local wn1 = refitWarns()
+	m.Head.Size = Vector3.new(0.9, 0.9, 0.9)
+	ltask.wait()
+	ltask.wait()
+	local hg2, f2 = gearParts(m)
+	local ratio2, hs2 = spanOf(m)
+	check("refit: a Size change after the build rebuilds the headgear to the new size", f2 ~= f1 and #hg2 == #hg0 and math.abs(hs2 - 0.9) < 1e-6 and ratio2
+		and math.abs(ratio2 - ratio0) < 1e-6 and weldedTo(m), tostring(ratio2))
+	check("refit: ...warned once, naming the sizes", refitWarns() == wn1 + 1 and warned("Head.Size (1.200,1.200,1.200) -> (0.900,0.900,0.900)") ~= nil, warns[#warns])
+	check("refit: ...the same Size written again is silent", (function()
+		m.Head.Size = Vector3.new(0.9, 0.9, 0.9)
+		ltask.wait()
+		return gearParts(m)[1] == hg2[1] and refitWarns() == wn1 + 1
+	end)())
+
+	-- Builder.OnPlaced: the delayed passes find and fix a head rescaled after the parent
+	m.Head.Size = Vector3.new(1.0, 1.0, 1.0)
+	-- (the watch is defeated here: a clone's parts carry no connections, so only the late re-fit can catch it)
+	local c = m:Clone()
+	c.Name = "RefitClone"
+	c.Parent = E.workspace
+	c.Head.Size = Vector3.new(1.1, 1.1, 1.1)
+	c:SetAttribute("HeadgearRefits", nil)
+	local cp0 = gearParts(c)[1]
+	check("refit: the clone's gear is welded to the clone's head", weldedTo(c))
+	Builder.OnPlaced(c)
+	Builder.OnPlaced(c)
+	ltask.wait(0.5)
+	local cr1, chs1 = spanOf(c)
+	check("refit: OnPlaced re-fits 0.3 s after the parent (once, not twice)", gearParts(c)[1] ~= cp0 and math.abs(chs1 - 1.1) < 1e-6 and cr1 and math.abs(cr1 - ratio0) < 1e-6
+		and c:GetAttribute("HeadgearRefits") == 1, tostring(c:GetAttribute("HeadgearRefits")))
+	local cp1 = gearParts(c)[1]
+	ltask.wait(2)
+	check("refit: the 2 s pass is a no-op when nothing changed since", gearParts(c)[1] == cp1 and c:GetAttribute("HeadgearRefits") == 1)
+	c:Destroy()
+
+	-- the Neck: an AnimationConstraint neck is left alone; none at all is rebuilt from the RigAttachments
+	local neck = m.Head:FindFirstChild("Neck")
+	check("neck: the built rig has its Motor6D Neck, EnsureNeck leaves it", neck ~= nil and Head.EnsureNeck(m) == "ok" and m.Head:FindFirstChild("Neck") == neck)
+	neck.Parent = nil
+	local ac = E.new("AnimationConstraint", m.Head)
+	ac.Name = "Neck"
+	ac.Attachment0 = m.UpperTorso:FindFirstChild("NeckRigAttachment")
+	ac.Attachment1 = m.Head:FindFirstChild("NeckRigAttachment")
+	check("neck: an AnimationConstraint neck (the avatar joint upgrade) counts, no Motor6D is added", Head.EnsureNeck(m) == "ok" and m.Head:FindFirstChildOfClass("Motor6D") == nil)
+	ac:Destroy()
+	check("neck: with no neck joint at all a Motor6D Neck is rebuilt from the RigAttachments", Head.EnsureNeck(m) == "rebuilt" and (function()
+		local n = m.Head:FindFirstChild("Neck")
+		return n and n.ClassName == "Motor6D" and n.Part0 == m.UpperTorso and n.Part1 == m.Head and n.C0 == m.UpperTorso.NeckRigAttachment.CFrame
+			and n.C1 == m.Head.NeckRigAttachment.CFrame
+	end)())
+	check("neck: ...and is left alone after that", Head.EnsureNeck(m) == "ok")
+	-- the swap path: a rig whose head swap drops the Neck gets it back and warns once
+	do
+		local a2 = Looks.Random(778, 2, { age = 24, class = 5 })
+		local n0 = #warns
+		local m2 = Builder.CreateNPC(a2, buildOf(60), gear, "NoNeck", { hands = "wraps", detail = "medium" })
+		check("neck: a built NPC has exactly one Neck joint on the head", m2 and (function()
+			local n = 0
+			for _, ch in ipairs(m2.Head:GetChildren()) do
+				if ch.ClassName == "Motor6D" or ch.ClassName == "AnimationConstraint" then
+					n += 1
+				end
+			end
+			return n == 1
+		end)())
+		check("neck: no Neck warning on a rig that keeps it", #warns == n0 or not warned("left no Neck joint"))
+		if m2 then
+			m2:Destroy()
+		end
+	end
+	m:Destroy()
+
+	-- the referee's cap: the same re-fit from its own record (style, colours, detail)
+	local rapp, rbuild, rgear, ropts = Officials.Look(31, "referee", { venue = "ClubArena" })
+	local ref = Builder.CreateNPC(rapp, rbuild, rgear, "Referee", ropts)
+	check("cap refit: the referee builds", ref ~= nil)
+	ref.Parent = E.workspace
+	local okC, whyC = weldedTo(ref, "Hat")
+	check("cap refit: every cap part joined by a Weld under it", okC, whyC)
+	local hat0 = select(2, gearParts(ref, "Hat"))
+	local crown0 = hat0:FindFirstChild("RCCrown")
+	check("cap refit: a no-op while nothing changed", Builder.RefitHeadgear(ref) == nil and hat0:FindFirstChild("RCCrown") == crown0)
+	for _, p in ipairs(gearParts(ref, "Hat")) do
+		for _, ch in ipairs(p:GetChildren()) do
+			if ch.ClassName == "Weld" then
+				ch:Destroy()
+			end
+		end
+	end
+	local _, rverd = Diag.Report(ref, {})
+	check("cap refit: Diag VERDICT 'hat detached'", table.concat(rverd, "\n"):find("BAD  hat detached: " .. #gearParts(ref, "Hat") .. " parts with no weld", 1, true) ~= nil)
+	local rres = Builder.RefitHeadgear(ref)
+	local hat1 = select(2, gearParts(ref, "Hat"))
+	local crown1 = hat1 and hat1:FindFirstChild("RCCrown")
+	check("cap refit: the cap is rebuilt from its record, the same style, colour and part count, welded again", type(rres) == "table" and rres.Hat ~= nil and hat1 ~= hat0
+		and hat1:GetAttribute("Style") == "referee" and crown1 and crown1.Color == crown0.Color and #gearParts(ref, "Hat") == Head.CAP_PARTS.referee.medium and weldedTo(ref, "Hat")
+		and hat1:GetAttribute("Sig") ~= nil and warned("headgear refit Referee: Hat") ~= nil, rres and rres.Hat)
+	ref:Destroy()
+end
+
 print(string.format("test_npcbuild: %d passed, %d failed", pass, fail))
 if fail > 0 then
 	process.exit(1)

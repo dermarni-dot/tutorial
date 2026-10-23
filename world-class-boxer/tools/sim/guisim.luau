@@ -63,6 +63,8 @@ local GLYPHS = {
 	oswald = { 0.265, 0.31, 0.72, 0.545, 0.28, 0.70, 0.47, 0.52, 0.255, 0.51 },
 	mont = { 0.29, 0.34, 1.09, 0.75, 0.31, 1.03, 0.63, 0.63, 0.28, 0.58 },
 	gotham = { 0.28, 0.30, 0.86, 0.68, 0.26, 0.84, 0.56, 0.60, 0.26, 0.50 },
+	-- Builder Sans (Medium): a humanist sans a little narrower than Gotham
+	builder = { 0.26, 0.28, 0.84, 0.64, 0.25, 0.82, 0.54, 0.58, 0.25, 0.48 },
 	mono = { 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6 },
 }
 local function glyphW(c, face)
@@ -100,6 +102,8 @@ local function faceKey(s)
 		return "oswald"
 	elseif s:find("Montserrat") then
 		return "mont"
+	elseif s:find("BuilderSans") then
+		return "builder"
 	elseif s:find("RobotoMono") or s:find("Inconsolata") or s:find("%.Code$") then
 		return "mono"
 	end

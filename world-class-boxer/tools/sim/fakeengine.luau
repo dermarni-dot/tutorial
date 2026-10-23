@@ -22,6 +22,8 @@ local SUPER = {
 	Part = { "BasePart", "PVInstance" }, MeshPart = { "BasePart", "PVInstance" }, BasePart = { "PVInstance" },
 	Model = { "PVInstance" }, Folder = {}, Weld = { "JointInstance" }, Motor6D = { "JointInstance" },
 	Humanoid = {}, Decal = {}, SurfaceGui = { "LayerCollector" }, BillboardGui = { "LayerCollector" },
+	-- (the Avatar Joint Upgrade's rig: an AnimationConstraint per joint between two RigAttachments)
+	AnimationConstraint = { "Constraint" }, Attachment = {},
 	Animator = {}, LocalScript = { "BaseScript", "LuaSourceContainer" }, Script = { "BaseScript", "LuaSourceContainer" },
 	Workspace = { "Model", "PVInstance" }, Camera = {},
 	-- 2D GUI (guisim lays these out)

@@ -73,7 +73,7 @@ local function solve(model)
 	hrp.CFrame = CFrame.new(0, hum.HipHeight + hrp.Size.Y / 2, 0)
 	local joints = {}
 	for _, d in ipairs(model:GetDescendants()) do
-		if d.ClassName == "Motor6D" or d.ClassName == "Weld" then
+		if d.ClassName == "Motor6D" or d.ClassName == "Weld" or d.ClassName == "AnimationConstraint" then
 			table.insert(joints, d)
 		end
 	end
@@ -82,9 +82,15 @@ local function solve(model)
 	while progress do
 		progress = false
 		for _, j in ipairs(joints) do
-			local p0, p1 = j.Part0, j.Part1
+			local p0, p1, c0, c1 = j.Part0, j.Part1, j.C0, j.C1
+			if j.ClassName == "AnimationConstraint" then
+				-- (the Avatar Joint Upgrade's joint: between two RigAttachments, the Motor6D's convention)
+				local a0, a1 = j.Attachment0, j.Attachment1
+				p0, p1 = a0 and a0.Parent, a1 and a1.Parent
+				c0, c1 = a0 and a0.CFrame, a1 and a1.CFrame
+			end
 			if p0 and p1 and done[p0] and not done[p1] then
-				p1.CFrame = p0.CFrame * j.C0 * j.C1:Inverse()
+				p1.CFrame = p0.CFrame * c0 * (j.Transform or CFrame.new()) * c1:Inverse()
 				done[p1] = true
 				progress = true
 			end
@@ -92,7 +98,9 @@ local function solve(model)
 	end
 end
 
-local function newRig(scale, headSize)
+-- jointsAC: the rig's joints are AnimationConstraints between the RigAttachments (Workspace.AvatarJointUpgrade: what
+-- Studio builds for players and NPCs), else the classic Motor6Ds
+local function newRig(scale, headSize, jointsAC)
 	local model = E.new("Model")
 	model.Name = "Boxer"
 	local root = E.new("Part", model)
@@ -138,18 +146,27 @@ local function newRig(scale, headSize)
 	local na = E.new("Attachment", head)
 	na.Name = "NeckRigAttachment"
 	setAtt(na, Vector3.new(0, -0.5 * headSize, 0))
-	for jn, pp in pairs(JOINTS) do
-		local p0, p1 = model:FindFirstChild(pp[1]), model:FindFirstChild(pp[2])
+	local function joint(jn, p0, p1, a0, a1)
+		if jointsAC then
+			local m = E.new("AnimationConstraint", p1)
+			m.Name = jn
+			m.Attachment0, m.Attachment1 = a0, a1
+			m.Enabled = true
+			m.Transform = CFrame.new()
+			return m
+		end
 		local m = E.new("Motor6D", p1)
 		m.Name = jn
 		m.Part0, m.Part1 = p0, p1
-		m.C0 = p0:FindFirstChild(jn .. "RigAttachment").CFrame
-		m.C1 = p1:FindFirstChild(jn .. "RigAttachment").CFrame
+		m.C0, m.C1 = a0.CFrame, a1.CFrame
+		return m
 	end
-	local neck = E.new("Motor6D", head)
-	neck.Name = "Neck"
-	neck.Part0, neck.Part1 = model:FindFirstChild("UpperTorso"), head
-	neck.C0, neck.C1 = CFrame.new(0, 0.8 * scale.Y, 0), na.CFrame
+	for jn, pp in pairs(JOINTS) do
+		local p0, p1 = model:FindFirstChild(pp[1]), model:FindFirstChild(pp[2])
+		joint(jn, p0, p1, p0:FindFirstChild(jn .. "RigAttachment"), p1:FindFirstChild(jn .. "RigAttachment"))
+	end
+	local ut = model:FindFirstChild("UpperTorso")
+	joint("Neck", ut, head, ut:FindFirstChild("NeckRigAttachment"), na)
 	local hum = E.new("Humanoid", model)
 	hum.HipHeight = 2 * scale.Y
 	hum.ReplaceBodyPartR15 = function(_, enum, part)
@@ -175,6 +192,16 @@ local function newRig(scale, headSize)
 				end
 				if m.Part1 == old then
 					m.Part1 = part
+					m.Parent = part
+				end
+			elseif m:IsA("AnimationConstraint") then
+				-- (the engine re-points the constraint at the new part's attachments of the same names)
+				local a0, a1 = m.Attachment0, m.Attachment1
+				if a0 and a0.Parent == old then
+					m.Attachment0 = part:FindFirstChild(a0.Name)
+				end
+				if a1 and a1.Parent == old then
+					m.Attachment1 = part:FindFirstChild(a1.Name)
 					m.Parent = part
 				end
 			end
@@ -339,6 +366,68 @@ for _, g in ipairs({ 1, 2 }) do
 	end
 end
 print(string.format("worst centre-of-mass offset %.3f studs", worstCom))
+
+------------------------------------------------------------------------
+-- [Studio] both rig flavours through the Animator's rig measurement (AnimRig.computeGeo via Shared.RigJoints): the
+-- Avatar Joint Upgrade's AnimationConstraint rig must measure exactly as the Motor6D rig (leg length from the joints'
+-- rest poses, the floor under the soles, every joint found), on every body frame at tiers 1 and 5
+------------------------------------------------------------------------
+local AnimRig = H.require("AnimRig")
+local RigJoints = H.require("RigJoints")
+local function geoOf(model)
+	local rig = { model = model, joints = {}, geo = { ok = false }, a = {}, root = model:FindFirstChild("HumanoidRootPart") }
+	AnimRig.resolveJoints(rig)
+	AnimRig.computeGeo(rig)
+	return rig
+end
+for _, frame in ipairs({ "Lean", "Athletic", "Power Build", "Heavyweight Build" }) do
+	for _, tier in ipairs({ 1, 5 }) do
+		local app = Looks.Defaults(1)
+		app.body.frame = frame
+		local _, b = buildFor(app, tier)
+		local sc = Builder.Scales(app, b)
+		local geos = {}
+		for _, ac in ipairs({ false, true }) do
+			local tag = string.format("%s T%d %s", frame, tier, ac and "AnimationConstraint rig" or "Motor6D rig")
+			local model, hum = newRig(Vector3.new(sc.width, sc.height, sc.depth), 1.2 * sc.head, ac)
+			model.Parent = E.workspace
+			local ok, err = pcall(Builder.Cosmetics, model, app, b, nil, { hands = "gloves", detail = "low" })
+			check(tag .. ": builds", ok, err)
+			local all = RigJoints.All(model)
+			local missing = {}
+			for _, n in ipairs(RigJoints.NAMES) do
+				local j = all[n]
+				if not j or (ac and not j:IsA("AnimationConstraint")) or (not ac and not j:IsA("Motor6D")) then
+					table.insert(missing, n)
+				end
+			end
+			check(tag .. ": RigJoints.Find finds every joint of its class", #missing == 0, table.concat(missing, ","))
+			local okG, rig = pcall(geoOf, model)
+			check(tag .. ": AnimRig.computeGeo runs", okG and rig.geo.ok, tostring(okG and "geo.ok false" or rig))
+			if okG and rig.geo.ok then
+				local g = rig.geo
+				geos[ac and 2 or 1] = g
+				-- the leg from the joints' rest poses equals the RigAttachment chain (hip -> knee -> ankle)
+				local function attLen(part, a, b2)
+					local p = model:FindFirstChild(part)
+					local pa, pb = p and p:FindFirstChild(a), p and p:FindFirstChild(b2)
+					return pa and pb and (pa.CFrame.Position - pb.CFrame.Position).Magnitude or nil
+				end
+				local want = (attLen("LeftUpperLeg", "LeftHipRigAttachment", "LeftKneeRigAttachment") or 0)
+					+ (attLen("LeftLowerLeg", "LeftKneeRigAttachment", "LeftAnkleRigAttachment") or 0)
+				check(tag .. string.format(": legLen %.3f from the RigAttachments (%.3f)", g.legLen, want), math.abs(g.legLen - want) < 0.01)
+				-- the Animator's floor is where the Humanoid holds the root: HipHeight + root / 2 under the root
+				local floor = hum.HipHeight + rig.root.Size.Y / 2
+				check(tag .. string.format(": floor %.3f under the root = HipHeight's %.3f", -g.groundY, floor), math.abs(-g.groundY - floor) < 0.02)
+			end
+			model:Destroy()
+		end
+		if geos[1] and geos[2] then
+			check(string.format("%s T%d: both rig flavours measure alike", frame, tier),
+				math.abs(geos[1].legLen - geos[2].legLen) < 1e-3 and math.abs(geos[1].groundY - geos[2].groundY) < 1e-3 and math.abs(geos[1].hipW - geos[2].hipW) < 1e-3)
+		end
+	end
+end
 
 print(string.format("test_charphysics: %d passed, %d failed", pass, fail))
 if fail > 0 then

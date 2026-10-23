@@ -65,7 +65,7 @@ end
 	local file = string.format("rest_t%d.json", tier)
 	Host.WriteJSON(OUT .. "/" .. file, out)
 	table.insert(index.clips, { id = string.format("rest_t%d", tier), file = file, clip = "rest", tier = tier, n = 1 })
-''', '''	local out = { clip = "rest", tier = tier, frame = frameId, frames = { exportFrame(model, VT) } }
+''', '''	local out = { clip = "rest", tier = tier, frame = frameId, height = HEIGHT, frames = { exportFrame(model, VT) } }
 	out.frames[1].root = cfList(model:FindFirstChild("HumanoidRootPart").CFrame)
 	out.frames[1].bodyFrame = model:GetAttribute("BodyFrame")
 	out.frames[1].scales = { model:FindFirstChild("UpperTorso").Size.X, model:FindFirstChild("UpperTorso").Size.Y }

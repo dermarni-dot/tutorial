@@ -149,12 +149,14 @@ TIERS = {
 # 1.2 x that; frame_unit records it), neck_s = the neck rows' prototype heights (the shoulder top row, the trapezius
 # slope, the column, the top inside the head: NECK_TOP), neck = (ax, af, ab) at the last three.
 # (v13) the skeletons are tuned so that, once Builder.Scales normalises every frame to the chosen standing height,
-# the hip stays within 1 % of the Athletic's (the frame changes the build, not the height or the waist line):
-# Lean keeps longer shins and forearms, Power Build shorter / thicker limbs, within the same height.
+# the Humanoid's HipHeight (HeightScale x (the root pivot's unit height - 1)) is the Athletic's within 0.3 % (the frame
+# changes the build, not the height or the waist line): Lean keeps longer shins and forearms on a longer trunk, Power
+# Build shorter forearms and shins on thicker limbs, within the same height (the leg factors were solved for that:
+# a change to torso / leg / lowerleg or to a head share needs them re-solved; tools/sim/test_frameheight.luau checks).
 FRAMES = {
     "Lean": dict(
         key="lean", head=0.79, neck_s=[3.58, 3.64, 3.72, 3.86],
-        skel=dict(torso=1.03, leg=1.03, lowerleg=1.07, arm=1.02, forearm=1.06, armw=0.92, hand=0.90, lower=(0.90, 0.92), foot=0.90),
+        skel=dict(torso=1.03, leg=1.0, lowerleg=1.045, arm=1.02, forearm=1.06, armw=0.92, hand=0.90, lower=(0.90, 0.92), foot=0.90),
         tx=[0.95, 0.90, 0.92, 0.93, 0.92, 0.90], tf=[0.95, 0.90, 0.93, 0.95, 0.96, 0.98], tb=[0.95, 0.92, 0.95, 0.96, 0.97, 0.98],
         neck=([0.54, 0.40, 0.377], [0.27, 0.26, 0.27], [0.30, 0.31, 0.325]), p=-0.45,
         arm=[1.0, 0.98, 0.97, 0.97, 0.97], fore=[1.0, 0.99, 0.97, 0.96, 0.97], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
@@ -172,7 +174,7 @@ FRAMES = {
         soft=0.0, fat=0.0, ribs=0.3, knobs=0.3),
     "Muscular": dict(
         key="muscular", head=0.835, neck_s=[3.58, 3.67, 3.75, 3.86],
-        skel=dict(torso=1.0, leg=1.01, lowerleg=1.0, arm=1.0, forearm=1.0, armw=1.10, hand=1.06, lower=(1.06, 1.04), foot=1.04),
+        skel=dict(torso=1.0, leg=1.004, lowerleg=0.994, arm=1.0, forearm=1.0, armw=1.10, hand=1.06, lower=(1.06, 1.04), foot=1.04),
         tx=[0.98, 0.96, 1.08, 1.17, 1.19, 1.16], tf=[1.0, 1.0, 1.08, 1.12, 1.10, 1.03], tb=[1.0, 1.02, 1.10, 1.14, 1.12, 1.04],
         neck=([0.80, 0.49, 0.44], [0.34, 0.32, 0.315], [0.38, 0.39, 0.385]), p=-0.2,
         arm=[1.0, 1.03, 1.05, 1.05, 1.04], fore=[1.0, 1.01, 1.03, 1.04, 1.04], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
@@ -181,7 +183,7 @@ FRAMES = {
         soft=0.0, fat=0.0, ribs=0.0, knobs=0.0, built=1.0),
     "Power Build": dict(
         key="power", head=0.85, neck_s=[3.58, 3.70, 3.77, 3.86],
-        skel=dict(torso=0.99, leg=0.99, lowerleg=0.96, arm=0.97, forearm=0.97, armw=1.16, hand=1.12, lower=(1.10, 1.14), foot=1.06),
+        skel=dict(torso=0.99, leg=1.01, lowerleg=0.979, arm=0.97, forearm=0.97, armw=1.16, hand=1.12, lower=(1.10, 1.14), foot=1.06),
         tx=[1.0, 1.06, 1.12, 1.16, 1.17, 1.17], tf=[1.02, 1.12, 1.20, 1.22, 1.16, 1.06], tb=[1.02, 1.10, 1.18, 1.20, 1.16, 1.06],
         neck=([0.92, 0.55, 0.46], [0.38, 0.35, 0.335], [0.45, 0.42, 0.40]), p=-0.1,
         arm=[1.0, 1.04, 1.06, 1.06, 1.05], fore=[1.0, 1.05, 1.12, 1.14, 1.12], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
@@ -190,7 +192,7 @@ FRAMES = {
         soft=0.2, fat=0.25, ribs=0.0, knobs=0.0, built=0.6),
     "Heavyweight Build": dict(
         key="heavy", head=0.865, neck_s=[3.58, 3.69, 3.76, 3.86],
-        skel=dict(torso=1.0, leg=1.0, lowerleg=0.98, arm=0.98, forearm=0.98, armw=1.10, hand=1.12, lower=(1.16, 1.14), foot=1.12),
+        skel=dict(torso=1.0, leg=1.007, lowerleg=0.987, arm=0.98, forearm=0.98, armw=1.10, hand=1.12, lower=(1.16, 1.14), foot=1.12),
         tx=[1.0, 1.10, 1.12, 1.12, 1.10, 1.08], tf=[1.02, 1.16, 1.20, 1.16, 1.10, 1.04], tb=[1.02, 1.10, 1.14, 1.14, 1.10, 1.04],
         neck=([0.88, 0.53, 0.46], [0.39, 0.355, 0.335], [0.44, 0.40, 0.39]), p=-0.35,
         arm=[1.0, 1.03, 1.05, 1.05, 1.04], fore=[1.0, 1.02, 1.05, 1.06, 1.05], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],

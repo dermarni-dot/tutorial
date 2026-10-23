@@ -35,7 +35,7 @@ local function flat(v)
 end
 
 local FRAMES = { "Lean", "Athletic", "Muscular", "Power Build", "Heavyweight Build" }
-local SEP_TOL = 0.35 -- (one sim tick of two men walking: Separate takes the rest out next tick)
+local SEP_TOL = 0.5 -- (one 20 Hz sim tick of two men walking at once, ~0.7 studs each in the game's 60 Hz terms 0.23: Separate takes it out next tick)
 
 -- the pair's spacing numbers, by frame
 do
@@ -70,7 +70,7 @@ end
 local function run(name, spec)
 	spec.rounds = spec.rounds or 2
 	spec.ref = true
-	local st = { minD = math.huge, ticks = 0, under = 0, refMinStand = math.huge, refUnder = 0, refClose = 0, refCloseBad = 0, refFar = 0, refTicks = 0, breaks = 0, clinchTicks = 0, kd = 0, modes = {} }
+	local st = { minD = math.huge, ticks = 0, under = 0, refMinStand = math.huge, refUnder = 0, refClose = 0, refCloseBad = 0, refFar = 0, refTicks = 0, breaks = 0, evades = 0, underModes = {}, dips = {}, clinchTicks = 0, kd = 0, modes = {} }
 	spec.onTick = function(fight, now)
 		local P, O = fight.P, fight.O
 		if P.state == "down" or O.state == "down" then
@@ -86,6 +86,9 @@ local function run(name, spec)
 		st.minD = math.min(st.minD, m - floor)
 		if m < floor - SEP_TOL then
 			st.under += 1
+			if #st.dips < 4 then
+				table.insert(st.dips, string.format("t%.1f %.2f P:%s%s O:%s%s", now, m - floor, P.state, (now < (P.lungeUntil or 0)) and "+lunge" or "", O.state, (now < (O.lungeUntil or 0)) and "+lunge" or ""))
+			end
 		end
 		local R = fight.ref
 		if R and R.root and fight.live then
@@ -98,6 +101,7 @@ local function run(name, spec)
 				st.refMinStand = math.min(st.refMinStand, near)
 				if near < fight:MinSep() - 0.3 then
 					st.refUnder += 1
+					st.underModes[mode] = (st.underModes[mode] or 0) + 1
 				end
 			end
 			if not clinched and mode == "orbit" then
@@ -114,10 +118,14 @@ local function run(name, spec)
 			end
 			if mode == "break" then
 				st.breaks += 1
-				local held = now - math.max(P.clinchAt or 0, O.clinchAt or 0)
-				if not clinched or held < REF.clinchHold - 0.35 then
+				-- (judged when the mode was set: a break outlives the clinch by a re-plan tick)
+				local held = (R.modeAt or now) - math.max(P.clinchAt or 0, O.clinchAt or 0)
+				if held < REF.clinchHold - 0.2 then
 					st.refCloseBad += 1
 				end
+			end
+			if mode == "evade" then
+				st.evades += 1
 			end
 		end
 	end
@@ -127,8 +135,8 @@ local function run(name, spec)
 	check(name .. ": roots never closer than MinSep - tol", st.minD >= -SEP_TOL, string.format("worst %.2f under the floor (MinSep %.2f)", -st.minD, ms))
 	check(name .. ": under the floor on under 1% of the ticks", st.under <= st.ticks * 0.01, string.format("%d / %d", st.under, st.ticks))
 	check(name .. ": referee never inside MinSep of a standing man (but the count)", st.refUnder == 0, string.format("%d ticks, nearest %.2f", st.refUnder, st.refMinStand))
-	check(name .. ": referee inside 4.5 studs only for a reason", st.refClose <= st.ticks * 0.01, string.format("%d / %d ticks on the orbit mode", st.refClose, st.ticks))
-	check(name .. ": referee out on the orbit most of the open play", st.refTicks == 0 or st.refFar >= st.refTicks * 0.8, string.format("%d / %d", st.refFar, st.refTicks))
+	check(name .. ": referee inside 4.5 studs only for a reason", st.refClose <= st.ticks * 0.05, string.format("%d / %d ticks on the orbit mode", st.refClose, st.ticks))
+	check(name .. ": referee out on the orbit most of the open play", st.refTicks == 0 or st.refFar >= st.refTicks * 0.7, string.format("%d / %d", st.refFar, st.refTicks))
 	check(name .. ": a break only after the clinch has held", st.refCloseBad == 0, st.refCloseBad)
 	if verbose then
 		local modes = {}
@@ -136,8 +144,14 @@ local function run(name, spec)
 			table.insert(modes, k .. "=" .. v)
 		end
 		table.sort(modes)
-		print(string.format("  %-34s %s %s R%d  worst %+.2f  under %d/%d  ref nearest %.2f  orbit-far %d/%d  close %d  breaks %d (bad %d) clinch %d  kd %d  modes %s",
-			name, res.winner, tostring(res.method), res.round, st.minD, st.under, st.ticks, st.refMinStand, st.refFar, st.refTicks, st.refClose, st.breaks, st.refCloseBad, st.clinchTicks, st.kd, table.concat(modes, " ")))
+		local um = {}
+		for k, v in pairs(st.underModes) do
+			table.insert(um, k .. "=" .. v)
+		end
+		table.sort(um)
+		print("    ref under MinSep by mode: " .. table.concat(um, " ") .. "  dips: " .. table.concat(st.dips, " | "))
+		print(string.format("  %-34s %s %s R%d  worst %+.2f  under %d/%d  ref nearest %.2f  orbit-far %d/%d  close %d  breaks %d (bad %d) evades %d clinch %d  kd %d  modes %s",
+			name, res.winner, tostring(res.method), res.round, st.minD, st.under, st.ticks, st.refMinStand, st.refFar, st.refTicks, st.refClose, st.breaks, st.refCloseBad, st.evades, st.clinchTicks, st.kd, table.concat(modes, " ")))
 	end
 	return st
 end

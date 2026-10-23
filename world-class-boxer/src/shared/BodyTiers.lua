@@ -308,8 +308,10 @@ function BodyTiers.GearScale(frame, base, d)
 	return vec3(g) or { 1, 1, 1 }
 end
 
--- the frame's rig heights (BodyAssetData.frames[id].unit: joints, hipHeight, shoulderHeight, ...), the default
--- family's unit for the default frame / an unknown one
+-- the frame's rig heights (BodyAssetData.frames[id].unit: joints, hipHeight, shoulderHeight, neckHeight, the frame's
+-- head (studs) and headScale, standingHeight = neckHeight + head), the default family's unit for the default frame /
+-- an unknown one. Builder.Scales normalises the HeightScale from neckHeight and the head so every frame stands the
+-- chosen height (v13)
 function BodyTiers.Unit(frame, d)
 	d = d or load()
 	local fr = type(d) == "table" and type(d.frames) == "table" and type(frame) == "string" and d.frames[frame] or nil

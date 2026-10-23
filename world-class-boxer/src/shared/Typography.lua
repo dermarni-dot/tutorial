@@ -2,22 +2,24 @@
 -- (Signage, the Venues / GymDecor / CityMap / CityProps builders, the client detail layers), so the whole
 -- game changes face together. No services, no client-only requires: a server sign builder can use it.
 --
--- The look: a loud sports-poster display face for everything that shouts (titles, buttons, call-outs, the
--- HUD's big counters, the signs on Main Street), a condensed face for the numbers that line up in columns,
--- a round geometric sans for the reading.
+-- The look: a plain sports-broadcast system. One geometric grotesque (Gotham) for everything that is read as
+-- a label - titles, headings, buttons, captions - a humanist sans (Builder Sans) for running text, and a
+-- condensed face (Oswald) for the big numbers only: the round clock, the scores, the stat tiles. The loud
+-- poster face (Bangers) is kept for the WCB wordmark on the brand ribbon and the signs out in the world.
 --
---   role         face                         use
---   display      Bangers                      titles, the logo lockups, call-outs, sign wordmarks
---   displayMed   Bangers                      buttons, tabs, section heads
---   number       Oswald Bold                  tabular numbers: stats, clocks, records, money
---   numberMed    Oswald SemiBold              smaller readouts, the round text
---   heading      Montserrat ExtraBold         small headings, emphasised labels (GothamBlack under title size)
---   label        Montserrat Bold              captions, chips, kickers, row labels, a sign's second line
---   body         Montserrat Medium            body copy, inputs, descriptions
---   mono         RobotoMono Medium            technical readouts, monitors
---   sign         = display                    the world's default sign face
---   signSub      = label
---   plate        Oswald Bold                  the engraved look: belt plates
+--   role         face                         size   use
+--   display      Gotham Bold                  24-28  the one title size: window titles, the result headline
+--   displayMed   Gotham Bold                  14-16  buttons, tabs, the call-outs
+--   heading      Gotham Bold                  16-18  section headings, a row's name, emphasised labels
+--   label        Gotham Medium                11-13  captions, chips, kickers, row labels, key caps
+--   body         Builder Sans Medium          13-15  body copy, inputs, descriptions, hints
+--   number       Oswald SemiBold              20-50  the big numbers: the clock, scores, records, money
+--   numberMed    Gotham Bold                  13-16  smaller readouts (tabular figures): the round text
+--   mono         RobotoMono Medium                   technical readouts, monitors
+--   brand        Bangers                             the WCB wordmark on the ribbon (nothing else)
+--   sign         Bangers                             the world's sign face (the shop lockups, the venues)
+--   signSub      Gotham Medium                       a sign's second line
+--   plate        Oswald Bold                         the engraved look: belt plates
 -- Flavour faces for particular props stay Enum.Font values (their families resolve inside the engine):
 --   marker (hand-written placards), serif (the museum, an estate's gate), tech (a car dealer), led (LED
 --   clocks), hand (fans' signs), screen (old monitors).
@@ -27,9 +29,10 @@
 local Typography = {}
 
 Typography.Families = {
-	display = "Bangers",
+	display = "GothamSSm",
+	text = "BuilderSans",
 	number = "Oswald",
-	text = "Montserrat",
+	brand = "Bangers",
 	mono = "RobotoMono",
 }
 
@@ -41,28 +44,31 @@ local function face(family, weight)
 end
 Typography.Face = face
 
-local display = face("Bangers", Enum.FontWeight.Regular)
-local numberBold = face("Oswald", Enum.FontWeight.Bold)
+local gothamBold = face("GothamSSm", Enum.FontWeight.Bold)
+local gothamMedium = face("GothamSSm", Enum.FontWeight.Medium)
+local brand = face("Bangers", Enum.FontWeight.Regular)
 Typography.Fonts = {
-	display = display,
-	displayMed = display,
-	sign = display,
-	number = numberBold,
-	numberMed = face("Oswald", Enum.FontWeight.SemiBold),
-	plate = numberBold,
-	heading = face("Montserrat", Enum.FontWeight.ExtraBold),
-	label = face("Montserrat", Enum.FontWeight.Bold),
-	signSub = face("Montserrat", Enum.FontWeight.Bold),
-	body = face("Montserrat", Enum.FontWeight.Medium),
+	display = gothamBold,
+	displayMed = gothamBold,
+	heading = gothamBold,
+	label = gothamMedium,
+	body = face("BuilderSans", Enum.FontWeight.Medium),
+	number = face("Oswald", Enum.FontWeight.SemiBold),
+	numberMed = gothamBold,
+	plate = face("Oswald", Enum.FontWeight.Bold),
 	mono = face("RobotoMono", Enum.FontWeight.Medium),
+	brand = brand,
+	sign = brand,
+	signSub = gothamMedium,
 }
 
--- the nearest Enum.Font of each role (no Montserrat enum exists: Gotham stands in)
+-- the nearest Enum.Font of each role
 Typography.Fallback = {
-	display = Enum.Font.Bangers, displayMed = Enum.Font.Bangers, sign = Enum.Font.Bangers,
-	number = Enum.Font.Oswald, numberMed = Enum.Font.Oswald, plate = Enum.Font.Oswald,
-	heading = Enum.Font.GothamBlack, label = Enum.Font.GothamBold, signSub = Enum.Font.GothamBold, body = Enum.Font.GothamMedium,
+	display = Enum.Font.GothamBold, displayMed = Enum.Font.GothamBold, heading = Enum.Font.GothamBold, label = Enum.Font.GothamMedium,
+	body = Enum.Font.BuilderSansMedium,
+	number = Enum.Font.Oswald, numberMed = Enum.Font.GothamBold, plate = Enum.Font.Oswald,
 	mono = Enum.Font.RobotoMono,
+	brand = Enum.Font.Bangers, sign = Enum.Font.Bangers, signSub = Enum.Font.GothamMedium,
 }
 
 Typography.Flavour = {
@@ -81,24 +87,29 @@ Typography.RoleOf = {
 	[Enum.Font.GothamBold] = "label",
 	[Enum.Font.GothamMedium] = "body",
 	[Enum.Font.Gotham] = "body",
+	[Enum.Font.BuilderSans] = "body",
+	[Enum.Font.BuilderSansMedium] = "body",
+	[Enum.Font.BuilderSansBold] = "heading",
 	[Enum.Font.Oswald] = "number",
-	[Enum.Font.Bangers] = "display",
+	[Enum.Font.Bangers] = "brand",
 	[Enum.Font.RobotoMono] = "mono",
 }
 
 -- the width one character of an UPPERCASE line takes, in em, per role (a generous estimate for layouts
--- measured before the text draws: Bangers caps run about 0.41 em and its space 0.2, Oswald Bold caps
--- 0.53, Montserrat Bold caps 0.73; TextService measures Enum fonts only)
+-- measured before the text draws: Gotham Bold caps run about 0.68 em and its space 0.28, Builder Sans
+-- Medium caps 0.64, Oswald SemiBold caps 0.53, Bangers caps 0.41 with a 0.2 space; TextService measures
+-- Enum fonts only)
 Typography.Em = {
-	display = 0.46, displayMed = 0.46, sign = 0.46,
-	number = 0.56, numberMed = 0.55, plate = 0.56,
-	heading = 0.8, label = 0.76, signSub = 0.76, body = 0.74,
+	display = 0.72, displayMed = 0.72, heading = 0.72, label = 0.7, signSub = 0.7, numberMed = 0.7,
+	body = 0.66,
+	number = 0.56, plate = 0.56,
 	mono = 0.64,
+	brand = 0.46, sign = 0.46,
 }
 
--- Bangers' capitals stand 0.72 em (Oswald's 0.81): the display roles draw a little larger than the size
--- asked for, so a title keeps the presence it had
-Typography.Scale = { display = 1.12, displayMed = 1.12, sign = 1 }
+-- a role that draws larger than the size asked for (none now: every face in the system keeps its em; the
+-- table stays for callers that scale a role's size)
+Typography.Scale = {}
 
 -- the size a role really draws at
 function Typography.SizeOf(role, size)
@@ -112,20 +123,26 @@ end
 -- the Enum.Font nearest a role / a Font / an Enum.Font (for APIs that take only an enum: TextService)
 function Typography.Enum(spec)
 	if type(spec) == "string" then
-		return Typography.Fallback[spec] or Typography.Flavour[spec] or Enum.Font.GothamBlack
+		return Typography.Fallback[spec] or Typography.Flavour[spec] or Enum.Font.GothamBold
 	end
 	if typeof(spec) == "EnumItem" then
 		return spec
 	end
 	if typeof(spec) == "Font" then
 		local fam = tostring(spec.Family or "")
+		local wt = tostring(spec.Weight or "")
+		for role, f in pairs(Typography.Fonts) do
+			if f and tostring(f.Family) == fam and tostring(f.Weight) == wt then
+				return Typography.Fallback[role]
+			end
+		end
 		for role, f in pairs(Typography.Fonts) do
 			if f and tostring(f.Family) == fam then
 				return Typography.Fallback[role]
 			end
 		end
 	end
-	return Enum.Font.GothamBlack
+	return Enum.Font.GothamBold
 end
 
 -- puts a face on a text object: spec = a role name, a Font, an Enum.Font or nil (the sign face)
@@ -141,7 +158,7 @@ function Typography.Apply(obj, spec)
 				return obj
 			end
 		end
-		obj.Font = Typography.Fallback[spec] or Typography.Flavour[spec] or Enum.Font.GothamBlack
+		obj.Font = Typography.Fallback[spec] or Typography.Flavour[spec] or Enum.Font.GothamBold
 		return obj
 	end
 	if typeof(spec) == "Font" then
@@ -149,7 +166,7 @@ function Typography.Apply(obj, spec)
 			obj.FontFace = spec
 		end)
 		if not ok then
-			obj.Font = Enum.Font.GothamBlack
+			obj.Font = Enum.Font.GothamBold
 		end
 		return obj
 	end
@@ -165,7 +182,7 @@ function Typography.Props(role, props)
 	if f then
 		props.FontFace = f
 	else
-		props.Font = Typography.Fallback[role] or Typography.Flavour[role] or Enum.Font.GothamBlack
+		props.Font = Typography.Fallback[role] or Typography.Flavour[role] or Enum.Font.GothamBold
 	end
 	return props
 end
@@ -174,7 +191,39 @@ end
 function Typography.Width(text, size, role)
 	text = tostring(text or "")
 	local n = utf8.len(text) or #text
-	return math.ceil(n * size * (Typography.Em[role or "label"] or 0.76))
+	return math.ceil(n * size * (Typography.Em[role or "label"] or 0.7))
+end
+
+-- words shouted in capitals turned into Title Case ("MOVE DOWN" -> "Move Down"), for the kit's buttons and
+-- titles: a plain look speaks in mixed case. Short tokens and known initialisms (KO, PVP, WBC, OVR, R1,
+-- W/A/S/D) stay as they are; text that already has lower-case letters is returned untouched.
+local KEEP = { KO = true, TKO = true, PVP = true, OVR = true, OK = true, HP = true, XP = true, UI = true, AI = true, ID = true, TV = true, VS = true, KOS = true, KD = true,
+	WBC = true, WBA = true, IBF = true, WBO = true, USA = true, UK = true, HUD = true, FPS = true, RD = true, MMA = true, LB = true, LBS = true, DNA = true, NPC = true, CPU = true,
+	GPU = true, VSYNC = true, FX = true, SFX = true, BGM = true, PC = true, II = true, III = true, IV = true, VI = true, VII = true, VIII = true, IX = true, GYM = true, PRO = true }
+local SMALL = { ["a"] = true, ["an"] = true, ["and"] = true, ["at"] = true, ["by"] = true, ["for"] = true, ["in"] = true, ["of"] = true, ["on"] = true, ["or"] = true, ["the"] = true, ["to"] = true, ["vs"] = true, ["v"] = true }
+function Typography.TitleCase(text)
+	text = tostring(text or "")
+	if text:find("%l") or not text:find("%u%u") then
+		return text
+	end
+	local first = true
+	local out = text:gsub("(%a[%a']*)", function(word)
+		local keep = KEEP[word] or #word <= 2 and word:find("^%u%d*$") ~= nil
+		if keep or word:find("%d") then
+			first = false
+			return word
+		end
+		local lower = word:lower()
+		local res
+		if SMALL[lower] and not first then
+			res = lower
+		else
+			res = lower:sub(1, 1):upper() .. lower:sub(2)
+		end
+		first = false
+		return res
+	end)
+	return out
 end
 
 return Typography

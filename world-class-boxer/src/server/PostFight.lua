@@ -78,8 +78,10 @@ local function remote()
 end
 PostFight.Remote = remote
 
--- stand a model at pos facing look (flat), and point its facing constraint the same way so it is not fought
-local function stand(fight, F, model, pos, look, center)
+-- stand a model at pos facing look (flat), point its facing constraint the same way so it is not fought, and
+-- anchor its root for the scene (the Humanoids' own physics, a push from the other body, a client walking its
+-- character cannot slide him out of the picture); held lists the roots to free at the end
+local function stand(fight, F, model, pos, look, center, held)
 	local root = partOf(model, "HumanoidRootPart")
 	local hum = model and model:FindFirstChildOfClass("Humanoid")
 	if not root then
@@ -102,6 +104,72 @@ local function stand(fight, F, model, pos, look, center)
 			align.Enabled = true
 		end)
 	end
+	if held and not root.Anchored then
+		local ok = pcall(function()
+			root.Anchored = true
+		end)
+		if ok then
+			table.insert(held, root)
+		end
+	end
+end
+
+-- the frames the scene is spaced on (HitGeometry: shoulderHalf = half the shoulder width off the live rig,
+-- torsoHalfD half the chest's depth; the unit frame when a rig cannot be read)
+local HitGeometry
+do
+	local ok, mod = pcall(function()
+		return require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HitGeometry"))
+	end)
+	HitGeometry = ok and type(mod) == "table" and mod or nil
+end
+local UNIT_FRAME = { shoulderHalf = 0.955, torsoHalfD = 0.485, torsoHalfW = 0.795, arm = 2.578, glove = 0.32, hScale = 1 }
+local function frameOf(fight, F, model)
+	if F and fight and fight.Geo then
+		local ok, g = pcall(fight.Geo, fight, F)
+		if ok and type(g) == "table" and g.shoulderHalf then
+			return g
+		end
+	end
+	if HitGeometry and model then
+		local root = partOf(model, "HumanoidRootPart")
+		local hum = model:FindFirstChildOfClass("Humanoid")
+		local soleY = root and (root.Position.Y - standHeight(hum, root)) or nil
+		local ok, fr = pcall(HitGeometry.Frame, model, soleY, HitGeometry.Unit())
+		if ok and type(fr) == "table" then
+			return fr
+		end
+	end
+	return UNIT_FRAME
+end
+
+-- The scene's places, from the frames (pure: tools/sim/test_spacing.luau reads it). center = the ring centre, face
+-- = the way the picture faces (toward the hard camera), frames = { red, blue, ref } (HitGeometry frames), and
+-- redDown / blueDown for a man still on the canvas. Returns { red, blue, ref } (flat positions at center's height).
+--   * the referee stands in the middle, SIDE_BACK behind the men's line (his arms reach forward to their wrists)
+--   * each man stands a shoulder width of his own plus a shoulder width of the referee's plus SIDE_GAP of air to
+--     the side: the raised arms (the referee's up at 2.6 rad, the winner's inside arm at 2.72 rad, both past
+--     vertical and away from the other body) and the referee's held-out hands never cross into a body, and a
+--     Heavyweight Build (1.17 x the unit shoulder) stands his own width further out than a Lean man
+--   * one man down: the standing man and the referee share the centre, the same spacing between them
+PostFight.SIDE_GAP, PostFight.SIDE_BACK, PostFight.SIDE_FWD = 0.9, 0.45, 0.1
+function PostFight.Layout(center, face, frames, redDown, blueDown)
+	frames = frames or {}
+	local red, blue, ref = frames.red or UNIT_FRAME, frames.blue or UNIT_FRAME, frames.ref or UNIT_FRAME
+	local right = face:Cross(Vector3.yAxis)
+	local sideRed = red.shoulderHalf + ref.shoulderHalf + PostFight.SIDE_GAP
+	local sideBlue = blue.shoulderHalf + ref.shoulderHalf + PostFight.SIDE_GAP
+	local refAt = center - face * PostFight.SIDE_BACK
+	local redAt = center - right * sideRed + face * PostFight.SIDE_FWD
+	local blueAt = center + right * sideBlue + face * PostFight.SIDE_FWD
+	if redDown and not blueDown then
+		blueAt = center + right * (sideBlue / 2) + face * PostFight.SIDE_FWD
+		refAt = center - right * (sideBlue / 2) - face * PostFight.SIDE_BACK
+	elseif blueDown and not redDown then
+		redAt = center - right * (sideRed / 2) + face * PostFight.SIDE_FWD
+		refAt = center + right * (sideRed / 2) - face * PostFight.SIDE_BACK
+	end
+	return { red = redAt, blue = blueAt, ref = refAt, sideRed = sideRed, sideBlue = sideBlue }
 end
 
 -- the crowd's table: who won, how, the names, the bout
@@ -132,7 +200,6 @@ function PostFight.Run(fight, res, opts)
 	toRed = toRed.Magnitude > 0.1 and toRed.Unit or Vector3.new(0, 0, -1)
 	-- they face a ring side (between the red corner and the next post), the hard camera's side
 	local face = CFrame.Angles(0, math.rad(45), 0):VectorToWorldSpace(toRed)
-	local right = face:Cross(Vector3.yAxis)
 	local names = { P.data.name, O.data.name }
 	local title = type(opts.ceremony) == "table" and opts.ceremony or nil
 	local endSeconds = nil
@@ -146,25 +213,25 @@ function PostFight.Run(fight, res, opts)
 	local winner = script_.winner == "red" and P or (script_.winner == "blue" and O or nil)
 	local loser = winner and fight:Other(winner) or nil
 
-	-- places: red at the referee's left, blue at his right (a man still down stays down)
+	-- places: red at the referee's left, blue at his right (a man still down stays down), spaced from the rigs
 	local redDown, blueDown = P.state == "down", O.state == "down"
 	local refModel = fight.ref and fight.ref.model
-	local refAt = center - face * 0.4
-	local redAt = center - right * 1.75 + face * 0.1
-	local blueAt = center + right * 1.75 + face * 0.1
-	if redDown and not blueDown then
-		blueAt = center + right * 0.95
-		refAt = center - right * 0.95
-	elseif blueDown and not redDown then
-		redAt = center - right * 0.95
-		refAt = center + right * 0.95
-	end
-	local look = center + face * 12
+	local L = PostFight.Layout(center, face, { red = frameOf(fight, P, P.model), blue = frameOf(fight, O, O.model), ref = frameOf(nil, nil, refModel) }, redDown, blueDown)
+	local redAt, blueAt, refAt = L.red, L.blue, L.ref
+	local held = {} -- the roots anchored for the scene
 	local tagged = {}
 	for _, X in ipairs({ { P, redAt, redDown }, { O, blueAt, blueDown } }) do
 		local F, at, down = X[1], X[2], X[3]
 		if F.model and F.model.Parent and not down then
-			stand(fight, F, F.model, at, at + face * 10, center)
+			-- (a walk in progress - a glide, the AI's last MoveTo - is cancelled: the placement wins)
+			F.glideId = (F.glideId or 0) + 1
+			F.aiTarget = nil
+			if F.hum then
+				pcall(function()
+					F.hum:MoveTo(at)
+				end)
+			end
+			stand(fight, F, F.model, at, at + face * 10, center, held)
 			-- the poses come from the Animator's Trainee path (a Fighter plays guards only)
 			CollectionService:RemoveTag(F.model, "Fighter")
 			CollectionService:AddTag(F.model, "Trainee")
@@ -173,12 +240,12 @@ function PostFight.Run(fight, res, opts)
 		end
 	end
 	if refModel and refModel.Parent then
-		stand(fight, fight.ref, refModel, refAt, refAt + face * 10, center)
 		if fight.ref.hum then
 			pcall(function()
 				fight.ref.hum:MoveTo(refAt)
 			end)
 		end
+		stand(fight, fight.ref, refModel, refAt, refAt + face * 10, center, held)
 		setPose(refModel, (redDown or blueDown) and "pfWait" or "pfHold")
 	end
 
@@ -252,7 +319,13 @@ function PostFight.Run(fight, res, opts)
 		return { t = "postfightEnd", skipped = fight.ceremonySkip == true }
 	end)
 	fight.ceremonySkip = false
-	-- hand the rigs back (Cleanup takes the Fighter attributes off; the belt ceremony re-tags its winner)
+	-- hand the rigs back (Cleanup takes the Fighter attributes off; the belt ceremony re-tags its winner): the
+	-- roots freed first, so nothing is left anchored
+	for _, root in ipairs(held) do
+		pcall(function()
+			root.Anchored = false
+		end)
+	end
 	for _, F in ipairs(tagged) do
 		setPose(F.model, nil)
 		CollectionService:RemoveTag(F.model, "Trainee")

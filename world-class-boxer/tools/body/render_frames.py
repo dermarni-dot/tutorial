@@ -4,6 +4,12 @@ each tier. Geometry exactly as tools/sim/v9_render.py draws a rest clip (v8_rend
 
     /opt/bpyenv/bin/python tools/body/render_frames.py SCENE_DIR OUT_DIR [--samples N] [--views front,back,side,34]
                                                       [--tiers 1,5] [--tag bodies] [--frames "Lean,Power Build"]
+                                                      [--headline NAME.png]
+
+--headline NAME.png: one front lineup (the first of --tiers) saved as OUT_DIR/NAME.png with a horizontal line through
+the crown of every head (measured on the render: the first non-background row over each figure) and each frame's
+crown height written under it: the proof that the five frames built at the same inches stand the same height
+(frames_anim.luau --height 72 for the 6-foot lineup, height_lineup_6ft.png).
 """
 import json
 import math
@@ -34,7 +40,22 @@ def rot_cf(cf):
 ORDER = ["Lean", "Athletic", "Muscular", "Power Build", "Heavyweight Build"]
 
 
-def lineup(scene_dir, out_dir, clips, tier, view, samples, tag):
+def head_tops(im, n, bg=None):
+    """the first non-background row over each of n evenly spaced figures (and the whole image's): pixel rows"""
+    px = np.asarray(im.convert("RGB"), dtype=int)
+    Hh, W = px.shape[:2]
+    bg = np.array(bg if bg is not None else px[2, 2])
+    diff = np.abs(px - bg[None, None, :]).sum(axis=2) > 36
+    rows = []
+    for i in range(n):
+        c0, c1 = int((i + 0.2) * W / n), int((i + 0.8) * W / n)
+        col = diff[:, c0:c1].any(axis=1)
+        hit = np.nonzero(col)[0]
+        rows.append(int(hit[0]) if len(hit) else None)
+    return rows
+
+
+def lineup(scene_dir, out_dir, clips, tier, view, samples, tag, headline=None):
     clips = sorted(clips, key=lambda c: ORDER.index(c["frame"]) if c["frame"] in ORDER else 99)
     n = len(clips)
     gap = 3.9
@@ -109,8 +130,28 @@ def lineup(scene_dir, out_dir, clips, tier, view, samples, tag):
     dr = ImageDraw.Draw(out)
     font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18)
     tfont = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 21)
-    dr.text((12, 9), "Body frames in the game (Builder.Cosmetics: tier bodies, trunks, gloves, boots): tier %d, %s" % (tier,
-            "silhouettes (front, side)" if sil else view + " view"), fill=(235, 235, 235), font=tfont)
+    title = "Body frames in the game (Builder.Cosmetics: tier bodies, trunks, gloves, boots): tier %d, %s" % (tier,
+            "silhouettes (front, side)" if sil else view + " view")
+    if headline:
+        # the crown of every head: the first non-background row over each figure; studs from the ortho camera
+        # (ortho_scale studs across W pixels), relative to the lineup's lowest sole row (the floor is at Y = 0)
+        tops = head_tops(im, n)
+        spp = cam.data.ortho_scale / W  # studs per pixel
+        inches = [json.load(open(os.path.join(scene_dir, c["file"]))).get("height") for c in clips]
+        ref = [t for t in tops if t is not None]
+        y_all = min(ref) + 40
+        dr.line([(0, y_all), (W, y_all)], fill=(255, 214, 64), width=2)
+        for i, t in enumerate(tops):
+            if t is None:
+                continue
+            x0, x1 = int((i + 0.15) * W / n), int((i + 0.85) * W / n)
+            dr.line([(x0, t + 40), (x1, t + 40)], fill=(120, 230, 255), width=2)
+            dr.text((x0, t + 44), "crown %+.3f studs" % ((min(ref) - t) * spp), fill=(120, 230, 255), font=font)
+        spread = (max(ref) - min(ref)) * spp
+        hin = next((h for h in inches if h), None)
+        title = "Height line-up%s: the five frames built at the same height stand the same height (crowns within %.3f studs, %.1f %%)" % (
+            " at %d in (%d'%d\")" % (hin, hin // 12, hin % 12) if hin else "", spread, 100 * spread / max((y_all - 40 - Hh) * -spp, 1e-6))
+    dr.text((12, 9), title, fill=(235, 235, 235), font=tfont)
     if view in ("front", "back", "34", "silhouette"):
         order = labels if view != "back" else labels[::-1]
         for i, t in enumerate(order):
@@ -118,7 +159,7 @@ def lineup(scene_dir, out_dir, clips, tier, view, samples, tag):
             dr.text(((i + 0.5) * W / n - tw / 2, Hh + 44), t, fill=(215, 215, 215), font=font)
     else:
         dr.text((12, Hh + 44), "left to right (nearest first): " + ", ".join(labels[::-1]), fill=(215, 215, 215), font=font)
-    final = os.path.join(out_dir, "silhouettes_t%d.png" % tier if sil else "%s_t%d_%s.jpg" % (tag, tier, view))
+    final = os.path.join(out_dir, headline if headline else ("silhouettes_t%d.png" % tier if sil else "%s_t%d_%s.jpg" % (tag, tier, view)))
     out.save(final, quality=92)
     os.remove(p)
     print("rendered", final, flush=True)
@@ -140,10 +181,14 @@ def main():
     tiers = [int(x) for x in opts.get("--tiers", "1,5").split(",")]
     tag = opts.get("--tag", "bodies")
     only = set(opts["--frames"].split(",")) if "--frames" in opts else None
+    headline = opts.get("--headline")
     for tier in tiers:
         clips = [c for c in idx["clips"] if c["clip"] == "rest" and c["tier"] == tier and (only is None or c["frame"] in only)]
         if not clips:
             continue
+        if headline:
+            lineup(scene_dir, out_dir, clips, tier, "front", samples, tag, headline=headline)
+            break
         for view in views:
             lineup(scene_dir, out_dir, clips, tier, view, samples, tag)
 

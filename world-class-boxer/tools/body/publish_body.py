@@ -206,7 +206,8 @@ def main():
             "-- frames[<Config.BodyTypes id>] = { key, tiers = { [1..5] = { parts, fit, tris, armAxisX } }, gearScale, unit }: that\n"
             "-- frame's own mesh family (v12; the Athletic frame is `tiers`, the default family, with the lite set and the gear\n"
             "-- fit); gearScale[<part base>] = the factors its parts are the default family's scaled by (BuilderGear scales the\n"
-            "-- gear by them), unit = its rig heights (joints, hipHeight, shoulderHeight, ...).\n")
+            "-- gear by them), unit = its rig heights (joints, hipHeight, shoulderHeight, neckHeight, the frame's head and\n"
+            "-- standingHeight = neckHeight + head: Builder.Scales normalises the HeightScale from them, v13).\n")
     if local:
         head = ("-- LOCAL manifest from tools/body/publish_body.py --local: FAKE asset ids (nothing uploaded), for\n"
                 "-- offline simulation only. Each id's file is in the .ids.json sidecar next to this file.\n")

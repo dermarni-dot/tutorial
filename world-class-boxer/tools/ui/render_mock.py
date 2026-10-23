@@ -29,12 +29,18 @@ SS = 2  # supersampling of each object's tile (smooth corners and text)
 # face key (guisim's style.face) -> (file, named instance of a variable font or None, cap height in em)
 FACES = {
     "bangers": (os.path.join(GAME_FONTS, "Bangers-Regular.ttf"), None, 0.721),
-    "oswald": (os.path.join(GAME_FONTS, "Oswald[wght].ttf"), "Bold", 0.810),
+    "oswald": (os.path.join(GAME_FONTS, "Oswald[wght].ttf"), "SemiBold", 0.810),
     "mont": (os.path.join(GAME_FONTS, "Montserrat[wght].ttf"), "Medium", 0.700),
-    "gotham": (os.path.join(FONTS, "Inter-Medium.otf"), None, 0.728),
-    "gothamHeavy": (os.path.join(FONTS, "Inter-Bold.otf"), None, 0.728),
+    # Gotham (the engine's GothamSSm) stands in as Montserrat, the nearest open geometric sans, narrowed to
+    # Gotham's widths (SX below); Builder Sans as Inter (both humanist, near-identical widths)
+    "gotham": (os.path.join(GAME_FONTS, "Montserrat[wght].ttf"), "Medium", 0.700),
+    "gothamHeavy": (os.path.join(GAME_FONTS, "Montserrat[wght].ttf"), "Bold", 0.700),
+    "builder": (os.path.join(FONTS, "Inter-Medium.otf"), None, 0.728),
+    "builderHeavy": (os.path.join(FONTS, "Inter-Bold.otf"), None, 0.728),
     "mono": ("/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf", None, 0.729),
 }
+# horizontal squeeze per face (Montserrat runs about 10% wider than Gotham SSm)
+SX = {"gotham": 0.91, "gothamHeavy": 0.91}
 WEIGHTS = ("Thin", "ExtraLight", "Light", "Regular", "Medium", "SemiBold", "Bold", "ExtraBold", "Black")
 
 _font_cache = {}
@@ -65,7 +71,9 @@ def face_of(st):
     if not face:
         face = "oswald" if st.get("cond") else "gotham"
     if face == "gotham":
-        return ("gothamHeavy" if heavy else "gotham"), None
+        return ("gothamHeavy" if heavy else "gotham"), ("Bold" if heavy else "Medium")
+    if face == "builder":
+        return ("builderHeavy" if heavy else "builder"), None
     if face == "oswald" and not wt:
         wt = "Bold" if heavy else "SemiBold"
     if face == "mont" and not wt:
@@ -163,7 +171,7 @@ def draw_text(tile, it, st, W, H):
         return
     size = (it.get("textSize") or 14) * SS
     kind, wt = face_of(st)
-    sx = 1.0
+    sx = SX.get(kind, 1.0)
     tmp = Image.new("RGBA", (1, 1))
     d0 = ImageDraw.Draw(tmp)
     if st.get("scaled"):
@@ -350,7 +358,7 @@ def render(doc, out_path, label=True):
         x0 = sl + 12 + i * 52
         d.rounded_rectangle((x0, 10, x0 + 44, 54), radius=22, fill=(18, 18, 22, 170))
     if label:
-        d.text((w - 8, h - 6), doc.get("title") or "", font=font("gothamHeavy", 12), fill=(255, 255, 255, 120), anchor="rd")
+        d.text((w - 8, h - 6), doc.get("title") or "", font=font("builderHeavy", 12), fill=(255, 255, 255, 120), anchor="rd")
     canvas.convert("RGB").save(out_path, quality=92)
 
 

@@ -1,9 +1,10 @@
--- UI: the game's design system - "fight night broadcast", championship-belt finish.
--- Near-black glass panels lit from the top, championship gold (with a metallic sheen on titles, the
--- primary button and lit bars) and fight red accents, a sports-poster display face (Bangers) for titles,
--- buttons and call-outs, condensed Oswald for every number, Montserrat for body copy (Shared.Typography
--- holds the faces), a 4 px spacing grid, tight corners, hairline strokes, soft stacked
--- shadows and quick ease-out motion. Icons come from the game's own icon set (tools/ui -> Shared.IconData:
+-- UI: the game's design system - a plain sports-broadcast look.
+-- Flat near-black panels with a 1 px rule, one accent (the pack's red: live, danger, the opponent) and the
+-- pack's gold kept for titles, the primary action and the player's side, no glows, no gradients, no
+-- drop shadows. Type (Shared.Typography): Gotham for titles, headings, buttons and captions, Builder Sans
+-- for running text, Oswald for the big numbers only, Bangers on the WCB wordmark alone. Titles and buttons
+-- speak in mixed case (the kit turns shouted capitals into Title Case), captions in small capitals. An
+-- 8 / 12 / 16 spacing grid, 4 px corners, quick ease-out motion. Icons come from the game's own icon set (tools/ui -> Shared.IconData:
 -- flat white glyphs tinted per use, no emoji): UI.Icon, UI.IconTile, and an `icon` option on buttons,
 -- chips, stat tiles, kickers, section headers, tabs, windows and toasts. Every button has hover, press,
 -- gamepad-selected (a gold ring) and disabled (UI.SetEnabled) states. Every widget the menus are built from lives here
@@ -39,21 +40,22 @@ end
 ------------------------------------------------------------------------
 UI.Theme = {
 	-- surfaces
-	bg = rgb(11, 15, 23), -- window base (deep ink with a cold tint)
-	panel = rgb(22, 28, 39), -- cards
-	panel2 = rgb(35, 43, 57), -- raised: inactive buttons, tracks, rows
-	line = rgb(72, 83, 103), -- dividers and quiet strokes
-	ink = rgb(5, 6, 9),
+	bg = rgb(17, 18, 21), -- window base (neutral near-black)
+	panel = rgb(26, 27, 31), -- cards
+	panel2 = rgb(38, 40, 46), -- raised: inactive buttons, tracks, rows
+	line = rgb(64, 67, 75), -- the 1 px rules and strokes
+	ink = rgb(8, 8, 10),
 	-- type
-	text = rgb(242, 244, 248),
-	sub = rgb(178, 188, 205),
-	dim = rgb(137, 151, 172),
+	text = rgb(240, 240, 238),
+	sub = rgb(178, 180, 186),
+	dim = rgb(128, 131, 138),
 	white = rgb(255, 255, 255),
 	-- accents
-	gold = rgb(255, 205, 83), -- championship gold: primary actions, titles, the player
-	goldDeep = rgb(208, 148, 43),
-	red = rgb(243, 65, 76), -- fight red: danger, the opponent, live
-	redDeep = rgb(150, 18, 30),
+	gold = rgb(236, 190, 76), -- the pack's gold: titles, the primary action, the player
+	goldDeep = rgb(190, 140, 40),
+	red = rgb(220, 44, 56), -- the pack's red: live, danger, the opponent
+	redDeep = rgb(140, 20, 30),
+	brandRed = rgb(243, 65, 76), -- the ribbon of the WCB emblem (the asset's own red)
 	blue = rgb(58, 142, 255), -- info, stamina, the blue corner
 	blueDeep = rgb(24, 80, 190),
 	green = rgb(50, 214, 126), -- health, success
@@ -74,9 +76,9 @@ local T = UI.Theme
 
 -- spacing grid (4 px) and corner radii
 UI.S = { xs = 4, sm = 8, md = 12, lg = 16, xl = 24, xxl = 32, xxxl = 48 }
-UI.R = { sm = 4, md = 8, lg = 12, xl = 16, pill = 999 }
--- hairline strokes: [transparency] of a white stroke on glass, by strength
-UI.Hair = { faint = 0.93, soft = 0.88, strong = 0.75 }
+UI.R = { sm = 3, md = 4, lg = 6, xl = 8, pill = 999 }
+-- hairline strokes: [transparency] of a white stroke on a panel, by strength
+UI.Hair = { faint = 0.9, soft = 0.84, strong = 0.7 }
 
 -- the championship gold as a metallic ramp (top to bottom): titles, the primary button, lit bars
 UI.GoldRamp = { Color3.fromRGB(255, 244, 205), Color3.fromRGB(255, 212, 92), Color3.fromRGB(226, 160, 40), Color3.fromRGB(255, 214, 110) }
@@ -299,7 +301,7 @@ end
 function UI.TextWidth(text, size, font)
 	text = tostring(text or "")
 	local role = type(font) == "string" and font or (font ~= nil and Typography.RoleOf[font]) or "body"
-	local k = (role == "body" or role == "label" or role == "heading" or role == "signSub") and 1.08 or 1
+	local k = (role == "body" or role == "label" or role == "heading" or role == "signSub" or role == "display" or role == "displayMed") and 1.04 or 1
 	local w = (utf8.len(text) or #text) * size * 0.6 * (k > 1 and 1.07 or 1)
 	local enum = Typography.Enum(type(font) == "string" and font or (font or role))
 	local ok, v = pcall(function()
@@ -414,7 +416,8 @@ end
 function UI.Title(parent, text, props)
 	props = props or {}
 	props.Face = props.Face or "display"
-	props.TextSize = props.TextSize or 32
+	props.TextSize = props.TextSize or 26
+	text = Typography.TitleCase(text)
 	props.TextWrapped = props.TextWrapped or false
 	return UI.Text(parent, text, props)
 end
@@ -688,8 +691,7 @@ function UI.IconTile(parent, name, size, color, props)
 		end
 	end
 	UI.Corner(tile, props.radius or math.floor(size * 0.28))
-	UI.New("UIStroke", { Color = color, Transparency = 0.6, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = tile })
-	UI.Gradient(tile, { Color3.new(1, 1, 1), Color3.fromRGB(170, 170, 170) }, 90)
+	UI.New("UIStroke", { Color = color, Transparency = 0.7, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = tile })
 	local s = math.floor(size * (props.iconScale or 0.6))
 	UI.Icon(tile, name, s, color, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), ZIndex = tile.ZIndex })
 	return tile
@@ -705,12 +707,11 @@ function UI.Brand(parent, size, props)
 	for key, value in pairs(props) do
 		badge[key] = value
 	end
-	UI.Corner(badge, size * 0.22)
-	UI.Stroke(badge, T.gold, math.max(1, size / 48), 0.12)
-	UI.Gradient(badge, { Color3.new(1, 1, 1), Color3.fromRGB(153, 166, 190) }, 55)
+	UI.Corner(badge, math.max(3, math.floor(size * 0.14)))
+	UI.Stroke(badge, T.gold, math.max(1, size / 48), 0.25)
 	UI.Icon(badge, "glove", size * 0.62, T.gold, { Name = "Glove", ZIndex = badge.ZIndex + 1,
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.50, 0.39), Rotation = -12 })
-	local ribbon = UI.Frame(badge, { Name = "Ribbon", BackgroundColor3 = T.red,
+	local ribbon = UI.Frame(badge, { Name = "Ribbon", BackgroundColor3 = T.brandRed,
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.50, 0.81),
 		Size = UDim2.fromScale(0.86, 0.22), ZIndex = badge.ZIndex + 2 })
 	UI.Corner(ribbon, math.max(2, size * 0.04))
@@ -718,7 +719,7 @@ function UI.Brand(parent, size, props)
 	local mark = UI.New("TextLabel", { Name = "Wordmark", Text = "WCB", TextColor3 = T.white,
 		BackgroundTransparency = 1, Font = T.bold, TextScaled = true, TextWrapped = false,
 		Size = UDim2.fromScale(1, 1), ZIndex = badge.ZIndex + 3, Parent = ribbon })
-	UI.SetFace(mark, "display")
+	UI.SetFace(mark, "brand")
 	return badge
 end
 
@@ -896,28 +897,32 @@ function UI.Button(parent, text, props, onClick)
 	props.AutoButtonColor = false
 	props.BackgroundColor3 = props.BackgroundColor3 or T.panel2
 	props.TextColor3 = props.TextColor3 or VARIANT_TEXT[variant] or T.text
-	props.TextSize = props.TextSize or 16
+	props.TextSize = props.TextSize or 15
 	local role = textRole(props)
 	if not role and props.Font == nil then
-		-- buttons speak in the display face (a touch larger: it is narrow)
+		-- buttons speak in the button face (Gotham Bold), mixed case
 		role = "displayMed"
-		props.TextSize = Typography.SizeOf(role, props.TextSize + 2)
 	end
 	props.Font = props.Font or T.bold
 	props.TextWrapped = true
 	props.Size = props.Size or UDim2.new(0, 160, 0, 38)
 	props.BorderSizePixel = 0
+	-- a shouted label reads as Title Case ("MOVE DOWN" -> "Move Down"); a key cap or an initialism stays
+	props.Text = Typography.TitleCase(props.Text)
 	local b = UI.New("TextButton", props)
 	applyFace(b, props, role)
 	registerText(b, props)
 	UI.Corner(b, UI.R.md)
+	-- (a caller setting the text later gets the same case)
+	b:GetPropertyChangedSignal("Text"):Connect(function()
+		local t = Typography.TitleCase(b.Text)
+		if t ~= b.Text then
+			b.Text = t
+		end
+	end)
 	if b.BackgroundTransparency < 0.98 then
 		if variant == "secondary" then
-			UI.New("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.78, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = b })
-			UI.Gradient(b, { Color3.new(1, 1, 1), Color3.fromRGB(205, 208, 216) }, 90)
-		else
-			-- a lit top edge on the solid colours
-			UI.Gradient(b, { Color3.new(1, 1, 1), Color3.fromRGB(224, 224, 224) }, 90)
+			UI.New("UIStroke", { Color = T.line, Transparency = 0, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = b })
 		end
 		UI.Hover(b)
 	else
@@ -1005,20 +1010,13 @@ end
 
 function UI.Bar(parent, props, color)
 	local bg = UI.Frame(parent, props)
-	bg.BackgroundColor3 = T.ink
-	bg.BackgroundTransparency = 0.15
+	bg.BackgroundColor3 = T.panel2
+	bg.BackgroundTransparency = 0
 	local h = bg.Size.Y.Offset
-	local r = h > 0 and math.min(4, math.ceil(h / 2)) or 3
+	local r = h > 0 and math.min(2, math.ceil(h / 2)) or 2
 	UI.Corner(bg, r)
 	local fill = UI.Frame(bg, { Name = "Fill", Size = UDim2.fromScale(1, 1), BackgroundColor3 = color or T.green })
 	UI.Corner(fill, r)
-	UI.Gradient(fill, { Color3.new(1, 1, 1), Color3.fromRGB(190, 190, 190) }, 90)
-	-- the sheen: a light band along the fill's top half (a lit, glassy meter); bars of 6 px and up
-	if h >= 6 then
-		local sheen = UI.Frame(fill, { Name = "Sheen", Size = UDim2.new(1, 0, 0.45, 0), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.72, ZIndex = fill.ZIndex })
-		UI.Corner(sheen, r)
-		UI.Gradient(sheen, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(0.5, 0.2), NumberSequenceKeypoint.new(1, 0.7) }))
-	end
 	local function set(f, c)
 		fill.Size = UDim2.fromScale(math.clamp(f, 0, 1), 1)
 		if c then
@@ -1150,16 +1148,12 @@ function UI.FightBar(parent, props, opts)
 		bg = bg, right = opts.side == "R", slant = opts.slant or 0.8, n = math.clamp(opts.segments or 0, 0, 5), low = opts.low,
 		v = 1, disp = 1, ghostV = 1, capV = 1, hold = 0, flashA = 1, healA = 1, healLo = 1, stun = 0, stunOn = false, shimP = -1,
 		riseAt = -1, clock = 0, a = 0.03, absKey = "", heal = opts.heal ~= false, gainA = 1, layers = {},
-		trackColor = opts.track or T.ink, lowOn = false,
+		trackColor = opts.track or T.panel2, lowOn = false,
 	}, FightBar)
 	bar.track = barLayer(bar, "Track", 0, 1, bar.trackColor, z)
 	bar.ghostL = barLayer(bar, "Ghost", 0, 1, opts.ghost or T.red, z + 1)
 	-- the fill: a touch darker at the corner end, lit toward the leading edge
-	bar.fillL = barLayer(bar, "Fill", 0, 1, opts.color or T.green, z + 2,
-		ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.fromRGB(178, 178, 178)), ColorSequenceKeypoint.new(0.75, Color3.fromRGB(236, 236, 236)), ColorSequenceKeypoint.new(1, WHITE) }))
-	-- the bevel: a lit top band and a shaded bottom edge
-	bar.sheenL = barLayer(bar, "Sheen", 0, 0.42, WHITE, z + 3)
-	bar.shadeL = barLayer(bar, "Shade", 0.72, 1, Color3.new(0, 0, 0), z + 3)
+	bar.fillL = barLayer(bar, "Fill", 0, 1, opts.color or T.green, z + 2)
 	bar.healL = barLayer(bar, "Heal", 0, 1, Color3.fromRGB(200, 255, 220), z + 4)
 	if opts.shimmer then
 		bar.shimL = barLayer(bar, "Shimmer", 0, 1, WHITE, z + 4)
@@ -1255,11 +1249,9 @@ function FightBar:_band(l, fa, fb, alpha)
 end
 function FightBar:_apply()
 	local d = self.disp
-	self:_band(self.track, 0, 1, 0.12)
+	self:_band(self.track, 0, 1, 0)
 	self:_band(self.ghostL, 0, self.ghostV > d + 0.001 and self.ghostV or 0, 0.05)
 	self:_band(self.fillL, 0, d, 0)
-	self:_band(self.sheenL, 0, d, 0.7)
-	self:_band(self.shadeL, 0, d, 0.72)
 	self:_band(self.healL, math.min(self.healLo, d), d, self.healA)
 	if self.shimL then
 		local p = self.shimP
@@ -1407,23 +1399,16 @@ function UI.Meter(parent, props, opts)
 	if not (props and props.Name) then
 		bg.Name = "Meter"
 	end
-	bg.BackgroundColor3 = T.ink
-	bg.BackgroundTransparency = 0.2
+	bg.BackgroundColor3 = T.panel2
+	bg.BackgroundTransparency = 0
 	local h = bg.Size.Y.Offset
-	local r = h > 0 and math.ceil(h / 2) or 4
+	local r = h > 0 and math.min(2, math.ceil(h / 2)) or 2
 	UI.Corner(bg, r)
-	UI.Stroke(bg, WHITE, 1, 0.92)
 	local z = bg.ZIndex
 	local ghost = UI.Frame(bg, { Name = "Ghost", Size = UDim2.fromScale(1, 1), BackgroundColor3 = opts.ghost or T.redLight, BackgroundTransparency = 1, ZIndex = z + 1 })
 	UI.Corner(ghost, r)
 	local fill = UI.Frame(bg, { Name = "Fill", Size = UDim2.fromScale(1, 1), BackgroundColor3 = opts.color or T.green, ZIndex = z + 2 })
 	UI.Corner(fill, r)
-	UI.Gradient(fill, { WHITE, Color3.fromRGB(180, 180, 180) }, 90)
-	if h >= 5 then
-		local sheen = UI.Frame(fill, { Name = "Sheen", Size = UDim2.new(1, 0, 0.45, 0), BackgroundColor3 = WHITE, BackgroundTransparency = 0.7, ZIndex = z + 3 })
-		UI.Corner(sheen, r)
-		UI.Gradient(sheen, WHITE, 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(0.5, 0.2), NumberSequenceKeypoint.new(1, 0.7) }))
-	end
 	local glow = UI.Frame(fill, { Name = "Glow", Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 1, ZIndex = z + 3 })
 	UI.Corner(glow, r)
 	return setmetatable({ bg = bg, fill = fill, ghost = ghost, glow = glow, v = -1, disp = 0, ghostV = 0, hold = 0, glowA = 1 }, Meter)
@@ -1533,9 +1518,9 @@ function UI.LevelBar(parent, props, opts)
 	if not props.Name then
 		bg.Name = "Level"
 	end
-	bg.BackgroundColor3 = T.ink
-	bg.BackgroundTransparency = 0.05
-	UI.Corner(bg, UI.R.sm)
+	bg.BackgroundColor3 = T.panel2
+	bg.BackgroundTransparency = 0
+	UI.Corner(bg, 2)
 	local function f01(v)
 		return math.clamp((tonumber(v) or 0) / 100, 0, 1)
 	end
@@ -1567,16 +1552,16 @@ end
 -- a big number over a small caption (stat tile)
 function UI.Stat(parent, value, caption, props)
 	props = props or {}
-	local f = UI.Frame(parent, { Size = props.Size or UDim2.fromOffset(110, 64), BackgroundColor3 = props.color or T.panel2, BackgroundTransparency = props.transparency or 0.25, LayoutOrder = props.order or 0 })
+	local f = UI.Frame(parent, { Size = props.Size or UDim2.fromOffset(110, 64), BackgroundColor3 = props.color or T.panel, BackgroundTransparency = props.transparency or 0, LayoutOrder = props.order or 0 })
 	UI.Corner(f, UI.R.md)
 	local v = UI.Text(f, tostring(value), { Face = "number", TextSize = props.valueSize or 28, TextColor3 = props.valueColor or T.text, TextXAlignment = props.align or Enum.TextXAlignment.Left,
 		Position = UDim2.fromOffset(12, 6), Size = UDim2.new(1, -24, 0.62, -6), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextScaled = props.scaled == true })
 	if props.scaled then
 		UI.New("UITextSizeConstraint", { MaxTextSize = props.valueSize or 28, MinTextSize = 10, Parent = v })
 	end
-	local c = UI.Text(f, string.upper(caption or ""), { Font = T.semi, TextSize = 11, TextColor3 = T.sub, TextXAlignment = props.align or Enum.TextXAlignment.Left,
+	local c = UI.Text(f, string.upper(caption or ""), { Font = T.semi, TextSize = 11, TextColor3 = T.dim, TextXAlignment = props.align or Enum.TextXAlignment.Left,
 		Position = UDim2.new(0, 12, 0.62, 0), Size = UDim2.new(1, -24, 0.38, -6), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-	UI.Stroke(f, Color3.new(1, 1, 1), 1, UI.Hair.faint)
+	UI.Stroke(f, T.line, 1, 0)
 	if props.icon then
 		-- a quiet icon in the tile's top right corner (the caption's colour, or props.iconColor); the value
 		-- keeps clear of it
@@ -1594,7 +1579,7 @@ function UI.Chip(parent, text, color, props)
 	-- outline chips sit on a dark fill so they read on any backdrop (blurred 3D, glass, photos)
 	local f = UI.Frame(parent, {
 		Size = props.Size or UDim2.fromOffset(0, props.h or 22), AutomaticSize = props.Size and Enum.AutomaticSize.None or Enum.AutomaticSize.X,
-		BackgroundColor3 = props.solid and color or T.bg:Lerp(color, 0.12), BackgroundTransparency = props.solid and 0 or 0.2, LayoutOrder = props.order or 0, Name = props.Name or "Chip",
+		BackgroundColor3 = props.solid and color or T.bg, BackgroundTransparency = props.solid and 0 or 0.1, LayoutOrder = props.order or 0, Name = props.Name or "Chip",
 	})
 	if props.Position then
 		f.Position = props.Position
@@ -1604,7 +1589,7 @@ function UI.Chip(parent, text, color, props)
 	end
 	UI.Corner(f, props.radius or UI.R.sm)
 	if not props.solid then
-		UI.Stroke(f, color, 1, 0.55)
+		UI.Stroke(f, color, 1, 0.45)
 	end
 	local t = UI.Text(f, string.upper(text), { Font = T.semi, TextSize = props.TextSize or 11, TextColor3 = props.solid and (props.textColor or T.ink) or color, Size = UDim2.new(0, 0, 1, 0),
 		AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
@@ -1633,13 +1618,10 @@ end
 -- a thin divider line (fades at both ends)
 function UI.Divider(parent, props)
 	props = props or {}
-	local d = UI.Frame(parent, { Name = "Divider", Size = props.Size or UDim2.new(1, 0, 0, 1), BackgroundColor3 = props.color or Color3.new(1, 1, 1), BackgroundTransparency = 0, LayoutOrder = props.order or 0 })
+	local d = UI.Frame(parent, { Name = "Divider", Size = props.Size or UDim2.new(1, 0, 0, 1), BackgroundColor3 = props.color or T.line, BackgroundTransparency = props.alpha and math.max(0, props.alpha - 0.6) or 0, LayoutOrder = props.order or 0 })
 	if props.Position then
 		d.Position = props.Position
 	end
-	UI.Gradient(d, Color3.new(1, 1, 1), 0, NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.15, props.alpha or 0.88), NumberSequenceKeypoint.new(0.85, props.alpha or 0.88), NumberSequenceKeypoint.new(1, 1),
-	}))
 	return d
 end
 
@@ -1654,35 +1636,38 @@ function UI.Kicker(parent, text, color, props)
 		f.Visible = props.Visible
 	end
 	local x = 10
+	-- (the old gold eyebrow reads as the plain caption colour; a colour meant as a signal - red, green,
+	-- orange - keeps it)
+	local textColor = (color == nil or color == T.gold) and T.sub or color
 	if props.icon then
-		UI.Icon(f, props.icon, 14, color or T.gold, { Name = "KickerIcon", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5) })
+		UI.Icon(f, props.icon, 14, textColor, { Name = "KickerIcon", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5) })
 		x = 20
 	else
-		UI.Frame(f, { Size = UDim2.fromOffset(3, 12), Position = UDim2.new(0, 0, 0.5, -6), BackgroundColor3 = color or T.gold })
+		UI.Frame(f, { Size = UDim2.fromOffset(2, 12), Position = UDim2.new(0, 0, 0.5, -6), BackgroundColor3 = color or T.red })
 	end
-	UI.Text(f, string.upper(text), { Font = T.semi, TextSize = props.TextSize or 12, TextColor3 = color or T.gold, Position = UDim2.fromOffset(x, 0), Size = UDim2.new(1, -x, 1, 0),
-		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	UI.Text(f, string.upper(text), { Font = T.semi, TextSize = props.TextSize or 11, TextColor3 = textColor, Position = UDim2.fromOffset(x, 0), Size = UDim2.new(1, -x, 1, 0),
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	return f
 end
 
 -- glass styling for an existing frame: dark translucent body, lit top edge, hairline stroke
+-- (the name stays from the glass days: a flat panel with a 1 px rule)
 function UI.Glass(frame, opts)
 	opts = opts or {}
 	frame.BackgroundColor3 = opts.color or T.bg
-	frame.BackgroundTransparency = opts.transparency or 0.08
+	frame.BackgroundTransparency = math.min(opts.transparency or 0.04, 0.2)
 	frame.BorderSizePixel = 0
 	if opts.radius ~= false then
-		UI.Corner(frame, opts.radius or UI.R.lg)
+		UI.Corner(frame, math.min(opts.radius or UI.R.lg, UI.R.xl))
 	end
-	UI.Gradient(frame, { Color3.new(1, 1, 1), Color3.fromRGB(176, 180, 190) }, 90)
-	UI.New("UIStroke", { Color = opts.stroke or Color3.new(1, 1, 1), Transparency = opts.strokeT or 0.88, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = frame })
+	UI.New("UIStroke", { Color = opts.stroke or T.line, Transparency = opts.stroke and (opts.strokeT or 0.4) or 0, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = frame })
 	return frame
 end
 
 -- soft shadow layers (stacked translucent frames) inside `holder`, behind a child of the same size
 function UI.Shadow(holder, radius, strength)
 	strength = strength or 1
-	for i, spec in ipairs({ { 3, 0.82 }, { 8, 0.9 }, { 16, 0.95 } }) do
+	for i, spec in ipairs({ { 6, 0.86 } }) do
 		local grow = spec[1]
 		local s = UI.Frame(holder, {
 			Name = "Shadow" .. i, BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1 - (1 - spec[2]) * strength,
@@ -2253,10 +2238,9 @@ function UI.Window(gui, name, w, h, title, opts)
 	UI.Shadow(holder, UI.R.xl, 1)
 	local win = UI.Frame(holder, { Name = "Win", BackgroundColor3 = T.bg, Size = UDim2.fromScale(1, 1), ZIndex = z })
 	win.Active = true
-	UI.Glass(win, { transparency = opts.noShade and 0.06 or 0.03, radius = UI.R.xl })
-	-- broadcast accent: a thin gold line glowing along the top edge
-	local accent = UI.Frame(win, { Name = "Accent", Position = UDim2.new(0, 28, 0, 0), Size = UDim2.new(1, -56, 0, 2), BackgroundColor3 = opts.accent or T.gold, ZIndex = z })
-	UI.Gradient(accent, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0.15), NumberSequenceKeypoint.new(0.8, 0.15), NumberSequenceKeypoint.new(1, 1) }))
+	UI.Glass(win, { transparency = 0, radius = UI.R.xl })
+	-- the accent: a 3 px bar down the left edge of the header in the window's colour (red by default)
+	UI.Frame(win, { Name = "Accent", Position = UDim2.new(0, 0, 0, 0), Size = UDim2.new(0, 3, 0, 1), BackgroundColor3 = opts.accent or T.red, ZIndex = z, Visible = false })
 	local top = 16
 	-- the close button: finger-sized on touch (then it sits nearer the top edge and the header grows
 	-- around it)
@@ -2272,21 +2256,22 @@ function UI.Window(gui, name, w, h, title, opts)
 	if title then
 		local kick = opts.kicker and not short
 		if kick then
-			UI.Text(win, string.upper(opts.kicker), { Name = "Kicker", Font = T.semi, TextSize = 12, TextColor3 = opts.accent or T.gold, Position = UDim2.fromOffset(40, 14), Size = UDim2.new(1, -120, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+			UI.Text(win, string.upper(opts.kicker), { Name = "Kicker", Font = T.semi, TextSize = 11, TextColor3 = (opts.accent and opts.accent ~= T.gold) and opts.accent or T.sub, Position = UDim2.fromOffset(62, 16), Size = UDim2.new(1, -140, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		end
-		local ty = kick and 26 or (short and 8 or 14)
-		local ts = short and 26 or 32
-		UI.Brand(win, short and 28 or 34, { Position = UDim2.fromOffset(20, ty + 2), ZIndex = z + 1 })
-		UI.Text(win, string.upper(title), { Name = "Title", Face = "display", TextSize = ts, TextColor3 = T.text, Position = UDim2.fromOffset(64, ty), Size = UDim2.new(1, -math.max(134, 64 + (cs or 0) + 24), 0, ts + 6),
+		local ty = kick and 30 or (short and 10 or 18)
+		local ts = short and 20 or 24
+		local bs = short and 26 or 32
+		UI.Brand(win, bs, { Position = UDim2.fromOffset(20, kick and 16 or ty + math.floor((ts + 4 - bs) / 2)), ZIndex = z + 1 })
+		UI.Text(win, Typography.TitleCase(title), { Name = "Title", Face = "display", TextSize = ts, TextColor3 = T.text, Position = UDim2.fromOffset(62, ty), Size = UDim2.new(1, -math.max(134, 62 + (cs or 0) + 24), 0, ts + 4),
 			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		top = ty + ts + (short and 14 or 20)
 		if cs then
 			top = math.max(top, cy + cs + (short and 8 or 12))
 		end
-		UI.Divider(win, { Position = UDim2.new(0, 16, 0, top - (short and 6 or 8)), Size = UDim2.new(1, -32, 0, 1) })
+		UI.Divider(win, { Position = UDim2.new(0, 0, 0, top - (short and 6 or 8)), Size = UDim2.new(1, 0, 0, 1) })
 	end
 	if cs then
-		local close = UI.Button(win, "", { Name = "Close", Size = UDim2.fromOffset(cs, cs), Position = UDim2.new(1, -(cs + 14), 0, cy), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.2 }, function()
+		local close = UI.Button(win, "", { Name = "Close", Size = UDim2.fromOffset(cs, cs), Position = UDim2.new(1, -(cs + 14), 0, cy), BackgroundColor3 = T.panel2, BackgroundTransparency = 0 }, function()
 			opts.onClose()
 		end)
 		UI.Icon(close, "close", cs >= 48 and 17 or 14, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
@@ -2332,18 +2317,16 @@ end
 
 function UI.Card(parent, props)
 	props = props or {}
-	local f = UI.Frame(parent, { Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = props.color or T.panel, BackgroundTransparency = props.transparency or 0.05, LayoutOrder = props.order or 0 })
+	local f = UI.Frame(parent, { Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = props.color or T.panel, BackgroundTransparency = props.transparency or 0, LayoutOrder = props.order or 0 })
 	UI.Corner(f, UI.R.lg)
-	UI.Pad(f, props.pad or 14)
-	UI.List(f, props.gap or 6)
+	UI.Pad(f, props.pad or 16)
+	UI.List(f, props.gap or 8)
 	if props.stroke then
-		-- highlighted card: tinted stroke plus a glow of the accent fading from the left edge
-		UI.Stroke(f, props.stroke, 1.5, 0.3)
-		f.BackgroundColor3 = (props.color or T.panel):Lerp(props.stroke, 0.16)
-		UI.Gradient(f, { Color3.new(1, 1, 1), Color3.fromRGB(212, 216, 226) }, 0)
+		-- a highlighted card: a 1 px rule in the accent and a 3 px bar down its left edge
+		UI.Stroke(f, props.stroke, 1, 0.5)
+		UI.Frame(f, { Name = "Edge", Position = UDim2.new(0, -(props.pad or 16), 0, -(props.pad or 16)), Size = UDim2.new(0, 3, 1, 2 * (props.pad or 16)), BackgroundColor3 = props.stroke })
 	else
-		UI.New("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.86, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = f })
-		UI.Gradient(f, { Color3.new(1, 1, 1), Color3.fromRGB(222, 228, 240) }, 90)
+		UI.New("UIStroke", { Color = T.line, Transparency = 0, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = f })
 	end
 	return f
 end
@@ -2382,26 +2365,25 @@ function UI.Header(parent, text, color, icon)
 	if icon == nil then
 		icon = headerIcon(text)
 	end
-	local f = UI.Frame(parent, { Name = "Header", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34) })
-	local x = 12
+	local f = UI.Frame(parent, { Name = "Header", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 32) })
+	local x = 10
 	if icon then
-		UI.Icon(f, icon, 18, color or T.gold, { Name = "HeaderIcon", Position = UDim2.fromOffset(0, 11) })
-		x = 26
+		UI.Icon(f, icon, 16, color or T.sub, { Name = "HeaderIcon", Position = UDim2.fromOffset(0, 8) })
+		x = 24
 	else
-		UI.Frame(f, { Size = UDim2.fromOffset(3, 16), Position = UDim2.new(0, 0, 0, 13), BackgroundColor3 = color or T.gold })
+		UI.Frame(f, { Size = UDim2.fromOffset(2, 14), Position = UDim2.new(0, 0, 0, 9), BackgroundColor3 = color or T.red })
 	end
-	local t = UI.Text(f, string.upper(text), { Face = "displayMed", TextSize = 20, TextColor3 = color or T.text, Position = UDim2.fromOffset(x, 6), Size = UDim2.new(1, -x, 0, 28),
+	local t = UI.Text(f, Typography.TitleCase(text), { Face = "heading", TextSize = 16, TextColor3 = (color and color ~= T.gold) and color or T.text, Position = UDim2.fromOffset(x, 4), Size = UDim2.new(1, -x, 0, 24),
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-	-- a hairline running out from the title (fades to the right)
-	local rule = UI.Frame(f, { Name = "Rule", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, x, 1, 0), Size = UDim2.new(1, -x, 0, 1), BackgroundColor3 = color or T.gold })
-	UI.Gradient(rule, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(0.6, 0.9), NumberSequenceKeypoint.new(1, 1) }))
+	-- the 1 px rule under the heading
+	UI.Frame(f, { Name = "Rule", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.line })
 	return t
 end
 
 -- metallic gold on a display label (titles, the record, OVR): the gold ramp as a gradient over white text
 function UI.GoldText(label)
-	label.TextColor3 = Color3.new(1, 1, 1)
-	return UI.Gradient(label, UI.GoldRamp, 90)
+	label.TextColor3 = T.gold
+	return label
 end
 
 function UI.Row(parent, h)
@@ -2491,9 +2473,9 @@ UI.DragTracker = dragTracker
 
 -- the shared row every input sits in: label left, control right
 local function inputRow(parent, label, h)
-	local f = UI.Frame(parent, { Size = UDim2.new(1, 0, 0, h or 44), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.45 })
+	local f = UI.Frame(parent, { Size = UDim2.new(1, 0, 0, h or 44), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.5 })
 	UI.Corner(f, UI.R.md)
-	UI.Text(f, label, { Name = "Label", Position = UDim2.fromOffset(14, 0), Size = UDim2.new(0.36, -14, 1, 0), TextColor3 = T.sub, TextSize = 14, Font = T.semi,
+	UI.Text(f, label, { Name = "Label", Position = UDim2.fromOffset(14, 0), Size = UDim2.new(0.36, -14, 1, 0), TextColor3 = T.text, TextSize = 14, Font = T.semi,
 		AutomaticSize = Enum.AutomaticSize.None, TextTruncate = Enum.TextTruncate.AtEnd })
 	return f
 end
@@ -2586,24 +2568,23 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
 	local side = resetLow and rs + 8 or 0 -- room right of [+] for the reset button on the stepper line
 	UI.Text(f, label, { Name = "Label", Position = UDim2.fromOffset(14, lc - 11), Size = UDim2.new(0.5, -14, 0, 22), TextColor3 = T.text, TextSize = 15, Font = T.semi,
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-	local valText = UI.Text(f, "", { Name = "Value", Face = "displayMed", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -right, 0, lc - 13), Size = UDim2.new(0.5, 8 - right, 0, 26),
-		TextXAlignment = Enum.TextXAlignment.Right, TextSize = 18, TextColor3 = T.gold, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	local valText = UI.Text(f, "", { Name = "Value", Face = "numberMed", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -right, 0, lc - 13), Size = UDim2.new(0.5, 8 - right, 0, 26),
+		TextXAlignment = Enum.TextXAlignment.Right, TextSize = 14, TextColor3 = T.text, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	if hint then
 		UI.Text(f, hint, { Name = "Hint", Position = UDim2.fromOffset(14, lc + 11), Size = UDim2.new(1, -28, 0, 16), TextSize = 12, TextColor3 = T.sub,
 			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	end
-	local track = UI.Frame(f, { Name = "Track", Position = UDim2.new(0, bs + 26, 0, y0 + math.floor(bs / 2) - 4), Size = UDim2.new(1, -(2 * bs + 52 + side), 0, 8), BackgroundColor3 = T.ink, BackgroundTransparency = 0.1 })
-	UI.Corner(track, 4)
+	local track = UI.Frame(f, { Name = "Track", Position = UDim2.new(0, bs + 26, 0, y0 + math.floor(bs / 2) - 3), Size = UDim2.new(1, -(2 * bs + 52 + side), 0, 6), BackgroundColor3 = T.ink, BackgroundTransparency = 0 })
+	UI.Corner(track, 3)
 	local fill = UI.Frame(track, { Name = "Fill", Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.gold })
-	UI.Corner(fill, 4)
-	UI.Gradient(fill, { T.goldDeep:Lerp(Color3.new(1, 1, 1), 0.2), Color3.new(1, 1, 1) }, 0)
+	UI.Corner(fill, 3)
 	if hasDefault and max > min then
 		local da = math.clamp((opts.default - min) / (max - min), 0, 1)
 		UI.Frame(track, { Name = "Notch", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(da, 0.5), Size = UDim2.fromOffset(2, 20), BackgroundColor3 = T.text, BackgroundTransparency = 0.35 })
 	end
-	local knob = UI.Frame(track, { Name = "Knob", Size = UDim2.fromOffset(24, 24), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), BackgroundColor3 = T.white })
-	UI.Corner(knob, 12)
-	UI.Stroke(knob, T.gold, 3)
+	local knob = UI.Frame(track, { Name = "Knob", Size = UDim2.fromOffset(20, 20), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), BackgroundColor3 = T.white })
+	UI.Corner(knob, 10)
+	UI.Stroke(knob, T.bg, 2)
 	-- the hit area: the whole line between [-] and [+] (wider and taller than the bar itself)
 	local hit = UI.New("TextButton", { Name = "Hit", Parent = f, Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.new(0, bs + 14, 0, y0 - 4),
 		Size = UDim2.new(1, -(2 * bs + 28 + side), 0, bs + 8), Selectable = false })
@@ -2870,8 +2851,8 @@ function UI.Swatches(parent, label, colors, selected, onPick, opts)
 	local head = UI.Frame(f, { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 20), LayoutOrder = 0 })
 	UI.Text(head, label, { Name = "Label", Size = UDim2.new(0.6, 0, 1, 0), TextColor3 = T.text, TextSize = 15, Font = T.semi, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
 		TextTruncate = Enum.TextTruncate.AtEnd })
-	local nameText = UI.Text(head, "", { Name = "Value", AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0.4, 0, 1, 0), Face = "displayMed", TextSize = 17,
-		TextColor3 = T.gold, TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	local nameText = UI.Text(head, "", { Name = "Value", AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0.4, 0, 1, 0), Face = "label", TextSize = 13,
+		TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	local holder = UI.Frame(f, { Name = "Grid", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1 })
 	UI.Grid(holder, size, size, 8)
 	holder:FindFirstChildOfClass("UIGridLayout").HorizontalAlignment = Enum.HorizontalAlignment.Left
@@ -3020,7 +3001,7 @@ function UI.TextInput(parent, label, value, placeholder, maxLen, onChange)
 	UI.Pad(box, 0, 10)
 	local stroke = UI.New("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.85, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = box })
 	box.Focused:Connect(function()
-		stroke.Color, stroke.Transparency = T.gold, 0.1
+		stroke.Color, stroke.Transparency = T.text, 0.3
 	end)
 	box.FocusLost:Connect(function()
 		stroke.Color, stroke.Transparency = Color3.new(1, 1, 1), 0.85
@@ -3064,13 +3045,10 @@ function UI.Tabs(parent, names, current, onSelect, props)
 	end
 	local holder = UI.Frame(bar, { Name = "Buttons", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -3) })
 	UI.List(holder, 4, true)
-	UI.Frame(bar, { Name = "Track", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.88 })
-	local under = UI.Frame(bar, { Name = "Underline", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1 / #names, -4, 0, 3), BackgroundColor3 = T.gold, ZIndex = 2 })
-	UI.Corner(under, 2)
-	-- the open tab's pill: a faint gold wash rising from the underline
-	local pill = UI.Frame(bar, { Name = "Pill", Position = UDim2.fromScale(0, 0), Size = UDim2.new(1 / #names, -4, 1, -3), BackgroundColor3 = T.gold, BackgroundTransparency = 0, ZIndex = 0 })
-	UI.Corner(pill, UI.R.md)
-	UI.Gradient(pill, Color3.new(1, 1, 1), 90, NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0.86) }))
+	UI.Frame(bar, { Name = "Track", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.line })
+	local under = UI.Frame(bar, { Name = "Underline", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1 / #names, -4, 0, 2), BackgroundColor3 = T.gold, ZIndex = 2 })
+	-- (the open tab is told by its white label and the underline alone: no wash behind it)
+	local pill = UI.Frame(bar, { Name = "Pill", Position = UDim2.fromScale(0, 0), Size = UDim2.new(1 / #names, -4, 1, -3), BackgroundTransparency = 1, ZIndex = 0 })
 	local buttons = {}
 	local function pick(name, animate)
 		local idx = table.find(names, name) or 1
@@ -3092,7 +3070,7 @@ function UI.Tabs(parent, names, current, onSelect, props)
 		end
 	end
 	for i, name in ipairs(names) do
-		buttons[name] = UI.Button(holder, string.upper(name), { Size = UDim2.new(1 / #names, -4, 1, 0), TextSize = 14, LayoutOrder = i, BackgroundTransparency = 1,
+		buttons[name] = UI.Button(holder, name, { Size = UDim2.new(1 / #names, -4, 1, 0), TextSize = 14, LayoutOrder = i, BackgroundTransparency = 1,
 			icon = icons and icons[name] or nil }, function()
 			pick(name, true)
 			onSelect(name)
@@ -3193,8 +3171,8 @@ function UI.Toast(gui, text, color, duration, opts)
 	color = color or T.gold
 	local f = UI.Frame(toastHolder, { Name = "Toast", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ZIndex = 50 })
 	local card = UI.Frame(f, { Name = "Card", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromOffset(60, 0), BackgroundColor3 = T.bg, BackgroundTransparency = 1, ZIndex = 50 })
-	UI.Corner(card, UI.R.lg)
-	local stroke = UI.New("UIStroke", { Color = color, Transparency = 1, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = card })
+	UI.Corner(card, UI.R.md)
+	local stroke = UI.New("UIStroke", { Color = T.line, Transparency = 1, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = card })
 	local iconName = opts and opts.icon
 	if iconName == nil then
 		iconName = TOAST_ICONS[color] or "info"
@@ -3214,8 +3192,8 @@ function UI.Toast(gui, text, color, duration, opts)
 		end
 	end
 	local label = UI.Text(card, text, { TextXAlignment = Enum.TextXAlignment.Left, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0), ZIndex = 51, Font = T.semi, TextSize = 15, TextTransparency = 1 })
-	UI.Tween(card, { Position = UDim2.fromOffset(0, 0), BackgroundTransparency = 0.06 }, UI.Motion.base)
-	UI.Tween(stroke, { Transparency = 0.55 }, UI.Motion.base)
+	UI.Tween(card, { Position = UDim2.fromOffset(0, 0), BackgroundTransparency = 0 }, UI.Motion.base)
+	UI.Tween(stroke, { Transparency = 0 }, UI.Motion.base)
 	UI.Tween(accent, { BackgroundTransparency = 0 }, UI.Motion.base)
 	UI.Tween(label, { TextTransparency = 0 }, UI.Motion.base)
 	local kids = toastHolder:GetChildren()

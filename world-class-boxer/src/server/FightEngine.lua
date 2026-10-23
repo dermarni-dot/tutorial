@@ -2681,7 +2681,11 @@ end
 --   * the bell: in the last REF.bellIn seconds of the round he steps in toward the midpoint, so he is between the
 --     men as it goes (Rest sends them to the corners; HoldCorners sends him back to the orbit for the countdown)
 -- A walk (REF.walk) everywhere but the knockdown (REF.jog); the Humanoid's MoveTo paces the steps.
-local REF = { orbit = 7.0, round = 1.6, walk = 9, jog = 16, clinchHold = 1.5, breakGap = 0.4, count = 3, bellIn = 0.6, sideHold = 1.0 }
+--   * a man coming at him (the fighters pass through the referee: the Referee collision group): a step out of his
+--     way to REF.evade clear, at a jog, as soon as one is inside MinSep + REF.evadeAt
+-- A walk (REF.walk; REF.brisk when his spot is more than REF.briskAt away) everywhere but the knockdown and the
+-- evasion (REF.jog); the Humanoid's MoveTo paces the steps.
+local REF = { orbit = 7.0, round = 1.6, walk = 9, brisk = 12, briskAt = 4, jog = 16, clinchHold = 1.5, breakGap = 0.4, count = 3, bellIn = 0.6, sideHold = 1.0, evadeAt = 1.0, evade = 1.8, tick = 0.15 }
 FightEngine.REF = REF
 
 -- the hard camera's side: the way the post-fight scene faces (between the red corner and the next post)
@@ -2763,13 +2767,16 @@ function Fight:UpdateReferee(now)
 	if not (R and R.root and R.hum and R.model.Parent) or now < R.nextMove then
 		return
 	end
-	R.nextMove = now + 0.3
+	R.nextMove = now + REF.tick
 	local P, O = self.P, self.O
 	if not (P.root and O.root) then
 		return
 	end
 	local target, look
 	local speed, keep = REF.walk, self:MinSep()
+	local rp = R.root.Position
+	local nearF = flat(rp - P.root.Position).Magnitude <= flat(rp - O.root.Position).Magnitude and P or O
+	local nearD = flat(rp - nearF.root.Position).Magnitude
 	local down = (P.state == "down" and P) or (O.state == "down" and O) or nil
 	local catching = R.catching
 	if catching and now > catching.untilT then
@@ -2780,13 +2787,13 @@ function Fight:UpdateReferee(now)
 	local mid = (pP + pO) / 2
 	local clinchHeld = (P.state == "clinch" or O.state == "clinch") and (now - math.max(P.clinchAt or 0, O.clinchAt or 0)) or nil
 	local bell = self.live and self.roundEnd and (self.roundEnd - now) <= REF.bellIn and not self.paused
-	R.mode = "orbit"
+	local mode = "orbit"
 	if catching then
 		-- holding up a fighter knocked out on his feet
 		target, look = catching.at, catching.look
 		R.nextMove = now + 0.1
 		speed, keep = REF.jog, 0
-		R.mode = "catch"
+		mode = "catch"
 	elseif down then
 		-- stand over the downed fighter, between him and the other man (who is in the neutral corner)
 		local other = self:Other(down)
@@ -2794,7 +2801,7 @@ function Fight:UpdateReferee(now)
 		target = down.root.Position + d * REF.count
 		look = down.root.Position
 		speed, keep = REF.jog, 0
-		R.mode = "count"
+		mode = "count"
 	elseif clinchHeld and clinchHeld >= REF.clinchHold then
 		-- the break: the near side of the clinch, outside both bodies
 		local line = unitOr(flat(pO - pP), Vector3.new(1, 0, 0))
@@ -2803,20 +2810,38 @@ function Fight:UpdateReferee(now)
 		local d = math.max(2.2, math.sqrt(math.max(0, keep * keep - half * half)) + REF.breakGap)
 		target = mid + perp * ((R.side or 1) * d)
 		look = mid
-		R.mode = "break"
+		mode = "break"
+	elseif nearD < keep + REF.evadeAt and nearF.state ~= "down" then
+		-- a man on top of him: out of his way, away from the nearer one (and off the fight line)
+		local line = unitOr(flat(pO - pP), Vector3.new(1, 0, 0))
+		local perp = Vector3.new(-line.Z, 0, line.X)
+		local away = unitOr(flat(rp - nearF.root.Position), perp * (R.side or 1))
+		if math.abs(away:Dot(perp)) < 0.3 then
+			away = unitOr(away + perp * ((R.side or 1) * 0.8), perp)
+		end
+		target = nearF.root.Position + away * (keep + REF.evade)
+		look = mid
+		speed = REF.jog
+		mode = "evade"
 	elseif bell then
 		-- the bell: in between them as it goes
 		target, look = mid, mid
-		R.mode = "bell"
+		mode = "bell"
 	else
 		target, look = self:RefOrbit(R, pP, pO)
 	end
+	if mode ~= R.mode then
+		R.mode, R.modeAt = mode, now
+	end
 	target = self:RefKeepOut(self:ClampToRing(target), keep)
 	R.target = target
+	local p = R.root.Position
+	if mode == "orbit" and flat(target - p).Magnitude > REF.briskAt then
+		speed = REF.brisk
+	end
 	if R.hum.WalkSpeed ~= speed then
 		R.hum.WalkSpeed = speed
 	end
-	local p = R.root.Position
 	if flat(target - p).Magnitude > (catching and 0.3 or 0.8) then
 		R.hum:MoveTo(Vector3.new(target.X, p.Y, target.Z))
 	end
@@ -5041,6 +5066,23 @@ local function setPose(model, pose)
 	end
 end
 
+-- a scene's body frame for any rig in the ring (HitGeometry.Frame off its parts; the unit frame without them):
+-- the referee and the official have no fighter table for Fight:Geo
+function Fight:SceneFrame(model)
+	if not (HitGeometry and model) then
+		return nil
+	end
+	local root = model:FindFirstChild("HumanoidRootPart")
+	local hum = model:FindFirstChildOfClass("Humanoid")
+	local soleY = root and (root.Position.Y - standHeight(hum, root)) or nil
+	local ok, fr = pcall(HitGeometry.Frame, model, soleY, HitGeometry.Unit())
+	return ok and fr or HitGeometry.Unit()
+end
+
+-- the celebration's spacing (studs of air between the bodies; the rest comes from the frames: shoulderHalf /
+-- torsoHalfD off the live rigs, so a Heavyweight stands his own width from the referee and the official)
+local CER_SIDE_GAP, CER_FRONT_GAP = 0.9, 1.15
+
 function Fight:Ceremony(spec)
 	local P, O = self.P, self.O
 	local B = Tournaments and Tournaments.Ceremony
@@ -5053,9 +5095,23 @@ function Fight:Ceremony(spec)
 	-- he faces a ring side (between his corner and the next post), the hard camera's side
 	local face = CFrame.Angles(0, math.rad(45), 0):VectorToWorldSpace(toRed)
 	local right = face:Cross(Vector3.yAxis)
+	local held = {} -- roots anchored for the scene (physics and the Humanoids cannot slide them), freed at its end
+	local function hold(root)
+		if root and not root.Anchored then
+			pcall(function()
+				root.Anchored = true
+			end)
+			table.insert(held, root)
+		end
+	end
 	self:Place(P, center, center + face * 10)
-	if O.model and O.model.Parent then
-		self:Place(O, self.anchors.BlueCorner.Position, center)
+	hold(P.root)
+	if O.model and O.model.Parent and O.root then
+		-- the loser walks to his corner (a glide at a walking pace: the Animator gives him steps), never set down
+		-- inside the winner
+		if O.state ~= "down" then
+			self:Glide(O, self:KeepOut(O, self.anchors.BlueCorner.Position, self:MinSep()), 6)
+		end
 	end
 	if P.hum then
 		P.hum.WalkSpeed = 0
@@ -5074,14 +5130,16 @@ function Fight:Ceremony(spec)
 			root.AssemblyLinearVelocity = Vector3.zero
 		end
 	end
-	-- the referee at his right shoulder, facing the same way (his left hand takes the winner's right)
+	local G = self:Geo(P) or (HitGeometry and HitGeometry.Unit()) or { shoulderHalf = 0.95, torsoHalfD = 0.49 }
+	-- the referee at his right shoulder, facing the same way (his left hand takes the winner's right): a shoulder
+	-- width each plus the air between
 	local refModel = self.ref and self.ref.model
+	local refG = self:SceneFrame(refModel) or G
+	local refSide = G.shoulderHalf + refG.shoulderHalf + CER_SIDE_GAP
 	if refModel and refModel.Parent then
-		local at = center + right * 2.1
+		local at = center + right * refSide
 		stand(refModel, at, at + face * 5)
-		if self.ref.hum then
-			self.ref.hum:MoveTo(at)
-		end
+		hold(self.ref.root)
 	end
 	-- the official with the belt, waiting by the ropes in front of him
 	local official
@@ -5100,6 +5158,13 @@ function Fight:Ceremony(spec)
 		official.Parent = self.arena
 		Builder.OnPlaced(official)
 		stand(official, center + face * 6.5 - right * 1.2, center)
+		if HitGeometry then
+			-- (the official's own frame once he stands: Officials' builds differ)
+			local offG = self:SceneFrame(official)
+			if offG then
+				G = { shoulderHalf = G.shoulderHalf, torsoHalfD = G.torsoHalfD, front = G.torsoHalfD + offG.torsoHalfD + CER_FRONT_GAP }
+			end
+		end
 		local oroot = official:FindFirstChild("HumanoidRootPart")
 		if oroot then
 			pcall(function()
@@ -5123,16 +5188,23 @@ function Fight:Ceremony(spec)
 		{ B.walkIn, function()
 			setPose(refModel, "cerClap")
 			setPose(P.model, "cerProud")
+			-- (the official comes in to a torso's depth each plus the air for the belt between his hands; the
+			-- referee steps back and out of his way, by his own and the winner's shoulders)
 			if ohum then
-				ohum:MoveTo(center + face * 1.75)
+				ohum:MoveTo(center + face * (G.front or 1.75))
 			end
-			if refModel and self.ref.hum then
-				self.ref.hum:MoveTo(center + right * 3.1 - face * 0.9)
+			if refModel and self.ref.root then
+				pcall(function()
+					self.ref.root.Anchored = false
+				end)
+				if self.ref.hum then
+					self.ref.hum:MoveTo(center + right * (refSide + 1.0) - face * 0.9)
+				end
 			end
 		end },
 		{ B.strap, function()
 			if official then
-				stand(official, center + face * 1.75, center)
+				stand(official, center + face * (G.front or 1.75), center)
 			end
 			setPose(official, "cerStrap")
 			setPose(P.model, "cerStrapped")
@@ -5165,6 +5237,11 @@ function Fight:Ceremony(spec)
 	setPose(P.model, nil)
 	setPose(refModel, nil)
 	CollectionService:RemoveTag(P.model, "Trainee")
+	for _, root in ipairs(held) do
+		pcall(function()
+			root.Anchored = false
+		end)
+	end
 	if official then
 		official:Destroy()
 	end

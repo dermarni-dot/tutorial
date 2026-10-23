@@ -80,6 +80,15 @@ local HANDS = args.hands or "gloves" -- gloves | wraps | bare
 -- ids carry it (walk_t3_h84)
 local HEIGHT = tonumber(args.height)
 local HTAG = HEIGHT and ("_h" .. tostring(HEIGHT)) or ""
+-- --frame "Power Build": the boxers' body frame (Looks: Lean, Athletic, Muscular, Power Build, Heavyweight Build); the
+-- clip ids carry it (walk_t3_powerbuild)
+local FRAME = args.frame
+local FTAG = FRAME and ("_" .. FRAME:lower():gsub("[^%w]", "")) or ""
+-- --joints ac: the rig's joints are AnimationConstraints between the RigAttachments (Workspace.AvatarJointUpgrade: what
+-- Studio builds for players and CreateHumanoidModelFromDescription), else Motor6Ds; the clip ids carry "_ac"
+local JOINTS_AC = args.joints == "ac"
+local JTAG = JOINTS_AC and "_ac" or ""
+HTAG = HTAG .. FTAG .. JTAG
 
 ------------------------------------------------------------------------
 -- host: fake engine, virtual clock, the asset simulator (Content)
@@ -240,7 +249,7 @@ local function solve(model, keepRoot)
 	if not joints or not keepRoot then
 		joints = {}
 		for _, d in ipairs(model:GetDescendants()) do
-			if d.ClassName == "Motor6D" or d.ClassName == "Weld" or (d.ClassName == "WeldConstraint" and weldOffsets[d]) then
+			if d.ClassName == "Motor6D" or d.ClassName == "AnimationConstraint" or d.ClassName == "Weld" or (d.ClassName == "WeldConstraint" and weldOffsets[d]) then
 				table.insert(joints, d)
 			end
 		end
@@ -252,9 +261,16 @@ local function solve(model, keepRoot)
 		progress = false
 		for _, j in ipairs(joints) do
 			local p0, p1 = j.Part0, j.Part1
+			local ac = j.ClassName == "AnimationConstraint"
+			if ac then
+				p0, p1 = j.Attachment0 and j.Attachment0.Parent, j.Attachment1 and j.Attachment1.Parent
+			end
 			if p0 and p1 and done[p0] and not done[p1] then
 				if j.ClassName == "WeldConstraint" then
 					p1.CFrame = p0.CFrame * weldOffsets[j]
+				elseif ac then
+					-- (child = parent * Attachment0.CFrame * Transform * Attachment1.CFrame^-1: the Motor6D's convention)
+					p1.CFrame = p0.CFrame * j.Attachment0.CFrame * (j.Transform or CFrame.new()) * j.Attachment1.CFrame:Inverse()
 				else
 					local t = j.ClassName == "Motor6D" and j.Transform or nil
 					p1.CFrame = p0.CFrame * j.C0 * (t or CFrame.new()) * j.C1:Inverse()
@@ -315,12 +331,21 @@ local function newRig(scale, headSize)
 		{ NeckRigAttachment = { cur = Vector3.new(0, -0.5 * headSize, 0), orig = Vector3.new(0, -0.6, 0) } })
 	for jn, pp in pairs(JOINTS) do
 		local p0, p1 = model:FindFirstChild(pp[1]), model:FindFirstChild(pp[2])
-		local m = E.new("Motor6D", p1)
-		m.Name = jn
-		m.Part0, m.Part1 = p0, p1
-		m.C0 = p0:FindFirstChild(jn .. "RigAttachment").CFrame
-		m.C1 = p1:FindFirstChild(jn .. "RigAttachment").CFrame
-		m.Transform = CFrame.new()
+		if JOINTS_AC then
+			local m = E.new("AnimationConstraint", p1)
+			m.Name = jn
+			m.Attachment0 = p0:FindFirstChild(jn .. "RigAttachment")
+			m.Attachment1 = p1:FindFirstChild(jn .. "RigAttachment")
+			m.Enabled = true
+			m.Transform = CFrame.new()
+		else
+			local m = E.new("Motor6D", p1)
+			m.Name = jn
+			m.Part0, m.Part1 = p0, p1
+			m.C0 = p0:FindFirstChild(jn .. "RigAttachment").CFrame
+			m.C1 = p1:FindFirstChild(jn .. "RigAttachment").CFrame
+			m.Transform = CFrame.new()
+		end
 	end
 	local hum = E.new("Humanoid", model)
 	hum.HipHeight = 2 * scale.Y
@@ -354,6 +379,16 @@ local function newRig(scale, headSize)
 				end
 				if m.Part1 == old then
 					m.Part1 = part
+					m.Parent = part
+				end
+			elseif m.ClassName == "AnimationConstraint" then
+				-- (the engine re-points the constraint at the new part's attachments of the same names)
+				local a0, a1 = m.Attachment0, m.Attachment1
+				if a0 and a0.Parent == old then
+					m.Attachment0 = part:FindFirstChild(a0.Name)
+				end
+				if a1 and a1.Parent == old then
+					m.Attachment1 = part:FindFirstChild(a1.Name)
 					m.Parent = part
 				end
 			end
@@ -424,7 +459,7 @@ local function makeBoxer(tier, spec)
 	spec = spec or {}
 	local app = Looks.Defaults(spec.g or 1)
 	app.skin = spec.skin or 6
-	app.body.frame = spec.frame or "Athletic"
+	app.body.frame = spec.frame or FRAME or "Athletic"
 	app.face.key = "determined"
 	app.gloves.color = pal(spec.gloves or 1)
 	app.attire.trunks = pal(spec.trunks or 3)
@@ -1785,7 +1820,7 @@ local function fightClip(tier)
 		local motorsA = {}
 		for k, n in pairs(MOTORS) do
 			for _, d in ipairs(a:GetDescendants()) do
-				if d.ClassName == "Motor6D" and d.Name == n then
+				if (d.ClassName == "Motor6D" or d.ClassName == "AnimationConstraint") and d.Name == n then
 					motorsA[k] = d
 				end
 			end
@@ -2087,7 +2122,7 @@ local function restClip(tier, frameId)
 	for _ = 1, 120 do
 		frame({ model })
 	end
-	local out = { clip = "rest", tier = tier, frame = frameId, frames = { exportFrame(model, VT) } }
+	local out = { clip = "rest", tier = tier, frame = frameId, height = HEIGHT, frames = { exportFrame(model, VT) } }
 	out.frames[1].root = cfList(model:FindFirstChild("HumanoidRootPart").CFrame)
 	out.frames[1].bodyFrame = model:GetAttribute("BodyFrame")
 	out.frames[1].scales = { model:FindFirstChild("UpperTorso").Size.X, model:FindFirstChild("UpperTorso").Size.Y }

@@ -69,6 +69,31 @@ about the pivots) and the elbow / wrist / hip / knee / ankle heights are unchang
 * Previews: `tools/body/frames_anim.luau` (v9_anim's rest clip per frame, generated from it) and
   `tools/body/render_frames.py` -> `previews/final/v10/bodies/`; `check_joints.py --frames all`.
 
+### The height, the head and the neck (v13)
+
+* THE FRAME CHANGES THE BUILD, NOT THE HEIGHT. Every frame's unit (`frames[id].unit`, `BodyTiers.Unit(frame)`) carries
+  its own `neckHeight`, `head` (studs) / `headScale` and `standingHeight = neckHeight + head`, and `Builder.Scales`
+  normalises the description's HeightScale per frame: a boxer of `inches` is built `Builder.StandingHeight(inches)` =
+  the Athletic unit's standingHeight (6.2161) x inches / 70 studs tall on every frame, with
+  `HeightScale = (standing - 1.2 x HeadScale) / unit[frame].neckHeight` (the head sits on the Neck pivot and is not
+  height-scaled). The frames' skeletons (`FRAMES[id].skel`) are solved so the Humanoid's HipHeight (HeightScale x (the
+  root pivot's unit height - 1)) is the Athletic's within 0.3 % too; the eye line follows (the head's 0.1 x size).
+  `tools/sim/test_frameheight.luau` builds every frame at 5'6" / 6'0" / 6'6" and checks all three within 1 %.
+  Width / Depth: half of Config.BodyTypes' values (`Builder.FRAME_WIDTH_SHARE`); the mesh families carry the build.
+* THE HEAD: `FRAMES[id].head` = `Builder.FRAME_PROPORTIONS[id].head` (Lean 0.79, Athletic 0.82, Muscular 0.835,
+  Power Build 0.85, Heavyweight Build 0.865; the game's HeadScale is that x 0.942, the head 1.2 x the HeadScale:
+  0.893 .. 0.978 studs). The neck column (`FRAMES[id].neck` at `neck_s`: the trapezius slope row, the column, its top)
+  is modelled under that head: its width at the head's base is 0.68 (Lean) .. 0.85 (Power / Heavyweight) of the head,
+  and it runs `NECK_TOP` = 0.065 game studs up INTO the head (a 0.03 cap on top), so the classic head's rounded underside
+  closes over the neck's top ring from outside: no ledge where a thick neck met the head's flat base, no gap under a
+  thin one. The SCM cords, the throat hollow and larynx, the collarbones and the nape's groove are lobes on the neck rows.
+* THE SURFACE: the lofts are 52 x 56 (UpperTorso), 14 x 40, 20 x 32 (upper arm), 16 x 28, 22 x 32 (thigh), 18 x 28,
+  12 x 22 (foot), 8 x 20 (hand) rings x segments (every vertex still a sample of the 4x refined loft that carries the
+  muscles and the normals): 22,320 triangles per body in the full set (UpperTorso 6,272; the 10k per-mesh limit and
+  the ~40k body budget hold), the hem row blend 2.45..2.90 so the band row is no crease; the lite set stays the v9 one.
+  Sheets: `bare_t<N>_<view>.png`, `arms_t<N>.png`, `heads_necks.png` (every frame's head on its neck, front and side,
+  tiers 1 and 5), `height_lineup_6ft.png` (the five frames at 72 in with the crown line: `render_frames.py --headline`).
+
 ## BodyAssetData.lua (generated)
 
 ```lua
