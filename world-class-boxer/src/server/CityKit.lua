@@ -206,7 +206,7 @@ function K.lawn(parent, x1, x2, z1, z2, rng, opts)
 			local pw, pd = rng:NextNumber(w * 0.2, w * 0.45), rng:NextNumber(d * 0.2, d * 0.45)
 			local px, pz = rng:NextNumber(x1 + pw / 2, x2 - pw / 2), rng:NextNumber(z1 + pd / 2, z2 - pd / 2)
 			local tone = ({ K.GRASS_DRY, K.GRASS_DARK, Color3.fromRGB(104, 150, 78) })[rng:NextInteger(1, 3)]
-			part(parent, "LawnPatch", V3(pw, 0.04, pd), CF(px, top + 0.02, pz), tone, rng:NextNumber() < 0.5 and M.LeafyGrass or M.Grass, { shadow = false })
+			part(parent, "LawnPatch", V3(pw, 0.06, pd), CF(px, top + 0.04, pz), tone, M.Grass, { shadow = false })
 		end
 	end
 	return base
