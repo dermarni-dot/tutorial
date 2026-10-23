@@ -18,9 +18,19 @@
 -- envelope both fighters share) and stamps the client-local KOMoment / KOLanded attributes.
 -- Get-ups are staged per fall: off the back he rolls to his side, onto hands and knees, a knee, then
 -- up; off the face he pushes up first; off the ropes he pulls himself up on them.
+--
+-- Physically grounded (v10): the canvas is where it really is - a ray from the root every frame (the Humanoid's
+-- hover height, a rescaled rig or a step onto the apron no longer float or sink the whole body), the pose is
+-- laid on it (groundSolve) and the final Transforms are clamped onto it both ways (footLock: the output filter's
+-- lag behind a fast drop is pulled out, nothing is ever airborne - a falling man is on his feet until he is on
+-- the canvas), every joint is held within human range (LIMITS), the landing carries a short slide that stops
+-- (friction) and a settle onto the canvas. The server (FightEngine.Knockdown -> server Ragdoll) holds the root
+-- still for the whole of it; an out-cold knockout's limbs go to physics once the fall has landed (ball sockets
+-- within the same ranges) and the client Ragdoll keeps the Animator's joints in step with them.
 local K = require(script.Parent:WaitForChild("AnimKit"))
 local R = require(script.Parent:WaitForChild("AnimRig"))
 local L = require(script.Parent:WaitForChild("AnimLoco"))
+local Rag = require(script.Parent:WaitForChild("Ragdoll"))
 
 local AnimDown = {}
 
@@ -39,7 +49,129 @@ local kick = R.kick
 
 local G_STUDS = 30 -- real gravity in studs / s^2 (1 stud ~ 0.32 m): falls take real time
 local SLOW = 0.35 -- the knockout moment's time scale
-local HOLD_MAX = 0.8 -- a delayed knockout stands at most this long (wall seconds) before the legs go
+-- a delayed knockout stands wobbling between HOLD_MIN and HOLD_MAX (wall seconds) before the legs go (the server
+-- waits FightMotion.KOFallWall = 2.6 s for the fall: the longest hold still lands inside it)
+local HOLD_MIN, HOLD_MAX = 0.9, 1.3
+local CLEAR = 0.03 -- a body on the canvas rests this far above it (the drawn meshes' rounding), settling to CLEAR_REST
+local CLEAR_REST = 0.005
+local SETTLE = 0.5 -- seconds the landed body takes to settle onto the canvas
+-- the landing's slide (studs: the body's momentum against the canvas, stopped by friction) and its time constant
+local SLIDE_KO, SLIDE_KD, SLIDE_TAU = 0.35, 0.2, 0.16
+
+------------------------------------------------------------------------
+-- Human joint ranges (radians, the Motor6D Transform's Euler XYZ: X = flexion / pitch, Y = turn, Z = roll /
+-- abduction): no key pose, blend, timber integration or flavour ever turns a joint past them. The Root (the
+-- whole body) is free.
+------------------------------------------------------------------------
+local LIMITS = {
+	W = { -0.9, 0.7, 0.9, -0.55, 0.55 },
+	Neck = { -1.0, 0.9, 1.35, -0.7, 0.7 },
+	LS = { -1.1, 3.05, 1.3, -3.1, 0.75 }, RS = { -1.1, 3.05, 1.3, -0.75, 3.1 },
+	LE = { -0.08, 2.65, 0.35, -0.35, 0.35 }, RE = { -0.08, 2.65, 0.35, -0.35, 0.35 },
+	LW = { -0.7, 0.7, 0.5, -0.5, 0.5 }, RW = { -0.7, 0.7, 0.5, -0.5, 0.5 },
+	LH = { -0.55, 2.15, 0.7, -1.0, 0.45 }, RH = { -0.55, 2.15, 0.7, -0.45, 1.0 },
+	LK = { -2.5, 0.08, 0.2, -0.2, 0.2 }, RK = { -2.5, 0.08, 0.2, -0.2, 0.2 },
+	LA = { -0.85, 0.75, 0.35, -0.35, 0.35 }, RA = { -0.85, 0.75, 0.35, -0.35, 0.35 },
+}
+AnimDown.LIMITS = LIMITS
+local function limitJoint(cf, lim)
+	local x, y, z = cf:ToEulerAnglesXYZ()
+	local cx, cy, cz = clamp(x, lim[1], lim[2]), clamp(y, -lim[3], lim[3]), clamp(z, lim[4], lim[5])
+	if cx ~= x or cy ~= y or cz ~= z then
+		return CFrame.fromEulerAnglesXYZ(cx, cy, cz), true
+	end
+	return cf, false
+end
+-- every joint of the pose within range (the translation of a Transform is kept)
+local function limits(p)
+	for k, lim in pairs(LIMITS) do
+		local cf = p[k]
+		if cf then
+			local r, changed = limitJoint(cf.Rotation, lim)
+			if changed then
+				local pos = cf.Position
+				p[k] = (pos.Magnitude > 1e-6) and (CF(pos) * r) or r
+			end
+		end
+	end
+end
+AnimDown.limits = limits
+
+------------------------------------------------------------------------
+-- The canvas: where it really is. A ray from the root straight down (the rig, the other man and the referee
+-- excluded; only what collides, and only floor-like faces) gives the canvas height in the root's own space; the
+-- rig's geometry (AnimRig.computeGeo: the soles when standing) is the fallback and what every other state uses.
+-- Blended over a few frames (a seam between two canvas parts is not a step) and written over g.groundY while he is
+-- down; AnimDown.clear / the end of the get-up ask for a re-measure, which puts the geometric height back.
+------------------------------------------------------------------------
+local canvasParams
+local canvasFilter = {}
+local function canvasY(rig)
+	local root = rig.root
+	if not (root and root.Parent and workspace) then
+		return nil
+	end
+	local g = rig.geo
+	local expect = (g.ok and g.floorH) or 3
+	if not canvasParams then
+		local ok, params = pcall(RaycastParams.new)
+		if not ok or not params then
+			return nil
+		end
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.RespectCanCollide = true
+		canvasParams = params
+	end
+	local n = 0
+	for _, r in ipairs({ rig, rig.oppRig, rig.refRig }) do
+		if r and r.model then
+			n += 1
+			canvasFilter[n] = r.model
+		end
+	end
+	for i = #canvasFilter, n + 1, -1 do
+		canvasFilter[i] = nil
+	end
+	canvasParams.FilterDescendantsInstances = canvasFilter
+	local origin = root.Position
+	local ok, hit = pcall(workspace.Raycast, workspace, origin, V3(0, -(expect + 2.5), 0), canvasParams)
+	if not ok or not hit or not hit.Position then
+		return nil
+	end
+	local nrm = hit.Normal
+	if nrm and nrm.Y < 0.7 then
+		return nil
+	end
+	-- (in the root's space: the root stands upright, AutoRotate off and held by the server)
+	local y = hit.Position.Y - origin.Y
+	if abs(y + expect) > 1.6 then
+		return nil -- not the canvas under his feet (a stool, a step): the rig's own floor
+	end
+	return y
+end
+
+-- measure and apply the canvas for this frame (st = the state carrying the blended height: rig.down or a get-up act)
+local function applyCanvas(rig, st, dt)
+	local g = rig.geo
+	if not (g and g.ok) then
+		return
+	end
+	local y = canvasY(rig)
+	if not y then
+		return
+	end
+	local cur = st.canvas
+	if cur == nil then
+		cur = y
+	else
+		cur += (y - cur) * (1 - math.exp(-(dt or 1 / 60) * 14))
+	end
+	st.canvas = cur
+	if abs(cur - g.groundY) > 1e-4 then
+		g.groundY = cur
+	end
+end
+AnimDown.canvasY = canvasY
 
 ------------------------------------------------------------------------
 -- Key poses (fill a pose table completely). The heights are only a starting point: groundSolve
@@ -70,6 +202,27 @@ local function buckle(p, rig, back, sideways)
 	p.LE = A(0.7, 0, 0)
 	p.RE = A(0.6, 0, 0)
 	R.legAngles(p, drop, back and -0.05 or 0.12, len)
+end
+
+-- the backward collapse's first instant: stiff, the whole body tipping back on the heels as one (the lights are
+-- out before the knees know), arms hanging, chin up (the pivot under the heels: groundSolve keeps them down)
+local function stiffBack(p, rig)
+	clear(p)
+	local fh = geo(rig)
+	local th = 0.3
+	p.Root = CF(0, -fh, 0.3) * A(th, 0, 0.03) * CF(0, fh, -0.3)
+	p.W = A(0.05, 0, 0)
+	p.Neck = A(0.4, 0.05, 0.08)
+	p.LS = A(-0.12, 0, -0.18)
+	p.RS = A(-0.1, 0, 0.2)
+	p.LE = A(0.15, 0, 0)
+	p.RE = A(0.12, 0, 0)
+	p.LH = A(0.04, 0, -0.04)
+	p.RH = A(0.04, 0, 0.04)
+	p.LK = A(-0.06, 0, 0)
+	p.RK = A(-0.06, 0, 0)
+	p.LA = A(0.02, 0, 0)
+	p.RA = A(0.02, 0, 0)
 end
 
 -- the backward collapse starts at the knees: straight down, arms limp, head dropping

@@ -711,6 +711,121 @@ do
 	end
 
 	angleTag = UI.Chip(hud, "ANGLE  +ACCURACY", T.gold, { solid = true, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 184), h = 26, TextSize = 13 })
+
+	-- the reach (Shared.HitGeometry, the server's own hit detection): the frames the fight's start message hands
+	-- over (F.geo.you / F.geo.opp / F.geo.floor), the prediction's verdict for a punch from here and the range
+	-- read-out under the clock (KM.rangeTag: which punches land from where the two men stand)
+	function KM.hitGeo()
+		if KM.HG == nil then
+			local okG, mod = pcall(require, Shared:WaitForChild("HitGeometry", 5))
+			KM.HG = okG and type(mod) == "table" and mod or false
+		end
+		return KM.HG or nil
+	end
+	-- how bent over the opponent is (the server's Fight:Bend, read off the attributes it replicates)
+	function KM.oppBend()
+		local opp = F.opp
+		if not opp then
+			return 0
+		end
+		local act = tostring(opp:GetAttribute("Act") or "")
+		local g = opp:GetAttribute("Guard")
+		local bend = 0
+		if act:sub(1, 4) == "roll" then
+			bend = 1
+		elseif act:sub(1, 5) == "weave" then
+			bend = 0.9
+		elseif act:sub(1, 4) == "duck" then
+			bend = 0.8
+		elseif act:sub(1, 4) == "slip" then
+			bend = 0.3
+		elseif act:find("|body|", 1, true) then
+			bend = 0.5
+		end
+		if g == "hurt" or g == "dazed" then
+			bend = math.max(bend, 0.25)
+		elseif g == "block" then
+			bend = math.max(bend, 0.1)
+		end
+		return bend
+	end
+	-- the verdict for punch p (body?) from where the two men stand now: HitGeometry.Test's table, or nil when the
+	-- fight has no frames (an older server) or no opponent root
+	function KM.rangeTest(p, body)
+		local HG = KM.hitGeo()
+		local geo = F.geo
+		local me, opp = getRoot(player.Character), getRoot(F.opp)
+		if not (HG and type(geo) == "table" and geo.you and geo.opp and me and opp) then
+			return nil
+		end
+		local d = (me.Position - opp.Position) * Vector3.new(1, 0, 1)
+		local ok, r = pcall(HG.Test, geo.you, geo.opp, p, body == true, d.Magnitude, { floor = geo.floor, bend = KM.oppBend(), noRedirect = p == "overhand" })
+		return ok and r or nil
+	end
+	KM.rangeTag = UI.Chip(hud, "RANGE", T.sub, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 214), h = 22, TextSize = 12 })
+	KM.rangeTag.Visible = false
+	KM.rangeAt, KM.rangeText = 0, ""
+	-- the read-out, 8 times a second during a live round: the longest punch that lands from here (jab, then the
+	-- cross, the hooks, the uppercut), and where (a head shot that falls to the body says so)
+	function KM.rangeTick(dt)
+		KM.rangeAt += dt
+		if KM.rangeAt < 0.125 then
+			return
+		end
+		KM.rangeAt = 0
+		local tag = KM.rangeTag
+		if not (F.active and not F.down and F.geo and UI.CanvasSize(gui).Y >= 560) then
+			if tag.Visible then
+				tag.Visible = false
+			end
+			return
+		end
+		local text, color = "OUT OF RANGE", T.sub
+		local jab, cross, hook, upper = KM.rangeTest("jab", false), KM.rangeTest("cross", false), KM.rangeTest("leadhook", false), KM.rangeTest("uppercut", false)
+		if upper and upper.ok and hook and hook.ok then
+			text, color = "INSIDE  ·  HOOKS & UPPERCUTS", T.orange
+		elseif cross and cross.ok then
+			text, color = cross.redirected and "RANGE  ·  1-2 TO THE BODY" or "RANGE  ·  1-2", T.gold
+		elseif jab and jab.ok then
+			text, color = jab.redirected and "RANGE  ·  JAB TO THE BODY" or "RANGE  ·  JAB", T.gold
+		elseif jab and jab.why == "high" then
+			text = "TOO TALL  ·  GO TO THE BODY"
+		end
+		if text ~= KM.rangeText then
+			KM.rangeText = text
+			UI.ChipSet(tag, text, color)
+		end
+		if not tag.Visible then
+			tag.Visible = true
+		end
+	end
+
+	-- the way out of a spar (BoxerClient.SparExit): the button on this HUD and its prompt; the server ends the
+	-- session (`leaveSpar`: FightEngine's Fight:LeaveSpar) and the prompt holds the round like the menu does
+	do
+		local SE = KM.module("SparExit")
+		if SE then
+			pcall(SE.Mount, hud, {
+				leave = function(mode)
+					if F.spar and not F.pvp then
+						F.sparLeaving = mode
+						send({ t = "leaveSpar" })
+					end
+				end,
+				pause = function(on)
+					if F.spar and not F.pvp and gui.Enabled then
+						send({ t = "pause", on = on == true })
+					end
+				end,
+			})
+		end
+	end
+	function KM.sparPrompt()
+		local SE = KM.modules.SparExit
+		if SE and F.spar and not F.pvp and gui.Enabled and not F.down then
+			SE.Prompt()
+		end
+	end
 	angleTag.Visible = false
 
 	-- the big centre banner (ROUND 1, KNOCKDOWN, KO!): a band that opens with display type

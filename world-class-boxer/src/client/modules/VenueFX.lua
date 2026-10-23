@@ -10,8 +10,9 @@
 -- What it does: fight-night lighting per venue and phase (VenueGrade / VenueBloom / VenueDOF,
 -- atmosphere haze, house lights, par-can washes), follow spots with visible beams and light pools,
 -- rope physics (sag, sway, bulge when a boxer leans or is knocked into them, bounce on impacts,
--- rope ties), crowd motion (bulk-moved, arms up in the front row), phone lights and camera flashes,
--- an upper-bowl crowd generated locally, jumbotron / scoreboard / LED ribbons / entrance screens,
+-- rope ties), the crowd (CrowdFX: rigs that stand, jump, clap, hold phones and signs up or boo; the
+-- printed rows and the upper bowl drawn locally; reaction waves on punches, knockdowns, the bell, the KO
+-- and the winner), phone lights and camera flashes, jumbotron / scoreboard / LED ribbons / entrance screens,
 -- walkout smoke, CO2, chase lights and pyro, confetti, gerbs and fireworks, cornermen and stool
 -- between rounds, the ring announcer, panning TV cameras, a swinging jib and a gliding skycam with
 -- on-air tally, canvas marks after knockdowns, window god-rays and dust in the sparring room,
@@ -30,8 +31,8 @@ local Typography = require(Shared:WaitForChild("Typography"))
 local LightLevels = require(script.Parent:WaitForChild("LightLevels"))
 local CharacterLight = require(script.Parent:WaitForChild("CharacterLight"))
 -- the Graphics level (WorldLOD over Perf; optional: without it everything runs at the High look).
--- Low: printed impostors for the crowd's back physical rows, only the front rows bob, one shadowed key
--- light, a quarter of the particles, slower spot-pool rays. Medium in between. High = the full show.
+-- Low: fewer crowd parts a tick and fewer printed rows redrawn (CrowdFX), one shadowed key light, a quarter
+-- of the particles, slower spot-pool rays. Medium in between. High = the full show.
 local WorldLOD
 do
 	local m = script.Parent:FindFirstChild("WorldLOD")
@@ -54,6 +55,17 @@ do
 		ok, mod = pcall(require, m)
 	end
 	VenueDetail = (ok and type(mod) == "table") and mod or nil
+end
+-- the crowd (CrowdFX: the rigs, the printed rows, the upper bowl, the reaction waves; optional: without it the
+-- fans sit still)
+local CrowdFX
+do
+	local m = script.Parent:FindFirstChild("CrowdFX")
+	local ok, mod = false, nil
+	if m then
+		ok, mod = pcall(require, m)
+	end
+	CrowdFX = (ok and type(mod) == "table") and mod or nil
 end
 -- particle counts / rates for the level (at least one particle for a burst that asked for some)
 local function lodCount(n)
@@ -897,307 +909,29 @@ local function updateSpots(dt, now)
 end
 
 ------------------------------------------------------------------------
--- Crowd (front-row arms, supporters, bulk-moved, view-culled under a part budget) and the upper bowl
+-- Crowd: CrowdFX (the rigs bulk-moved and time-sliced under a part budget, the printed rows, the upper bowl, the
+-- reaction waves). S.fans / S.bowlGuis are its lists (the phone-light volumes, the house level)
 ------------------------------------------------------------------------
--- Every fan sits inside any venue-sized radius (Stadium's back row is ~126 studs from the ring), so
--- distance alone culls nothing: a full Stadium is ~3,100 crowd parts. Instead only fans inside the
--- camera's view cone bob, front rows first. The first CROWD_BUDGET parts queued in a tick move at the
--- full rate (each fan every other tick, 15 Hz); fans past that still move, at half that rate (every
--- 4th tick, 7.5 Hz: they are the back rows, small on screen), up to CROWD_SLOW_BUDGET more parts. A
--- fan that leaves the view (or both budgets) is put back at rest once (no one frozen mid-jump).
--- No distance cut: at 1080p / 70 deg a stud is still ~7 px at 110 studs, and an excited bob is 1-1.5
--- studs, so the far rows of a wide shot visibly jump too.
-local CROWD_BUDGET = 420 -- full-rate parts per 30 Hz tick (High; Medium 280, Low 160)
-local CROWD_SLOW_BUDGET = 300 -- reduced-rate parts per tick once CROWD_BUDGET is spent (Medium 150, Low 0)
-local CROWD_EDGE = 3 -- studs of slack around the view cone (a fan's size)
-
 local function setupCrowd()
-	S.fans = {}
-	S.bulkParts, S.bulkCFs = {}, {}
-	local crowd = S.arena:FindFirstChild("Crowd")
-	local minR, maxR, sumY, n = math.huge, 0, 0, 0
-	if crowd then
-		for _, fan in ipairs(crowd:GetChildren()) do
-			if fan:IsA("BasePart") and fan.Name == "Fan" then
-				local e = { fan = fan, base = fan.CFrame, pos = fan.Position, kids = {}, phase = math.random() * 6.28, speed = 5 + math.random() * 4, sup = fan:GetAttribute("Supporter") == true, live = false }
-				for _, c in ipairs(fan:GetChildren()) do
-					if c:IsA("BasePart") then
-						local side = c:GetAttribute("Side")
-						local rel = fan.CFrame:ToObjectSpace(c.CFrame)
-						table.insert(e.kids, { p = c, rel = rel, side = (c.Name == "ArmL" or c.Name == "ArmR") and side or nil })
-					end
-				end
-				e.n = 1 + #e.kids
-				table.insert(S.fans, e)
-				local flat = V3(fan.Position.X - S.center.X, 0, fan.Position.Z - S.center.Z)
-				e.ringD = flat.Magnitude
-				minR = math.min(minR, flat.Magnitude)
-				maxR = math.max(maxR, flat.Magnitude)
-				sumY += fan.Position.Y
-				n += 1
-			end
-		end
+	S.fans, S.bowlGuis = {}, {}
+	if not CrowdFX then
+		return
 	end
-	-- front rows first: when the budget runs out it is the far, small fans that hold still
-	table.sort(S.fans, function(a, b)
-		return a.ringD < b.ringD
-	end)
-	S.crowdR = n > 0 and (minR + maxR) / 2 or 30
-	S.crowdY = n > 0 and (sumY / n - S.center.Y) or 4
-	S.fanIdx = 0
-end
-
--- queue a fan (and its head / hair / arms) back at its seated pose
-local function homeFan(e, parts, cfs, k)
-	k += 1
-	parts[k], cfs[k] = e.fan, e.base
-	for _, c in ipairs(e.kids) do
-		k += 1
-		parts[k], cfs[k] = c.p, e.base * c.rel
-	end
-	return k
+	CrowdFX.Start(S.arena, { center = S.center, share = tonumber(S.arena:GetAttribute("CrowdShare")) or 1, venue = S.venue })
+	S.fans = CrowdFX.Fans()
+	S.bowlGuis = CrowdFX.Guis()
 end
 
 local function updateCrowd(dt, now)
-	local fans = S.fans
-	local count = #fans
-	if count == 0 then
-		return
-	end
-	local cam = workspace.CurrentCamera
-	local camCF = cam and cam.CFrame or CF(S.center)
-	local camPos, look = camCF.Position, camCF.LookVector
-	-- the view cone through the frustum's corners: tan(half diagonal) = tan(vfov/2) * sqrt(1 + aspect^2)
-	local vp = cam and cam.ViewportSize
-	local aspect = (vp and vp.Y > 0) and vp.X / vp.Y or 16 / 9
-	local tanD = math.tan(math.rad((cam and cam.FieldOfView or 70) * 0.5)) * math.sqrt(1 + aspect * aspect)
-	local ex = S.excite
-	local parts, cfs = S.bulkParts, S.bulkCFs
-	local k, moved, slow = 0, 0, 0
-	local budget, slowBudget = lodPick(160, 280, CROWD_BUDGET), lodPick(0, 150, CROWD_SLOW_BUDGET)
-	-- half the crowd per tick: at 30 Hz each fan still moves 15 times a second. The slow lane takes
-	-- every other one of this tick's fans in turn (fanTick 0..3), so each of them moves every 4th tick
-	S.fanTick = ((S.fanTick or 0) + 1) % 4
-	S.fanIdx = S.fanTick % 2
-	local slowTurn = S.fanTick < 2 and 0 or 1
-	for i = 1 + S.fanIdx, count, 2 do
-		local e = fans[i]
-		local d = e.pos - camPos
-		local along = d:Dot(look)
-		local show, hold = false, false
-		if e.printed then
-			along = -math.huge -- drawn by its printed row (Low): stays seated
-		end
-		if along > -CROWD_EDGE then
-			local reach = math.max(along, 0) * tanD + CROWD_EDGE
-			if d:Dot(d) - along * along <= reach * reach then
-				if moved + e.n <= budget then
-					show = true
-					moved += e.n
-				elseif math.floor((i - 1) / 2) % 2 ~= slowTurn then
-					hold = e.live -- in view, not its slow-lane turn: keep the last pose
-				elseif slow + e.n <= slowBudget then
-					show = true
-					slow += e.n
-				end
-			end
-		end
-		if show then
-			e.live = true
-			local amp = 0.08 + ex * 1.1 + (e.sup and S.supportBoost or 0)
-			local up = math.max(0, math.sin(now * e.speed + e.phase)) * amp
-			local sway = math.sin(now * 1.1 + e.phase) * 0.05 * (0.3 + ex)
-			local cf = e.base * CF(0, up, 0) * CFrame.Angles(0, 0, sway)
-			k += 1
-			parts[k], cfs[k] = e.fan, cf
-			local raise = math.clamp((ex - 0.5) * 2.2 + (e.sup and S.supportBoost or 0), 0, 1) * (0.55 + 0.45 * math.sin(now * e.speed * 0.5 + e.phase))
-			for _, c in ipairs(e.kids) do
-				k += 1
-				parts[k] = c.p
-				if c.side then
-					-- arms swing up around the shoulder
-					local s = c.side
-					cfs[k] = cf * CF(s * 1.02, 0.85, 0) * CFrame.Angles(0, 0, s * raise * 2.6) * CF(0, -0.8, 0)
-				else
-					cfs[k] = cf * c.rel
-				end
-			end
-		elseif e.live and not hold then
-			-- out of view / budget: back in the seat once, then left alone
-			e.live = false
-			k = homeFan(e, parts, cfs, k)
-		end
-	end
-	for j = k + 1, #parts do
-		parts[j], cfs[j] = nil, nil
-	end
-	if k > 0 then
-		local ok = pcall(function()
-			workspace:BulkMoveTo(parts, cfs, Enum.BulkMoveMode.FireCFrameChanged)
-		end)
-		if not ok then
-			for j = 1, k do
-				parts[j].CFrame = cfs[j]
-			end
-		end
+	if CrowdFX then
+		CrowdFX.Update(dt, now, S.excite, S.supportBoost)
 	end
 end
 
--- the upper bowl's heads are RichText dots generated here, so the server never replicates them
-local function setupBowl()
-	S.bowlGuis = {}
-	local bowl = S.arena:FindFirstChild("Bowl")
-	if not bowl then
-		return
-	end
-	local share = tonumber(S.arena:GetAttribute("CrowdShare")) or 1
-	local rng = Random.new(#S.venue * 977)
-	for _, slab in ipairs(bowl:GetChildren()) do
-		local sg = slab:FindFirstChild("CrowdPrint")
-		local rows = tonumber(slab:GetAttribute("CrowdRows"))
-		if sg and rows then
-			local fill = (tonumber(slab:GetAttribute("Fill")) or 0.85) * share
-			-- the upper bowl prints 110 heads per row; a stand's printed row (Venues PHYSICAL_ROWS) says
-			-- how many seats it has, so its heads come out seat-sized
-			local cols = tonumber(slab:GetAttribute("CrowdCols")) or 110
-			for i = 0, rows - 1 do
-				local parts = table.create(cols)
-				for j = 1, cols do
-					if rng:NextNumber() < fill then
-						local sh = SHIRTS[rng:NextInteger(1, #SHIRTS)]
-						local kk = 0.5 + rng:NextNumber() * 0.5
-						parts[j] = string.format('<font color="#%02x%02x%02x">●</font>', math.floor(sh[1] * kk), math.floor(sh[2] * kk), math.floor(sh[3] * kk))
-					else
-						parts[j] = '<font transparency="1">●</font>'
-					end
-				end
-				local l = track(Instance.new("TextLabel"))
-				l.Name = "CrowdRow"
-				l.BackgroundTransparency = 1
-				l.RichText = true
-				l.TextScaled = true
-				Typography.Apply(l, "glyph")
-				l.TextColor3 = WHITE
-				l.Text = table.concat(parts)
-				l.Size = UDim2.fromScale(1, 1 / rows)
-				l.Position = UDim2.fromScale(0, i / rows)
-				l.Parent = sg
-			end
-			-- lit by the house level instead of the (out of range) lights
-			sg.LightInfluence = 0
-			table.insert(S.bowlGuis, sg)
-		end
-	end
-end
-
--- Graphics Low: the physical rows behind the front row become printed rows like the ones behind
--- them (each seated fan a flat shirt + head silhouette in his own colours, on a clear row-sized sign
--- at his seat), and the fans themselves are hidden locally. Supporters holding a sign and the VIP
--- seats stay real. Medium / High put the real fans back.
-local SEAT = 3.2 -- Venues' physical seat pitch
-local function applyImpostors()
-	local want = lodPick(true, false, false)
-	if want == (S.impostors ~= nil) then
-		return
-	end
-	local parts, cfs = {}, {}
-	local k = 0
-	if not want then
-		for _, g in ipairs(S.impostors) do
-			pcall(function()
-				g:Destroy()
-			end)
-		end
-		S.impostors = nil
-		for _, e in ipairs(S.fans) do
-			if e.printed then
-				e.printed = false
-				e.fan.LocalTransparencyModifier = 0
-				for _, c in ipairs(e.kids) do
-					c.p.LocalTransparencyModifier = 0
-				end
-			end
-		end
-		return
-	end
-	S.impostors = {}
-	-- rows grouped by side (the fans of a row share their orientation) and row number
-	local groups = {}
-	for _, e in ipairs(S.fans) do
-		local row = e.fan:GetAttribute("Row")
-		if type(row) == "number" and row >= 1 and not e.fan:GetAttribute("VIP") and not e.fan:FindFirstChild("FanSign") then
-			local look = e.base.LookVector
-			local side = math.abs(look.X) > math.abs(look.Z) and (look.X > 0 and 1 or 2) or (look.Z > 0 and 3 or 4)
-			local key = side * 100 + row
-			local g = groups[key]
-			if not g then
-				g = { ref = e.base - e.base.Position, list = {} }
-				groups[key] = g
-			end
-			table.insert(g.list, e)
-		end
-	end
-	for _, g in pairs(groups) do
-		local ref = g.ref
-		local minX, maxX, sy, sz = math.huge, -math.huge, 0, 0
-		for _, e in ipairs(g.list) do
-			local lp = ref:PointToObjectSpace(e.pos)
-			minX = math.min(minX, lp.X)
-			maxX = math.max(maxX, lp.X)
-			sy += lp.Y
-			sz += lp.Z
-		end
-		local n = #g.list
-		local cols = math.max(1, math.floor((maxX - minX) / SEAT + 0.5) + 1)
-		local width = cols * SEAT
-		local mid = ref * CF((minX + maxX) / 2, sy / n + 0.45, sz / n)
-		local slab = localPart("CrowdImpostor", V3(width, 2.9, 0.2), mid, WHITE, nil, { Transparency = 1 })
-		local sg = Instance.new("SurfaceGui")
-		sg.Name = "CrowdPrint"
-		sg.Face = Enum.NormalId.Front
-		sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-		sg.PixelsPerStud = 8
-		sg.LightInfluence = 1 -- lit like the fans it stands in for (the rows sit inside the ring lights)
-		sg.MaxDistance = 420
-		for _, e in ipairs(g.list) do
-			local lp = ref:PointToObjectSpace(e.pos)
-			-- the slab faces the ring (its Front is the fans' look direction): seen from the ring,
-			-- +X of the fans' frame runs right to left
-			local c = cols - 1 - math.clamp(math.floor((lp.X - minX) / SEAT + 0.5), 0, cols - 1)
-			local head = e.fan:FindFirstChild("Head")
-			local torso = Instance.new("Frame")
-			torso.BorderSizePixel = 0
-			torso.BackgroundColor3 = e.fan.Color
-			torso.AnchorPoint = Vector2.new(0.5, 1)
-			torso.Position = UDim2.fromScale((c + 0.5) / cols, 1)
-			torso.Size = UDim2.fromScale(0.52 / cols, 0.6)
-			torso.Parent = sg
-			local dot = Instance.new("Frame")
-			dot.BorderSizePixel = 0
-			dot.BackgroundColor3 = head and head.Color or e.fan.Color
-			dot.AnchorPoint = Vector2.new(0.5, 1)
-			dot.Position = UDim2.fromScale((c + 0.5) / cols, 0.44)
-			dot.Size = UDim2.fromScale(0.4 / cols, 0.44)
-			local round = Instance.new("UICorner")
-			round.CornerRadius = UDim.new(0.5, 0)
-			round.Parent = dot
-			dot.Parent = sg
-			e.printed = true
-			-- back in the seat, then hidden (the printed dot stands in for him)
-			k = homeFan(e, parts, cfs, k)
-			e.live = false
-			e.fan.LocalTransparencyModifier = 1
-			for _, c2 in ipairs(e.kids) do
-				c2.p.LocalTransparencyModifier = 1
-			end
-		end
-		sg.Parent = slab
-		table.insert(S.impostors, slab)
-	end
-	if k > 0 then
-		pcall(function()
-			workspace:BulkMoveTo(parts, cfs, Enum.BulkMoveMode.FireCFrameChanged)
-		end)
+-- a crowd reaction (CrowdFX.React): the wave spreads from the ring outward
+local function crowdReact(event, data)
+	if CrowdFX then
+		pcall(CrowdFX.React, event, data)
 	end
 end
 
@@ -2115,9 +1849,9 @@ function VenueFX.Start(arena, info)
 		end
 		-- the optional pieces: any of them may fail without stopping the rest
 		for _, piece in ipairs({
-			{ "keys", setupKeys }, { "ropes", setupRopes }, { "spots", setupSpots }, { "crowd", setupCrowd }, { "bowl", setupBowl }, { "particles", setupParticles },
+			{ "keys", setupKeys }, { "ropes", setupRopes }, { "spots", setupSpots }, { "crowd", setupCrowd }, { "particles", setupParticles },
 			{ "screens", setupScreens }, { "people", setupPeople }, { "broadcast", setupBroadcast }, { "gym", setupGym },
-			{ "impostors", applyImpostors }, { "detail", setupDetail },
+			{ "detail", setupDetail },
 		}) do
 			step(piece[1], piece[2])
 		end
@@ -2184,6 +1918,7 @@ function VenueFX.Phase(name, data)
 		if data.who == "you" then
 			S.supportBoost = 0.8
 		end
+		crowdReact("entrance", { who = data.who })
 		step("walkout", walkoutFX, corner, true)
 		step("lights", setWalkLights, corner)
 		step("lights", setWash, "walk", corner)
@@ -2239,11 +1974,13 @@ function VenueFX.Phase(name, data)
 			S.snd.music:Pause()
 		end
 		ringBell(1)
+		crowdReact("roundstart", { n = S.round })
 		step("screens", setScreens, "ROUND " .. tostring(S.round), 3)
 		step("gym", setTimer, "ROUND " .. tostring(S.round), nil, "go", rgb(255, 60, 50))
 		S.excite = math.max(S.excite, 0.55)
 	elseif name == "rest" then
 		setPhaseLook("rest")
+		crowdReact("roundend", { n = data.n or S.round })
 		cornerMode(true)
 		step("lights", setWash, "rest")
 		step("screens", setScreens, "END OF ROUND " .. tostring(data.n or S.round), 6)
@@ -2255,6 +1992,7 @@ function VenueFX.Phase(name, data)
 	elseif name == "bell" then
 		ringBell(3)
 		S.excite = math.max(S.excite, 0.6)
+		crowdReact("bell", {})
 	elseif name == "kd" then
 		local target = typeof(data.target) == "Instance" and data.target or (data.who == "you" and S.info.myModel or S.info.oppModel)
 		S.downModel = target
@@ -2265,6 +2003,7 @@ function VenueFX.Phase(name, data)
 			S.supportBoost = 1
 		end
 		flashBurst(70)
+		crowdReact("knockdown", { who = data.who })
 		ribbonFlash(RED, 2.5)
 		ribbonText("KNOCKDOWN!   -   ")
 		step("screens", setScreens, data.severity == "flash" and "FLASH KNOCKDOWN!" or "KNOCKDOWN!", 3)
@@ -2287,11 +2026,13 @@ function VenueFX.Phase(name, data)
 		step("screens", setScreens, tostring(n), 1.2)
 		flashBurst(8)
 		S.excite = math.max(S.excite, 0.85)
+		crowdReact("count", { n = n, who = data.who })
 	elseif name == "getup" then
 		S.spotMode = "ring"
 		S.downModel = nil
 		S.excite = 0.95
 		flashBurst(25)
+		crowdReact("getup", { who = data.who })
 		ribbonText(nil)
 		step("screens", setScreens, "BACK UP!", 2)
 	elseif name == "tier" then
@@ -2312,6 +2053,8 @@ function VenueFX.Phase(name, data)
 		S.walkCorner = nil
 		S.excite = 1
 		S.supportBoost = result == "win" and 1 or 0
+		local method = string.upper(tostring(data.method or ""))
+		crowdReact((method:find("KO") or method:find("KNOCK")) and "ko" or "winner", { result = result })
 		ringBell(5)
 		flashBurst(120)
 		phones(35)
@@ -2367,6 +2110,10 @@ function VenueFX.Hit(data)
 	if heavy then
 		flashBurst(12)
 		kick(0.06, 0, 0.04, 0.12)
+		-- a big punch: the crowd answers for whoever landed it
+		if dmg >= 4 then
+			crowdReact("bigpunch", { who = data.target == S.info.oppModel and "you" or "opp" })
+		end
 		if S.snd.ooh and dmg >= 6 then
 			play(S.snd.ooh, 0.45 + math.min(0.4, dmg * 0.03))
 		end
@@ -2424,6 +2171,7 @@ function VenueFX.Cheer(amount)
 	S.excite = math.max(S.excite, a)
 	if a > 0.8 then
 		flashBurst(math.floor(a * 30))
+		crowdReact("cheer", {})
 	end
 end
 
@@ -2499,6 +2247,9 @@ function VenueFX.Stop()
 	end
 	pcall(restoreLighting)
 	pcall(CharacterLight.SetExtra, {})
+	if CrowdFX then
+		pcall(CrowdFX.Stop)
+	end
 	if WorldLOD then
 		pcall(WorldLOD.Unwatch, S.arena)
 	end
@@ -2540,7 +2291,6 @@ if WorldLOD then
 	WorldLOD.OnChanged(function()
 		if S then
 			step("keys", applyKeyShadows)
-			step("impostors", applyImpostors)
 		end
 	end)
 end

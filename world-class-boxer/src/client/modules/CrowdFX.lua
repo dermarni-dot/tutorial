@@ -470,7 +470,7 @@ local function printSlab(slab, share, seedK)
 			local hk = 0.92 + rng:NextNumber() * 0.16
 			local baseY = standing and 1 or 0.98
 			local f = { x = x, bw = bodyW * wk, bh = bodyH * hk, hw = headW * (female and 0.95 or 1), hh = headH, phase = rng:NextNumber() * 6.28, speed = 4 + rng:NextNumber() * 4,
-				energy = rng:NextNumber() < 0.3 and 0.6 or (rng:NextNumber() < 0.7 and 1 or 1.4), baseY = baseY, fav = rng:NextNumber() < 0.2 and -1 or 0 }
+				energy = rng:NextNumber() < 0.3 and 0.6 or (rng:NextNumber() < 0.7 and 1 or 1.4), baseY = baseY, fav = rng:NextNumber() < 0.2 and -1 or 0, standing = standing, asp = asp }
 			f.body = mk("Frame", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(x, baseY), Size = UDim2.fromScale(f.bw, f.bh), BackgroundColor3 = shirt, ZIndex = 4 }, sg)
 			if standing then
 				-- legs under a stander
