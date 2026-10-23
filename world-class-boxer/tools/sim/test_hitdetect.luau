@@ -111,7 +111,9 @@ for _, p in ipairs(PUNCHES) do
 end
 check("calibration: the unit pair's separation is the old spacing", near(HG.MinSep(U, U), HG.MIN_SEP, 0.01), HG.MinSep(U, U))
 check("calibration: the unit pair's clinch reach is the old spacing", near(HG.ClinchRange(U, U), HG.CLINCH, 0.01), HG.ClinchRange(U, U))
-check("same height: jab outreaches the cross, the hooks, the uppercut", HG.Range(MID, MID, "jab", false) > HG.Range(MID, MID, "cross", false) and HG.Range(MID, MID, "cross", false) > HG.Range(MID, MID, "leadhook", false) and HG.Range(MID, MID, "leadhook", false) > HG.Range(MID, MID, "uppercut", false))
+-- (the animation: the cross's hip turn carries it past the jab's flick; the lead hook and the uppercut are the
+-- short punches; the rear hook comes through like the cross)
+check("same height: the cross outreaches the jab, the jab the lead hook, the lead hook the uppercut", HG.Range(MID, MID, "cross", false) > HG.Range(MID, MID, "jab", false) and HG.Range(MID, MID, "jab", false) > HG.Range(MID, MID, "leadhook", false) and HG.Range(MID, MID, "leadhook", false) > HG.Range(MID, MID, "uppercut", false))
 do
 	local t = HG.Test(U, U, "jab", false, 4.0)
 	check("test: a jab from 4.0 lands on the head, with margin", t.ok and t.zone == "head" and not t.redirected and t.margin > 0.3, t.margin)

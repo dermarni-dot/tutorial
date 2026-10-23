@@ -835,7 +835,8 @@ do
 	local Looks = H.require("Looks")
 	local man = Looks.Defaults(1)
 	local sc = Builder.Scales(man, build(8))
-	check("Athletic 70-inch man: 1 / 1 / 1, head 0.7724, BodyType 0", near(sc.height, 1) and near(sc.width, 1) and near(sc.depth, 1)
+	-- (the height from the unit's rounded neck height and head: 1 to 1e-5)
+	check("Athletic 70-inch man: 1 / 1 / 1, head 0.7724, BodyType 0", near(sc.height, 1, 1e-4) and near(sc.width, 1) and near(sc.depth, 1)
 		and near(sc.head, 0.7724, 1e-4) and sc.bodyType == 0 and sc.proportion == 0,
 		string.format("%.3f %.3f %.3f %.4f", sc.height, sc.width, sc.depth, sc.head))
 	local trained = Builder.Scales(man, build(95))
@@ -873,7 +874,8 @@ do
 	end)())
 	man.body.frame = "Lean"
 	local ls = Builder.Scales(man, build(8))
-	check("Lean frame: narrower, smaller head", ls.width < 0.95 and ls.depth < 0.95 and ls.head < sc.head)
+	check("Lean frame: narrower (half the BodyTypes value), smaller head", near(ls.width, 1 - 0.08 * Builder.FRAME_WIDTH_SHARE) and ls.depth < 1 and ls.head < sc.head,
+		string.format("%.3f %.3f", ls.width, ls.depth))
 	check("the four frames' scales climb Lean < Muscular < Power Build < Heavyweight Build", (function()
 		local last = 0
 		for _, id in ipairs({ "Lean", "Muscular", "Power Build", "Heavyweight Build" }) do

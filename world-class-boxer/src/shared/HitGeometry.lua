@@ -44,18 +44,21 @@ HitGeometry.BASE = 4.3
 HitGeometry.MIN_SEP = 3.25
 HitGeometry.CLINCH = 4.8
 -- the root-to-root distance out to which the unit rig's punch VISIBLY lands on the unit rig (AnimFight's extension,
--- measured by tools/sim/v9_anim.luau's punch clip over a sweep of gaps: the glove's face within a quarter stud of the
--- head / the chest at the peak - jab 5.5, cross 5.6, lead hook 4.85, rear hook 5.35, uppercut 4.7, body jab 5.35 on
--- the Athletic tier-3 rig; the Heavyweight within 0.1, the Lean within 0.2), less a tenth: the server's hit test and
--- the player's eye agree on the boundary (tools/sim/test_hitdetect pins it within 0.25). The overhand (not in the
--- clip) takes the cross's; the body shots the body jab's share of the head's
+-- measured by tools/sim/v9_anim.luau's punch clip over a sweep of gaps on the Athletic tier-3 rig; the Heavyweight
+-- reads within 0.1 of it, the Lean within 0.2): the glove's face within ~0.15 stud of the head / the chest at the
+-- peak frame. Jab 4.75 (the flick has little lean: the glove hangs 0.2 short out to 5.5), cross 5.5 (the hip turn
+-- carries it), lead hook 4.85, rear hook 5.35, uppercut 4.8, body jab 5.2; taken a tenth or two under, so the
+-- server's hit test and the player's eye agree on the boundary within a quarter stud (tools/sim/test_hitdetect
+-- pins it). The overhand (not in the clip) takes the rear hook's; the other body shots the body jab's share of the
+-- head's. The old balanced spacing (BASE x Config.Punches[p].range: cross 4.5, hooks 3.65, uppercut 3.2) called
+-- punches the player saw land "short" by up to a stud and a half
 local TARGET = {
-	jab = { head = 5.5, body = 5.35 },
-	cross = { head = 5.45, body = 5.3 },
-	leadhook = { head = 4.8, body = 4.7 },
-	rearhook = { head = 5.3, body = 5.15 },
-	uppercut = { head = 4.65, body = 4.55 },
-	overhand = { head = 5.3, body = 5.15 },
+	jab = { head = 4.8, body = 5.1 },
+	cross = { head = 5.3, body = 5.15 },
+	leadhook = { head = 4.75, body = 4.65 },
+	rearhook = { head = 5.2, body = 5.05 },
+	uppercut = { head = 4.7, body = 4.6 },
+	overhand = { head = 5.2, body = 5.05 },
 }
 HitGeometry.TARGET = TARGET
 

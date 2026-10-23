@@ -8,7 +8,8 @@
 --   * the AI: a heavyweight wants it closer and hooks inside, a Lean boxes at range with the straights
 --   * balance at equal level (Boxer-Puncher vs Boxer-Puncher, no ring traits): Heavyweight vs Lean about even, the
 --     heavyweight winning more by stoppage and the Lean more on the cards; every frame close to even against Athletic
---   lune run tools/sim/test_frametraits.luau [--quick] [--table]     (--table: the whole frame x frame matrix)
+--   lune run tools/sim/test_frametraits.luau [--quick] [--table] [--only hvy-lean,pow-lean,lean-ath,mus-ath,pow-ath,hvy-ath,mirror]
+--   (--table: the whole frame x frame matrix; --only: just those balance cells, for a loaded machine)
 local process = require("@lune/process")
 local FS = require("./fightsim")
 local S = FS.new()
@@ -17,6 +18,19 @@ local FightAI = S.FightAI
 local Random = S.H.globals.Random
 local QUICK = table.find(process.args, "--quick") ~= nil
 local TABLE = table.find(process.args, "--table") ~= nil
+local ONLY = nil
+do
+	local at = table.find(process.args, "--only")
+	if at and process.args[at + 1] then
+		ONLY = {}
+		for k in process.args[at + 1]:gmatch("[^,]+") do
+			ONLY[k] = true
+		end
+	end
+end
+local function wanted(key)
+	return ONLY == nil or ONLY[key] == true
+end
 
 local pass, fail = 0, 0
 local function check(name, ok, detail)
@@ -353,20 +367,27 @@ local function line(a, b, A, B, stop, secs)
 	print(string.format("%-4s vs %-4s: %s wins %s (KO %d, points %d; %.0f%% on points) - %s KO %d, points %d (%.0f%%); stoppages %s, %.0f s",
 		SHORT[a], SHORT[b], SHORT[a], pct(A.win), A.ko, A.dec, A.decShare * 100, SHORT[b], B.ko, B.dec, B.decShare * 100, pct(stop), secs))
 end
-do
+if wanted("hvy-lean") then
 	local H, L, stop, secs = pooled(N, HVY, LEAN)
 	line(HVY, LEAN, H, L, stop, secs)
 	check("balance: Heavyweight vs Lean at equal skill is close to even (35..65%)", H.win >= 0.35 and H.win <= 0.65, H.win)
 	check("balance: the heavyweight wins more by stoppage than the Lean does", H.ko > L.ko, H.ko .. " / " .. L.ko)
 	check("balance: the Lean's wins come on the cards more often than the heavyweight's", L.decShare >= H.decShare, L.decShare .. " / " .. H.decShare)
+end
+if wanted("pow-lean") then
 	local Pw, L2, stop2, secs2 = pooled(N, POW, LEAN)
 	line(POW, LEAN, Pw, L2, stop2, secs2)
 	check("balance: Power Build vs Lean close to even (30..70%), the Power Build the stopper", Pw.win >= 0.3 and Pw.win <= 0.7 and Pw.ko >= L2.ko, Pw.win)
-	for _, id in ipairs({ LEAN, MUS, POW, HVY }) do
+end
+for _, e in ipairs({ { "lean-ath", LEAN }, { "mus-ath", MUS }, { "pow-ath", POW }, { "hvy-ath", HVY } }) do
+	if wanted(e[1]) then
+		local id = e[2]
 		local X, A, st, sc = pooled(N, id, ATH)
 		line(id, ATH, X, A, st, sc)
 		check("balance: " .. id .. " vs Athletic at equal skill is close to even (30..70%)", X.win >= 0.3 and X.win <= 0.7, X.win)
 	end
+end
+if wanted("mirror") then
 	local hh = run(QUICK and 8 or 20, HVY, HVY)
 	local ll = run(QUICK and 8 or 20, LEAN, LEAN)
 	print(string.format("mirror: Heavyweight vs Heavyweight stoppages %s, Lean vs Lean %s", pct(hh.ko), pct(ll.ko)))
