@@ -178,6 +178,14 @@ MAT_CLASS = {
 }
 
 
+# Roblox adds Lighting.Ambient as a flat fill on every surface the sky cannot see (Future lighting; the
+# venues' profiles set it on fight nights). Cycles only gets it through windows and bounces, so a closed
+# hall rendered far darker than the game shows it: apply_lighting sets this per view (linear RGB, x the
+# surface colour as emission) so the previews follow the real Ambient value.
+AMBIENT_FILL = (0.0, 0.0, 0.0)
+AMBIENT_K = 0.55
+
+
 def make_material(name, kind, alpha=1.0):
     m = bpy.data.materials.new(name)
     m.use_nodes = True
@@ -231,6 +239,15 @@ def make_material(name, kind, alpha=1.0):
     if kind == "neon":
         bsdf.inputs["Emission Strength"].default_value = 4.0
         nt.links.new(attr.outputs["Color"], bsdf.inputs["Emission Color"])
+    elif max(AMBIENT_FILL) > 1e-4 and kind != "glass":
+        amb = nt.nodes.new("ShaderNodeMix")
+        amb.data_type = "RGBA"
+        amb.blend_type = "MULTIPLY"
+        amb.inputs["Factor"].default_value = 1.0
+        nt.links.new(col, amb.inputs[6])
+        amb.inputs[7].default_value = (*AMBIENT_FILL, 1.0)
+        nt.links.new(amb.outputs[2], bsdf.inputs["Emission Color"])
+        bsdf.inputs["Emission Strength"].default_value = AMBIENT_K
     shader = bsdf.outputs["BSDF"]
     if kind == "glass" or alpha < 0.999:
         a = alpha if kind != "glass" else min(alpha, 0.35)
@@ -728,7 +745,9 @@ def exposure_for(view, L, V):
     if V:
         return e + float(V.get("exposure", REF["venueExposure"])) - REF["venueExposure"]
     props = (L or {}).get("props") or {}
-    return e + float(props.get("ExposureCompensation", REF["ExposureCompensation"])) - REF["ExposureCompensation"]
+    # Ambience adds the zone's offset on the base (LightLevels.Zones: the main hall GymWarm +0.15)
+    zone = 0.15 if view.get("mode") == "interior" else 0.0
+    return e + zone + float(props.get("ExposureCompensation", REF["ExposureCompensation"])) - REF["ExposureCompensation"]
 
 
 def grade_for(mode, L, V):
@@ -794,8 +813,16 @@ def setup_grade(sc, grade, bloom):
 
 def apply_lighting(sc, scene, view):
     """the world (sky / sun / fills), the exposure and the compositor grade for a view -> (mode, night)"""
+    global AMBIENT_FILL
     mode = view.get("mode", "day")
     L, V = lighting_for(scene, view)
+    props = (L or {}).get("props") or {}
+    if V:
+        AMBIENT_FILL = tuple(srgb2lin(col01(V.get("ambient", REF["venueAmbient"]))))
+    elif mode == "interior":
+        AMBIENT_FILL = tuple(srgb2lin(col01(props.get("Ambient", REF["Ambient"]))))
+    else:
+        AMBIENT_FILL = (0.0, 0.0, 0.0)
     setup_world(mode, view.get("sun", 3.5), L, V)
     sc.view_settings.exposure = exposure_for(view, L, V)
     g, bloom = grade_for(mode, L, V)
@@ -925,6 +952,9 @@ VIEWS = {
     "venue_t3_wide": {"roots": ["venue_Arena", "VenueDetail_Arena"], "eye": (5500 - 70, 52, 4000 + 84), "target": (5500, 18, 4000), "fov": 55, "mode": "night", "exposure": 1.2},
     # the Arena on a world title night with VenueFX's show rig (world_scene runs VenueFX.Start on it: roots venue_Arena_show + VenueFX_Arena)
     "venue_t3_title": {"roots": ["venue_Arena_show", "VenueDetail_Arena", "VenueFX_Arena"], "eye": (5500 - 30, 14, 4000 + 34), "target": (5500, 5, 4000), "fov": 48, "mode": "night", "exposure": 1.2},
+    # the same arena on a regular card's walkout: red / blue promotion colours, the spots sweeping in their gels
+    "venue_t3_card": {"roots": ["venue_Arena_card", "VenueDetail_Arena", "VenueFX_ArenaCard"], "eye": (5500 - 30, 14, 4000 + 34), "target": (5500, 5, 4000), "fov": 48, "mode": "night", "exposure": 1.2},
+    "venue_t3_card_wide": {"roots": ["venue_Arena_card", "VenueDetail_Arena", "VenueFX_ArenaCard"], "eye": (5500 - 70, 52, 4000 + 84), "target": (5500, 18, 4000), "fov": 55, "mode": "night", "exposure": 1.2},
     "venue_t3_title_wide": {"roots": ["venue_Arena_show", "VenueDetail_Arena", "VenueFX_Arena"], "eye": (5500 - 70, 52, 4000 + 84), "target": (5500, 18, 4000), "fov": 55, "mode": "night", "exposure": 1.2},
     "venue_t4_wide": {"roots": ["venue_Stadium", "VenueDetail_Stadium"], "eye": (4000 - 110, 70, 4500 + 120), "target": (4000, 22, 4500), "fov": 55, "mode": "night", "exposure": 1.2},
     "venue_t2_aisle": {"roots": ["venue_ClubArena", "VenueDetail_ClubArena"], "eye": (5000, 9, 4000 + 60), "target": (5000 + 5, 5, 4000 + 22), "fov": 50, "mode": "night", "exposure": 1.2},

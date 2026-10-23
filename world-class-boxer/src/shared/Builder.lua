@@ -673,8 +673,20 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	app = app or Looks.Defaults(1)
 	hardenHumanoid(model)
 	avatarState(model)
-	-- preview path: rebuild only the requested head folders, in order
+	-- preview path: rebuild only the requested head folders, in order. only.Colors (a colour swatch in the Creator /
+	-- locker room: skin, trunks, gloves, shoes, headgear ...) recolours instead of running the whole Cosmetics: the
+	-- body colours, then the coloured layers (attire, hands; the face and beard for a skin tone), each kept when its
+	-- signature did not move. No tier swap, no hair, no muscles, no damage reset: none of them take a colour
 	if type(opts.only) == "table" then
+		local colors = opts.only.Colors == true
+		local cgear, csp
+		if colors then
+			cgear = Body.Gear(gear)
+			csp = Body.Resolve(app, build, opts, model)
+			step("Colors", Body.Colors, model, app, cgear, opts)
+			faceStep(model, app, build, opts)
+			headStep(model, app, build, opts, "Beard")
+		end
 		for _, name in ipairs({ "Face", "Hair", "Beard" }) do
 			if opts.only[name] then
 				if name == "Face" then
@@ -685,15 +697,19 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 			end
 		end
 		-- a rebuilt face reopens swollen lids and clears the sclera / mouthguard tint: redraw the damage
-		if opts.only.Face and type(opts.damage) == "table" then
+		if (opts.only.Face or colors) and type(opts.damage) == "table" then
 			Builder.SetDamage(model, app, opts.damage)
 		end
 		-- (the headgear follows the head: a head swap or a colour change in the Creator rebuilds it)
-		step("Headgear", headgearLook, model, app, opts, opts.detail)
-		step("Hat", capLook, model, opts, opts.detail)
+		step("Headgear", headgearLook, model, app, opts, colors and csp.detail or opts.detail)
+		step("Hat", capLook, model, opts, colors and csp.detail or opts.detail)
+		if colors then
+			step("Attire", Body.Attire, model, app, opts, cgear, csp, nil)
+			step("Hands", Body.Hands, model, app, cgear, opts, csp)
+		end
 		Builder.SetSweat(model, app, opts.sweat or model:GetAttribute("Sweat") or 0)
-		-- previews (Creator / barber) change the look too: the meshes follow
-		step("LookData", publishLook, model, app, build, opts, nil)
+		-- previews (Creator / barber) change the look too: the meshes follow (a colour preview: the gloves' too)
+		step("LookData", publishLook, model, app, build, opts, csp, colors and cgear or nil)
 		buildRecord(model)
 		return
 	end

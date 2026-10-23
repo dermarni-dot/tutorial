@@ -1746,7 +1746,8 @@ do
 	local function hatWelded(model)
 		local head = model:FindFirstChild("Head")
 		for _, p in ipairs(hatParts(model)) do
-			local w = p:FindFirstChildOfClass("WeldConstraint")
+			-- (Head.SetCap joins each piece with a Weld, weldToHead; a WeldConstraint is accepted too)
+			local w = p:FindFirstChildOfClass("Weld") or p:FindFirstChildOfClass("WeldConstraint")
 			if not (w and w.Part0 == head and w.Part1 == p) then
 				return false, p.Name
 			end

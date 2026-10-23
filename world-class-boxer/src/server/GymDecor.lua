@@ -560,7 +560,8 @@ local function pendant(parent, x, z, y, zone)
 	vcyl(m, "LampCap", 0.6, 1.1, CF(x, y + 0.3, z), Color3.fromRGB(34, 52, 44), M.Metal, { shadow = false })
 	vcyl(m, "LampShade", 0.55, 2.6, CF(x, y - 0.25, z), Color3.fromRGB(34, 52, 44), M.Metal, { shadow = false })
 	vcyl(m, "LampShadeRim", 0.25, 3.6, CF(x, y - 0.5, z), Color3.fromRGB(28, 44, 36), M.Metal, { shadow = false })
-	vcyl(m, "LampReflector", 0.05, 3.3, CF(x, y - 0.27, z), Color3.fromRGB(245, 240, 225), M.SmoothPlastic, { shadow = false })
+	-- (the reflector glows: a warm ring of light inside every shade reads from across the hall, cheap Neon)
+	vcyl(m, "LampReflector", 0.05, 3.3, CF(x, y - 0.27, z), Color3.fromRGB(255, 226, 180), M.Neon, { shadow = false })
 	ball(m, "LampBulb", 0.95, CF(x, y - 0.55, z), zone.color, M.Neon, { shadow = false })
 	local src = emitter(m, CF(x, y - 1.2, z))
 	-- a wide cone so neighbouring pools overlap (no dark bands between lamps 30 studs apart)
@@ -575,6 +576,14 @@ local function buildLights(root)
 			if not (x == 0 and z == -60) then -- the ring has its own canopy
 				pendant(f, x, z, 23.8, zoneLight(x, z))
 			end
+		end
+	end
+	-- the roof wash: the pendants throw their light down, which left the ceiling, the trusses and the top
+	-- of the walls near black. Six wide, soft, shadowless warm lights up under the roof lift the whole
+	-- upper hall (daylight bouncing off the roof deck: no dark corners, the room reads as day)
+	for _, x in ipairs({ -66, 0, 66 }) do
+		for _, z in ipairs({ -45, 35 }) do
+			point(emitter(f, CF(x, 27.5, z)), Color3.fromRGB(255, 232, 198), 60, 0.9)
 		end
 	end
 	-- sparring ring canopy: a square truss with four shadow-casting cans aimed at the canvas
@@ -613,7 +622,8 @@ local function buildLights(root)
 	end
 	-- colour: LED strips round the sparring ring's apron (red on the north / east faces, blue on the
 	-- south / west: the corner colours), each with a small pool of its colour on the floor
-	local ring = root:FindFirstChild("GymRing")
+	-- (root is the gym's Decor folder: the ring is MapBuilder's, a sibling of it)
+	local ring = root:FindFirstChild("GymRing") or (root.Parent and root.Parent:FindFirstChild("GymRing"))
 	local base = ring and ring:FindFirstChild("RingBase")
 	if base then
 		local bc, bs = base.Position, base.Size

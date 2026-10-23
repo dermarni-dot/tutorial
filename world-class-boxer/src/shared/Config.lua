@@ -148,7 +148,7 @@ Config.Styles = {
 		ai = { range = 0.8, aggression = 0.65, jabRate = 0.2 },
 	},
 	{
-		id = "BoxerPuncher", name = "Boxer-Puncher", desc = "Balanced offense and defense",
+		id = "BoxerPuncher", name = "Boxer-Puncher", desc = "Balanced offence and defence",
 		mods = { Power = 3, Blocking = 3, PunchSpeed = 3, RingIQ = 3 },
 		fight = { jab = 1.1, combo = 1.1, inside = 1.0, power = 1.08, counter = 1.1, move = 1.05 },
 		ai = { range = 0.86, aggression = 0.55, jabRate = 0.4 },
@@ -608,19 +608,19 @@ Config.FightAI = {
 	-- its chance to attack each think; stepIn = how far outside its reach it steps in to punch rather than wait
 	-- (studs); openWork = the extra work when the man in front of it is open (idle in range, hands down, on the
 	-- ropes, just missed); floorMin = the fewest punches a minute even the most forgiving bout's AI throws
-	think = { 0.28, 0.15 }, work = 1.0, stepIn = 0.9, openWork = 1.4, floorMin = 6,
+	think = { 0.24, 0.13 }, work = 1.12, stepIn = 1.0, openWork = 1.5, floorMin = 12,
 	-- the difficulty by level (Config.FightAI.Tier(level): the career's tiers, interpolated between the rows).
 	-- react = the perception and motor delays x this; read = how much it leans on its read of him (prediction,
 	-- adaptation, the rhythm counter); work = its punch rate x this; floor = the fewest punches a minute it throws
 	-- while it can reach him (the work-rate floor: a debut opponent is easier, never passive); mistake = its wrong
 	-- defences x this
 	tiers = {
-		{ level = 0, name = "Debut", react = 1.2, read = 0.6, work = 0.95, floor = 14, mistake = 1.2 },
-		{ level = 30, name = "Prospect", react = 1.05, read = 0.8, work = 1.0, floor = 18, mistake = 1.0 },
-		{ level = 50, name = "Regional", react = 0.95, read = 1.0, work = 1.08, floor = 24, mistake = 0.8 },
-		{ level = 70, name = "National", react = 0.85, read = 1.2, work = 1.16, floor = 30, mistake = 0.5 },
-		{ level = 85, name = "World", react = 0.75, read = 1.35, work = 1.25, floor = 36, mistake = 0.25 },
-		{ level = 99, name = "Elite", react = 0.7, read = 1.5, work = 1.3, floor = 40, mistake = 0.1 },
+		{ level = 0, name = "Debut", react = 1.15, read = 0.7, work = 1.0, floor = 26, mistake = 1.1 },
+		{ level = 30, name = "Prospect", react = 1.0, read = 0.9, work = 1.08, floor = 30, mistake = 0.9 },
+		{ level = 50, name = "Regional", react = 0.9, read = 1.1, work = 1.16, floor = 36, mistake = 0.7 },
+		{ level = 70, name = "National", react = 0.8, read = 1.3, work = 1.25, floor = 42, mistake = 0.45 },
+		{ level = 85, name = "World", react = 0.72, read = 1.45, work = 1.33, floor = 48, mistake = 0.2 },
+		{ level = 99, name = "Elite", react = 0.66, read = 1.6, work = 1.4, floor = 52, mistake = 0.08 },
 	},
 }
 -- the AI difficulty at an overall level: the row's numbers, interpolated between the tiers
@@ -735,7 +735,7 @@ Config.Activities = {
 		energy = 30, hydration = 12, nutrition = 8, fatigue = 24, fat = -0.1,
 		gains = { RingIQ = 0.8, Countering = 0.6, Blocking = 0.6, HeadMovement = 0.5, Chin = 0.4 },
 		muscle = { neck = 0.4, shoulders = 0.2 }, wear = { gloves = 1.2, wraps = 0.8, shoes = 0.4 },
-		injuries = { "ribs", "cut" }, desc = "Live rounds: experience, timing, defense, Ring IQ" },
+		injuries = { "ribs", "cut" }, desc = "Live rounds: experience, timing, defence, Ring IQ" },
 	{ id = "Bench", name = "Weight Bench", area = "Weight Room", station = "bench", minigame = "bench", pose = "bench",
 		energy = 22, hydration = 5, nutrition = 8, fatigue = 15, fat = -0.04,
 		gains = { Power = 0.8, Chin = 0.2 }, muscle = { chest = 1.3, shoulders = 0.5, arms = 0.4 },

@@ -123,21 +123,24 @@ do
 	end)
 	HitGeometry = ok and type(mod) == "table" and mod or nil
 end
-local UNIT_FRAME = { shoulderHalf = 0.955, torsoHalfD = 0.485, torsoHalfW = 0.795, arm = 2.578, glove = 0.32, hScale = 1 }
+local UNIT_FRAME = { shoulderHalf = 0.955, torsoHalfD = 0.485, torsoHalfW = 0.795, arm = 2.578, glove = 0.32, hScale = 1, stand = 5.2 }
+-- read NOW off the live parts (HitGeometry.Frame: the tier MeshParts swapped in since the fight's frame was taken,
+-- a frame's real 1.5-stud heavyweight shoulders against the 1.04 its scales give), else the fight's frame (Geo), else
+-- the unit frame
 local function frameOf(fight, F, model)
+	if HitGeometry and model and model.Parent then
+		local root = partOf(model, "HumanoidRootPart")
+		local hum = model:FindFirstChildOfClass("Humanoid")
+		local soleY = root and (root.Position.Y - standHeight(hum, root)) or nil
+		local ok, fr = pcall(HitGeometry.Frame, model, soleY, nil)
+		if ok and type(fr) == "table" and type(fr.shoulderHalf) == "number" and fr.shoulderHalf > 0.3 and not fr.fallback then
+			return fr
+		end
+	end
 	if F and fight and fight.Geo then
 		local ok, g = pcall(fight.Geo, fight, F)
 		if ok and type(g) == "table" and g.shoulderHalf then
 			return g
-		end
-	end
-	if HitGeometry and model then
-		local root = partOf(model, "HumanoidRootPart")
-		local hum = model:FindFirstChildOfClass("Humanoid")
-		local soleY = root and (root.Position.Y - standHeight(hum, root)) or nil
-		local ok, fr = pcall(HitGeometry.Frame, model, soleY, HitGeometry.Unit())
-		if ok and type(fr) == "table" then
-			return fr
 		end
 	end
 	return UNIT_FRAME
@@ -151,25 +154,82 @@ end
 --     the side: the raised arms (the referee's up at 2.6 rad, the winner's inside arm at 2.72 rad, both past
 --     vertical and away from the other body) and the referee's held-out hands never cross into a body, and a
 --     Heavyweight Build (1.17 x the unit shoulder) stands his own width further out than a Lean man
---   * one man down: the standing man and the referee share the centre, the same spacing between them
+--   * one man down: the standing man and the referee share the centre, the same spacing between them - and the
+--     pair moved off the fallen man (opts.downAt, his root where he lies): every standing spot at least
+--     DOWN_REACH x his standing height (he lies along it, the root at the pelvis) + DOWN_GAP + that body's own
+--     shoulder half from his root, the group stepped away from him until it is
+--   * opts.clamp (the ring: Fight.ClampToRing): the group stepped back in until no spot is outside the ropes
+-- (redDown / blueDown may also come in frames, as the sim's test passes them)
 PostFight.SIDE_GAP, PostFight.SIDE_BACK, PostFight.SIDE_FWD = 0.9, 0.45, 0.1
-function PostFight.Layout(center, face, frames, redDown, blueDown)
+PostFight.DOWN_REACH, PostFight.DOWN_GAP = 0.55, 0.5
+function PostFight.Layout(center, face, frames, redDown, blueDown, opts)
 	frames = frames or {}
+	opts = opts or {}
+	if redDown == nil then
+		redDown = frames.redDown == true
+	end
+	if blueDown == nil then
+		blueDown = frames.blueDown == true
+	end
 	local red, blue, ref = frames.red or UNIT_FRAME, frames.blue or UNIT_FRAME, frames.ref or UNIT_FRAME
 	local right = face:Cross(Vector3.yAxis)
 	local sideRed = red.shoulderHalf + ref.shoulderHalf + PostFight.SIDE_GAP
 	local sideBlue = blue.shoulderHalf + ref.shoulderHalf + PostFight.SIDE_GAP
-	local refAt = center - face * PostFight.SIDE_BACK
-	local redAt = center - right * sideRed + face * PostFight.SIDE_FWD
-	local blueAt = center + right * sideBlue + face * PostFight.SIDE_FWD
-	if redDown and not blueDown then
-		blueAt = center + right * (sideBlue / 2) + face * PostFight.SIDE_FWD
-		refAt = center - right * (sideBlue / 2) - face * PostFight.SIDE_BACK
-	elseif blueDown and not redDown then
-		redAt = center - right * (sideRed / 2) + face * PostFight.SIDE_FWD
-		refAt = center + right * (sideRed / 2) - face * PostFight.SIDE_BACK
+	local function place(c)
+		local refAt = c - face * PostFight.SIDE_BACK
+		local redAt = c - right * sideRed + face * PostFight.SIDE_FWD
+		local blueAt = c + right * sideBlue + face * PostFight.SIDE_FWD
+		if redDown and not blueDown then
+			blueAt = c + right * (sideBlue / 2) + face * PostFight.SIDE_FWD
+			refAt = c - right * (sideBlue / 2) - face * PostFight.SIDE_BACK
+		elseif blueDown and not redDown then
+			redAt = c - right * (sideRed / 2) + face * PostFight.SIDE_FWD
+			refAt = c + right * (sideRed / 2) - face * PostFight.SIDE_BACK
+		end
+		return redAt, blueAt, refAt
 	end
-	return { red = redAt, blue = blueAt, ref = refAt, sideRed = sideRed, sideBlue = sideBlue }
+	local c = center
+	local downAt = opts.downAt
+	local fallen = redDown and red or blue
+	local downR = downAt and (redDown ~= blueDown) and ((fallen.stand or UNIT_FRAME.stand) * PostFight.DOWN_REACH + PostFight.DOWN_GAP) or nil
+	local redAt, blueAt, refAt = place(c)
+	for _ = 1, 8 do
+		local move = Vector3.zero
+		if downR then
+			local need, dir = 0, nil
+			for _, X in ipairs({ { redAt, red, redDown }, { blueAt, blue, blueDown }, { refAt, ref, false } }) do
+				if not X[3] then
+					local d = flat(X[1] - downAt)
+					local short = downR + X[2].shoulderHalf - d.Magnitude
+					if short > need then
+						need = short
+						dir = d.Magnitude > 0.05 and d.Unit or (flat(c - downAt).Magnitude > 0.05 and flat(c - downAt).Unit or right * (redDown and 1 or -1))
+					end
+				end
+			end
+			if dir then
+				move = dir * (need + 0.05)
+			end
+		end
+		if opts.clamp then
+			-- (the ropes win over the fallen man's room: the group never stands outside the ring)
+			for _, X in ipairs({ { redAt, redDown }, { blueAt, blueDown }, { refAt, false } }) do
+				if not X[2] then
+					local p = X[1] + move
+					local d = flat(opts.clamp(p) - p)
+					if d.Magnitude > 0.01 then
+						move += d
+					end
+				end
+			end
+		end
+		if move.Magnitude < 0.01 then
+			break
+		end
+		c += move
+		redAt, blueAt, refAt = place(c)
+	end
+	return { red = redAt, blue = blueAt, ref = refAt, sideRed = sideRed, sideBlue = sideBlue, center = c }
 end
 
 -- the crowd's table: who won, how, the names, the bout
@@ -216,7 +276,13 @@ function PostFight.Run(fight, res, opts)
 	-- places: red at the referee's left, blue at his right (a man still down stays down), spaced from the rigs
 	local redDown, blueDown = P.state == "down", O.state == "down"
 	local refModel = fight.ref and fight.ref.model
-	local L = PostFight.Layout(center, face, { red = frameOf(fight, P, P.model), blue = frameOf(fight, O, O.model), ref = frameOf(nil, nil, refModel) }, redDown, blueDown)
+	local downF = (redDown and not blueDown and P) or (blueDown and not redDown and O) or nil
+	local L = PostFight.Layout(center, face, { red = frameOf(fight, P, P.model), blue = frameOf(fight, O, O.model), ref = frameOf(nil, nil, refModel) }, redDown, blueDown, {
+		downAt = downF and downF.root and downF.root.Position or nil,
+		clamp = fight.ClampToRing and function(p)
+			return fight:ClampToRing(p)
+		end or nil,
+	})
 	local redAt, blueAt, refAt = L.red, L.blue, L.ref
 	local held = {} -- the roots anchored for the scene
 	local tagged = {}
@@ -225,6 +291,7 @@ function PostFight.Run(fight, res, opts)
 		if F.model and F.model.Parent and not down then
 			-- (a walk in progress - a glide, the AI's last MoveTo - is cancelled: the placement wins)
 			F.glideId = (F.glideId or 0) + 1
+			F.lungeUntil = 0
 			F.aiTarget = nil
 			if F.hum then
 				pcall(function()

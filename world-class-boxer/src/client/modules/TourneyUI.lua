@@ -168,7 +168,7 @@ local function matchBox(parent, m, w, rowH, props)
 		UI.Corner(seed, 4)
 		UI.Text(seed, x and x.seed and tostring(x.seed) or "-", { Face = "number", TextSize = 12, TextColor3 = T.sub, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None,
 			TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
-		local name = x and (x.you and ("YOU · " .. tostring(x.name)) or tostring(x.name)) or "TBD"
+		local name = x and (x.you and ("You · " .. (tostring(x.name):match("(%S+)$") or tostring(x.name))) or tostring(x.name)) or "To be decided"
 		UI.Text(row, name, { Name = "Name", Face = "heading", TextSize = 13, TextColor3 = won and T.gold or (lost and T.dim or (x and x.you and T.text or T.text)),
 			Position = UDim2.fromOffset(34, 0), Size = UDim2.new(1, -82, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		UI.Text(row, x and tostring(x.overall or "") or "", { Name = "Ovr", Face = "number", TextSize = 15, TextColor3 = T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 0),
@@ -189,30 +189,63 @@ function TourneyUI.Bracket(parent, run, order)
 	local rowH = 28
 	local boxH = rowH * 2 + 2
 	if wide then
-		local gap = 18
-		local colW = math.floor((W - 2 * gap) / 3)
+		-- the bracket graphic: three columns of square match boxes joined by elbow rules (out of each pair, a
+		-- vertical join, into the match they feed), and a fourth, narrow column for the champion and the belt
+		local gap = 24
+		local champW = math.clamp(math.floor(W * 0.16), 120, 170)
+		local colW = math.floor((W - 3 * gap - champW) / 3)
 		local top = 24
 		local slot = boxH + 12
 		local totalH = top + 4 * slot
 		local grid = UI.Frame(holder, { Name = "Columns", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, totalH) })
+		local function rule(name, x, y, w, h, gold)
+			UI.Frame(grid, { Name = name, BackgroundColor3 = gold and T.gold or T.line, BorderSizePixel = 0, Position = UDim2.fromOffset(math.floor(x), math.floor(y)), Size = UDim2.fromOffset(math.max(1, math.floor(w)), math.max(1, math.floor(h))) })
+		end
+		local finalY
 		for r = 1, 3 do
 			local x = (r - 1) * (colW + gap)
 			UI.Text(grid, string.upper(Tournaments.ROUND_NAMES[r]) .. (r < 3 and "S" or ""), { Name = "RoundHead" .. r, Font = T.semi, TextSize = 12, TextColor3 = r == run.round and T.gold or T.sub,
 				Position = UDim2.fromOffset(x, 0), Size = UDim2.fromOffset(colW, 18), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 			local matches = run.rounds[r] or {}
 			local n = #matches
+			local centres = {}
 			for k, m in ipairs(matches) do
 				-- each match centred on the two it comes from
 				local span = 4 / math.max(1, n)
 				local cy = top + ((k - 1) * span + span / 2) * slot - slot / 2 + 6
 				matchBox(grid, m, colW, rowH, { Name = "Match" .. r .. "_" .. k, Position = UDim2.fromOffset(x, math.floor(cy)) })
-				if r < 3 then
-					-- the connector to the next round
-					UI.Frame(grid, { Name = "Link", BackgroundColor3 = T.line, Position = UDim2.fromOffset(x + colW, math.floor(cy + boxH / 2)),
-						Size = UDim2.fromOffset(gap, 1) })
+				centres[k] = { y = cy + boxH / 2, you = (m.a and m.a.you) or (m.b and m.b.you) }
+			end
+			local xa = x + colW
+			if r < 3 then
+				for k = 1, n - 1, 2 do
+					local a, b2 = centres[k], centres[k + 1]
+					if a and b2 then
+						local mid = (a.y + b2.y) / 2
+						rule("LinkA", xa, a.y, gap / 2, 1, a.you)
+						rule("LinkB", xa, b2.y, gap / 2, 1, b2.you)
+						rule("Join", xa + gap / 2, a.y, 1, b2.y - a.y + 1, false)
+						rule("Into", xa + gap / 2, mid, gap / 2, 1, a.you or b2.you)
+					end
 				end
+			elseif centres[1] then
+				finalY = centres[1].y
+				rule("ToChampion", xa, finalY, gap, 1, centres[1].you)
 			end
 		end
+		-- the champion column: the belt the final is fought for, the winner's name under it once it is decided
+		local cx = 3 * (colW + gap)
+		UI.Text(grid, "CHAMPION", { Name = "ChampionHead", Font = T.semi, TextSize = 12, TextColor3 = T.gold, Position = UDim2.fromOffset(cx, 0), Size = UDim2.fromOffset(champW, 18),
+			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		local cy = (finalY or (top + 2 * slot)) - 44
+		local belt = UI.Frame(grid, { Name = "Champion", BackgroundColor3 = T.panel, Position = UDim2.fromOffset(cx, math.floor(cy)), Size = UDim2.fromOffset(champW, 88) })
+		UI.Stroke(belt, T.gold, 1, 0.3)
+		pcall(TourneyUI.BeltIcon, belt, run.id, math.min(champW - 24, 120), { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10) })
+		local fin = (run.rounds[3] or {})[1]
+		local champ = fin and fin.win and ((fin.a and fin.a.id == fin.win) and fin.a or fin.b) or nil
+		UI.Text(belt, champ and (champ.you and "You" or tostring(champ.name)) or "To be decided", { Name = "ChampionName", Face = "heading", TextSize = 13, TextColor3 = champ and T.gold or T.sub,
+			AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 8, 1, -8), Size = UDim2.new(1, -16, 0, 18), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center,
+			TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	else
 		UI.List(holder, 6)
 		for r = 1, 3 do
@@ -336,11 +369,11 @@ function TourneyUI.Tab(body, P, ctx)
 		if not narrow then
 			UI.Line(c, e.blurb or "", { TextSize = 13, TextColor3 = T.sub })
 		end
-		UI.Line(c, "ENTRY: " .. tostring((not e.eligible and e.why) or e.rule or ""), { Name = "Rule", TextSize = 13, Font = T.semi, TextColor3 = e.eligible and T.text or T.red })
+		UI.Line(c, "Entry: " .. tostring((not e.eligible and e.why) or e.rule or ""), { Name = "Rule", TextSize = 13, Font = T.semi, TextColor3 = e.eligible and T.text or T.red })
 		local pr = e.prize or {}
-		UI.Line(c, string.format("PRIZES: winner %s  ·  runner-up %s  ·  semi-final %s", money(pr[4] or 0), money(pr[3] or 0), money(pr[2] or 0)), { Name = "Prizes", TextSize = 13, TextColor3 = T.green })
+		UI.Line(c, string.format("Prizes: winner %s  ·  runner-up %s  ·  semi-final %s", money(pr[4] or 0), money(pr[3] or 0), money(pr[2] or 0)), { Name = "Prizes", TextSize = 13, TextColor3 = T.green })
 		if e.holder then
-			UI.Line(c, string.format("HOLDER: %s%s", e.holder.you and "YOU" or tostring(e.holder.name), e.won > 0 and string.format("  ·  you've won it %d time%s", e.won, e.won == 1 and "" or "s") or ""),
+			UI.Line(c, string.format("Holder: %s%s", e.holder.you and "you" or tostring(e.holder.name), e.won > 0 and string.format("  ·  you've won it %d time%s", e.won, e.won == 1 and "" or "s") or ""),
 				{ Name = "Holder", TextSize = 13, TextColor3 = e.holder.you and T.gold or T.sub })
 		end
 		if e.open and e.eligible and not V.run and not P.camp then

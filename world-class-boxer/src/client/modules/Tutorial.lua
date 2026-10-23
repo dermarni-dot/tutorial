@@ -548,7 +548,7 @@ function Tutorial.Ended(msg)
 		UI.Text(body, string.format("Punches landed: %d of %d  ·  Knockdowns: %d", tonumber(res.landed) or 0, tonumber(res.thrown) or 0, tonumber(res.kdFor) or 0),
 			{ TextSize = 14, TextColor3 = T.sub, LayoutOrder = 3 })
 	end
-	UI.Text(body, "Every move, key and button is in Moves & Controls (the main menu's CONTROLS).", { TextSize = 14, TextColor3 = T.sub, LayoutOrder = 4 })
+	UI.Text(body, "Every move, key and button is in Moves & Controls (Controls on the main menu).", { TextSize = 14, TextColor3 = T.sub, LayoutOrder = 4 })
 	local bh = math.max(44, UI.MinHit(win))
 	local go = UI.Button(win, created and "BACK TO THE MENU" or "CREATE YOUR BOXER", { Name = "Continue", Size = UDim2.new(0, 280, 0, bh), AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -10), BackgroundColor3 = T.gold, TextColor3 = T.ink }, function()
@@ -585,7 +585,7 @@ function Tutorial.SkipDebut()
 	closeWindow("DebutOffer")
 	busy = false
 	task.spawn(State.req, "SkipDebut")
-	State.toast("No guide, then. Book your first fight at the FIGHT BOARD (or press H) when you're ready.", T.gold, 6)
+	State.toast("No guide, then. Book your first fight at the Fight Board (or press H) when you're ready.", T.gold, 6)
 end
 
 -- the card a new boxer meets right after the creator (info = the summary's debut table)

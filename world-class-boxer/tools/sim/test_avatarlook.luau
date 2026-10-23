@@ -206,9 +206,10 @@ do
 	check("Description: the body (scales, colours) untouched", same)
 	check("Description: no body parts / clothes copied", d.Torso == nil and d.LeftArm == nil and d.Shirt == nil and d.Pants == nil and d.HatAccessory == nil)
 	local k0 = Builder.ScaleKey(app, build(40), {})
-	check("ScaleKey: game look = the old key", k0:sub(-3) == "|p3" and not k0:find("A", 1, true), k0)
+	-- p4: the frame-normalised height (v13 Builder.Scales); a rig scaled under p3 re-applies once
+	check("ScaleKey: game look = the plain key (p4, no avatar part)", k0:sub(-3) == "|p4" and not k0:find("A", 1, true), k0)
 	local k1 = Builder.ScaleKey(app, build(40), { avatar = AV })
-	check("ScaleKey: the avatar changes it", k1 ~= k0 and k1:sub(-2) == "p3", k1)
+	check("ScaleKey: the avatar changes it", k1 ~= k0 and k1:sub(-2) == "p4", k1)
 	check("ScaleKey: the same avatar, the same key (no re-apply per Cosmetics)", Builder.ScaleKey(app, build(90), { avatar = table.clone(AV) }) == k1)
 	check("ScaleKey: new hair -> new key", Builder.ScaleKey(app, build(40), { avatar = AVF }) ~= k1)
 end

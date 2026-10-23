@@ -241,8 +241,9 @@ function MenuDetail.Apply(st, level)
 end
 
 -- the bag pieces follow their bag (after MenuStage.Step has swung it)
+local EMPTY = table.freeze({})
 function MenuDetail.Step(st)
-	for _, bg in ipairs(st.bags or {}) do
+	for _, bg in ipairs(st.bags or EMPTY) do
 		local ex = bg.extra
 		if ex and #ex > 0 and bg.bag and bg.bag.Parent then
 			-- the bag's top (MenuStage: bag = bagTop * CF(0, -2.9, 0) * A(0, 0, pi / 2))

@@ -52,6 +52,10 @@ local function topShift(base)
 	return math.max(0, topPad - base)
 end
 local intro = true -- the logo / menu entrance plays once per open (not on a rebuild)
+-- the home layer is built once per open and only hidden under the other screens: back home it is shown as it was,
+-- rebuilt only when something it shows changed meanwhile (a profile push, a resize, a setting)
+local homeDirty = false
+local homeBuilds = 0 -- (tests) how many times the home layer was built
 
 local function track(c)
 	table.insert(conns, c)
@@ -126,6 +130,7 @@ local function unwatchBoxer()
 end
 
 local stageBoxer, watchBoxerSafe
+local parkedStage -- the set of the last visit (MenuStage.Park), reused by the next sceneStart
 -- one pending re-stage per scene: every call moves its time out (the latest character wins), and one thread waits for
 -- it. A server rebuild of the look adds hundreds of descendants in a burst, each a call here: a delayed thread per
 -- call (the old way) was hundreds of timers and closures per rebuild for one re-stage
@@ -146,7 +151,7 @@ local function restageSoon(char, delay)
 		end
 		s.stagePending = false
 		if scene == s and isOpen and player.Character == s.stageChar then
-			stageBoxer()
+			stageBoxer(false)
 		end
 	end)
 end
@@ -190,7 +195,9 @@ local function watchBoxer(char)
 	scene.charConns = conns
 end
 
-function stageBoxer()
+-- reuse: the menu opening again keeps the parked set's copy when the character has not changed since (a re-stage
+-- after a change always copies it again)
+function stageBoxer(reuse)
 	if not scene or not scene.stage then
 		return
 	end
@@ -205,7 +212,7 @@ function stageBoxer()
 		end
 	end
 	watchBoxerSafe(char)
-	local clone, why = MenuStage.Place(scene.stage, char)
+	local clone, why = MenuStage.Place(scene.stage, char, { reuse = reuse == true })
 	scene.guard = nil
 	if clone then
 		scene.stageFails = 0
@@ -255,8 +262,16 @@ local function sceneStart()
 	scene.fx.grade = light(cam, "ColorCorrectionEffect", { Name = "MenuGrade", Contrast = 0.14, Saturation = -0.06, Brightness = -0.02, TintColor = Color3.fromRGB(255, 244, 232) })
 	scene.fx.bloom = light(cam, "BloomEffect", { Name = "MenuBloom", Intensity = 0.55, Size = 28, Threshold = 1.4 })
 	scene.fx.blur = light(cam, "BlurEffect", { Name = "MenuBlur", Size = 0 })
-	scene.stage = MenuStage.Build(Perf.Name()) -- the resolved level ("Low" leaves out the dust)
-	stageBoxer()
+	-- the set of the last visit when there is one (parked by sceneStop: built once per session, it follows the
+	-- Graphics level while parked), else a new one at the resolved level ("Low" leaves out the dust)
+	local parked = parkedStage
+	parkedStage = nil
+	if parked and MenuStage.Unpark(parked) then
+		scene.stage = parked
+	else
+		scene.stage = MenuStage.Build(Perf.Name())
+	end
+	stageBoxer(true)
 	-- the first frame sits on the shot (no swoop down from the gym)
 	local cf, fov = MenuStage.Shot(scene.stage, view, 0, Settings.Get("shake") or 1)
 	cam.CFrame = cf
@@ -309,7 +324,14 @@ local function sceneStop()
 		end
 		s.charConns = nil
 	end
-	MenuStage.Destroy(s.stage)
+	-- kept for the next open (the set and the boxer's copy), out of the world
+	if s.stage then
+		if parkedStage and parkedStage ~= s.stage then
+			MenuStage.Destroy(parkedStage)
+		end
+		MenuStage.Park(s.stage)
+		parkedStage = s.stage
+	end
 	local cam = workspace.CurrentCamera
 	if cam then
 		cam.CameraType = Enum.CameraType.Custom
@@ -403,20 +425,21 @@ local function buildLogo(layer)
 	local logoY = small and 60 or 74
 	local logo = UI.Frame(layer, { Name = "Logo", BackgroundTransparency = 1,
 		Position = UDim2.fromOffset(small and 52 or 84, logoY + topShift(logoY)),
-		Size = UDim2.fromOffset(620, small and 122 or 250) })
-	local emblem = UI.Brand(logo, small and 62 or 98, { Position = UDim2.fromOffset(0, small and 10 or 48) })
-	local x = small and 78 or 120
-	UI.Kicker(logo, "THE ROAD TO UNDISPUTED", T.gold, { Name = "Kicker", Visible = not small,
-		Position = UDim2.fromOffset(x, 10), Size = UDim2.fromOffset(440, 20) })
-	UI.Title(logo, "WORLD CLASS", { Name = "World", TextSize = small and 27 or 48,
-		Position = UDim2.fromOffset(x, small and 0 or 36), Size = UDim2.fromOffset(460, small and 34 or 58) })
-	local title = UI.Title(logo, "BOXER", { Name = "Boxer", TextSize = small and 66 or 112, TextColor3 = T.gold,
-		Position = UDim2.fromOffset(x - 3, small and 24 or 80), Size = UDim2.fromOffset(470, small and 78 or 126) })
-	UI.Gradient(title, { Color3.fromRGB(255, 237, 184), T.gold, T.goldDeep }, 90)
-	local y = small and 104 or 216
-	UI.Frame(logo, { Name = "Bar", BackgroundColor3 = T.red, Position = UDim2.fromOffset(0, y), Size = UDim2.fromOffset(small and 62 or 98, 3) })
-	UI.Text(logo, small and "BUILD YOUR LEGACY" or "TRAIN. FIGHT. BECOME UNDISPUTED.", { Name = "Tagline", TextSize = small and 12 or 14,
-		TextColor3 = T.sub, Position = UDim2.fromOffset(x, y - 6), Size = UDim2.fromOffset(420, 22),
+		Size = UDim2.fromOffset(620, small and 122 or 190) })
+	-- the lockup: the WCB emblem, the name in two weights (white, then the pack's gold), a 1 px red rule and
+	-- one plain line under it; flat colour, no gradients
+	local emblem = UI.Brand(logo, small and 62 or 84, { Position = UDim2.fromOffset(0, small and 10 or 22) })
+	local x = small and 78 or 104
+	UI.Kicker(logo, "The road to undisputed", T.gold, { Name = "Kicker", Visible = not small,
+		Position = UDim2.fromOffset(x, 0), Size = UDim2.fromOffset(440, 20) })
+	UI.Title(logo, "World Class", { Name = "World", TextSize = small and 27 or 34,
+		Position = UDim2.fromOffset(x, small and 0 or 22), Size = UDim2.fromOffset(460, small and 34 or 42) })
+	UI.Title(logo, "Boxer", { Name = "Boxer", TextSize = small and 60 or 76, TextColor3 = T.gold,
+		Position = UDim2.fromOffset(x - 2, small and 26 or 56), Size = UDim2.fromOffset(470, small and 70 or 86) })
+	local y = small and 104 or 158
+	UI.Frame(logo, { Name = "Bar", BackgroundColor3 = T.red, Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(small and 140 or 220, 1) })
+	UI.Text(logo, small and "Build your legacy" or "Train, fight and become undisputed.", { Name = "Tagline", TextSize = small and 12 or 14,
+		TextColor3 = T.sub, Position = UDim2.fromOffset(x, y + 6), Size = UDim2.fromOffset(420, 20),
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	if intro then
 		local pop = UI.New("UIScale", { Scale = 0.92, Parent = emblem })
@@ -431,15 +454,15 @@ end
 local MENU_ICONS = { continue = "play", new = "star", career = "glove", character = "people",
 	gym = "dumbbell", rankings = "trophy", store = "bag", controls = "menu", settings = "gear" }
 local ITEMS = {
-	{ id = "continue", label = "CONTINUE", desc = "Back to the gym floor", need = "created" },
-	{ id = "new", label = "NEW CAREER", desc = "Create your boxer and start as an amateur", only = "new" },
-	{ id = "career", label = "CAREER", desc = "Fighter card, record, belts and rankings", need = "created" },
-	{ id = "character", label = "CHARACTER", desc = "Barber, locker room, physique and stats", need = "created" },
-	{ id = "gym", label = "GYM", desc = "Walk into the gym and train", need = "created" },
-	{ id = "rankings", label = "RANKINGS", desc = "World rankings by division and sanctioning body", need = "created" },
-	{ id = "store", label = "STORE", desc = "Gear, homes, cars and upgrades", need = "created" },
-	{ id = "controls", label = "CONTROLS", desc = "Every move with its keys and buttons, remapping, console options" },
-	{ id = "settings", label = "SETTINGS", desc = "Display, effects, audio, graphics and controls" },
+	{ id = "continue", label = "Continue", desc = "Back to the gym floor", need = "created" },
+	{ id = "new", label = "New Career", desc = "Create your boxer and start as an amateur", only = "new" },
+	{ id = "career", label = "Career", desc = "Fighter card, record, belts and rankings", need = "created" },
+	{ id = "character", label = "Character", desc = "Barber, locker room, physique and stats", need = "created" },
+	{ id = "gym", label = "Gym", desc = "Walk into the gym and train", need = "created" },
+	{ id = "rankings", label = "Rankings", desc = "World rankings by division and sanctioning body", need = "created" },
+	{ id = "store", label = "Store", desc = "Gear, homes, cars and upgrades", need = "created" },
+	{ id = "controls", label = "Controls", desc = "Every move with its keys and buttons, remapping and console options" },
+	{ id = "settings", label = "Settings", desc = "Display, effects, audio, graphics and controls" },
 }
 
 -- the Moves & Controls window over the menu: the menu's own pad navigation steps aside while it is open
@@ -464,7 +487,7 @@ local openScout -- forward
 local MENU_TOP_SMALL = 192 -- design y of the item list on a compact canvas (under the logo and tagline)
 local function menuTop()
 	local small = compact()
-	return (small and MENU_TOP_SMALL or 372) + topShift(small and 60 or 74)
+	return (small and MENU_TOP_SMALL or 300) + topShift(small and 60 or 74)
 end
 -- a phone held in landscape has no room for eight fingertip-tall rows under the logo: on a short touch
 -- canvas the items go in two columns of rows a fingertip tall (UI.MinHit), and the profile card beside them
@@ -484,7 +507,7 @@ end
 -- row height, gap, title size, rows per column
 local function itemMetrics()
 	local small = compact()
-	local h, pad = small and 36 or 54, small and 2 or 4
+	local h, pad = small and 36 or 44, small and 2 or 6
 	if twoColumns() and #items > 0 then
 		local perCol = math.ceil(#items / 2)
 		local avail = canvasH - menuTop() - 8
@@ -492,7 +515,7 @@ local function itemMetrics()
 		if perCol * (h + pad) > avail then
 			h = math.max(28, math.floor(avail / perCol) - pad)
 		end
-		return h, pad, 24, perCol
+		return h, pad, 18, perCol
 	end
 	if small and #items > 0 then
 		-- the shortest phones (667 x 375: a 481 design px canvas) fit every row above the bottom edge: the
@@ -502,7 +525,7 @@ local function itemMetrics()
 			h = math.max(28, math.floor(avail / #items) - pad)
 		end
 	end
-	return h, pad, small and 24 or 36, math.max(1, #items)
+	return h, pad, small and 18 or 20, math.max(1, #items)
 end
 -- an item's place in the menu (design px): column-major, so W / S still walk the list in order
 local function itemPos(i)
@@ -521,9 +544,12 @@ local function selectItem(i, instant)
 		local on = j == sel
 		local it = items[j]
 		local locked = it.locked
-		UI.Tween(fr.title, { TextTransparency = on and 0 or (locked and 0.52 or 0.16), Position = UDim2.fromOffset(on and 62 or 48, 0) }, instant and 0 or UI.Motion.base)
-		fr.button.BackgroundTransparency = on and 0.10 or 0.45
-		fr.title.TextColor3 = on and T.gold or T.text
+		UI.Tween(fr.title, { TextTransparency = on and 0 or (locked and 0.52 or 0.16) }, instant and 0 or UI.Motion.base)
+		fr.button.BackgroundTransparency = on and 1 or 0.4
+		fr.title.TextColor3 = on and T.ink or T.text
+		if fr.icon then
+			UI.SetIconColor(fr.icon, on and T.ink or (locked and T.dim or T.gold))
+		end
 		UI.Tween(fr.glow, { BackgroundTransparency = on and 0 or 1 }, instant and 0 or UI.Motion.base)
 		fr.desc.Visible = on and not fr.desc:GetAttribute("Off")
 	end
@@ -556,15 +582,17 @@ local function buildMenu(layer)
 	local h, pad, size, perCol = itemMetrics() -- (after the list: a phone fits the rows to the canvas)
 	local two = twoColumns()
 	local top = menuTop()
-	local rowW = two and TWO_COL_W or 520
+	-- the nav rail: a column of pills (the selected one filled gold), the item's line beside the rail
+	local railW = 300
+	local rowW = two and TWO_COL_W or railW
 	local menu = UI.Frame(layer, { Name = "Menu", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 52 or 68, top),
 		Size = UDim2.fromOffset(two and (2 * TWO_COL_W + TWO_COL_GAP) or 520, perCol * (h + pad)) })
 	local list = UI.Frame(menu, { Name = "Items", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
 	if not two then
 		UI.List(list, pad)
 	end
-	indicator = UI.Frame(menu, { Name = "Indicator", Size = UDim2.fromOffset(5, math.floor(h * 0.64)), BackgroundColor3 = T.gold, ZIndex = 3 })
-	UI.Gradient(indicator, { Color3.new(1, 1, 1), Color3.fromRGB(255, 160, 80) }, 90)
+	-- (the pill fill marks the selection; the indicator stays as the tween target, drawn as nothing)
+	indicator = UI.Frame(menu, { Name = "Indicator", Size = UDim2.fromOffset(5, math.floor(h * 0.64)), BackgroundColor3 = T.gold, BackgroundTransparency = 1, ZIndex = 3 })
 	itemFrames = {}
 	for i, it in ipairs(items) do
 		local b = UI.New("TextButton", { Name = "Item_" .. it.id, Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0,
@@ -573,27 +601,27 @@ local function buildMenu(layer)
 			local x, y = itemPos(i)
 			b.Position = UDim2.fromOffset(x, y)
 		end
-		UI.Corner(b, UI.R.md)
-		UI.Stroke(b, T.line, 1, 0.70)
+		UI.Corner(b, UI.R.pill)
 		UI.Hover(b, { amount = 0.96, press = 0.985 })
-		local glow = UI.Frame(b, { Name = "Glow", Position = UDim2.fromOffset(14, 0), Size = UDim2.new(two and 1 or 0.85, two and -14 or 0, 1, 0), BackgroundColor3 = T.gold, BackgroundTransparency = 1 })
-		UI.Gradient(glow, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.82), NumberSequenceKeypoint.new(0.6, 0.96), NumberSequenceKeypoint.new(1, 1) }))
-		UI.Icon(b, MENU_ICONS[it.id] or "star", small and 18 or 22, it.locked and T.dim or T.gold,
-			{ Name = "MenuIcon", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 18, 0.5, 0) })
-		local title = UI.Title(b, it.label, { Name = "Title", TextSize = size, Position = UDim2.fromOffset(48, 0), Size = UDim2.fromOffset(two and (rowW - 62) or (small and 148 or 220), h),
-			TextYAlignment = Enum.TextYAlignment.Center, TextTransparency = 1 })
+		-- the pill's fill when selected (flat gold)
+		local glow = UI.Frame(b, { Name = "Glow", Size = UDim2.fromScale(1, 1), BackgroundColor3 = T.gold, BackgroundTransparency = 1 })
+		UI.Corner(glow, UI.R.pill)
+		local icon = UI.Icon(b, MENU_ICONS[it.id] or "star", small and 16 or 18, it.locked and T.dim or T.gold,
+			{ Name = "MenuIcon", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 18, 0.5, 0), ZIndex = 2 })
+		local title = UI.Title(b, it.label, { Name = "Title", Face = "heading", TextSize = size, Position = UDim2.fromOffset(48, 0), Size = UDim2.fromOffset(rowW - 62, h),
+			TextYAlignment = Enum.TextYAlignment.Center, TextTransparency = 1, ZIndex = 2 })
 		-- (two columns: no room for the line beside the item; a tap opens it straight away anyway)
-		local desc = UI.Text(b, it.locked and "Create your boxer first" or it.desc, { Name = "Desc", Font = T.font, TextSize = small and 11 or 13, TextColor3 = T.sub, Position = UDim2.fromOffset(small and 210 or 292, 0),
-			Size = UDim2.fromOffset(small and 220 or 218, h), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, Visible = false })
+		local desc = UI.Text(b, it.locked and "Create your boxer first" or it.desc, { Name = "Desc", Font = T.font, TextSize = small and 11 or 13, TextColor3 = T.sub, Position = UDim2.fromOffset(rowW + 16, 0),
+			Size = UDim2.fromOffset(small and 220 or 230, h), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, Visible = false })
 		if two then
 			desc:SetAttribute("Off", true)
 		end
 		if it.locked then
 			-- the lock rides on the title: a selected title slides 14 px right (keys, pad or hover select
 			-- locked items too), and a lock fixed to the row landed on its last letters (CHARACTER's R)
-			UI.Icon(title, "lock", small and 12 or 14, T.dim, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, small and 128 or 184, 0.5, 0) })
+			UI.Icon(title, "lock", small and 12 or 14, T.dim, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0) })
 		end
-		itemFrames[i] = { button = b, title = title, glow = glow, desc = desc }
+		itemFrames[i] = { button = b, title = title, glow = glow, desc = desc, icon = icon }
 		b.MouseEnter:Connect(function()
 			if sel ~= i then
 				selectItem(i)
@@ -629,8 +657,7 @@ end
 local function chip(parent, label, value, color, order, icon)
 	local f = UI.Frame(parent, { Name = "Status", Size = UDim2.fromOffset(0, 40), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.bg, BackgroundTransparency = 0.25, LayoutOrder = order })
 	UI.Corner(f, UI.R.md)
-	UI.Stroke(f, Color3.new(1, 1, 1), 1, 0.88)
-	UI.Gradient(f, { Color3.new(1, 1, 1), Color3.fromRGB(170, 170, 170) }, 90)
+	UI.Stroke(f, T.line, 1, 0)
 	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 14), Parent = f })
 	UI.List(f, 8, true)
 	if icon then
@@ -664,8 +691,8 @@ local function buildProfile(layer)
 		local card = UI.Frame(layer, { Name = "Welcome", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -cr, 1, small and -24 or -64), Size = UDim2.fromOffset(cw, 146), BackgroundColor3 = T.bg })
 		UI.Glass(card, { transparency = 0.2 })
 		UI.Frame(card, { Name = "Stripe", Size = UDim2.new(0, 5, 1, -24), Position = UDim2.fromOffset(0, 12), BackgroundColor3 = T.gold })
-		UI.Kicker(card, "A NEW CAREER", T.gold, { Position = UDim2.fromOffset(22, 16), Size = UDim2.new(1, -44, 0, 18) })
-		UI.Title(card, "YOUR LEGACY STARTS HERE", { TextSize = small and 23 or 28, Position = UDim2.fromOffset(22, 36), Size = UDim2.new(1, -44, 0, 34) })
+		UI.Kicker(card, "A new career", T.gold, { Position = UDim2.fromOffset(22, 16), Size = UDim2.new(1, -44, 0, 18) })
+		UI.Title(card, "Your Legacy Starts Here", { TextSize = small and 23 or 28, Position = UDim2.fromOffset(22, 36), Size = UDim2.new(1, -44, 0, 34) })
 		UI.Text(card, "Create your boxer and start in a beginner gym. Train, fight, climb the rankings and become undisputed.", { TextSize = 14, TextColor3 = T.sub,
 			Position = UDim2.fromOffset(22, 76), Size = UDim2.new(1, -44, 0, 54), AutomaticSize = Enum.AutomaticSize.None, TextYAlignment = Enum.TextYAlignment.Top })
 		return
@@ -681,9 +708,15 @@ local function buildProfile(layer)
 	Flags.Draw(card, id.nationality, { Size = UDim2.fromOffset(36, 24), Position = UDim2.fromOffset(22, small and 14 or 20) })
 	UI.Text(card, string.upper((P.className or "") .. "  ·  " .. (P.tierName or "")), { Font = T.semi, TextSize = 12, TextColor3 = T.gold, Position = UDim2.fromOffset(68, small and 18 or 24),
 		Size = UDim2.new(1, -170, 0, 16), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-	UI.Title(card, string.upper(id.name or ""), { TextSize = small and 30 or 38, Position = UDim2.fromOffset(22, small and 40 or 50), Size = UDim2.new(1, -150, 0, small and 34 or 42),
+	-- the name at the largest size its slot holds (a long double-barrelled name steps down, never cut)
+	local nameRoom = w - (small and 170 or 184) - 22
+	local nameSize = small and 24 or 34
+	while nameSize > 18 and UI.TextWidth(id.name or "", nameSize, "display") > nameRoom do
+		nameSize -= 1
+	end
+	UI.Title(card, id.name or "", { TextSize = nameSize, Position = UDim2.fromOffset(22, small and 40 or 50), Size = UDim2.new(1, small and -170 or -184, 0, small and 30 or 40),
 		TextTruncate = Enum.TextTruncate.AtEnd })
-	local nick = (id.nickname and id.nickname ~= "") and ('"' .. string.upper(id.nickname) .. '"') or ""
+	local nick = (id.nickname and id.nickname ~= "") and ('"' .. id.nickname .. '"') or ""
 	UI.Text(card, nick, { Face = "displayMed", TextSize = small and 15 or 18, TextColor3 = T.sub, Position = UDim2.fromOffset(22, small and 76 or 94), Size = UDim2.new(1, -150, 0, 22),
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	-- the record and OVR on the right
@@ -693,8 +726,8 @@ local function buildProfile(layer)
 	UI.Text(card, string.format("%d KO  ·  OVR %d", ri.ko, P.overall or 0), { Font = T.semi, TextSize = 12, TextColor3 = T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -22, 0, small and 50 or 64),
 		Size = UDim2.fromOffset(140, 16), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
 	local camp = P.camp and P.camp.offer and P.camp.offer.opp
-	local next = camp and string.format("FIGHT CAMP vs %s  ·  %d day%s", string.upper(camp.name or "?"), P.camp.daysLeft or 0, (P.camp.daysLeft or 0) == 1 and "" or "s")
-		or "NO FIGHT BOOKED  ·  CHECK THE FIGHT BOARD"
+	local next = camp and string.format("Fight camp vs %s  ·  %d day%s to go", camp.name or "?", P.camp.daysLeft or 0, (P.camp.daysLeft or 0) == 1 and "" or "s")
+		or "No fight booked  ·  check the fight offers in the Career Hub"
 	if not small then
 		UI.Divider(card, { Position = UDim2.new(0, 22, 1, -34), Size = UDim2.new(1, -44, 0, 1) })
 		UI.Text(card, next, { Font = T.semi, TextSize = 11, TextColor3 = camp and T.red or T.dim, Position = UDim2.new(0, 22, 1, -28), Size = UDim2.new(1, -44, 0, 16),
@@ -794,7 +827,7 @@ local TILES = {
 	{ "LOCKER ROOM", "Trunks, robe, boots, wraps and glove customisation.", function()
 		State.open.Locker()
 	end, "robe" },
-	{ "PHYSIQUE", "Every muscle you have built, soreness, veins - and FLEX.", function()
+	{ "PHYSIQUE", "Every muscle you have built, soreness and veins, and the flex poses.", function()
 		State.open.Hub("Body")
 	end, "muscle" },
 	{ "STATS", "Core and mental attributes, style and specialty.", function()
@@ -1306,6 +1339,8 @@ end
 
 local function buildHome()
 	local home = layers.home
+	homeDirty = false
+	homeBuilds += 1
 	UI.Clear(home)
 	buildLogo(home)
 	buildMenu(home)
@@ -1341,7 +1376,7 @@ function show(name, instant)
 		layers.screen.Visible = false
 		UI.Clear(layers.screen)
 		layers.home.Visible = true
-		if from ~= "home" then
+		if from ~= "home" and homeDirty then
 			buildHome()
 		end
 		return
@@ -1484,6 +1519,11 @@ function MainMenu.IsOpen()
 	return isOpen
 end
 
+-- (tests / the profiler) how often the home layer was built, and the parked set
+function MainMenu.Stats()
+	return { homeBuilds = homeBuilds, parked = parkedStage ~= nil, stage = scene and scene.stage or parkedStage }
+end
+
 function MainMenu.Open(which)
 	if isOpen then
 		if which then
@@ -1556,6 +1596,7 @@ function MainMenu.Open(which)
 			if view == "home" then
 				buildHome()
 			else
+				homeDirty = true
 				show(view, true)
 			end
 		end)
@@ -1570,9 +1611,27 @@ function MainMenu.Open(which)
 			restageSoon(char, 1)
 		end
 	end))
-	-- live numbers on the home screen
+	-- live numbers on the home screen: one rebuild of the profile card and the status bar per burst of profile
+	-- pushes (deferred to the end of the frame); under another screen the home layer is only marked
+	local profilePending = false
 	track(State.Changed:Connect(function()
-		if isOpen and view == "home" and not closing then
+		if not isOpen or closing then
+			return
+		end
+		if view ~= "home" then
+			homeDirty = true
+			return
+		end
+		if profilePending then
+			return
+		end
+		profilePending = true
+		task.defer(function()
+			profilePending = false
+			if not (isOpen and view == "home" and not closing) then
+				homeDirty = homeDirty or isOpen
+				return
+			end
 			local home = layers.home
 			for _, n in ipairs({ "Profile", "StatusBar", "Welcome" }) do
 				local f = home and home:FindFirstChild(n)
@@ -1582,8 +1641,16 @@ function MainMenu.Open(which)
 			end
 			buildProfile(home)
 			buildStatus(home)
-		end
+		end)
 	end))
+	-- a setting changed on the settings screen (language, motion, the menu options): home is rebuilt on the way back
+	if Settings.Changed then
+		track(Settings.Changed:Connect(function()
+			if view ~= "home" then
+				homeDirty = true
+			end
+		end))
+	end
 end
 
 function MainMenu.Close(after)

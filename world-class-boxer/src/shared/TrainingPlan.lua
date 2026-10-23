@@ -569,4 +569,56 @@ function TP.FocusForStat(stat)
 	return nil
 end
 
+------------------------------------------------------------------------
+-- Sparring drills: a focus goal for a spar (SparPicker shows them; TP.SparFocusCheck reads the fight
+-- result FightEngine hands back: res.evades, res.combos.landed, res.landed, res.oppLanded). The need scales
+-- with the rounds of the intensity (Light 1, Medium 2, Hard 3). A goal met adds TP.SPAR_FOCUS_BONUS to the
+-- session quality and tilts the gains toward the focus stats (Training.SparFocusResult).
+------------------------------------------------------------------------
+TP.SPAR_ROUNDS = { Light = 1, Medium = 2, Hard = 3 }
+TP.SPAR_FOCUS_BONUS = 0.1
+TP.SparFocus = {
+	{ id = "defence", name = "DEFENCE", goal = "Make %d punches miss: slip, roll, block", per = 5, stats = { "HeadMovement", "Blocking" },
+		value = function(res)
+			return tonumber(res.evades) or 0
+		end },
+	{ id = "combos", name = "COMBINATIONS", goal = "Land %d combinations", per = 2, stats = { "PunchSpeed", "RingIQ" },
+		value = function(res)
+			return type(res.combos) == "table" and tonumber(res.combos.landed) or 0
+		end },
+	{ id = "volume", name = "WORK RATE", goal = "Land %d punches", per = 12, stats = { "Endurance", "PunchSpeed" },
+		value = function(res)
+			return tonumber(res.landed) or 0
+		end },
+	{ id = "control", name = "RING CONTROL", goal = "Out-land your partner", per = nil, stats = { "RingIQ", "Countering" },
+		value = function(res)
+			return (tonumber(res.landed) or 0) - (tonumber(res.oppLanded) or 0)
+		end },
+}
+TP.SparFocusById = {}
+for _, f in ipairs(TP.SparFocus) do
+	TP.SparFocusById[f.id] = f
+end
+-- the goal's numbers for an intensity: need, the goal line
+function TP.SparFocusGoal(focusId, intensity)
+	local f = TP.SparFocusById[focusId]
+	if not f then
+		return nil
+	end
+	local rounds = TP.SPAR_ROUNDS[intensity] or 2
+	local need = f.per and f.per * rounds or 1
+	return need, f.per and string.format(f.goal, need) or f.goal
+end
+-- did the spar meet its focus? -> met, value, need (nil for an unknown focus or no result)
+function TP.SparFocusCheck(focusId, res, intensity)
+	local f = TP.SparFocusById[focusId]
+	if not f or type(res) ~= "table" then
+		return nil
+	end
+	local need = TP.SparFocusGoal(focusId, intensity)
+	local ok, v = pcall(f.value, res)
+	v = ok and tonumber(v) or 0
+	return v >= need, v, need
+end
+
 return TP

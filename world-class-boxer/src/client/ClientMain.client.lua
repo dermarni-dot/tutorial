@@ -145,11 +145,12 @@ UI.Text(brandRow, "WORLD CLASS BOXER", { Face = "displayMed", TextSize = 15, Tex
 	Position = UDim2.fromOffset(34, 0), Size = UDim2.new(1, -34, 0, 24), AutomaticSize = Enum.AutomaticSize.None,
 	TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 
-local stripe = UI.Frame(hud, { Name = "Stripe", Size = UDim2.new(1, 0, 0, 3), BackgroundColor3 = T.gold, LayoutOrder = 0 })
-UI.Gradient(stripe, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0.2), NumberSequenceKeypoint.new(1, 1) }))
+UI.Frame(hud, { Name = "Stripe", Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.gold, LayoutOrder = 0 })
 local head = UI.Frame(hud, { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 1 })
 local flagHolder = UI.Frame(head, { Name = "FlagHolder", BackgroundTransparency = 1, Size = UDim2.fromOffset(30, 20), Position = UDim2.fromOffset(0, 10) })
-local hudName = UI.Title(head, "", { Name = "Name", TextSize = 28, Position = UDim2.fromOffset(40, 2), Size = UDim2.new(1, -112, 0, 34), TextTruncate = Enum.TextTruncate.AtEnd })
+local hudName = UI.Title(head, "", { Name = "Name", TextSize = 26, Position = UDim2.fromOffset(40, 2), Size = UDim2.new(1, -112, 0, 34), TextScaled = true })
+-- (a long name steps down to fit the plate rather than being cut)
+UI.New("UITextSizeConstraint", { MaxTextSize = 26, MinTextSize = 15, Parent = hudName })
 local ovrBox = UI.Frame(head, { Name = "OVR", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(62, 40), BackgroundColor3 = T.ink, BackgroundTransparency = 0.3 })
 UI.Corner(ovrBox, UI.R.md)
 UI.Stroke(ovrBox, T.gold, 1, 0.35)
@@ -228,7 +229,7 @@ local function hudButton(text, key, w, color, fn, order, padKey)
 	local b = UI.Button(hudButtons, "", { Name = text, Size = UDim2.fromOffset(w, hudBtnH()), BackgroundColor3 = color or T.panel2, BackgroundTransparency = color and 0 or 0.15, LayoutOrder = order }, fn)
 	b:SetAttribute("BaseW", w)
 	local dark = color == T.gold
-	local label = UI.Text(b, text, { Face = "displayMed", TextSize = 17, TextColor3 = dark and T.ink or T.text, Size = UDim2.new(1, key and -26 or 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
+	local label = UI.Text(b, UI.Type.TitleCase(text), { Face = "displayMed", TextSize = 15, TextColor3 = dark and T.ink or T.text, Size = UDim2.new(1, key and -26 or 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
 		TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 	if key then
 		local cap = UI.Frame(b, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(20, 20), BackgroundColor3 = dark and T.ink or T.panel, BackgroundTransparency = 0.2 })
@@ -263,10 +264,10 @@ end, 1, Enum.KeyCode.DPadDown)
 hudButton("CAREER HUB", "H", 140, T.gold, function()
 	Hub.Toggle()
 end, 2, Enum.KeyCode.DPadUp)
-hudButton("TRAIN", nil, 60, nil, function()
+hudButton("TRAIN", nil, 70, nil, function()
 	Hub.Open("Training")
 end, 3)
-hudButton("SLEEP", nil, 56, nil, function()
+hudButton("SLEEP", nil, 70, nil, function()
 	State.open.Sleep()
 end, 4)
 if PvPClient then
@@ -680,7 +681,7 @@ local function refresh()
 	local show = not fight and busy ~= "fight" and busy ~= "spar" and not State.HudHidden()
 	hud.Visible, hudButtons.Visible = show, show
 	hint.Visible = show and (P.sessions or 0) < 3 and not Activities.Busy()
-	hudName.Text = string.upper(P.identity.name)
+	hudName.Text = tostring(P.identity.name)
 	hudOvr.Text = tostring(P.overall)
 	hudTier.Text = string.format("%s  ·  %s  ·  DAY %d", string.upper(P.className), string.upper(P.tierName), P.day)
 	if lastFlag ~= P.identity.nationality then

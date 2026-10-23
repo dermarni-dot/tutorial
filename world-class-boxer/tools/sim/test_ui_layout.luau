@@ -640,6 +640,60 @@ screen("hub_body", function(dev)
 		end
 	end
 	check("hub_body@" .. dev .. ": no editable-image figure", not painted)
+	-- the figure is the uploaded sheet (IconData.bodyMap) layered: a silhouette and a mask per muscle and side
+	local icons = S.require("IconData")
+	local sil, masks = nil, 0
+	for _, d in ipairs(S.playerGui:GetDescendants()) do
+		if d:IsA("ImageLabel") and d.Image == "rbxassetid://" .. tostring(icons.bodyMap) then
+			if d.Name == "Silhouette" then
+				sil = d
+			else
+				masks += 1
+			end
+		end
+	end
+	check("hub_body@" .. dev .. ": the sheet figure (silhouette + masks)", sil ~= nil and masks >= 40, string.format("silhouette %s, %d masks", tostring(sil ~= nil), masks))
+	if sil then
+		-- (the view keeps the sheet's aspect)
+		local data = S.require("BodyMapData")
+		local ar = sil.AbsoluteSize.X / math.max(1, sil.AbsoluteSize.Y)
+		check("hub_body@" .. dev .. ": the figure keeps its aspect", math.abs(ar - data.view.w / data.view.h) < 0.03, string.format("%.3f vs %.3f", ar, data.view.w / data.view.h))
+	end
+	-- the Frame: line names the boxer's real frame (the server's P.frame)
+	local P = S.require("Client/State").P
+	local line = named(S, "FrameLine")
+	check("hub_body@" .. dev .. ": the Frame line", line ~= nil and line.Text:find("^Frame: " .. tostring(P.frame or "Athletic"):gsub("%p", "%%%0")) ~= nil, line and line.Text)
+	return S
+end)
+-- the body map when its images never load (a bad id, a rejected upload, no network): after the 2 s grace the
+-- figure is plain frames, never an empty box or a checkerboard
+screen("hub_body_fallback", function(dev)
+	GS.ImagesLoad = false
+	local S = client(dev)
+	S.require("Client/Hub").Open("Body")
+	S.settle(2.6)
+	GS.ImagesLoad = true
+	local sheetLeft = 0
+	for _, d in ipairs(S.playerGui:GetDescendants()) do
+		if d:IsA("ImageLabel") and d.Name == "Silhouette" then
+			sheetLeft += 1
+		end
+	end
+	local map = named(S, "BodyMap")
+	local frames = 0
+	for _, d in ipairs(map and map:GetDescendants() or {}) do
+		if d:IsA("Frame") and d:GetAttribute("Part") then
+			frames += 1
+		end
+	end
+	check("hub_body_fallback@" .. dev .. ": frames after the grace period", sheetLeft == 0 and frames > 20, string.format("%d sheet layers left, %d frame regions", sheetLeft, frames))
+	return S
+end)
+-- the muscle screen (BoxerClient.MuscleScreen): the figure to turn, the groups, the growth graph
+screen("muscle", function(dev)
+	local S = client(dev)
+	S.require("Client/MuscleScreen").Open({})
+	S.settle(0.8)
 	return S
 end)
 -- the results screen (BoxerClient.PostFightUI): the full-bleed result band, the scorecard ledger, the statistics

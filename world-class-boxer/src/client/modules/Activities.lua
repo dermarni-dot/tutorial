@@ -481,6 +481,8 @@ local function newContext(info)
 	ctx.t0 = os.clock()
 	ctx.tiles = {}
 	ctx.qSum, ctx.qN, ctx.clean = 0, 0, 0
+	-- the end summary's tally of the graded work: perfect (gold), good (green), missed (orange / red)
+	ctx.tally = { perfect = 0, good = 0, miss = 0 }
 	local metrics = UI.Frame(panel, { Name = "Metrics", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 0, -8), Size = UDim2.new(1, 0, 0, 56) })
 	ctx.metrics = metrics
 	ctx.metricsGrid = UI.New("UIGridLayout", { CellSize = UDim2.new(1 / 6, -5, 1, 0), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = metrics })
@@ -790,8 +792,9 @@ local function newContext(info)
 			metrics.AnchorPoint = Vector2.new(0, 1)
 			metrics.Position = UDim2.new(0, 0, 0, -8)
 			metrics.Size = UDim2.new(1, 0, 0, 56)
-			-- n cells and n - 1 gaps of 6 fill the width exactly (a 7th tile must not wrap)
-			ctx.metricsGrid.CellSize = UDim2.new(1 / n, -math.ceil(6 * (n - 1) / n), 1, 0)
+			-- n cells and n - 1 gaps of 6 fill the width (a pixel of slack per cell: an exact fill wraps the
+			-- last tile onto a second row on a rounding error)
+			ctx.metricsGrid.CellSize = UDim2.new(1 / n, -math.ceil(6 * (n - 1) / n) - 1, 1, 0)
 			for _, t in pairs(ctx.tiles) do
 				t.cap.Position, t.cap.Size = UDim2.fromOffset(10, 5), UDim2.new(1, -20, 0, 14)
 				t.val.Position, t.val.Size = UDim2.fromOffset(10, 19), UDim2.new(1, -20, 0, 30)
@@ -862,6 +865,8 @@ local function newContext(info)
 		if score >= 0.8 then
 			ctx.clean += 1
 		end
+		local key = score >= 0.95 and "perfect" or (score >= 0.6 and "good" or "miss")
+		ctx.tally[key] += 1
 		ctx.updateMetrics()
 	end
 	-- the colour a 0..1 grade flashes in (the reverse of GRADE_OF)
@@ -1550,6 +1555,76 @@ end
 
 -- a judge's segment plays until it closes (an answer, the end of its window); false when cancelled.
 -- onFrame(now) draws the stage each frame.
+-- board helpers (every drill's stage builds with these)
+local function label(parent, text, props)
+	local p = { Font = T.semi, TextSize = 13, TextColor3 = T.text, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd }
+	for k, v in pairs(props or {}) do
+		p[k] = v
+	end
+	return UI.Text(parent, text, p)
+end
+
+-- a horizontal track with zones, a fill and a marker (values 0..1 along it); every setter skips a write
+-- that would not move anything
+local function meter(parent, pos, size)
+	local f = UI.Frame(parent, { Position = pos, Size = size, BackgroundColor3 = DARK })
+	UI.Corner(f, 4)
+	local m = { frame = f }
+	function m.zone(lo, hi, color, transparency)
+		local z = UI.Frame(f, { Position = UDim2.fromScale(lo, 0), Size = UDim2.fromScale(math.max(0, hi - lo), 1), BackgroundColor3 = color, BackgroundTransparency = transparency or 0.45 })
+		local last = { lo, hi }
+		return function(a, b)
+			if math.abs(a - last[1]) > 0.002 or math.abs(b - last[2]) > 0.002 then
+				last = { a, b }
+				z.Position = UDim2.fromScale(math.clamp(a, 0, 1), 0)
+				z.Size = UDim2.fromScale(math.clamp(b, 0, 1) - math.clamp(a, 0, 1), 1)
+			end
+		end, z
+	end
+	local fill = UI.Frame(f, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.gold, BackgroundTransparency = 0.3, Visible = false })
+	UI.Corner(fill, 4)
+	local mk = UI.Frame(f, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.new(0, 4, 1, 8), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 3, Visible = false })
+	m.marker, m.fillFrame = mk, fill
+	local lastMark, lastFill = -1, -1
+	function m.mark(v, color)
+		mk.Visible = true
+		v = math.clamp(v, 0, 1)
+		if math.abs(v - lastMark) > 0.002 then
+			lastMark = v
+			mk.Position = UDim2.fromScale(v, 0.5)
+		end
+		if color and mk.BackgroundColor3 ~= color then
+			mk.BackgroundColor3 = color
+		end
+	end
+	function m.fill(v, color)
+		fill.Visible = true
+		v = math.clamp(v, 0, 1)
+		if math.abs(v - lastFill) > 0.002 then
+			lastFill = v
+			fill.Size = UDim2.fromScale(v, 1)
+		end
+		if color and fill.BackgroundColor3 ~= color then
+			fill.BackgroundColor3 = color
+		end
+	end
+	return m
+end
+
+-- a label whose text is written only when it changes
+local function setText(lbl, text, color)
+	if lbl.Text ~= text then
+		lbl.Text = text
+	end
+	if color and lbl.TextColor3 ~= color then
+		lbl.TextColor3 = color
+	end
+end
+
+local function pct(v)
+	return string.format("%d%%", math.floor(math.clamp(v, 0, 1) * 100 + 0.5))
+end
+
 local function playSegment(ctx, j, onFrame)
 	while not j.closed do
 		if ctx.cancelled then
@@ -3436,10 +3511,10 @@ end
 
 -- JUMP ROPE -------------------------------------------------------------
 local ROPE_INFO = {
-	jump = "Press SPACE (or JUMP) as the rope reaches your feet - the bottom of the circle.",
+	jump = "HOLD JUMP ({jump}) as the rope comes over, RELEASE as it reaches your feet - the bottom of the circle.",
 	feet = "BOXER SKIP: land on the called foot - LEFT ({footL}) or RIGHT ({footR}) - as the rope passes your feet.",
-	doubles = "DOUBLE UNDER = two quick presses while the rope spins twice. Plain jumps in between.",
-	speed = "The rope spins faster now. Same timing - quick, light feet.",
+	doubles = "DOUBLE UNDER: hold JUMP ({jump}) until the CHARGE bar is full, release at the feet. Plain jumps in between.",
+	speed = "The rope spins faster now. Same hold and release - quick, light feet.",
 }
 
 -- phases with banners: basic bounce, boxer skip (footwork rope), double unders (weighted rope)
@@ -3461,8 +3536,13 @@ GAMES.rope = function(ctx)
 	UI.Corner(zoneDot, 11)
 	local dot = UI.Frame(ring, { Size = UDim2.fromOffset(14, 14), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(R, 0), BackgroundColor3 = Color3.new(1, 1, 1) })
 	UI.Corner(dot, 7)
-	local cueText = UI.Text(ctx.stage, "", { Font = T.bold, TextSize = 22, Position = UDim2.new(0, R * 2 + 60, 0, 20), Size = UDim2.new(1, -(R * 2 + 70), 0, 30), AutomaticSize = Enum.AutomaticSize.None })
-	local countText = UI.Text(ctx.stage, "", { TextSize = 15, Position = UDim2.new(0, R * 2 + 60, 0, 52), Size = UDim2.new(1, -(R * 2 + 70), 0, 22), AutomaticSize = Enum.AutomaticSize.None, TextColor3 = T.sub })
+	local cueText = UI.Text(ctx.stage, "", { Font = T.bold, TextSize = 22, Position = UDim2.new(0, R * 2 + 60, 0, 12), Size = UDim2.new(1, -(R * 2 + 70), 0, 30), AutomaticSize = Enum.AutomaticSize.None })
+	local countText = UI.Text(ctx.stage, "", { TextSize = 15, Position = UDim2.new(0, R * 2 + 60, 0, 42), Size = UDim2.new(1, -(R * 2 + 70), 0, 22), AutomaticSize = Enum.AutomaticSize.None, TextColor3 = T.sub })
+	-- the crouch: JUMP held fills the CHARGE bar (a double under wants it full before the release)
+	local chargeX = R * 2 + 60
+	local chargeW = math.max(80, stageWidth(ctx) - chargeX - 14)
+	label(ctx.stage, "CHARGE", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(chargeX, 70), Size = UDim2.fromOffset(chargeW, 14) })
+	local chargeBar = meter(ctx.stage, UDim2.fromOffset(chargeX, 86), UDim2.fromOffset(chargeW, 12))
 	local totalJumps = 0
 	for _, ph in ipairs(phases) do
 		totalJumps += ph.jumps or 10
@@ -3501,10 +3581,16 @@ GAMES.rope = function(ctx)
 					GymVisuals.Sound(root.Position - Vector3.new(0, 3, 0), 2 + math.random() * 0.3, 0.2, "rbxasset://sounds/action_footsteps_plastic.mp3")
 				end
 				ctx.attr("RopeFoot", jd.cue == "footL" and "L" or (jd.cue == "footR" and "R" or nil))
-				ctx.feedback(jd.cue == "double" and "DOUBLE!" or (streak >= 5 and ("CLEAN x" .. streak) or "CLEAN"), T.green)
+				if jd.cue == "double" then
+					ctx.feedback("DOUBLE!", T.gold)
+				elseif jd.sweet then
+					ctx.feedback(streak >= 5 and ("SWEET x" .. streak) or "SWEET", T.gold)
+				else
+					ctx.feedback(streak >= 5 and ("CLEAN x" .. streak) or "CLEAN", T.green)
+				end
 			else
 				streak = 0
-				ctx.feedback((jd.count == 0 and not jd.early) and "TRIPPED!" or "MISTIMED!", T.red)
+				ctx.feedback(jd.short and "HOLD LONGER FOR THE DOUBLE" or ((jd.count == 0 and not jd.early) and "TRIPPED!" or "MISTIMED!"), jd.short and T.orange or T.red)
 			end
 			countText.Text = string.format("Clean %d / %d%sstreak %d", clean, attempts, DOT, streak)
 			ctx.stats(string.format("Clean %d/%d%sstreak %d (best %d)", clean, attempts, DOT, streak, bestStreak))
@@ -3515,7 +3601,8 @@ GAMES.rope = function(ctx)
 		end
 	end
 	ctx.on(function(id, down, t)
-		if j and down then
+		-- (the release of JUMP is the jump: the judge takes the presses and the releases)
+		if j then
 			judged(j.input(id, down, t))
 		end
 	end)
@@ -3545,6 +3632,8 @@ GAMES.rope = function(ctx)
 			ctx.intensity = math.clamp(0.45 + (j.omega - 6) * 0.07 + (j.cue == "double" and 0.1 or 0), 0, 1)
 			a %= 2 * math.pi
 			dot.Position = UDim2.fromOffset(R + math.sin(a) * R, R + math.cos(a) * R)
+			local load = j.loading(now) / math.max(0.05, j.charge)
+			chargeBar.fill(math.min(1, load), load >= 1 and T.gold or (j.cue == "double" and T.orange or T.blue))
 			if j.closed then
 				break
 			end
@@ -3745,75 +3834,6 @@ end
 local Workouts = DrillScore.Workouts
 
 -- a one-line label that never runs out of its box (cut with "..." instead)
-local function label(parent, text, props)
-	local p = { Font = T.semi, TextSize = 13, TextColor3 = T.text, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd }
-	for k, v in pairs(props or {}) do
-		p[k] = v
-	end
-	return UI.Text(parent, text, p)
-end
-
--- a horizontal track with zones, a fill and a marker (values 0..1 along it); every setter skips a write
--- that would not move anything
-local function meter(parent, pos, size)
-	local f = UI.Frame(parent, { Position = pos, Size = size, BackgroundColor3 = DARK })
-	UI.Corner(f, 4)
-	local m = { frame = f }
-	function m.zone(lo, hi, color, transparency)
-		local z = UI.Frame(f, { Position = UDim2.fromScale(lo, 0), Size = UDim2.fromScale(math.max(0, hi - lo), 1), BackgroundColor3 = color, BackgroundTransparency = transparency or 0.45 })
-		local last = { lo, hi }
-		return function(a, b)
-			if math.abs(a - last[1]) > 0.002 or math.abs(b - last[2]) > 0.002 then
-				last = { a, b }
-				z.Position = UDim2.fromScale(math.clamp(a, 0, 1), 0)
-				z.Size = UDim2.fromScale(math.clamp(b, 0, 1) - math.clamp(a, 0, 1), 1)
-			end
-		end, z
-	end
-	local fill = UI.Frame(f, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.gold, BackgroundTransparency = 0.3, Visible = false })
-	UI.Corner(fill, 4)
-	local mk = UI.Frame(f, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.new(0, 4, 1, 8), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 3, Visible = false })
-	m.marker, m.fillFrame = mk, fill
-	local lastMark, lastFill = -1, -1
-	function m.mark(v, color)
-		mk.Visible = true
-		v = math.clamp(v, 0, 1)
-		if math.abs(v - lastMark) > 0.002 then
-			lastMark = v
-			mk.Position = UDim2.fromScale(v, 0.5)
-		end
-		if color and mk.BackgroundColor3 ~= color then
-			mk.BackgroundColor3 = color
-		end
-	end
-	function m.fill(v, color)
-		fill.Visible = true
-		v = math.clamp(v, 0, 1)
-		if math.abs(v - lastFill) > 0.002 then
-			lastFill = v
-			fill.Size = UDim2.fromScale(v, 1)
-		end
-		if color and fill.BackgroundColor3 ~= color then
-			fill.BackgroundColor3 = color
-		end
-	end
-	return m
-end
-
--- a label whose text is written only when it changes
-local function setText(lbl, text, color)
-	if lbl.Text ~= text then
-		lbl.Text = text
-	end
-	if color and lbl.TextColor3 ~= color then
-		lbl.TextColor3 = color
-	end
-end
-
-local function pct(v)
-	return string.format("%d%%", math.floor(math.clamp(v, 0, 1) * 100 + 0.5))
-end
-
 -- a timed one-segment drill (cardio machines, recovery): the banner, then the judge until its end with
 -- draw(j, seg, now) every frame; react(j, seg, hit) on each answered input. Returns the result or nil.
 local function timedDrill(ctx, name, kind, draw, react)
@@ -3953,6 +3973,12 @@ local function repSets(ctx, o)
 		end
 	end
 	ctx.intensity = nil
+	-- a finisher of another kind after the sets (o.after(set i, of n, the breather's note) plays it)
+	if o.after and ctx.segI < #ctx.plan.segs then
+		if not o.after(sets + 1, sets + 1, string.format("%d/%d good reps%s%s", goodReps, sets * reps, DOT, rpeText(lastRpe))) then
+			return nil
+		end
+	end
 	ctx.put(bodyweight and "addedLoad" or "load", load or 0)
 	ctx.put("goodReps", goodReps)
 	if load and not bodyweight then
@@ -3969,6 +3995,235 @@ local function repSets(ctx, o)
 		return nil
 	end
 	return ctx.score()
+end
+
+-- FINISHERS: a session's last segment of another kind (the squat's sled push, the deadlift's neck
+-- harness, the curls' forearm grip). Each plays the next segment of the plan with its own board and its
+-- own buttons, after the plan's gap: the breather, then the round banner. Returns the result or nil.
+local function finisherIntro(ctx, i, n, name, note)
+	if not ctx.rest(WAIT.rest, "NEXT: " .. name, note) then
+		return false
+	end
+	return ctx.round(i, n, name, "SET")
+end
+
+-- HOLD GAUGE (neck harness / forearm grip): hold SQUEEZE to raise the force, ease off to drop it; keep the
+-- wavering needle inside the steady band until the HOLD bar is full
+local function holdGauge(ctx, i, n, note)
+	local seg0 = ctx.peek()
+	local name = seg0.name or "HOLD"
+	ctx.bind({ { id = "sq", label = "HOLD TO SQUEEZE", say = "SQUEEZE", keys = { K.Space, K.W, K.Up }, color = T.gold } }, 1)
+	ctx.setInfo("Hold SQUEEZE ({sq}) to raise the force and ease off to let it drop: keep the needle in the green band. It wavers more the longer you hold - small corrections.")
+	if not finisherIntro(ctx, i, n, name, note) then
+		return nil
+	end
+	UI.Clear(ctx.stage)
+	local sw = stageWidth(ctx)
+	local mw = sw - 24
+	label(ctx.stage, name, { Face = "displayMed", TextSize = 16, TextColor3 = T.gold, Position = UDim2.fromOffset(12, 4), Size = UDim2.fromOffset(mw * 0.6, 20) })
+	local status = label(ctx.stage, "", { Font = T.bold, TextSize = 14, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(12 + mw, 6), Size = UDim2.fromOffset(mw * 0.4, 18), TextXAlignment = Enum.TextXAlignment.Right })
+	label(ctx.stage, "FORCE", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 30), Size = UDim2.fromOffset(80, 14) })
+	local force = meter(ctx.stage, UDim2.fromOffset(12, 46), UDim2.fromOffset(mw, 22))
+	force.zone(seg0.lo or 0.4, seg0.hi or 0.7, T.green, 0.35)
+	force.zone(0.95, 1, T.red, 0.4)
+	label(ctx.stage, "HOLD", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 76), Size = UDim2.fromOffset(80, 14) })
+	local holdText = label(ctx.stage, "", { Face = "number", TextSize = 13, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(12 + mw, 74), Size = UDim2.fromOffset(90, 16), TextXAlignment = Enum.TextXAlignment.Right })
+	local holdBar = meter(ctx.stage, UDim2.fromOffset(12, 92), UDim2.fromOffset(mw, 12))
+	local j, seg = ctx.begin()
+	if not j then
+		return nil
+	end
+	ctx.on(function(id, down, t)
+		j.input(id, down, t)
+	end)
+	local okPlay = playSegment(ctx, j, function(now)
+		local v = j.shown(now)
+		local inBand = v >= seg.lo and v <= seg.hi
+		force.mark(v, inBand and T.green or (v > seg.hi and T.orange or Color3.new(1, 1, 1)))
+		force.fill(math.min(1, j.f), T.blue)
+		holdBar.fill(j.acc / seg.need, j.acc >= seg.need and T.gold or T.green)
+		setText(holdText, string.format("%.1f / %.1f s", math.min(j.acc, seg.need), seg.need))
+		setText(status, inBand and "STEADY" or (v > seg.hi and "EASE OFF" or "SQUEEZE"), inBand and T.green or T.orange)
+		ctx.drive(math.clamp(j.f, 0, 1))
+		ctx.attrQ("PoseGrip", math.clamp(1 - math.abs(j.tremor(now)) * 6, 0, 1), 0.05)
+		ctx.intensity = 0.3 + 0.5 * math.clamp(j.f, 0, 1)
+		ctx.progress((now - ctx.segAt) / seg.dur)
+	end)
+	ctx.on(nil)
+	if not okPlay then
+		return nil
+	end
+	local res = ctx.close(j)
+	ctx.attr("PoseGrip", nil)
+	ctx.drive(0)
+	ctx.feedback(res.q >= 0.95 and "ROCK STEADY" or (res.q >= 0.6 and "GOOD HOLD" or "SHAKY HOLD"), res.q >= 0.95 and T.gold or (res.q >= 0.6 and T.green or T.orange), res.q)
+	ctx.note(string.format("%s: %.1f s steady", name, res.acc))
+	return res
+end
+
+-- SLED PUSH: four drives - LEFT / RIGHT in turn as fast as they go while the light is green, then the
+-- sled settles (RESET: wait for the light). Each drive fills its own bar to the target.
+local function sledPush(ctx, i, n, note)
+	local seg0 = ctx.peek()
+	ctx.bind({ { id = "L", label = "LEFT LEG", keys = { K.A, K.J, K.Left }, color = T.blue }, { id = "R", label = "RIGHT LEG", keys = { K.D, K.K, K.Right }, color = T.red } }, 2)
+	ctx.setInfo("DRIVE: LEFT ({L}) and RIGHT ({R}) in turn, as fast as you can while the light is green. The same leg twice is no step. RESET: let the sled settle.")
+	if not finisherIntro(ctx, i, n, seg0.name or "SLED PUSH", note) then
+		return nil
+	end
+	UI.Clear(ctx.stage)
+	local sw = stageWidth(ctx)
+	local mw = sw - 24
+	-- the lane: the sled slides from the left mark to the right with every step
+	local lane = UI.Frame(ctx.stage, { Position = UDim2.fromOffset(12, 30), Size = UDim2.fromOffset(mw, 26), BackgroundColor3 = DARK })
+	UI.Corner(lane, 4)
+	for k = 1, 9 do
+		UI.Frame(lane, { Position = UDim2.fromScale(k / 10, 0.2), Size = UDim2.new(0, 2, 0.6, 0), BackgroundColor3 = T.line, BackgroundTransparency = 0.5 })
+	end
+	local sled = UI.Frame(lane, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.fromOffset(34, 20), BackgroundColor3 = T.orange, ZIndex = 3 })
+	UI.Corner(sled, 3)
+	local light = UI.Frame(ctx.stage, { Position = UDim2.fromOffset(12, 6), Size = UDim2.fromOffset(16, 16), BackgroundColor3 = T.green })
+	UI.Corner(light, 8)
+	local status = label(ctx.stage, "", { Face = "displayMed", TextSize = 16, Position = UDim2.fromOffset(36, 4), Size = UDim2.fromOffset(mw * 0.5, 20) })
+	local metres = label(ctx.stage, "", { Face = "number", TextSize = 13, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(12 + mw, 6), Size = UDim2.fromOffset(mw * 0.45, 18), TextXAlignment = Enum.TextXAlignment.Right })
+	-- the drives: one bar each, the target at its end
+	local bars = {}
+	local nb = seg0.bursts or 4
+	local bw = math.floor((mw - (nb - 1) * 8) / nb)
+	for k = 1, nb do
+		bars[k] = meter(ctx.stage, UDim2.fromOffset(12 + (k - 1) * (bw + 8), 68), UDim2.fromOffset(bw, 14))
+	end
+	-- the next leg (the rhythm: left, right, left...)
+	label(ctx.stage, "NEXT LEG", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 92), Size = UDim2.fromOffset(70, 16) })
+	local legL = label(ctx.stage, "L", { Font = T.bold, TextSize = 15, Position = UDim2.fromOffset(84, 90), Size = UDim2.fromOffset(24, 18), TextXAlignment = Enum.TextXAlignment.Center })
+	local legR = label(ctx.stage, "R", { Font = T.bold, TextSize = 15, Position = UDim2.fromOffset(112, 90), Size = UDim2.fromOffset(24, 18), TextXAlignment = Enum.TextXAlignment.Center })
+	local j, seg = ctx.begin()
+	if not j then
+		return nil
+	end
+	local total, graded = 0, 0
+	ctx.on(function(id, down, t)
+		local hit = j.input(id, down, t)
+		if not hit then
+			return
+		end
+		if hit.step then
+			total += 1
+			ctx.pulse(0.5)
+		elseif hit.same then
+			ctx.feedback("OTHER LEG!", T.orange, false)
+		elseif hit.reset then
+			ctx.feedback("WAIT FOR GREEN", T.orange, false)
+		end
+	end)
+	local okPlay = playSegment(ctx, j, function(now)
+		local k, pushing = j.burstAt(now)
+		light.BackgroundColor3 = pushing and T.green or T.red
+		setText(status, pushing and string.format("DRIVE %d!", k) or "RESET", pushing and T.green or T.sub)
+		local f = math.clamp(total / math.max(1, seg.target * seg.bursts), 0, 1)
+		sled.Position = UDim2.new(f, -math.floor(34 * f), 0.5, 0)
+		setText(metres, string.format("%d m", math.floor(total * 0.8 + 0.5)))
+		for b = 1, #bars do
+			local g = j.steps[b] / math.max(1, seg.target)
+			bars[b].fill(math.min(1, g), g >= 1 and T.gold or (g >= 0.7 and T.green or T.orange))
+		end
+		-- a finished drive grades on the strip once
+		while graded < #bars and (graded < k - 1 or (not pushing and graded < k)) do
+			graded += 1
+			local g = math.min(1, j.steps[graded] / math.max(1, seg.target))
+			ctx.feedback(g >= 0.95 and "FULL DRIVE!" or (g >= 0.7 and "GOOD DRIVE" or "SLOW DRIVE"), g >= 0.95 and T.gold or (g >= 0.7 and T.green or T.orange), g)
+		end
+		local nextLeg = j.last == "L" and "R" or "L"
+		legL.TextColor3 = nextLeg == "L" and T.gold or T.sub
+		legR.TextColor3 = nextLeg == "R" and T.gold or T.sub
+		ctx.drive(pushing and (0.45 + 0.15 * math.sin(now * 14)) or 0.3)
+		ctx.intensity = pushing and 0.95 or 0.5
+		ctx.progress((now - ctx.segAt) / j.duration)
+	end)
+	ctx.on(nil)
+	if not okPlay then
+		return nil
+	end
+	local res = ctx.close(j)
+	ctx.drive(0)
+	ctx.put("sledSteps", total)
+	ctx.note(string.format("sled push %d m", math.floor(total * 0.8 + 0.5)))
+	return res
+end
+
+-- ROAD PACE (the treadmill's road lane): STRIDE keeps the runner inside the pacer's band (it drifts back on
+-- its own); BREATHE on the beat as each breath mark reaches the line
+local function roadLane(ctx, i, n, note)
+	local seg0 = ctx.peek()
+	ctx.bind({ { id = "stride", label = "STRIDE", keys = { K.W, K.Up, K.D }, color = T.blue }, { id = "breathe", label = "BREATHE", keys = { K.Space, K.B }, color = T.cyan } }, 2)
+	ctx.setInfo("Tap STRIDE ({stride}) to keep your pace inside the pacer's band. Tap BREATHE ({breathe}) as each breath mark reaches the line.")
+	if not finisherIntro(ctx, i, n, seg0.name or "ROAD PACE", note) then
+		return nil
+	end
+	UI.Clear(ctx.stage)
+	local sw = stageWidth(ctx)
+	local mw = sw - 24
+	local legText = label(ctx.stage, "", { Face = "displayMed", TextSize = 16, TextColor3 = T.gold, Position = UDim2.fromOffset(12, 4), Size = UDim2.fromOffset(mw * 0.6, 20) })
+	local paceText = label(ctx.stage, "", { Face = "number", TextSize = 13, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(12 + mw, 6), Size = UDim2.fromOffset(mw * 0.4, 18), TextXAlignment = Enum.TextXAlignment.Right })
+	label(ctx.stage, "PACE", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 28), Size = UDim2.fromOffset(80, 14) })
+	local lane = meter(ctx.stage, UDim2.fromOffset(12, 44), UDim2.fromOffset(mw, 22))
+	local setBand = lane.zone(0.3, 0.6, T.green, 0.35)
+	-- the breathing strip: marks slide in from the right to the beat line
+	local lineX = 40
+	label(ctx.stage, "BREATHE", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 74), Size = UDim2.fromOffset(80, 14) })
+	local strip = UI.Frame(ctx.stage, { Position = UDim2.fromOffset(12, 90), Size = UDim2.fromOffset(mw, 18), BackgroundColor3 = DARK, ClipsDescendants = true })
+	UI.Corner(strip, 4)
+	UI.Frame(strip, { Position = UDim2.fromOffset(lineX - 1, 0), Size = UDim2.new(0, 3, 1, 0), BackgroundColor3 = T.gold, ZIndex = 3 })
+	local marks = {}
+	for k = 1, #(seg0.breaths or {}) do
+		local m = UI.Frame(strip, { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(14, 14), Position = UDim2.fromOffset(-40, 9), BackgroundColor3 = T.cyan })
+		UI.Corner(m, 7)
+		marks[k] = m
+	end
+	local j, seg = ctx.begin()
+	if not j then
+		return nil
+	end
+	local pps = 46 -- strip pixels a second
+	ctx.on(function(id, down, t)
+		local hit = j.input(id, down, t)
+		if hit and hit.breath ~= nil then
+			if hit.breath then
+				ctx.feedback(hit.sweet and "IN RHYTHM" or "BREATH", hit.sweet and T.gold or T.green)
+			else
+				ctx.feedback("OFF THE BEAT", T.orange, false)
+			end
+		elseif hit and hit.v then
+			ctx.pulse(0.4)
+		end
+	end)
+	local okPlay = playSegment(ctx, j, function(now)
+		local leg = j.legAt(now)
+		setBand(leg.lo, leg.hi)
+		local inBand = j.v >= leg.lo and j.v <= leg.hi
+		lane.mark(j.v, inBand and T.green or (j.v > leg.hi and T.orange or Color3.new(1, 1, 1)))
+		setText(legText, leg.name or "PACE", T.gold)
+		setText(paceText, string.format("%d%% in the band", math.floor(j.acc / math.max(0.1, now - ctx.segAt) * 100 + 0.5)), inBand and T.text or T.orange)
+		local el = now - ctx.segAt
+		for k, m in ipairs(marks) do
+			if j.breathHit[k] then
+				m.Visible = false
+			else
+				m.Position = UDim2.fromOffset(lineX + (seg.breaths[k] - el) * pps, 9)
+				m.BackgroundTransparency = (el > seg.breaths[k] + 1.4 * seg.breathW) and 0.7 or 0
+			end
+		end
+		ctx.speed(0.6 + j.v * 1.4)
+		ctx.intensity = 0.35 + 0.55 * j.v
+		ctx.progress(el / seg.duration)
+	end)
+	ctx.on(nil)
+	if not okPlay then
+		return nil
+	end
+	local res = ctx.close(j)
+	ctx.grade(math.clamp(res.acc / seg.duration / Workouts.TIMED_FULL, 0, 1))
+	ctx.note(string.format("road pace %d%% in the band%s%d/%d breaths", math.floor(res.acc / seg.duration * 100 + 0.5), DOT, res.hits, res.breaths))
+	return res
 end
 
 -- BENCH PRESS -----------------------------------------------------------
@@ -4124,6 +4379,10 @@ GAMES.deadlift = function(ctx)
 		onRep = function()
 			ctx.attrQ("PoseGrip", 1)
 		end,
+		-- the finisher: the neck harness hold
+		after = function(i, n, note)
+			return holdGauge(ctx, i, n, note) ~= nil
+		end,
 	})
 end
 
@@ -4196,82 +4455,153 @@ GAMES.squat = function(ctx)
 		top = function(res)
 			return res.verdict == "stand" and 1 or 0.4
 		end,
+		-- set 2: the sled push
+		after = function(i, n, note)
+			return sledPush(ctx, i, n, note) ~= nil
+		end,
 	})
 end
 
 -- PULL-UPS --------------------------------------------------------------
--- Pull LEFT and RIGHT in turn through the bottom of the swing; HOLLOW kills the swing (and slows you).
+-- Hold and release with grip stamina: hold PULL to climb, let go with the chin over the bar (the gold
+-- band is a SWEET rep), lower under control and go again from the bottom. The grip drains while you
+-- pull and comes back while you hang - a grip that runs out drops you off the bar (no rep, no reset).
+-- Two sets of three: pull-ups, then close-grip chin-ups.
 GAMES.pullup = function(ctx)
-	local nextHand = "L"
-	return repSets(ctx, {
-		actions = {
-			{ id = "L", label = "PULL LEFT", keys = { K.J, K.A, K.Left }, color = T.blue },
-			{ id = "R", label = "PULL RIGHT", keys = { K.K, K.D, K.Right }, color = T.red },
-			{ id = "hollow", label = "HOLLOW BODY", say = "HOLLOW", keys = { K.Space } },
-		},
-		perRow = 3,
-		info = "Pull LEFT ({L}) and RIGHT ({R}) in turn as the swing passes the middle. Swinging too much? Tap HOLLOW (SPACE) to brace and kill it.",
-		build = function(loadText)
-			local sw = stageWidth(ctx)
-			local mw = sw - 110
-			label(ctx.stage, "SWING", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 6), Size = UDim2.fromOffset(80, 14) })
-			local swing = meter(ctx.stage, UDim2.fromOffset(12, 22), UDim2.fromOffset(mw, 18))
-			swing.zone(0.42, 0.58, T.green, 0.3)
-			swing.zone(0, 0.06, T.red, 0.3)
-			swing.zone(0.94, 1, T.red, 0.3)
-			local status = label(ctx.stage, "", { Font = T.bold, TextSize = 15, Position = UDim2.fromOffset(12, 48), Size = UDim2.fromOffset(mw, 20) })
-			label(ctx.stage, loadText or "", { Font = T.bold, TextColor3 = T.gold, Position = UDim2.fromOffset(12, 76), Size = UDim2.fromOffset(mw, 18) })
-			-- the height: the chin climbs to the bar line
-			local col = UI.Frame(ctx.stage, { Position = UDim2.fromOffset(sw - 80, 16), Size = UDim2.fromOffset(28, 88), BackgroundColor3 = DARK })
-			UI.Corner(col, 4)
-			UI.Frame(ctx.stage, { Position = UDim2.fromOffset(sw - 92, 12), Size = UDim2.fromOffset(52, 4), BackgroundColor3 = Color3.fromRGB(190, 190, 200) })
-			local chin = UI.Frame(col, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.fromScale(1, 0), BackgroundColor3 = T.gold })
-			UI.Corner(chin, 4)
-			label(ctx.stage, "CHIN", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(sw - 44, 10), Size = UDim2.fromOffset(40, 14) })
-			return function(j, seg, now)
-				local s = j.swing(now)
-				local off = math.abs(math.sin(j.phaseAt(now)))
-				swing.mark(0.5 + s / 2, off < 0.3 and T.green or Color3.new(1, 1, 1))
-				chin.Size = UDim2.fromScale(1, math.clamp(j.h, 0, 1))
-				local want = j.last == "L" and "RIGHT" or (j.last == "R" and "LEFT" or (nextHand == "L" and "LEFT" or "RIGHT"))
-				if j.hollow.on then
-					setText(status, "HOLLOW - BRACED", T.cyan)
-				elseif j.A > 0.6 then
-					setText(status, "SWINGING! GO HOLLOW", T.orange)
-				else
-					setText(status, "NEXT: PULL " .. want, T.text)
+	local load, loadText = liftLoad(ctx)
+	ctx.bind({ { id = "pull", label = "HOLD TO PULL", say = "PULL", keys = { K.Space, K.W, K.Up }, color = T.blue } }, 1)
+	ctx.setInfo("Hold PULL ({pull}) to climb. Let go with your chin over the bar - the gold band is a SWEET rep. Your GRIP drains while you pull: hang a moment to get it back.")
+	local segs = ctx.plan.segs
+	local sweet, reps, shorts, slips, qSum = 0, 0, 0, 0, 0
+	for si, seg0 in ipairs(segs) do
+		if not ctx.round(si, #segs, seg0.name or "PULL-UPS", "SET") then
+			return nil
+		end
+		UI.Clear(ctx.stage)
+		local sw = stageWidth(ctx)
+		-- the height column: the bar on top, the chin zone (green) and the sweet band (gold) under it
+		local colX, colY, colH = 18, 14, STAGE_H - 26
+		UI.Frame(ctx.stage, { Position = UDim2.fromOffset(colX - 10, colY - 6), Size = UDim2.fromOffset(52, 4), BackgroundColor3 = Color3.fromRGB(190, 190, 200) })
+		local col = UI.Frame(ctx.stage, { Position = UDim2.fromOffset(colX, colY), Size = UDim2.fromOffset(32, colH), BackgroundColor3 = DARK })
+		UI.Corner(col, 4)
+		local function band(lo, hi, color, tr)
+			return UI.Frame(col, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1 - lo), Size = UDim2.fromScale(1, hi - lo), BackgroundColor3 = color, BackgroundTransparency = tr })
+		end
+		band(seg0.lo, 1, T.green, 0.55)
+		band(seg0.perfLo, seg0.perfHi, T.gold, 0.25)
+		local chin = UI.Frame(col, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 1), Size = UDim2.new(1, 10, 0, 4), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 3 })
+		label(ctx.stage, "CHIN", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(colX + 40, colY - 4), Size = UDim2.fromOffset(40, 14) })
+		local x0 = colX + 90
+		local mw = sw - x0 - 12
+		local status = label(ctx.stage, "", { Face = "displayMed", TextSize = 18, Position = UDim2.fromOffset(x0, 8), Size = UDim2.fromOffset(mw, 24) })
+		-- the set's reps (filled as they land)
+		local pips = {}
+		for k = 1, seg0.reps or 3 do
+			local d = UI.Frame(ctx.stage, { Position = UDim2.fromOffset(x0 + (k - 1) * 26, 40), Size = UDim2.fromOffset(18, 18), BackgroundColor3 = DARK })
+			UI.Corner(d, 9)
+			UI.Stroke(d, T.line, 1, 0.2)
+			pips[k] = d
+		end
+		label(ctx.stage, loadText or "", { Font = T.bold, TextSize = 12, TextColor3 = T.gold, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(x0 + mw, 42), Size = UDim2.fromOffset(150, 16), TextXAlignment = Enum.TextXAlignment.Right })
+		label(ctx.stage, "GRIP", { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(x0, 66), Size = UDim2.fromOffset(60, 14) })
+		local gripText = label(ctx.stage, "", { Face = "number", TextSize = 13, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(x0 + mw, 64), Size = UDim2.fromOffset(60, 16), TextXAlignment = Enum.TextXAlignment.Right })
+		local gripBar = meter(ctx.stage, UDim2.fromOffset(x0, 82), UDim2.fromOffset(mw, 14))
+		gripBar.zone(0, 0.2, T.red, 0.55)
+		local j, seg = ctx.begin()
+		if not j then
+			return nil
+		end
+		ctx.setRep(0, seg.reps, 0)
+		ctx.on(function(id, down, t)
+			local hit = j.input(id, down, t)
+			if not hit or not hit.verdict then
+				return
+			end
+			if hit.verdict == "sweet" then
+				ctx.feedback("SWEET REP!", T.gold)
+				ctx.pump(0.1)
+			elseif hit.verdict == "rep" then
+				ctx.feedback("CHIN OVER", T.green)
+				ctx.pump(0.07)
+			else
+				ctx.feedback("SHORT - ALL THE WAY UP", T.orange)
+			end
+			ctx.setRep(hit.done, seg.reps, hit.done)
+			ctx.attr("RepCount", (si - 1) * seg.reps + hit.done)
+			ctx.progress(hit.done / seg.reps)
+		end)
+		local slipsSeen = 0
+		local okPlay = playSegment(ctx, j, function(now)
+			local h = j.h
+			chin.Position = UDim2.fromScale(0.5, 1 - math.clamp(h, 0, 1))
+			chin.BackgroundColor3 = (h >= seg.perfLo and h <= seg.perfHi) and T.gold or (h >= seg.lo and T.green or Color3.new(1, 1, 1))
+			for k, d in ipairs(pips) do
+				local want = k <= j.done and T.green or DARK
+				if d.BackgroundColor3 ~= want then
+					d.BackgroundColor3 = want
 				end
-				ctx.drive(0.15 + 0.85 * j.h)
-				ctx.attrQ("PoseSwing", s, 0.04)
-				ctx.intensity = 0.4 + 0.5 * j.h
 			end
-		end,
-		react = function(_, _, hit)
-			if hit.alt == false then
-				ctx.feedback("OTHER ARM!", T.orange, false)
-			elseif hit.off and hit.off > 0.6 then
-				ctx.feedback("KIPPING", T.orange, false)
+			gripBar.fill(j.grip, j.grip < 0.2 and T.red or (j.grip < 0.45 and T.orange or T.green))
+			setText(gripText, pct(j.grip))
+			if j.slips > slipsSeen then
+				slipsSeen = j.slips
+				ctx.feedback("GRIP GAVE OUT - HANG A MOMENT", T.red)
 			end
-		end,
-		verdict = function(res)
-			local v = res.verdict
-			if v == "chin" then
-				return res.q >= 0.9 and "STRICT REP!" or (res.q >= 0.7 and "CHIN OVER" or "SWINGY REP"), res.q >= 0.9 and T.gold or (res.q >= 0.7 and T.green or T.orange)
-			elseif v == "swung" then
-				return "SWUNG OFF THE BAR", T.red
-			elseif v == "stalled" then
-				return "RAN OUT OF PULL", T.red
+			if not j.started then
+				setText(status, "HOLD PULL", T.gold)
+			elseif j.pull then
+				setText(status, h >= seg.lo and "LET GO!" or "PULL...", h >= seg.lo and T.gold or T.text)
+			elseif j.lowering then
+				setText(status, "LOWER...", T.sub)
+			elseif j.grip < 0.3 then
+				setText(status, "HANG - GRIP BACK", T.orange)
+			else
+				setText(status, "PULL AGAIN", T.text)
 			end
-			return "DEAD HANG", T.red
-		end,
-		top = function(res)
-			return 0.15 + 0.85 * (res.h or 0)
-		end,
-		onRep = function(res)
-			nextHand = res.pulls and res.pulls % 2 == 1 and "R" or "L"
-			ctx.attrQ("PoseSwing", 0)
-		end,
-	})
+			ctx.drive(0.15 + 0.85 * h)
+			-- the arms shake as the grip goes (AnimGym: PoseGrip; a tired hang sways: PoseSwing)
+			ctx.attrQ("PoseGrip", j.grip, 0.05)
+			ctx.attrQ("PoseSwing", (1 - j.grip) * 0.4 * math.sin(now * 3.1), 0.04)
+			ctx.intensity = j.pull and (0.55 + 0.4 * h) or 0.35
+		end)
+		ctx.on(nil)
+		if not okPlay then
+			return nil
+		end
+		local res = ctx.close(j)
+		sweet += res.perfect
+		reps += res.done
+		shorts += res.short
+		slips += res.slips
+		qSum += res.q
+		ctx.attrQ("PoseSwing", 0)
+		ctx.attr("PoseGrip", nil)
+		-- down off the bar
+		local top = 0.15 + 0.85 * (res.h or 0)
+		local t0 = os.clock()
+		while os.clock() - t0 < WAIT.lower do
+			if ctx.cancelled then
+				return nil
+			end
+			ctx.drive(top * (1 - (os.clock() - t0) / WAIT.lower))
+			RunService.Heartbeat:Wait()
+		end
+		ctx.drive(0)
+		if si < #segs then
+			if not ctx.rest(WAIT.rest, string.format("SET %d DONE", si), string.format("%d/%d reps%s%d sweet", res.done, res.reps, DOT, res.perfect)) then
+				return nil
+			end
+		end
+	end
+	ctx.intensity = nil
+	ctx.put(load and load > 0 and "addedLoad" or "load", load or 0)
+	ctx.put("goodReps", reps)
+	ctx.put("form", math.floor(qSum / math.max(1, #segs) * 100 + 0.5))
+	ctx.note(string.format("%d reps%s%d sweet", reps, DOT, sweet))
+	if shorts + slips > 0 then
+		ctx.note(string.format("%d short%s%d grip slips", shorts, DOT, slips))
+	end
+	return ctx.score()
 end
 
 -- DUMBBELL CURLS ----------------------------------------------------------
@@ -4286,6 +4616,13 @@ GAMES.curls = function(ctx)
 	local sumAll, countAll, swingsAll, perfectAll = 0, 0, 0, 0
 	local lineX, LANE_Y = 64, { L = 30, R = 70 }
 	for si, seg0 in ipairs(segs) do
+		if seg0.j == "gauge" then
+			-- the finisher: the forearm grip hold
+			if not holdGauge(ctx, si, #segs, string.format("%d/%d perfect curls", perfectAll, countAll)) then
+				return nil
+			end
+			break
+		end
 		if not ctx.round(si, #segs, (seg0.name or exName) .. DOT .. (seg0.bpm or 60) .. " BPM", "SET") then
 			return nil
 		end
@@ -4377,7 +4714,8 @@ GAMES.curls = function(ctx)
 		swingsAll += res.swings
 		perfectAll += res.perfect
 		ctx.drive(0)
-		if si < #segs then
+		-- (the finisher has its own breather)
+		if si < #segs and segs[si + 1].j ~= "gauge" then
 			if not ctx.rest(WAIT.rest, string.format("SET %d DONE", si), string.format("%d/%d perfect curls%s%d swings", res.perfect, res.count, DOT, res.swings)) then
 				return nil
 			end
@@ -4470,6 +4808,14 @@ GAMES.treadmill = function(ctx)
 	ctx.put("inZone", onTarget)
 	ctx.note(string.format("%.2f mi%stop %.1f mph", miles, DOT, topSpeed))
 	ctx.note(string.format("%d%% on the program", onTarget))
+	-- then the road lane (the plan's second segment)
+	if ctx.segI < #ctx.plan.segs then
+		GymVisuals.SetDisplay(ctx.station, "ROAD PACE")
+		if not roadLane(ctx, 2, 2, string.format("%d%% on the program", onTarget)) then
+			return nil
+		end
+		ctx.speed(1)
+	end
 	GymVisuals.SetDisplay(ctx.station, string.format("DONE\n%.2f mi", miles))
 	if not ctx.wait(0.5) then
 		return nil
@@ -5899,8 +6245,12 @@ local function showResult(ctx, res, quality)
 	ctx.tiles.quality.val.TextColor3 = gcol
 	ctx.tiles.quality.fill.BackgroundColor3 = gcol
 	ctx.tiles.quality.fill.Size = UDim2.fromScale(math.clamp(Config.QualityPct(quality) / 100, 0, 1), 1)
-	ctx.tiles.time.val.Text = clock(os.clock() - ctx.t0)
-	local parts = { string.format("Session quality %d%%", Config.QualityPct(quality)) }
+	ctx.tiles.time.val.Text = clock((ctx.doneAt or os.clock()) - ctx.t0)
+	-- the short end summary: how the work graded (the strip's tally; the quality is on the strip and the
+	-- grade card), then the bests
+	local tl = ctx.tally
+	local parts = { (tl and tl.perfect + tl.good + tl.miss > 0) and string.format("%d perfect, %d good, %d missed", tl.perfect, tl.good, tl.miss)
+		or string.format("Session quality %d%%", Config.QualityPct(quality)) }
 	if type(rec.best) == "number" and rec.best > 0 then
 		table.insert(parts, string.format("Personal best %d%%", Config.QualityPct(rec.best)))
 	end
@@ -6240,6 +6590,32 @@ function Activities.SparPicker()
 	State.windows.Spar = close
 	local P = State.P
 	UI.Line(body, "Live rounds in the sparring ring with headgear on, against a gym partner matched to your level.", { TextColor3 = T.sub, TextSize = 14 })
+	-- the sparring drill: an optional focus goal for the rounds (TrainingPlan.SparFocus); met, the session
+	-- grades higher and the focus stats grow a little more
+	local TPm = Shared and Shared:FindFirstChild("TrainingPlan") and require(Shared.TrainingPlan)
+	if TPm and TPm.SparFocus then
+		local fc = UI.Card(body)
+		UI.Line(fc, "DRILL FOCUS (optional)", { Font = T.bold, TextColor3 = T.gold })
+		local goalLine = UI.Line(fc, "", { TextSize = 13, TextColor3 = T.sub })
+		local row = UI.Frame(fc, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34) })
+		UI.New("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6), Parent = row })
+		local buttons = {}
+		local function refresh()
+			for id, b in pairs(buttons) do
+				b.BackgroundColor3 = State.sparFocus == id and T.gold or T.panel2
+				b.TextColor3 = State.sparFocus == id and T.bg or T.text
+			end
+			local _, goal = TPm.SparFocusGoal(State.sparFocus or "", "Medium")
+			goalLine.Text = goal and ("Goal (2 rounds): " .. goal) or "Pick a focus for the rounds, or spar freely."
+		end
+		for _, f in ipairs(TPm.SparFocus) do
+			buttons[f.id] = UI.Button(row, f.name, { Size = UDim2.new(0.25, -5, 0, 32), TextSize = 12 }, function()
+				State.sparFocus = State.sparFocus ~= f.id and f.id or nil
+				refresh()
+			end)
+		end
+		refresh()
+	end
 	for _, name in ipairs({ "Light", "Medium", "Hard" }) do
 		local c = UI.Card(body)
 		local cost = ({ Light = 25, Medium = 35, Hard = 45 })[name]
@@ -6251,7 +6627,7 @@ function Activities.SparPicker()
 				return
 			end
 			close()
-			local r = State.req("StartSparring", name)
+			local r = State.req("StartSparring", name, State.sparFocus)
 			if not r.ok then
 				State.toast(r.err or "Can't spar right now", T.red)
 			end
@@ -6329,6 +6705,8 @@ function Activities.Start(actId)
 		-- (the server measures the quality itself from the inputs; this number is only the client's view)
 		local quality = 0.5 + math.clamp(perf, 0, 1) * 0.95
 		ctx.mode = "done"
+		-- (the session's length stops here: the report's TIME is the drill, not the wait for the report)
+		ctx.doneAt = os.clock()
 		local fin = State.req("FinishActivity", res.token, quality, ctx.out)
 		if fin.ok then
 			if camConn then

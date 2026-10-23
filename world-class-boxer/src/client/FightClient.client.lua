@@ -1344,7 +1344,7 @@ do
 		UI.Frame(k, { Size = UDim2.fromOffset(18, 2), BackgroundColor3 = color or T.gold, LayoutOrder = 1 })
 		UI.Text(k, string.upper(kicker or ""), { Font = T.semi, TextSize = 13, TextColor3 = color or T.gold, Size = UDim2.fromOffset(0, 16), AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false, LayoutOrder = 2 })
 		UI.Frame(k, { Size = UDim2.fromOffset(18, 2), BackgroundColor3 = color or T.gold, LayoutOrder = 3 })
-		UI.Text(f, string.upper(title or ""), { Face = "display", TextSize = small and 28 or 36, Position = UDim2.fromOffset(0, small and 16 or 18), Size = UDim2.new(1, 0, 0, small and 30 or 42), AutomaticSize = Enum.AutomaticSize.None,
+		UI.Text(f, UI.Type.TitleCase(string.upper(title or "")), { Face = "display", TextSize = small and 28 or 36, Position = UDim2.fromOffset(0, small and 16 or 18), Size = UDim2.new(1, 0, 0, small and 30 or 42), AutomaticSize = Enum.AutomaticSize.None,
 			TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 		return f
 	end
@@ -1409,7 +1409,7 @@ do
 		local h = lines * 20 + 10
 		local f = UI.Frame(overlay, { Name = "Note", BackgroundColor3 = color or T.panel2, BackgroundTransparency = 0.86, Size = UDim2.new(1, 0, 0, h), LayoutOrder = ovAdd(h) })
 		UI.Corner(f, 4)
-		UI.Text(f, string.format('<font color="#%s"><b>%s</b></font>   %s', (color or T.gold):ToHex(), string.upper(tag), text), {
+		UI.Text(f, string.format('<font color="#%s"><b>%s:</b></font>  %s', (color or T.gold):ToHex(), UI.Type.Sentence(string.upper(tag)), text), {
 			RichText = true, Font = T.font, TextSize = 15, TextColor3 = T.text, Position = UDim2.fromOffset(12, 5), Size = UDim2.new(1, -24, 1, -10), AutomaticSize = Enum.AutomaticSize.None,
 			TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center })
 		return f
@@ -1418,7 +1418,7 @@ do
 	-- a quote with a coloured rule (corner advice, trash talk)
 	function ovQuote(text, who, color)
 		local w = overlayWidth()
-		local body = '"' .. text .. '"' .. (who and ("   -  " .. who) or "")
+		local body = '"' .. text .. '"' .. (who and ("  ·  " .. who) or "")
 		local lines = math.max(1, math.ceil(#body * 8 / math.max(200, w - 30)))
 		local h = lines * 20 + 12
 		local f = UI.Frame(overlay, { Name = "Quote", BackgroundColor3 = T.panel2, BackgroundTransparency = 0.6, Size = UDim2.new(1, 0, 0, h), LayoutOrder = ovAdd(h) })
@@ -1441,8 +1441,10 @@ do
 			local side = UI.Frame(f, { BackgroundColor3 = accent, BackgroundTransparency = 0.84, Size = UDim2.new(0.5, -64, 1, 0), Position = left and UDim2.fromScale(0, 0) or UDim2.new(0.5, 64, 0, 0) })
 			UI.Corner(side, UI.R.md)
 			UI.Frame(side, { Size = UDim2.new(0, 4, 1, -16), Position = left and UDim2.fromOffset(0, 8) or UDim2.new(1, -4, 0, 8), BackgroundColor3 = accent })
-			UI.Text(side, string.upper(left and you or opp), { Face = "displayMed", TextSize = 18, Position = UDim2.fromOffset(left and 16 or 90, 0), Size = UDim2.new(1, -106, 1, 0),
-				AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = left and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+			-- (the name in mixed case, stepping down to fit its side rather than being cut)
+			local nm = UI.Text(side, tostring(left and you or opp), { Face = "displayMed", TextSize = 18, Position = UDim2.fromOffset(left and 16 or 90, 0), Size = UDim2.new(1, -106, 1, 0),
+				AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = left and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right, TextWrapped = false, TextScaled = true })
+			UI.New("UITextSizeConstraint", { MaxTextSize = 18, MinTextSize = 12, Parent = nm })
 			UI.Text(side, tostring(v), { Face = "number", TextSize = small and 44 or 54, TextColor3 = lead and T.gold or T.text, AnchorPoint = Vector2.new(left and 1 or 0, 0.5),
 				Position = left and UDim2.new(1, -14, 0.5, 0) or UDim2.new(0, 14, 0.5, 0), Size = UDim2.fromOffset(78, h - 8), AutomaticSize = Enum.AutomaticSize.None,
 				TextXAlignment = left and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left, TextWrapped = false })
@@ -1656,7 +1658,7 @@ do
 			end)
 			getupTitle.TextColor3 = Color3.fromRGB(170, 255, 200)
 			GU.sub.Text = "YOU BEAT THE COUNT"
-			getupHint.Text = "Hands up - show the referee you can go on."
+			getupHint.Text = "Hands up: show the referee you can go on."
 			GU.countNum.TextColor3 = T.green
 			setGetup(1)
 		elseif kind == "out" then
@@ -5601,7 +5603,7 @@ function buildRest(msg)
 	F.overlayCompact = compact
 	local you, opp = F.tape and F.tape.you.name or "You", F.tape and F.tape.opp.name or "Opponent"
 	overlayBegin()
-	ovHead(string.format("End of round %d  -  your corner", msg.n), F.spar and "BETWEEN ROUNDS" or "SCORECARD", T.gold)
+	ovHead(string.format("End of round %d  ·  your corner", msg.n), F.spar and "BETWEEN ROUNDS" or "SCORECARD", T.gold)
 	local u = msg.unofficial or { 0, 0 }
 	ovScore(tonumber(u[1]) or 0, tonumber(u[2]) or 0, F.spar and "COACH'S CARD" or "UNOFFICIAL CARD", you, opp)
 	ovRounds(F.cards, F.rounds, msg.n)

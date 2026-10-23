@@ -87,12 +87,21 @@ about the pivots) and the elbow / wrist / hip / knee / ankle heights are unchang
   and it runs `NECK_TOP` = 0.065 game studs up INTO the head (a 0.03 cap on top), so the classic head's rounded underside
   closes over the neck's top ring from outside: no ledge where a thick neck met the head's flat base, no gap under a
   thin one. The SCM cords, the throat hollow and larynx, the collarbones and the nape's groove are lobes on the neck rows.
+* The shoulder-to-neck roll (second v13 pass): the width / depth start rolling into the trapezius slope `ROLL` = 0.08
+  prototype under the shoulder-top row, blended in with a smoothstep from a two-knot start that carries the chest's
+  slope, and the neck rows are never deeper than the chest where the roll starts (monotone), so there is no crisp line
+  across the chest at the shoulder top and no dip-and-rise crease across the Power / Heavyweight upper back; the neck's
+  exponent is never squarer than the chest's. The collarbones are diagonal (rising outward from the sternum notch), the
+  SCM cords run diagonally from the notch up behind the jaw (fixed sizes, not scaled by the trap gain), the upper traps
+  are one broad slope from the neck down to the shoulders (peak at the shoulder-top row, not a hump behind the neck).
+  Power Build's forearm no longer flares under the elbow (fore 1.04 / 1.08 / 1.06 / 1.02, fore gain 1.35, trap 1.7).
 * THE SURFACE: the lofts are 52 x 56 (UpperTorso), 14 x 40, 20 x 32 (upper arm), 16 x 28, 22 x 32 (thigh), 18 x 28,
   12 x 22 (foot), 8 x 20 (hand) rings x segments (every vertex still a sample of the 4x refined loft that carries the
   muscles and the normals): 22,320 triangles per body in the full set (UpperTorso 6,272; the 10k per-mesh limit and
   the ~40k body budget hold), the hem row blend 2.45..2.90 so the band row is no crease; the lite set stays the v9 one.
-  Sheets: `bare_t<N>_<view>.png`, `arms_t<N>.png`, `heads_necks.png` (every frame's head on its neck, front and side,
-  tiers 1 and 5), `height_lineup_6ft.png` (the five frames at 72 in with the crown line: `render_frames.py --headline`).
+  Sheets: `bare_t<N>_<view>.png`, `arms_t<N>.png` (two strips: straight in a front 3/4, bent 110 from the side),
+  `heads_necks.png` (close-up strips of every frame's head on its neck, front and side, tiers 1 and 5;
+  `build_body.py --sheets closeups` renders only these two), `height_lineup_6ft.png` (the five frames at 72 in with the crown line: `render_frames.py --headline`).
 
 ## BodyAssetData.lua (generated)
 

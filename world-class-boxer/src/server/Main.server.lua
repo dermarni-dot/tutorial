@@ -308,9 +308,23 @@ function applyLook(player, previewApp, hands, popts)
 		st = { needFull = true } -- the first build of a character is always a full one
 		lookState[player] = st
 	end
+	-- a partial preview still waiting for the loop (a colour swatch, then a face slider before it ran): the next one
+	-- rebuilds what both asked for, or the first change would never reach the character
+	local pending = st.unread and st.popts and st.popts.only
 	st.app = previewApp
 	st.hands = hands
-	st.popts = previewApp and popts or nil -- preview-only: growth / peak / head-only rebuild
+	st.popts = previewApp and popts or nil -- preview-only: growth / peak / head-only / colour-only rebuild
+	if type(pending) == "table" and st.popts and type(st.popts.only) == "table" then
+		local only = table.clone(st.popts.only)
+		for k, v in pairs(pending) do
+			if v == true then
+				only[k] = true
+			end
+		end
+		st.popts = table.clone(st.popts)
+		st.popts.only = only
+	end
+	st.unread = true
 	-- any queued request that needs the whole character wins over head-only previews
 	if not (st.popts and st.popts.only) then
 		st.needFull = true
@@ -323,6 +337,7 @@ function applyLook(player, previewApp, hands, popts)
 	task.spawn(function()
 		repeat
 			st.again = false
+			st.unread = false
 			local profile = DataManager.Get(player)
 			local char = player.Character
 			local b = busy[player]
@@ -1628,7 +1643,8 @@ end
 
 local lastPreview = {}
 -- preview-only options from the Creator / Barber (never saved): sanitize every field.
--- { peak = Starting/Peak body toggle (creator only), growth = hair growth stage, only = head-only rebuild }
+-- { peak = Starting/Peak body toggle (creator only), growth = hair growth stage, only = head-only rebuild
+--   { Face, Hair, Beard } and / or a colour-only one { Colors } (Builder.Cosmetics: no full rebuild) }
 local function previewOpts(popts, creating)
 	if type(popts) ~= "table" then
 		return nil
@@ -1638,8 +1654,8 @@ local function previewOpts(popts, creating)
 	return {
 		peak = (popts.peak == true and creating) or nil,
 		growth = (g and g == g) and math.clamp(g, 0, 1.5) or nil,
-		only = (only and (only.Face == true or only.Hair == true or only.Beard == true))
-			and { Face = only.Face == true, Hair = only.Hair == true, Beard = only.Beard == true } or nil,
+		only = (only and (only.Face == true or only.Hair == true or only.Beard == true or only.Colors == true))
+			and { Face = only.Face == true, Hair = only.Hair == true, Beard = only.Beard == true, Colors = only.Colors == true } or nil,
 	}
 end
 

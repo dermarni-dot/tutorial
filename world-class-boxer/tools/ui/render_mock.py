@@ -225,9 +225,20 @@ def draw_image(tile, st, W, H):
         return
     r = st.get("rect")
     crop = src.crop((r[0], r[1], r[0] + r[2], r[1] + r[3])) if r and r[2] > 0 else src
-    k = min(W / crop.size[0], H / crop.size[1])
-    cw, ch = max(1, int(crop.size[0] * k)), max(1, int(crop.size[1] * k))
-    im = crop.resize((cw, ch), Image.LANCZOS)
+    scale = st.get("scale") or "Fit"
+    if scale == "Stretch":
+        cw, ch = W, H
+        im = crop.resize((cw, ch), Image.LANCZOS)
+    elif scale == "Crop":
+        k = max(W / crop.size[0], H / crop.size[1])
+        big = crop.resize((max(1, int(crop.size[0] * k + 0.5)), max(1, int(crop.size[1] * k + 0.5))), Image.LANCZOS)
+        ox, oy = (big.size[0] - W) // 2, (big.size[1] - H) // 2
+        cw, ch = W, H
+        im = big.crop((ox, oy, ox + W, oy + H))
+    else:
+        k = min(W / crop.size[0], H / crop.size[1])
+        cw, ch = max(1, int(crop.size[0] * k)), max(1, int(crop.size[1] * k))
+        im = crop.resize((cw, ch), Image.LANCZOS)
     arr = np.asarray(im).astype(np.float32)
     ic = st.get("ic") or [255, 255, 255]
     for c in range(3):

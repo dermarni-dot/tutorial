@@ -96,4 +96,5 @@ IconData.logo = {
 	colour = { x = 0, y = 0, w = 1024, h = 512 },
 	mask = { x = 0, y = 512, w = 1024, h = 512 },
 }
+IconData.bodyMap = 94131808684516 -- the Body screen's muscle-map sheet (build_bodymap.py; cells in BodyMapData), moderation Approved
 return IconData

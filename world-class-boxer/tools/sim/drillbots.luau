@@ -150,7 +150,9 @@ A.rebound = function(seg, j, t, M, mem, sk, rng)
 end
 A.needle = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
-	mem.off = mem.off or mix(sk, 0, (rng:NextNumber() * 2 - 1) * 2.2 * seg.w)
+	-- (the timing error is in time - up to ~0.12 s either way for the average player - and the needle
+	-- turns it into a distance: a faster sweep, a bigger miss)
+	mem.off = mem.off or mix(sk, 0, (rng:NextNumber() * 2 - 1) * 0.12 * seg.sweep)
 	if not mem.done and t - M > 0.2 then
 		local pos = needle(t - M, seg.sweep)
 		if math.abs(pos - (seg.c + mem.off)) < mix(sk, 0.012, 0.03) then
@@ -223,32 +225,48 @@ A.breath = function(seg, j, t, M, mem, sk, rng)
 	return out
 end
 A.rope = function(seg, j, t, M, mem, sk, rng)
+	-- hold and release: JUMP goes down ahead of the pass (longer ahead for a double under: the charge)
+	-- and comes up as the rope reaches the feet; the foot calls are presses of the called foot
 	local out = {}
 	if t < j.tripped or not j.w then
+		if mem.down then
+			mem.down = nil
+			table.insert(out, { "jump", false })
+		end
 		return out
 	end
 	local a = j.angle(t)
 	local k = math.floor(a / TWO_PI) + 1
 	local toPass = (TWO_PI * k - a) / j.w
-	mem.done = mem.done or {}
-	local key = j.done .. ":" .. k
-	-- (nobody jumps more than half a second before the rope: the slow player's error is capped)
-	local lead = math.min(0.5, mix(sk, 0.05, rng:NextNumber() * 0.42))
-	if toPass <= lead and not mem.done[key] then
-		mem.done[key] = true
-		if rng:NextNumber() < 0.12 * sk.w then
-			return out
-		end
-		local cue = j.cue
-		local id = (cue == "footL" or cue == "footR") and cue or "jump"
-		tap(out, id)
-		if cue == "double" then
-			mem.second = { id = id, t = t + 0.06 }
-		end
+	mem.plan = mem.plan or {}
+	local key = j.done
+	local p = mem.plan[key]
+	if not p and not j.pending then
+		local charge = j.charge or 0.3
+		-- (nobody jumps more than half a second before the rope: the slow player's error is capped)
+		p = { lead = math.min(0.5, mix(sk, 0.05, rng:NextNumber() * 0.42)), skip = rng:NextNumber() < 0.12 * sk.w, cue = j.cue }
+		p.hold = p.cue == "double" and (charge + mix(sk, 0.06, -0.02 + rng:NextNumber() * 0.22)) or mix(sk, 0.12, 0.06 + rng:NextNumber() * 0.2)
+		mem.plan[key] = p
 	end
-	if mem.second and t >= mem.second.t then
-		tap(out, mem.second.id)
-		mem.second = nil
+	if not p or p.skip then
+		return out
+	end
+	if p.cue == "footL" or p.cue == "footR" then
+		if not p.done and toPass <= p.lead then
+			p.done = true
+			tap(out, p.cue)
+		end
+		return out
+	end
+	if not p.pressed and toPass <= p.lead + p.hold then
+		p.pressed = true
+		mem.down = true
+		table.insert(out, { "jump", true })
+	end
+	if p.pressed and not p.done and (toPass <= p.lead or j.pending) then
+		p.done = true
+		mem.down = nil
+		table.insert(out, { "jump", false })
 	end
 	return out
 end
@@ -317,24 +335,38 @@ A.squat = function(seg, j, t, M, mem, sk, rng)
 	return out
 end
 A.pullup = function(seg, j, t, M, mem, sk, rng)
+	-- hold PULL from the bottom, let go with the chin in the sweet band (a reaction late: the climb goes on
+	-- a little after the decision); the average player aims less well, now and then lets go short, and
+	-- does not rest the grip
 	local out = {}
-	if t - M < 0.2 then
+	if t - M < 0.15 then
 		return out
 	end
-	local off = math.abs(math.sin(j.phaseAt(t)))
-	if sk.k == 0 then
-		local wantHollow = j.A > 0.5 or (j.hollow.on and j.A > 0.2)
-		toggle(out, mem, "hollow", j.hollow.on == true, wantHollow, t, 0.1)
-		if not j.hollow.on and off < 0.2 and every(mem, "p", t, 0.25) then
-			mem.side = mem.side == "L" and "R" or "L"
-			tap(out, mem.side)
+	if not j.pull then
+		if j.ready() then
+			if not mem.waitT then
+				mem.waitT = t + mix(sk, 0, 0.15 + rng:NextNumber() * 0.3)
+			end
+			-- (the perfect player hangs a moment for the grip when it is low)
+			local rest = sk.k == 0 and j.grip < 0.3
+			if t >= mem.waitT and not rest then
+				mem.waitT = nil
+				local mid = (seg.perfLo + seg.perfHi) / 2
+				local short = rng:NextNumber() < 0.08 * sk.w
+				mem.target = short and (seg.lo - 0.12) or (mid + mix(sk, 0, (rng:NextNumber() - 0.5) * 0.14))
+				mem.lag = mix(sk, 0, 0.04 + rng:NextNumber() * 0.12)
+				mem.relAt = nil
+				table.insert(out, { "pull", true })
+			end
 		end
-	else
-		toggle(out, mem, "hollow", j.hollow.on == true, j.A > 0.6 or (j.hollow.on and j.A > 0.35), t, 0.4)
-		if not j.hollow.on and off < mix(sk, 0.55, 0.65) and every(mem, "p", t, 0.35) then
-			mem.side = (mem.side == "L" and rng:NextNumber() < 0.9) and "R" or "L"
-			tap(out, mem.side)
-		end
+		return out
+	end
+	if not mem.relAt and j.h >= mem.target - seg.speed * mem.lag * 0.5 then
+		mem.relAt = t + mem.lag
+	end
+	if mem.relAt and t >= mem.relAt then
+		mem.relAt = nil
+		table.insert(out, { "pull", false })
 	end
 	return out
 end
@@ -371,23 +403,95 @@ A.wobble = function(seg, j, t, M, mem, sk, rng)
 	end
 	return out
 end
+-- the sled push: the legs in turn while the drive is on (the average player is slower and now and then
+-- steps with the same leg twice); nothing in the reset
+A.mash = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	local _, pushing = j.burstAt(t)
+	if not pushing then
+		return out
+	end
+	mem.at = mem.at or t
+	if t >= mem.at then
+		mem.at = t + mix(sk, 0.1, 0.17 + rng:NextNumber() * 0.06)
+		local leg = mem.leg == "L" and "R" or "L"
+		if rng:NextNumber() < 0.06 * sk.w then
+			leg = mem.leg or "L"
+		end
+		mem.leg = leg
+		tap(out, leg)
+	end
+	return out
+end
+-- the hold gauge: squeeze while the needle is under the band's middle, ease off over it (the average
+-- player looks less often and corrects later)
+A.gauge = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	if every(mem, "look", t, mix(sk, 0.03, 0.16 + rng:NextNumber() * 0.08)) then
+		local mid, half = (seg.lo + seg.hi) / 2, (seg.hi - seg.lo) / 2
+		local v = j.shown(t)
+		local m = half * mix(sk, 0.15, 0.45)
+		if v < mid - m then
+			hold(out, mem, "sq", true)
+		elseif v > mid + m then
+			hold(out, mem, "sq", false)
+		end
+	end
+	return out
+end
+-- the road lane: stride when the pace drops under the pacer's band (a reaction late on a new leg),
+-- breathe on the cues (the average player a little off the beat, now and then a cue missed)
+A.road = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	local lag = mix(sk, 0, 0.5)
+	local leg = j.legAt(math.max(M, t - lag))
+	if leg and every(mem, "look", t, mix(sk, 0.05, 0.2 + rng:NextNumber() * 0.12)) then
+		local mid = (leg.lo + leg.hi) / 2
+		if j.v < mid - (leg.hi - leg.lo) * mix(sk, 0.1, 0.25) then
+			tap(out, "stride")
+		end
+	end
+	mem.br = mem.br or {}
+	for i, b in ipairs(seg.breaths) do
+		local p = mem.br[i]
+		if not p then
+			p = { at = M + b + mix(sk, 0, (rng:NextNumber() - 0.35) * 0.5), skip = rng:NextNumber() < 0.08 * sk.w }
+			mem.br[i] = p
+		end
+		if not p.done and not p.skip and t >= p.at then
+			p.done = true
+			tap(out, "breathe")
+		end
+	end
+	return out
+end
 -- cardio -----------------------------------------------------------------
 A.treadmill = function(seg, j, t, M, mem, sk, rng)
+	-- the perfect player taps each step; the others hold a button down until the readout reaches the
+	-- target (they look every `period`: a late look holds one step too many now and then)
 	local out = {}
 	local lag = mix(sk, 0, 0.9)
 	local tg = j.target(t - lag)
-	local period = mix(sk, 0.06, 0.35)
-	if every(mem, "s", t, period) then
-		if j.mph < tg.mph - 0.01 then
-			tap(out, "spdUp")
-		elseif j.mph > tg.mph + 0.01 then
-			tap(out, "spdDn")
+	if sk.k == 0 then
+		if every(mem, "s", t, 0.06) then
+			if j.mph < tg.mph - 0.01 then
+				tap(out, "spdUp")
+			elseif j.mph > tg.mph + 0.01 then
+				tap(out, "spdDn")
+			end
+			if j.incl < tg.incl then
+				tap(out, "incUp")
+			elseif j.incl > tg.incl then
+				tap(out, "incDn")
+			end
 		end
-		if j.incl < tg.incl then
-			tap(out, "incUp")
-		elseif j.incl > tg.incl then
-			tap(out, "incDn")
-		end
+		return out
+	end
+	if every(mem, "s", t, mix(sk, 0.06, 0.2)) then
+		hold(out, mem, "spdUp", j.mph < tg.mph - 0.01)
+		hold(out, mem, "spdDn", j.mph > tg.mph + 0.01)
+		hold(out, mem, "incUp", j.incl < tg.incl)
+		hold(out, mem, "incDn", j.incl > tg.incl)
 	end
 	return out
 end
@@ -510,7 +614,7 @@ A.massage = function(seg, j, t, M, mem, sk, rng)
 						end
 					end
 				end
-				mem.pick[j.round] = (rng:NextNumber() < mix(sk, 1, 0.5)) and bestI or free[rng:NextInteger(1, #free)]
+				mem.pick[j.round] = (rng:NextNumber() < mix(sk, 1, 0.65)) and bestI or free[rng:NextInteger(1, #free)]
 			end
 			want = mem.pick[j.round]
 			if t - j.chooseAt < 1.5 then
@@ -550,9 +654,10 @@ A.chamber = function(seg, j, t, M, mem, sk, rng)
 		if j.ear > 0.5 and every(mem, "e", t, 0.3) then
 			tap(out, "eq")
 		end
-	elseif every(mem, "look", t, mix(sk, 0, 0.7)) then
+	elseif every(mem, "look", t, mix(sk, 0, 0.5)) then
 		local tg = j.target(t)
-		local db = math.min(0.08, mix(sk, 0.008, 0.08))
+		-- (the player aims inside the band the gauge shows: a slower player settles for more of it)
+		local db = seg.tol * math.min(1.2, mix(sk, 0.1, 0.8))
 		hold(out, mem, "up", j.P < tg - db)
 		hold(out, mem, "down", j.P > tg + db)
 		if j.ear > 0.9 then

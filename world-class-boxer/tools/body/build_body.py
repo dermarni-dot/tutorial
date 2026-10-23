@@ -191,17 +191,17 @@ FRAMES = {
     "Power Build": dict(
         key="power", head=0.85, neck_s=[3.58, 3.70, 3.77, 3.86],
         skel=dict(torso=0.99, leg=1.01, lowerleg=0.979, arm=0.97, forearm=0.97, armw=1.16, hand=1.12, lower=(1.10, 1.14), foot=1.06),
-        tx=[1.0, 1.06, 1.12, 1.16, 1.17, 1.17], tf=[1.02, 1.12, 1.20, 1.22, 1.16, 1.06], tb=[1.02, 1.10, 1.18, 1.20, 1.16, 1.06],
-        neck=([0.92, 0.55, 0.46], [0.38, 0.35, 0.335], [0.45, 0.42, 0.40]), p=-0.1,
-        arm=[1.0, 1.04, 1.06, 1.06, 1.05], fore=[1.0, 1.05, 1.12, 1.14, 1.12], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
+        tx=[1.0, 1.06, 1.12, 1.16, 1.17, 1.17], tf=[1.02, 1.12, 1.20, 1.22, 1.17, 1.10], tb=[1.02, 1.10, 1.18, 1.20, 1.17, 1.10],
+        neck=([0.92, 0.55, 0.46], [0.355, 0.335, 0.325], [0.39, 0.375, 0.365]), p=-0.1,
+        arm=[1.0, 1.04, 1.06, 1.06, 1.05], fore=[1.0, 1.04, 1.08, 1.06, 1.02], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
         calf=[1.0, 1.02, 1.08, 1.10, 1.05, 1.0], calf_pk=0.70,
-        gain=dict(pec=1.2, delt=1.4, lat=1.3, trap=2.0, arm=1.3, fore=1.6, calf=1.2, abs=0.7, leg=1.0, defin=0.75),
+        gain=dict(pec=1.2, delt=1.4, lat=1.3, trap=1.7, arm=1.3, fore=1.35, calf=1.2, abs=0.7, leg=1.0, defin=0.75),
         soft=0.2, fat=0.25, ribs=0.0, knobs=0.0, built=0.6),
     "Heavyweight Build": dict(
         key="heavy", head=0.865, neck_s=[3.58, 3.69, 3.76, 3.86],
         skel=dict(torso=1.0, leg=1.007, lowerleg=0.987, arm=0.98, forearm=0.98, armw=1.10, hand=1.12, lower=(1.16, 1.14), foot=1.12),
-        tx=[1.0, 1.10, 1.12, 1.12, 1.10, 1.08], tf=[1.02, 1.16, 1.20, 1.16, 1.10, 1.04], tb=[1.02, 1.10, 1.14, 1.14, 1.10, 1.04],
-        neck=([0.88, 0.53, 0.46], [0.39, 0.355, 0.335], [0.44, 0.40, 0.39]), p=-0.35,
+        tx=[1.0, 1.10, 1.12, 1.12, 1.10, 1.08], tf=[1.02, 1.16, 1.20, 1.16, 1.11, 1.08], tb=[1.02, 1.10, 1.14, 1.14, 1.11, 1.08],
+        neck=([0.88, 0.53, 0.46], [0.345, 0.33, 0.32], [0.38, 0.365, 0.355]), p=-0.35,
         arm=[1.0, 1.03, 1.05, 1.05, 1.04], fore=[1.0, 1.02, 1.05, 1.06, 1.05], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
         calf=[1.0, 1.02, 1.09, 1.10, 1.05, 1.0], calf_pk=0.70,
         gain=dict(pec=1.1, delt=1.0, lat=1.1, trap=1.2, arm=1.1, fore=1.1, calf=1.15, abs=0.35, leg=1.0, defin=0.35),
@@ -889,6 +889,7 @@ T_KNOTS = [2.45, 2.75, 3.05, 3.30, 3.48, 3.58]
 # neck met the head's flat base, no gap under a thin one), and a nod does not open it
 NECK_S = [3.58, 3.66, 3.74, 3.86]
 NECK_TOP = NECK_S[-1]
+ROLL = 0.08  # the shoulder-top roll-off starts this far under neck_s[0] (torso_section)
 
 
 class Sec:
@@ -912,7 +913,7 @@ def torso_section(fr):
     base = LEGACY["Torso"]
     soft = fr["soft"]
     dp = fr["p"]
-    neck_p = [2.6, 2.3, 2.2]
+    neck_p = [2.35, 2.25, 2.2]
     neck_cz = [0.015, 0.035, 0.04]
 
     lx, lz = fr["skel"]["lower"]
@@ -951,15 +952,30 @@ def torso_section(fr):
         s = np.asarray(s, float)
         out = scaled(s, m)
         top = scaled(np.array([neck_s[0]]), m)
+        # (v13) the width and depth start rolling into the trapezius slope ROLL under the shoulder-top row (the
+        # section is flat there, so the join stays smooth): the shoulder-to-trap corner rounds over a longer span
+        # instead of a crisp line across the chest
+        s_roll = neck_s[0] - ROLL
+        low = scaled(np.array([s_roll - 0.04, s_roll]), m)  # (two knots: the roll leaves with the chest's slope)
+        hr = s > s_roll
+        if hr.any():
+            sr = s[hr]
+            tier = 1.0 + 0.05 * m  # a trained neck is a little thicker
+            chin = 0.03 * fat * (1.0 - 0.6 * m)  # the heavyweight's thick, soft neck
+            # blended in over the roll (smoothstep), so the join keeps the chest's slope at s_roll: no crease there
+            wr = np.clip((sr - s_roll) / ROLL, 0, 1)
+            wr = wr * wr * (3 - 2 * wr)
+            for key, vals, k0 in (("ax", nx, 1.0), ("af", nf, 0.6), ("ab", nb, 0.8)):
+                # (never deeper than the chest where the roll starts: a monotone slope, no dip-and-rise crease)
+                v0 = float(low[key][1])
+                v = [float(low[key][0]), v0] + [min(x * (1 + (tier - 1) * k0) + chin, v0 - 0.002 * (i + 1))
+                                                for i, x in enumerate(vals)]
+                out[key][hr] = out[key][hr] * (1 - wr) + pchip([s_roll - 0.04, s_roll] + neck_s[1:], v, sr) * wr
         hi = s > neck_s[0]
         if hi.any():
             sh = s[hi]
-            tier = 1.0 + 0.05 * m  # a trained neck is a little thicker
-            chin = 0.03 * fat * (1.0 - 0.6 * m)  # the heavyweight's thick, soft neck
-            for key, vals, k0 in (("ax", nx, 1.0), ("af", nf, 0.6), ("ab", nb, 0.8)):
-                v = [float(top[key][0])] + [x * (1 + (tier - 1) * k0) + chin for x in vals]
-                out[key][hi] = pchip(neck_s, v, sh)
-            out["p"][hi] = pchip(neck_s, [float(top["p"][0])] + neck_p, sh)
+            p0 = float(top["p"][0])
+            out["p"][hi] = pchip(neck_s, [p0] + [min(p0, q) for q in neck_p], sh)
             out["cz"][hi] = pchip(neck_s, [0.0] + neck_cz, sh)
         return out
     return Sec(call)
@@ -1111,14 +1127,14 @@ def upper_torso(tr, fr):
         Lb(112, 16, 3.38, 3.47, 3.58, g("delt", 0.006, 0.026, 0.0)),            # the rear delt's root on the back
         # ---- shoulders and neck: the girdle's rounding under the delt, the clavicles, the traps rising into the neck
         Lb(90, 46, 3.36, 3.56, 3.74, g("delt", 0.045, 0.04, 0.0)),
-        Lb(30, 28, 3.575, 3.615, 3.665, g("pec", 0.010, 0.0, 0.006)),           # clavicle ridge (the collarbones)
-        Lb(0, 12, 3.60, 3.65, 3.72, g("pec", -0.014, -0.004, -0.005)),           # the notch at the throat
-        Lb(180, 62, 3.56, 3.70, 3.86, g("trap", 0.02, 0.07, 0.0)),               # upper traps into the neck (the slope)
+        Lb(26, 16, 3.545, 3.585, 3.625, g("pec", 0.006, 0.0, 0.006), drift=300),  # the collarbones (rising outward)
+        Lb(0, 10, 3.565, 3.61, 3.66, -0.007 * tr["f"] - 0.003 * tr["d"]),       # the sternum notch at the throat
+        Lb(180, 78, 3.46, 3.58, 3.80, g("trap", 0.016, 0.045, 0.0), k=0.8),     # upper traps into the neck (the slope)
         # (v13) a real neck: the two sternocleidomastoid cords from the collarbones up behind the jaw, the throat's
         # hollow between them (the larynx a small bump in it), the nape's groove between the traps' insertions
-        Lb(21, 9, 3.63, 3.76, 3.90, g("trap", 0.010, 0.012, 0.008)),            # sternocleidomastoid
-        Lb(0, 7, 3.64, 3.74, 3.86, g("trap", -0.006, -0.004, -0.006)),          # the throat between the cords
-        Lb(0, 4, 3.69, 3.73, 3.77, g("trap", 0.005, 0.002, 0.0)),               # the larynx
+        Lb(34, 11, 3.60, 3.72, 3.88, 0.006 + 0.004 * tr["m"] + 0.003 * tr["d"], drift=260),  # sternocleidomastoid
+        Lb(0, 10, 3.62, 3.72, 3.84, -0.004 - 0.002 * tr["d"]),                  # the throat between the cords
+        Lb(0, 5, 3.68, 3.725, 3.77, 0.003 * tr["f"]),                          # the larynx
         Lb(180, 7, 3.70, 3.80, 3.90, g("trap", -0.003, -0.003, -0.004)),        # the nape's groove
     ]
     built = fr.get("built", 0.0) * tr["f"]  # the naturally built frames carry a chest / lats / delt roots at tier 1
@@ -1869,62 +1885,84 @@ def render_frame_sheets(bpy, built, tiers, samples, views=("front", "back", "sid
     return paths
 
 
+def stack_strips(paths, out, title):
+    """the strips one under the other (PIL), saved as out with the title bar"""
+    from PIL import Image
+    ims = [Image.open(q).convert("RGB") for q in paths]
+    W = max(im.size[0] for im in ims)
+    img = Image.new("RGB", (W, sum(im.size[1] for im in ims)), (26, 27, 30))
+    y = 0
+    for im in ims:
+        img.paste(im, (0, y))
+        y += im.size[1]
+    img.save(out)
+    label(out, [], title, strip=0)
+    return out
+
+
 def render_arm_strip(bpy, built, tiers, samples):
-    """<scratch>/arms_t<N>.png: the right arm of every frame, straight (A-pose) and bent 110 deg at the elbow"""
+    """<scratch>/arms_t<N>.png: the right arm of every frame on its UpperTorso, two strips: straight (A-pose, a front
+    3/4 turned so the right arm faces the camera: the shoulder into the delt, the forearm taper, the hand) and bent
+    110 deg at the elbow seen from the side (the biceps / triceps profile, the elbow seam, the curled hand)"""
     paths = []
     frames = [f for f in FRAME_ORDER if any((f, n) in built for n in tiers)]
     only = ("UpperTorso", "RightUpperArm", "RightLowerArm", "RightHand")
     for n in tiers:
-        st = Stage(bpy, (2000, 700), samples)
         fs = [f for f in frames if (f, n) in built]
-        sp = 2.2
-        labels = []
-        for i, f in enumerate(fs):
-            parts = built[(f, n)]
-            for j, el in enumerate((7.0, 110.0)):
-                x = -((2 * i + j) - (2 * len(fs) - 1) / 2) * sp
-                place = M4(roty(-30), (x, 0, 0))
+        strips = []
+        for tag, yaw, el, sp in (("straight", 35.0, 7.0, 3.4), ("bent", 90.0, 110.0, 3.4)):
+            st = Stage(bpy, (2400, 620), samples)
+            labels = []
+            for i, f in enumerate(fs):
+                parts = built[(f, n)]
+                x = -(i - (len(fs) - 1) / 2) * sp
+                place = M4(roty(yaw), (x, 0, 0))
                 _, S = height_norm(parts)
                 pm = pose_mats(parts["_J"], sh=12.0, el=el)
                 for name in only:
-                    st.add("A%d_%d_%s" % (i, j, name), parts[name], place @ S @ pm[name], st.skin)
-                labels.append("%s %s" % (f.split(" ")[0], "straight" if j == 0 else "bent 110"))
-        p = st.shoot(os.path.join(SCRATCH, "arms_t%d.png" % n), 0, 4.1, 2 * len(fs) * sp + 0.4, elev=4)
-        label(p, labels, "Right arm close-ups, tier %d (%s): shoulder into delt, elbow seam, forearm taper, hand" % (n, TIERS[n]["name"]))
-        paths.append(p)
+                    st.add("A%s_%d_%s" % (tag, i, name), parts[name], place @ S @ pm[name], st.skin)
+                labels.append("%s T%d %s" % (f.split(" ")[0], n, "straight" if el < 50 else "bent 110"))
+            q = st.shoot(os.path.join(SCRATCH, "arms_t%d_%s.png" % (n, tag)), 0, 4.25, len(fs) * sp, elev=4)
+            label(q, labels, strip=34)
+            strips.append(q)
+        paths.append(stack_strips(strips, os.path.join(SCRATCH, "arms_t%d.png" % n),
+                                  "Right arm close-ups, tier %d (%s): straight (3/4) and bent 110 (side): delt, elbow seam, forearm, hand"
+                                  % (n, TIERS[n]["name"])))
     return paths
 
 
 def render_heads_necks(bpy, built, tiers, samples):
-    """<scratch>/heads_necks.png: every frame's head on its neck, front and side (the neck's top under the head's
-    rounded base, the trapezius slope, the SCM cords), one row per tier (the UpperTorso, the upper arms and the head)"""
+    """<scratch>/heads_necks.png: close-ups of every frame's head on its neck (the neck's top under the head's rounded
+    base, the trapezius slope, the SCM cords, the collarbones), one strip per tier and view (front: the UpperTorso
+    and the head; side: with the upper arms), stacked tier 1 front / side, tier 5 front / side. Every figure is height
+    normalised as the game builds it (height_norm), so the crowns line up"""
     frames = [f for f in FRAME_ORDER if any((f, n) in built for n in tiers)]
-    only = ("UpperTorso", "RightUpperArm", "LeftUpperArm")
-    st = Stage(bpy, (2400, 460 * len(tiers)), samples)
-    sp, rows = 2.0, 2.0
-    labels = []
-    for r, n in enumerate(tiers):
-        dy = (len(tiers) - 1) / 2 * rows - r * rows
+    sp = 2.6
+    strips = []
+    for n in tiers:
         fs = [f for f in frames if (f, n) in built]
-        for i, f in enumerate(fs):
-            parts = built[(f, n)]
-            for j, yaw in enumerate((0.0, 90.0)):
-                x = -((2 * i + j) - (2 * len(fs) - 1) / 2) * sp
-                place = M4(roty(yaw), (x, dy, 0))
+        for view, yaw, only in (("front", 0.0, ("UpperTorso",)), ("side", 90.0, ("UpperTorso", "RightUpperArm", "LeftUpperArm"))):
+            st = Stage(bpy, (2400, 440), samples)
+            labels = []
+            for i, f in enumerate(fs):
+                parts = built[(f, n)]
+                x = -(i - (len(fs) - 1) / 2) * sp
+                place = M4(roty(yaw), (x, 0, 0))
                 hs, S = height_norm(parts)
                 pm = pose_mats(parts["_J"], sh=5.0, el=7.0)
                 for name in only:
-                    st.add("H%d_%d_%d_%s" % (r, i, j, name), parts[name], place @ S @ pm[name], st.skin)
+                    st.add("H%d_%s_%d_%s" % (n, view, i, name), parts[name], place @ S @ pm[name], st.skin)
                 neck = np.array(parts["_J"]["Neck"]) * np.array([1.0, hs, 1.0])
                 hd = head_size(f)
-                st.add("H%d_%d_%d_Head" % (r, i, j), None, place, st.headmat("determined"),
+                st.add("H%d_%s_%d_Head" % (n, view, i), None, place, st.headmat("determined"),
                        D=head_mesh(neck + np.array([0, hd / 2, 0]), hd))
-                if r == 0:
-                    labels.append("%s %s" % (f.split(" ")[0], "front" if j == 0 else "side"))
-    width = 2 * len(frames) * sp + 0.4
-    p = st.shoot(os.path.join(SCRATCH, "heads_necks.png"), 0, 5.25, width, elev=2)
-    label(p, labels, "Heads and necks: the classic head on each frame's neck column, front and side, tiers %s (top to bottom)"
-          % " / ".join(str(n) for n in tiers))
+                labels.append("%s T%d %s" % (f.split(" ")[0], n, view))
+            p = st.shoot(os.path.join(SCRATCH, "heads_necks_t%d_%s.png" % (n, view)), 0, 5.42, len(fs) * sp, elev=2)
+            label(p, labels, strip=34)
+            strips.append(p)
+    p = stack_strips(strips, os.path.join(SCRATCH, "heads_necks.png"),
+                     "Heads and necks (close-up, height-normalised): tiers %s, front then side per tier"
+                     % " / ".join(str(n) for n in tiers))
     return [p]
 
 
@@ -2004,7 +2042,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-render", action="store_true")
     ap.add_argument("--samples", type=int, default=40)
-    ap.add_argument("--sheets", default="frames,1,2,4,5", help="frames = the frame lineups; 1,2,4,5 = the Athletic tier sheets")
+    ap.add_argument("--sheets", default="frames,1,2,4,5", help="frames = the frame lineups (+ the close-ups); closeups = the arm and head / neck sheets only; 1,2,4,5 = the Athletic tier sheets")
     ap.add_argument("--tiers", default="1,2,3,4,5")
     ap.add_argument("--frames", default=",".join(FRAMES[f]["key"] for f in FRAME_ORDER), help="frame keys (lean,athletic,...)")
     ap.add_argument("--frame-sheet-tiers", default="1,5")
@@ -2060,10 +2098,11 @@ def main():
                                                        "standingHeight", "armAxisX")}))
     if not a.no_render:
         sheets = a.sheets.split(",")
+        fst = [int(x) for x in a.frame_sheet_tiers.split(",") if int(x) in want_tiers]
         if "frames" in sheets:
-            fst = [int(x) for x in a.frame_sheet_tiers.split(",") if int(x) in want_tiers]
             for p in render_frame_sheets(bpy, built, fst, a.samples):
                 print("sheet", p)
+        if "frames" in sheets or "closeups" in sheets:  # closeups: the arm and head / neck sheets only
             for p in render_arm_strip(bpy, built, fst, a.samples):
                 print("sheet", p)
             for p in render_heads_necks(bpy, built, fst, a.samples):

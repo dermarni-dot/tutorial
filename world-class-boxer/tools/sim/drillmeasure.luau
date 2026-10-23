@@ -24,6 +24,8 @@ local function argAfter(flag)
 	return at and args[at + 1] or nil
 end
 local srcDir = argAfter("--src")
+-- --byjudge: each row also lists its grades per segment judge (j: perfect/good/miss)
+local byJudge = table.find(args, "--byjudge") ~= nil
 local runs = tonumber(argAfter("--runs")) or 4
 local only
 do
@@ -157,8 +159,24 @@ local function units(seg, j, r)
 		for _, n in ipairs(j.notes) do
 			add(band3(n.q or 0, 0.9, 0.6))
 		end
+	elseif k == "mash" then
+		for _, g in ipairs(r.grades) do
+			add(band3(g, 0.95, 0.7))
+		end
+	elseif k == "gauge" then
+		add(band3(r.q, 0.9, 0.6))
+	elseif k == "road" then
+		add(band3(r.acc / r.duration / Workouts.TIMED_FULL, 0.9, 0.6))
+		add("perfect", r.sweet)
+		add("good", r.hits - r.sweet)
+		add("miss", r.breaths - r.hits)
+	elseif k == "pullup" then
+		add("perfect", r.perfect)
+		add("good", r.good)
+		add("miss", math.max(r.short + r.slips, r.reps - r.done))
 	elseif k == "rope" then
-		add("good", r.clean)
+		add("perfect", r.sweet or 0)
+		add("good", r.clean - (r.sweet or 0))
 		add("miss", r.jumps - r.clean)
 	elseif k == "lights" then
 		add("good", r.correct)
@@ -177,7 +195,9 @@ local function units(seg, j, r)
 		add(band3(r.inZone / r.duration / DrillScore.PACE_FULL, 0.9, 0.6))
 	elseif k == "breath" then
 		add(band3(r.sync / r.duration, 0.9, 0.65))
-	elseif k == "treadmill" or k == "bike" or k == "chamber" or k == "wobble" then
+	elseif k == "chamber" then
+		add(band3(r.acc / r.duration / (Workouts.CHAMBER_FULL or Workouts.TIMED_FULL), 0.9, 0.6))
+	elseif k == "treadmill" or k == "bike" or k == "wobble" then
 		add(band3(r.acc / r.duration / Workouts.TIMED_FULL, 0.9, 0.6))
 	elseif k == "icebath" then
 		add(band3(r.calm / r.duration / Workouts.TIMED_FULL, 0.9, 0.6))
@@ -194,7 +214,7 @@ local FRAME = 1 / 60
 local function play(plan, skill, seed)
 	local rng = Random.new(seed)
 	local results, t = {}, 0
-	local grades = { perfect = 0, good = 0, miss = 0 }
+	local grades = { perfect = 0, good = 0, miss = 0, by = {} }
 	for i, seg in ipairs(plan.segs) do
 		local M = t + (tonumber(seg.gap) or 0)
 		local j = DrillScore.Judge(seg, M)
@@ -217,6 +237,9 @@ local function play(plan, skill, seed)
 		results[i] = j.result()
 		for _, g in ipairs(units(seg, j, results[i])) do
 			grades[g] += 1
+			local b = grades.by[seg.j] or { perfect = 0, good = 0, miss = 0 }
+			grades.by[seg.j] = b
+			b[g] += 1
 		end
 		local e = j.endsAt()
 		t = (type(e) == "number" and e < tt) and e or tt
@@ -230,20 +253,38 @@ for _, act in ipairs(ACTS) do
 	for _, lv in ipairs(levels) do
 		for _, skName in ipairs(skills) do
 			local sk = Bots.SKILLS[skName]
-			local sumT, sumS, g = 0, 0, { perfect = 0, good = 0, miss = 0 }
+			local sumT, sumS, g, by = 0, 0, { perfect = 0, good = 0, miss = 0 }, {}
 			for k = 1, runs do
 				local plan = Training.DrillPlan(act, lv, serverParams(act, lv))
 				local score, dur, grades = play(plan, sk, lv * 1000 + k)
 				sumT += dur
 				sumS += score
 				for key, v in pairs(grades) do
-					g[key] += v
+					if key == "by" then
+						for jn, b in pairs(v) do
+							local acc = by[jn] or { perfect = 0, good = 0, miss = 0 }
+							by[jn] = acc
+							for gk, gv in pairs(b) do
+								acc[gk] += gv
+							end
+						end
+					else
+						g[key] += v
+					end
 				end
 			end
 			local n = math.max(1, g.perfect + g.good + g.miss)
 			local row = { act = act.id, lv = lv, skill = skName, secs = sumT / runs, score = sumS / runs, perfect = g.perfect / n, goodPlus = (g.perfect + g.good) / n, miss = g.miss / n }
 			table.insert(rows, row)
 			print(string.format("%-10s %d   %-8s %6.1f %6.3f %4d%% %4d%% %4d%%", act.id, lv, skName, row.secs, row.score, math.floor(row.perfect * 100 + 0.5), math.floor(row.goodPlus * 100 + 0.5), math.floor(row.miss * 100 + 0.5)))
+			if byJudge then
+				local parts = {}
+				for jn, b in pairs(by) do
+					table.insert(parts, string.format("%s %d/%d/%d", jn, b.perfect, b.good, b.miss))
+				end
+				table.sort(parts)
+				print("             " .. table.concat(parts, "   "))
+			end
 		end
 	end
 end

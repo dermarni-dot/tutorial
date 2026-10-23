@@ -148,7 +148,8 @@ J.bench = function(seg, M, TapHold)
 		local q = 0
 		local avg = s.sum / math.max(1, s.n)
 		if v == "lockout" then
-			q = clamp(1 - math.max(0, avg - 0.1) / 0.3, 0.5, 1)
+			-- (a level bar: the mean tilt under 0.12 is full marks, 0.47 the floor of a locked-out rep)
+			q = clamp(1 - math.max(0, avg - 0.12) / 0.35, 0.5, 1)
 			if s.maxX > 0.85 * seg.tiltMax then
 				q *= 0.9
 			end
@@ -377,93 +378,112 @@ J.squat = function(seg, M, TapHold)
 	return s
 end
 
--- PULL-UPS: pull LEFT and RIGHT in turn (the same arm twice gives nothing); each pull lifts you and adds
--- to the swing, more the further the swing is from the middle (pull through the bottom of the swing).
--- HOLLOW (tap or hold) braces the body: the swing dies off fast, pulls go half as far. Chin over the bar
--- (height 1) is a rep; a swing past seg.amax kips you off it; height sinks back slowly between pulls.
+-- PULL-UPS (hold and release, grip stamina): one segment is a set of seg.reps reps. PULL held climbs
+-- (seg.speed a second, slower as the grip tires: x(0.6 + 0.4 grip)); RELEASE with the chin over the bar -
+-- the height inside [seg.lo, 1] - is a rep (SWEET inside [seg.perfLo, seg.perfHi]); a release below it is
+-- SHORT (no rep, nothing else lost). After a release the body lowers under control (seg.sink a second)
+-- and the next pull starts from the bottom (h <= seg.ready). The GRIP drains while you pull (seg.drain, more
+-- held at the top: seg.topDrain) and comes back while you hang (seg.regen): pace the set. A grip that runs
+-- out drops you off the bar (a SLIP: no rep, the grip back to seg.slipGrip). The set closes on its reps or
+-- at seg.limit; a set nobody starts closes after seg.wait.
 J.pullup = function(seg, M, TapHold)
-	local s = { closed = false, h = 0, A = seg.a0, hollow = {}, pulls = 0, sumA = 0, n = 0, offSum = 0 }
+	local s = { closed = false, h = 0, grip = 1, pull = false, lowering = false, done = 0, perfect = 0, good = 0, short = 0, slips = 0, topT = 0, reps = {} }
 	local function close(T, v)
 		s.closed, s.endT, s.verdict = true, T, v
 	end
-	function s.phaseAt(t)
-		return seg.omega * (t - M) + seg.ph
-	end
-	function s.swing(t)
-		return s.A * math.sin(s.phaseAt(t))
-	end
 	stepper(s, M, function(T)
-		local hollow = s.hollow.on
-		s.A = math.max(0, s.A - (hollow and seg.hollowDamp or seg.damp) * TICK)
 		if not s.started then
+			s.grip = 1
 			if T - M >= seg.wait then
 				close(T, "none")
 			end
 			return
 		end
-		s.h = math.max(0, s.h - seg.sink * (hollow and 0.5 or 1) * TICK)
-		s.sumA += s.A
-		s.n += 1
-		if s.A >= seg.amax then
-			close(T, "swung")
-		elseif s.h >= 1 then
-			close(T, "chin")
+		if s.pull then
+			s.h = math.min(1, s.h + seg.speed * (0.6 + 0.4 * s.grip) * TICK)
+			s.grip -= (seg.drain + (s.h >= 1 and seg.topDrain or 0)) * TICK
+			if s.h >= 1 then
+				s.topT += TICK
+			end
+			if s.grip <= 0 then
+				-- the grip gave out: off the bar
+				s.grip, s.pull, s.lowering = seg.slipGrip, false, true
+				s.slips += 1
+				s.last = { verdict = "slip", T = T }
+			end
+		else
+			s.grip = math.min(1, s.grip + seg.regen * (s.h <= seg.ready and 1.5 or 1) * TICK)
+			if s.lowering then
+				s.h = math.max(0, s.h - seg.sink * TICK)
+				if s.h <= seg.ready then
+					s.lowering = false
+				end
+			end
+		end
+		if s.done >= seg.reps then
+			close(T, "set")
 		elseif T - s.startT >= seg.limit then
-			close(T, "stalled")
+			close(T, "time")
 		end
 	end)
+	function s.ready()
+		return not s.lowering and s.h <= seg.ready
+	end
 	function s.input(id, down, t)
-		if s.closed or t < M then
+		if s.closed or t < M or id ~= "pull" then
 			return nil
 		end
 		s.advance(t)
 		if s.closed then
 			return nil
 		end
-		if id == "hollow" then
-			local flip = TapHold(s.hollow, down, t)
-			return flip and { hollow = flip == "on" } or nil
+		if down then
+			if s.pull or not s.ready() then
+				return nil
+			end
+			if not s.started then
+				s.started, s.startT = true, t
+			end
+			s.pull, s.topT = true, 0
+			return { pull = true }
 		end
-		if not down or (id ~= "L" and id ~= "R") then
+		if not s.pull then
 			return nil
 		end
-		if id == s.last then
-			return { alt = false, id = id }
+		-- the release: where the chin is decides the rep
+		s.pull, s.lowering = false, true
+		local h = s.h
+		local v
+		if h >= seg.perfLo and h <= seg.perfHi and s.topT <= 0.25 then
+			v = "sweet"
+			s.perfect += 1
+			s.done += 1
+		elseif h >= seg.lo then
+			v = "rep"
+			s.good += 1
+			s.done += 1
+		else
+			v = "short"
+			s.short += 1
 		end
-		if not s.started then
-			s.started, s.startT = true, t
+		table.insert(s.reps, { verdict = v, h = h, t = t })
+		s.last = { verdict = v, h = h, T = t }
+		if s.done >= seg.reps then
+			close(t, "set")
 		end
-		s.last = id
-		local off = math.abs(math.sin(s.phaseAt(t)))
-		s.pulls += 1
-		s.offSum += off
-		s.h = math.min(1, s.h + seg.gain * (1 - 0.6 * off) * (s.hollow.on and 0.5 or 1))
-		s.A += seg.swingAdd * off
-		if s.h >= 1 then
-			close(t, "chin")
-		elseif s.A >= seg.amax then
-			close(t, "swung")
-		end
-		return { alt = true, id = id, off = off, h = s.h }
+		return { verdict = v, h = h, done = s.done }
 	end
 	s.finish = finishOf(s)
 	function s.result()
-		local v = s.verdict or (s.started and "stalled" or "none")
-		local avgA = s.sumA / math.max(1, s.n)
-		local q = 0
-		if v == "chin" then
-			q = clamp(1 - math.max(0, avgA - 0.35) / 0.55, 0.5, 1)
-		elseif v == "swung" then
-			q = 0.3 + 0.15 * s.h
-		elseif v == "stalled" then
-			q = 0.25 + 0.3 * s.h
-		end
-		return { q = q, verdict = v, h = s.h, avgSwing = avgA, pulls = s.pulls, pressed = s.started == true }
+		-- (a sweet rep 1, a rep 0.75; a short pull or a slip costs a little - a cheap failure, never a reset)
+		local q = (s.perfect + 0.75 * s.good) / math.max(1, seg.reps) - 0.08 * s.short - 0.1 * s.slips
+		return { q = clamp(q, 0, 1), verdict = s.verdict or (s.started and "time" or "none"), perfect = s.perfect, good = s.good, short = s.short, slips = s.slips,
+			done = s.done, reps = seg.reps, h = s.h, grip = s.grip, pressed = s.started == true }
 	end
 	function s.endsAt()
 		return s.endT or (not s.started and (M + seg.wait)) or nil
 	end
-	s.minTime = math.ceil(1 / seg.gain) * RT_FLOOR
+	s.minTime = seg.reps * (seg.lo / seg.speed + (seg.lo - seg.ready) / seg.sink) * 0.8
 	return s
 end
 
@@ -616,13 +636,33 @@ W.StepAt = stepAt
 
 -- TREADMILL: the console follows a program of speed / incline targets; SPEED + / - and INCLINE + / -
 -- step the belt (seg.stepMph, one % of incline). A tick on both targets is full credit, on one half.
+-- A button held repeats (after REPEAT_DELAY, every REPEAT_EVERY): no mashing for a big change of pace.
+local REPEAT_DELAY, REPEAT_EVERY = 0.35, 0.2
 J.treadmill = function(seg, M)
 	local s = timed(seg, M)
 	s.mph, s.incl, s.onBoth = seg.mph0, seg.incl0, 0
+	s.rep = {}
 	function s.target(t)
 		return stepAt(seg.program, t - M)
 	end
+	local function press(id)
+		if id == "spdUp" then
+			s.mph = math.min(seg.mphMax, s.mph + seg.stepMph)
+		elseif id == "spdDn" then
+			s.mph = math.max(seg.mphMin, s.mph - seg.stepMph)
+		elseif id == "incUp" then
+			s.incl = math.min(seg.inclMax, s.incl + 1)
+		elseif id == "incDn" then
+			s.incl = math.max(0, s.incl - 1)
+		end
+	end
 	stepper(s, M, function(T)
+		for id, nextT in pairs(s.rep) do
+			if T + 1e-9 >= nextT then
+				press(id)
+				s.rep[id] = nextT + REPEAT_EVERY
+			end
+		end
 		local tg = stepAt(seg.program, T - M)
 		-- on target is full credit; just off (inside 1.5x the tolerance) half; the incline counts half
 		local dS, dI = math.abs(s.mph - tg.mph), math.abs(s.incl - tg.incl)
@@ -638,24 +678,19 @@ J.treadmill = function(seg, M)
 		end
 	end)
 	function s.input(id, down, t)
-		if not down or s.closed or t < M then
+		if s.closed or t < M or not (id == "spdUp" or id == "spdDn" or id == "incUp" or id == "incDn") then
 			return nil
 		end
 		s.advance(t)
 		if s.closed then
 			return nil
 		end
-		if id == "spdUp" then
-			s.mph = math.min(seg.mphMax, s.mph + seg.stepMph)
-		elseif id == "spdDn" then
-			s.mph = math.max(seg.mphMin, s.mph - seg.stepMph)
-		elseif id == "incUp" then
-			s.incl = math.min(seg.inclMax, s.incl + 1)
-		elseif id == "incDn" then
-			s.incl = math.max(0, s.incl - 1)
-		else
+		if not down then
+			s.rep[id] = nil
 			return nil
 		end
+		press(id)
+		s.rep[id] = t + REPEAT_DELAY
 		return { mph = s.mph, incl = s.incl }
 	end
 	function s.result()
@@ -880,9 +915,10 @@ J.icebath = function(seg, M, TapHold)
 			s.startL, s.fullAt = s.l, nil
 			return { inhale = true, from = s.l }
 		elseif flip == "off" then
-			-- how calming the breath was: how full (0.4 .. 0.9) times how empty it started (0.6 .. 0.15)
-			local full, fromEmpty = s.l >= 0.8, (s.startL or 1) <= 0.25
-			local q = clamp((s.l - 0.4) / 0.5, 0, 1) * clamp((0.6 - (s.startL or 1)) / 0.45, 0, 1)
+			-- how calming the breath was: how full (0.38 .. 0.88) times how empty it started (0.68 .. 0.18):
+			-- a breath begun with a little air left is still a fair one
+			local full, fromEmpty = s.l >= 0.8, (s.startL or 1) <= 0.3
+			local q = clamp((s.l - 0.38) / 0.5, 0, 1) * clamp((0.68 - (s.startL or 1)) / 0.5, 0, 1)
 			local good = q >= 0.75
 			s.breaths += 1
 			s.calm = q > 0 and q or nil
@@ -983,7 +1019,8 @@ J.massage = function(seg, M)
 	end
 	local function pick(g, t, timedOut)
 		local m = remainingMax()
-		local q = timedOut and 0 or (m > 0 and clamp(sore[g] / m, 0, 1) or 1)
+		-- (a spot nearly as sore as the worst one - 80% of it - is a full pick)
+		local q = timedOut and 0 or (m > 0 and clamp(sore[g] / m / 0.8, 0, 1) or 1)
 		s.pickSum += q
 		s.worked[g] = true
 		local p = { group = g, q = q, timedOut = timedOut == true, sore = sore[g] }
@@ -1106,7 +1143,8 @@ J.chamber = function(seg, M)
 			dp -= seg.vent * TICK
 		end
 		if s.P > 1 then
-			dp -= seg.leak * TICK
+			-- (the seal breathes: the leak comes and goes - top the pressure up as it sags)
+			dp -= seg.leak * (1 + (seg.leakWave or 0) * math.sin(1.3 * (T - M))) * TICK
 		end
 		local P0 = s.P
 		s.P = clamp(s.P + dp, 1, seg.maxP)
@@ -1321,6 +1359,191 @@ J.wobble = function(seg, M)
 	return s
 end
 
+-- SLED PUSH (mash bursts): seg.bursts drives of seg.push seconds, each followed by a seg.reset breather
+-- (the sled settles; presses then do nothing). In a drive LEFT / RIGHT in turn are the steps - the same
+-- leg twice is no step - and seg.target steps make a full drive (the sled's metres). Every drive is its own
+-- grade: a slow one costs that drive, nothing carries over.
+J.mash = function(seg, M)
+	local period = seg.push + seg.reset
+	local dur = seg.bursts * period - seg.reset
+	local s = { closed = false, steps = {}, wrong = 0, early = 0, duration = dur }
+	for k = 1, seg.bursts do
+		s.steps[k] = 0
+	end
+	-- the drive at t (1..bursts) and whether it is pushing (false: the reset after it)
+	function s.burstAt(t)
+		local el = t - M
+		local k = math.floor(el / period) + 1
+		return math.clamp(k, 1, seg.bursts), (el - (k - 1) * period) < seg.push and el >= 0
+	end
+	function s.advance(t)
+		if t >= M + dur then
+			s.closed = true
+		end
+		return s
+	end
+	function s.input(id, down, t)
+		if not down or s.closed or t < M or (id ~= "L" and id ~= "R") then
+			return nil
+		end
+		s.advance(t)
+		if s.closed then
+			return nil
+		end
+		local k, pushing = s.burstAt(t)
+		if not pushing then
+			s.early += 1
+			return { reset = true }
+		end
+		if id == s.last then
+			s.wrong += 1
+			return { same = true, k = k }
+		end
+		s.last = id
+		s.steps[k] += 1
+		return { step = true, k = k, n = s.steps[k] }
+	end
+	function s.finish(t)
+		s.closed = true
+	end
+	function s.result()
+		local sum, grades = 0, {}
+		for k = 1, seg.bursts do
+			local g = math.min(1, s.steps[k] / math.max(1, seg.target))
+			grades[k] = g
+			sum += g
+		end
+		return { q = sum / seg.bursts, grades = grades, steps = table.clone(s.steps), wrong = s.wrong, bursts = seg.bursts, target = seg.target, duration = dur }
+	end
+	function s.endsAt()
+		return M + dur
+	end
+	s.minTime = dur
+	return s
+end
+
+-- HOLD GAUGE (the neck harness, the forearm squeeze): SQUEEZE held raises the force (seg.rise a second),
+-- let go and it falls (seg.fall); the force wavers on its own (two sines, seg.amp growing with the
+-- seconds held: seg.grow - the tremor of a tiring muscle) and only the steady band [seg.lo, seg.hi]
+-- counts. seg.need seconds in the band inside seg.dur is a full hold. A tap still nudges (W.NUDGE).
+J.gauge = function(seg, M)
+	local s = { closed = false, f = 0, acc = 0, heldT = 0, duration = seg.dur }
+	holds(s)
+	local w = seg.wave
+	function s.tremor(T)
+		local el = T - M
+		return (seg.amp + seg.grow * s.heldT) * (math.sin(w[1] * el + w[2]) + 0.6 * math.sin(w[3] * el + w[4]))
+	end
+	function s.shown(T)
+		return clamp(s.f + s.tremor(T), 0, 1.2)
+	end
+	stepper(s, M, function(T)
+		if T - M > seg.dur then
+			s.closed = true
+			return
+		end
+		if s.held("sq", T) then
+			s.f = math.min(1.1, s.f + seg.rise * TICK)
+			s.heldT += TICK
+		else
+			s.f = math.max(0, s.f - seg.fall * TICK)
+		end
+		local v = s.shown(T)
+		if v >= seg.lo and v <= seg.hi then
+			s.acc += TICK
+		end
+	end)
+	function s.input(id, down, t)
+		if s.closed or t < M or id ~= "sq" then
+			return nil
+		end
+		s.advance(t)
+		if s.closed then
+			return nil
+		end
+		s.setHold("sq", down, t)
+		return { sq = down }
+	end
+	s.finish = finishOf(s)
+	function s.result()
+		return { q = clamp(s.acc / seg.need, 0, 1), acc = s.acc, need = seg.need, duration = seg.dur }
+	end
+	function s.endsAt()
+		return M + seg.dur
+	end
+	s.minTime = seg.dur
+	return s
+end
+
+-- ROADWORK PACE (the treadmill's road lane): STRIDE taps push the runner's pace up (seg.kick), it eases
+-- off on its own (seg.decay a second); the pacer's band moves through seg.legs ({ t, lo, hi, name }) and
+-- the time inside it counts. BREATHE taps on the breathing cues (seg.breaths, seconds in) from seg.breathW
+-- before to 1.4 x seg.breathW after (a reaction to a cue is late more often than early) are breaths in
+-- rhythm; a breath tap with no cue near is just a breath (nothing lost).
+J.road = function(seg, M)
+	local s = { closed = false, v = seg.v0, acc = 0, duration = seg.duration, breathHit = {}, hits = 0, sweet = 0 }
+	function s.legAt(T)
+		return stepAt(seg.legs, T - M)
+	end
+	stepper(s, M, function(T)
+		if T - M > seg.duration then
+			s.closed = true
+			return
+		end
+		s.v = math.max(0, s.v - seg.decay * TICK)
+		local leg = s.legAt(T)
+		if leg and s.v >= leg.lo and s.v <= leg.hi then
+			s.acc += TICK
+		end
+	end)
+	-- the next breathing cue not yet taken (index, seconds to it; negative: just passed)
+	function s.nextBreath(t)
+		for i, b in ipairs(seg.breaths) do
+			if not s.breathHit[i] and (t - M) <= b + 1.4 * seg.breathW then
+				return i, b - (t - M)
+			end
+		end
+		return nil
+	end
+	function s.input(id, down, t)
+		if not down or s.closed or t < M then
+			return nil
+		end
+		s.advance(t)
+		if s.closed then
+			return nil
+		end
+		if id == "stride" then
+			s.v = math.min(1, s.v + seg.kick)
+			return { v = s.v }
+		elseif id == "breathe" then
+			local i, dt = s.nextBreath(t)
+			if i and dt <= seg.breathW and dt >= -1.4 * seg.breathW then
+				s.breathHit[i] = true
+				s.hits += 1
+				local sweet = math.abs(dt) <= seg.breathW * 0.4
+				if sweet then
+					s.sweet += 1
+				end
+				return { breath = true, sweet = sweet }
+			end
+			return { breath = false }
+		end
+		return nil
+	end
+	s.finish = finishOf(s)
+	function s.result()
+		local n = #seg.breaths
+		local q = 0.7 * clamp(s.acc / seg.duration / W.TIMED_FULL, 0, 1) + 0.3 * s.hits / math.max(1, n)
+		return { q = q, acc = s.acc, duration = seg.duration, hits = s.hits, sweet = s.sweet, breaths = n }
+	end
+	function s.endsAt()
+		return M + seg.duration
+	end
+	s.minTime = seg.duration
+	return s
+end
+
 W.Judges = J
 
 ------------------------------------------------------------------------
@@ -1334,17 +1557,43 @@ local function avgQ(plan, res)
 	end
 	return sum / math.max(1, #plan.segs)
 end
-AGG.bench, AGG.deadlift, AGG.squat, AGG.pullup, AGG.stretch = avgQ, avgQ, avgQ, avgQ, avgQ
+AGG.bench, AGG.pullup, AGG.stretch = avgQ, avgQ, avgQ
+-- a lift's reps with a finisher of another kind (the squat's sled push, the deadlift's neck harness):
+-- the reps' mean and the finisher's grade, weighted (the finisher: share of the session score)
+local function withFinisher(main, share)
+	return function(plan, res)
+		local sum, n, fin, has = 0, 0, 0, false
+		for i, seg in ipairs(plan.segs) do
+			if seg.j == main then
+				n += 1
+				sum += res[i] and res[i].q or 0
+			else
+				has = true
+				fin += res[i] and res[i].q or 0
+			end
+		end
+		local reps = sum / math.max(1, n)
+		return has and ((1 - share) * reps + share * fin) or reps
+	end
+end
+AGG.squat = withFinisher("squat", 0.4)
+AGG.deadlift = withFinisher("deadlift", 0.25)
 AGG.curls = function(plan, res)
-	local sum, n = 0, 0
+	local sum, n, grip, has = 0, 0, 0, false
 	for i, seg in ipairs(plan.segs) do
-		n += #seg.notes
 		local r = res[i]
-		if r then
-			sum += r.sum - 0.1 * (r.swings or 0) - 0.15 * (r.stray or 0)
+		if seg.j == "gauge" then
+			has = true
+			grip = r and r.q or 0
+		else
+			n += #seg.notes
+			if r then
+				sum += r.sum - 0.1 * (r.swings or 0) - 0.15 * (r.stray or 0)
+			end
 		end
 	end
-	return clamp(sum / math.max(1, n), 0, 1)
+	local curls = clamp(sum / math.max(1, n), 0, 1)
+	return has and (0.75 * curls + 0.25 * grip) or curls
 end
 -- this share of a time-on-target drill is full marks (nobody is on target the moment a step changes)
 W.TIMED_FULL = 0.8
@@ -1352,7 +1601,22 @@ local function accShare(plan, res)
 	local r, seg = res[1], plan.segs[1]
 	return r and clamp(r.acc / seg.duration / W.TIMED_FULL, 0, 1) or 0
 end
-AGG.treadmill, AGG.bike, AGG.chamber = accShare, accShare, accShare
+AGG.bike = accShare
+-- the chamber's profile is slow and always in view: full marks want nearly all of it on target
+W.CHAMBER_FULL = 0.92
+AGG.chamber = function(plan, res)
+	local r, seg = res[1], plan.segs[1]
+	return r and clamp(r.acc / seg.duration / W.CHAMBER_FULL, 0, 1) or 0
+end
+-- the console's program, then the road lane (J.road) when the plan has one
+AGG.treadmill = function(plan, res)
+	local console = accShare(plan, res)
+	local i = #plan.segs
+	if i >= 2 and plan.segs[i].j == "road" then
+		return 0.6 * console + 0.4 * (res[i] and res[i].q or 0)
+	end
+	return console
+end
 -- the strokes' mean grade, times the share of the pieces' strokes rowed (rushing the slide for extra
 -- strokes earns nothing: their grade drops)
 AGG.rower = function(plan, res)
@@ -1433,7 +1697,8 @@ PLAN.bench = function(segs, lv, r, Wt)
 	for set = 1, 2 do
 		local weak = r:NextNumber() < 0.5 and -1 or 1
 		for rep = 1, 3 do
-			local amp = 0.22 + 0.14 * f + rep * 0.02 + (set - 1) * 0.04
+			-- (the drift: gentle on the first bench, a real fight up top; the correction always outpaces it)
+			local amp = 0.18 + 0.1 * f + rep * 0.015 + (set - 1) * 0.03
 			table.insert(segs, { j = "bench", set = set, rep = rep, speed = 0.5 - 0.06 * f, sink = 0.15,
 				drift = { amp, 1.6 + r:NextNumber() * 1.2, r:NextNumber() * 6.28, amp * 0.6, 3.1 + r:NextNumber() * 1.5, r:NextNumber() * 6.28 },
 				bias = weak * (0.05 + 0.03 * rep + 0.05 * (set - 1)), corr = 1.0, tiltMax = 1.2,
@@ -1450,10 +1715,21 @@ PLAN.deadlift = function(segs, lv, r, Wt)
 				drain = 0.22 + 0.08 * f + 0.015 * rep + 0.03 * (set - 1), gripTap = 0.35, wait = 4, limit = 6, gap = repGap(Wt, set, rep) })
 		end
 	end
+	-- the finisher: the NECK HARNESS - a short steady hold (the traps and the neck the deadlift loads)
+	table.insert(segs, W.GaugeSeg("NECK HARNESS", f, r, Wt.lower + Wt.rerack + Wt.rest + Wt.round))
+end
+-- a short hold gauge (the neck harness, the forearm squeeze): the band is wide on the first station and
+-- narrows with the level; the tremor grows the longer you hold (a full hold is 60% of the time in it)
+function W.GaugeSeg(name, f, r, gap)
+	local mid = 0.55 + r:NextNumber() * 0.15
+	local half = 0.16 - 0.04 * f
+	return { j = "gauge", name = name, dur = 6, need = 3.6, lo = mid - half, hi = mid + half, rise = 0.9, fall = 0.7, amp = 0.03 + 0.02 * f, grow = 0.012 + 0.008 * f,
+		wave = { 2.2 + r:NextNumber() * 0.8, r:NextNumber() * 6.28, 5.1 + r:NextNumber() * 1.2, r:NextNumber() * 6.28 }, gap = gap }
 end
 PLAN.squat = function(segs, lv, r, Wt)
 	local f = lvf(lv)
-	for set = 1, 2 do
+	-- set 1: back squats; set 2: the SLED PUSH (four drives, the legs alternating as fast as they go)
+	for set = 1, 1 do
 		for rep = 1, 3 do
 			local width = math.max(0.1, 0.22 - 0.08 * f - 0.006 * rep)
 			local lo = 0.6 + r:NextNumber() * 0.14
@@ -1461,46 +1737,53 @@ PLAN.squat = function(segs, lv, r, Wt)
 				bounce = 0.12, pause = 0.75 - 0.2 * f, lost = 2.5, rise = 0.7 - 0.03 * rep, wait = 4, limit = 5, gap = repGap(Wt, set, rep) })
 		end
 	end
+	-- (a full drive: 4.5 steps a second on the first station, 5.5 on the top one; the reset is part of the
+	-- rhythm: drive, settle, drive)
+	table.insert(segs, { j = "mash", name = "SLED PUSH", bursts = 4, push = 2.0, reset = 0.8, target = math.floor(9 + 2 * f + 0.5), gap = repGap(Wt, 2, 1) })
 end
 PLAN.pullup = function(segs, lv, r, Wt)
 	local f = lvf(lv)
+	-- two sets of three: overhand pull-ups, then close-grip chin-ups (a little quicker to the bar, the
+	-- grip drains faster); the chin zone and the sweet band narrow with the level, never past a comfortable
+	-- floor (the zone stays ~0.4 s of climb wide, the sweet band ~0.2 s)
 	for set = 1, 2 do
-		for rep = 1, 3 do
-			-- (the level mostly shortens the time to the chin and the pull: the swing stays readable)
-			table.insert(segs, { j = "pullup", set = set, rep = rep, omega = 3.0 + 0.4 * f, ph = r:NextNumber() * 6.28, a0 = 0.2 + 0.05 * rep,
-				amax = 1.1 - 0.1 * f, gain = 0.26 - 0.03 * f - 0.01 * (set - 1), sink = 0.04 + 0.015 * f, swingAdd = 0.3 + 0.16 * f, damp = 0.06, hollowDamp = 0.55 - 0.15 * f,
-				wait = 4, limit = 6.5 - 0.8 * f, gap = repGap(Wt, set, rep) })
-		end
+		table.insert(segs, { j = "pullup", set = set, rep = 1, reps = 3, name = set == 1 and "PULL-UPS" or "CHIN-UPS",
+			speed = 0.6 - 0.05 * f + 0.04 * (set - 1), lo = 0.74 + 0.04 * f, perfLo = 0.87, perfHi = 0.97 - 0.015 * f, ready = 0.12, sink = 1.1,
+			drain = 0.2 + 0.06 * f + 0.03 * (set - 1), topDrain = 0.5, regen = 0.35, slipGrip = 0.35, wait = 4, limit = 11 - f,
+			gap = set == 1 and Wt.intro or (Wt.lower + Wt.rest + Wt.round) })
 	end
 end
 PLAN.curls = function(segs, lv, r, Wt)
 	local f = lvf(lv)
 	-- set 1: alternating curls, up one beat (hold) and a beat to lower; set 2: tempo curls (two-beat squeeze)
-	local bpm1 = math.floor(66 + 14 * f)
+	-- (six and four curls: with the grip finisher the session stays near half a minute)
+	local bpm1 = math.floor(72 + 12 * f)
 	local notes1, lane = {}, r:NextNumber() < 0.5 and "L" or "R"
-	for k = 0, 7 do
+	for k = 0, 5 do
 		table.insert(notes1, { lane, k * 2, k * 2 + 1 })
 		lane = lane == "L" and "R" or "L"
 	end
 	table.insert(segs, { j = "tempo", name = "ALTERNATING CURLS", bpm = bpm1, beat = 60 / bpm1, lead = 1.2, notes = notes1, hitW = 0.32, perfW = 0.13 - 0.04 * f, relW = 0.32 - 0.07 * f, gap = Wt.intro })
-	local bpm2 = math.floor(72 + 16 * f)
+	local bpm2 = math.floor(78 + 14 * f)
 	local notes2 = {}
 	local at = 0
-	for k = 1, 6 do
-		local hold = (k % 3 == 0 and lv >= 3) and 3 or 2
+	for k = 1, 4 do
+		local hold = (k == 3 and lv >= 3) and 3 or 2
 		table.insert(notes2, { lane, at, at + hold })
 		lane = lane == "L" and "R" or "L"
 		at += hold + 1
 	end
 	table.insert(segs, { j = "tempo", name = "TEMPO CURLS", bpm = bpm2, beat = 60 / bpm2, lead = 1.2, notes = notes2, hitW = 0.3, perfW = 0.12 - 0.04 * f, relW = 0.3 - 0.07 * f, gap = Wt.rest + Wt.round })
+	-- the finisher: a FOREARM GRIP squeeze (the grip the curls tired) held steady
+	table.insert(segs, W.GaugeSeg("FOREARM GRIP", f, r, Wt.rest + Wt.round))
 end
 PLAN.treadmill = function(segs, lv, r, Wt)
 	local f = lvf(lv)
 	local program = {}
 	local t, mph, incl = 0, 4, 0
 	-- (whole-mph steps: a change of pace is a few presses, not a dozen)
-	local names = { "WARM-UP", "TEMPO", "HILL", "SPRINT", "RECOVER", "ALL OUT" }
-	for k = 1, 6 do
+	local names = { "WARM-UP", "TEMPO", "HILL", "SPRINT" }
+	for k = 1, 4 do
 		local name = names[k]
 		if name == "WARM-UP" then
 			mph, incl = 5, 1
@@ -1516,10 +1799,22 @@ PLAN.treadmill = function(segs, lv, r, Wt)
 			mph, incl = 10 + math.floor(2 * f + r:NextNumber() * 2), 2
 		end
 		table.insert(program, { t = t, mph = mph, incl = incl, name = name })
-		t += 4.8 - 0.8 * f
+		t += 5 - 0.4 * f
 	end
-	table.insert(segs, { j = "treadmill", duration = t, program = program, mph0 = 3, incl0 = 0, stepMph = 1, tolMph = 0.75 - 0.25 * f, tolIncl = 1.5 - 0.5 * f,
+	-- (a change of pace is a few presses: the tolerances keep a comfortable floor of 0.75 mph / 1.25 %)
+	table.insert(segs, { j = "treadmill", duration = t, program = program, mph0 = 3, incl0 = 0, stepMph = 1, tolMph = 1.0 - 0.25 * f, tolIncl = 1.75 - 0.5 * f,
 		mphMin = 1, mphMax = 14, inclMax = 12, gap = Wt.intro })
+	-- then the ROAD PACE lane: stride with the pacer's band, breathe on the cues (every ~2.4 s)
+	local legs, breaths = {}, {}
+	local band = 0.13 - 0.03 * f
+	for k, ph in ipairs({ { 0, 0.45, "EASY" }, { 3.5, 0.62, "PICK IT UP" }, { 7, 0.5, "SETTLE" } }) do
+		legs[k] = { t = ph[1], lo = ph[2] - band, hi = ph[2] + band, name = ph[3] }
+	end
+	for b = 1.5, 9.6, 2.4 do
+		table.insert(breaths, math.floor(b * 100 + 0.5) / 100)
+	end
+	table.insert(segs, { j = "road", name = "ROAD PACE", duration = 10, legs = legs, breaths = breaths, breathW = 0.4 - 0.08 * f, v0 = 0.35, kick = 0.07, decay = 0.22,
+		gap = Wt.rest + Wt.round })
 end
 PLAN.bike = function(segs, lv, r, Wt)
 	local f = lvf(lv)
@@ -1574,13 +1869,15 @@ PLAN.massage = function(segs, lv, r, Wt, params)
 		sore[i] = math.floor(sore[i] * 100 + 0.5) / 100
 	end
 	table.insert(segs, { j = "massage", groups = table.clone(G), sore = sore, rounds = 3, chooseT = 6, strokes = 4, beat = 0.9, firstStroke = 0.8,
-		hitW = 0.35, perfW = 0.18, gap = Wt.intro })
+		hitW = 0.42, perfW = 0.2, gap = Wt.intro })
 end
 PLAN.chamber = function(segs, lv, r, Wt)
 	local f = lvf(lv)
 	local depth = 1.3 + 0.1 * f
-	table.insert(segs, { j = "chamber", duration = 26, profile = { { 0, 1 }, { 7, depth }, { 18, depth }, { 26, 1 } }, rise = 0.07, vent = 0.07, leak = 0.012,
-		earRate = 2.0 + 0.5 * f, tol = 0.06 - 0.02 * f, maxP = 1.6, gap = Wt.intro })
+	-- down to depth, a deeper stage in the middle, back to depth, then up to the surface
+	table.insert(segs, { j = "chamber", duration = 26, profile = { { 0, 1 }, { 6, depth }, { 9, depth }, { 11, depth + 0.12 }, { 15, depth + 0.12 }, { 17, depth }, { 20, depth }, { 26, 1 } },
+		rise = 0.12, vent = 0.1, leak = 0.025 + 0.01 * f, leakWave = 0.8,
+		earRate = 2.0 + 0.5 * f, tol = 0.08 - 0.02 * f, maxP = 1.6, gap = Wt.intro })
 end
 PLAN.sauna = function(segs, lv, r, Wt)
 	local f = lvf(lv)

@@ -21,6 +21,7 @@ local TAP_HOLD = 0.35 -- a press held this long is a hold (released on let-go); 
 local RT_FLOOR = 0.1 -- an answer faster than this jumped the cue: nobody reacts in under a tenth
 local TWO_PI = 2 * math.pi
 DrillScore.TAP_HOLD = TAP_HOLD
+DrillScore.BOUNCE = 0.2
 DrillScore.RT_FLOOR = RT_FLOOR
 -- the most inputs one session keeps (an honest drill sends a few hundred at most)
 DrillScore.MAX_EVENTS = 1200
@@ -85,8 +86,13 @@ J.seq = function(seg, M)
 			s.closed = true
 			return nil
 		end
-		s.presses += 1
 		local at = s.idx
+		-- forgiving input: the punch just landed pressed again within BOUNCE (a key bounce, a double tap on
+		-- a touch button) is not a wrong press
+		if id ~= ids[at] and s.lastHit and id == ids[at - 1] and t - s.lastHit <= DrillScore.BOUNCE then
+			return nil
+		end
+		s.presses += 1
 		if id == ids[at] then
 			s.idx += 1
 			local tempo
@@ -710,36 +716,47 @@ J.breath = function(seg, M)
 	return s
 end
 
--- the jump rope: the rope turns at omega (x1.9 on a double under) from overhead; it passes the feet at
--- every full turn and the pass is judged 0.12 s later on the presses from 0.48 s before to 0.12 s after
--- it. One press earlier than that since the last pass is forgiven (a nervous hop); two or more are
--- jumping on nothing: mistimed - mashing the button trips. A clean jump speeds the rope up; a trip
--- stops it for 0.45 s and slows it a little (the rhythm is lost, not the progress).
-local ROPE_EARLY, ROPE_LATE, ROPE_TRIP = 0.48, 0.12, 0.45
+-- the jump rope: the rope turns at omega (x1.7 on a double under) from overhead; it passes the feet at
+-- every full turn and the pass is judged seg.late (0.12 s) later on the jumps from seg.early (0.48 s)
+-- before to seg.late after it. HOLD AND RELEASE: JUMP held is the crouch, its RELEASE is the jump (a
+-- quick tap is a small hop and counts too); a DOUBLE UNDER is one jump loaded longer - JUMP held at
+-- least seg.charge seconds before the release (the charge ring fills). The boxer skip's foot calls are
+-- presses of the called foot. One jump earlier than the window since the last pass is forgiven (a
+-- nervous hop); two or more are jumping on nothing: mistimed - mashing the button trips. A clean jump
+-- speeds the rope up; a trip stops it for 0.45 s and slows it a little (the rhythm is lost, not the
+-- progress: nothing resets). A clean jump released within seg.perfW of the pass is SWEET (perfect).
+local ROPE_EARLY, ROPE_LATE, ROPE_TRIP, ROPE_CHARGE, ROPE_DOUBLE = 0.48, 0.12, 0.45, 0.26, 1.7
+DrillScore.ROPE_CHARGE = ROPE_CHARGE
 J.rope = function(seg, M)
 	local cues = seg.cues
-	local s = { phase = math.pi, tau = M, omega = seg.omega, ci = 1, done = 0, clean = 0, doubles = 0, pressed = {}, tripped = M, closed = false }
+	local early, late, charge = seg.early or ROPE_EARLY, seg.late or ROPE_LATE, seg.charge or ROPE_CHARGE
+	local perfW = seg.perfW or 0.08
+	local s = { phase = math.pi, tau = M, omega = seg.omega, ci = 1, done = 0, clean = 0, sweet = 0, doubles = 0, pressed = {}, tripped = M, closed = false, charge = charge }
 	s.cue = cues[1] or "jump"
 	local function rate()
-		return s.omega * (s.cue == "double" and 1.9 or 1)
+		return s.omega * (s.cue == "double" and ROPE_DOUBLE or 1)
 	end
 	s.w = rate()
 	-- judgements made since the last call (the client's feedback)
 	local function judge(out)
 		local pass = s.pending
-		local J0 = pass + ROPE_LATE
-		local count, good, early, earlyN = 0, true, false, 0
+		local J0 = pass + late
+		local count, good, wasEarly, earlyN, loaded, dt = 0, true, false, 0, false, math.huge
 		local keep = {}
 		for _, p in ipairs(s.pressed) do
-			if p.t < pass - ROPE_EARLY then
+			if p.t < pass - early then
 				earlyN += 1
 				if earlyN >= 2 then
-					good, early = false, true
+					good, wasEarly = false, true
 				end
-			elseif p.t <= pass + ROPE_LATE then
+			elseif p.t <= pass + late then
 				count += 1
+				if math.abs(p.t - pass) < math.abs(dt) then
+					dt = p.t - pass
+				end
 				if s.passCue == "jump" or s.passCue == "double" then
 					good = good and p.id == "jump"
+					loaded = loaded or (p.held or 0) >= charge - 1e-6
 				else
 					good = good and p.id == s.passCue
 				end
@@ -752,10 +769,14 @@ J.rope = function(seg, M)
 		s.phase += s.w * (J0 - s.tau)
 		s.tau = J0
 		s.done += 1
-		local need = s.passCue == "double" and 2 or 1
-		local clean = count >= need and good
+		-- (a double under is one jump, loaded: the hold before its release reached the charge)
+		local clean = count >= 1 and good and (s.passCue ~= "double" or loaded)
+		local sweet = clean and math.abs(dt) <= perfW
 		if clean then
 			s.clean += 1
+			if sweet then
+				s.sweet += 1
+			end
 			if s.passCue == "double" then
 				s.doubles += 1
 			end
@@ -765,7 +786,7 @@ J.rope = function(seg, M)
 			s.omega = math.max(6, s.omega - 0.35)
 			s.phase = math.pi
 		end
-		table.insert(out, { cue = s.passCue, clean = clean, count = count, early = early, t = J0 })
+		table.insert(out, { cue = s.passCue, clean = clean, count = count, early = wasEarly, short = s.passCue == "double" and count >= 1 and not loaded, sweet = sweet, dt = clean and dt or nil, t = J0 })
 		s.pending = nil
 		s.ci += 1
 		s.cue = cues[s.ci] or "jump"
@@ -788,7 +809,7 @@ J.rope = function(seg, M)
 				s.pressed = keep
 			end
 			if s.pending then
-				if t < s.pending + ROPE_LATE then
+				if t < s.pending + late then
 					break
 				end
 				judge(out)
@@ -816,12 +837,27 @@ J.rope = function(seg, M)
 		end
 		return s.phase + s.w * (t - math.max(s.tau, s.tripped))
 	end
+	-- how long JUMP has been held (the crouch / the double under's charge), 0 when it is up
+	function s.loading(t)
+		return s.downAt and math.max(0, t - s.downAt) or 0
+	end
 	function s.input(id, down, t)
-		if not down or s.closed or t < M then
+		if s.closed or t < M then
 			return nil
 		end
 		local out = s.advance(t)
-		if not s.closed and t >= s.tripped then
+		if s.closed then
+			return out
+		end
+		if id == "jump" then
+			-- the press crouches, the release jumps (a press during a trip loads nothing)
+			if down then
+				s.downAt = t >= s.tripped and t or nil
+			elseif s.downAt then
+				table.insert(s.pressed, { id = id, t = t, held = t - s.downAt })
+				s.downAt = nil
+			end
+		elseif down and t >= s.tripped then
 			table.insert(s.pressed, { id = id, t = t })
 		end
 		return out
@@ -831,7 +867,7 @@ J.rope = function(seg, M)
 		s.closed = true
 	end
 	function s.result()
-		return { clean = s.clean, done = s.done, doubles = s.doubles, jumps = seg.jumps }
+		return { clean = s.clean, sweet = s.sweet, done = s.done, doubles = s.doubles, jumps = seg.jumps }
 	end
 	-- the last jump judged (s.tau moves to each judgement)
 	function s.endsAt()

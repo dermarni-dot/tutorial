@@ -195,7 +195,9 @@ POSES.pfHold = function(p, rig, t, d, w, model, dt)
 	return p
 end
 
-local REF_UP, WIN_UP = 2.75, 2.9
+-- (at the raise the loser's wrist is let go: the referee's free arm drops to his side, REF_FREE rad out, clear of
+-- the loser's forearm as his gloves go to his hips - pfLose)
+local REF_UP, WIN_UP, REF_FREE = 2.75, 2.9, 0.06
 local function refRaise(p, rig, t, dt, k, left, both)
 	to(p, "W", A(0.04, left and 0.1 or -0.1, 0), k)
 	to(p, "Neck", A(0.12, both and 0 or (left and 0.45 or -0.45), 0), k)
@@ -205,15 +207,15 @@ local function refRaise(p, rig, t, dt, k, left, both)
 		to(p, "LS", A(0.18, 0, -REF_UP), k)
 		to(p, "LE", A(0.3, 0, 0), k)
 	else
-		to(p, "LS", A(-0.1, 0, -REF_OUT), k)
-		to(p, "LE", A(0.2, 0, 0), k)
+		to(p, "LS", A(-0.05, 0, -REF_FREE), k)
+		to(p, "LE", A(0.15, 0, 0), k)
 	end
 	if (not left) or both then
 		to(p, "RS", A(0.18, 0, REF_UP), k)
 		to(p, "RE", A(0.3, 0, 0), k)
 	else
-		to(p, "RS", A(-0.1, 0, REF_OUT), k)
-		to(p, "RE", A(0.2, 0, 0), k)
+		to(p, "RS", A(-0.05, 0, REF_FREE), k)
+		to(p, "RE", A(0.15, 0, 0), k)
 	end
 	rig.lookW = 0
 end

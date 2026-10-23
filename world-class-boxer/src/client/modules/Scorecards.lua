@@ -330,12 +330,12 @@ function Scorecards.OpenRest(rest, ctx)
 	UI.List(foot, 4)
 	local c = rest.cond
 	if type(c) == "table" and c.notes and #c.notes > 0 and not compact then
-		UI.Text(foot, "CUTMAN  ·  " .. table.concat(c.notes, "  |  "), { Font = T.semi, TextSize = 12, TextColor3 = T.orange, Size = UDim2.new(1, 0, 0, 16), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
+		UI.Text(foot, "Cutman: " .. table.concat(c.notes, "  ·  "), { Font = T.semi, TextSize = 12, TextColor3 = T.orange, Size = UDim2.new(1, 0, 0, 16), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
 			TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 1 })
 	end
 	for i, line in ipairs(rest.advice or {}) do
 		if not compact or i == 1 then
-			UI.Text(foot, "\"" .. tostring(line) .. "\"  -  your corner", { Font = T.font, TextSize = compact and 12 or 14, TextColor3 = T.gold, Size = UDim2.new(1, 0, 0, compact and 16 or 18), AutomaticSize = Enum.AutomaticSize.None,
+			UI.Text(foot, "\"" .. tostring(line) .. "\"  ·  your corner", { Font = T.font, TextSize = compact and 12 or 14, TextColor3 = T.gold, Size = UDim2.new(1, 0, 0, compact and 16 or 18), AutomaticSize = Enum.AutomaticSize.None,
 				TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 1 + i })
 		end
 	end

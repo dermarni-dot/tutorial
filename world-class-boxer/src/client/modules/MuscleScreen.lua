@@ -586,7 +586,7 @@ function MuscleScreen.Open(opts)
 	end
 	screen = s
 	local compact = UI.CanvasSize(State.gui).Y < 640
-	local shade, win, body = UI.Window(State.gui, "Muscle", 1180, 720, "Muscle progression", { onClose = function()
+	local shade, win, body = UI.Window(State.gui, "Muscle", 1180, 720, "Muscle Progression", { onClose = function()
 		MuscleScreen.Close(false)
 	end, scroll = false, kicker = "Body  ·  growth over time" })
 	s.shade, s.win = shade, win
@@ -647,7 +647,15 @@ function MuscleScreen.Open(opts)
 		end
 		vf.LightDirection = (-s.front * 0.6 + V(0.5, -0.7, 0)).Unit
 	else
-		UI.Text(stage, "No character to show yet", { TextSize = 15, TextColor3 = T.sub, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center })
+		-- no character to turn (still loading, or none here): the 2D body map, the group lit on it
+		local sw, sh = stage.AbsoluteSize.X / math.max(UI.ScaleOf(stage), 0.05), stage.AbsoluteSize.Y / math.max(UI.ScaleOf(stage), 0.05)
+		sw, sh = (sw > 40 and sw or 420) - 32, (sh > 80 and sh or 560) - 96
+		local okMap, map = pcall(BodyMap.new, stage, { Size = UDim2.fromOffset(math.floor(sw), math.floor(sh)), Position = UDim2.fromOffset(16, 44), glow = false })
+		if okMap then
+			s.map = map
+		else
+			UI.Text(stage, "The figure is still loading", { TextSize = 15, TextColor3 = T.sub, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center })
+		end
 	end
 	-- the caption over the figure: the lit group, and how to turn it
 	local cap = UI.Text(stage, "", { Name = "Caption", Face = "heading", TextSize = 16, TextColor3 = T.text, Position = UDim2.fromOffset(16, 12), Size = UDim2.new(1, -32, 0, 24), AutomaticSize = Enum.AutomaticSize.None,
@@ -739,7 +747,7 @@ function MuscleScreen.Open(opts)
 		if #pts >= 2 then
 			local first, last = pts[1], pts[#pts]
 			local d = last.v - first.v
-			graphNote.Text = string.format("%s over %d day%s: %s%.1f  (%.1f -> %.1f)", s.group.name, last.d - first.d, last.d - first.d == 1 and "" or "s", d >= 0 and "+" or "", d, first.v, last.v)
+			graphNote.Text = string.format("%s over %d day%s: %s%.1f  (%.1f to %.1f)", s.group.name, last.d - first.d, last.d - first.d == 1 and "" or "s", d >= 0 and "+" or "", d, first.v, last.v)
 			graphNote.TextColor3 = d > 0.05 and T.green or (d < -0.05 and T.orange or T.sub)
 		elseif s.history == nil then
 			graphNote.Text = "Loading the history..."
@@ -869,8 +877,16 @@ function MuscleScreen.Open(opts)
 				e.part.Color = id == def.id and e.color:Lerp(def.color, 0.75) or e.color
 			end
 		end
-		cap.Text = def.name .. "  ·  lit"
+		cap.Text = def.name .. "  ·  highlighted"
 		cap.TextColor3 = def.color
+		if s.map then
+			-- (the 2D figure: every muscle of the group lit in its colour)
+			local w = {}
+			for _, part in ipairs(Config.MuscleGroupParts[def.id] or {}) do
+				w[part.id] = 1
+			end
+			pcall(s.map.SetTargets, s.map, w, def.color)
+		end
 		-- a group on one side of the body: turn the figure to it (the shortest way round) when that
 		-- side is not facing the camera
 		local face = FACING[def.id]

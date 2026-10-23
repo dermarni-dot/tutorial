@@ -73,9 +73,9 @@
   },
   "neck": {
    "y": 5.249,
-   "girth": 2.112,
+   "girth": 2.096,
    "width": 0.678,
-   "depth": 0.639
+   "depth": 0.626
   },
   "shoulderSpan": 2.572,
   "chestDepth": 0.808
@@ -85,7 +85,7 @@
   "UpperTorso": {
    "mesh_file": "UpperTorso.mesh",
    "size": [
-    1.6736,
+    1.661,
     2.4858,
     0.8079
    ],
@@ -132,12 +132,12 @@
     ],
     "RightCollarAttachment": [
      0.8038,
-     0.8616,
+     0.7997,
      -0.0065
     ],
     "LeftCollarAttachment": [
      -0.8038,
-     0.8616,
+     0.7997,
      -0.0065
     ]
    },

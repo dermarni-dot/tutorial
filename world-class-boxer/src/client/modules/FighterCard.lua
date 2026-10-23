@@ -19,6 +19,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local UI = require(Shared:WaitForChild("UI"))
 local Flags = require(script.Parent:WaitForChild("Flags"))
+local FrameTraits = require(Shared:WaitForChild("FrameTraits")) -- [FrameTraits] the body frame's read (the tape's frame line)
 local T = UI.Theme
 
 local FighterCard = {}
@@ -398,6 +399,9 @@ local function buildMaster(char)
 	return clone
 end
 
+-- (tests / the profiler) portraits copied, and re-shoots that kept the copy they had
+FighterCard.shots, FighterCard.reused, FighterCard.masters = 0, 0, 0
+
 -- cache: one master per look
 local anatomyBuilds = 0
 local anatomyHooked = false
@@ -429,20 +433,44 @@ local function hookAnatomy()
 	end)
 end
 
-local cache = { key = nil, master = nil }
+local cache = { key = nil, master = nil, gen = 0 }
+-- the character's descendant count, kept up to date by its own signals (counted once per character): the cache key
+-- used to call char:GetDescendants() on every photo and snapshot, an ~800-entry array each time
+local counted = { char = nil, n = 0, conns = nil }
+local function descendantCount(char)
+	if counted.char ~= char then
+		if counted.conns then
+			for _, c in ipairs(counted.conns) do
+				c:Disconnect()
+			end
+		end
+		counted.char, counted.n = char, #char:GetDescendants()
+		counted.conns = {
+			char.DescendantAdded:Connect(function()
+				counted.n += 1
+			end),
+			char.DescendantRemoving:Connect(function()
+				counted.n -= 1
+			end),
+		}
+	end
+	return counted.n
+end
 local function masterFor(char)
 	hookAnatomy()
 	if not char then
 		return nil
 	end
 	-- the look's digest (LookSig), the anatomy builds and the part count (a barber cut without LookSig)
-	local key = string.format("%s|%s|%d|%d", tostring(char), tostring(char:GetAttribute("LookSig")), anatomyBuilds, #char:GetDescendants())
+	local key = string.format("%s|%s|%d|%d", tostring(char), tostring(char:GetAttribute("LookSig")), anatomyBuilds, descendantCount(char))
 	if cache.key ~= key or not cache.master then
 		if cache.master then
 			cache.master:Destroy()
 		end
 		cache.master = buildMaster(char)
+		FighterCard.masters += 1
 		cache.key = cache.master and key or nil
+		cache.gen += 1
 	end
 	return cache.master
 end
@@ -497,7 +525,16 @@ end
 -- puts a fresh posed copy of the character in a ViewportFrame with its camera and key light (replacing
 -- an earlier shot); false without a character to photograph
 local function shoot(vf, aspect, fovOpt)
-	local clone = FighterCard.Snapshot()
+	-- the photo there is still a copy of the current master (a re-shoot after a rebuild that changed nothing the
+	-- portrait shows): keep it, no new copy
+	local m = masterFor(player.Character)
+	local old = vf:FindFirstChild("Portrait")
+	if m and old and old:GetAttribute("PortraitGen") == cache.gen and vf.CurrentCamera and vf.CurrentCamera.Parent == vf
+		and vf:GetAttribute("PortraitAspect") == aspect then
+		FighterCard.reused += 1
+		return true
+	end
+	local clone = m and m:Clone() or nil
 	local root = clone and clone:FindFirstChild("HumanoidRootPart")
 	local camCF, fov
 	if clone and root then
@@ -514,7 +551,10 @@ local function shoot(vf, aspect, fovOpt)
 			c:Destroy()
 		end
 	end
+	clone:SetAttribute("PortraitGen", cache.gen)
+	vf:SetAttribute("PortraitAspect", aspect)
 	clone.Parent = vf
+	FighterCard.shots += 1
 	local cam = Instance.new("Camera")
 	cam.FieldOfView = fov
 	cam.CFrame = camCF
@@ -646,7 +686,7 @@ local function formBubbles(parent, form, order)
 	local row = UI.Frame(parent, { Name = "Form", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = order or 0 })
 	UI.List(row, 6, true)
 	if #form == 0 then
-		UI.Text(row, "No fights yet - your story starts on fight night.", { TextSize = 14, TextColor3 = T.sub, Size = UDim2.new(1, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None })
+		UI.Text(row, "No fights yet. Your story starts on fight night.", { TextSize = 14, TextColor3 = T.sub, Size = UDim2.new(1, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None })
 		return row
 	end
 	for i, r in ipairs(form) do
@@ -802,6 +842,14 @@ function FighterCard.Full(parent, P, opts)
 	}
 	for i, c in ipairs(cells) do
 		tapeCell(grid, c[1], c[2], i, c[3])
+	end
+	-- [FrameTraits] the body frame under the tape: what it does in the ring ("Heavyweight - raw power, slow burn")
+	local frameRead = FrameTraits.Read(FrameTraits.IdOf(P))
+	if frameRead then
+		local fl = UI.Frame(info, { Name = "FrameLine", BackgroundTransparency = 1, Size = UDim2.new(1, -6, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5 })
+		UI.Text(fl, "FRAME", { Font = T.semi, TextSize = 11, TextColor3 = T.dim, Size = UDim2.fromOffset(56, 18), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		UI.Text(fl, string.upper(frameRead), { Font = T.semi, TextSize = 13, TextColor3 = T.gold, Position = UDim2.fromOffset(56, 0), Size = UDim2.new(1, -56, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y, TextWrapped = true })
 	end
 	-- the championships: the four world belts as goals, lit when held
 	UI.Kicker(info, "CHAMPIONSHIPS", T.gold, { order = 6, icon = "belt" })

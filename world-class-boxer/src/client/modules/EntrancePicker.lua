@@ -70,7 +70,7 @@ function EntrancePicker.Open(overLocker)
 	end
 
 	UI.Header(body, "CELEBRATIONS")
-	UI.Line(body, "Your boxer does one in the tunnel, one down the aisle and one in his corner. The ring walk is skippable (Space, A or tap SKIP).", { TextColor3 = T.sub, TextSize = 13 })
+	UI.Line(body, "Your boxer does one in the tunnel, one down the aisle and one in his corner. The ring walk is skippable (Space, A, or tap Skip).", { TextColor3 = T.sub, TextSize = 13 })
 	UI.Cycler(body, "In the tunnel", Entrance.WALK, C.walk1, function(v)
 		C.walk1 = v
 		if C.walk2 == v then

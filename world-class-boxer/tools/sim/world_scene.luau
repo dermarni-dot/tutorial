@@ -858,6 +858,26 @@ if ONLY.venues then
 					-- the arena again as VenueFX left it (the keys, the spots' gels, the house tints)
 					record("venue_Arena_show", arena)
 					pcall(VenueFX.Stop)
+					-- and a regular card's walkout (no belts: red / blue promotion colours, the spots sweeping
+					-- the house in their coloured gels): roots venue_Arena_card + VenueFX_ArenaCard
+					local okC, errC = pcall(VenueFX.Start, arena, {
+						venue = kind, venueName = "WCB GRAND ARENA", stakes = {}, kind = "fight", rounds = 10,
+						tape = { you = { name = "PREVIEW", nick = "THE PREVIEW", record = { w = 12, l = 1, d = 0, ko = 8 } }, opp = { name = "RIVAL", record = { w = 11, l = 3, d = 0, ko = 6 } } },
+					})
+					if okC then
+						pcall(VenueFX.Phase, "entrance", { who = "you", corner = "Red" })
+						for _ = 1, 12 do
+							pcall(E.Heartbeat.Fire, E.Heartbeat, 0.1)
+						end
+						local fx2 = E.workspace:FindFirstChild("VenueFX_Local")
+						if fx2 then
+							record("VenueFX_ArenaCard", fx2)
+						end
+						record("venue_Arena_card", arena)
+						pcall(VenueFX.Stop)
+					else
+						print("[world_scene] VenueFX.Start (regular card preview) failed: " .. tostring(errC))
+					end
 				else
 					print("[world_scene] VenueFX.Start (preview) failed: " .. tostring(errS))
 				end

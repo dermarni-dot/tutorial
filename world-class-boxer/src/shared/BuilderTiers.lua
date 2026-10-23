@@ -45,6 +45,9 @@ function BuilderTiers.Reset()
 	end
 	table.clear(cache)
 	stats.loads, stats.failed, stats.swaps = 0, 0, 0
+	if BuilderTiers.ResetPreload then
+		BuilderTiers.ResetPreload()
+	end
 end
 
 function BuilderTiers.Stats()
@@ -146,55 +149,95 @@ function BuilderTiers.Template(tier, name, lite, frame)
 	return mp
 end
 
--- load every uploaded template in the background (server start), so the first boxers do not wait on them: the
--- default family first, then its lite set, then the other frames' families. Paced: PRELOAD_GAP seconds between
--- loads (a load the preloader has not reached yet is made on demand by the boxer that needs it, and one in
--- flight is shared), and the other families start PRELOAD_DEFER seconds in. The whole set is ~420
--- CreateMeshPartAsync calls (5 frames x 5 tiers x 14 parts + the lite set): fired back to back, in Studio (one
--- process for the server and the client) they saturated the asset pipeline for the first minute, while the
--- player's own parts, the menu's clone and the Creator's previews waited behind them.
--- opts (optional): { gap = seconds, defer = seconds, families = false (the default family only) }
+-- Preload: the templates a server is about to need, loaded in the background so the first boxers do not wait on
+-- them. Only the CURRENT frame's family: at server start the default family (every new boxer and the Creator start
+-- on it) and its lite set; any other frame's family the first time a boxer is built on that frame (Apply calls
+-- PreloadFrame: the tiers that boxer does not wear yet load behind his own, so a muscle-tier change or the Creator's
+-- Starting / Peak toggle on that frame is instant). The other frames are never loaded up front: the whole set is
+-- ~420 CreateMeshPartAsync calls (5 frames x 5 tiers x 14 parts + the lite set), and fired at start (in Studio: one
+-- process for the server and the client, the moment the main menu opens) they saturated the asset pipeline for the
+-- first minute while the player's own parts, the menu's clone and the Creator's previews waited behind them.
+-- Paced: PRELOAD_GAP seconds between loads; a load the preloader has not reached yet is made on demand by the boxer
+-- that needs it, and one in flight is shared (Template).
+-- opts (optional): { gap = seconds, frames = { frame ids } (instead of the default family), lite = false (no lite
+-- set), families = true (every frame's family after PRELOAD_DEFER: the old behaviour, tools only), defer = seconds }
 BuilderTiers.PRELOAD_GAP = 0.1
 BuilderTiers.PRELOAD_DEFER = 15
-function BuilderTiers.Preload(opts)
-	opts = type(opts) == "table" and opts or {}
-	local gap = tonumber(opts.gap) or BuilderTiers.PRELOAD_GAP
-	local defer = tonumber(opts.defer) or BuilderTiers.PRELOAD_DEFER
-	local function pace()
-		if gap > 0 then
-			task.wait(gap)
+local preloaded = {} -- [frame id] = true: its family is loaded or queued (PreloadFrame runs once per frame)
+local preloadQueue = {} -- { { tier, name, lite, frame } } the paced loader works through, in order
+local preloadGap = BuilderTiers.PRELOAD_GAP
+local preloadRunning = false
+
+local function queueFamily(frame, lite)
+	for tier = 1, BodyTiers.TIERS do
+		for _, name in ipairs(BodyTiers.PARTS) do
+			local e = BodyTiers.PartEntry(tier, name, nil, lite, frame)
+			if e and not cache[tier .. ":" .. name .. ":" .. e.id] then
+				preloadQueue[#preloadQueue + 1] = { tier, name, lite, frame }
+			end
 		end
 	end
+end
+
+local preloadGen = 0 -- bumped by ResetPreload: a loader of an older generation stops
+local function runPreload()
+	if preloadRunning then
+		return
+	end
+	preloadRunning = true
+	local gen = preloadGen
 	task.spawn(function()
-		for _, lite in ipairs({ false, true }) do
-			for tier = 1, BodyTiers.TIERS do
-				for _, name in ipairs(BodyTiers.PARTS) do
-					if BodyTiers.PartEntry(tier, name, nil, lite) then
-						BuilderTiers.Template(tier, name, lite)
-						pace()
-					end
-				end
+		while gen == preloadGen and preloadQueue[1] do
+			local q = table.remove(preloadQueue, 1)
+			BuilderTiers.Template(q[1], q[2], q[3], q[4])
+			if preloadGap > 0 then
+				task.wait(preloadGap)
 			end
 		end
-		if opts.families == false then
-			return
-		end
-		if defer > 0 then
-			task.wait(defer)
-		end
-		for _, frame in ipairs(BodyTiers.Frames()) do
-			if frame ~= BodyTiers.DEFAULT_FRAME then
-				for tier = 1, BodyTiers.TIERS do
-					for _, name in ipairs(BodyTiers.PARTS) do
-						if BodyTiers.PartEntry(tier, name, nil, false, frame) then
-							BuilderTiers.Template(tier, name, false, frame)
-							pace()
-						end
-					end
-				end
-			end
+		if gen == preloadGen then
+			preloadRunning = false
 		end
 	end)
+end
+
+-- one frame's family (every tier of its 14 parts), in the background, once per frame id (nil = the default family)
+function BuilderTiers.PreloadFrame(frame, lite)
+	frame = (type(frame) == "string" and frame ~= "") and frame or BodyTiers.DEFAULT_FRAME
+	local key = lite and (frame .. "|lite") or frame
+	if preloaded[key] then
+		return false
+	end
+	preloaded[key] = true
+	queueFamily(frame ~= BodyTiers.DEFAULT_FRAME and frame or nil, lite == true)
+	runPreload()
+	return true
+end
+
+-- (tests) forget which families were queued; a loader in flight finishes its current load and stops
+function BuilderTiers.ResetPreload()
+	preloadGen += 1
+	preloadRunning = false
+	table.clear(preloaded)
+	table.clear(preloadQueue)
+end
+
+function BuilderTiers.Preload(opts)
+	opts = type(opts) == "table" and opts or {}
+	preloadGap = tonumber(opts.gap) or BuilderTiers.PRELOAD_GAP
+	local frames = type(opts.frames) == "table" and opts.frames or { BodyTiers.DEFAULT_FRAME }
+	for _, f in ipairs(frames) do
+		BuilderTiers.PreloadFrame(f)
+		if opts.lite ~= false and f == BodyTiers.DEFAULT_FRAME then
+			BuilderTiers.PreloadFrame(f, true)
+		end
+	end
+	if opts.families == true then
+		task.delay(tonumber(opts.defer) or BuilderTiers.PRELOAD_DEFER, function()
+			for _, f in ipairs(BodyTiers.Frames()) do
+				BuilderTiers.PreloadFrame(f)
+			end
+		end)
+	end
 end
 
 -- per-axis Size / OriginalSize of a body part (the engine's scale for it), nil when it has no record
@@ -423,6 +466,10 @@ function BuilderTiers.Apply(model, tiers, scale, lite, frame)
 		return 0, nil
 	end
 	frame = type(frame) == "string" and frame or BuilderTiers.FrameFor(model, tiers)
+	-- the first boxer on this frame: the rest of its family loads behind his parts (a table lookup after that)
+	if not preloaded[frame] and not lite then
+		BuilderTiers.PreloadFrame(frame)
+	end
 	local n = 0
 	for _, name in ipairs(BodyTiers.PARTS) do
 		local want = tiers[name]

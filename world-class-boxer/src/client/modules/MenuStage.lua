@@ -11,6 +11,12 @@
 -- MenuStage.Build() -> stage; MenuStage.Place(stage, char) -> clone; MenuStage.Step(stage, t) every
 -- frame (swinging bags and lamp, breathing rim light); MenuStage.Shot(stage, view, t) -> camera CFrame,
 -- field of view, focus distance; MenuStage.Destroy(stage).
+-- MenuStage.Park(stage) / Unpark(stage): the menu closes and opens again without building the set (~900
+-- instances) or copying the boxer (~800) again: a parked set keeps its folder (out of the world) and its clone,
+-- and Place(stage, char, { reuse = true }) keeps that clone while the character has not changed since.
+-- While a set is in the world the LocalPlayer carries the client attribute MenuStage = true: the world far below
+-- reads it (WorldDetail hides its detail, WorldLOD switches the gym's and the city's lights off, CityVisuals stops
+-- animating the street), so nothing the lens cannot see is drawn or animated behind the menu.
 -- Graphics (Perf) - the set is not one of WorldLOD's roots, so it follows the level itself, live:
 --   High    every light as designed: the key, both lamps and the window cast shadows, dust at full rate
 --   Medium  shadows from the key and the lamp over the boxer only (WorldLOD keeps two casters too),
@@ -19,6 +25,7 @@
 -- The extra dressing (MenuDetail) follows the same level: textures and print on Low, lockers, a round timer, the
 -- bags' hardware and more on Medium, pipes, scuffs and the small kit on High.
 local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
 local Typography = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Typography"))
 
 -- Perf is the core module; without it the level passed to Build stands
@@ -43,6 +50,19 @@ do
 end
 
 local MenuStage = {}
+MenuStage.FLAG = "MenuStage" -- the LocalPlayer attribute while a set is in the world
+local EMPTY = table.freeze({})
+local live = 0 -- sets in the world (Build / Unpark +1, Park / Destroy -1)
+local function setLive(d)
+	live = math.max(0, live + d)
+	pcall(function()
+		local p = Players.LocalPlayer
+		local on = live > 0 or nil
+		if p and p:GetAttribute(MenuStage.FLAG) ~= on then
+			p:SetAttribute(MenuStage.FLAG, on)
+		end
+	end)
+end
 -- the set's floor point under the boxer's feet (well above anything the map builds)
 MenuStage.Origin = Vector3.new(0, 1400, 0)
 
@@ -307,9 +327,9 @@ local function buildLights(st)
 	st.key = light(key, "SpotLight", { Face = Enum.NormalId.Front, Angle = 46, Range = 26, Brightness = 3.2, Color = rgb(255, 238, 214), Shadows = true })
 	table.insert(st.casters, { light = st.key, from = 2 })
 	local rim = rig("RimLight", V3(5, 10.5, -7), chest + V3(0, 1, 0))
-	st.rim = light(rim, "SpotLight", { Face = Enum.NormalId.Front, Angle = 50, Range = 22, Brightness = 5.2, Color = rgb(255, 80, 170) })
+	st.rim = light(rim, "SpotLight", { Face = Enum.NormalId.Front, Angle = 50, Range = 22, Brightness = 7, Color = rgb(255, 70, 170) })
 	local rim2 = rig("RimLight2", V3(-7, 9, -6), chest + V3(0, 1, 0))
-	light(rim2, "SpotLight", { Face = Enum.NormalId.Front, Angle = 44, Range = 20, Brightness = 3.0, Color = rgb(80, 210, 255) })
+	light(rim2, "SpotLight", { Face = Enum.NormalId.Front, Angle = 44, Range = 20, Brightness = 4.5, Color = rgb(70, 205, 255) })
 	local fill = rig("FillLight", V3(3, 4.5, 8), chest)
 	light(fill, "PointLight", { Range = 14, Brightness = 0.7, Color = rgb(190, 206, 255) })
 	-- the gradient backdrop (its own gui: the sign helper's labels follow the Graphics level's resolution)
@@ -317,11 +337,12 @@ local function buildLights(st)
 	local drop = part(st, "Backdrop", V3(14.5, 12.2, 0.1), CF(-4.25, floorY + 9.4, -29.6), rgb(40, 20, 80), Enum.Material.SmoothPlastic, { CastShadow = false })
 	local sg = Instance.new("SurfaceGui")
 	sg.Name = "Gradient"
-	sg.Face = Enum.NormalId.Front
+	-- (the part's Back face is the one towards the room: Front faces the brick)
+	sg.Face = Enum.NormalId.Back
 	sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 	sg.PixelsPerStud = 8
-	sg.LightInfluence = 0.25
-	sg.Brightness = 1.2
+	sg.LightInfluence = 0.15
+	sg.Brightness = 1.6
 	local fr = Instance.new("Frame")
 	fr.Size = UDim2.fromScale(1, 1)
 	fr.BorderSizePixel = 0
@@ -391,7 +412,49 @@ function MenuStage.Build(detail)
 		end)
 	end
 	folder.Parent = workspace
+	st.live = true
+	setLive(1)
 	return st
+end
+
+-- out of the world, kept whole (the clone too) for the next Unpark
+function MenuStage.Park(st)
+	if not (st and st.folder) or st.parked then
+		return
+	end
+	st.parked = true
+	st.folder.Parent = nil
+	if st.live then
+		st.live = false
+		setLive(-1)
+	end
+end
+
+-- back in the world; false when the set is gone (destroyed): build a new one
+function MenuStage.Unpark(st)
+	if not (st and st.folder) then
+		return false
+	end
+	if st.parked then
+		st.parked = false
+		st.folder.Parent = workspace
+	end
+	if not st.live then
+		st.live = true
+		setLive(1)
+	end
+	return true
+end
+
+-- what a copy of char depends on (the server's look digests, the swapped body parts, the avatar items, the rig's
+-- scale and the number of instances under it: a gear piece or a part swapped in without a digest change)
+function MenuStage.Signature(char)
+	if not char then
+		return nil
+	end
+	return string.format("%s|%s|%s|%s|%s|%d", tostring(char:GetAttribute("LookSig")), tostring(char:GetAttribute("BodyTiers")),
+		tostring(char:GetAttribute("AvatarHair")), tostring(char:GetAttribute("AvatarFace")), tostring(char:GetAttribute("ScaleKey")),
+		#char:GetDescendants())
 end
 
 ------------------------------------------------------------------------
@@ -485,8 +548,17 @@ function MenuStage.Connected(model, root)
 	return seen
 end
 
--- (st, char) -> clone | nil, reason
-function MenuStage.Place(st, char)
+-- (st, char, opts) -> clone | nil, reason. opts.reuse: keep the clone there is when it is a copy of this character
+-- as it is now (MenuStage.Signature); otherwise (a re-stage after a change) the copy is made again
+function MenuStage.Place(st, char, opts)
+	local sig = nil
+	if opts and opts.reuse and st.clone and st.clone.Parent == st.folder and st.source == char then
+		sig = MenuStage.Signature(char)
+		if sig == st.sourceSig then
+			st.reused = (st.reused or 0) + 1
+			return st.clone
+		end
+	end
 	if st.clone then
 		st.clone:Destroy()
 		st.clone = nil
@@ -496,6 +568,7 @@ function MenuStage.Place(st, char)
 		return nil, why
 	end
 	local hum0 = char:FindFirstChildOfClass("Humanoid")
+	sig = sig or MenuStage.Signature(char)
 	local clone, err = MenuStage.CloneCharacter(char)
 	if not clone then
 		return nil, "clone failed: " .. tostring(err)
@@ -583,6 +656,7 @@ function MenuStage.Place(st, char)
 	st.root = root
 	st.head = clone:FindFirstChild("Head")
 	st.source = char
+	st.sourceSig = sig
 	return clone
 end
 
@@ -600,7 +674,7 @@ end
 ------------------------------------------------------------------------
 function MenuStage.Step(st, t)
 	local base = st.base
-	for _, b in ipairs(st.bags or {}) do
+	for _, b in ipairs(st.bags or EMPTY) do
 		-- a slow pendulum around the chain's top mount
 		local ax = math.sin(t * 0.9 + b.phase) * 0.035
 		local az = math.sin(t * 0.7 + b.phase * 1.3) * 0.025
@@ -610,7 +684,7 @@ function MenuStage.Step(st, t)
 		b.bag.CFrame = bagTop * CF(0, -2.9, 0) * A(0, 0, PI / 2)
 		b.band.CFrame = bagTop * CF(0, -0.9, 0) * A(0, 0, PI / 2)
 	end
-	for _, l in ipairs(st.lamps or {}) do
+	for _, l in ipairs(st.lamps or EMPTY) do
 		local sway = math.sin(t * 0.55 + l.phase) * 0.03
 		local pivot = base * CF(l.top) * A(sway, 0, sway * 0.6)
 		l.cord.CFrame = pivot * CF(0, -l.len / 2, 0) * A(0, 0, PI / 2)
@@ -655,6 +729,10 @@ function MenuStage.Shot(st, view, t, shake)
 end
 
 function MenuStage.Destroy(st)
+	if st and st.live then
+		st.live = false
+		setLive(-1)
+	end
 	if st and st.perfConn then
 		st.perfConn:Disconnect()
 		st.perfConn = nil
@@ -664,7 +742,7 @@ function MenuStage.Destroy(st)
 		st.folder = nil
 	end
 	if st then
-		st.clone, st.root, st.head, st.source = nil, nil, nil, nil
+		st.clone, st.root, st.head, st.source, st.sourceSig = nil, nil, nil, nil, nil
 	end
 end
 

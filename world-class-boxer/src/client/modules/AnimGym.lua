@@ -334,6 +334,13 @@ POSE.pullup = function(p, rig, t, d, w, model, dt)
 	p.LH = A(0.32, 0, 0.12)
 	p.LK = A(-1.0, 0, 0)
 	p.LA = A(-0.3, 0, 0)
+	-- the pull-up drill's grip stamina (PoseGrip 0..1): a tired grip shakes in the forearms
+	local grip = clamp(num(rig.a.PoseGrip, 1), 0, 1)
+	if grip < 0.35 then
+		local shake = (0.35 - grip) * 0.12 * sin(t * 47)
+		p.RE = p.RE * A(shake, 0, 0)
+		p.LE = p.LE * A(-shake, 0, 0)
+	end
 	flexAct(rig, "PullUps", 0.35 + 0.65 * pull)
 	flex(rig, "lats", 0.5 + 0.5 * scap)
 	rig.exprHint = pull > 0.5 and "effort" or nil

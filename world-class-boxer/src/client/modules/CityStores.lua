@@ -203,7 +203,7 @@ local function museum()
 	local body = openWindow("BOXING HALL OF FAME", 560, 620)
 	local lg = P.legacy or {}
 	local c = UI.Card(body, { stroke = T.gold })
-	UI.Line(c, lg.hof and "INDUCTED: " .. P.identity.name:upper() or "YOUR EXHIBIT", { Font = T.bold, TextColor3 = T.gold, TextSize = 18 })
+	UI.Line(c, lg.hof and "Inducted: " .. P.identity.name or "Your Exhibit", { Font = T.bold, TextColor3 = T.gold, TextSize = 18 })
 	UI.Line(c, string.format("Legacy %d  -  all-time rank #%d  -  Hall of Fame needs %d", lg.score or 0, lg.goatRank or 0, Config.HallOfFameScore), { TextSize = 14 })
 	UI.Line(c, (P.titlesWon or 0) > 0 and "Your title belts have a case in the great room." or "Win a world title and the museum gives you a case next to the legends.", { TextSize = 13, TextColor3 = T.sub })
 	UI.Button(c, "FULL LEGACY", { Size = UDim2.new(0, 200, 0, math.max(34, UI.MinHit(c))), BackgroundColor3 = T.gold, TextColor3 = T.bg }, function()

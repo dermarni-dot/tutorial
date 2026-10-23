@@ -199,7 +199,7 @@ end
 -- W/A/S/D) stay as they are; text that already has lower-case letters is returned untouched.
 local KEEP = { KO = true, TKO = true, PVP = true, OVR = true, OK = true, HP = true, XP = true, UI = true, AI = true, ID = true, TV = true, VS = true, KOS = true, KD = true,
 	WBC = true, WBA = true, IBF = true, WBO = true, USA = true, UK = true, HUD = true, FPS = true, RD = true, MMA = true, LB = true, LBS = true, DNA = true, NPC = true, CPU = true,
-	GPU = true, VSYNC = true, FX = true, SFX = true, BGM = true, PC = true, II = true, III = true, IV = true, VI = true, VII = true, VIII = true, IX = true, GYM = true, PRO = true }
+	GPU = true, VSYNC = true, FX = true, SFX = true, BGM = true, PC = true, II = true, III = true, IV = true, VI = true, VII = true, VIII = true, IX = true }
 local SMALL = { ["a"] = true, ["an"] = true, ["and"] = true, ["at"] = true, ["by"] = true, ["for"] = true, ["in"] = true, ["of"] = true, ["on"] = true, ["or"] = true, ["the"] = true, ["to"] = true, ["vs"] = true, ["v"] = true }
 function Typography.TitleCase(text)
 	text = tostring(text or "")
@@ -208,6 +208,10 @@ function Typography.TitleCase(text)
 	end
 	local first = true
 	local out = text:gsub("(%a[%a']*)", function(word)
+		if word == "PVP" then
+			first = false
+			return "PvP"
+		end
 		local keep = KEEP[word] or #word <= 2 and word:find("^%u%d*$") ~= nil
 		if keep or word:find("%d") then
 			first = false
@@ -224,6 +228,38 @@ function Typography.TitleCase(text)
 		return res
 	end)
 	return out
+end
+
+-- a line led by a shouted label turned into sentence case for display ("WORLD CHAMPION: you won the WBC belt" ->
+-- "World champion: you won the WBC belt", "GYM COACH: ..." -> "Gym coach: ..."); initialisms (KEEP) stay, and a
+-- whole line in capitals becomes one sentence. The data keeps its capitals (code matches on them).
+function Typography.Sentence(text)
+	text = tostring(text or "")
+	local function sentence(chunk, first)
+		local out = chunk:gsub("(%a[%a']*)", function(word)
+			if KEEP[word] or word:find("%d") or (#word <= 2 and word:find("^%u%d*$") and not first) then
+				first = false
+				return word
+			end
+			if not word:find("%u%u") and not word:find("^%u$") then
+				first = false
+				return word
+			end
+			local lower = word:lower()
+			local res = first and (lower:sub(1, 1):upper() .. lower:sub(2)) or lower
+			first = false
+			return res
+		end)
+		return out
+	end
+	local head, rest = text:match("^([%u][%u%s'%-]+):(.*)$")
+	if head and head:find("%u%u") then
+		return sentence(head, true) .. ":" .. rest
+	end
+	if text:find("%u%u%u") and not text:find("%l") then
+		return sentence(text, true)
+	end
+	return text
 end
 
 return Typography

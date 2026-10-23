@@ -46,8 +46,10 @@ Editable APIs. In a **published** game these need:
 Studio play works without either. Without them every boxer keeps the part-built round-1 hair (fully
 animated, nothing breaks, a warning is logged once); bodies and faces are unaffected. Under memory
 pressure AnatomyClient first lowers the hair's detail level and returns far-away characters to the
-round-1 hair. The training screen's anatomical body map is painted into an EditableImage too, and falls back
-to plain frames the same way.
+round-1 hair. The Body screen's muscle map does not use them: it is layered from one uploaded image sheet
+(`tools/ui/build_bodymap.py`: a front and back silhouette and a mask per muscle and side, tinted in game; id in
+`Shared.IconData.bodyMap`, cells in `Shared.BodyMapData`). If the sheet has not loaded within 2 seconds the figure
+falls back to plain frames. The old EditableImage painter stays behind `Config.BodyMap.editable` (off).
 
 Players can lower the hair's detail in **Settings > Graphics detail** (Auto / High / Medium / Low; see
 [Performance](#performance)). `Config.Anatomy.enabled = false` (in `src/shared/Config.lua`) switches the

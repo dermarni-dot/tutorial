@@ -15,6 +15,7 @@
 -- call WorldLOD.SetLight so the culling never fights them. Work is spread over frames: a level change
 -- re-applies under ~0.5 ms per frame, the light sweep visits 4 (High) to 12 lights a frame.
 local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
 
 local WorldLOD = {}
 
@@ -388,8 +389,10 @@ local emitIdx = 0
 -- lights visited per frame: ~200 lights come round every ~0.3 s on Low / Medium (the culling there
 -- is within 90-220 studs); High only switches lights beyond any view, so ~1 s is plenty
 local SWEEP_PER_FRAME = { 12, 12, 4 }
+local menuSweep = 0 -- lights left to visit at the fast rate after the menu hold changed
 local purgeAcc = 0
 
+local menuHold = false -- the main menu's set is up (LocalPlayer attribute MenuStage): every world light is culled
 local function sweepLight(l, camPos)
 	local e = lights[l]
 	local holder = l.Parent
@@ -409,7 +412,7 @@ local function sweepLight(l, camPos)
 		return false
 	end
 	local limit = CULL[level][e.cls]
-	local off = limit <= 0 or (pos - camPos).Magnitude > limit
+	local off = menuHold or limit <= 0 or (pos - camPos).Magnitude > limit
 	local was = culled[l]
 	if off and was == nil then
 		local keep = wanted[l]
@@ -496,7 +499,20 @@ local function step(dt)
 	if count > 0 then
 		local cam = workspace.CurrentCamera
 		local camPos = cam and cam.CFrame.Position or Vector3.zero
-		for _ = 1, math.min(SWEEP_PER_FRAME[level] or 4, count) do
+		-- behind the main menu (its set floats ~1400 studs over the town, inside High's 2000-stud reach) the gym's
+		-- and the city's lights are all off; the sweep runs faster while it switches them (off, then back on)
+		local p = Players.LocalPlayer
+		local hold = p ~= nil and p:GetAttribute("MenuStage") == true
+		local per = SWEEP_PER_FRAME[level] or 4
+		if hold ~= menuHold then
+			menuHold = hold
+			menuSweep = count
+		end
+		if menuSweep > 0 then
+			per = math.max(per, 32)
+			menuSweep -= per
+		end
+		for _ = 1, math.min(per, count) do
 			sweepIdx = sweepIdx % count + 1
 			sweepLight(lightList[sweepIdx], camPos)
 		end

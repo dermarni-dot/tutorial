@@ -7,13 +7,19 @@
 --   * Place again (a re-stage) replaces the previous copy
 --   * AnatomyClient in Config.BaldMode: no hair generator, no EditableMesh (not even the probe), a quiet status
 --   * the set's size per Graphics level (parts, lights, shadow casters) and its per-frame Step / Shot cost
---   * BuilderTiers.Preload is paced: the default family first, one load per gap, the other families deferred
+--   * BuilderTiers.Preload is paced and loads only the current frame's family (the default at start, another frame's
+--     the first time a boxer is built on it), never all 5 frames x 5 tiers x 14 meshes up front
 --   * the Creator's live preview (guisim, the real client code): the window is built once (a step change keeps its
 --     chrome), a slider change and a swatch pick create no GUI instances, a DRAG of a whole-body slider (height)
 --     sends one full preview when it is let go (not two a second), a head slider's drag sends head-only previews
 --     at the client's cap, a colour swatch sends one preview
+--   * a colour swatch (gear or skin tone) sends a colour-only preview (only.Colors), quick picks are coalesced; the
+--     server's colour path (Builder.Cosmetics only.Colors) runs no tier swap, muscles or hair, rebuilds only the layers
+--     a full build would (under 80 instances) and ends where a full build would (a full Cosmetics after it: nothing)
+--   * behind the menu stage (the LocalPlayer's MenuStage flag) WorldLOD switches the world's lights off, back on after
 --   * MainMenu re-stages the boxer once after a burst of character changes (one pending re-stage, not a timer per
---     changed descendant)
+--     changed descendant); the home layer is built once and toggled under the other screens; the fighter card's
+--     posed master is cached across career visits; closing parks the set and reopening reuses it and the boxer's copy
 --   lune run tools/sim/test_menustage.luau
 local roblox = require("@lune/roblox")
 local task = require("@lune/task")
@@ -264,7 +270,81 @@ do
 end
 
 ------------------------------------------------------------------------
--- BuilderTiers.Preload: paced, the default family first, the other families deferred
+-- Behind the set: the world's lights (WorldLOD) switch off while a set is up (the MenuStage flag) and back on after
+------------------------------------------------------------------------
+do
+	local E4 = FE.new()
+	local function fakeTypeof(v)
+		if type(v) == "table" and rawget(v, "_class") ~= nil then
+			return "Instance"
+		end
+		return typeof(v)
+	end
+	local H4 = Host.new({ globals = { Instance = E4.Instance, workspace = E4.workspace, Workspace = E4.workspace, typeof = fakeTypeof } })
+	E4.install(H4)
+	local hb = FE.Signal()
+	H4.Service("RunService")._props.Heartbeat = hb
+	local me = E4.new("Folder")
+	me.Name = "LocalPlayer"
+	H4.Service("Players")._props.LocalPlayer = me
+	local cam = E4.new("Camera", E4.workspace)
+	cam.CFrame = CFrame.new(0, 6, 30)
+	E4.workspace.CurrentCamera = cam
+	local MS4 = H4.require("Client/MenuStage")
+	local WL = H4.require("Client/WorldLOD")
+	-- the gym's lights: a lamp over the ring, a fill, an accent (all on, all in range of the gym camera)
+	local gym = E4.new("Folder")
+	gym.Name = "Gym"
+	local lightsList = {}
+	for i, r in ipairs({ 40, 30, 12 }) do
+		local p = E4.new("Part", gym)
+		p.Name = "Lamp" .. i
+		p.Position = Vector3.new(i * 4, 12, 0)
+		local l = E4.new("PointLight", p)
+		l.Range = r
+		l.Enabled = true
+		local isA = l.IsA
+		rawset(l, "IsA", function(o, cls) -- (fakeengine has no Light base class)
+			return cls == "Light" or isA(o, cls)
+		end)
+		table.insert(lightsList, l)
+	end
+	gym.Parent = E4.workspace
+	WL.Start()
+	WL.Watch(gym, { keep = true })
+	local function frames(n)
+		for _ = 1, n do
+			hb:Fire(1 / 60)
+		end
+	end
+	local function onCount()
+		local n = 0
+		for _, l in ipairs(lightsList) do
+			if l.Enabled then
+				n += 1
+			end
+		end
+		return n
+	end
+	frames(30)
+	check("world lights: on at the gym", onCount() == 3, onCount())
+	local st = MS4.Build("High")
+	cam.CFrame = CFrame.new(0, 1404, 10) -- the menu's lens, right above the town (inside High's 2000-stud light reach)
+	frames(30)
+	check("behind the menu stage: the world's lights are off (MenuStage flag " .. tostring(me:GetAttribute("MenuStage")) .. ")", onCount() == 0 and me:GetAttribute("MenuStage") == true, onCount())
+	MS4.Park(st)
+	cam.CFrame = CFrame.new(0, 6, 30)
+	frames(30)
+	check("menu closed (set parked): the flag is gone and the lights are back on", onCount() == 3 and me:GetAttribute("MenuStage") == nil, onCount())
+	MS4.Unpark(st)
+	check("Unpark: the flag again", me:GetAttribute("MenuStage") == true)
+	MS4.Destroy(st)
+	check("Destroy: the flag gone", me:GetAttribute("MenuStage") == nil)
+end
+
+------------------------------------------------------------------------
+-- BuilderTiers.Preload: paced, only the current frame's family (the default family at start, another frame's the
+-- first time a boxer is built on it), never all the families up front
 ------------------------------------------------------------------------
 do
 	local BuilderTiers = H.require("BuilderTiers")
@@ -273,7 +353,7 @@ do
 	local function keyOf(e, tier, name)
 		return tier .. ":" .. name .. ":" .. e.id
 	end
-	local defN, otherN = 0, 0
+	local defN, allOther = 0, 0
 	for _, lite in ipairs({ false, true }) do
 		for tier = 1, BodyTiers.TIERS do
 			for _, name in ipairs(BodyTiers.PARTS) do
@@ -285,16 +365,23 @@ do
 			end
 		end
 	end
+	-- the other frames' families, and one of them (the frame a boxer is built on below)
+	local otherFrame, frameN = nil, 0
 	for _, frame in ipairs(BodyTiers.Frames()) do
 		if frame ~= BodyTiers.DEFAULT_FRAME then
+			local n = 0
 			for tier = 1, BodyTiers.TIERS do
 				for _, name in ipairs(BodyTiers.PARTS) do
 					local e = BodyTiers.PartEntry(tier, name, nil, false, frame)
 					if e and not keys[keyOf(e, tier, name)] then
 						keys[keyOf(e, tier, name)] = true
-						otherN += 1
+						n += 1
 					end
 				end
+			end
+			allOther += n
+			if n > 0 and not otherFrame then
+				otherFrame, frameN = frame, n
 			end
 		end
 	end
@@ -309,7 +396,7 @@ do
 		return u
 	end } }
 	local t0 = os.clock()
-	BuilderTiers.Preload({ gap = 0.01, defer = 0.4 })
+	BuilderTiers.Preload({ gap = 0.01 })
 	check("Preload: returns at once (one load in flight at most)", AS.calls <= 1, AS.calls)
 	task.wait(0.12)
 	check("Preload: paced, not all at once (" .. AS.calls .. " of " .. defN .. " default loads after 0.12 s)", AS.calls >= 2 and AS.calls < defN, AS.calls)
@@ -317,17 +404,269 @@ do
 	while AS.calls < defN and os.clock() - tDef < 20 do
 		task.wait(0.02)
 	end
-	check("Preload: the default family (full + lite) loads first: " .. defN .. " loads", AS.calls == defN, AS.calls)
-	local doneAt = os.clock()
-	task.wait(0.2)
-	check("Preload: the other families wait for the defer", AS.calls == defN, AS.calls)
-	local tOth = os.clock()
-	while AS.calls < defN + otherN and os.clock() - tOth < 30 do
+	check("Preload: the default family (full + lite) loads: " .. defN .. " loads", AS.calls == defN, AS.calls)
+	local startN = AS.calls
+	task.wait(0.6)
+	check("Preload: no other frame's family is loaded up front (was " .. allOther .. " more loads)", AS.calls == defN, AS.calls - defN)
+	-- a boxer built on another frame: that frame's family loads behind him, paced, and only that one
+	check("a second frame to build on", otherFrame ~= nil)
+	local m = E.new("Model")
+	E.new("Humanoid", m)
+	local before = AS.calls
+	BuilderTiers.Apply(m, { frame = otherFrame }, Vector3.new(1, 1, 1), false)
+	task.wait(0.05)
+	check("Apply on a new frame: its family preloads in the background (paced)", AS.calls > before and AS.calls < before + frameN, AS.calls - before)
+	local tF = os.clock()
+	while AS.calls < before + frameN and os.clock() - tF < 20 do
 		task.wait(0.02)
 	end
-	check("Preload: then the other families (" .. otherN .. " loads)", AS.calls == defN + otherN, AS.calls)
-	check("Preload: the first other-family load came after the defer", (AS.at[defN + 1] or 0) - doneAt >= 0.3, AS.at[defN + 1] and (AS.at[defN + 1] - doneAt))
-	print(string.format("  Preload: %d + %d loads over %.1f s (gap 0.01, defer 0.4); the old preload fired all %d back to back", defN, otherN, os.clock() - t0, defN + otherN))
+	task.wait(0.2)
+	check("Apply on a new frame: exactly that frame's family (" .. frameN .. " loads), no other", AS.calls == before + frameN, AS.calls - before)
+	before = AS.calls
+	BuilderTiers.Apply(m, { frame = otherFrame }, Vector3.new(1, 1, 1), false)
+	check("PreloadFrame once per frame (a second boxer on it queues nothing)", BuilderTiers.PreloadFrame(otherFrame) == false and AS.calls == before, AS.calls - before)
+	print(string.format("  Preload: %d loads at start (the default family + lite set), %d for frame %s when first used; the old preload queued %d (every family) at start",
+		startN, frameN, tostring(otherFrame), defN + allOther))
+	BuilderTiers.Reset()
+	BuilderTiers.Services = {}
+end
+
+------------------------------------------------------------------------
+-- The server's colour-only preview (Builder.Cosmetics with only.Colors): no full Cosmetics on a colour change
+------------------------------------------------------------------------
+do
+	local ES = FE.new()
+	local HS = Host.new({ server = true, globals = { Instance = ES.Instance, workspace = ES.workspace, Workspace = ES.workspace, warn = function() end } })
+	ES.install(HS)
+	local BodyTiers = HS.require("BodyTiers")
+	local BuilderTiers = HS.require("BuilderTiers")
+	local BuilderGear = HS.require("BuilderGear")
+	local Builder = HS.require("Builder")
+	local Body = HS.require("BuilderBody")
+	local Hair = HS.require("BuilderHair")
+	local Looks = HS.require("Looks")
+	local Vector3s, Color3s = roblox.Vector3, roblox.Color3
+	-- the fake R15 rig test_npcbuild builds on (OriginalSize / OriginalPosition, motors, ReplaceBodyPartR15)
+	local BLOCK = {
+		UpperTorso = { size = { 2, 1.6, 1 }, att = { NeckRigAttachment = { 0, 0.8, 0 }, WaistRigAttachment = { 0, -0.8, 0 }, LeftShoulderRigAttachment = { -1, 0.563, 0 }, RightShoulderRigAttachment = { 1, 0.563, 0 } } },
+		LowerTorso = { size = { 2, 0.4, 1 }, att = { WaistRigAttachment = { 0, 0.2, 0 }, LeftHipRigAttachment = { -0.5, -0.2, 0 }, RightHipRigAttachment = { 0.5, -0.2, 0 }, RootRigAttachment = { 0, -0.2, 0 } } },
+	}
+	for _, side in ipairs({ "Left", "Right" }) do
+		local sx = side == "Left" and -1 or 1
+		BLOCK[side .. "UpperArm"] = { size = { 1, 1.169, 1 }, att = { [side .. "ShoulderRigAttachment"] = { -0.5 * sx, 0.394, 0 }, [side .. "ElbowRigAttachment"] = { 0, -0.334, 0 } } }
+		BLOCK[side .. "LowerArm"] = { size = { 1, 1.052, 1 }, att = { [side .. "ElbowRigAttachment"] = { 0, 0.192, 0 }, [side .. "WristRigAttachment"] = { 0, -0.501, 0 } } }
+		BLOCK[side .. "Hand"] = { size = { 1, 0.3, 1 }, att = { [side .. "WristRigAttachment"] = { 0, 0.125, 0 } } }
+		BLOCK[side .. "UpperLeg"] = { size = { 1, 1.217, 1 }, att = { [side .. "HipRigAttachment"] = { 0, 0.421, 0 }, [side .. "KneeRigAttachment"] = { 0, -0.408, 0 } } }
+		BLOCK[side .. "LowerLeg"] = { size = { 1, 1.193, 1 }, att = { [side .. "KneeRigAttachment"] = { 0, 0.2, 0 }, [side .. "AnkleRigAttachment"] = { 0, -0.547, 0 } } }
+		BLOCK[side .. "Foot"] = { size = { 1, 0.3, 1 }, att = { [side .. "AnkleRigAttachment"] = { 0, 0.085, 0 } } }
+	end
+	local JOINTS = {
+		Root = { "HumanoidRootPart", "LowerTorso" }, Waist = { "LowerTorso", "UpperTorso" }, Neck = { "UpperTorso", "Head" },
+		LeftShoulder = { "UpperTorso", "LeftUpperArm" }, RightShoulder = { "UpperTorso", "RightUpperArm" },
+		LeftElbow = { "LeftUpperArm", "LeftLowerArm" }, RightElbow = { "RightUpperArm", "RightLowerArm" },
+		LeftWrist = { "LeftLowerArm", "LeftHand" }, RightWrist = { "RightLowerArm", "RightHand" },
+		LeftHip = { "LowerTorso", "LeftUpperLeg" }, RightHip = { "LowerTorso", "RightUpperLeg" },
+		LeftKnee = { "LeftUpperLeg", "LeftLowerLeg" }, RightKnee = { "RightUpperLeg", "RightLowerLeg" },
+		LeftAnkle = { "LeftLowerLeg", "LeftFoot" }, RightAnkle = { "RightLowerLeg", "RightFoot" },
+	}
+	local function v3(t)
+		return Vector3s.new(t[1], t[2], t[3])
+	end
+	local function newRig(scale, parent)
+		local model = ES.new("Model")
+		model.Name = "Boxer"
+		local hrp = ES.new("Part", model)
+		hrp.Name = "HumanoidRootPart"
+		hrp.Size = Vector3s.new(2, 2, 1) * scale
+		local ra = ES.new("Attachment", hrp)
+		ra.Name = "RootRigAttachment"
+		local function addPart(name, size, orig, atts)
+			local p = ES.new("MeshPart", model)
+			p.Name = name
+			p.Size = size
+			p.Color = Color3s.new(1, 1, 1)
+			local o = ES.new("Vector3Value", p)
+			o.Name = "OriginalSize"
+			o.Value = orig
+			for an, pos in pairs(atts) do
+				local a = ES.new("Attachment", p)
+				a.Name = an
+				a.Position = pos.cur
+				local op = ES.new("Vector3Value", a)
+				op.Name = "OriginalPosition"
+				op.Value = pos.orig
+			end
+		end
+		for name, b in pairs(BLOCK) do
+			local atts = {}
+			for an, pos in pairs(b.att) do
+				atts[an] = { cur = v3(pos) * scale, orig = v3(pos) }
+			end
+			addPart(name, v3(b.size) * scale, v3(b.size), atts)
+		end
+		addPart("Head", Vector3s.new(0.927, 0.927, 0.927), Vector3s.new(1.2, 1.2, 1.2), { NeckRigAttachment = { cur = Vector3s.new(0, -0.46, 0), orig = Vector3s.new(0, -0.6, 0) } })
+		for jn, pp in pairs(JOINTS) do
+			local p0, p1 = model:FindFirstChild(pp[1]), model:FindFirstChild(pp[2])
+			local m = ES.new("Motor6D", p1)
+			m.Name = jn
+			m.Part0, m.Part1 = p0, p1
+			m.C0 = p0:FindFirstChild(jn .. "RigAttachment").CFrame
+			m.C1 = p1:FindFirstChild(jn .. "RigAttachment").CFrame
+			m.Transform = CFrame.new()
+		end
+		local hum = ES.new("Humanoid", model)
+		hum.HipHeight = 2 * scale.Y
+		hum.ReplaceBodyPartR15 = function(_, enum, part)
+			local name = enum.Name
+			local old = model:FindFirstChild(name)
+			if name ~= "Head" then
+				local o = part:FindFirstChild("OriginalSize")
+				if o then
+					part.Size = o.Value * scale
+				end
+			end
+			for _, m in ipairs(model:GetDescendants()) do
+				if m.ClassName == "Motor6D" then
+					if m.Part0 == old then
+						m.Part0 = part
+					end
+					if m.Part1 == old then
+						m.Part1 = part
+						m.Parent = part
+					end
+				end
+			end
+			part.Parent = model
+			old:Destroy()
+			return true
+		end
+		model.Parent = parent
+		return model
+	end
+	local function fakeAssets()
+		local AS = {}
+		function AS.CreateMeshPartAsync(_, content)
+			local mp = ES.new("MeshPart")
+			mp.MeshId = "rbxassetid://" .. tostring(tonumber(tostring(content):match("(%d+)%s*$")))
+			return mp
+		end
+		return AS
+	end
+	local Content = { fromUri = function(u)
+		return u
+	end }
+	BodyTiers.SetData(BodyTiers.Data())
+	BuilderTiers.Reset()
+	BuilderTiers.Services = { AssetService = fakeAssets(), Content = Content }
+	BuilderGear.SetData(BuilderGear.Data())
+	BuilderGear.Reset()
+	BuilderGear.Services = { AssetService = fakeAssets(), Content = Content }
+	local stageF = ES.new("Folder", ES.workspace)
+	stageF.Name = "BoxerStaging"
+	Builder.Services.Stage = stageF
+	local build = { fat = 14 }
+	for _, id in ipairs({ "pecs", "upperChest", "frontDelt", "sideDelt", "rearDelt", "biceps", "triceps", "forearms", "lats", "traps",
+		"upperBack", "lowerBack", "abs", "lowerAbs", "obliques", "serratus", "quads", "hamstrings", "glutes", "calves", "neckSCM" }) do
+		build[id] = 70
+	end
+	local app = Looks.Random(4242, 1, { age = 26, class = 5 })
+	local gear = { gloves = "Competition", glovesCond = 70, wraps = "OldWraps", wrapsCond = 80 }
+	-- what each Cosmetics run creates and which layers it runs (the spies: the tier swap, the muscles, the hair)
+	local made, counting = 0, false
+	local baseNew = ES.Instance.new
+	ES.Instance.new = function(cls, parent)
+		if counting then
+			made += 1
+		end
+		return baseNew(cls, parent)
+	end
+	local calls = {}
+	local function spy(tbl, key, label)
+		local f = tbl[key]
+		tbl[key] = function(...)
+			calls[label] = (calls[label] or 0) + 1
+			return f(...)
+		end
+	end
+	spy(BuilderTiers, "Apply", "Tiers")
+	spy(Body, "Muscles", "Muscles")
+	spy(Hair, "Build", "Hair")
+	local sc = Builder.Scales(app, build, {})
+	local pm = newRig(Vector3s.new(sc.width, sc.height, sc.depth), ES.workspace)
+	local FULL = { hands = "wraps", name = "", nick = "", waistText = "", detail = "full" }
+	local COLOR = table.clone(FULL)
+	COLOR.only = { Colors = true }
+	check("server: the first full build", (pcall(Builder.Cosmetics, pm, app, build, gear, FULL)))
+	local function folders()
+		local out = {}
+		for _, f in ipairs(pm.BoxerLook:GetChildren()) do
+			out[f.Name] = f
+		end
+		return out
+	end
+	local function run(opts)
+		local before = folders()
+		table.clear(calls)
+		made, counting = 0, true
+		local t0 = os.clock()
+		local ok = pcall(Builder.Cosmetics, pm, app, build, gear, opts)
+		counting = false
+		local rebuilt = {}
+		for n, f in pairs(folders()) do
+			if before[n] ~= f then
+				table.insert(rebuilt, n)
+			end
+		end
+		table.sort(rebuilt)
+		return ok, made, table.concat(rebuilt, ","), os.clock() - t0, table.clone(calls)
+	end
+	local _, idleN, _, _, fullCalls = run(FULL)
+	check("server spies: a full Cosmetics runs the tier swap, the muscles and the hair", (fullCalls.Tiers or 0) > 0 and (fullCalls.Muscles or 0) > 0 and (fullCalls.Hair or 0) > 0)
+	local seq = 0
+	local function c3()
+		seq += 1
+		return { (seq * 53) % 256, (seq * 97) % 256, (seq * 31) % 256 }
+	end
+	local KEYS = {
+		{ "trunks", function(a)
+			local c = c3()
+			a.attire.trunks, a.attire.robe = c, c
+		end },
+		{ "gloves", function(a)
+			a.gloves.color = c3()
+		end },
+		{ "skin", function(a)
+			a.skin = (a.skin % #Looks.SkinTones) + 1
+		end },
+	}
+	for _, k in ipairs({ "headgear", "trim", "socks", "shoes", "laces", "wraps", "mouthguard", "robeTrim" }) do
+		table.insert(KEYS, { k, function(a)
+			a.attire[k] = c3()
+		end })
+	end
+	local maxColor, maxFull, tColor, tFull = 0, 0, 0, 0
+	for _, kv in ipairs(KEYS) do
+		local function change()
+			app = table.clone(app)
+			app.attire, app.gloves = table.clone(app.attire), table.clone(app.gloves)
+			kv[2](app)
+		end
+		change()
+		local okF, nF, rF, dtF = run(FULL)
+		change()
+		local okC, nC, rC, dtC, cC = run(COLOR)
+		maxColor, maxFull = math.max(maxColor, nC), math.max(maxFull, nF)
+		tColor, tFull = tColor + dtC, tFull + dtF
+		check("colour " .. kv[1] .. ": the colour path runs", okF and okC)
+		check("colour " .. kv[1] .. ": no full Cosmetics (no tier swap, no muscles, no hair)", (cC.Tiers or 0) == 0 and (cC.Muscles or 0) == 0 and (cC.Hair or 0) == 0,
+			string.format("tiers %d muscles %d hair %d", cC.Tiers or 0, cC.Muscles or 0, cC.Hair or 0))
+		check("colour " .. kv[1] .. ": rebuilds only the layers a full build would (" .. rC .. ")", rC == rF, rC .. " vs " .. rF)
+		check("colour " .. kv[1] .. ": under 80 instances (" .. nC .. ")", nC < 80, nC)
+		local _, nAfter, rAfter = run(FULL)
+		check("colour " .. kv[1] .. ": the result is the full build's (a full Cosmetics after it rebuilds nothing)", rAfter == "" and nAfter <= idleN, rAfter .. " / " .. nAfter)
+	end
+	print(string.format("  colour previews (%d keys): at most %d instances (full path: %d), %.1f vs %.1f ms in all; no tier swap / muscles / hair",
+		#KEYS, maxColor, maxFull, tColor * 1000, tFull * 1000))
 	BuilderTiers.Reset()
 	BuilderTiers.Services = {}
 end
@@ -362,19 +701,23 @@ do
 	local UI = S.require("UI")
 	local Enum = roblox.Enum
 	local Vector2 = roblox.Vector2
+	-- PreviewLook requests: full, head-only (Face / Hair / Beard), colour-only (Colors and nothing else)
 	local function previews()
-		local full, head = 0, 0
+		local full, head, colors = 0, 0, 0
 		for _, r in ipairs(reqs) do
 			if r.action == "PreviewLook" then
 				local popts = r.args[3]
-				if type(popts) == "table" and type(popts.only) == "table" then
-					head += 1
-				else
+				local only = type(popts) == "table" and type(popts.only) == "table" and popts.only or nil
+				if not only then
 					full += 1
+				elseif only.Colors and not (only.Face or only.Hair or only.Beard) then
+					colors += 1
+				else
+					head += 1
 				end
 			end
 		end
-		return full, head
+		return full, head, colors
 	end
 	local function named(name)
 		for _, d in ipairs(S.playerGui:GetDescendants()) do
@@ -476,9 +819,27 @@ do
 	table.clear(reqs)
 	check("Trunks swatch", press("Swatch3"))
 	S.settle(0.6)
-	local f4, h4 = previews()
+	local f4, h4, c4 = previews()
 	check("a colour swatch creates no GUI instances", made == 0, made)
-	check("a colour swatch previews once", f4 + h4 == 1, f4 .. "/" .. h4)
+	check("a colour swatch previews once, colour-only (no full Cosmetics on the server)", f4 == 0 and h4 == 0 and c4 == 1, f4 .. "/" .. h4 .. "/" .. c4)
+	-- three swatches in quick succession: one preview (the client's send cap coalesces them), still colour-only
+	table.clear(reqs)
+	press("Swatch4")
+	press("Swatch5")
+	press("Swatch6")
+	S.settle(0.6)
+	local f4b, h4b, c4b = previews()
+	check("three quick swatch picks: debounced to at most two colour-only previews", f4b == 0 and h4b == 0 and c4b >= 1 and c4b <= 2, f4b .. "/" .. h4b .. "/" .. c4b)
+	-- the skin tone (Skin & Eyes): colour-only too (the server's colour path rebuilds the face for it)
+	check("Step3 (Skin)", press("Step3"))
+	S.settle(0.4)
+	made = 0
+	table.clear(reqs)
+	check("a skin tone swatch", press("Swatch2"))
+	S.settle(0.6)
+	local f6, h6, c6 = previews()
+	check("a skin tone swatch: one colour-only preview", f6 == 0 and h6 == 0 and c6 == 1, f6 .. "/" .. h6 .. "/" .. c6)
+	check("a skin tone swatch creates no GUI instances", made == 0, made)
 	-- the Face step: a face chip is a head-only preview (the page is rebuilt for the pick: a hitch, not lag)
 	check("Step2 (Face) again", press("Step2"))
 	S.settle(0.4)
@@ -551,6 +912,8 @@ do
 		local m = S.E.new("Motor6D", p)
 		m.Name = r[3]
 		m.Part0, m.Part1 = parts2[r[2]], p
+		m.C0 = parts2[r[2]].CFrame:ToObjectSpace(p.CFrame)
+		m.C1 = CFrame.new()
 	end
 	local look2 = S.E.new("Folder", char2)
 	look2.Name = "BoxerLook"
@@ -575,8 +938,51 @@ do
 	S.settle(0.9)
 	check("MainMenu: one re-stage after a burst of 300 changes", places == 1, places)
 	print(string.format("  MainMenu: 302 change signals in %.1f ms -> 1 re-stage (one pending timer; was 302 task.delay threads)", burst * 1000))
+	-- GUI built once and toggled: the home layer is hidden under a screen and shown again as it was
+	local FC = S.require("Client/FighterCard")
+	local hb, m0, s0 = MM.Stats().homeBuilds, FC.masters, FC.shots
+	MM.Show("career")
+	S.settle(0.6)
+	check("the career screen builds (the fighter card's portrait)", named("Card") ~= nil or S.playerGui:FindFirstChild("Card", true) ~= nil)
+	MM.Show("home")
+	S.settle(0.3)
+	MM.Show("rankings")
+	S.settle(0.6)
+	MM.Show("home")
+	S.settle(0.3)
+	MM.Show("career")
+	S.settle(0.6)
+	MM.Show("home")
+	S.settle(0.3)
+	check("two career visits: one posed master (cached), a copy per photo (" .. (FC.masters - m0) .. " masters, " .. (FC.shots - s0) .. " shots)",
+		FC.masters - m0 <= 1 and FC.shots - s0 == 2, (FC.masters - m0) .. "/" .. (FC.shots - s0))
+	check("GUI built once: home -> career -> home -> rankings -> home builds the home layer no more times (" .. (MM.Stats().homeBuilds - hb) .. ")",
+		MM.Stats().homeBuilds == hb, MM.Stats().homeBuilds - hb)
+	check("the set up: the LocalPlayer carries MenuStage", S.player:GetAttribute("MenuStage") == true)
+	-- the stage parked on close, the flag gone, the light back on
+	local stage0 = MM.Stats().stage
+	local clone0 = stage0 and stage0.clone
+	MM.Close()
+	S.settle(0.6)
+	check("closed: the set is parked (kept out of the world, not destroyed)", MM.Stats().parked and stage0 and stage0.folder ~= nil and stage0.folder.Parent == nil)
+	check("closed: MenuStage cleared", S.player:GetAttribute("MenuStage") == nil)
+	-- open again: the same set and the same copy (the character has not changed), nothing built
+	local builds = 0
+	local realBuild = MS.Build
+	MS.Build = function(...)
+		builds += 1
+		return realBuild(...)
+	end
+	places = 0
+	MM.Open()
+	S.settle(0.5)
+	local stage1 = MM.Stats().stage
+	check("reopen: the parked set is reused (no MenuStage.Build)", builds == 0 and stage1 == stage0, builds)
+	check("reopen: the boxer's copy is reused (the character did not change)", stage1 and stage1.clone == clone0 and clone0 ~= nil and clone0.Parent == stage1.folder)
+	check("reopen: MenuStage set again", S.player:GetAttribute("MenuStage") == true)
 	MM.Close()
 	S.settle(0.4)
+	MS.Build = realBuild
 	S = S1
 end
 

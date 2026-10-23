@@ -2153,6 +2153,115 @@ local function restClip(tier)
 	end
 end
 
+------------------------------------------------------------------------
+-- reach: where the punch VISIBLY lands (--clips reach). A (--frame) throws every punch at B (--oframe, default A's)
+-- from each gap of --gaps (root to root, default 4.2,5.0,5.8); per punch and gap the closest the glove's surface
+-- came to the target's (the head sphere, the torso boxes for a body shot) over the punch. The boundary (the gap at
+-- which the gap closes to CONTACT) is read off by interpolation; HitGeometry.Frame off the same rigs in their rest
+-- pose rides along, so tools/sim/test_hitdetect can hold the server's hit test to the animation (--reachout FILE:
+-- the JSON, default <out>/reach.json)
+------------------------------------------------------------------------
+local REACH_LIST = {
+	{ "jab", "jab|L|head|0.16|0.8" }, { "cross", "cross|R|head|0.2|0.9" }, { "leadhook", "leadhook|L|head|0.2|0.9" },
+	{ "rearhook", "rearhook|R|head|0.22|0.9" }, { "uppercut", "uppercut|R|head|0.22|0.9" }, { "overhand", "overhand|R|head|0.24|0.9" },
+	{ "jab|body", "jab|L|body|0.16|0.8" }, { "cross|body", "cross|R|body|0.2|0.9" }, { "leadhook|body", "leadhook|L|body|0.2|0.9" },
+	{ "rearhook|body", "rearhook|R|body|0.22|0.9" }, { "uppercut|body", "uppercut|R|body|0.22|0.9" },
+}
+local REPS = tonumber(args.reps) or 1
+local function reachClip(tier)
+	local HG = H.require("HitGeometry")
+	local a = makeBoxer(tier)
+	a.Name = "BoxerA"
+	local b = makeBoxer(3, { gloves = 2, trunks = 4, frame = args.oframe or FRAME })
+	b.Name = "BoxerB"
+	-- the frames as the server's geoFrame reads them: the rest pose, the soles on the floor (Y = 0)
+	local geoA, geoB = HG.Frame(a, 0), HG.Frame(b, 0)
+	local gaps = {}
+	for s in (args.gaps or "4.2,5.0,5.8"):gmatch("[^,]+") do
+		table.insert(gaps, tonumber(s))
+	end
+	local ha, hb = a:FindFirstChild("HumanoidRootPart"), b:FindFirstChild("HumanoidRootPart")
+	for _, m in ipairs({ a, b }) do
+		m:SetAttribute("Guard", "up")
+		m:SetAttribute("Style", "BoxerPuncher")
+		CS:AddTag(m, "Fighter")
+	end
+	local function boxGap(p, part)
+		local lp = part.CFrame:PointToObjectSpace(p)
+		local s = part.Size / 2
+		local q = Vector3.new(math.clamp(lp.X, -s.X, s.X), math.clamp(lp.Y, -s.Y, s.Y), math.clamp(lp.Z, -s.Z, s.Z))
+		return (lp - q).Magnitude
+	end
+	local res = {}
+	local actId = 0
+	for _, gap in ipairs(gaps) do
+		ha.CFrame = CFrame.new(0, ha.CFrame.Y, gap / 2)
+		hb.CFrame = CFrame.new(0, hb.CFrame.Y, -gap / 2) * CFrame.Angles(0, math.pi, 0)
+		for _ = 1, 90 do
+			frame({ a, b })
+		end
+		for _, pd in ipairs(REACH_LIST) do
+			local name, act = pd[1], pd[2]
+			local hand = act:match("^[^|]*|(%a)")
+			local glove
+			for _, d in ipairs(a:GetDescendants()) do
+				if (d.ClassName == "MeshPart" or d.ClassName == "Part") and d.Name == "Glove" .. hand then
+					glove = d
+				end
+			end
+			glove = glove or a:FindFirstChild(hand == "L" and "LeftHand" or "RightHand")
+			local body = act:find("|body|", 1, true) ~= nil
+			-- (--reps N: the punch thrown N times from the gap - the client picks a variant per throw, a paw or a
+			-- long jab, a tight or a wide hook - and the median of the closest each came is the visible reach)
+			local surfs = {}
+			for _ = 1, REPS do
+			actId += 1
+			a:SetAttribute("Act", act)
+			a:SetAttribute("ActId", actId)
+			local best = math.huge
+			for _ = 1, 50 do
+				frame({ a, b })
+				local gp = glove.Position
+				local gr = math.max(glove.Size.X, glove.Size.Z) / 2
+				local s
+				if body then
+					s = math.min(boxGap(gp, b:FindFirstChild("UpperTorso")), boxGap(gp, b:FindFirstChild("LowerTorso"))) - gr
+				else
+					local hd = b:FindFirstChild("Head")
+					s = (gp - hd.Position).Magnitude - math.max(hd.Size.X, hd.Size.Y) / 2 - gr
+				end
+				best = math.min(best, s)
+			end
+			-- (back to the guard and the roots where they were: a lunge moves A's root)
+			a:SetAttribute("Act", "idle")
+			for _ = 1, 40 do
+				frame({ a, b })
+			end
+			ha.CFrame = CFrame.new(0, ha.CFrame.Y, gap / 2)
+			hb.CFrame = CFrame.new(0, hb.CFrame.Y, -gap / 2) * CFrame.Angles(0, math.pi, 0)
+			for _ = 1, 20 do
+				frame({ a, b })
+			end
+			table.insert(surfs, best)
+			end
+			table.sort(surfs)
+			local med = surfs[math.floor((#surfs + 1) / 2)]
+			res[name] = res[name] or {}
+			table.insert(res[name], { gap = gap, surf = r4(med), min = r4(surfs[1]), max = r4(surfs[#surfs]) })
+			print(string.format("reach T%d %s->%s %-14s gap %.2f  glove surface %.3f (%.3f..%.3f)", tier, FRAME or "Athletic", args.oframe or FRAME or "Athletic", name, gap, med, surfs[1], surfs[#surfs]))
+		end
+	end
+	local out = { tier = tier, frame = FRAME or "Athletic", oframe = args.oframe or FRAME or "Athletic", geoA = geoA, geoB = geoB, punches = res }
+	Host.WriteJSON(args.reachout or (OUT .. "/reach.json"), out, true)
+	for _, m in ipairs({ a, b }) do
+		CS:RemoveTag(m, "Fighter")
+		m:Destroy()
+	end
+	for _ = 1, 3 do
+		frame({})
+	end
+end
+
 for _, tier in ipairs(TIERS) do
 	if CLIPS.rest then
 		restClip(tier)
@@ -2171,6 +2280,9 @@ for _, tier in ipairs(TIERS) do
 	end
 	if CLIPS.punch then
 		punchClip(tier)
+	end
+	if CLIPS.reach then
+		reachClip(tier)
 	end
 	if CLIPS.fight then
 		fightClip(tier)

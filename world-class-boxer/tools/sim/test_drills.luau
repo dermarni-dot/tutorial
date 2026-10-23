@@ -120,11 +120,17 @@ local function serverParams(act, lv)
 	return paramsFor(act, lv)
 end
 
--- the bands: perfect >= 0.85, idle <= 0.15, the average player in between and clear of both. The
--- drills are tuned so that "good" is the common result (the average bot's timing error is a human's),
--- so the average player's ceiling is 0.93, and never closer than 0.06 to the perfect one: the drill
--- still tells them apart.
-local LIMITS = { idle = 0.15, perfect = 0.85, averageMax = 0.93, averageGapToPerfect = 0.06 }
+-- the bands: perfect >= 0.85, idle <= 0.15, the average player in between and clear of both.
+-- (v10 training pass, deliberately widened: the drills are now tuned so that a LOW-skill player grades
+-- good-or-better on >= 70% of the reps - tools/sim/drillmeasure.luau - which puts the average player close
+-- to the top on the friendlier stations. The average ceiling went 0.93 -> 0.975 and the gap to the perfect
+-- player 0.06 -> 0.025: still a clear step on every drill, the perfect player always ahead. The top level
+-- still has to be no easier than the first, below.)
+local LIMITS = { idle = 0.15, perfect = 0.85, averageMax = 0.975, averageGapToPerfect = 0.025, sessionMax = 40 }
+-- recovery stations are not skill tests: a calm, attentive player follows the ice bath's breathing and
+-- the chamber's slow, always-visible pressure profile to full marks. Their average player needs only to be
+-- clear of the idle one (the idle check still holds)
+local NO_CEILING = { IceBath = true, Chamber = true }
 -- idle players the drill itself carries: the sauna's coach pulls an idle player out (the water lost
 -- until then is real), the chamber's profile starts and ends at the surface pressure an idle player sits at
 local IDLE_MAX = { Sauna = 0.4, Chamber = 0.2 }
@@ -190,6 +196,11 @@ for _, act in ipairs(isChild and {} or ACTS) do
 					sumR += replay
 					check(string.format("%s lv%d %s: replay = live", act.id, lv, sk), math.abs(live - replay) < 0.01, string.format("live %.3f replay %.3f", live, replay))
 					check(string.format("%s lv%d %s: pacing kept", act.id, lv, sk), pacing.late == 0, pacing.late)
+					-- (v10: a workout is 20-40 s of input, the client's pacing included - the drill clock at the end)
+					-- (an idle player sits out every segment's time limit: that is no session, it is not timed here)
+					if sk ~= "idle" then
+						check(string.format("%s lv%d %s: session under %d s", act.id, lv, sk, LIMITS.sessionMax), dur < LIMITS.sessionMax, string.format("%.1f s", dur))
+					end
 					if sk == "perfect" then
 						check(string.format("%s lv%d perfect not too quick", act.id, lv), dur >= 0.8 * (plan.minTime or 0), string.format("%.1f s vs min %.1f", dur, plan.minTime or 0))
 					end
@@ -200,7 +211,9 @@ for _, act in ipairs(isChild and {} or ACTS) do
 			local idleMax = IDLE_MAX[act.id] or LIMITS.idle
 			check(string.format("%s lv%d perfect >= %.2f", act.id, lv, LIMITS.perfect), row.perfect >= LIMITS.perfect, string.format("%.3f", row.perfect))
 			check(string.format("%s lv%d idle <= %.2f", act.id, lv, idleMax), row.idle <= idleMax, string.format("%.3f", row.idle))
-			check(string.format("%s lv%d average between", act.id, lv), row.average >= row.idle + 0.1 and row.average <= row.perfect - LIMITS.averageGapToPerfect and row.average >= 0.2 and row.average <= LIMITS.averageMax,
+			local capped = not NO_CEILING[act.id]
+			check(string.format("%s lv%d average between", act.id, lv), row.average >= row.idle + 0.1 and row.average >= 0.2
+				and (not capped or (row.average <= row.perfect - LIMITS.averageGapToPerfect and row.average <= LIMITS.averageMax)),
 				string.format("idle %.3f average %.3f perfect %.3f", row.idle, row.average, row.perfect))
 			if verbose then
 				print(string.format("  %-10s lv%d  perfect %.3f  average %.3f  idle %.3f", act.id, lv, row.perfect, row.average, row.idle))
@@ -211,6 +224,58 @@ for _, act in ipairs(isChild and {} or ACTS) do
 	if s[1] and s[5] then
 		check(act.id .. " harder at the top level (average player)", s[5].average <= s[1].average + 0.06, string.format("lv1 %.3f lv5 %.3f", s[1].average, s[5].average))
 	end
+end
+-- the v10 mechanics, judge by judge (hand-made segments on a clock from 0)
+if not isChild and (not only or only.Mechanics) then
+	local function run(seg, inputs, tEnd)
+		local j = DrillScore.Judge(seg, 0)
+		local hits = {}
+		for _, e in ipairs(inputs) do
+			j.advance(e[3])
+			local h = j.input(e[1], e[2], e[3])
+			if h then
+				table.insert(hits, h)
+			end
+		end
+		j.finish(tEnd)
+		return j.result(), hits, j
+	end
+	-- the rope: the release is the jump; a double under wants the charge held first
+	local w = 6.5 * 1.7
+	local pass = math.pi / w -- the first pass of a double-under turn (the rope starts overhead)
+	local ropeSeg = { j = "rope", jumps = 1, omega = 6.5, cues = { "double" }, charge = 0.2 }
+	-- (the first pass comes ~0.28 s in: pressed at the start the hold reaches the charge, pressed 0.1 s before not)
+	local short = run(ropeSeg, { { "jump", true, pass - 0.1 }, { "jump", false, pass } }, 3)
+	local loaded = run(ropeSeg, { { "jump", true, 0 }, { "jump", false, pass } }, 3)
+	local pressOnly = run({ j = "rope", jumps = 1, omega = 6.5, cues = { "jump" } }, { { "jump", true, math.pi / 6.5 } }, 3)
+	check("rope: a double under released after a short hold trips", short.clean == 0, short.clean)
+	check("rope: a loaded double under is clean", loaded.clean == 1 and loaded.doubles == 1, loaded.clean)
+	check("rope: a press with no release is no jump", pressOnly.clean == 0, pressOnly.clean)
+	-- pull-ups: holding on drains the grip off the bar (a slip, no rep); a release in the zone is a rep
+	local pu = { j = "pullup", reps = 3, speed = 0.6, lo = 0.75, perfLo = 0.87, perfHi = 0.97, ready = 0.12, sink = 1.1, drain = 0.3, topDrain = 0.5, regen = 0.35, slipGrip = 0.35, wait = 4, limit = 10 }
+	local hang = run(pu, { { "pull", true, 0.2 } }, 8)
+	check("pull-ups: hanging on at the top drains the grip off the bar", hang.slips >= 1 and hang.done == 0, string.format("slips %d done %d", hang.slips, hang.done))
+	local tUp = 0.2 + 0.92 / (0.6 * 0.85) -- about the sweet band's middle (the grip slows the climb a little)
+	local one = run(pu, { { "pull", true, 0.2 }, { "pull", false, tUp } }, 4)
+	check("pull-ups: a release with the chin over the bar is a rep", one.done == 1 and one.short == 0, string.format("done %d h %.2f", one.done, one.h))
+	local low = run(pu, { { "pull", true, 0.2 }, { "pull", false, 0.8 } }, 4)
+	check("pull-ups: a release under the bar is SHORT, nothing else lost", low.done == 0 and low.short == 1 and low.slips == 0)
+	-- the sled push: the same leg twice is one step, presses in the reset do nothing
+	local sled = { j = "mash", bursts = 2, push = 2, reset = 0.8, target = 4 }
+	local m = run(sled, { { "L", true, 0.1 }, { "L", true, 0.2 }, { "R", true, 0.3 }, { "L", true, 0.4 }, { "R", true, 2.3 }, { "R", true, 3.0 }, { "L", true, 3.1 } }, 5)
+	check("sled push: alternate legs count, the same leg twice is one step", m.steps[1] == 3 and m.wrong == 1, string.format("%d steps, %d wrong", m.steps[1], m.wrong))
+	check("sled push: the reset ignores presses; the next drive counts its own", m.steps[2] == 2, m.steps[2])
+	-- the hold gauge: squeezing flat out runs past the band (little time in it); easing on and off holds it
+	local gauge = { j = "gauge", dur = 6, need = 3.6, lo = 0.45, hi = 0.75, rise = 0.9, fall = 0.7, amp = 0.03, grow = 0.01, wave = { 2.2, 0, 5.1, 1 } }
+	local flat = run(gauge, { { "sq", true, 0 } }, 6)
+	check("hold gauge: a flat-out squeeze leaves the band", flat.q < 0.5, string.format("%.2f", flat.q))
+	-- road lane: a breath a little late (1.3 x the window) is in rhythm, one far later is not
+	local road = { j = "road", duration = 6, legs = { { t = 0, lo = 0.3, hi = 0.6 } }, breaths = { 2, 4 }, breathW = 0.3, v0 = 0.45, kick = 0.07, decay = 0.2 }
+	local rr = run(road, { { "breathe", true, 2 + 0.39 }, { "breathe", true, 4 + 0.5 } }, 6)
+	check("road lane: a late breath inside 1.4 x the window counts, a later one does not", rr.hits == 1, rr.hits)
+	-- forgiving input: the punch just landed pressed again within DrillScore.BOUNCE is no wrong press
+	local seq = run({ j = "seq", ids = { "jab", "cross", "leadhook" }, limit = 4 }, { { "jab", true, 0.2 }, { "jab", true, 0.3 }, { "cross", true, 0.6 }, { "leadhook", true, 0.9 } }, 4)
+	check("combo: a key bounce is not a wrong press", seq.complete and seq.wrong == 0, seq.wrong)
 end
 if not isChild then
 	print(string.format("test_drills part A: %d passed, %d failed", pass, fail))
@@ -348,7 +413,8 @@ if childAt then
 				elseif sk == "idle" then
 					check(tag .. " idle low", r.server <= (IDLE_MAX[actId] or LIMITS.idle), string.format("%.3f", r.server))
 				else
-					check(tag .. " average in between", r.server >= 0.2 and r.server <= 0.95, string.format("%.3f", r.server))
+					-- (the v10 bands: up to LIMITS.averageMax, no ceiling on the recovery stations)
+					check(tag .. " average in between", r.server >= 0.2 and (NO_CEILING[actId] or r.server <= LIMITS.averageMax), string.format("%.3f", r.server))
 				end
 				if verbose then
 					print(string.format("  %-28s client %.3f server %.3f  %d inputs  %.0f s", tag, r.client, r.server, r.events or 0, r.frames / 60))

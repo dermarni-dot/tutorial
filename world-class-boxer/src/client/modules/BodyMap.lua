@@ -17,15 +17,23 @@ local AssetService = game:GetService("AssetService")
 local UI = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("UI"))
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local T = UI.Theme
--- the uploaded sheet (nil = not built / no id yet: frames)
+-- the uploaded sheet: its cells (Shared.BodyMapData) and its asset id (Shared.IconData.bodyMap); nil = not built
+-- or not uploaded yet: frames
 local SheetData
 do
 	local ok, m = pcall(function()
 		return require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("BodyMapData", 5))
 	end)
-	SheetData = (ok and type(m) == "table" and (tonumber(m.id) or 0) > 0) and m or nil
+	local okI, icons = pcall(function()
+		return require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("IconData", 5))
+	end)
+	local id = okI and type(icons) == "table" and tonumber(icons.bodyMap) or 0
+	if ok and type(m) == "table" and id > 0 and m.views and m.masks then
+		SheetData = m
+		SheetData.id = id
+	end
 end
-local IMAGE_LOAD_GRACE = 3 -- seconds an ImageLabel may take to load before the figure falls back to frames
+local IMAGE_LOAD_GRACE = 2 -- seconds the sheet may take to load before the figure falls back to frames
 local WHITE3 = Color3.new(1, 1, 1)
 
 local BodyMap = {}
@@ -492,7 +500,17 @@ local function sheetImage(parent, name, cell, x, y, w, h, color, z)
 		ImageColor3 = color, ScaleType = Enum.ScaleType.Stretch, ZIndex = z or 1, Parent = parent })
 end
 local function sheetView(self, parent, view, x, W, H)
-	local v = UI.New("Frame", { Name = "View", BackgroundTransparency = 1, Position = UDim2.fromOffset(x, 0), Size = UDim2.fromOffset(W, H), Parent = parent })
+	-- the view keeps the sheet's aspect: fitted into W x H, centred
+	local aspect = SheetData.view.w / SheetData.view.h
+	local vw, vh = W, H
+	if W / math.max(1, H) > aspect then
+		vw = math.floor(H * aspect + 0.5)
+	else
+		vh = math.floor(W / aspect + 0.5)
+	end
+	local v = UI.New("Frame", { Name = "View", BackgroundTransparency = 1, Position = UDim2.fromOffset(x + math.floor((W - vw) / 2), math.floor((H - vh) / 2)),
+		Size = UDim2.fromOffset(vw, vh), Parent = parent })
+	W, H = vw, vh
 	local sil = sheetImage(v, "Silhouette", SheetData.views[view], 0, 0, W, H, SKIN_TINT, 1)
 	table.insert(self.imageLayers, sil)
 	for _, m in ipairs(SheetData.masks[view] or {}) do
@@ -542,16 +560,23 @@ function BodyMap.new(parent, opts)
 		-- the watchdog: an image that has not loaded after the grace period (a bad id, a rejected upload, no
 		-- network) gives way to the frame figure, so nothing broken is ever shown
 		local sil = self.imageLayers[1]
-		task.delay(IMAGE_LOAD_GRACE, function()
-			if not frame.Parent or not self.imageLayers then
-				return
-			end
-			local loaded = true
-			pcall(function()
-				loaded = sil.IsLoaded == true
+		local function loaded()
+			local ok, v = pcall(function()
+				return sil.IsLoaded
 			end)
-			if not loaded then
-				warn("[BodyMap] the body map sheet did not load, using frames")
+			-- (a build without the IsLoaded property cannot tell: the images stay)
+			return not ok or v == nil or v == true
+		end
+		task.spawn(function()
+			local t0 = os.clock()
+			while os.clock() - t0 < IMAGE_LOAD_GRACE do
+				if not self.imageLayers or loaded() then
+					return
+				end
+				task.wait(0.2)
+			end
+			if frame.Parent and self.imageLayers and not loaded() then
+				warn("[BodyMap] the body map sheet did not load within " .. IMAGE_LOAD_GRACE .. " s, using frames")
 				self:_fallback()
 			end
 		end)

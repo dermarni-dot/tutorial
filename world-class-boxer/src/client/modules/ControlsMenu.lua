@@ -448,7 +448,13 @@ local KEY_ROWS = {
 }
 local SECTION_COLOR = { punch = T.gold, advanced = T.blue, special = T.orange, basic = T.sub }
 local SHORT_ACTION = { leadhook = "L hook", rearhook = "R hook", uppercut = "Upper", overhand = "Overhand", moveslist = "Moves", legend = "Strip", getup = "Get up", slipL = "Slip L", slipR = "Slip R",
-	pivotL = "Pivot L", pivotR = "Pivot R", body = "Body", block = "Block", parry = "Parry", dodge = "Dodge", sprint = "Sprint", clinch = "Clinch", jab = "Jab", cross = "Cross" }
+	pivotL = "Pivot L", pivotR = "Pivot R", body = "Body", block = "Block", parry = "Parry", dodge = "Dodge", sprint = "Sprint", clinch = "Clinch", jab = "Jab", cross = "Cross",
+	bodyhook = "Body hk", sidestepL = "Step L", sidestepR = "Step R", quickdodge = "Q dodge", weaveL = "Weave L", weaveR = "Weave R", pull = "Pull", counterjab = "C jab",
+	countercross = "C cross", feint = "Feint", duck = "Duck",
+	-- the special moves: a word or two that fits under a key cap (the list under the map gives the full names)
+	special_checkhook = "Check", special_phillyshell = "Philly", special_pullcounter = "Pull ctr", special_livershot = "Liver", special_gazelle = "Gazelle",
+	special_peekaboo = "Peekaboo", special_stepback = "Step bk", special_overhand = "Loaded", special_leaduppercut = "L upper", special_doublejab = "2x jab",
+	special_feintcross = "Feint X", special_bodyhead = "Body-hd", special_onetwothree = "1-2-3", special_shovelhook = "Shovel" }
 local function keyboardMap(m, order)
 	-- the key each action's first keyboard binding starts on ("2xA" -> A, "Q+MouseButton1" -> Q)
 	local bound = {}
@@ -464,7 +470,29 @@ local function keyboardMap(m, order)
 		end
 	end
 	local short = UI.CanvasSize(gui).Y < 560
-	local unit, gap, capH = short and 48 or 60, 4, short and 36 or 44
+	-- (a cap's width: room for its key and a short action name at the 11 px caption size)
+	local gap, capH = 4, short and 36 or 46
+	-- the unit fits the widest row into the panel (its keys' widths, the gaps, the rows' stagger)
+	local avail = 1200
+	pcall(function()
+		local k = math.max(UI.ScaleOf(content), 0.05)
+		if content.AbsoluteSize.X > 10 then
+			avail = content.AbsoluteSize.X / k - 8 - 28 - 12
+		end
+	end)
+	local unit = 80
+	for r, row in ipairs(KEY_ROWS) do
+		local units, n = 0, 0
+		for _, key in ipairs(row) do
+			units += key[3] == 6 and 4.2 or (key[3] or 1)
+			n += 1
+		end
+		-- (the stagger is 0.25 unit a row)
+		unit = math.min(unit, math.floor((avail - gap * (n - 1)) / (units + (r - 1) * 0.25)))
+	end
+	unit = math.max(unit, 40)
+	-- an action's short name under its key where the cap holds it at the caption size
+	local named = unit >= 62
 	local holder = UI.Frame(content, { Name = "KeyboardMap", BackgroundColor3 = T.panel, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order })
 	UI.Stroke(holder, T.line, 1, 0)
 	UI.Corner(holder, UI.R.lg)
@@ -484,9 +512,9 @@ local function keyboardMap(m, order)
 			end
 			UI.Corner(cap, 3)
 			UI.Stroke(cap, color or T.line, 1, 0)
-			UI.Text(cap, key[2], { Font = T.semi, TextSize = 12, TextColor3 = color or T.sub, Position = UDim2.fromOffset(6, 4), Size = UDim2.new(1, -12, 0, 14), AutomaticSize = Enum.AutomaticSize.None,
+			UI.Text(cap, key[2], { Font = T.semi, TextSize = 12, TextColor3 = color or T.sub, Position = named and UDim2.fromOffset(6, 4) or UDim2.new(0, 6, 0.5, -7), Size = UDim2.new(1, -12, 0, 14), AutomaticSize = Enum.AutomaticSize.None,
 				TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-			if a then
+			if a and named then
 				-- (a special move's name is long: its first word says enough under its key)
 				local label = SHORT_ACTION[a.id] or (a.special and tostring(a.label):match("^(%S+)")) or a.label
 				-- (the action's name, cut short where the cap is narrow: the list under the map says it in full)
@@ -521,7 +549,7 @@ local function remapTab(dev)
 	end
 	UI.Text(content, dev == "kbd" and "Click a key cap and press the new key. Hold one key and press another for a chord, tap a key twice for a double tap. Backspace clears the slot, Esc cancels. A key another action uses is swapped over."
 		or "Select a button cap and press the new button. Hold a button and press another for a chord, flick the right stick for a flick. " .. (Gamepad and Gamepad.Label(K.ButtonB) or "B") .. " cancels.",
-		{ TextSize = 13, TextColor3 = T.sub, LayoutOrder = order })
+		{ TextSize = 13, TextColor3 = T.sub, LayoutOrder = order, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextWrapped = true })
 	if #conflicts > 0 then
 		order += 1
 		UI.Text(content, string.format("%d conflict%s: two actions on one key are shown in red. Rebind one of them.", #conflicts, #conflicts == 1 and "" or "s"), { TextSize = 13, TextColor3 = T.red, LayoutOrder = order })

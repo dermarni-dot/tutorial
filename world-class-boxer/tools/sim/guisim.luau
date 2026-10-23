@@ -235,6 +235,8 @@ local function defaults(cls)
 			d.ImageTransparency = 0
 			d.ImageColor3 = roblox.Color3.new(1, 1, 1)
 			d.ScaleType = Enum.ScaleType.Stretch
+			-- (GS.ImagesLoad = false: every image stays unloaded, as a bad id or no network leaves it)
+			d.IsLoaded = GS.ImagesLoad ~= false
 		end
 		if cls == "ScrollingFrame" then
 			d.CanvasSize = UDim2.new(0, 0, 2, 0)
@@ -1608,6 +1610,7 @@ local function styleOf(it)
 		st.img = pr.Image
 		st.ic = c3(pr.ImageColor3 or Color3.new(1, 1, 1))
 		st.it = pr.ImageTransparency or 0
+		st.scale = pr.ScaleType and tostring(pr.ScaleType):match("(%a+)$") or "Stretch"
 		if pr.ImageRectSize then
 			st.rect = { pr.ImageRectOffset and pr.ImageRectOffset.X or 0, pr.ImageRectOffset and pr.ImageRectOffset.Y or 0, pr.ImageRectSize.X, pr.ImageRectSize.Y }
 		end
@@ -1622,7 +1625,7 @@ function GS.WriteBoxes(path, S, items, extra)
 			list[#list + 1] = {
 				x = math.floor(it.x * 10 + 0.5) / 10, y = math.floor(it.y * 10 + 0.5) / 10, w = math.floor(it.w * 10 + 0.5) / 10, h = math.floor(it.h * 10 + 0.5) / 10,
 				clip = it.clip, class = it.class, name = it.name, path = it.path, button = it.button, depth = it.depth, z = it.z,
-				order = it.displayOrder, text = it.text and it.text:sub(1, (utf8.offset(it.text, 161) or (#it.text + 1)) - 1) or nil,
+				order = it.displayOrder, text = it.text and it.text:sub(1, (utf8.offset(it.text, 601) or (#it.text + 1)) - 1) or nil,
 				textSize = it.textSize and it.textSize * it.unit or nil,
 				bad = extra and extra.bad and extra.bad[it.obj] or nil, blocked = it.blocked or nil, seq = it.order,
 				bgT = rawget(it.obj, "_props").BackgroundTransparency,

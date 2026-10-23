@@ -73,72 +73,72 @@
   },
   "neck": {
    "y": 5.339,
-   "girth": 1.911,
+   "girth": 1.894,
    "width": 0.62,
-   "depth": 0.574
+   "depth": 0.56
   },
   "shoulderSpan": 2.338,
-  "chestDepth": 0.763
+  "chestDepth": 0.764
  },
  "armAxisX": 0.8739,
  "parts": {
   "UpperTorso": {
    "mesh_file": "UpperTorso.mesh",
    "size": [
-    1.4504,
+    1.437,
     2.5604,
-    0.7631
+    0.7639
    ],
    "rest_center": [
     0.0,
     4.2071,
-    0.0071
+    0.0075
    ],
    "attachments": {
     "NeckRigAttachment": [
      0.0,
      1.1737,
-     -0.0071
+     -0.0075
     ],
     "WaistRigAttachment": [
      0.0,
      -0.9836,
-     -0.0071
+     -0.0075
     ],
     "RightShoulderRigAttachment": [
      0.8739,
      0.7939,
-     -0.0071
+     -0.0075
     ],
     "LeftShoulderRigAttachment": [
      -0.8739,
      0.7939,
-     -0.0071
+     -0.0075
     ],
     "BodyFrontAttachment": [
      0.0,
      0.0951,
-     -0.3385
+     -0.3389
     ],
     "BodyBackAttachment": [
      0.0,
      0.0951,
-     0.3335
+     0.3331
     ],
     "NeckAttachment": [
      0.0,
      1.1737,
-     -0.0071
+     -0.0075
     ],
     "RightCollarAttachment": [
      0.7166,
-     0.8568,
-     -0.0071
+     0.7659,
+     -0.0075
     ],
     "LeftCollarAttachment": [
      -0.7166,
-     0.8568,
-     -0.0071
+     0.7659,
+     -0.0075
     ]
    },
    "nv": 3194,

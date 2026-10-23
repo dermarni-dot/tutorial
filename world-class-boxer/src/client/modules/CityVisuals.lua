@@ -1774,7 +1774,8 @@ local function step(dt)
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	local rootPos = hrp and hrp.Position
-	if player:GetAttribute("InFight") ~= true then
+	-- (not in a fight, and not behind the main menu's set: nothing down here is in its shot)
+	if player:GetAttribute("InFight") ~= true and player:GetAttribute("MenuStage") ~= true then
 		animate(frameDt, cam.CFrame.Position, rootPos)
 	end
 	if slowAcc >= 0.25 then

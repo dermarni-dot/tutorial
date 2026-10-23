@@ -80,6 +80,8 @@ local turning -- the mouse button / touch turning the camera by dragging the 3D 
 local turnX = 0
 local dirty = false
 local dirtyFull = false -- a change that needs the whole body rebuilt (not just face / hair / beard)
+local dirtyHead = false -- a face / hair / beard change (the server rebuilds just those folders)
+local dirtyColors = false -- a colour change (skin, trunks, gloves ...: the server recolours, no full Cosmetics)
 local lastSent = 0
 local inflight = false
 local SEND_EVERY = 0.25 -- at most four previews a second while a slider moves
@@ -91,11 +93,18 @@ local hairGroup -- the hairstyle group shown (nil: the current style's own)
 local short = false -- a short screen (phone in landscape): no page hint line
 local narrow = false -- a narrow window (the smallest phones): no step prefix in the title
 local keyLight
+local keyLightOn -- what the key light was last switched to (the camera loop writes it on a change only)
 
--- head = the change only touches the face, hair or beard (the server can rebuild just those)
-local function preview(head)
+-- kind: true = the change only touches the face, hair or beard (the server can rebuild just those); "colors" = only
+-- a colour changed (Builder.Cosmetics' colour path: the colours and the layers that carry them, no tier swap, hair
+-- or muscles); nil = the whole character. The Heartbeat below sends one preview per SEND_EVERY for whatever piled up
+local function preview(kind)
 	dirty = true
-	if not head then
+	if kind == true then
+		dirtyHead = true
+	elseif kind == "colors" then
+		dirtyColors = true
+	else
 		dirtyFull = true
 	end
 end
@@ -293,7 +302,7 @@ local function colorField(parent, label, get, set, palette, names, head, wheelTo
 	local _, refresh = UI.Swatches(holder, label, palette, paletteIndex(palette, get()), function(rgb)
 		pushUndo(nil)
 		set(rgb)
-		preview(head)
+		preview(head or "colors")
 	end, { names = names })
 	if wheelToo then
 		local wheel
@@ -307,7 +316,7 @@ local function colorField(parent, label, get, set, palette, names, head, wheelTo
 				pushUndo(key or label)
 				set(rgb)
 				refresh(nil)
-				preview(head)
+				preview(head or "colors")
 			end)
 		end)
 	end
@@ -360,7 +369,7 @@ end
 -- the Advanced expander; returns true when it is open (the caller then builds the section)
 local function advancedToggle(count)
 	local open = advanced[page] == true
-	local b = UI.Button(body, (open and "HIDE ADVANCED" or "ADVANCED") .. string.format("   (%d more)", count), { Name = "AdvancedToggle", Size = UDim2.new(1, 0, 0, math.max(40, UI.MinHit(body))), TextSize = 15,
+	local b = UI.Button(body, (open and "Hide advanced" or "Advanced") .. string.format("  (%d more)", count), { Name = "AdvancedToggle", Size = UDim2.new(1, 0, 0, math.max(40, UI.MinHit(body))), TextSize = 15,
 		BackgroundColor3 = T.panel2, TextColor3 = open and T.gold or T.text }, function()
 		advanced[page] = not open
 		render()
@@ -455,8 +464,11 @@ local function camera(on)
 		cam.CFrame = cam.CFrame:Lerp(goal, math.clamp(dt * 7, 0, 1))
 		-- a soft key light on the face for the head pages (client-only, follows the turntable)
 		if keyLight then
-			keyLight.Key.Enabled = isHead
-			keyLight.Fill.Enabled = isHead
+			if keyLightOn ~= isHead then
+				keyLightOn = isHead
+				keyLight.Key.Enabled = isHead
+				keyLight.Fill.Enabled = isHead
+			end
 			local from = head.Position + look * 2.2 + right * 1.4 + Vector3.new(0, 1.1, 0)
 			keyLight.CFrame = CFrame.lookAt(from, head.Position)
 		end
@@ -468,6 +480,7 @@ local function zoomBy(d)
 end
 
 local function setKeyLight(on)
+	keyLightOn = nil
 	if keyLight then
 		keyLight:Destroy()
 		keyLight = nil
@@ -694,7 +707,7 @@ local function pageEyesSkin()
 	UI.Swatches(body, "Skin tone", Looks.SkinTones, C.look.skin, function(_, i)
 		pushUndo(nil)
 		C.look.skin = i
-		preview()
+		preview("colors") -- (the colour path rebuilds the face and beard too when their skin moved)
 	end, { names = LookKit.SkinNames, size = 40 })
 	-- (the undertone, eye colour, brows and eye sliders only shape the built face: hidden while drawn faces are in)
 	local eyes = not BodyTiers.DrawnFaces()
@@ -871,8 +884,9 @@ local function pageHair()
 end
 
 -- [FrameTraits] the frame's permanent ring traits: its tag line, then the pros (green plus) and the cons (red minus)
--- as two short lists side by side (stacked on a narrow column)
-local function frameTraitsPanel(frameId)
+-- as two short lists side by side (stacked on a narrow column), then the frame's starting-stat mods as a wrapping
+-- footnote (a long one - the Heavyweight's five - wraps inside the panel instead of clipping on one line)
+local function frameTraitsPanel(frameId, modsLine)
 	local FT = FrameTraits.Get(frameId)
 	local panel = UI.Frame(body, { Name = "FrameTraits", BackgroundColor3 = T.panel2, BackgroundTransparency = 0.5, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
 	UI.Corner(panel, UI.R.md)
@@ -894,6 +908,10 @@ local function frameTraitsPanel(frameId)
 	end
 	list("Pros", FT.pros or {}, "plus", T.green, 1)
 	list("Cons", FT.cons or {}, "minus", T.red, 2)
+	if modsLine and modsLine ~= "" then
+		UI.Text(panel, "Starting stats: " .. modsLine, { Name = "Mods", LayoutOrder = 3, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextSize = 12,
+			TextColor3 = T.sub, TextWrapped = true })
+	end
 	return panel
 end
 
@@ -915,8 +933,7 @@ local function pageBody()
 		render()
 	end)
 	local ft = Config.FindById(Config.BodyTypes, b.frame) or Config.BodyTypes[2]
-	UI.Line(body, string.format("%s: %s", ft.id, modsText(ft.mods)), { TextColor3 = T.sub, TextSize = 13 })
-	frameTraitsPanel(ft.id)
+	frameTraitsPanel(ft.id, modsText(ft.mods)) -- [FrameTraits] (the starting-stat mods ride in the panel)
 	UI.Header(body, "SIZE")
 	-- (onRelease: a height is a rescale and a full rebuild of the character on the server, ~800 instances
 	-- replicated each time; a drag previews once when it is let go, the steppers and the wheel at once)
@@ -1265,6 +1282,10 @@ end
 local tabsFrame, nextBtn, backBtn, progressFill
 local stepsFrame, titleLabel, stepKicker
 local stepMenu = false -- short screens: the step bar is a menu that drops from the step's name
+-- wide screens: the steps are a tool strip down the window's left edge (the inspector beside it, the big
+-- preview to the right of the window); stepH = a step button's height there
+local stepStrip, stepH = false, 40
+local STEP_ICONS = { Identity = "contract", Face = "user", ["Skin & Eyes"] = "eye", Hair = "scissors", Body = "muscle", Gear = "glove", ["Fight Style"] = "fist" }
 local lastPage
 
 -- short screens: opens / closes the step menu (the step bar itself on taller screens: always shown)
@@ -1303,7 +1324,7 @@ function render()
 	-- title: the step's name (a window with neither kicker line counts the step in the title too)
 	local kicker = win:FindFirstChild("Kicker")
 	if titleLabel then
-		local name = string.upper(TITLES[page] or page)
+		local name = UI.Type.TitleCase(string.upper(TITLES[page] or page))
 		titleLabel.Text = (kicker or narrow or stepKicker) and name or string.format("%d/%d  %s", cur, #PAGES, name)
 	end
 	if kicker then
@@ -1315,17 +1336,28 @@ function render()
 	UI.Clear(stepsFrame)
 	for i, name in ipairs(PAGES) do
 		local done = i < cur
-		local b = UI.Button(stepsFrame, string.format("%d %s", i, SHORT[name]), { Name = "Step" .. i, LayoutOrder = i, TextSize = stepMenu and 15 or 13, BackgroundColor3 = name == page and T.gold or T.panel2,
-			TextColor3 = name == page and T.bg or (done and T.gold or T.text) }, function()
+		local b = UI.Button(stepsFrame, stepStrip and UI.Type.TitleCase(SHORT[name]) or string.format("%d %s", i, SHORT[name]), { Name = "Step" .. i, LayoutOrder = i, TextSize = stepMenu and 15 or 13,
+			BackgroundColor3 = name == page and T.gold or T.panel2, TextColor3 = name == page and T.bg or (done and T.gold or T.text),
+			Size = stepStrip and UDim2.new(1, 0, 0, stepH) or nil }, function()
 			goTo(name)
 		end)
+		if stepStrip then
+			-- the strip's pills: the step's icon at a fixed inset, the label left-aligned after it
+			local corner = b:FindFirstChildOfClass("UICorner")
+			if corner then
+				corner.CornerRadius = UDim.new(0, math.floor(stepH / 2))
+			end
+			b.TextXAlignment = Enum.TextXAlignment.Left
+			UI.New("UIPadding", { PaddingLeft = UDim.new(0, 38), Parent = b })
+			UI.Icon(b, STEP_ICONS[name] or "star", 16, name == page and T.bg or (done and T.gold or T.sub), { Name = "StepIcon", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, -24, 0.5, 0) })
+		end
 		b:SetAttribute("CreatorStep", i)
 		if name == page then
 			UI.PadStart(b)
 		end
 	end
 	if progressFill then
-		progressFill.Size = UDim2.fromScale(cur / #PAGES, 1)
+		progressFill.Size = stepStrip and UDim2.fromScale(1, cur / #PAGES) or UDim2.fromScale(cur / #PAGES, 1)
 	end
 	local y = lastPage == page and body.CanvasPosition or Vector2.zero
 	lastPage = page
@@ -1340,7 +1372,7 @@ function render()
 		end
 	end)
 	if nextBtn then
-		nextBtn.Text = page == PAGES[#PAGES] and "BEGIN CAREER" or ("NEXT:  " .. SHORT[PAGES[cur + 1]])
+		nextBtn.Text = page == PAGES[#PAGES] and "Begin Career" or ("Next: " .. UI.Type.TitleCase(SHORT[PAGES[cur + 1]]))
 	end
 	if backBtn then
 		backBtn.TextTransparency = cur == 1 and 0.55 or 0
@@ -1373,9 +1405,9 @@ function updatePlate()
 	local first = C.first:gsub("^%s+", ""):gsub("%s+$", "")
 	local last = C.last:gsub("^%s+", ""):gsub("%s+$", "")
 	local name = (first .. " " .. last):gsub("^%s+", "")
-	plateName.Text = name ~= "" and string.upper(name) or "YOUR NAME"
+	plateName.Text = name ~= "" and name or "Your name"
 	plateName.TextColor3 = name ~= "" and T.text or T.dim
-	plateNick.Text = C.nickname ~= "" and ('"' .. string.upper(C.nickname) .. '"') or "AMATEUR  ·  DEBUT"
+	plateNick.Text = C.nickname ~= "" and ('"' .. C.nickname .. '"') or "AMATEUR  ·  DEBUT"
 	plateInfo.Text = string.format("%s  ·  %s  ·  %s  ·  AGE %d", string.upper(C.nationality), string.upper(wc and wc.name or "-"), string.upper(style and style.name or "-"), C.age)
 	UI.Clear(plateFlag)
 	if Flags then
@@ -1389,7 +1421,7 @@ local function begin()
 		goTo("Identity")
 		return
 	end
-	nextBtn.Text = "CREATING..."
+	nextBtn.Text = "Creating..."
 	local res = State.req("CreateBoxer", {
 		first = C.first, last = C.last, nickname = C.nickname, age = C.age, nationality = C.nationality,
 		music = C.music, voice = C.voice, weightClass = C.weightClass, weight = C.weight, reachDelta = C.reachDelta,
@@ -1398,9 +1430,9 @@ local function begin()
 	if res.ok then
 		Creator.Close()
 		State.toast("Welcome to the fight game. Your amateur career starts now.", T.gold, 5)
-		State.toast("Train at the gym stations, eat and sleep - then book a fight at the FIGHT BOARD (or press H).", T.gold, 7)
+		State.toast("Train at the gym stations, eat and sleep, then book a fight at the Fight Board in the gym (or press H).", T.gold, 7)
 	else
-		nextBtn.Text = "BEGIN CAREER"
+		nextBtn.Text = "Begin Career"
 		State.toast(res.err or "Couldn't create your boxer", T.red)
 	end
 end
@@ -1482,7 +1514,10 @@ function Creator.Open()
 		end
 		step(-1)
 	end
-	shade, win, body = UI.Window(State.gui, "Creator", 600, 720, "CREATE YOUR BOXER", { side = "left", noShade = true, footer = 50, onBack = back, kicker = "CREATE YOUR BOXER" })
+	-- a wide canvas takes the tool-strip composition (a wider window: the strip plus the inspector)
+	local canvas0 = UI.CanvasSize(State.gui)
+	stepStrip = canvas0.Y >= 640 and canvas0.X * 0.46 >= 690
+	shade, win, body = UI.Window(State.gui, "Creator", stepStrip and 700 or 600, 720, "Create Your Boxer", { side = "left", noShade = true, footer = 50, onBack = back, kicker = "CREATE YOUR BOXER" })
 	local canvas = UI.CanvasSize(State.gui)
 	short = canvas.Y < 560
 	-- a narrow window (the smallest phones: 0.46 of the canvas is under 420 design px) keeps the step's
@@ -1572,6 +1607,18 @@ function Creator.Open()
 		card.SelectionBehaviorRight = Enum.SelectionBehavior.Stop
 		stepsFrame = UI.Frame(card, { Name = "Steps", BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 12), Size = UDim2.new(1, -24, 1, -18), ZIndex = 5 })
 		UI.Grid(stepsFrame, UDim2.new(0.5, -6, 0, sh), nil, 6)
+	elseif stepStrip then
+		local divider = win:FindFirstChild("Divider")
+		if divider and bh > 32 then
+			divider.Position = UDim2.fromOffset(16, top - 5)
+		end
+		-- the tool strip: every step stacked down the left edge (tap to jump), a progress line beside it
+		local nh0 = math.max(42, minHit)
+		stepH = math.max(40, minHit)
+		tabsFrame = UI.Frame(win, { Name = "StepBar", BackgroundTransparency = 1, Position = UDim2.fromOffset(16, top), Size = UDim2.new(0, 112, 1, -(top + nh0 + 20)) })
+		stepsFrame = UI.Frame(tabsFrame, { Name = "Steps", BackgroundTransparency = 1, Size = UDim2.new(1, -10, 1, 0) })
+		UI.List(stepsFrame, 6)
+		line = UI.Frame(tabsFrame, { Name = "Progress", Position = UDim2.new(1, -3, 0, 0), Size = UDim2.new(0, 3, 1, 0), BackgroundColor3 = T.panel2 })
 	else
 		local divider = win:FindFirstChild("Divider")
 		if divider and bh > 32 then
@@ -1588,8 +1635,9 @@ function Creator.Open()
 	progressFill = UI.Frame(line, { Name = "Fill", Size = UDim2.fromScale(1 / #PAGES, 1), BackgroundColor3 = T.gold })
 	UI.Corner(progressFill, 2)
 	local nh = math.max(42, minHit)
-	body.Position = UDim2.fromOffset(16, top)
-	body.Size = UDim2.new(1, -32, 1, -(top + nh + 20))
+	local inset = stepStrip and (112 + 12) or 0
+	body.Position = UDim2.fromOffset(16 + inset, top)
+	body.Size = UDim2.new(1, -(32 + inset), 1, -(top + nh + 20))
 	local nav = UI.Frame(win, { Name = "Nav", BackgroundTransparency = 1, Position = UDim2.new(0, 16, 1, -(nh + 12)), Size = UDim2.new(1, -32, 0, nh) })
 	backBtn = UI.Button(nav, "BACK", { Name = "BackStep", Size = UDim2.new(0.3, 0, 1, 0) }, back)
 	nextBtn = UI.Button(nav, "NEXT", { Name = "NextStep", Size = UDim2.new(0.66, 0, 1, 0), Position = UDim2.new(0.34, 0, 0, 0), BackgroundColor3 = T.gold, TextColor3 = T.bg })
@@ -1741,6 +1789,8 @@ function Creator.Open()
 	bindInputs()
 	view.growth, view.peak, view.expr, view.damage = 0, false, "neutral", "None"
 	State.HidePrompts("Creator", true)
+	-- the gym HUD's plate and buttons stay out from under the creator
+	State.HideHud("Creator", true)
 	render()
 	if previewConn then
 		previewConn:Disconnect()
@@ -1757,21 +1807,21 @@ function Creator.Open()
 		end
 		if dirty and not inflight then
 			if now - lastSent >= SEND_EVERY then
-				local full = dirtyFull
-				dirty, dirtyFull = false, false
+				local full, head, colors = dirtyFull, dirtyHead, dirtyColors
+				dirty, dirtyFull, dirtyHead, dirtyColors = false, false, false, false
 				lastSent = now
 				inflight = true
-				-- preview-only options: growth stage, starting / peak body, partial head rebuild
+				-- preview-only options: growth stage, starting / peak body, partial head / colour-only rebuild
 				local popts = { peak = view.peak, growth = view.growth > 0.02 and view.growth or nil }
 				if not full then
-					popts.only = { Face = true, Hair = true, Beard = true }
+					popts.only = { Face = head or nil, Hair = head or nil, Beard = head or nil, Colors = colors or nil }
 				end
 				task.spawn(function()
 					local r = State.req("PreviewLook", C.look, hands(), popts)
 					inflight = false
 					if r and r.throttled then
 						dirty = true
-						dirtyFull = dirtyFull or full
+						dirtyFull, dirtyHead, dirtyColors = dirtyFull or full, dirtyHead or head, dirtyColors or colors
 					end
 				end)
 			end
@@ -1815,6 +1865,7 @@ function Creator.Close()
 	previewTag(false)
 	freeze(false)
 	State.HidePrompts("Creator", false)
+	State.HideHud("Creator", false)
 	if shade then
 		shade:Destroy()
 		shade = nil

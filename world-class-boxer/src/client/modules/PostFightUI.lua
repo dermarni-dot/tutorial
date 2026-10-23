@@ -92,9 +92,9 @@ local function damageLines(face, headTaken, bodyTaken, concPeak, noseBroken)
 		table.insert(out, { "Bruised ribs", T.orange })
 	end
 	if num(concPeak) > 0.5 then
-		table.insert(out, { "Concussed - a long count's worth of head trauma", T.purple })
+		table.insert(out, { "Concussed: a long count's worth of head trauma", T.purple })
 	elseif num(concPeak) > 0.25 then
-		table.insert(out, { "Rattled - the head took a few", T.purple })
+		table.insert(out, { "Rattled: the head took a few", T.purple })
 	end
 	if #out == 0 then
 		table.insert(out, { (num(headTaken) + num(bodyTaken)) < 15 and "Barely a mark" or "Bruised, nothing broken", T.green })
@@ -176,8 +176,21 @@ function PostFightUI.Open(data)
 	UI.Corner(band, UI.R.xl)
 	UI.Frame(band, { Name = "Square", Position = UDim2.new(0, 0, 1, -UI.R.xl), Size = UDim2.new(1, 0, 0, UI.R.xl), BackgroundColor3 = band.BackgroundColor3 })
 	UI.Frame(win, { Name = "BandRule", Position = UDim2.new(0, 0, 0, bandH), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.line })
+	-- the bleed: the band carries on past the window to both edges of the screen, a broadcast result banner
+	-- (behind the window, on its holder: it moves and scales with it)
+	-- (on the full-screen shade, edge to edge, kept level with the window's top as the layout settles)
+	local bleed = UI.Frame(shade, { Name = "Bleed", Size = UDim2.new(1, 0, 0, bandH), BackgroundColor3 = band.BackgroundColor3, BackgroundTransparency = 0.08,
+		ZIndex = math.max(1, win.ZIndex - 1) })
+	local function placeBleed()
+		local k = math.max(UI.ScaleOf(shade), 0.05)
+		bleed.Position = UDim2.fromOffset(0, math.floor((win.AbsolutePosition.Y - shade.AbsolutePosition.Y) / k + 0.5))
+		bleed.Size = UDim2.new(1, 0, 0, math.floor(band.AbsoluteSize.Y / k + 0.5))
+	end
+	placeBleed()
+	table.insert(entry.conns, win:GetPropertyChangedSignal("AbsolutePosition"):Connect(placeBleed))
+	table.insert(entry.conns, band:GetPropertyChangedSignal("AbsoluteSize"):Connect(placeBleed))
 	local ink = (won or lost) and T.ink or T.text
-	local kickerText = titleNote and (won and "Championship night  ·  and new" or "Championship night") or ("Fight night" .. ((data.venue and data.venue ~= "") and ("  ·  " .. tostring(data.venue)) or ""))
+	local kickerText = titleNote and (won and "Championship night  ·  new champion" or "Championship night") or ("Fight night" .. ((data.venue and data.venue ~= "") and ("  ·  " .. tostring(data.venue)) or ""))
 	UI.Text(win, string.upper(kickerText), { Font = T.semi, TextSize = 11, TextColor3 = ink, TextTransparency = 0.25, Position = UDim2.fromOffset(28, short and 14 or 20), Size = UDim2.new(1, -130, 0, 16),
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = win.ZIndex + 1 })
 	local emblem = won and (stoppage and "ko" or (titleNote and "belt" or "trophy")) or (lost and (stoppage and "ko" or "glove") or "versus")
@@ -205,7 +218,7 @@ function PostFightUI.Open(data)
 	end
 	UI.Line(body, call, { Font = T.semi, TextSize = compact and 13 or 15, TextColor3 = T.sub, LayoutOrder = 1 })
 	if titleNote then
-		UI.Line(body, titleNote, { Face = "heading", TextSize = compact and 16 or 18, TextColor3 = T.gold, LayoutOrder = 2 })
+		UI.Line(body, UI.Type.Sentence(titleNote), { Face = "heading", TextSize = compact and 16 or 18, TextColor3 = T.gold, LayoutOrder = 2 })
 	end
 	if res.reason and res.reason ~= "" and res.reason ~= "Decision" then
 		UI.Line(body, tostring(res.reason), { TextColor3 = T.sub, TextSize = 13, LayoutOrder = 3 })
@@ -263,11 +276,11 @@ function PostFightUI.Open(data)
 	end
 	for i, k in ipairs(kds) do
 		local mine = k.who == "you"
-		local sev = k.severity == "out" and "OUT COLD" or (k.severity == "heavy" and "a heavy knockdown" or "a flash knockdown")
+		local sev = k.severity == "out" and "out cold" or (k.severity == "heavy" and "a heavy knockdown" or "a flash knockdown")
 		local row = UI.Frame(kdCard, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 20), LayoutOrder = i })
 		local dot = UI.Frame(row, { Size = UDim2.fromOffset(8, 8), Position = UDim2.fromOffset(0, 6), BackgroundColor3 = mine and T.red or T.blue })
 		UI.Corner(dot, 4)
-		UI.Text(row, string.format("Round %d  ·  %s down  ·  %s%s", num(k.round), string.upper(mine and youName or oppName), sev, (type(k.cause) == "string" and k.cause ~= "") and ("  ·  " .. k.cause) or ""),
+		UI.Text(row, string.format("Round %d  ·  %s down  ·  %s%s", num(k.round), mine and youName or oppName, sev, (type(k.cause) == "string" and k.cause ~= "") and ("  ·  " .. k.cause) or ""),
 			{ Font = T.semi, TextSize = 13, TextColor3 = T.text, Position = UDim2.fromOffset(16, 0), Size = UDim2.new(1, -16, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	end
 
@@ -283,7 +296,7 @@ function PostFightUI.Open(data)
 		UI.Text(c, string.format("Head trauma %d  ·  Body %d%%", math.floor(num(headTaken)), math.floor(num(bodyTaken))), { Font = T.semi, TextSize = 12, TextColor3 = T.sub, Size = UDim2.new(1, 0, 0, 14), AutomaticSize = Enum.AutomaticSize.None,
 			TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 1 })
 		for i, l in ipairs(lines) do
-			UI.Line(c, "-  " .. l[1], { TextColor3 = l[2], TextSize = 13, LayoutOrder = 1 + i })
+			UI.Line(c, "·  " .. l[1], { TextColor3 = l[2], TextSize = 13, LayoutOrder = 1 + i })
 		end
 		return c
 	end
@@ -300,9 +313,9 @@ function PostFightUI.Open(data)
 		local parts = {}
 		for _, inj in ipairs(list) do
 			local new = snap and not snap.injuries[inj.id or inj.name]
-			table.insert(parts, string.format("%s%s (%d days)", new and "NEW: " or "", inj.name or inj.id or "?", num(inj.days)))
+			table.insert(parts, string.format("%s%s (%d days)", new and "new: " or "", inj.name or inj.id or "?", num(inj.days)))
 		end
-		injLine.Text = "INJURIES  ·  " .. table.concat(parts, "  ·  ")
+		injLine.Text = "Injuries  ·  " .. table.concat(parts, "  ·  ")
 		injLine.Visible = true
 	end
 	refreshInjuries()
@@ -344,7 +357,7 @@ function PostFightUI.Open(data)
 	refreshRank()
 	for i, n in ipairs(data.notes or {}) do
 		local bigNote = type(n) == "string" and (n:find("CHAMPION") or n:find("PRO") or n:find("LEGEND") or n:find("TOP 10") or n:find("Promoted") or n:find("SPECIAL MOVE"))
-		UI.Line(money, tostring(n), { TextColor3 = bigNote and T.gold or T.text, Font = bigNote and T.semi or T.font, TextSize = 13, LayoutOrder = 10 + i })
+		UI.Line(money, UI.Type.Sentence(tostring(n)), { TextColor3 = bigNote and T.gold or T.text, Font = bigNote and T.semi or T.font, TextSize = 13, LayoutOrder = 10 + i })
 	end
 	-- the profile push after the result (the record, the rankings, the injuries)
 	table.insert(entry.conns, State.Changed:Connect(function()

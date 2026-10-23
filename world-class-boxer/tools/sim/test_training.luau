@@ -720,5 +720,52 @@ do
 	check("sparring: the spar goal and both focus goals count", G.list[1].done and G.list[2].n == 1 and G.list[3].n == 1)
 	check("sparring: mastery", select(2, Training.Mastery(S, "Sparring")) > 0)
 end
+------------------------------------------------------------------------
+-- v10 training pass: an early boxer trains several times in a row, an injury at a low tier is a short
+-- layoff, a sparring drill's focus goal (TrainingPlan.SparFocus / Training.SparFocusResult)
+------------------------------------------------------------------------
+do
+	local P = fresh()
+	P.tier = 1
+	local hb = act("HeavyBag")
+	local e1 = Training.EnergyCost(P, hb)
+	P.tier = 3
+	local e3 = Training.EnergyCost(P, hb)
+	-- (TierEase 0.65 at tier 1: four heavy bag sessions on a full tank, with room to spare)
+	check("tier 1: a session costs less energy than at tier 3", e1 < e3, string.format("%d vs %d", e1, e3))
+	check("tier 1: four heavy bag sessions in a row on a full tank", e1 * 4 <= 100, e1)
+	-- an injury for sure (extraRisk) at tier 1 and at tier 3: the low tier's layoff is no longer than
+	-- TierEase of the def's longest
+	local function injuredDays(tier)
+		local Q = fresh()
+		Q.tier = tier
+		Q.condition.injuries = {}
+		Training.Perform(Q, hb, 1.0, { extraRisk = 50 })
+		local inj = Q.condition.injuries[1]
+		return inj and inj.days, inj and Config.Injuries[inj.id]
+	end
+	local d1, def1 = injuredDays(1)
+	check("tier 1: a sure injury happens", d1 ~= nil)
+	if d1 then
+		check("tier 1: the layoff is TierEase shorter", d1 <= math.ceil(def1.days[2] * Training.TierEase({ tier = 1 })), string.format("%d days (max %d)", d1, def1.days[2]))
+	end
+	local d3, def3 = injuredDays(3)
+	if d3 then
+		check("tier 3: the full layoff range", d3 >= def3.days[1] and d3 <= def3.days[2], d3)
+	end
+	-- sparring focus: met adds the bonus and grows the focus stats, missed changes nothing, unknown is nil
+	local S = fresh()
+	local need = TP.SparFocusGoal("defence", "Medium")
+	check("spar focus: a goal per intensity (2 rounds: twice a round's)", need == 2 * TP.SparFocusById.defence.per, need)
+	local hm0 = S.stats.HeadMovement
+	local r = Training.SparFocusResult(S, "defence", { evades = need + 1 }, "Medium", 1.0)
+	check("spar focus met: quality bonus", r and r.met and near(r.quality, 1.0 + TP.SPAR_FOCUS_BONUS), r and r.quality)
+	check("spar focus met: the focus stats grow", S.stats.HeadMovement > hm0 and (r.gains.HeadMovement or 0) > 0)
+	local r2 = Training.SparFocusResult(S, "combos", { combos = { landed = 0 } }, "Hard", 1.0)
+	check("spar focus missed: no bonus", r2 and not r2.met and near(r2.quality, 1.0) and next(r2.gains) == nil)
+	check("spar focus: ring control is out-landing", Training.SparFocusResult(S, "control", { landed = 20, oppLanded = 12 }, "Light", 1).met == true)
+	check("spar focus: unknown focus is nil", Training.SparFocusResult(S, "nope", {}, "Light", 1) == nil)
+	check("spar focus: a missing result is nil", Training.SparFocusResult(S, "defence", nil, "Light", 1) == nil)
+end
 print(string.format("test_training: %d passed, %d failed", pass, fail))
 process.exit(fail == 0 and 0 or 1)

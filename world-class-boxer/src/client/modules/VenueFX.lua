@@ -951,7 +951,9 @@ local function updateSpots(dt, now)
 		s.target.CFrame = CF(s.hit)
 		s.beam.Width1 = d * 0.85
 		s.pool.Size = V3(0.04, d, d)
-		s.pool.CFrame = CFrame.lookAt(s.hit + s.hitN * 0.04, s.hit + s.hitN * 2) * CFrame.Angles(0, math.pi / 2, 0)
+		-- (an up vector off the normal's axis: a floor normal along the default up is degenerate)
+		local up = math.abs(s.hitN.Y) > 0.9 and V3(0, 0, 1) or V3(0, 1, 0)
+		s.pool.CFrame = CFrame.lookAt(s.hit + s.hitN * 0.04, s.hit + s.hitN * 2, up) * CFrame.Angles(0, math.pi / 2, 0)
 		local vis = math.clamp(bright / 8, 0.15, 1)
 		s.pool.Transparency = 1 - 0.14 * vis
 	end
@@ -1020,6 +1022,28 @@ local function setupShow()
 		local side = p and p:IsA("BasePart") and (p.Position - S.center).Z or 0
 		local col = S.title and GOLD:Lerp(WHITE, 0.4) or (side < -1 and houseTint:Lerp(RED, 0.3) or (side > 1 and houseTint:Lerp(BLUE, 0.3) or houseTint))
 		hl.light.Color = col
+	end
+	-- the crowd wash: wide, soft coloured spots from the rig aimed out and down at the stands, so the house
+	-- sits in a dim but colourful glow whatever the house lights are doing (red / magenta on the red side,
+	-- blue / cyan on the blue side; gold and amber on a title night). Static, no shadows, 2 on Low.
+	local washCols = S.title and { GOLD, rgb(255, 160, 60), GOLD, rgb(255, 160, 60) }
+		or { RED, rgb(255, 70, 190), BLUE, rgb(60, 200, 255) }
+	local reach = math.max(S.crowdR or 30, h + 14)
+	for i, dir in ipairs({ V3(0, 0, -1), V3(1, 0, 0), V3(0, 0, 1), V3(-1, 0, 0) }) do
+		if lodPick(2, 4, 4) == 4 or i % 2 == 1 then
+			local from = S.center + dir * (h + 4) + V3(0, 24, 0)
+			local aim = S.center + dir * (reach + 10) + V3(0, 6, 0)
+			local src = localPart("CrowdWash", V3(0.2, 0.2, 0.2), CFrame.lookAt(from, aim), washCols[i], nil, { Transparency = 1 })
+			local l = Instance.new("SpotLight")
+			l.Face = Enum.NormalId.Front
+			l.Angle = 100
+			l.Range = 60
+			l.Brightness = 1.6
+			l.Color = washCols[i]
+			l.Shadows = false
+			l.Parent = src
+			table.insert(S.show, { light = l, base = l.Brightness })
+		end
 	end
 end
 
@@ -1140,6 +1164,7 @@ local function setupParticles()
 				pe = emitter(p, {
 					Name = "Firework", Lifetime = NumberRange.new(1.1, 1.8), Speed = NumberRange.new(26, 36), SpreadAngle = Vector2.new(180, 180), Drag = 2.4,
 					Acceleration = V3(0, -10, 0), Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.3), NumberSequenceKeypoint.new(1, 0) }), LightEmission = 1, Brightness = 4,
+					Color = ({ ColorSequence.new(rgb(255, 60, 200), rgb(255, 200, 60)), ColorSequence.new(rgb(60, 220, 255), rgb(90, 120, 255)), ColorSequence.new(rgb(255, 210, 70), rgb(255, 90, 50)), ColorSequence.new(rgb(90, 255, 140), rgb(60, 200, 255)) })[k % 4 + 1],
 				}),
 			})
 		end
@@ -2302,6 +2327,11 @@ function VenueFX.Pyro(side)
 			if p.Name == want then
 				local pe = p:FindFirstChildOfClass("ParticleEmitter")
 				if pe then
+					-- bright, in the corner's colour (gold on a title night), white-hot at the core
+					local hot = S.title and rgb(255, 200, 60) or (side == "red" and rgb(255, 50, 70) or rgb(50, 140, 255))
+					local tip = S.title and rgb(255, 120, 30) or (side == "red" and rgb(255, 60, 200) or rgb(60, 230, 255))
+					pe.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, rgb(255, 250, 230)), ColorSequenceKeypoint.new(0.25, hot), ColorSequenceKeypoint.new(1, tip) })
+					pe.LightEmission = 1
 					pe.Enabled = true
 					task.delay(1.6, function()
 						if pe.Parent then

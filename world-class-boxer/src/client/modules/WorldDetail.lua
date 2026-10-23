@@ -139,8 +139,11 @@ function WorldDetail.Start()
 			applyLevel(lv())
 			local cam = workspace.CurrentCamera
 			local pos = cam and cam.CFrame.Position or Vector3.zero
-			if Vector3.new(pos.X, 0, pos.Z).Magnitude > FAR then
-				-- far away (a fight venue, the menu set high above, a home interior): hide it all
+			-- far away (a fight venue, a home interior) or behind the main menu (its set floats right above the town's
+			-- centre, so the distance alone keeps the whole gym and Main Street streaming): hide it all (built tiers are
+			-- kept, so the world is back at once when the menu closes)
+			local menu = Players.LocalPlayer and Players.LocalPlayer:GetAttribute("MenuStage") == true
+			if menu or Vector3.new(pos.X, 0, pos.Z).Magnitude > FAR then
 				pos = Vector3.new(1e6, 0, 1e6)
 			end
 			if gymS then

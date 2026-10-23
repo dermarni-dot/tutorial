@@ -676,6 +676,71 @@ function Fight:KeepOut(F, pos, radius)
 	return Vector3.new(out.X, pos.Y, out.Z)
 end
 
+-- the walk from F's root to goal routed round the bodies in the way: when the straight line passes within
+-- radius (SepRadius + ROUTE_AIR) of the other man's root, F heads for the tangent point on that circle on the
+-- goal's side of him instead (a man circling or cutting off the ring walks round the other, never through him:
+-- KeepOut alone clamps the end of the walk, not the way there), and likewise round the referee (refR, his own
+-- keep-out) when he stands in the line. Re-planned every Heartbeat (Separate) and every Glide step, so the
+-- tangent point slides round as he goes; returns goal when the line is clear. Nothing is routed round a man on
+-- the canvas, or for one.
+local ROUTE_AIR, DOWN_ROOM = 0.15, 0.5
+local function tangentWay(fp, goal, op, r)
+	local seg = flat(goal - fp)
+	local L = seg.Magnitude
+	if L < 0.05 then
+		return nil
+	end
+	local a = flat(fp - op)
+	local d = a.Magnitude
+	local t = math.clamp(-a:Dot(seg) / (L * L), 0, 1)
+	if t <= 0 or flat(fp + seg * t - op).Magnitude >= r then
+		return nil -- (the line clears him, or leads away from him)
+	end
+	if t >= 1 then
+		return nil -- (the nearest point is the goal itself: KeepOut has put that outside him)
+	end
+	local au = d > 0.05 and a / d or unitOr(Vector3.new(-seg.Z, 0, seg.X), Vector3.new(1, 0, 0))
+	-- from outside the circle the tangent point; from on it a step round it on a circle wide enough that the
+	-- chord stays outside r (0.6 rad of arc: cos 0.3 = 0.955)
+	local ang, rr
+	if d > r * 1.02 then
+		ang, rr = math.acos(math.clamp(r / d, -1, 1)), r
+	else
+		ang, rr = 0.6, r / math.cos(0.3)
+	end
+	local best, bestD
+	for _, sgn in ipairs({ 1, -1 }) do
+		local w = op + CFrame.Angles(0, sgn * ang, 0):VectorToWorldSpace(au) * rr
+		local gd = flat(goal - w).Magnitude
+		if not best or gd < bestD then
+			best, bestD = w, gd
+		end
+	end
+	return Vector3.new(best.X, goal.Y, best.Z)
+end
+function Fight:RouteAround(F, goal, radius, refR)
+	local O = self:Other(F)
+	if not (F.root and O and O.root) or F.state == "down" then
+		return goal
+	end
+	if O.state == "down" then
+		-- (a man on the canvas is walked round, never over: his body lies along his height from the root)
+		return tangentWay(F.root.Position, goal, O.root.Position, self:MinSep() + DOWN_ROOM) or goal
+	end
+	local fp = F.root.Position
+	local r = (radius or self:SepRadius()) + ROUTE_AIR
+	local way = tangentWay(fp, goal, O.root.Position, r) or goal
+	-- (then the referee, on the leg actually walked: a detour round the other man may lead through him)
+	local R = self.ref
+	if refR and R and R.root and R.mode ~= "count" and R.mode ~= "catch" then
+		local w2 = tangentWay(fp, way, R.root.Position, refR)
+		if w2 then
+			way = self:KeepOut(F, w2, r)
+		end
+	end
+	return way
+end
+
 -- how far out F can tie the other man up: his arms' reach (HitGeometry.ClinchRange), never inside the bodies
 -- and never inside the distance the clinch itself is held at (ClinchSep: the tie-up slides the pair out to it)
 function Fight:ClinchRange(F)
@@ -1507,8 +1572,8 @@ function Fight:Lunge(F, dist, dur)
 	if dist < 0 then
 		dir, dist = -dir, -dist
 	else
-		-- never into the other man: stop a body's width short
-		dist = math.max(0, math.min(dist, toward.Magnitude - (self.sp or SPACING).minSep))
+		-- never into the other man: stop at the pair's separation (frame-aware: Fight:SepRadius)
+		dist = math.max(0, math.min(dist, toward.Magnitude - self:SepRadius()))
 	end
 	if dist < 0.1 then
 		return
@@ -2484,11 +2549,22 @@ function Fight:Pivot(F, dir)
 	if F.root and O.root then
 		local offset = flat(F.root.Position - O.root.Position)
 		if offset.Magnitude > 0.1 then
-			local ang = math.rad(38) * (dir == -1 and -1 or 1)
-			local rotated = CFrame.Angles(0, ang, 0):VectorToWorldSpace(offset)
-			local target = self:ClampToRing(O.root.Position + rotated)
-			local y = F.root.Position.Y
-			F.model:PivotTo(CFrame.lookAt(Vector3.new(target.X, y, target.Z), Vector3.new(O.root.Position.X, y, O.root.Position.Z)))
+			-- (the spot round him at the same distance; one the ropes pull in onto him is turned less, or he stays put:
+			-- a pivot never sets him down inside the other man)
+			local sep = math.max(self:SepRadius(), math.min(offset.Magnitude, self:SepRadius() + 0.3))
+			local target
+			for _, deg in ipairs({ 38, 26, 14 }) do
+				local rotated = CFrame.Angles(0, math.rad(deg) * (dir == -1 and -1 or 1), 0):VectorToWorldSpace(offset)
+				local t = self:ClampToRing(O.root.Position + rotated)
+				if flat(t - O.root.Position).Magnitude >= sep - 0.05 then
+					target = t
+					break
+				end
+			end
+			if target then
+				local y = F.root.Position.Y
+				F.model:PivotTo(CFrame.lookAt(Vector3.new(target.X, y, target.Z), Vector3.new(O.root.Position.X, y, O.root.Position.Z)))
+			end
 		end
 	end
 	self:SetAct(F, "pivot|" .. (dir == -1 and "L" or "R"))
@@ -2695,25 +2771,43 @@ end
 -- ApplyDescription) arrives in the Default group with the template's CanCollide: DescendantAdded puts every new
 -- part directly under the model (the R15 body parts) in the group as it lands, so the two bodies keep colliding
 -- with each other and passing through the referee for the whole fight
+-- (a part's first group is the one it gets back: a swapped-in part's is Default)
+local function joinPart(F, d)
+	local was = F.groupWas
+	if was and d.Parent and d:IsA("BasePart") and (d.Parent == F.model or d.CanCollide) and d.CollisionGroup ~= BOXER_GROUP then
+		if was[d] == nil then
+			was[d] = d.CollisionGroup
+		end
+		d.CollisionGroup = BOXER_GROUP
+	end
+end
 local function joinBoxers(F)
-	if not F.model or F.groupWas then
+	if not F.model then
 		return
 	end
-	F.groupWas = {}
-	local function join(d)
-		if d:IsA("BasePart") and (d.Parent == F.model or d.CanCollide) and d.CollisionGroup ~= BOXER_GROUP then
-			F.groupWas[d] = d.CollisionGroup
-			d.CollisionGroup = BOXER_GROUP
-		end
+	if not F.groupWas then
+		F.groupWas = {}
+		F.groupConn = F.model.DescendantAdded:Connect(function(d)
+			if F.groupWas then
+				-- now and once more after the swap has set its properties (ReplaceBodyPartR15 parents the part first)
+				joinPart(F, d)
+				task.defer(joinPart, F, d)
+			end
+		end)
 	end
 	for _, d in ipairs(F.model:GetDescendants()) do
-		join(d)
+		joinPart(F, d)
 	end
-	F.groupConn = F.model.DescendantAdded:Connect(function(d)
-		if F.groupWas then
-			task.defer(join, d) -- (the swap parents the part before it sets its properties)
+end
+-- the body parts re-asserted in "Boxers" (Update, every GROUP_EVERY s): a swap whose part came back in Default
+-- after the DescendantAdded pass (an engine re-scale, ApplyDescription) collides with the referee otherwise
+local GROUP_EVERY = 0.5
+local function regroupBoxers(F)
+	if F.groupWas and F.model and F.model.Parent then
+		for _, d in ipairs(F.model:GetChildren()) do
+			joinPart(F, d)
 		end
-	end)
+	end
 end
 
 local function leaveBoxers(F)
@@ -2777,8 +2871,8 @@ function Fight:SpawnReferee()
 				d.CollisionGroup = REF_GROUP
 			end
 		end
-		joinBoxers(self.P)
-		joinBoxers(self.O)
+		pcall(joinBoxers, self.P)
+		pcall(joinBoxers, self.O)
 	else
 		-- fallback: the Humanoid turns CanCollide back on for the head / torso parts in its own step;
 		-- re-clear the rig parts before every physics step
@@ -2795,7 +2889,7 @@ function Fight:SpawnReferee()
 		end)
 	end
 	if hum and root then
-		hum.WalkSpeed = 9 -- (REF.walk: a walk; the knockdown's jog is set in UpdateReferee)
+		hum.WalkSpeed = 10 -- (REF.walk: a walk; the knockdown's jog is set in UpdateReferee)
 		hum.AutoRotate = false
 		local att = Instance.new("Attachment")
 		att.Name = "RefFacingAtt"
@@ -2823,24 +2917,54 @@ function Fight:RefAct(act)
 	end
 end
 
--- The referee's beat (UpdateReferee, every 0.3 s of a live round). He is OUT of the action: on the orbit,
+-- The referee's beat (UpdateReferee, every REF.tick of a live round). He is OUT of the action: on the orbit,
 -- REF.orbit studs from the midpoint of the two men on the perpendicular to their line, on the side away from
 -- the hard camera (Fight:HardSide: the side PostFight faces) unless that side is up against the ropes, and he
 -- never crosses between the men to change sides (he goes round an end: past the nearer man, REF.round beyond
--- him). He comes in for a reason, on its timing, and goes back out after:
+-- him; every other spot he walks to is mirrored onto the side he is on). He comes in for a reason, on its
+-- timing, and goes back out to the orbit after:
 --   * a clinch that has HELD REF.clinchHold seconds (not the instant they touch): to the near side of the pair,
 --     outside both bodies (never nearer than MinSep to either root), to break them
---   * a knockdown: a jog in as the fall lands, standing over the fallen man at REF.count studs for the count
---     (the one place he comes inside MinSep), the knockout on the feet (RefCatch) likewise
---   * the bell: in the last REF.bellIn seconds of the round he steps in toward the midpoint, so he is between the
---     men as it goes (Rest sends them to the corners; HoldCorners sends him back to the orbit for the countdown)
--- A walk (REF.walk) everywhere but the knockdown (REF.jog); the Humanoid's MoveTo paces the steps.
---   * a man coming at him (the fighters pass through the referee: the Referee collision group): a step out of his
---     way to REF.evade clear, at a jog, as soon as one is inside MinSep + REF.evadeAt
--- A walk (REF.walk; REF.brisk when his spot is more than REF.briskAt away) everywhere but the knockdown and the
--- evasion (REF.jog); the Humanoid's MoveTo paces the steps.
-local REF = { orbit = 7.0, round = 1.6, walk = 9, brisk = 12, briskAt = 4, jog = 16, clinchHold = 1.5, breakGap = 0.4, count = 3, bellIn = 0.6, sideHold = 1.0, evadeAt = 1.5, evade = 2.2, tick = 0.1 }
+--   * a knockdown: he holds his ground while the fall plays (REF.fallLand), then jogs in as it lands and stands
+--     REF.count studs from the fallen man for the count, toward the standing man and off to the far side from
+--     the hard camera (the one place he comes inside MinSep of anybody), waving the other man to the neutral
+--     corner (RefAct "neutral"); the knockout on the feet (RefCatch) likewise
+--   * a foul (Fight:RefWarn): in to MinSep + REF.warnGap of the offender for REF.warnFor seconds
+--   * the bell: in the last REF.bellIn seconds of the round he steps in to the near side of the pair, as for a
+--     break (Rest sends them to the corners; HoldCorners sends him back to the orbit for the countdown)
+--   * a man coming at him (the fighters pass through the referee: the Referee collision group; their walks are
+--     routed round him, Fight:RouteAround with RefRoom): straight back out to the orbit zone (REF.clearOf from
+--     both), as soon as one is inside MinSep + REF.evadeAt
+-- A walk (REF.walk) everywhere but the knockdown (REF.jog: the count, the catch); the Humanoid's MoveTo paces
+-- the steps. The end of the fight is PostFight's (the referee to the centre between the men).
+local REF = { orbit = 7.0, orbitMin = 6.0, orbitMax = 8.0, round = 1.6, walk = 10, jog = 16, clinchHold = 1.5, breakGap = 0.4, count = 3,
+	fallLand = 0.6, bellIn = 0.6, sideHold = 1.0, evadeAt = 1.6, evade = 1.6, warnGap = 1.0, warnFor = 2.5, tick = 0.1 }
 FightEngine.REF = REF
+
+-- the distance the fighters' walks keep from the referee's root (RouteAround, Separate's goal clamp), and his own
+-- from theirs: the pair's MinSep (his torso is a man's, the same separation keeps the bodies clear) and REF.keepAir
+-- (he stops up to 0.8 short of a spot: never inside MinSep for it)
+REF.keepAir = 0.3
+function Fight:RefKeep()
+	return self:MinSep() + REF.keepAir
+end
+-- the berth the fighters' walks give him (RouteAround, Separate's goal clamp): a stud wider than his own keep, so
+-- a man passing goes by outside the distance that sends the referee stepping out of his way (REF.evadeAt)
+REF.room = 1.0
+function Fight:RefRoom()
+	return self:MinSep() + REF.room
+end
+
+-- a foul (a low blow, holding and hitting, a push: whoever calls it): the referee walks in to the offender, says
+-- his piece for REF.warnFor seconds (secs to override) and backs off to the orbit
+function Fight:RefWarn(F, secs)
+	local R = self.ref
+	if not (R and F and F.root) then
+		return
+	end
+	R.warn = { F = F, untilT = self:Now() + (secs or REF.warnFor) }
+	R.nextMove = 0
+end
 
 -- the hard camera's side: the way the post-fight scene faces (between the red corner and the next post)
 function Fight:HardSide()
@@ -2853,13 +2977,15 @@ function Fight:HardSide()
 	return self.hardFace
 end
 
--- pos kept at least r from both fighters' roots (out of the nearer man along the line from him)
-function Fight:RefKeepOut(pos, r)
+-- pos kept at least r from both fighters' roots (out of the nearer man along the line from him); only = one
+-- fighter alone (the count: kept off the standing man, not the one he counts over)
+function Fight:RefKeepOut(pos, r, only)
 	if r <= 0 then
 		return pos
 	end
+	local list = only and { only } or { self.P, self.O }
 	for _ = 1, 2 do
-		for _, F in ipairs({ self.P, self.O }) do
+		for _, F in ipairs(list) do
 			if F.root then
 				local fp = F.root.Position
 				local d = flat(pos - fp)
@@ -2873,47 +2999,85 @@ function Fight:RefKeepOut(pos, r)
 	return pos
 end
 
--- the referee's orbit spot for a pair standing at pP / pO (pure in the positions: the sim's test reads it)
-function Fight:RefOrbit(R, pP, pO)
+-- the referee's orbit spot for a pair standing at pP / pO (pure in the positions and his own: the sim's test reads
+-- it). Not a fixed point on the perpendicular (two men circling at 1.75 studs from their midpoint swing it round
+-- four times faster than they move, and he walks): a ZONE he stands still in while it holds -
+--   * REF.orbitMin..REF.orbitMax from the midpoint (further when the men stand far apart, see the next rule)
+--   * at least REF.clearOf from both men's roots (inside 4.5 studs only for a reason)
+--   * on the far side from the hard camera (the midpoint-to-him direction against HardSide <= -REF.camDot)
+--   * at least REF.offLine off the men's line, either end (never behind one man's back, never in a punch's line)
+--   * inside the ropes (the ring clamp moving it by under half a stud)
+-- and when it fails, the nearest bearing that passes (searched out from his own both ways round, so the walk there
+-- is a short one round the outside: it never goes between the men). side (optional, +-1: the evasion's) keeps the
+-- spot on that side of the men's line, so a man coming at him is stepped away from without crossing it. Returns
+-- target, mid.
+REF.clearOf, REF.clearMargin, REF.camDot, REF.offLine = 5.5, 0.6, 0.15, math.rad(35)
+function Fight:RefOrbit(R, pP, pO, side)
 	local mid = (pP + pO) / 2
 	local line = unitOr(flat(pO - pP), Vector3.new(1, 0, 0))
 	local perp = Vector3.new(-line.Z, 0, line.X)
-	local want = perp:Dot(self:HardSide()) > 0 and -1 or 1 -- away from the camera
-	-- the ropes: the side the clamp pulls in by more than half a stud gives way to the other when it is clearer
-	local function pull(sgn)
-		local a = mid + perp * (sgn * REF.orbit)
-		return flat(self:ClampToRing(a) - a).Magnitude
-	end
-	if pull(want) > 0.5 and pull(-want) + 1.0 < pull(want) then
-		want = -want
-	end
-	local now = self:Now()
-	if R.side == nil then
-		R.side = want
-	elseif want ~= R.side then
-		-- (a side held for REF.sideHold before he goes round: the line between the men swings every step)
-		if (R.sideWant or 0) ~= want then
-			R.sideWant, R.sideSince = want, now
-		elseif now - (R.sideSince or now) >= REF.sideHold then
-			R.side = want
+	local half = flat(pO - pP).Magnitude / 2
+	local H = self:HardSide()
+	local cosOff = math.cos(REF.offLine)
+	local rmin = math.max(REF.orbitMin, half + REF.clearOf * 0.8)
+	local rmax = math.max(REF.orbitMax, rmin)
+	local function ok(pos, strict, margin)
+		margin = margin or 0
+		local rel = flat(pos - mid)
+		local r = rel.Magnitude
+		if r < rmin - 0.05 or r > rmax + 0.05 then
+			return false
 		end
-	else
-		R.sideWant = nil
+		local u = rel / math.max(r, 1e-3)
+		if math.abs(u:Dot(line)) > cosOff then
+			return false
+		end
+		if side and rel:Dot(perp) * side < 0.5 then
+			return false
+		end
+		if strict and u:Dot(H) > -REF.camDot then
+			return false
+		end
+		if flat(pos - pP).Magnitude < REF.clearOf + margin or flat(pos - pO).Magnitude < REF.clearOf + margin then
+			return false
+		end
+		return flat(self:ClampToRing(pos) - pos).Magnitude < 0.5
 	end
-	local target = mid + perp * (R.side * REF.orbit)
-	-- on the wrong side of the line: round the nearer end first, never between the men
-	if R.root then
-		local rp = R.root.Position
-		local across = flat(rp - mid):Dot(perp) * R.side
-		local along = flat(rp - mid):Dot(line)
-		local half = flat(pO - pP).Magnitude / 2
-		if across < 0.5 and math.abs(along) < half + REF.round * 0.5 then
-			local endP = along >= 0 and pO or pP
-			local out = along >= 0 and line or -line
-			target = endP + out * (self:MinSep() + REF.round)
+	local rp = R.root and R.root.Position or (mid - H * REF.orbit)
+	-- (and the walk there never between the men: the straight line from him to the spot crossing theirs, out to a
+	-- body's width past either man, rules a spot out)
+	local ext = line * (self:MinSep() * 0.5)
+	local eA, eB = pP - ext, pO + ext
+	local function cr(o, p, q)
+		return (p.X - o.X) * (q.Z - o.Z) - (p.Z - o.Z) * (q.X - o.X)
+	end
+	local function crosses(pos)
+		local d1, d2, d3, d4 = cr(eA, eB, rp), cr(eA, eB, pos), cr(rp, pos, eA), cr(rp, pos, eB)
+		return (d1 * d2 < 0) and (d3 * d4 < 0)
+	end
+	if ok(rp, true) then
+		return Vector3.new(rp.X, mid.Y, rp.Z), mid -- (in the zone: he stays put)
+	end
+	local rel = flat(rp - mid)
+	local base = rel.Magnitude > 0.3 and rel.Unit or -flat(H)
+	local r0 = math.clamp(rel.Magnitude, rmin, rmax)
+	-- the bearing nearest his own that passes - a new spot with REF.clearMargin more room than staying put needs (he
+	-- does not stop on the zone's edge, to step off it again at the next shuffle); the margin, then the camera rule,
+	-- waived only when no bearing anywhere passes with them
+	for _, pass in ipairs({ { true, REF.clearMargin }, { true, 0 }, { false, 0 } }) do
+		for step = 0, 36 do
+			for _, sgn in ipairs(step == 0 and { 1 } or { 1, -1 }) do
+				local dir = CFrame.Angles(0, sgn * step * math.rad(5), 0):VectorToWorldSpace(base)
+				for _, r in ipairs({ r0, REF.orbit, rmin, rmax }) do
+					local pos = mid + dir * r
+					if ok(pos, pass[1], pass[2]) and not crosses(pos) then
+						return pos, mid
+					end
+				end
+			end
 		end
 	end
-	return target, mid
+	return self:ClampToRing(mid - flat(H) * rmax), mid
 end
 
 function Fight:UpdateReferee(now)
@@ -2927,7 +3091,7 @@ function Fight:UpdateReferee(now)
 		return
 	end
 	local target, look
-	local speed, keep = REF.walk, self:MinSep()
+	local speed, keep = REF.walk, self:RefKeep()
 	local rp = R.root.Position
 	local nearF = flat(rp - P.root.Position).Magnitude <= flat(rp - O.root.Position).Magnitude and P or O
 	local nearD = flat(rp - nearF.root.Position).Magnitude
@@ -2937,52 +3101,111 @@ function Fight:UpdateReferee(now)
 		R.catching = nil
 		catching = nil
 	end
+	local warn = R.warn
+	if warn and (now > warn.untilT or not warn.F.root or warn.F.state == "down") then
+		R.warn = nil
+		warn = nil
+	end
+	if down then
+		if R.downFor ~= down then
+			R.downFor, R.downSince, R.waved = down, now, false
+		end
+	else
+		R.downFor = nil
+	end
 	local pP, pO = P.root.Position, O.root.Position
 	local mid = (pP + pO) / 2
+	local line = unitOr(flat(pO - pP), Vector3.new(1, 0, 0))
+	local perp = Vector3.new(-line.Z, 0, line.X)
+	local half = flat(pO - pP).Magnitude / 2
+	-- the side of the men's line he is on (the side every spot but the orbit's is put on: he never walks across)
+	local onSide = flat(rp - mid):Dot(perp)
+	local mySide = math.abs(onSide) > 0.3 and (onSide > 0 and 1 or -1) or (R.side or 1)
 	local clinchHeld = (P.state == "clinch" or O.state == "clinch") and (now - math.max(P.clinchAt or 0, O.clinchAt or 0)) or nil
 	local bell = self.live and self.roundEnd and (self.roundEnd - now) <= REF.bellIn and not self.paused
 	local mode = "orbit"
+	local keepFrom = nil -- (the count: off the standing man only)
+	-- the spot on his side of the pair just outside both bodies (the break, the bell)
+	local function nearSide()
+		local d = math.max(2.2, math.sqrt(math.max(0, keep * keep - half * half)) + REF.breakGap)
+		return mid + perp * (mySide * d)
+	end
 	if catching then
 		-- holding up a fighter knocked out on his feet
 		target, look = catching.at, catching.look
 		R.nextMove = now + 0.1
 		speed, keep = REF.jog, 0
 		mode = "catch"
-	elseif down then
-		-- stand over the downed fighter, between him and the other man (who is in the neutral corner)
+	elseif down and now - (R.downSince or now) >= REF.fallLand then
+		-- the fall has landed: in at a jog, REF.count from the fallen man, toward the other one (on his way to the
+		-- neutral corner) and off to the far side from the hard camera, so the count is not hidden behind him
 		local other = self:Other(down)
-		local d = unitOr(flat(other.root.Position - down.root.Position), Vector3.new(1, 0, 0))
-		target = down.root.Position + d * REF.count
+		local toOther = unitOr(flat(other.root.Position - down.root.Position), Vector3.new(1, 0, 0))
+		local far = -self:HardSide()
+		far = flat(far - toOther * far:Dot(toOther))
+		local dir = unitOr(toOther * 0.55 + unitOr(far, Vector3.new(-toOther.Z, 0, toOther.X)) * 0.85, toOther)
+		-- (the spot turned round the fallen man, nearest first, until it is inside the ropes and off the standing man)
+		local dp = down.root.Position
+		-- (how far a spot is from good: pulled in by the ropes, short of the standing man's room)
+		local function badness(spot)
+			return flat(self:ClampToRing(spot) - spot).Magnitude * 2 + math.max(0, keep - flat(spot - other.root.Position).Magnitude)
+		end
+		-- the bearing chosen for this count is kept while it stays good (he does not chase a spot round the man)
+		local kept = R.countFor == down and R.countDir or nil
+		if kept and badness(dp + kept * REF.count) < 0.5 then
+			target = dp + kept * REF.count
+		else
+			target = dp + dir * REF.count
+			local bestBad, bestDir = math.huge, dir
+			for _, a in ipairs({ 0, 30, -30, 60, -60, 90, -90, 120, -120, 150, -150, 180 }) do
+				local d2 = CFrame.Angles(0, math.rad(a), 0):VectorToWorldSpace(dir)
+				local bad = badness(dp + d2 * REF.count) + math.abs(a) * 1e-4
+				if bad < bestBad then
+					bestBad, bestDir = bad, d2
+				end
+				if bad < 0.2 then
+					break
+				end
+			end
+			target = dp + bestDir * REF.count
+			R.countFor, R.countDir = down, bestDir
+		end
 		look = down.root.Position
-		speed, keep = REF.jog, 0
+		speed = REF.jog
+		keepFrom = other
 		mode = "count"
+		if not R.waved then
+			-- the standing man waved off to the neutral corner (the client's referee act; Knockdown walks him there)
+			R.waved = true
+			self:RefAct("neutral")
+		end
+	elseif down then
+		-- the fall is still playing: he holds his ground (out of it) until it lands
+		target, look = rp, down.root.Position
+		mode = "kdwait"
+	elseif warn and nearD < keep then
+		-- (the call goes on, but a man on top of him first: out to the orbit zone on his own side)
+		target, look = self:RefOrbit(R, pP, pO, mySide)
+		mode = "evade"
+	elseif warn then
+		-- at the offender's side, square to the men's line (his footwork in and out never walks into the referee)
+		local fp = warn.F.root.Position
+		local away = unitOr(perp * mySide * 0.85 + unitOr(flat(rp - fp), perp * mySide) * 0.15, perp * mySide)
+		target = fp + away * (keep + REF.warnGap)
+		look = fp
+		mode = "foul"
 	elseif clinchHeld and clinchHeld >= REF.clinchHold then
 		-- the break: the near side of the clinch, outside both bodies
-		local line = unitOr(flat(pO - pP), Vector3.new(1, 0, 0))
-		local perp = Vector3.new(-line.Z, 0, line.X)
-		local half = flat(pO - pP).Magnitude / 2
-		local d = math.max(2.2, math.sqrt(math.max(0, keep * keep - half * half)) + REF.breakGap)
-		-- (on the side he is actually on: the near side of the pair, never through them)
-		local onSide = flat(rp - mid):Dot(perp)
-		local side = math.abs(onSide) > 0.3 and (onSide > 0 and 1 or -1) or (R.side or 1)
-		target = mid + perp * (side * d)
-		look = mid
+		target, look = nearSide(), mid
 		mode = "break"
 	elseif nearD < keep + REF.evadeAt and nearF.state ~= "down" then
-		-- a man on top of him: out of his way, away from the nearer one (and off the fight line)
-		local line = unitOr(flat(pO - pP), Vector3.new(1, 0, 0))
-		local perp = Vector3.new(-line.Z, 0, line.X)
-		local away = unitOr(flat(rp - nearF.root.Position), perp * (R.side or 1))
-		if math.abs(away:Dot(perp)) < 0.3 then
-			away = unitOr(away + perp * ((R.side or 1) * 0.8), perp)
-		end
-		target = nearF.root.Position + away * (keep + REF.evade)
-		look = mid
-		speed = REF.jog
+		-- a man on top of him: out of his way - straight to the nearest spot of the orbit zone (RefOrbit: clear of
+		-- both men by REF.clearOf, off their line), at a walk
+		target, look = self:RefOrbit(R, pP, pO, mySide)
 		mode = "evade"
 	elseif bell then
-		-- the bell: in between them as it goes
-		target, look = mid, mid
+		-- the bell: stepping in to the near side of them as it goes
+		target, look = nearSide(), mid
 		mode = "bell"
 	else
 		target, look = self:RefOrbit(R, pP, pO)
@@ -2990,17 +3213,44 @@ function Fight:UpdateReferee(now)
 	if mode ~= R.mode then
 		R.mode, R.modeAt = mode, now
 	end
-	target = self:RefKeepOut(self:ClampToRing(target), keep)
-	R.target = target
-	local p = R.root.Position
-	if mode == "orbit" and flat(target - p).Magnitude > REF.briskAt then
-		speed = REF.brisk
+	target = self:ClampToRing(target)
+	if mode ~= "count" and mode ~= "catch" and mode ~= "orbit" and mode ~= "kdwait" then
+		-- (never across the men's line: a spot on the far side of it, between the two ends, is mirrored back onto
+		-- his side - the same distance from both men, who stand on the line)
+		local rel = flat(target - mid)
+		local across = rel:Dot(perp)
+		if across * mySide < 0 and math.abs(rel:Dot(line)) < half + REF.round then
+			target -= perp * (2 * across)
+		end
 	end
+	target = self:RefKeepOut(target, keep, keepFrom)
+	R.target = target
+	-- the walk there round the men, never through one (the nearer first; the count's walk only round the
+	-- standing man)
+	if mode ~= "catch" then
+		local list = keepFrom and { keepFrom } or (nearF == P and { P, O } or { O, P })
+		for _, F in ipairs(list) do
+			local way = F.state ~= "down" and tangentWay(rp, target, F.root.Position, self:MinSep() + 0.3) or nil
+			if way then
+				-- (round the outside of him: a detour that would take the referee across the men's line is mirrored
+				-- back onto his side, the same distance from both of them)
+				local acr = flat(way - mid):Dot(perp)
+				if mode ~= "count" and mode ~= "orbit" and acr * mySide < 0 then
+					way -= perp * (2 * acr)
+				end
+				target = way
+				break
+			end
+		end
+	end
+	local p = R.root.Position
 	if R.hum.WalkSpeed ~= speed then
 		R.hum.WalkSpeed = speed
 	end
-	if flat(target - p).Magnitude > (catching and 0.3 or 0.8) then
+	if flat(target - p).Magnitude > ((catching or mode == "count") and 0.3 or 0.8) then
 		R.hum:MoveTo(Vector3.new(target.X, p.Y, target.Z))
+	elseif mode == "kdwait" then
+		R.hum:MoveTo(p)
 	end
 	if R.align then
 		local dir = flat(look - p)
@@ -3103,21 +3353,27 @@ function Fight:Glide(F, goal, speed, onArrive)
 		local lastG
 		while F.glideId == id and self.id == fightId and not self.aborted and F.root and F.root.Parent do
 			local dt = RunService.Heartbeat:Wait()
-			-- (the spot itself never inside the other man's body: a goal set a moment ago may be where he now stands)
+			-- (the spot itself never inside the other man's body: a goal set a moment ago may be where he now stands;
+			-- the way there round him, never through him: RouteAround)
 			local kept = self:KeepOut(F, goal)
-			local d = flat(kept - F.root.Position)
+			local way = self:RouteAround(F, kept)
+			local d = flat(way - F.root.Position)
 			local m = d.Magnitude
+			local togo = way == kept and m or m + flat(kept - way).Magnitude
 			-- brake into the spot (v^2 = 2 a s), never slower than a shuffle until there
-			v = math.min(speed, v + acc * dt, math.sqrt(2 * acc * m))
+			v = math.min(speed, v + acc * dt, math.sqrt(2 * acc * togo))
 			local step = math.max(v, 0.8) * dt
-			if m <= step then
+			if m <= step and way == kept then
 				shift(F, d)
 				if onArrive then
 					onArrive()
 				end
 				break
 			end
-			shift(F, d * (step / m))
+			-- each step itself kept out of the other man (the root distance never drops under the pair's spacing)
+			local p = F.root.Position
+			local np = self:KeepOut(F, p + d * (math.min(step, m) / math.max(m, 1e-3)))
+			shift(F, np - p)
 			-- [Studio] Gait: the glide's intended velocity for the clients' Animator (quantised: a change-only attribute)
 			if model and model.Parent and m > 1e-3 then
 				local q = d / m * (math.floor(v * 2 + 0.5) * 0.5)
@@ -3535,6 +3791,33 @@ end
 -- Positioning / movement
 ------------------------------------------------------------------------
 
+-- the end of the fight until the post-fight scene places them (FightEngine.Run, after "final"): the round loop
+-- (and with it Separate) has stopped, but an NPC's last MoveTo, a glide, a player's own stick would still walk the
+-- two bodies into each other - every walk is cancelled, the NPCs' feet stop, and Separate keeps the pair apart
+-- each Heartbeat for secs (a man on the canvas stays where he fell: Separate leaves a downed pair alone)
+function Fight:Settle(secs)
+	for _, F in ipairs({ self.P, self.O }) do
+		F.glideId = (F.glideId or 0) + 1
+		F.lungeUntil = 0
+		F.aiTarget = nil
+		if F.hum and F.root and not F.isPlayer and F.state ~= "down" then
+			pcall(function()
+				F.hum.WalkSpeed = 0
+				F.hum:MoveTo(F.root.Position)
+			end)
+		end
+	end
+	local t0 = self:Now()
+	while self:Now() - t0 < secs and not self.aborted do
+		local dt = RunService.Heartbeat:Wait()
+		local ok = pcall(self.Separate, self, dt)
+		if not ok then
+			task.wait(secs - (self:Now() - t0))
+			break
+		end
+	end
+end
+
 function Fight:Place(F, pos, lookAt)
 	if not F.root then
 		return
@@ -3622,13 +3905,16 @@ function Fight:MoveAI(F, range, circle, cut)
 	-- walk is still live (UpdateMovement forgets it whenever it cancels the walk) and younger than Roblox's
 	-- 8 s MoveTo timeout
 	local now = self:Now()
-	local last = F.aiTarget
+	-- (aiGoal: the spot; aiTarget: the walk actually issued - the spot, or a tangent point round the other man /
+	-- the referee on the way to it: RouteAround. nil aiTarget = no live walk)
+	local last = F.aiTarget and (F.aiGoal or F.aiTarget)
 	if last and flat(last - target).Magnitude < 0.35 and togo > 0.35 and now - (F.aiTargetT or 0) < 4 then
 		return
 	end
-	F.aiTarget = target
+	F.aiGoal = target
+	F.aiTarget = self:RouteAround(F, target, nil, self:RefRoom())
 	F.aiTargetT = now
-	F.hum:MoveTo(target)
+	F.hum:MoveTo(F.aiTarget)
 end
 
 -- keep the two bodies apart, every Heartbeat (Update calls it once per step):
@@ -3663,21 +3949,29 @@ function Fight:Separate(dt)
 	if not clinch then
 		local R = self.ref
 		local refP = R and R.root and R.mode ~= "count" and R.mode ~= "catch" and R.root.Position or nil
+		local refR = self:RefRoom()
 		for _, F in ipairs(self.pair or { P, O }) do
-			local goal = F.aiTarget
+			local goal = F.aiTarget and (F.aiGoal or F.aiTarget)
 			if goal and F.hum and not F.isPlayer and F.state ~= "clinch" then
 				local kept = self:KeepOut(F, goal, minSep)
 				if refP then
 					local d = flat(kept - refP)
-					local r = minSep * 0.8
-					if d.Magnitude < r then
-						local out = refP + unitOr(d, unitOr(flat(F.root.Position - refP), Vector3.new(1, 0, 0))) * r
-						kept = Vector3.new(out.X, kept.Y, out.Z)
+					if d.Magnitude < refR then
+						local out = refP + unitOr(d, unitOr(flat(F.root.Position - refP), Vector3.new(1, 0, 0))) * refR
+						kept = self:ClampToRing(Vector3.new(out.X, kept.Y, out.Z))
+						-- (pushed out against the ropes and clamped back onto him: his near side instead, where F is)
+						if flat(kept - refP).Magnitude < refR - 0.05 then
+							out = refP + unitOr(flat(F.root.Position - refP), unitOr(d, Vector3.new(1, 0, 0))) * refR
+							kept = self:KeepOut(F, self:ClampToRing(Vector3.new(out.X, kept.Y, out.Z)), minSep)
+						end
 					end
 				end
-				if flat(kept - goal).Magnitude > 0.1 then
-					F.aiTarget = kept
-					F.hum:MoveTo(kept)
+				F.aiGoal = kept
+				-- the way there round the other man and the referee (a goal behind him is walked round to)
+				local way = self:RouteAround(F, kept, minSep, refP and refR or nil)
+				if flat(way - F.aiTarget).Magnitude > 0.1 then
+					F.aiTarget = way
+					F.hum:MoveTo(way)
 				end
 			end
 		end
@@ -3805,10 +4099,13 @@ function Fight:UpdateMovement(F, dt)
 			F.hum.WalkSpeed = speed
 		end
 		if cw then
-			if not F.cornerWalkSent then
+			-- (round the man he dropped, never over him: re-issued as the way round slides)
+			local way = self:RouteAround(F, cw)
+			if not F.cornerWalkSent or not F.cornerWay or flat(way - F.cornerWay).Magnitude > 0.3 then
 				F.cornerWalkSent = true
+				F.cornerWay = way
 				F.aiTarget = nil
-				F.hum:MoveTo(Vector3.new(cw.X, F.root.Position.Y, cw.Z))
+				F.hum:MoveTo(Vector3.new(way.X, F.root.Position.Y, way.Z))
 			end
 		elseif speed == 0 and not F.isPlayer then
 			-- the walk is cancelled: MoveAI must re-issue its next spot even if that spot has not moved
@@ -4107,6 +4404,12 @@ function Fight:Update(dt)
 		self:TutorialStep(dt, now)
 	end
 	self:UpdateReferee(now)
+	self.groupAcc = (self.groupAcc or 0) + dt
+	if self.groupAcc >= GROUP_EVERY then
+		self.groupAcc = 0
+		regroupBoxers(self.P)
+		regroupBoxers(self.O)
+	end
 	-- model attributes at 5 Hz (quantized, change-only)
 	self.attrAcc = (self.attrAcc or 0) + dt
 	if self.attrAcc >= 0.2 then
@@ -4930,6 +5233,11 @@ function Fight:Run()
 		self:SyncAttrs(F)
 	end
 	self:SpawnReferee()
+	-- (the two bodies collide with each other in their own group even when the referee could not be built)
+	if ensureGroups() then
+		pcall(joinBoxers, P)
+		pcall(joinBoxers, O)
+	end
 	local function tapeOf(F)
 		local t = { name = F.data.name, nick = F.data.nick, nat = F.data.nat, record = F.data.record, height = F.data.height, reach = F.data.reach, style = F.style.name,
 			overall = Config.Overall(F.data.stats), female = femaleOf(F), frame = F.frame.name } -- [FrameTraits] the frame on the tape
@@ -5618,7 +5926,8 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 		self:SendEach(function(V)
 			return { t = "final", result = self.results and self.results[V] or res, oppName = self:Other(V).data.name, spar = self.spar, pvp = self.pvp }
 		end)
-		task.wait(3)
+		-- the 3 s before the scene: the feet stopped where they are and the bodies still kept apart (Settle)
+		self:Settle(3)
 		-- [Judging] the post-fight scene (PostFight: both men to the centre, the referee between them, the announcer
 		-- reads the cards, the winner's hand goes up; the crowd's "FightResult"); not for sparring or the practice bout
 		if PostFight and not self.aborted and not self.spar and not (self.tutorial and not self.debut) then

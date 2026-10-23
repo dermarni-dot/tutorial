@@ -9,10 +9,16 @@
 --   * balance at equal level (Boxer-Puncher vs Boxer-Puncher, no ring traits): Heavyweight vs Lean about even, the
 --     heavyweight winning more by stoppage and the Lean more on the cards; every frame close to even against Athletic
 --   lune run tools/sim/test_frametraits.luau [--quick] [--table] [--only hvy-lean,pow-lean,lean-ath,mus-ath,pow-ath,hvy-ath,mirror]
---   (--table: the whole frame x frame matrix; --only: just those balance cells, for a loaded machine)
+--   (--table: the whole frame x frame matrix; --only: just those balance cells, for a loaded machine;
+--   --root DIR: the whole test on another checkout's src, as tools/sim/balance.luau --root)
 local process = require("@lune/process")
 local FS = require("./fightsim")
-local S = FS.new()
+local ROOT = nil
+do
+	local at = table.find(process.args, "--root")
+	ROOT = at and process.args[at + 1] or nil
+end
+local S = FS.new({ root = ROOT })
 local FrameTraits = S.H.require("FrameTraits")
 local FightAI = S.FightAI
 local Random = S.H.globals.Random
@@ -332,7 +338,7 @@ local function run(n, a, b)
 		end
 		secs += r.seconds
 	end
-	return { win = w / n, ko = ko / n, koW = koW, decW = decW, secs = secs / n }
+	return { win = w / n, ko = ko / n, koW = koW, decW = decW, secs = secs / n, n = n }
 end
 local function pct(x)
 	return string.format("%3d%%", math.floor(x * 100 + 0.5))
@@ -370,6 +376,11 @@ end
 if wanted("hvy-lean") then
 	local H, L, stop, secs = pooled(N, HVY, LEAN)
 	line(HVY, LEAN, H, L, stop, secs)
+	-- (the frames' balance is a read of fights that can go either way, on the cards or inside the distance: an engine
+	-- whose equal men all stop each other early - FightAI's work rate, FightEngine's damage - leaves the cards
+	-- empty and turns every win into a stoppage, and the checks below then measure the engine, not the frames)
+	check("balance precondition: some Heavyweight-Lean fights go to the cards (the engine's fight length, not the frames)", stop < 0.97,
+		string.format("%.0f%% stoppages, %.0f s a fight", stop * 100, secs))
 	check("balance: Heavyweight vs Lean at equal skill is close to even (35..65%)", H.win >= 0.35 and H.win <= 0.65, H.win)
 	check("balance: the heavyweight wins more by stoppage than the Lean does", H.ko > L.ko, H.ko .. " / " .. L.ko)
 	check("balance: the Lean's wins come on the cards more often than the heavyweight's", L.decShare >= H.decShare, L.decShare .. " / " .. H.decShare)

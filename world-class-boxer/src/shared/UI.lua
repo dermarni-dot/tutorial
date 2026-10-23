@@ -2373,10 +2373,15 @@ function UI.Card(parent, props)
 	return f
 end
 
+-- (running text: a line led by a shouted label reads in sentence case, "INJURED: Broken hand" -> "Injured: Broken
+-- hand", Typography.Sentence; RichText lines are left as written)
 function UI.Line(parent, text, props)
 	props = props or {}
 	props.AutomaticSize = Enum.AutomaticSize.Y
 	props.Size = props.Size or UDim2.new(1, 0, 0, 0)
+	if type(text) == "string" and not props.RichText then
+		text = Typography.Sentence(text)
+	end
 	return UI.Text(parent, text, props)
 end
 

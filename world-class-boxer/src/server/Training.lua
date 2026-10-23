@@ -522,7 +522,10 @@ local function injuryRoll(profile, act, extraRisk, riskMul)
 	end
 	local id = act.injuries[rng:NextInteger(1, #act.injuries)]
 	local def = Config.Injuries[id]
-	local days = rng:NextInteger(def.days[1], def.days[2])
+	-- (a low-tier body bounces back: the layoff and the knock to the fatigue shrink with TierEase too,
+	-- never under a day)
+	local ease = tierEase(profile)
+	local days = math.max(1, math.ceil(rng:NextInteger(def.days[1], def.days[2]) * ease))
 	for _, inj in ipairs(c.injuries) do
 		if inj.id == id and inj.days > 0 then
 			inj.days += math.ceil(days / 2)
@@ -530,7 +533,7 @@ local function injuryRoll(profile, act, extraRisk, riskMul)
 		end
 	end
 	table.insert(c.injuries, { id = id, days = days })
-	c.fatigue = clamp(c.fatigue + 10, 0, 100)
+	c.fatigue = clamp(c.fatigue + 10 * ease, 0, 100)
 	return def.name
 end
 
@@ -1873,6 +1876,32 @@ end
 -- so an unpaid session never counts towards sessions / best grade. Weak keys, never saved.
 local unpaidSession = setmetatable({}, { __mode = "k" })
 
+-- A sparring drill's focus goal (TrainingPlan.SparFocus), read from the spar's fight result: met, it adds
+-- TP.SPAR_FOCUS_BONUS to the session quality (the caller passes its quality in and uses .quality) and a
+-- small extra gain on the focus stats. Returns nil for no / an unknown focus, else
+-- { id, name, goal, met, value, need, quality, gains = { stat = gain } }.
+function Training.SparFocusResult(profile, focusId, res, intensity, quality)
+	local f = TP.SparFocusById and TP.SparFocusById[focusId]
+	if not f or type(res) ~= "table" then
+		return nil
+	end
+	local met, value, need = TP.SparFocusCheck(focusId, res, intensity)
+	local need2, goal = TP.SparFocusGoal(focusId, intensity)
+	local out = { id = f.id, name = f.name, goal = goal, met = met == true, value = value or 0, need = need or need2, quality = finite(quality, 1), gains = {} }
+	if out.met then
+		out.quality = clamp(out.quality + TP.SPAR_FOCUS_BONUS, 0.4, 1.5)
+		local stats = type(profile) == "table" and profile.stats
+		for _, stat in ipairs(stats and f.stats or {}) do
+			local cur = finite(stats[stat], 10)
+			local dim = clamp(1 - (cur - 25) / 78, 0.05, 1.1)
+			local new = clamp(finite(cur + Config.GainScale * 0.2 * dim, cur), 1, Config.StatCap)
+			out.gains[stat] = new - cur
+			stats[stat] = new
+		end
+	end
+	return out
+end
+
 function Training.Recover(profile, act, quality)
 	quality = clamp(tonumber(quality) or 1, 0.5, 1.5)
 	local c = profile.condition
@@ -3182,15 +3211,18 @@ function Training.DrillPlan(act, lv, params)
 			-- the coach calls some combinations by their numbers (1 jab, 2 cross, 3 lead hook, 4 rear hook,
 			-- 5 uppercut, 6 overhand): from the second bag on the last two, from the fourth all of them
 			local byNumber = (lv >= 4) or (lv >= 2 and k >= 3)
+			-- (the time limit leaves room for a wrong press or two: a slip of the hand costs that punch, not the combo)
 			table.insert(segs, { j = "seq", ids = ids, body = body, call = byNumber and "numbers" or nil, beat = beat,
-				limit = 1.4 + #combo * tw(0.8, 0.55) + (byNumber and 0.35 or 0), gap = k == 1 and W.intro or W.combo })
+				limit = 1.6 + #combo * tw(0.9, 0.78) + (byNumber and 0.4 or 0), gap = k == 1 and W.intro or W.combo })
 		end
 		local shots = lv >= 3 and 4 or 3
 		for s = 1, shots do
-			table.insert(segs, { j = "needle", c = 0.66 + r:NextNumber() * 0.18, w = tw(0.09, 0.05), sweep = tw(0.8, 1.2) + s * 0.04, dur = 3.5,
+			-- (the sweet spot is ~0.2 s of needle wide on the first bag, never under ~0.15 s)
+			table.insert(segs, { j = "needle", c = 0.66 + r:NextNumber() * 0.18, w = tw(0.11, 0.09), sweep = tw(0.75, 0.95) + s * 0.03, dur = 3.5,
 				gap = s == 1 and (W.combo + W.rest + W.round) or W.shot })
 		end
-		table.insert(segs, { j = "burst", dur = 4, target = tw(3.7, 4.8), gap = W.shot + W.rest + W.round })
+		-- (the burst's full marks: 3.4 punches a second on the first bag, 4.2 at the top - a mash, not a sprint)
+		table.insert(segs, { j = "burst", dur = 4, target = tw(3.4, 4.2), gap = W.shot + W.rest + W.round })
 	elseif kind == "rhythm" then
 		-- ACCELERATING RHYTHM: a round starts on its tempo and picks up through the round (seg.accel, to a
 		-- cap): alternate hands and keep up with the bag; round two adds doubles (and triplets up top)
@@ -3222,10 +3254,12 @@ function Training.DrillPlan(act, lv, params)
 				end
 			end
 			table.insert(segs, { j = "notes", name = rd.name, bpm = rd.bpm, lanes = lanes, interval = interval, accel = 0.985, minInterval = interval * tw(0.72, 0.6),
-				lead = 1.0, hitW = tw(0.3, 0.24), perfectW = tw(0.11, 0.07), goodW = tw(0.2, 0.14), gap = ri == 1 and W.intro or (W.rest + W.round) })
+				-- (the good window never closes under ~0.18 s either side: a human's beat error fits in it)
+				lead = 1.0, hitW = tw(0.3, 0.26), perfectW = tw(0.11, 0.08), goodW = tw(0.22, 0.18), gap = ri == 1 and W.intro or (W.rest + W.round) })
 		end
 	elseif kind == "reaction" then
-		local window = tw(1.1, 0.7)
+		-- (the answer window never closes under a second: a slow reaction is still an answer)
+		local window = tw(1.25, 1.05)
 		local options = { "punch", "punch", "slipL", "slipR" }
 		local defs = { "slipL", "slipR" }
 		if lv >= 2 then
@@ -3246,7 +3280,7 @@ function Training.DrillPlan(act, lv, params)
 		for k = 1, 4 do
 			local delay = 0.3 + r:NextNumber() * 0.4
 			table.insert(segs, { j = "rebound", want = r:NextNumber() < 0.5 and "slipL" or "slipR", window = 1.2, ret = tw(0.68, 0.45) + r:NextNumber() * 0.1,
-				w = tw(0.21, 0.13), delay = delay, gap = (k == 1 and (W.counter + W.rest + W.round) or W.rebound) + delay })
+				w = tw(0.24, 0.19), delay = delay, gap = (k == 1 and (W.counter + W.rest + W.round) or W.rebound) + delay })
 		end
 	elseif kind == "mitts" then
 		-- CALL & RESPONSE: the coach calls the combination one move at a time (seg.call apart), each
@@ -3265,18 +3299,20 @@ function Training.DrillPlan(act, lv, params)
 			for k = 1, 4 do
 				local c = pick(list)
 				local ids = table.clone(c.keys)
-				if lv >= 2 and r:NextNumber() < 0.3 + 0.1 * lv then
+				-- (a feint in a third of the combinations on the second coach, half of them on the top one)
+				if lv >= 2 and r:NextNumber() < 0.2 + 0.06 * lv then
 					table.insert(ids, r:NextInteger(2, #ids + 1), "feint")
 				end
-				local call = tw(0.8, 0.5) * (rd == 2 and 0.88 or 1)
+				-- (each answer's window outlasts the next call: a slow answer still lands on its own call)
+				local call = tw(0.9, 0.7) * (rd == 2 and 0.9 or 1)
 				local gap = k > 1 and W.mitt or (rd == 1 and W.intro or (W.mitt + W.restLong + W.round))
-				table.insert(segs, { j = "call", g = rd, name = c.name, ids = ids, call = call, window = call * 0.9 + tw(0.35, 0.2), lead = 0.5, gap = gap })
+				table.insert(segs, { j = "call", g = rd, name = c.name, ids = ids, call = call, window = call * 0.9 + tw(0.5, 0.38), lead = 0.5, gap = gap })
 			end
 		end
 	elseif kind == "shadow" then
 		-- MIRROR THE COACH: single moves on cue, then the called patterns copied in order (the ladder
 		-- owns the stepped footwork)
-		local window = tw(1.3, 0.85)
+		local window = tw(1.35, 1.1)
 		local prompts = { "F", "B", "L", "R", "slipL", "slipR", "roll", "jab", "cross", "leadhook" }
 		for k = 1, 5 do
 			local delay = 0.15 + r:NextNumber() * 0.3
@@ -3304,9 +3340,10 @@ function Training.DrillPlan(act, lv, params)
 		-- RIGHT taps keep the balance in the green
 		local slams = 5 + math.floor(2 * tight + 0.5)
 		for rep = 1, slams do
-			local width = math.max(0.1, tw(0.3, 0.17) - rep * 0.006)
-			local lo = math.clamp(0.6 + r:NextNumber() * 0.14, 0.5, 0.96 - width)
-			table.insert(segs, { j = "lift", mode = "slam", rep = rep, lo = lo, width = width, speed = tw(0.8, 1.1) + rep * 0.03, wait = 5, gap = rep == 1 and W.intro or (W.slam + W.catch) })
+			-- (the zone stays a third of a second of the lift wide at the top: never a frame-perfect release)
+			local width = math.max(0.1, tw(0.32, 0.26) - rep * 0.005)
+			local lo = math.clamp(0.6 + r:NextNumber() * 0.12, 0.5, 0.97 - width)
+			table.insert(segs, { j = "lift", mode = "slam", rep = rep, lo = lo, width = width, speed = tw(0.75, 0.9) + rep * 0.02, wait = 5, gap = rep == 1 and W.intro or (W.slam + W.catch) })
 		end
 		local amp = tw(0.34, 0.5)
 		table.insert(segs, { j = "wobble", name = "PLANK ON THE BALL", duration = math.floor(tw(12, 15)), band = tw(0.22, 0.16), kick = 0.2,
@@ -3378,7 +3415,9 @@ function Training.DrillPlan(act, lv, params)
 				end
 				cues[k] = cue
 			end
-			table.insert(segs, { j = "rope", name = ph.name, mode = ph.mode, jumps = jumps, omega = ph.mode == "speed" and 7.8 or 6.5, cues = cues, gap = i == 1 and W.intro or (W.restShort + W.round) })
+			-- (hold and release: the jump's window and the double under's charge are widest on the first rope)
+			table.insert(segs, { j = "rope", name = ph.name, mode = ph.mode, jumps = jumps, omega = ph.mode == "speed" and 7.8 or 6.5, cues = cues,
+				early = tw(0.6, 0.55), late = tw(0.16, 0.13), perfW = tw(0.09, 0.07), charge = tw(0.18, 0.24), gap = i == 1 and W.intro or (W.restShort + W.round) })
 		end
 	elseif kind == "hold" then
 		table.insert(segs, { j = "breath", breaths = 4, inhale = 2.4, exhale = 2.4, gap = W.intro })

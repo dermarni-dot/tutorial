@@ -29,7 +29,7 @@ local function baseExposure()
 end
 LightLevels.Base = baseExposure()
 LightLevels.Zones = {
-	GymWarm = 0.1, -- the main hall: warm lamps, a lift so faces read above mid grey
+	GymWarm = 0.15, -- the main hall: warm lamps, a lift so faces read above mid grey (and the room reads as day)
 	GymElite = 0.05,
 	Barbershop = 0.06,
 	Apartment = 0.08,
