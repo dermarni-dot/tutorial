@@ -713,7 +713,14 @@ end
 function K.streetTree(parent, pos, rng, h)
 	part(parent, "TreePit", V3(4, 0.06, 4), CF(pos + V3(0, 0.03, 0)), K.SOIL, M.Ground, { shadow = false })
 	part(parent, "TreeGrate", V3(4.2, 0.08, 4.2), CF(pos + V3(0, 0.04, 0)), Color3.fromRGB(50, 50, 54), M.DiamondPlate, { shadow = false })
-	return K.tree(parent, pos, (rng and rng:NextNumber() < 0.25) and "cherry" or "oak", h or (rng and rng:NextNumber(26, 34) or 30), rng)
+	local m = K.tree(parent, pos, (rng and rng:NextNumber() < 0.25) and "cherry" or "oak", h or (rng and rng:NextNumber(24, 30) or 27), rng)
+	-- a street tree is pruned up: a narrower crown than a park oak, clear of the awnings
+	for _, d in ipairs(m:GetChildren()) do
+		if d.Name == "Canopy" then
+			d.Size = d.Size * Vector3.new(0.8, 0.9, 0.8)
+		end
+	end
+	return m
 end
 
 -- a shrub / bush
@@ -1148,8 +1155,8 @@ function K.tower(parent, pos, w, d, h, look, rng, opts)
 	local cf = CFrame.lookAt(pos + V3(0, h / 2, 0), pos + V3(0, h / 2, 0) + look)
 	local tone = opts.tone or rng:NextInteger(0, 4)
 	local palette = {
-		{ Color3.fromRGB(70, 78, 92), M.Concrete, 0 }, { Color3.fromRGB(120, 122, 130), M.Concrete, 0 }, { Color3.fromRGB(62, 84, 110), M.Glass, 0.18 },
-		{ Color3.fromRGB(156, 144, 128), M.Concrete, 0 }, { Color3.fromRGB(44, 58, 76), M.Glass, 0.2 },
+		{ Color3.fromRGB(70, 78, 92), M.Concrete, 0 }, { Color3.fromRGB(120, 122, 130), M.Concrete, 0 }, { Color3.fromRGB(62, 84, 110), M.SmoothPlastic, 0.18 },
+		{ Color3.fromRGB(156, 144, 128), M.Concrete, 0 }, { Color3.fromRGB(44, 58, 76), M.SmoothPlastic, 0.2 },
 	}
 	local p = palette[tone + 1]
 	local m = model(parent, opts.name or "Tower")

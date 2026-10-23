@@ -23,24 +23,24 @@
    "t": 1.0667,
    "lowest": 0.021,
    "lowestPart": "RightFoot",
-   "pelvisY": 2.621,
-   "headY": 5.1
+   "pelvisY": 2.62,
+   "headY": 5.099
   },
   {
    "dt": 1.0,
    "t": 1.5333,
-   "lowest": 0.062,
+   "lowest": 0.073,
    "lowestPart": "LeftFoot",
-   "pelvisY": 2.519,
-   "headY": 5.162
+   "pelvisY": 2.56,
+   "headY": 5.204
   },
   {
    "dt": 2.0,
    "t": 2.5333,
    "lowest": 0.049,
    "lowestPart": "RightFoot",
-   "pelvisY": 1.708,
-   "headY": 4.449
+   "pelvisY": 1.73,
+   "headY": 4.472
   }
  ],
  "slideAfter": 1.722,

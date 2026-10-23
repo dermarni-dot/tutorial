@@ -31,7 +31,7 @@
    "t": 1.5333,
    "lowest": 0.014,
    "lowestPart": "LeftFoot",
-   "pelvisY": 2.579,
+   "pelvisY": 2.578,
    "headY": 4.949
   },
   {
@@ -39,8 +39,8 @@
    "t": 2.5333,
    "lowest": 0.049,
    "lowestPart": "RightFoot",
-   "pelvisY": 1.711,
-   "headY": 4.465
+   "pelvisY": 1.734,
+   "headY": 4.487
   }
  ],
  "slideAfter": 0.041,
