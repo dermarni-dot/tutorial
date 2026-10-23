@@ -3,11 +3,11 @@
 -- heart-rate / calorie readout and the drill's own numbers on the panel (and on the smart
 -- screens), coach technique tips during the rests, and a graded result with personal
 -- bests (the server keeps the records).
---  combo     heavy bag: combinations (the later ones called by number), power shots, speed burst
---  rhythm    speed bag: alternating rhythm, then faster doubles / triplets
+--  combo     heavy bag: rhythm combinations (every punch on the beat of the last; the later ones called by number), power shots, speed burst
+--  rhythm    speed bag: alternating rhythm that speeds up through the round, then doubles / triplets
 --  reaction  double-end bag: react, slip & counter, then slip the bag's rebound off your own punch
---  mitts     mitt work: the coach calls combos over two rounds
---  shadow    mirror: single moves, footwork patterns on the beat, then flow chains
+--  mitts     mitt work: call & response - the coach calls the moves one at a time, feints must not be bitten on
+--  shadow    mirror the coach: single moves on cue, then the called patterns copied in order
 --  bench     keep the bar level as it drifts (one side is weaker), grind the sticking point, call the spotter
 --  deadlift  set the back on the needle, drive through the knees, keep the grip squeezed
 --  squat     sink (faster as you go) and stop in the depth zone, drive out of the hole in the bounce window
@@ -17,7 +17,7 @@
 --  treadmill follow the program's speed and incline steps on the console
 --  bike      a hill profile: pedal cadence in the band, gears for the gradient
 --  rower     catch - drive - finish - recovery: the timing of every stroke at the piece's rate
---  ladder    named agility drills (smart reaction lights at the top level)
+--  ladder    stepped patterns: the drill's arrows reach the foot line on a quickening beat (reaction lights at the top level)
 --  rope      basic bounce, boxer skip, double unders
 --  icebath   full breaths from empty and long exhales against a cold-shock meter (cold waves)
 --  stretch   four poses: hold the depth in a range that creeps deeper, never past it

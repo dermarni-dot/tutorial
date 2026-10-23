@@ -3304,14 +3304,14 @@ function Training.DrillPlan(act, lv, params)
 		-- RIGHT taps keep the balance in the green
 		local slams = 5 + math.floor(2 * tight + 0.5)
 		for rep = 1, slams do
-			local width = math.max(0.1, tw(0.26, 0.17) - rep * 0.006)
-			local lo = math.clamp(0.62 + r:NextNumber() * 0.16, 0.5, 0.96 - width)
-			table.insert(segs, { j = "lift", mode = "slam", rep = rep, lo = lo, width = width, speed = tw(0.9, 1.1) + rep * 0.03, wait = 5, gap = rep == 1 and W.intro or (W.slam + W.catch) })
+			local width = math.max(0.1, tw(0.3, 0.17) - rep * 0.006)
+			local lo = math.clamp(0.6 + r:NextNumber() * 0.14, 0.5, 0.96 - width)
+			table.insert(segs, { j = "lift", mode = "slam", rep = rep, lo = lo, width = width, speed = tw(0.8, 1.1) + rep * 0.03, wait = 5, gap = rep == 1 and W.intro or (W.slam + W.catch) })
 		end
-		local amp = tw(0.18, 0.42)
-		table.insert(segs, { j = "wobble", name = "PLANK ON THE BALL", duration = math.floor(tw(12, 15)), band = tw(0.3, 0.2), kick = 0.22,
+		local amp = tw(0.28, 0.48)
+		table.insert(segs, { j = "wobble", name = "PLANK ON THE BALL", duration = math.floor(tw(12, 15)), band = tw(0.26, 0.18), kick = 0.22,
 			drift = { amp, 0.9 + r:NextNumber() * 0.6, r:NextNumber() * 6.28, amp * 0.6, 2.1 + r:NextNumber() * 0.9, r:NextNumber() * 6.28 },
-			bias = (r:NextNumber() < 0.5 and -1 or 1) * tw(0.1, 0.2), gap = W.slam + W.catch + W.rest + W.round })
+			bias = (r:NextNumber() < 0.5 and -1 or 1) * tw(0.14, 0.22), gap = W.slam + W.catch + W.rest + W.round })
 	elseif kind == "pace" then
 		local shrink = 0.08 * tight
 		local phases = {}

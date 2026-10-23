@@ -653,11 +653,12 @@ def lighting_for(scene, view):
     VL = scene.get("venueLighting") or {}
     venue = None
     for r in view.get("roots", []):
-        for prefix in ("venue_", "VenueDetail_"):
-            if r.startswith(prefix) and r[len(prefix):] in VL:
-                venue = r[len(prefix):]
+        name = r
+        for prefix in ("venue_", "VenueDetail_", "VenueFX_"):
+            if r.startswith(prefix):
+                name = r[len(prefix):]
         for kind in VL:
-            if r == kind or r.startswith(kind + "_"):
+            if name == kind or name.startswith(kind + "_"):
                 venue = kind
     return L, VL.get(venue) if venue else None
 
@@ -911,8 +912,8 @@ VIEWS = {
     "city_signs_day": {"roots": CITY, "eye": (-230, 9, 170), "target": (-180, 10, 187), "fov": 48, "mode": "day", "cull": ((-200, 10, 185), 160)},
     "city_signs_night": {"roots": CITY, "eye": (-230, 9, 170), "target": (-180, 10, 187), "fov": 48, "mode": "night", "cull": ((-200, 10, 185), 160), "exposure": 1.0},
     "city_signs_east": {"roots": CITY, "eye": (40, 9, 170), "target": (100, 10, 187), "fov": 48, "mode": "day", "cull": ((80, 10, 185), 160)},
-    "city_main_day": {"roots": CITY, "eye": (-75, 7, 174), "target": (20, 5, 182), "fov": 50, "mode": "day", "cull": ((0, 10, 180), 260)},
-    "city_main_night": {"roots": CITY, "eye": (-75, 7, 174), "target": (20, 5, 182), "fov": 50, "mode": "night", "cull": ((0, 10, 180), 260), "exposure": 1.0},
+    "city_main_day": {"roots": CITY, "eye": (-150, 7, 348), "target": (140, 10, 330), "fov": 55, "mode": "day", "cull": ((0, 10, 330), 600)},
+    "city_main_night": {"roots": CITY, "eye": (-150, 7, 348), "target": (140, 10, 330), "fov": 55, "mode": "night", "cull": ((0, 10, 330), 600), "exposure": 1.0},
     "city_front_day": {"roots": CITY, "eye": (28, 7, 138), "target": (-2, 7, 84), "fov": 50, "mode": "day", "cull": ((0, 10, 110), 220)},
     "city_shops_day": {"roots": CITY, "eye": (40, 6, 168), "target": (80, 7, 186), "fov": 50, "mode": "day", "cull": ((60, 10, 180), 160)},
     "city_aerial_day": {"roots": CITY, "eye": (-140, 90, 290), "target": (0, 0, 150), "fov": 45, "mode": "day", "cull": ((0, 10, 150), 400)},
@@ -922,6 +923,9 @@ VIEWS = {
     "venue_t3_arena": {"roots": ["venue_Arena", "VenueDetail_Arena"], "eye": (5500 - 44, 24, 4000 + 50), "target": (5500, 6, 4000), "fov": 48, "mode": "night", "exposure": 1.2},
     "venue_t4_stadium": {"roots": ["venue_Stadium", "VenueDetail_Stadium"], "eye": (4000 - 60, 34, 4500 + 70), "target": (4000, 6, 4500), "fov": 48, "mode": "night", "exposure": 1.2},
     "venue_t3_wide": {"roots": ["venue_Arena", "VenueDetail_Arena"], "eye": (5500 - 70, 52, 4000 + 84), "target": (5500, 18, 4000), "fov": 55, "mode": "night", "exposure": 1.2},
+    # the Arena on a world title night with VenueFX's show rig (world_scene runs VenueFX.Start on it: roots venue_Arena_show + VenueFX_Arena)
+    "venue_t3_title": {"roots": ["venue_Arena_show", "VenueDetail_Arena", "VenueFX_Arena"], "eye": (5500 - 30, 14, 4000 + 34), "target": (5500, 5, 4000), "fov": 48, "mode": "night", "exposure": 1.2},
+    "venue_t3_title_wide": {"roots": ["venue_Arena_show", "VenueDetail_Arena", "VenueFX_Arena"], "eye": (5500 - 70, 52, 4000 + 84), "target": (5500, 18, 4000), "fov": 55, "mode": "night", "exposure": 1.2},
     "venue_t4_wide": {"roots": ["venue_Stadium", "VenueDetail_Stadium"], "eye": (4000 - 110, 70, 4500 + 120), "target": (4000, 22, 4500), "fov": 55, "mode": "night", "exposure": 1.2},
     "venue_t2_aisle": {"roots": ["venue_ClubArena", "VenueDetail_ClubArena"], "eye": (5000, 9, 4000 + 60), "target": (5000 + 5, 5, 4000 + 22), "fov": 50, "mode": "night", "exposure": 1.2},
     "venue_spar_gym": {"roots": ["venue_Gym", "VenueDetail_Gym"], "eye": (4500 - 18, 11, 4500 + 20), "target": (4500, 4, 4500), "fov": 48, "mode": "interior", "exposure": 0.3},

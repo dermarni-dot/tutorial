@@ -1469,7 +1469,7 @@ PLAN.pullup = function(segs, lv, r, Wt)
 			-- (the level mostly shortens the time to the chin and the pull: the swing stays readable)
 			table.insert(segs, { j = "pullup", set = set, rep = rep, omega = 3.0 + 0.4 * f, ph = r:NextNumber() * 6.28, a0 = 0.2 + 0.05 * rep,
 				amax = 1.2 - 0.15 * f, gain = 0.3 - 0.06 * f - 0.01 * (set - 1), sink = 0.04 + 0.015 * f, swingAdd = 0.22 + 0.26 * f, damp = 0.06, hollowDamp = 0.55 - 0.15 * f,
-				wait = 4, limit = 6 - 1.0 * f, gap = repGap(Wt, set, rep) })
+				wait = 4, limit = 6.5 - 1.0 * f, gap = repGap(Wt, set, rep) })
 		end
 	end
 end

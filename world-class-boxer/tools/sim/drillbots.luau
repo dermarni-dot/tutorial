@@ -232,7 +232,8 @@ A.rope = function(seg, j, t, M, mem, sk, rng)
 	local toPass = (TWO_PI * k - a) / j.w
 	mem.done = mem.done or {}
 	local key = j.done .. ":" .. k
-	local lead = mix(sk, 0.05, rng:NextNumber() * 0.42)
+	-- (nobody jumps more than half a second before the rope: the slow player's error is capped)
+	local lead = math.min(0.5, mix(sk, 0.05, rng:NextNumber() * 0.42))
 	if toPass <= lead and not mem.done[key] then
 		mem.done[key] = true
 		if rng:NextNumber() < 0.12 * sk.w then
@@ -330,7 +331,7 @@ A.pullup = function(seg, j, t, M, mem, sk, rng)
 		end
 	else
 		toggle(out, mem, "hollow", j.hollow.on == true, j.A > 0.6 or (j.hollow.on and j.A > 0.35), t, 0.4)
-		if not j.hollow.on and off < mix(sk, 0.2, 0.55) and every(mem, "p", t, 0.4) then
+		if not j.hollow.on and off < mix(sk, 0.2, 0.65) and every(mem, "p", t, 0.35) then
 			mem.side = (mem.side == "L" and rng:NextNumber() < 0.9) and "R" or "L"
 			tap(out, mem.side)
 		end

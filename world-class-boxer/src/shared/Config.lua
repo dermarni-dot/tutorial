@@ -608,7 +608,7 @@ Config.FightAI = {
 	-- its chance to attack each think; stepIn = how far outside its reach it steps in to punch rather than wait
 	-- (studs); openWork = the extra work when the man in front of it is open (idle in range, hands down, on the
 	-- ropes, just missed); floorMin = the fewest punches a minute even the most forgiving bout's AI throws
-	think = { 0.26, 0.13 }, work = 1.6, stepIn = 0.9, openWork = 1.6, floorMin = 6,
+	think = { 0.28, 0.15 }, work = 1.0, stepIn = 0.9, openWork = 1.4, floorMin = 6,
 	-- the difficulty by level (Config.FightAI.Tier(level): the career's tiers, interpolated between the rows).
 	-- react = the perception and motor delays x this; read = how much it leans on its read of him (prediction,
 	-- adaptation, the rhythm counter); work = its punch rate x this; floor = the fewest punches a minute it throws

@@ -332,7 +332,7 @@ for i, pr in ipairs(PAIRS) do
 	local r = career({ red = pr.red, blue = pr.blue, seed = 100 + i, seconds = 25 })
 	check("run: " .. tag .. " ran without an error", r.err == nil and r.done, r.err)
 	local f = r.fight
-	check("run: " .. tag .. " went live", f ~= nil and r.liveFor > 20, r.liveFor)
+	check("run: " .. tag .. " went live (and boxed on, or ended by a stoppage)", f ~= nil and (r.liveFor > 20 or f.finished), r.liveFor)
 	if f then
 		local P, O = f.P, f.O
 		check("geo: " .. tag .. " both frames come off the parts", P.geo and O.geo and P.geo.source == "rig" and O.geo.source == "rig" and not P.geoFallback and not O.geoFallback,

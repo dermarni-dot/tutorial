@@ -855,6 +855,8 @@ if ONLY.venues then
 					if fx then
 						record("VenueFX_Arena", fx)
 					end
+					-- the arena again as VenueFX left it (the keys, the spots' gels, the house tints)
+					record("venue_Arena_show", arena)
 					pcall(VenueFX.Stop)
 				else
 					print("[world_scene] VenueFX.Start (preview) failed: " .. tostring(errS))

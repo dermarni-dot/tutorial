@@ -364,7 +364,8 @@ function FightAI:OnOppPunch(ptype, body, windup, info)
 		return -- (a raw boxer's hands are down after its own combination)
 	end
 	local s = F.data.stats
-	local chance = (s.Reflexes * 0.5 + s.RingIQ * 0.3 + s.HeadMovement * 0.2) / 100 * 0.62
+	-- (the tier's read: a world-class boxer defends more of what he sees, a debut's less)
+	local chance = (s.Reflexes * 0.5 + s.RingIQ * 0.3 + s.HeadMovement * 0.2) / 100 * 0.62 * (0.85 + 0.25 * self.tier.read)
 	chance += (self.anticipate[ptype] or 0) * 0.3
 	-- slip the punch he throws most (the read of tonight); a body puncher's shots are expected low
 	chance += self.read:Share(ptype) * 0.25 * self.arch.adapt
@@ -647,8 +648,18 @@ function FightAI:Range()
 	return jab * share * (self.engine.aiRange or 1)
 end
 
+-- is this punch worth throwing from dist? A straight goes out to its reach (and a quarter stud over: the step it
+-- takes); a hook or an uppercut is thrown where it lands solid, inside the last INSIDE share of its reach (a hook
+-- that just reaches from range is a glancing shot: FightEngine's stretch), never at the edge
+local INSIDE = { hook = 0.9, uppercut = 0.9, overhand = 0.95 }
 function FightAI:Fits(ptype, dist)
-	return dist <= self.engine:PunchRange(self.F, ptype) + 0.25
+	local range = self.engine:PunchRange(self.F, ptype)
+	local kind = Config.Punches[ptype] and Config.Punches[ptype].kind or "straight"
+	local k = INSIDE[kind]
+	if k then
+		return dist <= range * k
+	end
+	return dist <= range + 0.25
 end
 
 ------------------------------------------------------------------------
@@ -1049,7 +1060,7 @@ function FightAI:Think(now)
 	-- the floor under it (Config.FightAI.tiers[].floor punches a minute while he is within a step of its reach: a
 	-- step in and a punch when it has gone too long without one - a debut opponent is easier, never passive)
 	local M = MODES[self.mode]
-	local work = (aggr * 0.2 + self.jabRate * 0.08) * AIC.work * self.tier.work * (engine.aiWork or 1) * (0.55 + 0.45 * self.skill) * ((M and M.work) or 1)
+	local work = (aggr * 0.16 + self.jabRate * 0.07) * AIC.work * self.tier.work * (engine.aiWork or 1) * (0.45 + 0.35 * self.skill) * ((M and M.work) or 1)
 	local open = self:Opening(now, dist, jab)
 	if open then
 		work *= AIC.openWork
