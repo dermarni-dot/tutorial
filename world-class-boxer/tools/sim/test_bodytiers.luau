@@ -253,7 +253,6 @@ do
 	local base = BodyTiers.PartEntry(3, "UpperTorso", REAL)
 	check("an unknown frame wears the default family", unknown and base and unknown.id == base.id and unknown.frame == "Athletic")
 end
-end
 
 ------------------------------------------------------------------------
 -- faces and expressions
@@ -745,6 +744,7 @@ do
 		local n4 = BuilderTiers.Apply(model, plain, scale)
 		check("frame swap: the model's Frame attribute", n4 == 14 and model:FindFirstChild("UpperTorso"):GetAttribute("BodyFrame") == "Lean", n4)
 	end
+end
 
 ------------------------------------------------------------------------
 -- the asset hair on the classic head
