@@ -62,6 +62,16 @@ local Combos = require(Shared:WaitForChild("Combos"))
 local Evasion = require(Shared:WaitForChild("Evasion"))
 -- the AI boxers' ring traits (resistances, scouting) and the player's fighting type
 local Traits = require(Shared:WaitForChild("Traits"))
+-- reach and hit volumes from the live rigs (Shared.HitGeometry: the client's prediction runs the same code);
+-- optional: without it the ranges fall back to the old tape-based numbers
+local HitGeometry
+do
+	local hg = Shared:FindFirstChild("HitGeometry")
+	if hg then
+		local ok, mod = pcall(require, hg)
+		HitGeometry = ok and type(mod) == "table" and mod or nil
+	end
+end
 local FightAI = require(script.Parent.FightAI)
 local Career = require(script.Parent.Career)
 -- [Entrance] the ring-walk cinematic's beats (RingWalk + Shared.Entrance): optional, the old walkout runs without it
@@ -161,6 +171,23 @@ local function rigSize(model, hum, root)
 		height = standHeight(hum, root) + (head.Position.Y + head.Size.Y / 2 - root.Position.Y)
 	end
 	return k, height
+end
+
+-- a fighter's body as the hit detection sees it (HitGeometry frame): off the rig's parts when it has them, else
+-- from Builder.Scales of his app and the tale of the tape (the headless sims' stub rigs, an old record)
+local function geoFrame(F)
+	if not HitGeometry then
+		return nil
+	end
+	local data = F.data or {}
+	local app = type(data.app) == "table" and table.clone(data.app) or { gender = 1 }
+	app.height = tonumber(data.height) or app.height or 70
+	local ok, sc = pcall(Builder.Scales, app, data.build, nil)
+	local fallback = HitGeometry.FrameFromScales(ok and sc or nil, { height = app.height, reach = tonumber(data.reach), female = app.gender == 2 })
+	local root = F.root
+	local soleY = root and root.Position and (root.Position.Y - standHeight(F.hum, root)) or nil
+	local okF, frame = pcall(HitGeometry.Frame, F.model, soleY, fallback)
+	return okF and frame or fallback
 end
 
 -- server attributes are change-only (CONTRACTS ground rules)
@@ -366,11 +393,131 @@ end
 -- mul (optional) = a special move's range multiplier (Moves.Data.range): applied BEFORE the floor, so a short
 -- move (liver shot 0.95, lead uppercut 0.9) still reaches a man standing as close as the bodies allow
 function Fight:PunchRange(F, ptype, mul)
-	-- (the reach is the arm's: the athletic rigs' arms are as long as the classic ones, so the base stays;
-	-- the closest distances grow with the bodies - self.sp, the spacing scaled to the pair's rigs)
+	local floor = (self.sp or SPACING).min
+	local G, OG = self:Geo(F), self:Geo(self:Other(F))
+	if G and OG then
+		-- the live rigs (HitGeometry): how far out this man's punch reaches the other's head at a level stance;
+		-- the frames never change in a fight, so each punch is worked out once
+		local key = ptype .. "|" .. tostring(mul or 1)
+		F.rangeCache = F.rangeCache or {}
+		local r = F.rangeCache[key]
+		if not r then
+			r = HitGeometry.Range(G, OG, ptype, false, { mul = mul, floor = floor })
+			F.rangeCache[key] = r
+		end
+		-- never shorter than the closest the bodies get, so every punch can land up close (the height still
+		-- decides there: Fight:HitTest)
+		return math.max(floor, r)
+	end
+	-- (no HitGeometry: the tape's reach and height, as before)
 	local base = SPACING.base + ((F.data.reach or 70) - 70) * 0.05 + ((F.data.height or 70) - 70) * 0.02
-	-- never shorter than the closest the bodies get (minSep), so every punch can land up close
-	return math.max((self.sp or SPACING).min, base * (Config.Punches[ptype] and Config.Punches[ptype].range or 1) * (mul or 1))
+	return math.max(floor, base * (Config.Punches[ptype] and Config.Punches[ptype].range or 1) * (mul or 1))
+end
+
+-- a fighter's HitGeometry frame (built once, from his rig or his tape: geoFrame); nil without the module
+function Fight:Geo(F)
+	if not HitGeometry or not F then
+		return nil
+	end
+	if not F.geo then
+		F.geo = geoFrame(F)
+	end
+	return F.geo
+end
+
+-- what the two sizes favour in F's hands (HitGeometry.PunchPrefs: ptype -> weight), nil without the module
+function Fight:GeoPrefs(F)
+	local G, OG = self:Geo(F), self:Geo(self:Other(F))
+	if not (G and OG) then
+		return nil
+	end
+	return (HitGeometry.PunchPrefs(G, OG))
+end
+
+-- how bent over the man is right now, 0..1 (HitGeometry lowers his head and chest by it): a roll or a weave takes
+-- him right down, a duck and a body-shot crouch most of the way, a slip and a hurt man's hunch a little
+function Fight:Bend(O)
+	local now = self:Now()
+	local bend = 0
+	if now < (O.rollUntil or 0) then
+		bend = 1
+	elseif O.dodgeKind == "weave" and now < (O.dodgeEnd or 0) then
+		bend = 0.9
+	elseif O.dodgeKind == "duck" and now < (O.dodgeEnd or 0) then
+		bend = 0.8
+	end
+	if O.state == "punching" and O.punchBody then
+		bend = math.max(bend, 0.5)
+	end
+	if now < (O.slipUntil or 0) then
+		bend = math.max(bend, 0.3)
+	end
+	if self:IsHurt(O) or (O.tier or 0) >= 1 then
+		bend = math.max(bend, 0.25)
+	end
+	if O.blocking then
+		bend = math.max(bend, 0.1)
+	end
+	return bend
+end
+
+-- does F's punch reach O from dist (root to root)? The geometry of the two rigs (HitGeometry.Test): his glove's
+-- path against O's head or body, O's bend, the fight's close floor. Returns the test's verdict table (ok, zone,
+-- why = "short" | "high" | "low", redirected = a head shot that lands on the body); without the module, the old
+-- range check as a verdict
+function Fight:HitTest(F, O, ptype, body, dist, mul)
+	local G, OG = self:Geo(F), self:Geo(O)
+	if not (G and OG) then
+		local ok = dist <= self:PunchRange(F, ptype, mul)
+		return { ok = ok, zone = body and "body" or "head", why = (not ok) and "short" or nil }
+	end
+	return HitGeometry.Test(G, OG, ptype, body, dist, { mul = mul, floor = (self.sp or SPACING).min, bend = self:Bend(O), noRedirect = ptype == "overhand" })
+end
+
+-- the closest the two bodies get, centre to centre (the pair's scaled spacing, and no less than their real torsos
+-- and gloves need: HitGeometry.MinSep)
+function Fight:MinSep()
+	local base = (self.sp or SPACING).minSep
+	if not self.minSepGeo then
+		local G, OG = self:Geo(self.P), self:Geo(self.O)
+		self.minSepGeo = (G and OG) and HitGeometry.MinSep(G, OG) or 0
+	end
+	return math.max(base, self.minSepGeo)
+end
+
+-- how far out F can tie the other man up: his arms' reach (HitGeometry.ClinchRange), never inside the bodies
+function Fight:ClinchRange(F)
+	local G, OG = self:Geo(F), self:Geo(self:Other(F))
+	if not (G and OG) then
+		return (self.sp or SPACING).clinch
+	end
+	F.clinchRange = F.clinchRange or math.max(HitGeometry.ClinchRange(G, OG), self:MinSep() + 0.4)
+	return F.clinchRange
+end
+
+-- the player ends a sparring session early (the spar HUD's Leave Sparring): the coach's cards so far decide it,
+-- the session pays out its share (res.partial: the rounds boxed over the rounds booked) and the round loop ends
+-- as it does on any stoppage (Cleanup restores the player, Main's runSpar puts him back in the gym)
+function Fight:LeaveSpar(F)
+	if not self.spar or self.pvp or not F.isPlayer or self.finished or self.aborted then
+		return false
+	end
+	local now = self:Now()
+	local boxed = math.max(0, (self.round or 0) - 1)
+	if self.live and self.roundSeconds > 0 then
+		boxed += math.clamp((self.roundSeconds - math.max(0, (self.roundEnd or now) - now)) / self.roundSeconds, 0, 1)
+	end
+	local d = Career.DecideCards(self.cards)
+	self.sparExit = {
+		outcome = d.outcome, method = "Ended", reason = "Session ended early", round = math.max(1, self.round or 1),
+		partial = math.clamp(boxed / math.max(1, self.rounds or 1), 0.1, 1),
+	}
+	self.finished = true
+	self.live = false
+	self.winner = d.outcome == "win" and self.P or (d.outcome == "loss" and self.O or nil)
+	self.method, self.reason, self.endRound = "Ended", "Session ended early", self.round
+	self:Send({ t = "announce", text = "COACH: \"That's time. Good work today.\"" })
+	return true
 end
 
 function Fight:IsHurt(F)
@@ -936,7 +1083,15 @@ function Fight:Punch(F, ptype, body, counter, fromBuffer)
 	end
 	if ptype == "overhand" then
 		body = false
+	elseif not body and HitGeometry then
+		-- a head shot the geometry says lands on the body from here (a much taller man out at range) is thrown
+		-- at the body: the act (and the client's prediction, which runs the same test) aims where it will land
+		local pre = self:HitTest(F, O, ptype, false, self:Distance(F, O))
+		if pre.redirected then
+			body = true
+		end
 	end
+	F.punchBody = body == true
 	local s = F.data.stats
 	local stamPct = F.stamina / F.maxStam
 	local windup = P.windup * punchSpeed(F, stamPct)
@@ -1436,10 +1591,18 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	local now = self:Now()
 	local dist = self:Distance(F, O)
 	sp = sp or {}
-	if dist > self:PunchRange(F, ptype, sp.range) then
+	-- the reach (HitGeometry through Fight:HitTest): his glove's path from his real shoulder against the other
+	-- man's real head or body at this distance, his bend, the fight's close floor. A head shot that cannot get up
+	-- to a much taller chin lands on the body when it reaches that far
+	local hit = self:HitTest(F, O, ptype, body, dist, sp.range)
+	if not hit.ok then
 		self:ChainResult(F, O, sp, "miss")
-		self:Miss(F, O, ptype, "short")
+		self:Miss(F, O, ptype, hit.why == "high" and "high" or (hit.why == "low" and "low" or "short"))
 		return
+	end
+	if hit.redirected and not body then
+		body = true
+		self:Send({ t = "redirect", who = self:Who(F), punch = ptype })
 	end
 	if self:Evaded(F, O, ptype, body, now) then
 		if F.ai and F.ai.obs then
@@ -2086,7 +2249,7 @@ end
 
 function Fight:CanClinch(F)
 	local O = self:Other(F)
-	return self:CanAct(F) and O.state ~= "down" and self:Now() >= F.nextClinch and F.stamina >= 4 and self:Distance(F, O) < (self.sp or SPACING).clinch
+	return self:CanAct(F) and O.state ~= "down" and self:Now() >= F.nextClinch and F.stamina >= 4 and self:Distance(F, O) < self:ClinchRange(F)
 end
 
 function Fight:Clinch(F)
@@ -2982,7 +3145,7 @@ function Fight:MoveAI(F, range, circle, cut)
 			away = unitOr(away * (1 - cut) + toC.Unit * cut, away)
 		end
 	end
-	local MIN_SEP = (self.sp or SPACING).minSep
+	local MIN_SEP = self:MinSep()
 	range = math.max(range, MIN_SEP)
 	local rot = CFrame.Angles(0, circle, 0):VectorToWorldSpace(away)
 	local target = self:ClampToRing(O.root.Position + rot * range)
@@ -3018,7 +3181,7 @@ function Fight:Separate()
 	if not (P.root and O.root) or P.state == "down" or O.state == "down" then
 		return
 	end
-	local minSep = (self.sp or SPACING).minSep
+	local minSep = self:MinSep()
 	local d = flat(O.root.Position - P.root.Position)
 	local m = d.Magnitude
 	if P.state == "clinch" or O.state == "clinch" then
@@ -4270,6 +4433,8 @@ function Fight:Run()
 			talk = V == P and offer.talk or "", myLine = V == P and offer.myLine or "",
 			-- the special moves this viewer may throw (ids) and the aim-assist level the server will honour
 			moves = movesList(V), assist = V.assist,
+			-- the hit detection's frames (HitGeometry): the client's prediction and range read-out run on these
+			geo = { you = V.geo, opp = X.geo, floor = (self.sp or SPACING).min },
 			-- the first-time tutorial: the client puts its step card up
 			tutorial = self.tutorial and Tutorial and { total = #(self.tutorial.steps or Tutorial.STEPS), special = self.tutorial.special or (not self.debut and Tutorial.SPECIAL) or nil,
 				debut = self.debut or nil } or nil,
@@ -4408,7 +4573,7 @@ function Fight:Run()
 
 	local res
 	if self.finished then
-		res = { outcome = self.winner == P and "win" or "loss", method = self.method, reason = self.reason, round = self.endRound or self.round }
+		res = self.sparExit or { outcome = self.winner == P and "win" or "loss", method = self.method, reason = self.reason, round = self.endRound or self.round }
 	else
 		-- [Judging] the three judges' totals decide it (unanimous / split / majority / draw; Career's rule as the fallback)
 		res = Judging and Judging.Decide(self.cards) or Career.DecideCards(self.cards)
@@ -4434,7 +4599,7 @@ end
 function Fight:ResultFor(F, base)
 	local O = self:Other(F)
 	local red = F == self.P
-	local res = { method = base.method, reason = base.reason, round = base.round }
+	local res = { method = base.method, reason = base.reason, round = base.round, partial = base.partial }
 	local FLIP_OUT = { win = "loss", loss = "win" }
 	res.outcome = red and base.outcome or (FLIP_OUT[base.outcome] or base.outcome)
 	if red then
@@ -4840,6 +5005,10 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 	for _, X in ipairs({ { self.P, hP }, { self.O, hO } }) do
 		X[1].bodyK = FightMotion and FightMotion.BodyScale and FightMotion.BodyScale(X[2]) or 1
 	end
+	-- the hit detection's frames off the rigs now, in their rest pose (Fight:Geo; the start message hands the
+	-- client the same numbers)
+	self:Geo(self.P)
+	self:Geo(self.O)
 	if pData.injuryCut then
 		self.cutRisk[self.P] = 1.8
 	end
@@ -4945,6 +5114,10 @@ function FightEngine.Input(player, msg)
 	elseif t == "pause" then
 		-- (not a fight input: the Moves & Controls window opened / closed)
 		fight:MenuPause(F, msg.on == true)
+		return
+	elseif t == "leaveSpar" then
+		-- the spar HUD's Leave Sparring (a spar only; a PvP spar or a fight ignores it)
+		fight:LeaveSpar(F)
 		return
 	end
 	-- which device the input came from (the client tags gamepad inputs): the aim assist reads it; a pad

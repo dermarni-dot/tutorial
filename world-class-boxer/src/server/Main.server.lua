@@ -1127,7 +1127,8 @@ local function runSpar(player, profile, intensity)
 			q = 0.4 -- you have to actually spar
 		end
 		local act = Training.Activity("Sparring")
-		local out = Training.Perform(profile, act, q, { intensity = intensity, scale = SPAR_SCALE[intensity], extraRisk = SPAR_RISK[intensity] })
+		-- (a session the player left early pays out its share: res.partial, FightEngine's Fight:LeaveSpar)
+		local out = Training.Perform(profile, act, q, { intensity = intensity, scale = SPAR_SCALE[intensity] * math.clamp(tonumber(res.partial) or 1, 0.1, 1), extraRisk = SPAR_RISK[intensity] })
 		-- sparring marks follow the player home (CONTRACTS 8.3: res.face is already scaled by the session's
 		-- damage level; SPAR_SCALE above is the training-gain scale, unrelated)
 		if type(res.face) == "table" and type(Training.AddFaceDamage) == "function" then

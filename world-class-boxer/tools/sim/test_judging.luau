@@ -56,7 +56,7 @@ check("10-10 an even round", ms(0.1, 0, 0) == "10-10")
 check("10-8 a knockdown", ms(0, 1, 0) == "10-8")
 check("8-10 a knockdown against", ms(1, 0, 1) == "8-10")
 check("10-7 two knockdowns", ms(0, 2, 0) == "10-7")
-check("10-9 when the man who went down won the rest clearly", ms(-4, 1, 0) == "10-9")
+check("10-9 when the man who went down won the rest clearly", ms(-7, 1, 0) == "10-9")
 check("equal knockdowns cancel and the work decides", ms(1, 1, 1) == "10-9")
 check("a foul costs the point after the round is scored", ms(2, 0, 0, 1, 0) == "9-9")
 check("a foul on the loser: 10-8 without a knockdown", ms(2, 0, 0, 0, 1) == "10-8")
@@ -94,7 +94,7 @@ check("the reasons name the better work", type(clear.judges[2].reason) == "strin
 
 -- the busy presser against the cleaner counter-puncher: judge 1 (aggression) and judge 2 (clean) disagree
 local split = Judging.Score({
-	red = side({ landed = 20, thrown = 95, power = 12, byType = { jab = 8, cross = 6, leadhook = 4, rearhook = 2 }, liveT = 180, centreT = 150, pressT = 140, blocked = 3, evaded = 1, mom = 0.6 }),
+	red = side({ landed = 24, thrown = 95, power = 14, byType = { jab = 10, cross = 7, leadhook = 5, rearhook = 2 }, liveT = 180, centreT = 150, pressT = 140, blocked = 3, evaded = 1, mom = 0.6 }),
 	blue = side({ landed = 20, thrown = 46, power = 12, counters = 7, heavy = 2, byType = { jab = 6, cross = 8, uppercut = 4, overhand = 2 }, liveT = 180, centreT = 25, pressT = 5, blocked = 22, evaded = 12, parried = 4, missed = 60 }),
 	seconds = 180 })
 check("the aggression judge gives the presser the round", split.cards[1][1] == 10 and split.cards[1][2] == 9, cardsOf(split))
@@ -115,7 +115,7 @@ local Random = H.globals.Random
 local splits, clears = 0, 0
 for seed = 1, 60 do
 	local rng = Random.new(seed)
-	local close = Judging.Score({ red = side({ landed = 15, thrown = 50, power = 8, liveT = 180, centreT = 90, pressT = 50 }), blue = side({ landed = 14, thrown = 50, power = 8, liveT = 180, centreT = 90, pressT = 50 }), seconds = 180 }, rng)
+	local close = Judging.Score({ red = side({ landed = 15, thrown = 50, power = 8, liveT = 180, centreT = 90, pressT = 50 }), blue = side({ landed = 15, thrown = 50, power = 7, liveT = 180, centreT = 90, pressT = 50 }), seconds = 180 }, rng)
 	local c = cardsOf(close)
 	if c:find("9%-10") and c:find("10%-9") then
 		splits += 1
@@ -156,7 +156,7 @@ local function texts(a)
 	end
 	return table.concat(t, " | ")
 end
-check("a decision reads the three cards", select(2, texts(ud):gsub("scores", "")) == 3, texts(ud))
+check("a decision reads the three cards", select(2, texts(ud):gsub("score", "")) == 4, texts(ud))
 check("a decision ends on the winner by unanimous decision", texts(ud):find("UNANIMOUS DECISION") and texts(ud):find("MARCUS REED", 1, true) and ud.lines[#ud.lines].kind == "winner", texts(ud))
 check("the hand goes up on the winner's line", ud.raiseAt == ud.lines[#ud.lines].at and ud.dur > ud.raiseAt)
 check("the lines are in time order", (function()
@@ -168,7 +168,7 @@ check("the lines are in time order", (function()
 	return true
 end)())
 local sd = Judging.Announce({ outcome = "loss", method = "SD", round = 12, cards = { { 115, 113 }, { 113, 115 }, { 113, 115 } } }, names, { rounds = 12 })
-check("a split decision reads the dissenting card first", sd.lines[3].text:find("Marcus Reed", 1, true) ~= nil and sd.lines[3].text:find("115%-113"), sd.lines[3].text)
+check("a split decision reads the dissenting card first, that man's total first", sd.lines[3].text:find("Marcus Reed", 1, true) ~= nil and sd.lines[3].text:find("115%-113") ~= nil, sd.lines[3].text)
 check("...and names the other man the winner", texts(sd):find("SPLIT DECISION") and texts(sd):find("DMITRI VOLKOV", 1, true), texts(sd))
 local ko = Judging.Announce({ outcome = "win", method = "KO", round = 3 }, names, { rounds = 10, time = 92 })
 check("a knockout gives the time and the round", texts(ko):find("1:32 of round 3", 1, true) and texts(ko):find("KNOCKOUT") and ko.stoppage, texts(ko))
@@ -199,7 +199,7 @@ S.setClock(500)
 local f = S.NewFight(data(), data("Swarmer"), 3, 3)
 f.round, f.live, f.roundEnd = 1, true, S.now() + 60
 -- the observer through the real Send: a hit by type, a block, a slip, a miss, and the centre of the ring
-f.Send = nil -- (the sim's per-fight stub off: the module's Send runs, the base is the engine's own)
+f.Send, f.SendEach = nil, nil -- (the sim's per-fight stubs off: the module's Send / SendEach run on the engine's own)
 local sent = {}
 local baseSendTo = f.SendTo
 f.SendTo = function(_, _, m)

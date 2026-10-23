@@ -29,7 +29,7 @@ local Judging = {}
 
 Judging.JUDGES = {
 	{ id = "aggression", name = "Judge 1", lean = "Effective aggression", noise = 1.0,
-		w = { clean = 0.9, ring = 0.8, aggr = 1.6, def = 0.5, press = 1.4 } },
+		w = { clean = 0.9, ring = 0.8, aggr = 2.0, def = 0.3, press = 1.8 } },
 	{ id = "clean", name = "Judge 2", lean = "Clean punching", noise = 0.8,
 		w = { clean = 1.35, ring = 0.6, aggr = 0.6, def = 0.7, press = 0.6 } },
 	{ id = "defence", name = "Judge 3", lean = "Defence and ring control", noise = 1.2,
@@ -41,7 +41,7 @@ Judging.PUNCH_W = { jab = 0.6, cross = 1.0, leadhook = 1.05, rearhook = 1.1, upp
 Judging.POWER_TYPES = { cross = true, leadhook = true, rearhook = true, uppercut = true, overhand = true }
 
 Judging.EVEN_ROUND = 0.35 -- |diff| under this (in judge points) is an even round
-Judging.DOMINANT_ROUND = 3.0 -- a differential this big outweighs one knockdown point
+Judging.DOMINANT_ROUND = 6.0 -- a differential this big (clear domination) outweighs one knockdown point
 
 local function num(v)
 	return tonumber(v) or 0
@@ -138,18 +138,19 @@ function Judging.Categories(S, other, seconds)
 	local live = math.max(num(S.liveT), num(other.liveT), 1)
 	local centre = num(S.centreT) / live
 	local press = num(S.pressT) / live
-	local ring = centre * 3.0 + press * 2.0 - num(S.clinches) * 0.35
-	-- effective aggression: the work rate (per three minutes) and the momentum
+	-- (clean punching is the big category, as on a real card: these are worth a couple of points a round at most)
+	local ring = centre * 1.5 + press * 1.0 - num(S.clinches) * 0.2
+	-- effective aggression: the work rate (per three minutes) that lands, the pressure and the momentum
 	local rate = thrown / seconds * 180
 	local acc = thrown > 0 and landed / thrown or 0
-	local aggr = rate * 0.03 * (0.5 + acc) + press * 1.5 + math.clamp(num(S.mom), -1, 1) * 1.2
+	local aggr = rate * 0.012 * (0.5 + acc) + press * 0.8 + math.clamp(num(S.mom), -1, 1) * 0.8
 	-- defence: what he kept off himself, and what the other man wasted
-	local def = num(S.blocked) * 0.18 + num(S.evaded) * 0.45 + num(S.parried) * 0.4 + num(S.missed) * 0.06
+	local def = num(S.blocked) * 0.08 + num(S.evaded) * 0.2 + num(S.parried) * 0.2 + num(S.missed) * 0.02
 	local oppThrown = num(other.thrown)
 	if oppThrown > 0 then
-		def += (1 - math.clamp(num(other.landed) / oppThrown, 0, 1)) * 1.2
+		def += (1 - math.clamp(num(other.landed) / oppThrown, 0, 1)) * 0.8
 	end
-	return { clean = clean, ring = ring, aggr = aggr, def = def, press = press * 3 }
+	return { clean = clean, ring = ring, aggr = aggr, def = def, press = press * 1.5 }
 end
 
 -- one judge's differential (A - B) in his points
@@ -168,7 +169,7 @@ local function noiseOf(rng, k)
 	local ok, v = pcall(function()
 		return rng:NextNumber(-1, 1)
 	end)
-	return ok and (num(v) * 0.9 * k) or 0
+	return ok and (num(v) * 1.4 * k) or 0
 end
 
 local function fmtRound(a, b)
@@ -332,14 +333,26 @@ function Judging.Announce(res, names, info)
 			say(string.format("This bout is declared a %s DRAW.", string.upper(res.drawKind or "")), "draw", 4.0)
 		else
 			local pre = {}
-			local winners = 0
-			for j, s in ipairs(scores) do
-				local c = cards[j] or { 0, 0 }
-				local forWinner = (winner == "red" and num(c[1]) > num(c[2])) or (winner == "blue" and num(c[2]) > num(c[1]))
-				if forWinner then
-					winners += 1
+			for j = 1, math.max(#cards, #scores) do
+				local c = cards[j]
+				local a, b = c and num(c[1]) or 0, c and num(c[2]) or 0
+				local forWinner, even
+				if c then
+					forWinner = (winner == "red" and a > b) or (winner == "blue" and b > a)
+					even = a == b
+				else
+					forWinner = true
+					even = false
 				end
-				pre[j] = { s = s, forWinner = forWinner, even = num(c[1]) == num(c[2]) }
+				-- the card is read with the named man's total first (the loser's on a card he won)
+				local s
+				if c then
+					local w1, w2 = (winner == "red") and a or b, (winner == "red") and b or a
+					s = forWinner and fmtRound(w1, w2) or fmtRound(w2, w1)
+				else
+					s = scores[j]
+				end
+				pre[j] = { s = s, forWinner = forWinner, even = even }
 			end
 			-- the announcer reads the dissenting card first and saves the winner's name for the end
 			local order = {}
@@ -364,7 +377,7 @@ function Judging.Announce(res, names, info)
 				elseif not p.forWinner then
 					text = string.format("Judge %d scores the bout %s for %s.", j, p.s, lName)
 				elseif last then
-					text = string.format("%s %s, %s...", method == "UD" and "All three judges score it" or "And judge " .. j .. " scores it", p.s, method == "UD" and "for the winner" or "for the winner")
+					text = string.format("%s %s, for the winner...", method == "UD" and "All three judges score it" or ("And judge " .. j .. " scores it"), p.s)
 				else
 					text = string.format("Judge %d scores it %s...", j, p.s)
 				end

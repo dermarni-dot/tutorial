@@ -502,6 +502,16 @@ function FightAI:Range()
 	if self.mode == "outbox" and self.read:Distance() and self.read:Distance() < jab * 0.85 then
 		share += 0.06
 	end
+	-- the sizes: the longer man boxes a touch further out (his jab lands where the other's does not), the shorter
+	-- one wants it closer (his shots only reach up from inside); the jab range above already carries his own reach
+	if self.geoPrefs == nil and self.engine.GeoPrefs then
+		self.geoPrefs = self.engine:GeoPrefs(self.F) or false
+	end
+	local gp = self.geoPrefs
+	if gp then
+		local long = (gp.jab - 1) - (gp.uppercut - 1)
+		share += math.clamp(long, -0.5, 0.5) * 0.12
+	end
 	return jab * share * (self.engine.aiRange or 1)
 end
 
@@ -543,6 +553,21 @@ function FightAI:PunchPrefs()
 	pref.uppercut *= 1 + weaver * self.skill
 	pref.cross *= 1 - slick * 0.4 * self.skill
 	pref.jab *= 1 - slick * 0.3 * self.skill
+	-- the sizes (HitGeometry.PunchPrefs off the two rigs): the longer man works his jab and cross, the shorter one
+	-- hooks and uppercuts inside; a boxer who knows his trade leans on it more
+	local HG = self.geoPrefs
+	if HG == nil then
+		HG = engine.GeoPrefs and engine:GeoPrefs(self.F) or false
+		self.geoPrefs = HG
+	end
+	if HG then
+		local lean = 0.5 + 0.5 * self.skill
+		for p, m in pairs(HG) do
+			if pref[p] then
+				pref[p] *= 1 + (m - 1) * lean
+			end
+		end
+	end
 	return pref
 end
 
@@ -774,7 +799,7 @@ function FightAI:Think(now)
 	end
 	if self.mode == "survive" or self.mode == "reset" then
 		local hold = self.mode == "survive" and (tier >= 1 and 0.45 or 0.25) or 0.12
-		if dist < SPACING.clinch * rk and self.rng:NextNumber() < hold and engine:CanClinch(F) then
+		if dist < (engine.ClinchRange and engine:ClinchRange(F) or SPACING.clinch * rk) and self.rng:NextNumber() < hold and engine:CanClinch(F) then
 			engine:Clinch(F)
 			return
 		end
