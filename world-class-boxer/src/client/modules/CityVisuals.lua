@@ -720,7 +720,78 @@ local function adContent(P, slot)
 	return nil
 end
 
+-- the billboards are lit after dark: a warm spot on each face (tagged NightLight) and a glowing frame
+local function billboardLights()
+	local faces = {}
+	for _, face in ipairs(CollectionService:GetTagged("CityBillboard")) do
+		if face:IsDescendantOf(workspace) and face:IsA("BasePart") then
+			table.insert(faces, face)
+		end
+	end
+	group("BillboardLights", #faces > 0 and tostring(#faces) or "", function(f)
+		for _, face in ipairs(faces) do
+			local cf = face.CFrame
+			local w, h = face.Size.X, face.Size.Y
+			-- two spots on a bar below the face, aimed up at it
+			for _, x in ipairs({ -w * 0.25, w * 0.25 }) do
+				local at = cf * CF(x, -h / 2 - 0.8, -2.6)
+				local aim = cf * CF(x, h * 0.2, 0)
+				local src = part(f, "BillboardLight", V3(0.5, 0.5, 0.9), CFrame.lookAt(at.Position, aim.Position), DARK, M.Metal, { shadow = false })
+				local l = Instance.new("SpotLight")
+				l.Face = Enum.NormalId.Front
+				l.Angle = 70
+				l.Range = math.max(12, h + 6)
+				l.Brightness = 2.2
+				l.Color = Color3.fromRGB(255, 240, 214)
+				l.Shadows = false
+				l.Enabled = false
+				l.Parent = src
+				tag(l, "NightLight")
+			end
+			-- a thin LED frame round the face (the colour of the city's signage gold)
+			for _, e in ipairs({ { 0, h / 2 + 0.1, w + 0.3, 0.14 }, { 0, -h / 2 - 0.1, w + 0.3, 0.14 } }) do
+				part(f, "BillboardLED", V3(e[3], e[4], 0.14), cf * CF(e[1], e[2], -face.Size.Z / 2), GOLD, M.Neon, { shadow = false })
+			end
+		end
+	end)
+end
+
+-- coloured street accents on Main Street after dark: a small neon-coloured light under alternate street
+-- light heads (magenta / cyan / gold / green round the row), capped so the Low level can cull them cheaply
+local STREET_NEON = { Color3.fromRGB(255, 70, 190), Color3.fromRGB(60, 220, 255), Color3.fromRGB(255, 200, 60), Color3.fromRGB(90, 240, 150) }
+local function streetAccents()
+	local c = cityRoot()
+	local heads = {}
+	for _, folderName in ipairs({ "MainStreet", "NorthRow" }) do
+		local row = c and c:FindFirstChild(folderName)
+		if row then
+			for _, d in ipairs(row:GetDescendants()) do
+				if d.Name == "LightHead" and d:IsA("BasePart") then
+					table.insert(heads, d)
+				end
+			end
+		end
+	end
+	table.sort(heads, function(a, b)
+		return a.Position.X < b.Position.X
+	end)
+	local cap = lodPick(0, 16, 32)
+	group("StreetNeon", (#heads > 0 and cap > 0) and (tostring(#heads) .. ":" .. cap) or "", function(f)
+		local n = 0
+		for i, head in ipairs(heads) do
+			if i % 2 == 1 and n < cap then
+				n += 1
+				local col = STREET_NEON[(n - 1) % #STREET_NEON + 1]
+				local ring = part(f, "StreetNeonRing", V3(1.7, 0.12, 3.5), head.CFrame * CF(0, -0.55, 0), col, M.Neon, { shadow = false, transparency = 0.2 })
+				nightLight(ring, col, 15, 1.0)
+			end
+		end
+	end)
+end
+
 local function updateBillboards(P)
+	pcall(billboardLights)
+	pcall(streetAccents)
 	for _, face in ipairs(CollectionService:GetTagged("CityBillboard")) do
 		if face:IsDescendantOf(workspace) then
 			local c = adContent(P, face:GetAttribute("Slot"))
@@ -729,6 +800,8 @@ local function updateBillboards(P)
 				face:SetAttribute("LocalKey", key)
 				overlay(face, "Ad", c and function(sg)
 					sg.PixelsPerStud = 10
+					sg.LightInfluence = 0
+					sg.Brightness = 1.4
 					frame(sg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = c.bg })
 					frame(sg, { Size = UDim2.fromScale(1, 0.05), Position = UDim2.fromScale(0, 0.95), BackgroundColor3 = c.fg })
 					silhouette(sg, c.fg, 0.04, 0.2, 1.3)

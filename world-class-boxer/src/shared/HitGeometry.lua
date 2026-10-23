@@ -38,10 +38,26 @@ local UNIT = {
 UNIT.arm = (UNIT.shoulderY - UNIT.wristY) + UNIT.gloveLen
 HitGeometry.UNIT = UNIT
 
--- the spacing the ranges were balanced on (FightMotion.Spacing: base 4.3 x Config.Punches[p].range)
+-- the spacing the ranges were first balanced on (FightMotion.Spacing: base 4.3 x Config.Punches[p].range), kept for
+-- the callers that read it; the ranges themselves are calibrated to what the fight ANIMATION reaches (TARGET below)
 HitGeometry.BASE = 4.3
 HitGeometry.MIN_SEP = 3.25
 HitGeometry.CLINCH = 4.8
+-- the root-to-root distance out to which the unit rig's punch VISIBLY lands on the unit rig (AnimFight's extension,
+-- measured by tools/sim/v9_anim.luau's punch clip over a sweep of gaps: the glove's face within a quarter stud of the
+-- head / the chest at the peak - jab 5.5, cross 5.6, lead hook 4.85, rear hook 5.35, uppercut 4.7, body jab 5.35 on
+-- the Athletic tier-3 rig; the Heavyweight within 0.1, the Lean within 0.2), less a tenth: the server's hit test and
+-- the player's eye agree on the boundary (tools/sim/test_hitdetect pins it within 0.25). The overhand (not in the
+-- clip) takes the cross's; the body shots the body jab's share of the head's
+local TARGET = {
+	jab = { head = 5.5, body = 5.35 },
+	cross = { head = 5.45, body = 5.3 },
+	leadhook = { head = 4.8, body = 4.7 },
+	rearhook = { head = 5.3, body = 5.15 },
+	uppercut = { head = 4.65, body = 4.55 },
+	overhand = { head = 5.3, body = 5.15 },
+}
+HitGeometry.TARGET = TARGET
 
 -- the punch's shape by kind: where it starts (origin: shoulderY + o x arm), the angles it can be thrown at (up /
 -- down, degrees, at full reach), how far up and down the glove gets from the origin as a share of the arm (the
@@ -216,7 +232,17 @@ function HitGeometry.Frame(model, soleY, fallback)
 	if not root then
 		return giveUp("no HumanoidRootPart")
 	end
+	-- the soles: the feet's own bottoms in the rest pose when the rig has feet (the rig's truth, wherever the floor
+	-- or the Humanoid's HipHeight says it stands: a HipHeight 0.7 off the legs' own put every height off by as
+	-- much), else what the caller worked out from the HipHeight, else the classic 3.2 under the root
 	local sole = num(soleY, root.posY - 3.2)
+	local lf, rf = part("LeftFoot"), part("RightFoot")
+	if lf or rf then
+		local fb = math.min(lf and (lf.posY - lf.Y / 2) or math.huge, rf and (rf.posY - rf.Y / 2) or math.huge)
+		if fb < root.posY - 1 and fb > root.posY - 6 then
+			sole = fb
+		end
+	end
 	local function top(p)
 		return p.posY + p.Y / 2 - sole
 	end
@@ -498,15 +524,15 @@ function HitGeometry.PunchPrefs(A, B)
 end
 
 ------------------------------------------------------------------------
--- Calibration: the unit rig against itself lands every punch at exactly BASE x RANGE[p] (the distance the fight
--- was balanced on) with a level stance, to the head and to the body alike
+-- Calibration: the unit rig against itself lands every punch at exactly TARGET[p][zone] (where the animation's
+-- glove visibly lands) with a level stance, to the head and to the body alike
 ------------------------------------------------------------------------
 do
 	local U = HitGeometry.Unit()
-	for p, rg in pairs(RANGE) do
-		local target = HitGeometry.BASE * rg
+	for p in pairs(RANGE) do
 		CAL[p] = { head = 1, body = 1 }
 		for _, zone in ipairs({ "head", "body" }) do
+			local target = TARGET[p][zone]
 			local lo, hi = 0.2, 4
 			for _ = 1, 40 do
 				local mid = (lo + hi) / 2

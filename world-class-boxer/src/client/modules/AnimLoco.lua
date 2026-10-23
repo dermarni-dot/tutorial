@@ -393,10 +393,11 @@ local function walkTiming(lo, v, Ls, kL, vh, prof)
 	-- stance, never into a flight: one foot is always down at a walk)
 	local duty = lerp(0.685 - 0.053 * vh, 0.48 - 0.032 * vh, run)
 	-- (a leg reaches less to the side: a side step sweeps a little over a third of a forward one)
-	-- [Studio] a walker's step never sweeps further than 0.9 of the leg (hip to sole): the new frame families' legs are
-	-- longer or shorter than the part boxes the old measurement implied, and a foot asked to reach past the leg pulled
-	-- the pelvis down into the thighs (legs "into the body") or locked the knee straight; shorter, quicker steps instead
-	local reach = Ls * lerp(min(0.9, clamp(0.66 + 0.26 * vh, 0.8, 1.2)), 1.05, run) * (1 - 0.6 * lo.side)
+	-- ([Studio] no hard cap on the sweep at 0.9 or 1.0 of the leg: tried - it only quickened the cadence (0.85 -> 0.78 s),
+	-- flattened the pelvis bob by a third and doubled the dip a 0.25 s hitch frame leaves. The legs "into the body" came
+	-- from a leg measured at the wrong length and a floor at the wrong height - AnimRig.computeGeo now measures the leg
+	-- from the RigAttachment chain and the floor from HipHeight when the soles' bind height disagrees - not from the sweep)
+	local reach = Ls * lerp(clamp(0.66 + 0.26 * vh, 0.8, 1.2), 1.05, run) * (1 - 0.6 * lo.side)
 	if run < 0.5 and v * T * duty > reach then
 		-- (a quick man's own tempo still shows when the reach sets the step: shorter, quicker steps; a slow
 		-- one cannot step further than his legs reach)
@@ -1980,6 +1981,14 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 		-- (stiffer down into a heel strike: the pelvis is where the landing leg reaches as the heel meets the floor)
 		local x, v = K.spring2(x0, v0, drop, drop > x0 and lerp(28, 48, lo.landW * (1 - run)) or 26, 1, dt)
 		v = clamp(v, -DROP_RATE * 1.6, DROP_RATE * 1.6)
+		-- [Studio] and never more than a 30 Hz frame's worth of travel in ONE frame, however long the frame: a hitch
+		-- (a 0.1-0.25 s frame when Studio compiles a shader or streams a venue in) moves the root a whole step and the
+		-- feet with it, and the pelvis then dropped 0.4 studs in that single frame - a visible dip and a knee pop; it
+		-- eases down over the next frames instead (the foot stretches a hair through its soft reach meanwhile)
+		do
+			local mx = DROP_RATE * 1.6 * min(dt, 1 / 30)
+			x = x0 + clamp(x - x0, -mx, mx)
+		end
 		-- (as the trailing foot toes off, a walker's body coming down is caught by the leading leg over a
 		-- moment - its upward acceleration bounded, about a third of g - so the bottom of each step is round)
 		local lastOff = max(rig.foot.L.t0, rig.foot.R.t0)

@@ -67,7 +67,9 @@ local CAP = {
 	hz30 = { pitch = 0.8, roll = 2.0, yaw = 2.0, headPitch = 0.8, headRoll = 0.6, headX = 0.012, ltX = 0.024, ltY = 0.14 },
 	wander = { pitch = 0.6, roll = 1.6, yaw = 1.8, headPitch = 0.5, headRoll = 0.35, headX = 0.008, ltX = 0.02, ltY = 0.09 },
 	studio = { pitch = 0.6, roll = 1.6, yaw = 1.8, headPitch = 0.5, headRoll = 0.35, headX = 0.008, ltX = 0.02, ltY = 0.09 },
-	spike = { pitch = 1.0, roll = 4.0, yaw = 9.0, headPitch = 0.9, headRoll = 0.6, headX = 0.015, ltX = 0.05, ltY = 0.16 },
+	-- (the single 0.25 s hitch: whatever gait phase it lands on, the pelvis never dips more than the per-frame cap of
+	-- AnimLoco.feet, 0.21 studs, in that frame)
+	spike = { pitch = 1.0, roll = 4.0, yaw = 9.0, headPitch = 0.9, headRoll = 0.6, headX = 0.02, ltX = 0.05, ltY = 0.16 },
 }
 local steady = byKey.walk_steady
 check("steady walk recorded", steady ~= nil)

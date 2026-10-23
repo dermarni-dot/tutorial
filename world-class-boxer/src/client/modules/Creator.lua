@@ -1397,7 +1397,7 @@ local function begin()
 	})
 	if res.ok then
 		Creator.Close()
-		State.toast("Welcome to the fight game! Your amateur career starts now.", T.gold, 5)
+		State.toast("Welcome to the fight game. Your amateur career starts now.", T.gold, 5)
 		State.toast("Train at the gym stations, eat and sleep - then book a fight at the FIGHT BOARD (or press H).", T.gold, 7)
 	else
 		nextBtn.Text = "BEGIN CAREER"

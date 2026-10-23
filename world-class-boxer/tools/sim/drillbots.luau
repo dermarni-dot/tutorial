@@ -1,17 +1,28 @@
 --!nocheck
--- drillbots.luau: simulated players for every DrillScore / DrillWorkouts judge (test_drills.luau).
+-- drillbots.luau: simulated players for every DrillScore / DrillWorkouts judge (test_drills.luau,
+-- test_training.luau, drillmeasure.luau).
 -- A bot sees what the player sees (the judge's live state the stage draws) and answers with inputs:
 --   Bots.Act(seg, j, t, M, mem, skill, rng) -> { { id, down }, ... } to send at drill time t
--- skill: Bots.SKILLS.perfect / average / idle. `mem` is the bot's own memory for this segment.
+-- skill: one of Bots.SKILLS. Every policy is written for the perfect player and the average one, and
+-- the skill's `k` mixes between them (0 = perfect, 1 = average: their numbers are exactly the old ones,
+-- so the tests play the same way; 0.5 = a high-skill player, 1.5 = a low-skill one with slower
+-- reactions, more timing error, more wrong presses and more skipped beats). `mem` is the bot's own
+-- memory for this segment.
 local Bots = {}
 
 local TWO_PI = 2 * math.pi
 
 Bots.SKILLS = {
-	perfect = { name = "perfect" },
-	average = { name = "average" },
-	idle = { name = "idle", idle = true },
+	perfect = { name = "perfect", k = 0 },
+	high = { name = "high", k = 0.5 },
+	average = { name = "average", k = 1 },
+	low = { name = "low", k = 1.5 },
+	idle = { name = "idle", k = 1, idle = true },
 }
+-- a human-like number between the perfect player's (a) and the average one's (b)
+local function mix(sk, a, b)
+	return a + (b - a) * sk.k
+end
 
 local function tap(out, id)
 	table.insert(out, { id, true })
@@ -47,15 +58,16 @@ end
 
 local A = {}
 
--- sequences: the next id after a beat (average: slower, a wrong press now and then)
+-- sequences: the next id after a beat (on the heavy bag's rhythm combos the perfect player keeps the
+-- beat exactly; the average one is slower, with a wrong press now and then)
 A.seq = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
-	local gap = sk.name == "perfect" and 0.1 or (0.34 + rng:NextNumber() * 0.2)
-	mem.at = mem.at or (M + (sk.name == "perfect" and 0.12 or 0.5))
+	local gap = mix(sk, seg.beat or 0.1, 0.34 + rng:NextNumber() * 0.2)
+	mem.at = mem.at or (M + mix(sk, 0.12, 0.5))
 	if t >= mem.at and j.idx <= #seg.ids then
 		mem.at = t + gap
 		local id = seg.ids[j.idx]
-		if sk.name == "average" and rng:NextNumber() < 0.2 then
+		if rng:NextNumber() < 0.2 * sk.k then
 			-- a wrong press: another move of the same sequence (if it has one)
 			for _, other in ipairs(seg.ids) do
 				if other ~= id then
@@ -68,27 +80,52 @@ A.seq = function(seg, j, t, M, mem, sk, rng)
 	end
 	return out
 end
+-- the wrong answers a drill has a button for
+local WRONG = { punch = "slipL", slipL = "slipR", slipR = "slipL", roll = "slipL", F = "B", B = "F", L = "R", R = "L", jab = "cross", cross = "jab", leadhook = "jab",
+	rearhook = "leadhook", uppercut = "cross", overhand = "jab", pivotL = "slipL", parry = "jab" }
 A.cue = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
-	mem.rt = mem.rt or (sk.name == "perfect" and 0.18 or (0.35 + rng:NextNumber() * 0.5))
+	mem.rt = mem.rt or mix(sk, 0.18, 0.35 + rng:NextNumber() * 0.5)
 	if not mem.done and t - M >= mem.rt then
 		mem.done = true
 		local id = seg.want
-		if sk.name == "average" and rng:NextNumber() < 0.2 then
-			-- a wrong answer the drill has a button for
-			local WRONG = { punch = "slipL", slipL = "slipR", slipR = "slipL", roll = "slipL", F = "B", B = "F", L = "R", R = "L", jab = "cross", cross = "jab", leadhook = "jab" }
+		if rng:NextNumber() < 0.2 * sk.k then
 			id = WRONG[id] or id
 		end
 		tap(out, id)
 	end
 	return out
 end
+-- call & response: each call answered a reaction after it; the average player bites on some feints,
+-- throws a wrong move or nothing now and then
+A.call = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	mem.plan = mem.plan or {}
+	for k, c in ipairs(j.calls) do
+		local p = mem.plan[k]
+		if not p then
+			p = { rt = mix(sk, 0.16, 0.3 + rng:NextNumber() * 0.4), wrong = rng:NextNumber() < 0.12 * sk.k, bite = rng:NextNumber() < 0.3 * sk.k, skip = rng:NextNumber() < 0.08 * sk.k }
+			mem.plan[k] = p
+		end
+		if not p.done and t >= c.t + p.rt then
+			p.done = true
+			if c.feint then
+				if p.bite then
+					tap(out, "jab")
+				end
+			elseif not p.skip then
+				tap(out, p.wrong and (WRONG[c.id] or c.id) or c.id)
+			end
+		end
+	end
+	return out
+end
 A.counter = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
-	local rt = sk.name == "perfect" and 0.16 or 0.42
+	local rt = mix(sk, 0.16, 0.42)
 	if j.step == 1 and not mem.d1 and t - M >= rt then
 		mem.d1 = true
-		tap(out, (sk.name == "average" and rng:NextNumber() < 0.15) and (seg.want == "slipL" and "slipR" or "slipL") or seg.want)
+		tap(out, (rng:NextNumber() < 0.15 * sk.k) and (seg.want == "slipL" and "slipR" or "slipL") or seg.want)
 	elseif j.step == 2 and not mem.d2 and t - j.shown2 >= rt then
 		mem.d2 = true
 		tap(out, "punch")
@@ -97,11 +134,11 @@ A.counter = function(seg, j, t, M, mem, sk, rng)
 end
 A.rebound = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
-	if j.step == 1 and not mem.d1 and t - M >= (sk.name == "perfect" and 0.15 or 0.35) then
+	if j.step == 1 and not mem.d1 and t - M >= mix(sk, 0.15, 0.35) then
 		mem.d1 = true
 		tap(out, "punch")
 	elseif j.step == 2 and not mem.d2 then
-		mem.err = mem.err or (sk.name == "perfect" and 0 or (rng:NextNumber() * 0.36 - 0.16))
+		mem.err = mem.err or mix(sk, 0, rng:NextNumber() * 0.36 - 0.16)
 		if t >= j.punchT + seg.ret + mem.err - 0.005 then
 			mem.d2 = true
 			tap(out, seg.want)
@@ -111,10 +148,10 @@ A.rebound = function(seg, j, t, M, mem, sk, rng)
 end
 A.needle = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
-	mem.off = mem.off or (sk.name == "perfect" and 0 or ((rng:NextNumber() * 2 - 1) * 2.2 * seg.w))
+	mem.off = mem.off or mix(sk, 0, (rng:NextNumber() * 2 - 1) * 2.2 * seg.w)
 	if not mem.done and t - M > 0.2 then
 		local pos = needle(t - M, seg.sweep)
-		if math.abs(pos - (seg.c + mem.off)) < (sk.name == "perfect" and 0.012 or 0.03) then
+		if math.abs(pos - (seg.c + mem.off)) < mix(sk, 0.012, 0.03) then
 			mem.done = true
 			tap(out, "power")
 		end
@@ -123,7 +160,7 @@ A.needle = function(seg, j, t, M, mem, sk, rng)
 end
 A.burst = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
-	if every(mem, "p", t, sk.name == "perfect" and 1 / 7.5 or 1 / 3.6) then
+	if every(mem, "p", t, mix(sk, 1 / 7.5, 1 / 3.6)) then
 		mem.side = mem.side == "L" and "R" or "L"
 		tap(out, mem.side)
 	end
@@ -137,7 +174,7 @@ A.notes = function(seg, j, t, M, mem, sk, rng)
 		if not n.judged then
 			local p = mem.plan[i]
 			if not p then
-				p = { off = sk.name == "perfect" and 0 or (rng:NextNumber() * 0.28 - 0.12), skip = sk.name == "average" and rng:NextNumber() < 0.12 }
+				p = { off = mix(sk, 0, rng:NextNumber() * 0.28 - 0.12), skip = rng:NextNumber() < 0.12 * sk.k }
 				mem.plan[i] = p
 			end
 			if not p.done and not p.skip and t >= n.t + p.off - 0.004 then
@@ -155,7 +192,7 @@ A.lift = function(seg, j, t, M, mem, sk, rng)
 		table.insert(out, { "lift", true })
 	end
 	if mem.down and not mem.up then
-		mem.target = mem.target or (sk.name == "perfect" and (seg.lo + seg.width / 2) or (seg.lo + seg.width * (rng:NextNumber() * 2.2 - 0.6)))
+		mem.target = mem.target or mix(sk, seg.lo + seg.width / 2, seg.lo + seg.width * (rng:NextNumber() * 2.2 - 0.6))
 		local f = seg.speed * (t - mem.down)
 		if f >= mem.target - seg.speed / 120 then
 			mem.up = true
@@ -167,18 +204,18 @@ end
 A.pace = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
 	local ph = seg.phases[j.phaseOf(t)]
-	if sk.name == "perfect" then
+	if sk.k == 0 then
 		if j.v < ph[1] + (ph[2] - ph[1]) * 0.35 and every(mem, "p", t, 0.06) then
 			tap(out, "push")
 		end
-	elseif every(mem, "p", t, 0.45) and j.v < (ph[1] + ph[2]) / 2 + (rng:NextNumber() - 0.5) * 0.35 then
+	elseif every(mem, "p", t, 0.45) and j.v < (ph[1] + ph[2]) / 2 + (rng:NextNumber() - 0.5) * 0.35 * sk.k then
 		tap(out, "push")
 	end
 	return out
 end
 A.breath = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
-	local lag = sk.name == "perfect" and 0 or 0.45
+	local lag = mix(sk, 0, 0.45)
 	hold(out, mem, "breathe", j.inPhase(t - lag))
 	return out
 end
@@ -192,10 +229,10 @@ A.rope = function(seg, j, t, M, mem, sk, rng)
 	local toPass = (TWO_PI * k - a) / j.w
 	mem.done = mem.done or {}
 	local key = j.done .. ":" .. k
-	local lead = sk.name == "perfect" and 0.05 or (rng:NextNumber() * 0.42)
+	local lead = mix(sk, 0.05, rng:NextNumber() * 0.42)
 	if toPass <= lead and not mem.done[key] then
 		mem.done[key] = true
-		if sk.name == "average" and rng:NextNumber() < 0.12 then
+		if rng:NextNumber() < 0.12 * sk.k then
 			return out
 		end
 		local cue = j.cue
@@ -215,7 +252,7 @@ A.lights = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
 	if j.lit then
 		mem.litAt = mem.litAt or t
-		if t - mem.litAt >= (sk.name == "perfect" and 0.15 or 0.45) then
+		if t - mem.litAt >= mix(sk, 0.15, 0.45) then
 			mem.litAt = nil
 			tap(out, seg.ids[j.idx])
 		end
@@ -232,29 +269,23 @@ A.bench = function(seg, j, t, M, mem, sk, rng)
 		return out
 	end
 	toggle(out, mem, "press", j.press.on == true, true, t, 0.5)
-	if sk.name == "perfect" then
-		hold(out, mem, "L", j.x > 0.03)
-		hold(out, mem, "R", j.x < -0.03)
-	elseif every(mem, "look", t, 0.4) then
-		hold(out, mem, "L", j.x > 0.3)
-		hold(out, mem, "R", j.x < -0.3)
+	if every(mem, "look", t, mix(sk, 0, 0.4)) then
+		local th = mix(sk, 0.03, 0.3)
+		hold(out, mem, "L", j.x > th)
+		hold(out, mem, "R", j.x < -th)
 	end
 	return out
 end
 A.deadlift = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
 	if j.phase == "set" then
-		mem.tol = mem.tol or (sk.name == "perfect" and seg.w * 0.25 or (seg.w * (0.5 + rng:NextNumber() * 2)))
+		mem.tol = mem.tol or mix(sk, seg.w * 0.25, seg.w * (0.5 + rng:NextNumber() * 2))
 		if t - M > 0.2 and math.abs(j.needleAt(t) - seg.c) <= mem.tol then
 			tap(out, "lift")
 		end
 		return out
 	end
-	if sk.name == "perfect" then
-		if j.g < 0.45 and every(mem, "g", t, 0.12) then
-			tap(out, "grip")
-		end
-	elseif every(mem, "g", t, 0.35) and j.g < 0.3 then
+	if every(mem, "g", t, mix(sk, 0.12, 0.35)) and j.g < mix(sk, 0.45, 0.3) then
 		tap(out, "grip")
 	end
 	return out
@@ -266,14 +297,14 @@ A.squat = function(seg, j, t, M, mem, sk, rng)
 		table.insert(out, { "sit", true })
 		mem.down = true
 	elseif ph == "descend" and mem.down then
-		mem.target = mem.target or (sk.name == "perfect" and (seg.lo + seg.hi) / 2 or (seg.lo + (seg.hi - seg.lo) * (rng:NextNumber() * 2.4 - 0.7)))
+		mem.target = mem.target or mix(sk, (seg.lo + seg.hi) / 2, seg.lo + (seg.hi - seg.lo) * (rng:NextNumber() * 2.4 - 0.7))
 		local v = seg.v0 + seg.acc * (t - j.descT)
 		if j.z + v / 120 >= mem.target then
 			mem.down = false
 			table.insert(out, { "sit", false })
 		end
 	elseif ph == "bottom" then
-		mem.wait = mem.wait or (sk.name == "perfect" and 0.25 or (0.05 + rng:NextNumber() * 0.9))
+		mem.wait = mem.wait or mix(sk, 0.25, 0.05 + rng:NextNumber() * 0.9)
 		if t - j.bottomT >= mem.wait and not mem.drive then
 			mem.drive = true
 			table.insert(out, { "sit", true })
@@ -287,7 +318,7 @@ A.pullup = function(seg, j, t, M, mem, sk, rng)
 		return out
 	end
 	local off = math.abs(math.sin(j.phaseAt(t)))
-	if sk.name == "perfect" then
+	if sk.k == 0 then
 		local wantHollow = j.A > 0.5 or (j.hollow.on and j.A > 0.2)
 		toggle(out, mem, "hollow", j.hollow.on == true, wantHollow, t, 0.1)
 		if not j.hollow.on and off < 0.2 and every(mem, "p", t, 0.25) then
@@ -296,7 +327,7 @@ A.pullup = function(seg, j, t, M, mem, sk, rng)
 		end
 	else
 		toggle(out, mem, "hollow", j.hollow.on == true, j.A > 0.6 or (j.hollow.on and j.A > 0.35), t, 0.4)
-		if not j.hollow.on and off < 0.55 and every(mem, "p", t, 0.4) then
+		if not j.hollow.on and off < mix(sk, 0.2, 0.55) and every(mem, "p", t, 0.4) then
 			mem.side = (mem.side == "L" and rng:NextNumber() < 0.9) and "R" or "L"
 			tap(out, mem.side)
 		end
@@ -309,7 +340,8 @@ A.tempo = function(seg, j, t, M, mem, sk, rng)
 	for i, n in ipairs(j.notes) do
 		local p = mem.plan[i]
 		if not p then
-			p = sk.name == "perfect" and { a = 0, b = 0 } or { a = rng:NextNumber() * 0.26 - 0.12, b = rng:NextNumber() < 0.15 and -((n.te - n.ts) * 0.5) or (rng:NextNumber() * 0.3 - 0.12) }
+			local early = rng:NextNumber() < 0.15 * sk.k
+			p = { a = mix(sk, 0, rng:NextNumber() * 0.26 - 0.12), b = early and -((n.te - n.ts) * 0.5) or mix(sk, 0, rng:NextNumber() * 0.3 - 0.12) }
 			mem.plan[i] = p
 		end
 		if not p.down and not n.judged and t >= n.ts + p.a - 0.004 then
@@ -322,12 +354,25 @@ A.tempo = function(seg, j, t, M, mem, sk, rng)
 	end
 	return out
 end
+-- the plank on the ball: a look at the balance now and then, a shove back once it is clearly off
+A.wobble = function(seg, j, t, M, mem, sk, rng)
+	local out = {}
+	if every(mem, "look", t, mix(sk, 0.05, 0.4)) then
+		local th = seg.band * mix(sk, 0.3, 0.7)
+		if j.x > th then
+			tap(out, "L")
+		elseif j.x < -th then
+			tap(out, "R")
+		end
+	end
+	return out
+end
 -- cardio -----------------------------------------------------------------
 A.treadmill = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
-	local lag = sk.name == "perfect" and 0 or 1.1
+	local lag = mix(sk, 0, 1.1)
 	local tg = j.target(t - lag)
-	local period = sk.name == "perfect" and 0.06 or 0.35
+	local period = mix(sk, 0.06, 0.35)
 	if every(mem, "s", t, period) then
 		if j.mph < tg.mph - 0.01 then
 			tap(out, "spdUp")
@@ -346,7 +391,7 @@ A.bike = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
 	local h = j.hill(t)
 	local ideal = math.max(1, math.min(seg.gears, math.floor(4.5 - 0.45 * h.grade + 0.5)))
-	if sk.name == "perfect" then
+	if sk.k == 0 then
 		if every(mem, "g", t, 0.1) and j.gear ~= ideal then
 			tap(out, j.gear < ideal and "gearUp" or "gearDn")
 		end
@@ -357,10 +402,10 @@ A.bike = function(seg, j, t, M, mem, sk, rng)
 			tap(out, mem.side)
 		end
 	else
-		if every(mem, "g", t, 1.2) and math.abs(j.gear - ideal) >= 2 then
+		if every(mem, "g", t, 1.2 * sk.k) and math.abs(j.gear - ideal) >= 2 then
 			tap(out, j.gear < ideal and "gearUp" or "gearDn")
 		end
-		if every(mem, "p", t, 0.36 + rng:NextNumber() * 0.12) then
+		if every(mem, "p", t, 0.36 + rng:NextNumber() * 0.12 * sk.k) then
 			mem.side = mem.side == "L" and "R" or "L"
 			tap(out, mem.side)
 		end
@@ -369,7 +414,7 @@ A.bike = function(seg, j, t, M, mem, sk, rng)
 end
 A.rower = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
-	if sk.name == "perfect" then
+	if sk.k == 0 then
 		if j.phase == "catch" then
 			hold(out, mem, "row", true)
 		elseif j.phase == "drive" and j.x >= 0.97 then
@@ -404,7 +449,7 @@ end
 A.icebath = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
 	local on = j.br.on == true
-	if sk.name == "perfect" then
+	if sk.k == 0 then
 		if not on and j.l <= 0.01 then
 			toggle(out, mem, "breathe", on, true, t, 0.1)
 		elseif on and j.l >= 0.99 then
@@ -424,7 +469,7 @@ A.stretch = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
 	local lo, hi = j.band(t)
 	local on = j.sink.on == true
-	if sk.name == "perfect" then
+	if sk.k == 0 then
 		local mid = (lo + hi) / 2
 		toggle(out, mem, "sink", on, j.z < mid, t, 0.03)
 	elseif every(mem, "s", t, 0.3) then
@@ -441,7 +486,7 @@ A.massage = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
 	if j.phase == "choose" then
 		local want
-		if sk.name == "perfect" then
+		if sk.k == 0 then
 			local best = -1
 			for i, g in ipairs(seg.groups) do
 				if not j.worked[g] and j.sore[g] > best then
@@ -464,7 +509,7 @@ A.massage = function(seg, j, t, M, mem, sk, rng)
 				return out
 			end
 		end
-		if want and every(mem, "c", t, sk.name == "perfect" and 0.08 or 0.25) then
+		if want and every(mem, "c", t, mix(sk, 0.08, 0.25)) then
 			if j.cursor == want then
 				tap(out, "ok")
 			else
@@ -478,7 +523,7 @@ A.massage = function(seg, j, t, M, mem, sk, rng)
 		local key = j.round .. ":" .. k
 		local p = mem.st[key]
 		if not p then
-			p = sk.name == "perfect" and { off = 0 } or { off = rng:NextNumber() * 0.5 - 0.22, skip = rng:NextNumber() < 0.2 }
+			p = { off = mix(sk, 0, rng:NextNumber() * 0.5 - 0.22), skip = rng:NextNumber() < 0.2 * sk.k }
 			mem.st[key] = p
 		end
 		if not st.judged and not p.done and not p.skip and t >= st.t + p.off - 0.004 then
@@ -490,7 +535,7 @@ A.massage = function(seg, j, t, M, mem, sk, rng)
 end
 A.chamber = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
-	if sk.name == "perfect" then
+	if sk.k == 0 then
 		local tg = j.target(t + 0.15)
 		hold(out, mem, "up", j.P < tg - 0.008)
 		hold(out, mem, "down", j.P > tg + 0.008)
@@ -509,10 +554,7 @@ A.chamber = function(seg, j, t, M, mem, sk, rng)
 end
 A.sauna = function(seg, j, t, M, mem, sk, rng)
 	local out = {}
-	local outT, inT = 0.8, 0.45
-	if sk.name == "average" then
-		outT, inT = 0.95, 0.6
-	end
+	local outT, inT = mix(sk, 0.8, 0.95), mix(sk, 0.45, 0.6)
 	if t < j.forcedUntil then
 		return out
 	end
@@ -521,7 +563,7 @@ A.sauna = function(seg, j, t, M, mem, sk, rng)
 	elseif not j.inside and j.T < inT and every(mem, "d", t, 0.3) then
 		tap(out, "door")
 	end
-	if sk.name == "perfect" and j.inside and j.T > 0.68 and t - j.lastSip >= 2.05 then
+	if sk.k == 0 and j.inside and j.T > 0.68 and t - j.lastSip >= 2.05 then
 		tap(out, "sip")
 	end
 	return out

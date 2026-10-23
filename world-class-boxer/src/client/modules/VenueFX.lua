@@ -98,41 +98,56 @@ local WHITE = rgb(240, 240, 240)
 -- Future lights in linear space: an ambient of (34, 36, 46) is ~1.7% grey, i.e. black. The crowd
 -- now sits in a dim but visible fill, the ring in strong angled key light (setupKeys), and the
 -- grade's contrast stays low so the shadows on a boxer never crush. exposure = base stops.
+-- A show, not a basement: the fills sit well above black, the grades add saturation, bloom catches the
+-- LED fascias and the neon, and the atmosphere carries a coloured haze for the beams to draw in.
+-- house = the tint of the house lights over the stands (the crowd sits in a dim but coloured wash).
 local PROFILES = {
 	CommunityCenter = {
-		clock = 19.6, bright = 1.1, ambient = rgb(122, 116, 106), outdoor = rgb(96, 96, 104), exposure = 0.2, diffuse = 0.6, specular = 0.5,
-		density = 0.1, haze = 0.5, atmColor = rgb(200, 190, 170), decay = rgb(120, 110, 100), glare = 0,
-		contrast = 0.04, saturation = -0.06, tint = rgb(252, 248, 238), bloomI = 0.25, bloomS = 20, bloomT = 1.6, keys = 0.85,
+		clock = 19.6, bright = 1.3, ambient = rgb(134, 128, 118), outdoor = rgb(108, 108, 118), exposure = 0.3, diffuse = 0.65, specular = 0.5,
+		density = 0.1, haze = 0.5, atmColor = rgb(210, 198, 176), decay = rgb(130, 118, 108), glare = 0,
+		contrast = 0.05, saturation = 0.08, tint = rgb(255, 248, 236), bloomI = 0.35, bloomS = 22, bloomT = 1.4, keys = 0.95,
+		house = rgb(255, 236, 200),
 	},
 	ClubArena = {
-		clock = 21.5, bright = 0.45, ambient = rgb(80, 74, 88), outdoor = rgb(56, 56, 66), exposure = 0.2, diffuse = 0.4, specular = 0.6,
-		density = 0.28, haze = 1.6, atmColor = rgb(130, 110, 140), decay = rgb(70, 50, 80), glare = 0.3,
-		contrast = 0.1, saturation = 0.04, tint = rgb(255, 240, 228), bloomI = 0.5, bloomS = 28, bloomT = 1.4, keys = 1,
+		clock = 21.5, bright = 0.6, ambient = rgb(96, 86, 110), outdoor = rgb(72, 66, 92), exposure = 0.32, diffuse = 0.45, specular = 0.6,
+		density = 0.3, haze = 1.8, atmColor = rgb(160, 110, 180), decay = rgb(90, 50, 120), glare = 0.4,
+		contrast = 0.1, saturation = 0.22, tint = rgb(255, 238, 230), bloomI = 0.7, bloomS = 30, bloomT = 1.15, keys = 1.1,
+		house = rgb(255, 150, 200),
 	},
 	Arena = {
-		clock = 21.5, bright = 0.4, ambient = rgb(68, 70, 84), outdoor = rgb(52, 54, 70), exposure = 0.16, diffuse = 0.35, specular = 0.7,
-		density = 0.22, haze = 1.2, atmColor = rgb(110, 116, 140), decay = rgb(60, 64, 90), glare = 0.35,
-		contrast = 0.12, saturation = 0.08, tint = rgb(248, 248, 255), bloomI = 0.5, bloomS = 30, bloomT = 1.4, keys = 1.1,
+		clock = 21.5, bright = 0.7, ambient = rgb(86, 90, 116), outdoor = rgb(70, 76, 112), exposure = 0.3, diffuse = 0.4, specular = 0.7,
+		density = 0.24, haze = 1.4, atmColor = rgb(120, 130, 190), decay = rgb(60, 70, 140), glare = 0.45,
+		contrast = 0.1, saturation = 0.24, tint = rgb(246, 246, 255), bloomI = 0.75, bloomS = 32, bloomT = 1.1, keys = 1.2,
+		house = rgb(190, 200, 255),
 	},
 	Stadium = {
-		clock = 21, bright = 1.0, ambient = rgb(72, 76, 94), outdoor = rgb(66, 72, 96), exposure = 0.16, diffuse = 0.4, specular = 0.7,
-		density = 0.18, haze = 0.9, atmColor = rgb(92, 102, 132), decay = rgb(40, 48, 80), glare = 0.4,
-		contrast = 0.12, saturation = 0.1, tint = rgb(238, 244, 255), bloomI = 0.6, bloomS = 32, bloomT = 1.35, keys = 1.15,
+		clock = 21, bright = 1.2, ambient = rgb(90, 96, 124), outdoor = rgb(80, 90, 130), exposure = 0.3, diffuse = 0.45, specular = 0.7,
+		density = 0.2, haze = 1.1, atmColor = rgb(100, 120, 180), decay = rgb(40, 56, 120), glare = 0.5,
+		contrast = 0.1, saturation = 0.24, tint = rgb(238, 244, 255), bloomI = 0.8, bloomS = 34, bloomT = 1.1, keys = 1.25,
+		house = rgb(200, 212, 255),
 	},
 	Gym = {
-		clock = 14, bright = 2.8, ambient = rgb(120, 112, 104), outdoor = rgb(132, 136, 146), exposure = 0.15, diffuse = 0.7, specular = 0.5,
-		density = 0.2, haze = 1.0, atmColor = rgb(210, 190, 160), decay = rgb(150, 130, 110), glare = 0.1,
-		contrast = 0.04, saturation = 0.02, tint = rgb(255, 247, 234), bloomI = 0.3, bloomS = 24, bloomT = 1.4, gym = true, keys = 0.8,
+		clock = 14, bright = 3.4, ambient = rgb(140, 134, 128), outdoor = rgb(150, 158, 176), exposure = 0.3, diffuse = 0.8, specular = 0.5,
+		density = 0.2, haze = 1.0, atmColor = rgb(216, 200, 172), decay = rgb(150, 130, 110), glare = 0.15,
+		contrast = 0.05, saturation = 0.14, tint = rgb(255, 247, 234), bloomI = 0.4, bloomS = 26, bloomT = 1.25, gym = true, keys = 0.9,
+		house = rgb(255, 240, 214),
 	},
 }
+-- (read-only: tools/sim/world_scene.luau exports these for the offline previews)
+VenueFX.Profiles = PROFILES
+
+-- the moving heads' gel palette while they sweep (the entrance, the celebration, the pyro); a title
+-- night sweeps in gold and white. In the rounds the spots go back to their own lamp colours.
+local SWEEP_PALETTE = { rgb(255, 60, 200), rgb(60, 200, 255), rgb(255, 200, 60), rgb(255, 70, 60), rgb(80, 120, 255), rgb(90, 255, 140) }
+local TITLE_PALETTE = { rgb(255, 205, 70), rgb(255, 245, 220), rgb(255, 170, 50), rgb(255, 225, 140) }
 
 -- ring = the angled ring key lights (setupKeys); entrance keeps the ring dimmer so the walkout reads
 local PHASES = {
-	start = { exposure = 0, contrast = 0, saturation = 0, bloom = 0, house = 0.55, dof = 0, spot = 5, base = 0.3, ring = 0.8 },
-	entrance = { exposure = -0.12, contrast = 0.06, saturation = 0.05, bloom = 0.2, house = 0.2, dof = 0.3, spot = 8, base = 0.55, ring = 0.55 },
-	round = { exposure = 0, contrast = 0.02, saturation = 0, bloom = 0, house = 0.32, dof = 0, spot = 3.6, base = 0.28, ring = 1 },
-	rest = { exposure = 0.08, contrast = -0.02, saturation = 0, bloom = 0.05, house = 0.6, dof = 0, spot = 3, base = 0.35, tint = rgb(255, 238, 215), ring = 0.9 },
-	win = { exposure = 0.03, contrast = 0.06, saturation = 0.12, bloom = 0.2, house = 1, dof = 0, spot = 8, base = 0.8, tint = rgb(255, 232, 192), ring = 0.95 },
+	start = { exposure = 0, contrast = 0, saturation = 0, bloom = 0, house = 0.6, dof = 0, spot = 5, base = 0.3, ring = 0.85 },
+	entrance = { exposure = -0.08, contrast = 0.06, saturation = 0.1, bloom = 0.25, house = 0.28, dof = 0.3, spot = 9, base = 0.55, ring = 0.6 },
+	round = { exposure = 0, contrast = 0.02, saturation = 0, bloom = 0, house = 0.4, dof = 0, spot = 3.6, base = 0.28, ring = 1 },
+	rest = { exposure = 0.08, contrast = -0.02, saturation = 0, bloom = 0.05, house = 0.65, dof = 0, spot = 3, base = 0.35, tint = rgb(255, 238, 215), ring = 0.9 },
+	win = { exposure = 0.05, contrast = 0.06, saturation = 0.16, bloom = 0.25, house = 1, dof = 0, spot = 9, base = 0.8, tint = rgb(255, 232, 192), ring = 1 },
 	loss = { exposure = -0.04, contrast = 0.06, saturation = -0.25, bloom = 0.05, house = 0.9, dof = 0, spot = 4, base = 0.5, tint = rgb(214, 226, 255), ring = 0.9 },
 	draw = { exposure = 0, contrast = 0.03, saturation = -0.05, bloom = 0.1, house = 0.9, dof = 0, spot = 6, base = 0.5, ring = 1 },
 }
@@ -427,6 +442,10 @@ local function setPhaseLook(name)
 		bloomI = prof.bloomI + ph.bloom, house = ph.house, dof = ph.dof, spot = ph.spot, ring = ph.ring or 1,
 		tint = ph.tint and prof.tint:Lerp(ph.tint, 0.85) or prof.tint, density = prof.density, haze = prof.haze,
 	}
+	-- a world title night is gold: the grade warms towards it (the spots, fascias and house lights follow)
+	if S.title then
+		S.tgt.tint = S.tgt.tint:Lerp(GOLD, 0.16)
+	end
 	S.baseExcite = ph.base or 0.3
 end
 
@@ -772,8 +791,9 @@ local function setupKeys()
 		l.Angle = 46
 		l.Range = 52
 		l.Shadows = key
-		l.Color = key and rgb(255, 242, 224) or rgb(222, 234, 255)
-		l.Brightness = (key and 4.2 or 2.6) * lvl
+		-- white and bright: broadcast ring light (the kickers a touch cool for the rim)
+		l.Color = key and rgb(255, 250, 242) or rgb(216, 230, 255)
+		l.Brightness = (key and 5.0 or 3.0) * lvl
 		l.Parent = p
 		table.insert(S.keys, { light = l, base = l.Brightness, shadow = key })
 	end
@@ -788,7 +808,8 @@ local function setupKeys()
 					S.rigShadow = sl
 				end
 				-- the keys now light the boxers; at full power the banks blew the white canvas out
-				sl.Brightness *= 0.55
+				sl.Brightness *= 0.7
+				sl.Color = rgb(255, 253, 246)
 			end
 		end
 	end
@@ -828,7 +849,7 @@ local function setupSpots()
 			local pool = localPart("LightPool", V3(0.04, 8, 8), CF(S.center), col, M.Neon, { Transparency = 0.86, Shape = Enum.PartType.Cylinder })
 			table.insert(S.spots, {
 				p = p, base = p.Position, light = light, col = col, beam = beam, target = target, pool = pool, aim = S.center, i = i,
-				hit = S.center, hitN = V3(0, 1, 0), nextRay = 0,
+				hit = S.center, hitN = V3(0, 1, 0), nextRay = 0, gel = nil, nextGel = 0,
 			})
 		end
 	end
@@ -870,6 +891,30 @@ local function spotGoal(s, now)
 	return spotOn(m, 0.6, s, now) or (S.center + V3(math.cos(now * 0.3 + s.i) * 3, 0, math.sin(now * 0.25 + s.i) * 3))
 end
 
+-- the gel a spot shows now: its own lamp colour on the boxers in the rounds / on a downed boxer, the
+-- palette (stepping every couple of seconds, each head offset) while the heads sweep the house
+local function spotGel(s, now)
+	local mode = S.spotMode
+	if mode == "ring" or mode == "downed" then
+		return s.col
+	end
+	local pal = S.title and TITLE_PALETTE or SWEEP_PALETTE
+	local k = math.floor(now / 2.2 + s.i * 0.7) % #pal + 1
+	return pal[k]
+end
+
+local function setSpotGel(s, col)
+	if s.gel == col then
+		return
+	end
+	s.gel = col
+	if s.light then
+		s.light.Color = col
+	end
+	s.beam.Color = ColorSequence.new(col)
+	s.pool.Color = col
+end
+
 local function updateSpots(dt, now)
 	if #S.spots == 0 then
 		return
@@ -878,6 +923,10 @@ local function updateSpots(dt, now)
 	local a = approach(dt, rate)
 	local bright = S.cur.spot
 	for _, s in ipairs(S.spots) do
+		if now >= s.nextGel then
+			s.nextGel = now + 0.4
+			setSpotGel(s, spotGel(s, now))
+		end
 		local goal = spotGoal(s, now)
 		s.aim = s.aim:Lerp(goal, a)
 		local dir = s.aim - s.base
@@ -905,6 +954,72 @@ local function updateSpots(dt, now)
 		s.pool.CFrame = CFrame.lookAt(s.hit + s.hitN * 0.04, s.hit + s.hitN * 2) * CFrame.Angles(0, math.pi / 2, 0)
 		local vis = math.clamp(bright / 8, 0.15, 1)
 		s.pool.Transparency = 1 - 0.14 * vis
+	end
+end
+
+------------------------------------------------------------------------
+-- The show rig's colour (client-local, no shadows): the corner colours as light sources at the red and
+-- blue posts, LED strips round the apron in the promotion's colours, a glowing trim on every LED
+-- fascia / ribbon board, and a coloured tint on the house lights over the stands. A world title night
+-- is gold; a regular card runs red on the red side and blue on the blue side.
+------------------------------------------------------------------------
+local function promoColors()
+	if S.title then
+		return GOLD, GOLD
+	end
+	return RED, BLUE
+end
+
+local function setupShow()
+	S.show = {}
+	local redC, blueC = promoColors()
+	local h = S.ringHalf
+	local canvasY = S.center.Y
+	-- the corner posts: red corner is -Z, blue +Z (Venues' WalkLight convention)
+	for _, c in ipairs({ { -1, -1, redC }, { 1, -1, redC }, { 1, 1, blueC }, { -1, 1, blueC } }) do
+		local pos = S.center + V3(c[1] * (h + 0.6), 3.4, c[2] * (h + 0.6))
+		local glow = localPart("CornerGlow", V3(0.5, 3.2, 0.5), CF(pos), c[3], M.Neon, { Transparency = 0.25 })
+		local l = Instance.new("PointLight")
+		l.Color = c[3]
+		l.Range = 16
+		l.Brightness = 1.4
+		l.Shadows = false
+		l.Parent = glow
+		table.insert(S.show, { light = l, base = l.Brightness })
+	end
+	-- apron LED strips (red side north, blue side south, gold all round on a title night)
+	local apronY = canvasY - 0.9
+	for _, e in ipairs({ { 0, -1, redC }, { 1, 0, redC }, { 0, 1, blueC }, { -1, 0, blueC } }) do
+		local len = (h + 2) * 2
+		local pos = S.center + V3(e[1] * (h + 2.1), apronY - canvasY, e[2] * (h + 2.1))
+		localPart("ApronLED", e[1] == 0 and V3(len, 0.16, 0.12) or V3(0.12, 0.16, len), CF(pos), e[3], M.Neon)
+		local src = localPart("ApronGlow", V3(0.2, 0.2, 0.2), CF(pos + V3(e[1] * 2, -1.5, e[2] * 2)), e[3], nil, { Transparency = 1 })
+		local l = Instance.new("PointLight")
+		l.Color = e[3]
+		l.Range = 14
+		l.Brightness = 0.8
+		l.Shadows = false
+		l.Parent = src
+		table.insert(S.show, { light = l, base = l.Brightness })
+	end
+	-- the LED fascias and ribbon boards get a glowing trim top and bottom (bloom picks it up)
+	local n = 0
+	for _, d in ipairs(S.arena:GetDescendants()) do
+		if d.Name == "LEDRibbon" and d:IsA("BasePart") and n < lodPick(6, 12, 24) then
+			n += 1
+			local col = (d.Position - S.center).Z < 0 and redC or blueC
+			for _, sy in ipairs({ 1, -1 }) do
+				localPart("RibbonTrim", V3(d.Size.X + 0.1, 0.12, 0.1), d.CFrame * CF(0, sy * (d.Size.Y / 2 + 0.08), -d.Size.Z / 2), col, M.Neon)
+			end
+		end
+	end
+	-- the house lights over the stands take the venue's tint (red side / blue side on a regular card)
+	local houseTint = S.profile.house or WHITE
+	for _, hl in ipairs(S.house) do
+		local p = hl.light.Parent
+		local side = p and p:IsA("BasePart") and (p.Position - S.center).Z or 0
+		local col = S.title and GOLD:Lerp(WHITE, 0.4) or (side < -1 and houseTint:Lerp(RED, 0.3) or (side > 1 and houseTint:Lerp(BLUE, 0.3) or houseTint))
+		hl.light.Color = col
 	end
 end
 
@@ -1823,6 +1938,7 @@ function VenueFX.Start(arena, info)
 		tickers = {}, flashFrames = {}, sweeps = {}, chase = { Red = {}, Blue = {} }, archLeds = { Red = {}, Blue = {} }, walkLights = {}, parCans = {},
 		screens = { text = {}, red = {}, blue = {}, round = {}, clock = {}, header = {} }, entrance = { Red = {}, Blue = {} }, round = 1,
 		crowdR = 30, crowdY = 4, punches = 0, bulkParts = {}, bulkCFs = {}, fanIdx = 0,
+		show = {}, title = #stakes > 0,
 	}
 	-- the opponent gets the same camera-aware fill and rim as you (CharacterLight)
 	pcall(CharacterLight.SetExtra, { info.oppModel })
@@ -1849,7 +1965,7 @@ function VenueFX.Start(arena, info)
 		end
 		-- the optional pieces: any of them may fail without stopping the rest
 		for _, piece in ipairs({
-			{ "keys", setupKeys }, { "ropes", setupRopes }, { "spots", setupSpots }, { "crowd", setupCrowd }, { "particles", setupParticles },
+			{ "keys", setupKeys }, { "show", setupShow }, { "ropes", setupRopes }, { "spots", setupSpots }, { "crowd", setupCrowd }, { "particles", setupParticles },
 			{ "screens", setupScreens }, { "people", setupPeople }, { "broadcast", setupBroadcast }, { "gym", setupGym },
 			{ "detail", setupDetail },
 		}) do
@@ -2193,11 +2309,11 @@ function VenueFX.Pyro(side)
 						end
 					end)
 				end
-				-- the blast lights the room for a moment
+				-- the blast lights the room for a moment, in the corner's colour (gold on a title night)
 				local l = track(Instance.new("PointLight"))
-				l.Color = rgb(255, 170, 80)
-				l.Range = 40
-				l.Brightness = 5 * math.min(1, fxScale())
+				l.Color = S.title and rgb(255, 210, 110) or (side == "red" and rgb(255, 120, 70) or rgb(120, 170, 255))
+				l.Range = 56
+				l.Brightness = 8 * math.min(1, fxScale())
 				l.Parent = p
 				task.delay(0.9, function()
 					l:Destroy()
@@ -2205,7 +2321,7 @@ function VenueFX.Pyro(side)
 			end
 		end
 	end
-	kick(0.05, 0.05, 0.12, 0.35)
+	kick(0.05, 0.08, 0.16, 0.45)
 	S.excite = math.max(S.excite, 0.9)
 	S.spotMode = S.spotMode == "ring" and "sweep" or S.spotMode
 end

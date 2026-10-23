@@ -2593,7 +2593,7 @@ local function dayTick(profile, ctx)
 	while profile.ageDays >= 365 do
 		profile.ageDays -= 365
 		profile.identity.age += 1
-		table.insert(notes, string.format("Happy birthday! You are now %d.", profile.identity.age))
+		table.insert(notes, string.format("Happy birthday: you are %d today.", profile.identity.age))
 		if profile.identity.age >= 31 then
 			local loss = profile.identity.age >= 35 and 3 or 1.5
 			for _, k in ipairs({ "PunchSpeed", "Reflexes", "Footwork", "Stamina", "Recovery", "Chin" }) do
@@ -2712,7 +2712,7 @@ function Training.Sleep(profile)
 		profile.camp.daysLeft = math.max(0, profile.camp.daysLeft - 1)
 		result.daysLeft = profile.camp.daysLeft
 		if profile.camp.daysLeft == 0 then
-			table.insert(notes, "Camp is over. It's FIGHT NIGHT!")
+			table.insert(notes, "Camp is over. It is fight night.")
 		end
 	end
 	if profile.offersDay and profile.day - profile.offersDay >= 7 then

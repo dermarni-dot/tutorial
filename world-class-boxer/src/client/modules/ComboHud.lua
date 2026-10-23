@@ -139,7 +139,7 @@ function ComboHud.On(msg)
 	count.Text = tostring(hits)
 	hitsWord.Text = "HIT COMBO"
 	if type(msg.name) == "string" then
-		callout.Text = msg.name .. "!"
+		callout.Text = msg.name
 		callout.TextColor3 = msg.sig and T.orange or T.gold
 		if card:FindFirstChildOfClass("UIStroke") then
 			local st = card:FindFirstChildOfClass("UIStroke")

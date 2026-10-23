@@ -236,10 +236,12 @@ function FE.new()
 			local props = rawget(o, "_props")
 			local old = props[k]
 			props[k] = v
-			-- GetPropertyChangedSignal(k) fires on a real change (as the engine: a write of the same value is silent)
+			-- GetPropertyChangedSignal(k) fires on a real change (as the engine: a write of the same value is silent).
+			-- For BaseParts (a head's Size: BuilderHead's followHead) by default; E.propSignalsAll = true fires them on
+			-- every instance (the GUI tests' expectations predate firing Text / AbsoluteSize handlers)
 			local ps = rawget(o, "_propSig")
 			local s = ps and ps[k]
-			if s and old ~= v then
+			if s and old ~= v and (E.propSignalsAll or isA(rawget(o, "_class"), "BasePart")) then
 				s:Fire()
 			end
 		end

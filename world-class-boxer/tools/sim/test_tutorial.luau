@@ -595,7 +595,7 @@ Tutorial.Feed(t1, { k = "move", dist = 5, now = 1 })
 fight:Fire(Tutorial.View(t1))
 S.settle(0.2)
 local title = findIn(findIn(pg, "Prompt"), "Title")
-check("the card follows the step", title ~= nil and title.Text == "THE JAB", title and title.Text)
+check("the card follows the step", title ~= nil and title.Text == "The Jab", title and title.Text)
 local cardSkip = findIn(findIn(pg, "Prompt"), "Skip")
 check("the card has SKIP TUTORIAL", cardSkip ~= nil)
 if cardSkip then
@@ -620,7 +620,7 @@ fight:Fire({ t = "tutorialEnd", how = "completed", created = false, you = "A B",
 S.settle(0.8)
 check("the wrap-up is up", findIn(pg, "TutorialDone") ~= nil and TC.Busy())
 local cont = findIn(pg, "Continue")
-check("the wrap-up's button: CREATE YOUR BOXER", cont ~= nil and cont.Text == "CREATE YOUR BOXER", cont and cont.Text)
+check("the wrap-up's button: Create Your Boxer", cont ~= nil and cont.Text == "Create Your Boxer", cont and cont.Text)
 if cont then
 	click(cont)
 end
@@ -631,7 +631,7 @@ S.settle(0.2)
 fight:Fire({ t = "tutorialEnd", how = "completed", created = true })
 S.settle(0.8)
 local cont2 = findIn(pg, "Continue")
-check("a replay's wrap-up: BACK TO THE MENU", cont2 ~= nil and cont2.Text == "BACK TO THE MENU", cont2 and cont2.Text)
+check("a replay's wrap-up: Back to the Menu", cont2 ~= nil and cont2.Text == "Back to the Menu", cont2 and cont2.Text)
 if cont2 then
 	click(cont2)
 end
@@ -686,7 +686,7 @@ do
 	local stepL = pc and findIn(pc, "Step")
 	check("debut card: YOUR DEBUT, step 1 of 11", stepL ~= nil and stepL.Text == "YOUR DEBUT  ·  STEP 1 OF 11", stepL and stepL.Text)
 	local skipB = pc and findIn(pc, "Skip")
-	check("debut card: SKIP GUIDE (the fight goes on)", skipB ~= nil and skipB.Text == "SKIP GUIDE", skipB and skipB.Text)
+	check("debut card: Skip Guide (the fight goes on)", skipB ~= nil and skipB.Text == "Skip Guide", skipB and skipB.Text)
 	if skipB then
 		S2.signal(skipB, "MouseButton1Click"):Fire()
 		S2.settle(0.1)
@@ -703,7 +703,7 @@ do
 	f2:Fire(Tutorial.View(dtr))
 	S2.settle(0.3)
 	local t2 = findIn(findIn(pg2, "Prompt"), "Title")
-	check("debut card: the combo step", t2 ~= nil and t2.Text == "COMBINATIONS", t2 and t2.Text)
+	check("debut card: the combo step", t2 ~= nil and t2.Text == "Combinations", t2 and t2.Text)
 	-- called off: the toast and the offer again
 	f2:Fire({ t = "debutEnd", how = "aborted", info = P2.debut })
 	f2:Fire({ t = "aborted" })

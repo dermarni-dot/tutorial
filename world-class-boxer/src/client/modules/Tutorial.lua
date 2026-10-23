@@ -318,7 +318,7 @@ local function buildCard()
 	UI.Icon(head, view.done and "check" or "whistle", ks, view.done and T.green or T.gold, { Name = "StepIcon" })
 	UI.Text(head, string.format("%s  ·  STEP %d OF %d", debut and "YOUR DEBUT" or "TUTORIAL", view.step, view.total or #Steps.STEPS), { Name = "Step", Font = T.semi, TextSize = sz.kicker, TextColor3 = T.gold,
 		Position = UDim2.fromOffset(ks + 6, 0), Size = UDim2.new(1, -(skipW + 14 + ks), 0, ks), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-	UI.Title(head, view.done and "NICE WORK!" or step.title, { Name = "Title", TextSize = sz.title, Position = UDim2.fromOffset(0, eff(sz.kicker) + 2),
+	UI.Title(head, view.done and "Nice work" or step.title, { Name = "Title", TextSize = sz.title, Position = UDim2.fromOffset(0, eff(sz.kicker) + 2),
 		Size = UDim2.new(1, -(skipW + 8), 0, eff(sz.title) + 4), AutomaticSize = Enum.AutomaticSize.None, TextTruncate = Enum.TextTruncate.AtEnd })
 	local skip = UI.Button(head, skipText, { Name = "Skip", Font = T.semi, TextSize = 12, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0),
 		Size = UDim2.fromOffset(skipW, hit), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.2 }, skipBout)

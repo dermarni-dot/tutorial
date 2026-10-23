@@ -100,11 +100,14 @@ end }, 100, U).stand == U.stand)
 ------------------------------------------------------------------------
 -- calibration and the same height
 ------------------------------------------------------------------------
+-- (HitGeometry.TARGET: where the animation's glove visibly lands, tools/sim/v9_anim's punch clip; the old balanced
+-- spacing BASE x range was 0.8-1.6 studs SHORT of it, so punches the player saw land came back "short")
 for _, p in ipairs(PUNCHES) do
-	local old = HG.BASE * Config.Punches[p].range
-	check("calibration: " .. p .. " lands at the balanced distance", near(HG.Range(U, U, p, false), old, 0.01), HG.Range(U, U, p, false) .. " vs " .. old)
+	local T = HG.TARGET[p]
+	check("calibration: " .. p .. " lands at the animation's distance", near(HG.Range(U, U, p, false), T.head, 0.01), HG.Range(U, U, p, false) .. " vs " .. T.head)
 	local body = HG.Range(U, U, p, true)
-	check("calibration: " .. p .. " to the body reaches as far, or a touch further", body >= old - 0.01 and body <= old * 1.04, body .. " vs " .. old)
+	check("calibration: " .. p .. " to the body at its own", near(body, T.body, 0.01), body .. " vs " .. T.body)
+	check("calibration: " .. p .. " reaches further than the old spacing did", T.head > HG.BASE * Config.Punches[p].range)
 end
 check("calibration: the unit pair's separation is the old spacing", near(HG.MinSep(U, U), HG.MIN_SEP, 0.01), HG.MinSep(U, U))
 check("calibration: the unit pair's clinch reach is the old spacing", near(HG.ClinchRange(U, U), HG.CLINCH, 0.01), HG.ClinchRange(U, U))
@@ -112,8 +115,8 @@ check("same height: jab outreaches the cross, the hooks, the uppercut", HG.Range
 do
 	local t = HG.Test(U, U, "jab", false, 4.0)
 	check("test: a jab from 4.0 lands on the head, with margin", t.ok and t.zone == "head" and not t.redirected and t.margin > 0.3, t.margin)
-	local m = HG.Test(U, U, "jab", false, 5.2)
-	check("test: a jab from 5.2 is short", not m.ok and m.why == "short")
+	local m = HG.Test(U, U, "jab", false, 5.8)
+	check("test: a jab from 5.8 is short", not m.ok and m.why == "short")
 	local b = HG.Test(U, U, "leadhook", true, 3.4)
 	check("test: a hook to the body from 3.4 lands", b.ok and b.zone == "body")
 end
@@ -127,7 +130,7 @@ for _, p in ipairs({ "jab", "cross" }) do
 	check("height: the shorter man's " .. p .. " to the head is cut (66 vs 76 in)", up < lvlS - 0.2 and up > lvlS * 0.8, up .. " vs " .. lvlS)
 	check("height: the taller man's " .. p .. " down to the head is not", down >= lvlT - 0.05, down .. " vs " .. lvlT)
 	check("height: the longer man's " .. p .. " reaches further", down > up + 0.5, down .. " vs " .. up)
-	check("height: the shorter man's " .. p .. " to the body keeps its reach", HG.Range(M66, M76, p, true) >= lvlS - 0.05)
+	check("height: the shorter man's " .. p .. " to the body keeps its reach", HG.Range(M66, M76, p, true) >= HG.Range(M66, M66, p, true) - 0.05)
 end
 check("height: the shorter man's hook to the head is a close-range punch", HG.Range(M66, M76, "leadhook", false) < HG.Range(M66, M66, "leadhook", false) - 0.4)
 check("height: the shorter man's overhand to a taller head is cut hard", HG.Range(M66, M76, "overhand", false) < HG.Range(M66, M66, "overhand", false) - 0.4)
@@ -216,9 +219,10 @@ do
 	local P, O = f.P, f.O
 	check("engine: a stub rig's frame comes from the tape", f:Geo(P) and f:Geo(P).source == "scales")
 	for _, p in ipairs(PUNCHES) do
-		local old = math.max(3.4, HG.BASE * Config.Punches[p].range)
-		check("engine: PunchRange " .. p .. " is the old number at 70 / 70", near(f:PunchRange(P, p), old, 0.02), f:PunchRange(P, p) .. " vs " .. old)
+		local want = math.max(f:Floor(), HG.TARGET[p].head)
+		check("engine: PunchRange " .. p .. " is the animation's number at 70 / 70", near(f:PunchRange(P, p), want, 0.02), f:PunchRange(P, p) .. " vs " .. want)
 	end
+	check("engine: the floor is the separation plus the air a jab needs", near(f:Floor(), math.max(S.H.require("FightMotion").Spacing.min, f:MinSep() + 0.3), 1e-6), f:Floor())
 	check("engine: MinSep is the fight spacing for the unit pair", near(f:MinSep(), S.H.require("FightMotion").Spacing.minSep, 0.02), f:MinSep())
 	check("engine: the clinch reach is the old spacing for the unit pair", near(f:ClinchRange(P), 4.8, 0.01), f:ClinchRange(P))
 	check("engine: a longer tape reaches further", (function()
@@ -274,7 +278,9 @@ do
 	end
 	bodyHits = P.tally.body - b0
 	check("engine: the short man's jab from 3.9 is thrown to the tall man's body", redirects == 30 and bodyHits > 0 and bodyHits == P.totals.landed, redirects .. " / " .. bodyHits)
-	check("engine: the short man's jab from 4.4 reaches nothing on the tall man", not f:HitTest(P, O, "jab", false, 4.4).ok and f:HitTest(P, O, "jab", false, 4.4).why == "short")
+	check("engine: the short man's jab from 4.4 falls to the tall man's body", f:HitTest(P, O, "jab", false, 4.4).ok and f:HitTest(P, O, "jab", false, 4.4).redirected)
+	check("engine: the short man's jab from 5.6 reaches nothing on the tall man", not f:HitTest(P, O, "jab", false, 5.6).ok and f:HitTest(P, O, "jab", false, 5.6).why == "short")
+	check("engine: PunchRange is where the punch LANDS (the body included): the short man's jab is thrown from 4.4", f:PunchRange(P, "jab") > 4.4)
 	check("engine: the tall man's jab from 4.4 is a head shot", f:HitTest(O, P, "jab", false, 4.4).ok and f:HitTest(O, P, "jab", false, 4.4).zone == "head")
 	-- (Builder.Scales puts 2.6 studs between these two crowns: inside, the jab lands - on the chin when the angle
 	-- allows, else it falls to the body; it never comes back "short")

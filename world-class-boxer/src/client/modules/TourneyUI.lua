@@ -152,22 +152,24 @@ local function matchBox(parent, m, w, rowH, props)
 	if props.Position then
 		box.Position = props.Position
 	end
-	UI.Corner(box, UI.R.md)
+	-- (square boxes with a 1 px rule: the bracket is a ledger of matches; your own match carries a gold rule)
 	local you = (m.a and m.a.you) or (m.b and m.b.you)
-	UI.Stroke(box, you and T.gold or Color3.new(1, 1, 1), you and 1.5 or 1, you and 0.25 or 0.86)
+	UI.Stroke(box, you and T.gold or T.line, 1, 0)
 	for i = 1, 2 do
 		local x = i == 1 and m.a or m.b
 		local won = m.win ~= nil and x ~= nil and m.win == x.id
 		local lost = m.win ~= nil and x ~= nil and m.win ~= x.id
-		local row = UI.Frame(box, { Name = "Row" .. i, BackgroundTransparency = won and 0.55 or 1, BackgroundColor3 = T.bg:Lerp(T.gold, 0.25), Position = UDim2.fromOffset(0, (i - 1) * (rowH + 2)),
+		local row = UI.Frame(box, { Name = "Row" .. i, BackgroundTransparency = won and 0 or 1, BackgroundColor3 = T.panel2, Position = UDim2.fromOffset(0, (i - 1) * (rowH + 2)),
 			Size = UDim2.new(1, 0, 0, rowH) })
-		UI.Corner(row, UI.R.md)
+		if i == 2 then
+			UI.Frame(row, { Name = "Rule", Position = UDim2.fromOffset(0, -2), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = T.line })
+		end
 		local seed = UI.Frame(row, { Name = "Seed", Position = UDim2.fromOffset(6, math.floor((rowH - 18) / 2)), Size = UDim2.fromOffset(22, 18), BackgroundColor3 = T.ink, BackgroundTransparency = 0.3 })
 		UI.Corner(seed, 4)
 		UI.Text(seed, x and x.seed and tostring(x.seed) or "-", { Face = "number", TextSize = 12, TextColor3 = T.sub, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None,
 			TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 		local name = x and (x.you and ("YOU · " .. tostring(x.name)) or tostring(x.name)) or "TBD"
-		UI.Text(row, string.upper(name), { Name = "Name", Face = "displayMed", TextSize = 15, TextColor3 = won and T.gold or (lost and T.dim or (x and x.you and T.text or T.text)),
+		UI.Text(row, name, { Name = "Name", Face = "heading", TextSize = 13, TextColor3 = won and T.gold or (lost and T.dim or (x and x.you and T.text or T.text)),
 			Position = UDim2.fromOffset(34, 0), Size = UDim2.new(1, -82, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		UI.Text(row, x and tostring(x.overall or "") or "", { Name = "Ovr", Face = "number", TextSize = 15, TextColor3 = T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 0),
 			Size = UDim2.fromOffset(40, rowH), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
@@ -206,7 +208,7 @@ function TourneyUI.Bracket(parent, run, order)
 				matchBox(grid, m, colW, rowH, { Name = "Match" .. r .. "_" .. k, Position = UDim2.fromOffset(x, math.floor(cy)) })
 				if r < 3 then
 					-- the connector to the next round
-					UI.Frame(grid, { Name = "Link", BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.82, Position = UDim2.fromOffset(x + colW, math.floor(cy + boxH / 2)),
+					UI.Frame(grid, { Name = "Link", BackgroundColor3 = T.line, Position = UDim2.fromOffset(x + colW, math.floor(cy + boxH / 2)),
 						Size = UDim2.fromOffset(gap, 1) })
 				end
 			end

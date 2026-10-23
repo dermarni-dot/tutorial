@@ -675,7 +675,7 @@ function Career.Autograph(profile)
 		return false, "You already signed for the fans today."
 	end
 	if (profile.popularity or 0) < 3 then
-		return false, "Nobody's asking for your autograph yet. Win some fights!"
+		return false, "Nobody is asking for your autograph yet. Win some fights first."
 	end
 	profile.lastAutographDay = profile.day
 	profile.popularity = clamp(profile.popularity + 0.2, 0, 100)
@@ -1075,7 +1075,7 @@ function Career.ApplyResult(profile, res)
 		end
 		world.champions[org][ci] = "player"
 		profile.titlesWon += 1
-		table.insert(notes, "NEW " .. org .. " WORLD CHAMPION!")
+		table.insert(notes, "NEW " .. org .. " WORLD CHAMPION")
 	end
 	if win then
 		if offer.kind == "Regional Title" then
@@ -1083,13 +1083,13 @@ function Career.ApplyResult(profile, res)
 			world.regional.regional[ci] = "player"
 			profile.tier = 3
 			profile.tierWins = 0
-			table.insert(notes, "You are the REGIONAL CHAMPION!")
+			table.insert(notes, "You are the REGIONAL CHAMPION")
 		elseif offer.kind == "National Title" then
 			profile.regional.national = true
 			world.regional.national[ci] = "player"
 			profile.tier = 4
 			profile.tierWins = 0
-			table.insert(notes, "You are the NATIONAL CHAMPION!")
+			table.insert(notes, "You are the NATIONAL CHAMPION")
 		end
 		for _, org in ipairs(offer.stakes or {}) do
 			if not profile.belts[org] then
@@ -1114,7 +1114,7 @@ function Career.ApplyResult(profile, res)
 	if nBelts == 4 and profile.tier < 9 then
 		profile.tier = 9
 		profile.undisputedReigns += 1
-		table.insert(notes, "UNDISPUTED CHAMPION OF THE WORLD!")
+		table.insert(notes, "UNDISPUTED CHAMPION OF THE WORLD")
 	elseif nBelts > 0 and (profile.tier < 8 or (nBelts < 4 and profile.tier >= 9)) then
 		profile.tier = 8
 	elseif nBelts == 0 and profile.tier >= 8 then
@@ -1169,7 +1169,7 @@ function Career.ApplyResult(profile, res)
 	if profile.tier == 1 and profile.amateurRecord.w >= 4 then
 		profile.tier = 2
 		profile.tierWins = 0
-		table.insert(notes, "You turned PRO! You're now a Local Pro. Global rankings now include you.")
+		table.insert(notes, "You turned PRO. You are now a Local Pro, and the global rankings include you.")
 	elseif profile.tier == 4 and profile.tierWins >= 2 then
 		profile.tier = 5
 		profile.tierWins = 0
@@ -1178,7 +1178,7 @@ function Career.ApplyResult(profile, res)
 	local best = World.BestRank(profile)
 	if profile.tier == 5 and best <= 10 then
 		profile.tier = 6
-		table.insert(notes, "You broke into the TOP 10!")
+		table.insert(notes, "You broke into the TOP 10.")
 	end
 	if profile.tier == 6 and best <= 3 then
 		profile.tier = 7

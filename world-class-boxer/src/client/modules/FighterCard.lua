@@ -660,15 +660,16 @@ end
 
 -- a tale-of-the-tape cell: CAPTION (small) / value (display)
 local function tapeCell(parent, caption, value, order, accent)
-	local f = UI.Frame(parent, { Name = "Tape", BackgroundColor3 = T.panel2, BackgroundTransparency = 0.5, LayoutOrder = order })
-	UI.Corner(f, UI.R.md)
-	UI.Text(f, string.upper(caption), { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 6), Size = UDim2.new(1, -24, 0, 14),
+	-- (a tale-of-the-tape cell: square, a 1 px rule, the caption over the value)
+	local f = UI.Frame(parent, { Name = "Tape", BackgroundColor3 = T.panel, BackgroundTransparency = 0, LayoutOrder = order })
+	UI.Stroke(f, T.line, 1, 0)
+	UI.Text(f, string.upper(caption), { Font = T.semi, TextSize = 11, TextColor3 = T.dim, Position = UDim2.fromOffset(12, 6), Size = UDim2.new(1, -24, 0, 14),
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	-- a long value ("Counter Puncher" in a narrow cell) steps down a few sizes rather than being cut; it
 	-- may use the cell's right padding (left-aligned: a short value looks the same)
-	local v = UI.Text(f, tostring(value), { Face = "displayMed", TextSize = 21, TextColor3 = accent or T.text, Position = UDim2.fromOffset(12, 21), Size = UDim2.new(1, -16, 0, 26),
+	local v = UI.Text(f, tostring(value), { Face = "displayMed", TextSize = 18, TextColor3 = accent or T.text, Position = UDim2.fromOffset(12, 22), Size = UDim2.new(1, -16, 0, 24),
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextScaled = true })
-	UI.New("UITextSizeConstraint", { MaxTextSize = 21, MinTextSize = 15, Parent = v })
+	UI.New("UITextSizeConstraint", { MaxTextSize = 18, MinTextSize = 13, Parent = v })
 	return f
 end
 
@@ -715,8 +716,8 @@ function FighterCard.Full(parent, P, opts)
 	-- photo column
 	local photoW = small and 300 or 430
 	local frame = UI.Frame(card, { Name = "PhotoFrame", Size = UDim2.new(0, photoW, 1, 0), BackgroundColor3 = T.ink })
-	UI.Corner(frame, UI.R.xl)
-	UI.Stroke(frame, Color3.new(1, 1, 1), 1, 0.86)
+	UI.Corner(frame, UI.R.lg)
+	UI.Stroke(frame, T.line, 1, 0)
 	local cardH = (opts.Size and opts.Size.Y.Offset > 0) and opts.Size.Y.Offset or 640
 	local photo = FighterCard.Photo(frame, { Size = UDim2.fromScale(1, 1), aspect = photoW / cardH })
 	UI.Corner(photo, UI.R.xl)
@@ -735,8 +736,7 @@ function FighterCard.Full(parent, P, opts)
 	UI.Text(plate, string.upper(P.className or ""), { Face = "displayMed", TextSize = 22, TextColor3 = T.text, Size = UDim2.new(1, 0, 0, 26), AutomaticSize = Enum.AutomaticSize.None, ZIndex = 6, TextWrapped = false })
 	UI.Text(plate, string.format("%s  ·  %s", string.upper(P.tierName or ""), string.upper(id.nationality or "")), { Font = T.semi, TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromOffset(0, 30),
 		Size = UDim2.new(1, 0, 0, 16), AutomaticSize = Enum.AutomaticSize.None, ZIndex = 6, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-	local bar = UI.Frame(plate, { Position = UDim2.fromOffset(0, 56), Size = UDim2.fromOffset(120, 4), BackgroundColor3 = T.red, ZIndex = 6 })
-	UI.Gradient(bar, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }))
+	UI.Frame(plate, { Position = UDim2.fromOffset(0, 56), Size = UDim2.fromOffset(60, 3), BackgroundColor3 = T.red, ZIndex = 6 })
 
 	-- info column (scrolls on short screens)
 	local info = UI.Scroll(card, { Name = "Info", Position = UDim2.new(0, photoW + (small and 20 or 36), 0, 0), Size = UDim2.new(1, -(photoW + (small and 20 or 36)), 1, 0) })

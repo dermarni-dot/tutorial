@@ -17,6 +17,7 @@
 --   lune run tools/sim/test_menustage.luau
 local roblox = require("@lune/roblox")
 local task = require("@lune/task")
+local process = require("@lune/process")
 local Host = require("./host")
 local FE = require("./fakeengine")
 
@@ -404,10 +405,10 @@ do
 		local hit, track = f:FindFirstChild("Hit"), f:FindFirstChild("Track")
 		local x0, w, y = track.AbsolutePosition.X, track.AbsoluteSize.X, track.AbsolutePosition.Y + 4
 		local MB1, MOVE = Enum.UserInputType.MouseButton1, Enum.UserInputType.MouseMovement
-		local press0 = { UserInputType = MB1, Position = Vector3.new(x0 + w * 0.2, y, 0), KeyCode = Enum.KeyCode.Unknown }
+		local press0 = { UserInputType = MB1, Position = Vector3.new(x0 + w * 0.2, y, 0) }
 		S.signal(hit, "InputBegan"):Fire(press0)
 		for i = 1, n do
-			uis.InputChanged:Fire({ UserInputType = MOVE, Position = Vector3.new(x0 + w * (0.2 + 0.6 * i / n), y, 0), KeyCode = Enum.KeyCode.Unknown }, false)
+			uis.InputChanged:Fire({ UserInputType = MOVE, Position = Vector3.new(x0 + w * (0.2 + 0.6 * i / n), y, 0) }, false)
 			S.settle(seconds / n)
 		end
 		uis.InputEnded:Fire(press0, false)
@@ -551,6 +552,5 @@ do
 end
 
 print(string.format("test_menustage: %d passed, %d failed", pass, fail))
-if fail > 0 then
-	error("test_menustage failed")
-end
+-- (the client sim leaves scheduled threads behind: an explicit exit, as test_ui_layout)
+process.exit(fail == 0 and 0 or 1)

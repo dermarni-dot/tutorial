@@ -586,9 +586,9 @@ function MuscleScreen.Open(opts)
 	end
 	screen = s
 	local compact = UI.CanvasSize(State.gui).Y < 640
-	local shade, win, body = UI.Window(State.gui, "Muscle", 1180, 720, "MUSCLE PROGRESSION", { onClose = function()
+	local shade, win, body = UI.Window(State.gui, "Muscle", 1180, 720, "Muscle progression", { onClose = function()
 		MuscleScreen.Close(false)
-	end, scroll = false, kicker = "BODY  ·  GROWTH OVER TIME" })
+	end, scroll = false, kicker = "Body  ·  growth over time" })
 	s.shade, s.win = shade, win
 	State.windows.Muscle = closeSilently
 	-- which group opens: asked for, else the one that grew most this session, else the arms
@@ -609,8 +609,7 @@ function MuscleScreen.Open(opts)
 	local viewW = compact and 0.38 or 0.42
 	local stage = UI.Frame(body, { Name = "Stage", Size = UDim2.new(viewW, -8, 1, 0), BackgroundColor3 = Color3.fromRGB(10, 11, 16), ClipsDescendants = true })
 	UI.Corner(stage, UI.R.lg)
-	UI.Gradient(stage, { Color3.fromRGB(44, 46, 60), Color3.fromRGB(10, 11, 16) }, 90)
-	UI.Stroke(stage, Color3.new(1, 1, 1), 1, 0.9)
+	UI.Stroke(stage, T.line, 1, 0)
 	local vf = UI.New("ViewportFrame", {
 		Name = "View", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Active = true,
 		Ambient = Color3.fromRGB(96, 94, 104), LightColor = Color3.fromRGB(255, 236, 214), Parent = stage,
@@ -651,7 +650,7 @@ function MuscleScreen.Open(opts)
 		UI.Text(stage, "No character to show yet", { TextSize = 15, TextColor3 = T.sub, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center })
 	end
 	-- the caption over the figure: the lit group, and how to turn it
-	local cap = UI.Text(stage, "", { Name = "Caption", Face = "displayMed", TextSize = 20, TextColor3 = T.text, Position = UDim2.fromOffset(16, 12), Size = UDim2.new(1, -32, 0, 24), AutomaticSize = Enum.AutomaticSize.None,
+	local cap = UI.Text(stage, "", { Name = "Caption", Face = "heading", TextSize = 16, TextColor3 = T.text, Position = UDim2.fromOffset(16, 12), Size = UDim2.new(1, -32, 0, 24), AutomaticSize = Enum.AutomaticSize.None,
 		TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3 })
 	-- (two lines from the bottom up: the keyboard hint wraps on a small window instead of losing its end)
 	local hint = UI.Text(stage, "", { Name = "Hint", Font = T.semi, TextSize = 12, TextColor3 = T.sub, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -10), Size = UDim2.new(1, -32, 0, 34),
@@ -660,9 +659,9 @@ function MuscleScreen.Open(opts)
 		if mode == "gamepad" then
 			return string.format("%s TURN   ·   %s / %s GROUP   ·   %s BACK", Gamepad.Label(K.Thumbstick2), Gamepad.Label(K.ButtonL1), Gamepad.Label(K.ButtonR1), Gamepad.Label(K.ButtonB))
 		elseif mode == "touch" then
-			return "DRAG TO TURN THE FIGURE"
+			return "Drag to turn the figure"
 		end
-		return "DRAG TO TURN  ·  ARROW KEYS TURN  ·  BACKSPACE CLOSES"
+		return "Drag to turn  ·  arrow keys turn  ·  Backspace closes"
 	end)
 
 	function s.updateCamera()
@@ -761,7 +760,7 @@ function MuscleScreen.Open(opts)
 		local lv = groupLevel(P1, g.id)
 		local sore = tonumber(P1.condition and P1.condition.sore and P1.condition.sore[g.id]) or 0
 		local top = UI.Frame(head, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 44) })
-		UI.Text(top, string.upper(g.name), { Face = "display", TextSize = 34, TextColor3 = g.color, Size = UDim2.new(0.6, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		UI.Text(top, g.name, { Face = "display", TextSize = 24, TextColor3 = g.color, Size = UDim2.new(0.6, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 		UI.Text(top, string.format('%s <font color="#%s" size="16">/ %d</font>', fmt1(lv), T.sub:ToHex(), math.floor(potential + 0.5)), { Name = "Level", Face = "number", TextSize = 30, RichText = true, TextColor3 = T.text, AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.fromScale(1, 0), Size = UDim2.new(0.4, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
 		UI.LevelBar(head, { Size = UDim2.new(1, 0, 0, 10) }, { value = lv, cap = potential, color = BodyMap.DevColor(lv / potential) })
@@ -785,7 +784,7 @@ function MuscleScreen.Open(opts)
 			UI.Chip(chips, string.format("SORE %d%%", math.floor(sore * 100 + 0.5)), T.orange, { order = 2, h = 26, TextSize = 12 })
 		end
 		UI.Chip(chips, string.format("%d%% OF POTENTIAL", math.floor(math.clamp(lv / potential, 0, 1) * 100 + 0.5)), BodyMap.DevColor(lv / potential), { order = 3, h = 26, TextSize = 12 })
-		UI.Kicker(parts, g.name .. "  ·  EVERY MUSCLE", g.color)
+		UI.Kicker(parts, g.name .. "  ·  every muscle", g.color)
 		-- a muscle that grew this session reads as on the session report: the gain now, tonight's share
 		-- (the bar's pale stretch) and the level now (BodyMap.GrowthSplit / GrowthNumbers)
 		local list = Config.MuscleGroupParts[g.id] or {}
@@ -800,7 +799,7 @@ function MuscleScreen.Open(opts)
 			local v = partLevel(P1, part.id)
 			local gain = s.growth and tonumber(s.growth[part.id]) or 0
 			local row = UI.Frame(parts, { Name = "Part", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 24) })
-			UI.Text(row, string.upper(BodyMap.Short(part.id)), { Font = T.semi, TextSize = 14, TextColor3 = gain > 0.005 and T.green or T.text, Size = UDim2.new(0, 124, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+			UI.Text(row, BodyMap.Short(part.id), { Font = T.semi, TextSize = 14, TextColor3 = gain > 0.005 and T.green or T.text, Size = UDim2.new(0, 124, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 			if gain > 0.005 then
 				local now, tonight = BodyMap.GrowthSplit(gain)
 				row:SetAttribute("Now", math.floor(now * 100 + 0.5) / 100)
@@ -819,7 +818,7 @@ function MuscleScreen.Open(opts)
 
 	-- the session's growth, every part that grew with its gain (opened from the training result)
 	if growthCard then
-		UI.Kicker(growthCard, "GROWTH THIS SESSION", T.green)
+		UI.Kicker(growthCard, "Growth this session", T.green)
 		-- (the gain now, as the report's NOW column; tonight's share is the line under the chips)
 		local list, tonight = {}, 0
 		for id, g in pairs(s.growth) do
@@ -870,7 +869,7 @@ function MuscleScreen.Open(opts)
 				e.part.Color = id == def.id and e.color:Lerp(def.color, 0.75) or e.color
 			end
 		end
-		cap.Text = string.upper(def.name) .. "  ·  LIT"
+		cap.Text = def.name .. "  ·  lit"
 		cap.TextColor3 = def.color
 		-- a group on one side of the body: turn the figure to it (the shortest way round) when that
 		-- side is not facing the camera

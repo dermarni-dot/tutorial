@@ -175,11 +175,12 @@ def draw_text(tile, it, st, W, H):
     tmp = Image.new("RGBA", (1, 1))
     d0 = ImageDraw.Draw(tmp)
     if st.get("scaled"):
-        # TextScaled: the engine fits the em box to the label's height, then narrows to its width
-        size = min(H * 0.96, size if size > 0 else H)
+        # TextScaled: the engine fits the em box to the label's height (all its lines), then narrows to its width
+        lines0 = text.split("\n")
+        size = min(H * 0.96 / max(1, len(lines0)), size if size > 0 else H)
         while size > 8:
             fnt = font(kind, size, wt)
-            if d0.textlength(text, font=fnt) * sx <= W * 0.98:
+            if max(d0.textlength(ln, font=fnt) for ln in lines0) * sx <= W * 0.98:
                 break
             size -= 1
     fnt = font(kind, size, wt)

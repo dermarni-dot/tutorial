@@ -347,6 +347,33 @@ local function valance(m, aw, stripe)
 	K.Frame(sg, { BackgroundColor3 = aw.Color:Lerp(Color3.new(0, 0, 0), 0.35), Size = UDim2.fromScale(1, 0.18), Position = UDim2.fromScale(0, 0.82) })
 end
 
+-- the shop fronts' neon: a tube under each sign in the shop's own colour (Neon by day, a coloured
+-- pool of light on the sidewalk after dark through Ambience's NightLight)
+local NEON_PALETTE = { rgb(255, 60, 110), rgb(60, 210, 255), rgb(255, 200, 60), rgb(255, 80, 60), rgb(90, 240, 150), rgb(190, 90, 255), rgb(255, 140, 50) }
+local function neonColor(name)
+	local h = 0
+	for i = 1, #name do
+		h = (h * 31 + string.byte(name, i)) % 1000003
+	end
+	return NEON_PALETTE[h % #NEON_PALETTE + 1]
+end
+
+local function signNeon(m, s)
+	local sign = s.sign
+	local col = neonColor(tostring(s.store ~= "" and s.store or sign.Position.X))
+	local under = sign.CFrame * CF(0, -sign.Size.Y / 2 - 0.3, -sign.Size.Z / 2 - 0.12)
+	Part(m, "SignNeon", V3(sign.Size.X * 0.92, 0.16, 0.16), under, col, M.Neon, { shadow = false })
+	local src = Part(m, "SignNeonLight", V3(0.2, 0.2, 0.2), under * CF(0, -0.6, -1.2), col, M.SmoothPlastic, { shadow = false, t = 1 })
+	local l = Instance.new("PointLight")
+	l.Color = col
+	l.Range = 20
+	l.Brightness = 1.4
+	l.Shadows = false
+	l.Enabled = false
+	l.Parent = src
+	tagged(l, "NightLight")
+end
+
 -- goose-neck lamps over a shop sign (their lenses glow at night through Ambience's NightLens)
 local function signLamps(m, s)
 	local sign = s.sign
@@ -389,9 +416,9 @@ end
 local function openSign(m, s)
 	local side = (s.doorX and s.doorX > 0) and -1 or 1
 	local z = s.facade and -0.27 or 0.4
-	local p = Part(m, "OpenSign", V3(3.0, 1.2, 0.03), s.cf * CF(side * s.w * 0.3, 7.6, z), C.ink, M.SmoothPlastic, { shadow = false })
+	local p = Part(m, "OpenSign", V3(3.0, 1.2, 0.03), s.cf * CF(side * s.w * 0.3, 7.6, z), rgb(255, 70, 80), M.Neon, { shadow = false })
 	local sg = K.Gui(p, FACE.Front, 40, 0)
-	K.Frame(sg, { BackgroundColor3 = C.ink, BackgroundTransparency = 0.2 })
+	K.Frame(sg, { BackgroundColor3 = C.ink, BackgroundTransparency = 0.1 })
 	local f = K.Frame(sg, { BackgroundTransparency = 1, Size = UDim2.fromScale(0.94, 0.86), Position = UDim2.fromScale(0.03, 0.07) })
 	local st = Instance.new("UIStroke")
 	st.Color = rgb(60, 160, 255)
@@ -559,6 +586,7 @@ local function block2(b, shops)
 				end
 				if not s.marquee and not s.columns then
 					signLamps(m, s)
+					signNeon(m, s)
 				end
 				if s.awning and not s.canopy then
 					valance(m, s.awning, C.white)

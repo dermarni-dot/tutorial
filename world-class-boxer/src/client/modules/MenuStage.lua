@@ -293,7 +293,10 @@ local function buildLamps(st)
 	end
 end
 
--- key (warm, front-left, high), rim (gold, behind-right) and a cool fill near the lens, all on the boxer
+-- a vivid three-point rig on the boxer: a warm white key (front-left, high), a hot magenta rim
+-- (behind-right), a cyan kicker (behind-left) and a lifted cool fill near the lens; behind him a
+-- gradient backdrop on the back wall (magenta to deep blue, between the posters and the window) with
+-- a magenta / blue wash either side of it (3 parts, 1 gui, 2 lights more than the plain rig)
 local function buildLights(st)
 	local function rig(name, pos, aim)
 		local p = part(st, name, V3(0.2, 0.2, 0.2), CFrame.lookAt(pos, aim), Color3.new(0, 0, 0), Enum.Material.SmoothPlastic, { Transparency = 1, CastShadow = false })
@@ -301,14 +304,43 @@ local function buildLights(st)
 	end
 	local chest = V3(0, 4, 0)
 	local key = rig("KeyLight", V3(-6, 10, 9), chest)
-	st.key = light(key, "SpotLight", { Face = Enum.NormalId.Front, Angle = 46, Range = 26, Brightness = 2.6, Color = rgb(255, 230, 204), Shadows = true })
+	st.key = light(key, "SpotLight", { Face = Enum.NormalId.Front, Angle = 46, Range = 26, Brightness = 3.2, Color = rgb(255, 238, 214), Shadows = true })
 	table.insert(st.casters, { light = st.key, from = 2 })
 	local rim = rig("RimLight", V3(5, 10.5, -7), chest + V3(0, 1, 0))
-	st.rim = light(rim, "SpotLight", { Face = Enum.NormalId.Front, Angle = 50, Range = 22, Brightness = 4.4, Color = rgb(255, 190, 110) })
+	st.rim = light(rim, "SpotLight", { Face = Enum.NormalId.Front, Angle = 50, Range = 22, Brightness = 5.2, Color = rgb(255, 80, 170) })
 	local rim2 = rig("RimLight2", V3(-7, 9, -6), chest + V3(0, 1, 0))
-	light(rim2, "SpotLight", { Face = Enum.NormalId.Front, Angle = 44, Range = 20, Brightness = 2.2, Color = rgb(150, 180, 255) })
+	light(rim2, "SpotLight", { Face = Enum.NormalId.Front, Angle = 44, Range = 20, Brightness = 3.0, Color = rgb(80, 210, 255) })
 	local fill = rig("FillLight", V3(3, 4.5, 8), chest)
-	light(fill, "PointLight", { Range = 13, Brightness = 0.45, Color = rgb(170, 196, 255) })
+	light(fill, "PointLight", { Range = 14, Brightness = 0.7, Color = rgb(190, 206, 255) })
+	-- the gradient backdrop (its own gui: the sign helper's labels follow the Graphics level's resolution)
+	local floorY = GYM_Y
+	local drop = part(st, "Backdrop", V3(14.5, 12.2, 0.1), CF(-4.25, floorY + 9.4, -29.6), rgb(40, 20, 80), Enum.Material.SmoothPlastic, { CastShadow = false })
+	local sg = Instance.new("SurfaceGui")
+	sg.Name = "Gradient"
+	sg.Face = Enum.NormalId.Front
+	sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	sg.PixelsPerStud = 8
+	sg.LightInfluence = 0.25
+	sg.Brightness = 1.2
+	local fr = Instance.new("Frame")
+	fr.Size = UDim2.fromScale(1, 1)
+	fr.BorderSizePixel = 0
+	fr.BackgroundColor3 = Color3.new(1, 1, 1)
+	local g = Instance.new("UIGradient")
+	g.Rotation = 70
+	g.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, rgb(255, 70, 160)),
+		ColorSequenceKeypoint.new(0.5, rgb(120, 40, 200)),
+		ColorSequenceKeypoint.new(1, rgb(20, 60, 200)),
+	})
+	g.Parent = fr
+	fr.Parent = sg
+	sg.Parent = drop
+	-- the coloured washes on the brick either side of it
+	for _, w in ipairs({ { V3(-16, floorY + 11, -24), rgb(255, 70, 170) }, { V3(13, floorY + 11, -24), rgb(60, 110, 255) } }) do
+		local holder = rig("WashLight", w[1], w[1] + V3(0, 0, -1))
+		light(holder, "PointLight", { Range = 24, Brightness = 1.3, Color = w[2], Shadows = false })
+	end
 end
 
 -- the set at a Graphics level (1 Low .. 3 High): which lights cast shadows, the dust, the signs' resolution

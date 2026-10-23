@@ -2968,11 +2968,11 @@ end
 -- as the picture is clear of the count, the get-up, the scorecard and the big banner
 local function crowdEruption()
 	local lean = crowdMeter.lean
-	local text, color = "THE CROWD IS ON ITS FEET!", T.gold
+	local text, color = "THE CROWD IS ON ITS FEET", T.gold
 	if lean > 0.2 then
-		text, color = "THEY'RE CHANTING YOUR NAME!", T.red
+		text, color = "THEY'RE CHANTING YOUR NAME", T.red
 	elseif lean < -0.2 then
-		text, color = "THE CROWD IS BEHIND " .. string.upper((F.tape and F.tape.opp.name or "HIM"):match("(%S+)$") or "HIM") .. "!", T.blue
+		text, color = "THE CROWD IS BEHIND " .. string.upper((F.tape and F.tape.opp.name or "HIM"):match("(%S+)$") or "HIM"), T.blue
 	end
 	task.spawn(function()
 		for _ = 1, 14 do
@@ -3313,7 +3313,7 @@ local function updateFX(dt, now)
 		crowdMeter.quiet += dt
 		if crowdMeter.quiet > 25 then
 			crowdMeter.quiet = 0
-			crowdMoment("BOOS RAIN DOWN!", T.orange)
+			crowdMoment("BOOS FROM THE CROWD", T.orange)
 		end
 	else
 		crowdMeter.quiet = 0
@@ -4882,7 +4882,7 @@ function handlers.entrance(msg)
 		camMode = "entrance"
 		camTarget = player.Character
 		showBanner("YOUR WALKOUT", T.red, 2.5)
-		setTicker((msg.intro or "And now...") .. "  " .. F.tape.you.name:upper() .. " \"" .. (F.tape.you.nick or "") .. "\"!")
+		setTicker((msg.intro or "And now...") .. "  " .. F.tape.you.name .. " \"" .. (F.tape.you.nick or "") .. "\".")
 		phase("entrance", { who = "you", target = player.Character, pyro = msg.pyro == true })
 		cheer(1.2)
 		if msg.pyro then
@@ -5164,7 +5164,7 @@ function handlers.hit(msg)
 	elseif msg.counter then
 		-- the centre flash is for counters (and knockdowns / round events): a heavy shot you take
 		-- already shakes, blurs and reddens the picture
-		showFlash(flash, "COUNTER " .. name .. (msg.body and " TO THE BODY" or "") .. "!", T.red)
+		showFlash(flash, "COUNTER " .. name .. (msg.body and " TO THE BODY" or ""), T.red)
 	end
 end
 
@@ -5185,13 +5185,13 @@ function handlers.special(msg)
 	local M = Moves.Data[msg.id]
 	local name = (M and M.short) or msg.name or tostring(msg.id):upper()
 	if msg.who == "you" then
-		showFlash(defFlash, name .. "!", T.gold, 0.7)
+		showFlash(defFlash, name, T.gold, 0.7)
 		Impact.rumble(0, 0.25, 0.06)
 		-- the shared cooldown runs from the server's go (a special this client did not predict counts too)
 		F.specialReady = math.max(F.specialReady or 0, os.clock() + ((M and M.cooldown) or 1.5) - 0.1)
 		KM.paintSpecials()
 	else
-		showFlash(defFlash, "HE GOES FOR THE " .. name .. "!", T.sub, 0.7)
+		showFlash(defFlash, "HE GOES FOR THE " .. name, T.sub, 0.7)
 	end
 end
 
@@ -5256,7 +5256,7 @@ local DEF_TEXT = { SLIPPED = "SLIPPED", ["ROLLED UNDER"] = "ROLLED UNDER", PARRI
 function handlers.defense(msg)
 	local mine = msg.who == "you"
 	if mine then
-		showFlash(defFlash, (DEF_TEXT[msg.move] or msg.move) .. "! COUNTER NOW!", T.gold, 0.8)
+		showFlash(defFlash, (DEF_TEXT[msg.move] or msg.move) .. "  ·  COUNTER NOW", T.gold, 0.8)
 	else
 		showFlash(defFlash, "OPPONENT " .. (DEF_TEXT[msg.move] or msg.move), T.sub, 0.6)
 	end
@@ -5268,7 +5268,7 @@ function handlers.combo(msg)
 		KM.combo.On(msg)
 	end
 	if msg.who == "you" and type(msg.name) == "string" and msg.sig then
-		crowdMoment(msg.name .. "!", T.orange)
+		crowdMoment(msg.name, T.orange)
 	end
 end
 handlers.comboEnd = handlers.combo
@@ -5286,7 +5286,7 @@ function handlers.intel(msg)
 		KM.intel.On(msg)
 	end
 	if msg.wind then
-		showFlash(flash, "SECOND WIND!", T.green, 1.2)
+		showFlash(flash, "SECOND WIND", T.green, 1.2)
 	end
 end
 function handlers.mom(msg)
@@ -5330,7 +5330,7 @@ function handlers.announce(msg)
 	showFlash(flash, msg.text, T.gold, 1.2)
 end
 
-local TIER_CALL = { "ROCKED!", "HURT BAD!", "OUT ON HIS FEET!" }
+local TIER_CALL = { "ROCKED", "HURT BAD", "OUT ON HIS FEET" }
 function handlers.tier(msg)
 	local tier = msg.tier or 0
 	phase("tier", { who = msg.who, tier = tier })
@@ -5344,15 +5344,15 @@ function handlers.tier(msg)
 		return
 	end
 	if msg.who == "opp" then
-		local call = TIER_CALL[tier] or "ROCKED!"
+		local call = TIER_CALL[tier] or "ROCKED"
 		if F.tape and F.tape.opp.female then
 			call = call:gsub("HIS", "HER")
 		end
-		showFlash(defFlash, call .. " FINISH IT!", tierColor(tier), 1.2)
+		showFlash(defFlash, call .. "  ·  FINISH HIM", tierColor(tier), 1.2)
 		screens(call)
 		cheer(0.4 * tier)
 	else
-		showFlash(defFlash, tier >= 2 and "YOU'RE IN TROUBLE - HOLD (G) AND COVER UP!" or "YOU'RE HURT - TIE HIM UP (G)!", tierColor(tier), 1.6)
+		showFlash(defFlash, tier >= 2 and "YOU'RE IN TROUBLE  ·  HOLD (G) AND COVER UP" or "YOU'RE HURT  ·  TIE HIM UP (G)", tierColor(tier), 1.6)
 		flashFrame(redFlash, 1 - 0.35 * fxScale(), 0.6)
 	end
 end
@@ -5395,7 +5395,7 @@ function handlers.ropes(msg)
 	cheer(0.3)
 end
 
-local SEVERITY_TEXT = { flash = "FLASH KNOCKDOWN!", heavy = "DOWN HARD!", out = "KNOCKOUT!" }
+local SEVERITY_TEXT = { flash = "FLASH KNOCKDOWN", heavy = "DOWN HARD", out = "KNOCKOUT" }
 function handlers.kd(msg)
 	local mine = msg.who == "you"
 	-- the server pauses the fight for the count, eight count and referee check (no punches are accepted)
@@ -5417,12 +5417,12 @@ function handlers.kd(msg)
 	local oppName = F.tape and F.tape.opp.name:upper() or "HE"
 	local name = mine and "YOU'RE DOWN!" or ("DOWN GOES " .. oppName .. "!")
 	if msg.severity == "out" then
-		name = mine and "YOU'RE OUT COLD" or (oppName .. " IS OUT COLD!")
+		name = mine and "YOU'RE OUT COLD" or (oppName .. " IS OUT COLD")
 	end
 	-- the count panel carries the headline; the referee's count fills it in
 	addKD(mine and L or R)
 	crowdMeter.lean = math.clamp(crowdMeter.lean + (mine and -0.6 or 0.6), -1, 1)
-	openCount(SEVERITY_TEXT[msg.severity] or "KNOCKDOWN!", mine and T.red or T.gold, name)
+	openCount(SEVERITY_TEXT[msg.severity] or "KNOCKDOWN", mine and T.red or T.gold, name)
 	flashbulbs(mine and 8 or 16)
 	if msg.severity == "out" then
 		countNum.Text = "KO"
@@ -5515,7 +5515,7 @@ function handlers.getup(msg)
 	countWho.Text = mine and "YOU BEAT THE COUNT" or ((F.tape and F.tape.opp.name:upper() or "HE") .. " BEATS THE COUNT")
 	countKickerText.Text = "EIGHT COUNT"
 	countKicker.BackgroundColor3 = T.blue
-	setTicker(mine and ("You beat the count! Show the " .. (F.spar and "coach" or "referee") .. " you can continue...") or (F.tape.opp.name .. " beats the count!"))
+	setTicker(mine and ("You beat the count. Show the " .. (F.spar and "coach" or "referee") .. " you can go on.") or (F.tape.opp.name .. " beats the count."))
 end
 
 function handlers.refcheck(msg)
@@ -5640,7 +5640,7 @@ function handlers.final(msg)
 	elseif res.method == "KO" or res.method == "TKO" or res.method == "RTD" then
 		text = res.method .. "!"
 	elseif F.spar then
-		text = "TIME!"
+		text = "TIME"
 	else
 		text = "THE JUDGES' DECISION..."
 	end

@@ -1601,8 +1601,8 @@ GAMES.combo = function(ctx)
 	-- ROUND 1: COMBINATIONS (the later ones called by number: 1 jab, 2 cross, 3 lead hook, 4 rear hook,
 	-- 5 uppercut, 6 overhand - the number keys throw them too)
 	ctx.bind(PUNCH_ACTIONS)
-	local INFO_NAMES = "Throw each combination in order before the bar runs out. (body) = dig it to the body." .. (ctx.smart and "  SMART BAG: impact tracking on." or "")
-	local INFO_NUMBERS = "CALLED BY NUMBER: 1 jab, 2 cross, 3 lead hook, 4 rear hook, 5 uppercut, 6 overhand. B = to the body."
+	local INFO_NAMES = "Throw each combination in order, every punch on the beat of the one before (the gold ring closes on the beat). (body) = dig it to the body." .. (ctx.smart and "  SMART BAG: impact tracking on." or "")
+	local INFO_NUMBERS = "CALLED BY NUMBER: 1 jab, 2 cross, 3 lead hook, 4 rear hook, 5 uppercut, 6 overhand. B = to the body. Keep the beat."
 	ctx.setInfo(INFO_NAMES)
 	if not ctx.round(1, 3, "COMBINATIONS") then
 		return nil
@@ -1631,6 +1631,13 @@ GAMES.combo = function(ctx)
 		local setTime = timeBar(ctx, 14)
 		local limit = seg.limit or 3
 		chips[1].BackgroundColor3 = T.gold
+		-- the beat: a gold ring that swells on each punch and closes over one beat (seg.beat) - the next
+		-- punch lands as it closes
+		local beat = seg.beat or 0.4
+		local ring = UI.Frame(ctx.stage, { Size = UDim2.fromOffset(16, 16), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -34, 0, 96), BackgroundColor3 = T.gold, BackgroundTransparency = 0.2 })
+		UI.Corner(ring, 20)
+		local lastHit
+		local TEMPO_TEXT = { perfect = { "ON THE BEAT", T.gold }, good = { "GOOD", T.green }, off = { "OFF BEAT", T.orange } }
 		local j, _, start = ctx.begin()
 		ctx.on(function(id, down, t)
 			local hit = j.input(id, down, t)
@@ -1639,6 +1646,11 @@ GAMES.combo = function(ctx)
 			end
 			seqChips(j, chips, hit)
 			if hit.ok then
+				lastHit = t
+				if hit.tempo then
+					-- (the combination is graded as a whole once it is thrown: the per-punch flash is not a grade)
+					ctx.feedback(TEMPO_TEXT[hit.tempo][1], TEMPO_TEXT[hit.tempo][2], false)
+				end
 				local pw = POWER[id] * (0.85 + math.random() * 0.3)
 				local zone = (seg.body and seg.body[hit.idx]) and "body" or "head"
 				local windup, hand = ctx.punch(id, zone, pw)
@@ -1657,6 +1669,10 @@ GAMES.combo = function(ctx)
 			local el = now - start
 			setTime(1 - el / limit)
 			ctx.progress((r - 1 + math.min(1, el / limit)) / combos)
+			local ph = lastHit and math.clamp((now - lastHit) / beat, 0, 1) or 0
+			local d = 16 + 22 * (1 - ph)
+			ring.Size = UDim2.fromOffset(d, d)
+			ring.BackgroundTransparency = 0.2 + 0.6 * ph
 		end)
 		ctx.on(nil)
 		if not okPlay then
@@ -1665,7 +1681,7 @@ GAMES.combo = function(ctx)
 		local res = ctx.close(j)
 		if res.complete and res.wrong == 0 then
 			clean += 1
-			ctx.feedback(res.frac > 0.45 and "PERFECT!" or "CLEAN!", T.gold)
+			ctx.feedback((res.beatQ or res.frac / 0.6) >= 0.8 and "PERFECT RHYTHM!" or "CLEAN!", T.gold)
 		elseif res.complete then
 			ctx.feedback("SLOPPY", T.orange)
 		else
@@ -1878,8 +1894,8 @@ GAMES.rhythm = function(ctx)
 	local hitsAll, notesAll, bestStreak, bestHpm = 0, 0, 0, 0
 	for ri, rd in ipairs(rounds) do
 		local bpm = rd.bpm or 140
-		ctx.setInfo(ri == 1 and string.format("Hit LEFT ({jab}) and RIGHT ({cross}) as each beat crosses the gold line. %d BPM - better bags rebound faster.", bpm)
-			or string.format("Same hand two%s times in a row now, at %d BPM. Stay loose and keep the rhythm.", lv >= 3 and " or three" or "", bpm))
+		ctx.setInfo(ri == 1 and string.format("Hit LEFT ({jab}) and RIGHT ({cross}) as each beat crosses the gold line. From %d BPM - the bag picks up speed through the round: keep up.", bpm)
+			or string.format("Same hand two%s times in a row now, from %d BPM and speeding up. Stay loose and keep the rhythm.", lv >= 3 and " or three" or "", bpm))
 		if not ctx.round(ri, #rounds, string.format("%s%s%d BPM", rd.name or "RHYTHM", DOT, bpm)) then
 			return nil
 		end
@@ -1934,7 +1950,7 @@ GAMES.rhythm = function(ctx)
 			end
 			local alive = moveNotes(j, frames, lineX, now, pxPerSec)
 			local el = now - start
-			ctx.progress(el / (count * seg.interval))
+			ctx.progress(el / math.max(1, j.notes[count].t - start))
 			ctx.stats(string.format("%d hits/min%sstreak %d (best %d)", el > 1 and math.floor(hits / el * 60) or 0, DOT, streak, bestStreak))
 			if not alive or j.closed then
 				break
@@ -2779,7 +2795,7 @@ GAMES.reps = function(ctx)
 		ctx.note(string.format("%d spotted", fails))
 	end
 	ctx.note(rpeText(lastRpe))
-	if not ctx.wait(0.6) then
+	if not ctx.wait(0.3) then
 		return nil
 	end
 	return ctx.score()
@@ -3796,7 +3812,7 @@ local function repSets(ctx, o)
 		ctx.note(string.format("%d failed or spotted", fails))
 	end
 	ctx.note(rpeText(lastRpe))
-	if not ctx.wait(0.6) then
+	if not ctx.wait(0.3) then
 		return nil
 	end
 	return ctx.score()

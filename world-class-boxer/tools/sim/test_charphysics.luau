@@ -375,7 +375,8 @@ print(string.format("worst centre-of-mass offset %.3f studs", worstCom))
 local AnimRig = H.require("AnimRig")
 local RigJoints = H.require("RigJoints")
 local function geoOf(model)
-	local rig = { model = model, joints = {}, geo = { ok = false }, a = {}, root = model:FindFirstChild("HumanoidRootPart") }
+	local rig = { model = model, joints = {}, geo = { ok = false }, a = {}, root = model:FindFirstChild("HumanoidRootPart"),
+		hum = model:FindFirstChildOfClass("Humanoid") }
 	AnimRig.resolveJoints(rig)
 	AnimRig.computeGeo(rig)
 	return rig

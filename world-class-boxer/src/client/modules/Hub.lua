@@ -390,7 +390,7 @@ R.Career = function(body, P)
 		table.insert(belts, "National")
 	end
 	if #belts > 0 then
-		UI.Line(body, "TITLES: " .. table.concat(belts, "  ·  ") .. string.format("   (defenses %d)", P.defenses), { TextColor3 = T.gold, Font = T.semi, TextSize = 14 })
+		UI.Line(body, "Titles: " .. table.concat(belts, "  ·  ") .. string.format("   (%d defences)", P.defenses), { TextColor3 = T.gold, Font = T.semi, TextSize = 14 })
 	end
 	if not P.storeOk then
 		UI.Line(body, "Saving is off in this session (enable Studio API access or publish the game to save progress).", { TextColor3 = T.red, TextSize = 13 })
@@ -417,7 +417,7 @@ R.Career = function(body, P)
 		quote(c, o.talk)
 		local stakes = stakesText(o)
 		if #stakes > 0 then
-			UI.Line(c, "ON THE LINE: " .. table.concat(stakes, "  ·  ") .. " WORLD TITLE" .. (#stakes > 1 and "S" or ""), { Font = T.semi, TextColor3 = T.gold, TextSize = 14 })
+			UI.Line(c, "On the line: the " .. table.concat(stakes, " and ") .. " world title" .. (#stakes > 1 and "s" or ""), { Font = T.semi, TextColor3 = T.gold, TextSize = 14 })
 		end
 		-- camp countdown and the weight cut
 		local meters = UI.Frame(c, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 58) })
@@ -426,15 +426,15 @@ R.Career = function(body, P)
 		UI.Stat(meters, string.format("%.1f", P.weight), string.format("WEIGHT / %d LBS", P.weightLimit), { Size = UDim2.new(0.33, -6, 1, 0), order = 2, valueSize = 28, valueColor = P.overWeight > 0 and T.red or T.green })
 		UI.Stat(meters, money(o.purse), "PURSE", { Size = UDim2.new(0.34, -6, 1, 0), order = 3, valueSize = 28, valueColor = T.green, scaled = true, icon = "coin" })
 		if P.overWeight > 0 then
-			UI.Line(c, string.format("You're %.1f lbs over the limit! Burn fat with cardio or cut water in the sauna before fight night - missing weight costs stamina and %s.", P.overWeight, P.overWeight > 2 and "20% of your purse" or "no fine yet"), { TextColor3 = T.red, TextSize = 13 })
+			UI.Line(c, string.format("You are %.1f lbs over the limit. Burn fat with cardio or cut water in the sauna before fight night; missing weight costs stamina and %s.", P.overWeight, P.overWeight > 2 and "20% of your purse" or "no fine yet"), { TextColor3 = T.red, TextSize = 13 })
 		end
 		if #P.camp.log > 0 then
 			UI.Line(c, "Camp so far: " .. table.concat(P.camp.log, ", "):sub(1, 220), { TextColor3 = T.sub, TextSize = 12 })
 		end
 		local ready = P.camp.daysLeft <= 0
 		local tourneyWait = type(o.tourney) == "table" and not ready
-		UI.Line(c, ready and "Camp is complete. It's FIGHT NIGHT." or (tourneyWait and "A tournament bout is on its day: train, eat and sleep until then. Health and injuries carry over between rounds."
-			or "Train at the gym, eat, sleep: each night is a camp day. You can also fight early (fewer camp days)."), { TextColor3 = ready and T.gold or T.sub, TextSize = 13 })
+		UI.Line(c, ready and "Camp is complete. It is fight night." or (tourneyWait and "A tournament bout is on its day: train, eat and sleep until then. Health and injuries carry over between rounds."
+			or "Train at the gym, eat and sleep: each night is a camp day. You can also fight early, with fewer camp days behind you."), { TextColor3 = ready and T.gold or T.sub, TextSize = 13 })
 		if tourneyWait then
 			-- (the bracket does not move for one boxer: no early fight, the bracket is one tap away)
 			buttons(c, {
@@ -485,7 +485,7 @@ R.Career = function(body, P)
 		-- the guided debut, while it is still on offer (a refused or called-off start never loses it)
 		if type(P.debut) == "table" and P.debut.offer == true and State.open.Debut then
 			local dc = UI.Card(body, { stroke = T.gold })
-			UI.Line(dc, "YOUR DEBUT IS WAITING: a guided amateur bout, your coach in your ear.", { TextColor3 = T.gold, Font = T.semi, TextSize = 14 })
+			UI.Line(dc, "Your debut is waiting: a guided amateur bout, your coach in your ear.", { TextColor3 = T.gold, Font = T.semi, TextSize = 14 })
 			UI.Button(dc, "FIGHT MY DEBUT", { Name = "OpenDebut", Size = UDim2.fromOffset(220, math.max(40, UI.MinHit(dc))), BackgroundColor3 = T.gold, TextColor3 = T.ink }, function()
 				Hub.Close()
 				State.open.Debut(P.debut)
@@ -507,13 +507,13 @@ R.Career = function(body, P)
 				quote(c, o.talk)
 				local stakes = stakesText(o)
 				if #stakes > 0 then
-					UI.Line(c, "ON THE LINE: " .. table.concat(stakes, "  ·  "), { TextColor3 = T.gold, TextSize = 13, Font = T.semi })
+					UI.Line(c, "On the line: " .. table.concat(stakes, ", "), { TextColor3 = T.gold, TextSize = 13, Font = T.semi })
 				end
 				buttons(c, {
 					act("ACCEPT FIGHT", T.gold, function()
 						-- (the signed fight's profile push redraws the tab: a Render here drew the old profile
 						-- first, one rebuild too many)
-						result(State.req("AcceptOffer", i), "Fight signed! Training camp begins.")
+						result(State.req("AcceptOffer", i), "Fight signed. Training camp begins.")
 					end, 180),
 					act("SCOUT", T.panel2, function()
 						showBoxer(o.oppId)
@@ -523,7 +523,7 @@ R.Career = function(body, P)
 			UI.Line(body, "Offers refresh every week (7 days). Rivals with heat call you out for rematches and trilogies.", { TextColor3 = T.sub, TextSize = 13 })
 		end
 		local wc = UI.Card(body)
-		UI.Line(wc, "WEIGHT CLASS: " .. P.className:upper() .. string.format("  ·  limit %d lbs, you weigh %.1f", P.weightLimit, P.weight), { Font = T.semi, TextSize = 14 })
+		UI.Line(wc, "Weight class: " .. P.className .. string.format("  ·  limit %d lbs, you weigh %.1f", P.weightLimit, P.weight), { Font = T.semi, TextSize = 14 })
 		UI.Line(wc, "Moving divisions vacates any world titles you hold.", { TextColor3 = T.sub, TextSize = 13 })
 		buttons(wc, {
 			act("MOVE DOWN", T.panel2, function()
@@ -1806,7 +1806,7 @@ R.Coaches = function(body, P)
 		for t, def in ipairs(Catalog.CoachTiers) do
 			if t > tier then
 				table.insert(list, act(string.format("%s %s", def.name:upper(), money(def.cost)), P.money >= def.cost and T.gold or Color3.fromRGB(70, 40, 40), function()
-					result(State.req("HireCoach", spec.id, t), "Hired " .. Catalog.CoachNames[spec.id][t] .. "!")
+					result(State.req("HireCoach", spec.id, t), "Hired " .. Catalog.CoachNames[spec.id][t] .. ".")
 				end, 150))
 			end
 		end
@@ -1895,7 +1895,7 @@ R.Sponsors = function(body, P)
 		UI.Line(info, string.format("%s   -   %d-fight contract%s", payLine(o), o.fights or 0, (o.signingBonus or 0) > 0 and ("   -   signing bonus " .. money(o.signingBonus)) or ""), { TextSize = 12, TextColor3 = T.sub })
 		buttons(c, {
 			act(o.taken and ("REPLACE " .. tostring(o.taken):upper()) or "SIGN", o.taken and T.panel2 or T.gold, function()
-				if result(State.req("SignSponsor", o.id, o.taken ~= nil), "Signed with " .. o.name .. "!") then
+				if result(State.req("SignSponsor", o.id, o.taken ~= nil), "Signed with " .. o.name .. ".") then
 					dropConfirm = nil
 				end
 			end, o.taken and 260 or 140),

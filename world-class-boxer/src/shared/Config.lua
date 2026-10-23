@@ -215,7 +215,7 @@ Config.BodyTypes = {
 -- fatBias shifts AI body fat, vein scales vascularity, width/depth add to the frame scale
 -- (quantise before use), bellyAt = fat level where the belly shows.
 Config.Physiques = {
-	{ id = "BeginnerLean", name = "Beginner Lean", desc = "Untrained and narrow - everything is still to build",
+	{ id = "BeginnerLean", name = "Beginner Lean", desc = "Untrained and narrow: everything is still to build",
 		shape = { chest = 0.9, shoulders = 0.9, arms = 0.9, back = 0.9, legs = 0.95, core = 0.95, neck = 0.9 },
 		-- vein 0.8, not lower: an untrained body already has few veins (no vascularity, little definition),
 		-- and early dumbbell work should show on the forearms before the physique changes
@@ -235,7 +235,7 @@ Config.Physiques = {
 		shape = { chest = 1.2, shoulders = 1.15, arms = 1.15, back = 1.2, legs = 1.2, core = 0.9, neck = 1.3 },
 		partBias = { traps = 10, neckSCM = 10, quads = 8, glutes = 8, pecs = 6 },
 		defBonus = -0.3, fatBias = 5, vein = 0.7, width = 0.06, depth = 0.06, bellyAt = 16, soft = 1.5 },
-	{ id = "EliteChampion", name = "Elite Champion", desc = "Complete, balanced, shredded - the body of a world champion",
+	{ id = "EliteChampion", name = "Elite Champion", desc = "Complete, balanced and shredded: the body of a world champion",
 		shape = { chest = 1.1, shoulders = 1.1, arms = 1.1, back = 1.1, legs = 1.1, core = 1.1, neck = 1.1 },
 		partBias = { serratus = 6, obliques = 6, lats = 6, sideDelt = 6, calves = 4 },
 		defBonus = 0.35, fatBias = -3, vein = 1.3, width = 0.03, depth = 0.02, bellyAt = 21, shadows = true },
@@ -604,7 +604,43 @@ Config.FightDepth = {
 Config.FightAI = {
 	perceive = { 0.2, 0.09 }, motor = { 0.08, 0.03 }, predictCut = 0.6, predictFrom = 0.45,
 	mistake = 0.35, drop = 0.45, dropHit = 0.06, paceSlack = 0.08,
+	-- the work rate (FightAI.Think): think = the decision interval, raw .. elite (s); work = the base multiplier on
+	-- its chance to attack each think; stepIn = how far outside its reach it steps in to punch rather than wait
+	-- (studs); openWork = the extra work when the man in front of it is open (idle in range, hands down, on the
+	-- ropes, just missed); floorMin = the fewest punches a minute even the most forgiving bout's AI throws
+	think = { 0.26, 0.13 }, work = 1.6, stepIn = 0.9, openWork = 1.6, floorMin = 6,
+	-- the difficulty by level (Config.FightAI.Tier(level): the career's tiers, interpolated between the rows).
+	-- react = the perception and motor delays x this; read = how much it leans on its read of him (prediction,
+	-- adaptation, the rhythm counter); work = its punch rate x this; floor = the fewest punches a minute it throws
+	-- while it can reach him (the work-rate floor: a debut opponent is easier, never passive); mistake = its wrong
+	-- defences x this
+	tiers = {
+		{ level = 0, name = "Debut", react = 1.2, read = 0.6, work = 0.95, floor = 14, mistake = 1.2 },
+		{ level = 30, name = "Prospect", react = 1.05, read = 0.8, work = 1.0, floor = 18, mistake = 1.0 },
+		{ level = 50, name = "Regional", react = 0.95, read = 1.0, work = 1.08, floor = 24, mistake = 0.8 },
+		{ level = 70, name = "National", react = 0.85, read = 1.2, work = 1.16, floor = 30, mistake = 0.5 },
+		{ level = 85, name = "World", react = 0.75, read = 1.35, work = 1.25, floor = 36, mistake = 0.25 },
+		{ level = 99, name = "Elite", react = 0.7, read = 1.5, work = 1.3, floor = 40, mistake = 0.1 },
+	},
 }
+-- the AI difficulty at an overall level: the row's numbers, interpolated between the tiers
+function Config.FightAI.Tier(level)
+	local rows = Config.FightAI.tiers
+	level = math.clamp(tonumber(level) or 50, rows[1].level, rows[#rows].level)
+	local a, b = rows[1], rows[#rows]
+	for i = 1, #rows - 1 do
+		if level >= rows[i].level and level <= rows[i + 1].level then
+			a, b = rows[i], rows[i + 1]
+			break
+		end
+	end
+	local k = b.level > a.level and (level - a.level) / (b.level - a.level) or 0
+	local out = { name = k < 0.5 and a.name or b.name, level = level }
+	for _, key in ipairs({ "react", "read", "work", "floor", "mistake" }) do
+		out[key] = a[key] + (b[key] - a[key]) * k
+	end
+	return out
+end
 
 -- Facial damage. The dmg table (fight and persistent) uses these numeric fields, 0..1 unless noted:
 --   leftEye, rightEye (swelling), cut (0..1.2), cutSide (-1|1), cut2, cutSide2, noseBleed, nose (bool: broken),

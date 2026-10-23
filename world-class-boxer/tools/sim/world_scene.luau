@@ -7,7 +7,8 @@
 --   lune run tools/sim/world_scene.luau [--out DIR] [--level 1|2|3] [--src DIR] [--only gym,city,venues,menu]
 --                                       [--counts]   (instance counts only, no dump)
 --
--- DIR/scene.json = { roots = { [name] = { parts = [...], lights = [...], guis = [...] } }, counts = {...} }
+-- DIR/scene.json = { roots = { [name] = { parts = [...], lights = [...], guis = [...] } }, counts = {...},
+--                    lighting = { props, children (post effects / Atmosphere / Sky by name), night }, venueLighting = { [kind] = VenueFX profile } }
 -- part = { c = class, s = {x,y,z}, cf = {12}, col = {r,g,b} (0..1), m = material, t = transparency,
 --          sh = shape, mesh = {k = MeshType, s = scale, o = offset} | nil, refl }
 -- light = { k = class, p = {x,y,z}, d = {dir} | nil, col, b = brightness, r = range, a = angle, face, on }
@@ -675,11 +676,55 @@ local function profile(lv)
 	}
 end
 
+-- the Lighting service as the server left it (Config.Lighting through MapBuilder): the properties, the
+-- post effects / Atmosphere / Sky by name, plus Config.Lighting.Night for the night views. The renderer
+-- (world_render.py) derives its sun, sky, fills, exposure and compositor grade from these.
+local function dumpLighting()
+	local L = H.game._kids.Lighting
+	local out = { props = {}, children = {}, night = {} }
+	for _, k in ipairs({ "ClockTime", "Brightness", "ExposureCompensation", "GeographicLatitude", "ShadowSoftness", "EnvironmentDiffuseScale", "EnvironmentSpecularScale" }) do
+		local v = L[k]
+		if type(v) == "number" then
+			out.props[k] = r3(v)
+		end
+	end
+	for _, k in ipairs({ "Ambient", "OutdoorAmbient", "ColorShift_Top", "ColorShift_Bottom" }) do
+		local v = L[k]
+		if typeof(v) == "Color3" then
+			out.props[k] = rgb(v)
+		end
+	end
+	for _, c in ipairs(L:GetChildren()) do
+		local e = { class = c.ClassName }
+		for k, v in pairs(rawget(c, "_props") or {}) do
+			if type(v) == "number" or type(v) == "boolean" then
+				e[k] = v
+			elseif typeof(v) == "Color3" then
+				e[k] = rgb(v)
+			end
+		end
+		out.children[c.Name] = e
+	end
+	local okC, Config = pcall(H.require, "Config")
+	if okC and type(Config) == "table" and Config.Lighting then
+		for k, v in pairs(Config.Lighting.Night or {}) do
+			out.night[k] = type(v) == "table" and { v[1] / 255, v[2] / 255, v[3] / 255 } or v
+		end
+	end
+	return out
+end
+
 local gymRoot
 if ONLY.gym or ONLY.city then
 	local MapBuilder = requireServer("MapBuilder")
 	local ok = try("MapBuilder.BuildGym", MapBuilder.BuildGym)
 	gymRoot = E.workspace:FindFirstChild("Gym")
+	local okL, lighting = pcall(dumpLighting)
+	if okL then
+		scene.lighting = lighting
+	else
+		print("[world_scene] lighting dump failed: " .. tostring(lighting))
+	end
 	if ok and gymRoot then
 		-- client gym dressing
 		if ONLY.gym then
@@ -786,7 +831,21 @@ if ONLY.venues then
 			print("[world_scene] Venues.New " .. kind .. " failed: " .. tostring(arena))
 		end
 	end
-	local _ = okFX and VenueFX
+	-- the fight-night lighting per venue (VenueFX.Profiles: what VenueFX.Start sets on Lighting)
+	if okFX and type(VenueFX) == "table" and type(VenueFX.Profiles) == "table" then
+		scene.venueLighting = {}
+		for kind, prof in pairs(VenueFX.Profiles) do
+			local row = {}
+			for k, v in pairs(prof) do
+				if type(v) == "number" or type(v) == "boolean" then
+					row[k] = v
+				elseif typeof(v) == "Color3" then
+					row[k] = rgb(v)
+				end
+			end
+			scene.venueLighting[kind] = row
+		end
+	end
 end
 
 if ONLY.menu then

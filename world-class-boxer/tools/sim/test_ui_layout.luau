@@ -365,7 +365,7 @@ screen("fight_combo", function(dev)
 	local ls = find(S, "FightUI.HUDRoot.FightIntel.LiveScore")
 	check("fight_combo@" .. dev .. ": the live score is up", ls ~= nil and ls.Visible == true)
 	local callout = find(S, "FightUI.HUDRoot.ComboMeter.Card.Callout")
-	check("fight_combo@" .. dev .. ": the call-out", callout ~= nil and (callout.Text == "OPP  LEFT-RIGHT HOOKS" or callout.Text == "1-2-3-2!"), callout and callout.Text)
+	check("fight_combo@" .. dev .. ": the call-out", callout ~= nil and (callout.Text == "OPP  LEFT-RIGHT HOOKS" or callout.Text == "1-2-3-2"), callout and callout.Text)
 	return S
 end)
 -- the guided debut's step card (the combo step) with the combo counter up beside it
