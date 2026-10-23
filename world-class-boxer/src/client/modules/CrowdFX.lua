@@ -621,7 +621,8 @@ local function bowlRows(slab, share)
 		Typography.Apply(bl, "glyph")
 		table.insert(rec.rows, { h = hl, b = bl, y = i * rowH, rowH = rowH, phase = rng:NextNumber() * 6.28, d = rec.ringD + i * 2.6 })
 	end
-	sg.LightInfluence = 0
+	-- mostly lit by the scene (the house lights VenueFX dims), a little self-lit so the far tiers never go black
+	sg.LightInfluence = 0.65
 	return rec
 end
 

@@ -131,7 +131,7 @@ function Scorecards.Grid(parent, judging, names, opts)
 	local nR = math.max(#rounds, math.min(num(opts.rounds), 12), 1)
 	local compact = opts.compact
 	local rowH = compact and 26 or 32
-	local labelW = compact and 96 or 132
+	local labelW = compact and 96 or 170
 	local totalW = compact and 64 or 84
 	local box = UI.Frame(parent, { Name = "CardGrid", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, rowH * 4 + 6), LayoutOrder = opts.order or 0 })
 	local cellsW = UDim2.new(1, -(labelW + totalW), 0, 0)
@@ -252,7 +252,7 @@ function Scorecards.OpenRest(rest, ctx)
 	local stripe = UI.Frame(panel, { Name = "Stripe", Size = UDim2.new(1, 0, 0, 3), BackgroundColor3 = T.gold, LayoutOrder = 0 })
 	UI.Gradient(stripe, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.7, 0.2), NumberSequenceKeypoint.new(1, 1) }))
 	-- the head: the kicker and the round, the totals so far
-	local head = UI.Frame(panel, { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, compact and 40 or 56), LayoutOrder = 1 })
+	local head = UI.Frame(panel, { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, compact and 46 or 56), LayoutOrder = 1 })
 	UI.Kicker(head, string.format("END OF ROUND %d  ·  UNOFFICIAL SCORECARD", n), T.gold, { Size = UDim2.new(0.6, 0, 0, 16), icon = "contract" })
 	UI.Title(head, compact and "YOUR CORNER" or "YOUR CORNER  ·  BETWEEN ROUNDS", { TextSize = compact and 22 or 30, Position = UDim2.fromOffset(0, compact and 16 or 20), Size = UDim2.new(0.6, 0, 0, compact and 24 or 34),
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
@@ -262,7 +262,7 @@ function Scorecards.OpenRest(rest, ctx)
 	for j = 1, 3 do
 		local c = card.cards and card.cards[j] or { 0, 0 }
 		local a, b = num(c[1]), num(c[2])
-		local f = UI.Frame(totals, { Size = UDim2.fromOffset(compact and 64 or 84, compact and 38 or 52), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.3, LayoutOrder = j })
+		local f = UI.Frame(totals, { Size = UDim2.fromOffset(compact and 70 or 84, compact and 44 or 52), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.3, LayoutOrder = j })
 		UI.Corner(f, UI.R.md)
 		UI.Stroke(f, a > b and T.red or (b > a and T.blue or Color3.new(1, 1, 1)), 1, a == b and UI.Hair.soft or 0.35)
 		UI.Text(f, string.format("%d-%d", a, b), { Face = "number", TextSize = compact and 16 or 22, TextColor3 = T.text, Size = UDim2.new(1, 0, 0.64, 0), AutomaticSize = Enum.AutomaticSize.None,
@@ -278,12 +278,16 @@ function Scorecards.OpenRest(rest, ctx)
 	UI.Stroke(left, Color3.new(1, 1, 1), 1, UI.Hair.faint)
 	UI.New("UIPadding", { PaddingTop = UDim.new(0, compact and 8 or 12), PaddingBottom = UDim.new(0, compact and 8 or 12), PaddingLeft = UDim.new(0, compact and 10 or 14), PaddingRight = UDim.new(0, compact and 10 or 14), Parent = left })
 	UI.List(left, compact and 4 or 6)
-	UI.Kicker(left, string.format("ROUND %d  ·  %s v %s", n, string.upper(you), string.upper(opp)), T.sub, { Size = UDim2.new(1, 0, 0, 16), order = 0 })
+	local function surname(name)
+		return tostring(name):match("(%S+)$") or tostring(name)
+	end
+	UI.Kicker(left, compact and string.format("ROUND %d  ·  %s v %s", n, string.upper(surname(you)), string.upper(surname(opp))) or string.format("ROUND %d  ·  %s v %s", n, string.upper(you), string.upper(opp)), T.sub,
+		{ Size = UDim2.new(1, 0, 0, 16), order = 0 })
 	for j = 1, 3 do
 		local rc = card.round and card.round[j] or { 0, 0 }
 		local jd = card.judges and card.judges[j] or {}
 		local a, b = num(rc[1]), num(rc[2])
-		local rowH = compact and 30 or 40
+		local rowH = compact and 34 or 40
 		local row = UI.Frame(left, { Name = "J" .. j, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, rowH), LayoutOrder = j })
 		local mark = UI.Frame(row, { Size = UDim2.new(0, 4, 1, -8), Position = UDim2.fromOffset(0, 4), BackgroundColor3 = a > b and T.red or (b > a and T.blue or T.line) })
 		UI.Corner(mark, 2)
@@ -303,10 +307,18 @@ function Scorecards.OpenRest(rest, ctx)
 	UI.New("UIPadding", { PaddingTop = UDim.new(0, compact and 8 or 12), PaddingBottom = UDim.new(0, compact and 8 or 12), PaddingLeft = UDim.new(0, compact and 10 or 14), PaddingRight = UDim.new(0, compact and 10 or 14), Parent = right })
 	UI.List(right, compact and 2 or 4)
 	local tabs = UI.Frame(right, { Name = "Names", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = 0 })
-	UI.Text(tabs, string.upper(you), { Font = T.semi, TextSize = 11, TextColor3 = T.redLight, Size = UDim2.new(0.4, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-	UI.Text(tabs, compact and "ROUND / FIGHT" or ("ROUND " .. n .. "  ·  LANDED / THROWN"), { Font = T.semi, TextSize = 10, TextColor3 = T.dim, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.new(0.3, 0, 1, 0),
+	-- (a phone shows the surnames: the full names would run into the centre caption)
+	local function short(name)
+		if not compact then
+			return string.upper(name)
+		end
+		local last = tostring(name):match("(%S+)$") or tostring(name)
+		return string.upper(last)
+	end
+	UI.Text(tabs, short(you), { Font = T.semi, TextSize = 11, TextColor3 = T.redLight, Size = UDim2.new(0.34, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	UI.Text(tabs, compact and "ROUND " .. n or ("ROUND " .. n .. "  ·  LANDED / THROWN"), { Font = T.semi, TextSize = 10, TextColor3 = T.dim, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.new(0.3, 0, 1, 0),
 		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
-	UI.Text(tabs, string.upper(opp), { Font = T.semi, TextSize = 11, TextColor3 = T.blue, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0.4, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
+	UI.Text(tabs, short(opp), { Font = T.semi, TextSize = 11, TextColor3 = T.blue, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0.34, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
 		TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	local st = card.stats or {}
 	Scorecards.PunchTable(right, st.you, st.opp, { order = 1, compact = compact, h = compact and 24 or 28, size = compact and 15 or 18, capSize = compact and 10 or 11, types = not compact, defence = not compact })

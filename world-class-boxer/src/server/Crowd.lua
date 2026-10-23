@@ -1052,7 +1052,7 @@ end
 --        "entrance" | "boo" | "cheer";  data = { who = "you" | "opp", n = count, result = "win" | "loss" | "draw" }
 local seq = 0
 function Crowd.React(arena, event, data)
-	if typeof(arena) ~= "Instance" or type(event) ~= "string" then
+	if arena == nil or type(event) ~= "string" then
 		return
 	end
 	data = type(data) == "table" and data or {}

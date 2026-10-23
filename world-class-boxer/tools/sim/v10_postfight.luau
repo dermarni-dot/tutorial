@@ -343,7 +343,7 @@ if childAt then
 		print(string.format("WROTE %s  (%d items, %d flagged)", file, #items, flagged))
 		for kind, list in pairs(checks) do
 			for _, it in ipairs(list) do
-				print(string.format("  %s: %s", kind, tostring(it.path or it.obj)))
+				print(string.format("  %s: %s need=%s room=%s", kind, tostring(it.item and (it.item.path or it.item.text) or it.path), tostring(it.need), tostring(it.room)))
 			end
 		end
 	end)

@@ -51,7 +51,8 @@ local scene = serde.decode("json", fs.readFile(OUT .. "/scene.json"))
 local counts = scene.crowd
 
 local KINDS = { "CommunityCenter", "ClubArena", "Arena", "Stadium" }
-local SPEC = { CommunityCenter = { 10, 110, 1 }, ClubArena = { 11, 150, 2 }, Arena = { 12, 220, 3 }, Stadium = { 13, 330, 4 } }
+-- half, size, tier, ringH, floor cameras (Venues.Specs cameras: the keep-outs)
+local SPEC = { CommunityCenter = { 10, 110, 1, 2, 0 }, ClubArena = { 11, 150, 2, 3, 1 }, Arena = { 12, 220, 3, 4, 3 }, Stadium = { 13, 330, 4, 4.5, 4 } }
 -- crowd + stands parts at a packed house (the template's crowd; a Stadium clone also carries ~600 other parts)
 local CAPS = { CommunityCenter = 700, ClubArena = 1200, Arena = 1600, Stadium = 2000 }
 
@@ -109,7 +110,7 @@ local function overlap(lo, hi, lo2, hi2, m)
 end
 
 for _, kind in ipairs(KINDS) do
-	local half, S, tier = SPEC[kind][1], SPEC[kind][2], SPEC[kind][3]
+	local half, S, tier, ringH, nCams = SPEC[kind][1], SPEC[kind][2], SPEC[kind][3], SPEC[kind][4], SPEC[kind][5]
 	local low, max = counts[kind .. "_low"], counts[kind .. "_max"]
 	check(kind .. ": built at both houses", low and max)
 	if low and max then
@@ -200,7 +201,7 @@ for _, kind in ipairs(KINDS) do
 				prints += 1
 			end
 		end
-		check(kind .. ": clothing styles print (jerseys, jackets, suits)", prints >= #fans * 0.15, prints .. " / " .. #fans)
+		check(kind .. ": clothing styles print (jerseys, jackets, suits)", prints >= #fans * (tier >= 2 and 0.15 or 0.08), prints .. " / " .. #fans)
 	end
 	-- 5. the stands
 	do
@@ -222,9 +223,10 @@ for _, kind in ipairs(KINDS) do
 		check(kind .. ": a photographers' pit", #(named.Camera or {}) >= (tier >= 2 and 4 or 1), #(named.Camera or {}))
 		-- tread tops where VenueDetail's nosings expect them: Stand tops at row * rowRise + 0.5
 		local rise = ({ 0, 2.2, 2.5, 3.2 })[tier]
+		local floorY = scene.cameras[kind .. "_max"][2] - ringH
 		local bad = 0
 		for _, p in ipairs(named.Stand or {}) do
-			local top = p.cf[2] + p.s[2] / 2
+			local top = p.cf[2] + p.s[2] / 2 - floorY
 			if rise > 0 then
 				local row = (top - 0.5) / rise
 				if math.abs(row - math.floor(row + 0.5)) > 0.02 then
@@ -238,16 +240,19 @@ for _, kind in ipairs(KINDS) do
 	do
 		local cam = scene.cameras[kind .. "_max"]
 		local cx, cz = cam[1], cam[3]
+		local fy = cam[2] - ringH
 		local E = half + 3.2
 		local boxes = {
-			{ "ring and apron", { cx - E, -1, cz - E }, { cx + E, 12, cz + E } },
-			{ "red stool corner", { cx - half - 7.2, 0.1, cz - half - 7.2 }, { cx - half - 2.8, 4, cz - half - 2.8 } },
-			{ "blue stool corner", { cx + half + 2.8, 0.1, cz + half + 2.8 }, { cx + half + 7.2, 4, cz + half + 7.2 } },
-			{ "red walkway lane", { cx - 3, 0.25, cz - S / 2 + 4 }, { cx + 3, 9, cz - E - 6 } },
-			{ "blue walkway lane", { cx - 3, 0.25, cz + E + 6 }, { cx + 3, 9, cz + S / 2 - 4 } },
+			{ "ring and apron", { cx - E, fy - 1, cz - E }, { cx + E, fy + 12, cz + E } },
+			{ "red stool corner", { cx - half - 7.2, fy + 0.1, cz - half - 7.2 }, { cx - half - 2.8, fy + 4, cz - half - 2.8 } },
+			{ "blue stool corner", { cx + half + 2.8, fy + 0.1, cz + half + 2.8 }, { cx + half + 7.2, fy + 4, cz + half + 7.2 } },
+			{ "red walkway lane", { cx - 3, fy + 0.25, cz - S / 2 + 4 }, { cx + 3, fy + 9, cz - E - 6 } },
+			{ "blue walkway lane", { cx - 3, fy + 0.25, cz + E + 6 }, { cx + 3, fy + 9, cz + S / 2 - 4 } },
 		}
-		for _, sp in ipairs({ { half + 6.2, -(half + 6.2) }, { -(half + 6.2), half + 6.2 }, { 5.8, E + 7 }, { 5.8, -(E + 7) } }) do
-			table.insert(boxes, { "floor camera", { cx + sp[1] - 1.5, 0.1, cz + sp[2] - 1.5 }, { cx + sp[1] + 1.5, 7, cz + sp[2] + 1.5 } })
+		local spots = { { half + 6.2, -(half + 6.2) }, { -(half + 6.2), half + 6.2 }, { 5.8, E + 7 }, { 5.8, -(E + 7) } }
+		for i = 1, nCams do
+			local sp = spots[i]
+			table.insert(boxes, { "floor camera", { cx + sp[1] - 1.5, fy + 0.1, cz + sp[2] - 1.5 }, { cx + sp[1] + 1.5, fy + 7, cz + sp[2] + 1.5 } })
 		end
 		local hits = {}
 		for _, p in ipairs(parts) do

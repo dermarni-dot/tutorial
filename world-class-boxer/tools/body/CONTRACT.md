@@ -24,6 +24,38 @@ bodies and faces (AnatomyBody, AnatomyHead) are retired; the asset hair stays.
   Depth / Head scales for the frame, height and gender. Training never widens the frame: the tiers
   carry the muscle.
 
+## Body frames (v12)
+
+Every `Config.BodyTypes` frame (Lean, Athletic, Muscular, Power Build, Heavyweight Build) has its own family of the 5
+tiers x 14 parts (`tools/body/build_body.py` FRAMES, 350 meshes): the silhouette lives in the meshes, not only in the
+description's Width / Depth. The shoulder width (the arm axis `arm_x` is where the frame's upper arm rests against the
+frame's ribcage: narrow on Lean, wide on Power Build), the ribcage's width and depth, the trapezius slope into a real
+neck column (the UpperTorso now ends in the neck under the head instead of a dome), the arm, forearm and calf girths
+and the muscle gains (traps, delts, lats, forearms per frame; the heavyweight's softer layer) all differ per frame; the
+muscles are smooth lobe fields over each loft's (height, azimuth) plane that overlap and sum (the delt wraps over the
+biceps / triceps, the pecs run into the front delt, the lats widen into the armpit, the forearm mass sits toward the
+elbow) instead of ellipsoid bumps. The pivots, the domes (now sized from each frame's own section so they stay spheres
+about the pivots) and the elbow / wrist / hip / knee / ankle heights are unchanged; the arm axis is per frame and tier
+(`frames[id].tiers[n].armAxisX`).
+
+* The Athletic frame is the DEFAULT FAMILY: `BodyAssetData.tiers` (as before, `tools/body/out/tier<N>`), with the lite
+  set and the gear fit. The other four are `BodyAssetData.frames[<id>] = { key, tiers = { [1..5] = { parts, fit, tris,
+  armAxisX } } }` from `tools/body/out/frames/<key>/tier<N>` (keys lean, muscular, power, heavy).
+* The gear is fitted on the Athletic family (build_gear.py): every frame keeps the Athletic (v11) section wherever the
+  gear touches - under the trunks' band and seat (the LowerTorso, the UpperTorso's hem rows s <= 2.45), the thighs under
+  the shorts legs (the Lean frame only narrower), the wrist and the ankle, and the hands and feet are the same part on
+  every frame (gloves, wraps and boots are one mesh per tier). The frame's overall mass is the description's Width /
+  Depth (Config.BodyTypes), which the gear follows. Not refitted per frame: the women's sports top and the officials'
+  clothes on the UpperTorso (fitted to the Athletic family; a bigger frame's chest may show through a tight top).
+* The lite set (the v9 meshes) stays one per tier, the default family's: a crowd NPC of any frame at the low detail
+  level wears it (`BodyTiers.PartEntry(..., lite, frame)` falls back to it).
+* Game side: `BodyTiers.Tiers()` returns `tiers.frame` (BodyTiers.FrameOf: the frame id, else the BodyTypes entry with
+  the potential Builder passes); `BuilderTiers.Apply` swaps a part whose tier, frame family or detail set changed (the
+  parts carry `BodyFrame`, the model `BodyFrame`); `BuilderTiers.Preload` loads the default family and the lite set
+  first, then the other frames. An unknown frame or one without meshes wears the default family.
+* Previews: `tools/body/frames_anim.luau` (v9_anim's rest clip per frame, generated from it) and
+  `tools/body/render_frames.py` -> `previews/final/v10/bodies/`; `check_joints.py --frames all`.
+
 ## BodyAssetData.lua (generated)
 
 ```lua

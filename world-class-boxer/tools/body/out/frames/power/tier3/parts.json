@@ -15,7 +15,7 @@
    "y": 4.529,
    "girth": 4.412,
    "width": 1.651,
-   "depth": 0.959
+   "depth": 0.96
   },
   "waist": {
    "y": 3.468,
@@ -75,7 +75,7 @@
    "y": 5.249,
    "girth": 2.667,
    "width": 0.923,
-   "depth": 0.757
+   "depth": 0.76
   },
   "shoulderSpan": 3.114,
   "chestDepth": 1.0
@@ -123,7 +123,7 @@
     "BodyBackAttachment": [
      0.0,
      0.0923,
-     0.393
+     0.3946
     ],
     "NeckAttachment": [
      0.0,

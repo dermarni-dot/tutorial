@@ -694,6 +694,7 @@ local function runFX(arena, center, react)
 		local t0 = os.clock()
 		if react then
 			CrowdFX.React(react.event, react.data)
+			react.t0 = os.clock()
 		end
 		-- the time-sliced loops: enough ticks to touch every rig, printed row and bowl row
 		local ticks = 60
@@ -761,9 +762,9 @@ for _, kind in ipairs(KINDS) do
 				end
 				if v[2] and CrowdFX then
 					-- the wave: its value near the ring and far out, 0.5 s in (test_crowd)
-					local now = os.clock()
+					local t0 = v[2].t0 or os.clock()
 					scene.wave = scene.wave or {}
-					scene.wave[name] = { near = CrowdFX.ReactValue(10, now - v[2].at + 0.5), far = CrowdFX.ReactValue(60, now - v[2].at + 0.5), later = CrowdFX.ReactValue(60, now - v[2].at + 1.6) }
+					scene.wave[name] = { near = CrowdFX.ReactValue(10, t0 + 0.5), far = CrowdFX.ReactValue(60, t0 + 0.5), later = CrowdFX.ReactValue(60, t0 + 1.6) }
 					Crowd.React(arena, "knockdown", { who = "opp" })
 					scene.reactAttr = arena:GetAttribute("CrowdReact")
 				end

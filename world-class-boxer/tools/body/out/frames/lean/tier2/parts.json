@@ -1,0 +1,534 @@
+{
+ "tier": 2,
+ "name": "toned",
+ "frame": "Lean",
+ "frameKey": "lean",
+ "params": {
+  "name": "toned",
+  "f": 1.0,
+  "m": 0.25,
+  "d": 0.35
+ },
+ "tris": 11728,
+ "fit": {
+  "chest": {
+   "y": 4.529,
+   "girth": 3.409,
+   "width": 1.27,
+   "depth": 0.771
+  },
+  "waist": {
+   "y": 3.468,
+   "girth": 2.877,
+   "width": 1.07,
+   "depth": 0.662
+  },
+  "hips": {
+   "y": 2.906,
+   "girth": 3.691,
+   "width": 1.372,
+   "depth": 0.825
+  },
+  "upperArm": {
+   "y": 4.343,
+   "girth": 1.568,
+   "width": 0.465,
+   "depth": 0.515
+  },
+  "forearm": {
+   "y": 3.699,
+   "girth": 1.357,
+   "width": 0.409,
+   "depth": 0.434
+  },
+  "wrist": {
+   "y": 3.162,
+   "girth": 1.021,
+   "width": 0.278,
+   "depth": 0.365
+  },
+  "thigh": {
+   "y": 2.128,
+   "girth": 1.839,
+   "width": 0.556,
+   "depth": 0.609
+  },
+  "knee": {
+   "y": 1.525,
+   "girth": 1.565,
+   "width": 0.479,
+   "depth": 0.511
+  },
+  "calf": {
+   "y": 1.028,
+   "girth": 1.281,
+   "width": 0.374,
+   "depth": 0.419
+  },
+  "ankle": {
+   "y": 0.546,
+   "girth": 1.012,
+   "width": 0.313,
+   "depth": 0.342
+  },
+  "neck": {
+   "y": 5.249,
+   "girth": 1.95,
+   "width": 0.654,
+   "depth": 0.561
+  },
+  "shoulderSpan": 2.319,
+  "chestDepth": 0.78
+ },
+ "armAxisX": 0.8684,
+ "parts": {
+  "UpperTorso": {
+   "mesh_file": "UpperTorso.mesh",
+   "size": [
+    1.4027,
+    2.4858,
+    0.7803
+   ],
+   "rest_center": [
+    0.0,
+    4.1497,
+    0.0046
+   ],
+   "attachments": {
+    "NeckRigAttachment": [
+     0.0,
+     1.1395,
+     -0.0046
+    ],
+    "WaistRigAttachment": [
+     0.0,
+     -0.9549,
+     -0.0046
+    ],
+    "RightShoulderRigAttachment": [
+     0.8684,
+     0.7702,
+     -0.0046
+    ],
+    "LeftShoulderRigAttachment": [
+     -0.8684,
+     0.7702,
+     -0.0046
+    ],
+    "BodyFrontAttachment": [
+     0.0,
+     0.0923,
+     -0.3499
+    ],
+    "BodyBackAttachment": [
+     0.0,
+     0.0923,
+     0.3466
+    ],
+    "NeckAttachment": [
+     0.0,
+     1.1395,
+     -0.0046
+    ],
+    "RightCollarAttachment": [
+     0.7121,
+     -4.1497,
+     -0.0046
+    ],
+    "LeftCollarAttachment": [
+     -0.7121,
+     -4.1497,
+     -0.0046
+    ]
+   },
+   "nv": 1722,
+   "nt": 3360
+  },
+  "LowerTorso": {
+   "mesh_file": "LowerTorso.mesh",
+   "size": [
+    1.4179,
+    1.2043,
+    0.8379
+   ],
+   "rest_center": [
+    0.0,
+    2.9448,
+    0.0194
+   ],
+   "attachments": {
+    "WaistRigAttachment": [
+     0.0,
+     0.25,
+     -0.0194
+    ],
+    "RightHipRigAttachment": [
+     0.3977,
+     -0.2736,
+     -0.0194
+    ],
+    "LeftHipRigAttachment": [
+     -0.3977,
+     -0.2736,
+     -0.0194
+    ],
+    "RootRigAttachment": [
+     0.0,
+     -0.0118,
+     -0.0194
+    ],
+    "WaistCenterAttachment": [
+     0.0,
+     -0.0118,
+     -0.0194
+    ],
+    "WaistFrontAttachment": [
+     0.0,
+     -0.0118,
+     -0.4098
+    ],
+    "WaistBackAttachment": [
+     0.0,
+     -0.0118,
+     0.3894
+    ]
+   },
+   "nv": 530,
+   "nt": 1024
+  },
+  "RightUpperArm": {
+   "mesh_file": "RightUpperArm.mesh",
+   "size": [
+    0.6103,
+    1.4402,
+    0.6111
+   ],
+   "rest_center": [
+    0.8546,
+    4.4848,
+    -0.0038
+   ],
+   "attachments": {
+    "RightShoulderRigAttachment": [
+     0.0139,
+     0.4351,
+     0.0038
+    ],
+    "RightElbowRigAttachment": [
+     0.0139,
+     -0.4828,
+     0.0038
+    ],
+    "RightShoulderAttachment": [
+     0.0139,
+     0.715,
+     0.0038
+    ]
+   },
+   "nv": 416,
+   "nt": 792
+  },
+  "RightLowerArm": {
+   "mesh_file": "RightLowerArm.mesh",
+   "size": [
+    0.4412,
+    1.3053,
+    0.4659
+   ],
+   "rest_center": [
+    0.8683,
+    3.5747,
+    -0.0005
+   ],
+   "attachments": {
+    "RightElbowRigAttachment": [
+     0.0001,
+     0.4272,
+     0.0005
+    ],
+    "RightWristRigAttachment": [
+     0.0001,
+     -0.5028,
+     0.0005
+    ]
+   },
+   "nv": 296,
+   "nt": 560
+  },
+  "RightHand": {
+   "mesh_file": "RightHand.mesh",
+   "size": [
+    0.284,
+    0.619,
+    0.5439
+   ],
+   "rest_center": [
+    0.8625,
+    2.9033,
+    -0.0471
+   ],
+   "attachments": {
+    "RightWristRigAttachment": [
+     0.0059,
+     0.1686,
+     0.0471
+    ],
+    "RightGripAttachment": [
+     -0.0434,
+     -0.0345,
+     0.0471
+    ]
+   },
+   "nv": 418,
+   "nt": 736
+  },
+  "RightUpperLeg": {
+   "mesh_file": "RightUpperLeg.mesh",
+   "size": [
+    0.6003,
+    1.799,
+    0.6754
+   ],
+   "rest_center": [
+    0.3999,
+    2.0908,
+    0.0136
+   ],
+   "attachments": {
+    "RightHipRigAttachment": [
+     -0.0022,
+     0.5804,
+     -0.0136
+    ],
+    "RightKneeRigAttachment": [
+     -0.0022,
+     -0.6681,
+     -0.0136
+    ]
+   },
+   "nv": 401,
+   "nt": 760
+  },
+  "RightLowerLeg": {
+   "mesh_file": "RightLowerLeg.mesh",
+   "size": [
+    0.4362,
+    1.6275,
+    0.4742
+   ],
+   "rest_center": [
+    0.3977,
+    0.8404,
+    0.0037
+   ],
+   "attachments": {
+    "RightKneeRigAttachment": [
+     0.0,
+     0.5823,
+     -0.0037
+    ],
+    "RightAnkleRigAttachment": [
+     0.0,
+     -0.5427,
+     -0.0037
+    ]
+   },
+   "nv": 268,
+   "nt": 504
+  },
+  "RightFoot": {
+   "mesh_file": "RightFoot.mesh",
+   "size": [
+    0.3883,
+    0.4638,
+    0.8156
+   ],
+   "rest_center": [
+    0.3977,
+    0.2319,
+    -0.0759
+   ],
+   "attachments": {
+    "RightAnkleRigAttachment": [
+     0.0,
+     0.0659,
+     0.0759
+    ],
+    "RightFootAttachment": [
+     0.0,
+     -0.2319,
+     0.0759
+    ]
+   },
+   "nv": 172,
+   "nt": 320
+  },
+  "LeftUpperArm": {
+   "mesh_file": "LeftUpperArm.mesh",
+   "size": [
+    0.6103,
+    1.4402,
+    0.6111
+   ],
+   "rest_center": [
+    -0.8546,
+    4.4848,
+    -0.0038
+   ],
+   "attachments": {
+    "LeftShoulderRigAttachment": [
+     -0.0139,
+     0.4351,
+     0.0038
+    ],
+    "LeftElbowRigAttachment": [
+     -0.0139,
+     -0.4828,
+     0.0038
+    ],
+    "LeftShoulderAttachment": [
+     -0.0139,
+     0.715,
+     0.0038
+    ]
+   },
+   "nv": 416,
+   "nt": 792
+  },
+  "LeftLowerArm": {
+   "mesh_file": "LeftLowerArm.mesh",
+   "size": [
+    0.4412,
+    1.3053,
+    0.4659
+   ],
+   "rest_center": [
+    -0.8683,
+    3.5747,
+    -0.0005
+   ],
+   "attachments": {
+    "LeftElbowRigAttachment": [
+     -0.0001,
+     0.4272,
+     0.0005
+    ],
+    "LeftWristRigAttachment": [
+     -0.0001,
+     -0.5028,
+     0.0005
+    ]
+   },
+   "nv": 296,
+   "nt": 560
+  },
+  "LeftHand": {
+   "mesh_file": "LeftHand.mesh",
+   "size": [
+    0.284,
+    0.619,
+    0.5439
+   ],
+   "rest_center": [
+    -0.8625,
+    2.9033,
+    -0.0471
+   ],
+   "attachments": {
+    "LeftWristRigAttachment": [
+     -0.0059,
+     0.1686,
+     0.0471
+    ],
+    "LeftGripAttachment": [
+     0.0434,
+     -0.0345,
+     0.0471
+    ]
+   },
+   "nv": 418,
+   "nt": 736
+  },
+  "LeftUpperLeg": {
+   "mesh_file": "LeftUpperLeg.mesh",
+   "size": [
+    0.6003,
+    1.799,
+    0.6754
+   ],
+   "rest_center": [
+    -0.3999,
+    2.0908,
+    0.0136
+   ],
+   "attachments": {
+    "LeftHipRigAttachment": [
+     0.0022,
+     0.5804,
+     -0.0136
+    ],
+    "LeftKneeRigAttachment": [
+     0.0022,
+     -0.6681,
+     -0.0136
+    ]
+   },
+   "nv": 401,
+   "nt": 760
+  },
+  "LeftLowerLeg": {
+   "mesh_file": "LeftLowerLeg.mesh",
+   "size": [
+    0.4362,
+    1.6275,
+    0.4742
+   ],
+   "rest_center": [
+    -0.3977,
+    0.8404,
+    0.0037
+   ],
+   "attachments": {
+    "LeftKneeRigAttachment": [
+     0.0,
+     0.5823,
+     -0.0037
+    ],
+    "LeftAnkleRigAttachment": [
+     0.0,
+     -0.5427,
+     -0.0037
+    ]
+   },
+   "nv": 268,
+   "nt": 504
+  },
+  "LeftFoot": {
+   "mesh_file": "LeftFoot.mesh",
+   "size": [
+    0.3883,
+    0.4638,
+    0.8156
+   ],
+   "rest_center": [
+    -0.3977,
+    0.2319,
+    -0.0759
+   ],
+   "attachments": {
+    "LeftAnkleRigAttachment": [
+     0.0,
+     0.0659,
+     0.0759
+    ],
+    "LeftFootAttachment": [
+     0.0,
+     -0.2319,
+     0.0759
+    ]
+   },
+   "nv": 172,
+   "nt": 320
+  }
+ }
+}

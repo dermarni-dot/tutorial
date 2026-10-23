@@ -175,6 +175,8 @@ if __name__ == "__main__":
         if c["clip"] != "fight":
             continue
         sid = c["id"].rsplit("_t", 1)[0]
+        if sid.startswith("fight_"):
+            sid = sid[6:]
         if only and sid not in only and c["id"] not in only:
             continue
         render_scenario(scene_dir, out_dir, c, times, views, samples, tag)
