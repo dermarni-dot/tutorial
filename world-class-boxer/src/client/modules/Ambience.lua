@@ -576,7 +576,7 @@ local function updateExposure(dt, cam)
 	if prof and prof ~= "Street" then
 		target = LightLevels.Zone(prof)
 	else
-		target = nightNow() and LightLevels.NightOutside or LightLevels.Zone("Outside")
+		target = nightNow() and LightLevels.Night() or LightLevels.Zone("Outside")
 	end
 	target += LightLevels.UserExposure()
 	expoNow = expoNow or Lighting.ExposureCompensation

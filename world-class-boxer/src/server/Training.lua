@@ -474,6 +474,14 @@ function Training.Targets(act)
 	return t
 end
 
+-- Early in a career the body bounces back: a low-tier boxer's sessions cost less energy and fatigue and
+-- carry less injury risk, so a new player can train several times in a row. Tier 1, tier 2, then full.
+local TIER_EASE = { 0.65, 0.82 }
+local function tierEase(profile)
+	return TIER_EASE[math.floor(finite(profile.tier, 1))] or 1
+end
+Training.TierEase = tierEase
+
 local function injuryRoll(profile, act, extraRisk, riskMul)
 	local c = profile.condition
 	if not act.injuries or #act.injuries == 0 then
@@ -539,14 +547,6 @@ end
 ------------------------------------------------------------------------
 -- Activities
 ------------------------------------------------------------------------
--- Early in a career the body bounces back: a low-tier boxer's sessions cost less energy and fatigue and
--- carry less injury risk, so a new player can train several times in a row. Tier 1, tier 2, then full.
-local TIER_EASE = { 0.65, 0.82 }
-local function tierEase(profile)
-	return TIER_EASE[math.floor(finite(profile.tier, 1))] or 1
-end
-Training.TierEase = tierEase
-
 function Training.EnergyCost(profile, act, intensity)
 	local e = act.energy or 0
 	if act.id == "Sparring" then

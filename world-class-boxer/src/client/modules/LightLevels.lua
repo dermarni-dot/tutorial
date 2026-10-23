@@ -1,7 +1,8 @@
 -- LightLevels: the game's exposure targets in one place, plus the player's brightness preference.
 --   LightLevels.User()            the brightness preference, 0.5 .. 1.6 (1 = as designed)
 --   LightLevels.UserExposure()    that preference as an ExposureCompensation offset (stops)
---   LightLevels.Zone(name)        the base exposure for a place (Ambience adds the user offset)
+--   LightLevels.Zone(name)        the exposure for a place: Base (Config.Lighting) + the zone offset (Ambience adds the user offset)
+--   LightLevels.Night()           the outdoor exposure after dark (Base + NightOutside)
 --   LightLevels.OnChanged(fn)     fn() when the preference changes
 --   LightLevels.PostAllowed(e)    false when the Graphics level leaves this post effect (or class name) out
 --   LightLevels.StartPostGate()   once (CharacterLight.Start): keeps every post effect under Lighting / the camera
@@ -17,18 +18,27 @@ local player = Players.LocalPlayer
 local LightLevels = {}
 
 -- base ExposureCompensation per place (the scene's lights do the shaping; this only sets the level)
--- (on top of Config.Lighting.Global.ExposureCompensation, the bright daytime base the server sets)
+-- Every zone is an offset on LightLevels.Base, the bright daytime base the server sets
+-- (Config.Lighting.Global.ExposureCompensation), so one number brightens the whole game
+local function baseExposure()
+	local ok, Config = pcall(function()
+		return require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Config"))
+	end)
+	local v = ok and type(Config) == "table" and Config.Lighting and Config.Lighting.Global and Config.Lighting.Global.ExposureCompensation
+	return tonumber(v) or 0.35
+end
+LightLevels.Base = baseExposure()
 LightLevels.Zones = {
-	GymWarm = 0.25, -- the main hall: warm lamps, a lift so faces read above mid grey
-	GymElite = 0.18,
-	Barbershop = 0.18,
-	Apartment = 0.2,
-	Store = 0.14,
-	Mansion = 0.16,
+	GymWarm = 0.1, -- the main hall: warm lamps, a lift so faces read above mid grey
+	GymElite = 0.05,
+	Barbershop = 0.06,
+	Apartment = 0.08,
+	Store = 0.02,
+	Mansion = 0.04,
 	Street = 0,
 	Outside = 0,
 }
-LightLevels.NightOutside = 0.45 -- after dark the street lights and neon carry the city: lift the picture
+LightLevels.NightOutside = 0.2 -- after dark the street lights and neon carry the city: lift the picture
 
 local settingsMod
 local function settingsValue()
@@ -68,7 +78,12 @@ function LightLevels.UserExposure()
 end
 
 function LightLevels.Zone(name)
-	return LightLevels.Zones[name] or 0
+	return LightLevels.Base + (LightLevels.Zones[name] or 0)
+end
+
+-- the outdoor level after dark (the base plus the night lift)
+function LightLevels.Night()
+	return LightLevels.Base + LightLevels.NightOutside
 end
 
 function LightLevels.OnChanged(fn)
