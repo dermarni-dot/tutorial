@@ -190,12 +190,21 @@ Config.Specialties = {
 
 -- Body types set the frame (bone structure) and how much muscle the boxer can build.
 -- Everyone starts lean with low muscle mass; training does the rest.
+-- Body frames. Every frame has its own family of muscle-tier meshes (BodyAssetData.frames, tools/body/build_body.py
+-- FRAMES: the shoulder width, ribcage, trapezius / neck, arm and calf girths live in the meshes); width / depth are the
+-- HumanoidDescription scales on top of them (the frame's overall mass; the trunks, gloves and boots follow them).
+-- potential = the muscle cap (100 x potential), desc = the Creator's line
 Config.BodyTypes = {
-	{ id = "Lean", width = 0.92, depth = 0.92, potential = 0.8, mods = { Footwork = 3, PunchSpeed = 2, Power = -2 } },
-	{ id = "Athletic", width = 1.0, depth = 1.0, potential = 0.95, mods = { Stamina = 2, Footwork = 1 } },
-	{ id = "Muscular", width = 1.05, depth = 1.03, potential = 1.05, mods = { Power = 2, Chin = 1 } },
-	{ id = "Power Build", width = 1.1, depth = 1.07, potential = 1.15, mods = { Power = 3, Chin = 2, PunchSpeed = -1, Footwork = -2 } },
-	{ id = "Heavyweight Build", width = 1.18, depth = 1.14, potential = 1.25, mods = { Power = 4, Chin = 3, PunchSpeed = -2, Footwork = -3, Stamina = -2 } },
+	{ id = "Lean", width = 0.92, depth = 0.93, potential = 0.8, mods = { Footwork = 3, PunchSpeed = 2, Power = -2 },
+		desc = "Smaller frame, narrow shoulders, wiry and defined: the fast athlete" },
+	{ id = "Athletic", width = 1.0, depth = 1.0, potential = 0.95, mods = { Stamina = 2, Footwork = 1 },
+		desc = "The all-round boxer's frame" },
+	{ id = "Muscular", width = 1.04, depth = 1.03, potential = 1.05, mods = { Power = 2, Chin = 1 },
+		desc = "Visibly muscular: wide shoulders, a big chest, arms and back, traps that show" },
+	{ id = "Power Build", width = 1.09, depth = 1.08, potential = 1.15, mods = { Power = 3, Chin = 2, PunchSpeed = -1, Footwork = -2 },
+		desc = "A very thick neck, massive shoulders and forearms on a dense, intimidating frame" },
+	{ id = "Heavyweight Build", width = 1.17, depth = 1.16, potential = 1.25, mods = { Power = 4, Chin = 3, PunchSpeed = -2, Footwork = -3, Stamina = -2 },
+		desc = "A bigger, naturally heavier frame: a thick torso, big legs, body mass" },
 }
 
 -- Physique archetypes: what the trained body LOOKS like (separate id space from

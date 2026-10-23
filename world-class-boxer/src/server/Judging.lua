@@ -200,7 +200,7 @@ local function reason(judge, a, b, kdA, kdB, catA, catB)
 	return TEXT[bestK] or "The better work"
 end
 
--- the three cards for a round. Returns { cards = {{a,b},{a,b},{a,b}} (red first), judges = { {a, b, diff, reason} },
+-- the three cards for a round. Returns { cards = {{a,b},{a,b},{a,b}} (red first), judges = { { a, b, diff, id, reason } },
 -- red = categories, blue = categories, kd = {red, blue}, fouls = {red, blue} }
 function Judging.Score(stats, rng)
 	stats = stats or {}
@@ -212,7 +212,7 @@ function Judging.Score(stats, rng)
 		local diff = Judging.JudgeDiff(judge, catR, catB) + noiseOf(rng, judge.noise)
 		local a, b = Judging.MustScore(diff, R.kd, B.kd, R.fouls, B.fouls)
 		out.cards[j] = { a, b }
-		out.judges[j] = { a, b, diff = math.floor(diff * 100) / 100, id = judge.id, reason = reason(judge, a, b, num(R.kd), num(B.kd), catR, catB) }
+		out.judges[j] = { a = a, b = b, diff = math.floor(diff * 100) / 100, id = judge.id, reason = reason(judge, a, b, num(R.kd), num(B.kd), catR, catB) }
 	end
 	return out
 end
@@ -262,9 +262,7 @@ function Judging.ScoreStrings(cards, outcome)
 	local list = {}
 	for _, c in ipairs(cards or {}) do
 		local a, b = num(c[1]), num(c[2])
-		if outcome == "loss" then
-			a, b = b, a
-		elseif outcome ~= "win" and b > a then
+		if outcome == "loss" or (outcome ~= "win" and b > a) then
 			a, b = b, a
 		end
 		table.insert(list, fmtRound(a, b))

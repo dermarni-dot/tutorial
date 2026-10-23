@@ -3,7 +3,7 @@ build_body.build_tier, each joint turned through the range the Animator uses (wa
 and per joint how much of the parent's surface ends up INSIDE the child (the child's skin then shows through the
 parent: the thigh through the pelvis, the upper arm through the chest) and the reverse.
 
-    python3 tools/body/check_joints.py [--tiers 1,3,5] [--joint hip,shoulder,elbow,knee,wrist]
+    python3 tools/body/check_joints.py [--tiers 1,3,5] [--joint hip,shoulder,elbow,knee,wrist] [--frames lean,power]
 """
 import argparse
 import math
@@ -90,13 +90,16 @@ def main():
     ap.add_argument("--tiers", default="1,3,5")
     ap.add_argument("--joint", default="hip,shoulder,elbow,wrist,knee")
     ap.add_argument("--pct", action="store_true", help="also print the counts as a share of the parent's vertices")
+    ap.add_argument("--frames", default="athletic", help="frame keys / ids (build_body.FRAMES), or 'all'")
     a = ap.parse_args()
     global PCT
     PCT = a.pct
-    for n in (int(x) for x in a.tiers.split(",")):
-        parts = bb.build_tier(None, n)
+    frames = bb.FRAME_ORDER if a.frames == "all" else [bb.frame_of(f)["id"] for f in a.frames.split(",")]
+    for fid in frames:
+      for n in (int(x) for x in a.tiers.split(",")):
+        parts = bb.build_tier(None, n, frame=fid)
         J = {k: np.array(v) for k, v in parts["_J"].items()}
-        print(f"--- tier {n}: parent verts newly inside the child (count @ highest above the pivot) / parent end uncovered (count ~ how far out)")
+        print(f"--- {fid} tier {n}: parent verts newly inside the child (count @ highest above the pivot) / parent end uncovered (count ~ how far out)")
         if "hip" in a.joint:
             poses = [(f"f{d:+d}", rot("x", d)) for d in (-30, -15, 15, 30, 45, 60)]
             poses += [("ab+10", rot("z", 10)), ("ad-8", rot("z", -8))]

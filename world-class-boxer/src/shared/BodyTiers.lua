@@ -6,6 +6,12 @@
 --   (MAP), each read as Body.Resolve reads it (the value against the frame's potential), averaged into a
 --   level, and the level cut into tiers (BANDS) with a little hysteresis so a part never flickers at a
 --   boundary. Hands follow their forearm, feet their calf (FOLLOW)
+-- * the body frames (v12): every Config.BodyTypes frame has its own family of the 5 tiers (BodyAssetData.frames,
+--   keyed by the frame id; the Athletic frame is the default family, BodyAssetData.tiers): a Lean frame's narrow
+--   shoulders and a Power Build's traps are in the meshes, not only in the description's Width / Depth. The tiers
+--   table a build gives carries the frame (tiers.frame, FrameOf: the opts' frame id, else the BodyTypes entry whose
+--   potential the caller passed), and PartEntry(tier, name, d, lite, frame) picks that family's part (the default
+--   family's when the frame has none uploaded; the lite set is one per tier, the default family's)
 -- * the classic faces: BodyAssetData.faces (a key, a name, an Image id, creator = shown in the picker), the
 --   default smile, the face key sanitiser (look.face.key) and the texture a key draws (rbxassetid, or the
 --   engine's own smile while an id is 0)
@@ -21,6 +27,8 @@ BodyTiers.PARTS = {
 }
 BodyTiers.TIERS = 5
 BodyTiers.TIER_NAMES = { "Lean", "Toned", "Athletic", "Muscular", "Elite" }
+-- the frame whose family BodyAssetData.tiers holds (the gear is fitted on it)
+BodyTiers.DEFAULT_FRAME = "Athletic"
 
 -- the muscles each body part carries (Config.MuscleParts ids, weights sum to 1); Left / Right share a group
 BodyTiers.MAP = {
@@ -124,8 +132,46 @@ function BodyTiers.TierOf(level, prev)
 	return t
 end
 
--- { [part name] = tier } for all 14 parts. prev (optional): { [part name] = current tier } or a function
--- (name) -> current tier
+-- Config (lazily; the client and the tests load this module without it)
+local cfgMod
+local function config()
+	if cfgMod == nil then
+		local here = script and script.Parent
+		local m = here and here:FindFirstChild("Config")
+		local ok, cfg = false, nil
+		if m then
+			ok, cfg = pcall(require, m)
+		end
+		cfgMod = (ok and type(cfg) == "table") and cfg or false
+	end
+	return cfgMod or nil
+end
+-- tests / tools: the Config table to read BodyTypes from (nil: the module again)
+function BodyTiers.SetConfig(c)
+	cfgMod = c
+end
+
+-- the frame id a Tiers() call is for: opts.frame when it is a string, else the Config.BodyTypes entry whose potential
+-- is opts.potential (Builder passes the frame's potential), else the default frame
+function BodyTiers.FrameOf(opts)
+	opts = type(opts) == "table" and opts or {}
+	if type(opts.frame) == "string" and opts.frame ~= "" then
+		return opts.frame
+	end
+	local pot = tonumber(opts.potential)
+	local cfg = config()
+	if pot and cfg and type(cfg.BodyTypes) == "table" then
+		for _, bt in ipairs(cfg.BodyTypes) do
+			if type(bt) == "table" and tonumber(bt.potential) and math.abs(bt.potential - pot) < 1e-6 then
+				return bt.id
+			end
+		end
+	end
+	return BodyTiers.DEFAULT_FRAME
+end
+
+-- { [part name] = tier } for all 14 parts, plus .frame = the frame id (FrameOf). prev (optional): { [part name] =
+-- current tier } or a function (name) -> current tier
 function BodyTiers.Tiers(build, opts, prev)
 	local lv = BodyTiers.GroupLevels(build, opts)
 	local function prevOf(name)
@@ -152,6 +198,7 @@ function BodyTiers.Tiers(build, opts, prev)
 			out[name] = out[side .. f] or 1
 		end
 	end
+	out.frame = BodyTiers.FrameOf(opts)
 	return out, lv
 end
 
@@ -206,22 +253,77 @@ local function vec3(t)
 end
 BodyTiers.Vec3 = vec3
 
--- a tier part's entry: { id, size = {x,y,z}, attachments = { [name] = {x,y,z} } }, or nil when the mesh is not
--- uploaded (id 0) or the entry is malformed (the default body part stays). lite = true: the part's `lite` mesh (the
--- v9 set the low detail level wears, Config.Detail.meshes), its own size and attachments; the full mesh when the
--- entry has no usable lite one
-function BodyTiers.PartEntry(tier, name, d, lite)
+-- the tier table of a frame's family: BodyAssetData.frames[frame].tiers, or the default family (BodyAssetData.tiers)
+-- when the frame is the default one, unknown or has no meshes. Returns tiers, the frame id the family belongs to
+local function familyOf(d, frame)
+	local fr = type(d) == "table" and type(d.frames) == "table" and type(frame) == "string" and d.frames[frame] or nil
+	if type(fr) == "table" and type(fr.tiers) == "table" then
+		return fr.tiers, frame
+	end
+	return type(d) == "table" and type(d.tiers) == "table" and d.tiers or nil, BodyTiers.DEFAULT_FRAME
+end
+local function tierOf(tiers, tier)
+	return tiers and (tiers[tier] or tiers[tostring(tier)]) or nil
+end
+
+-- the frame ids with a mesh family in the data (the default frame first, then BodyAssetData.frames' keys, sorted)
+function BodyTiers.Frames(d)
 	d = d or load()
-	local tiers = type(d) == "table" and type(d.tiers) == "table" and d.tiers or nil
-	local t = tiers and (tiers[tier] or tiers[tostring(tier)])
+	local out = { BodyTiers.DEFAULT_FRAME }
+	local names = {}
+	if type(d) == "table" and type(d.frames) == "table" then
+		for k, v in pairs(d.frames) do
+			if type(k) == "string" and k ~= BodyTiers.DEFAULT_FRAME and type(v) == "table" and type(v.tiers) == "table" then
+				table.insert(names, k)
+			end
+		end
+	end
+	table.sort(names)
+	for _, k in ipairs(names) do
+		table.insert(out, k)
+	end
+	return out
+end
+
+-- true when the frame has its own mesh family (false: it wears the default family)
+function BodyTiers.HasFrame(frame, d)
+	local _, fid = familyOf(d or load(), frame)
+	return fid == frame
+end
+
+-- the frame's folder key (tools/body/out/frames/<key>; nil for the default family)
+function BodyTiers.FrameKey(frame, d)
+	d = d or load()
+	local fr = type(d) == "table" and type(d.frames) == "table" and type(frame) == "string" and d.frames[frame] or nil
+	return type(fr) == "table" and type(fr.key) == "string" and fr.key or nil
+end
+
+-- a tier part's entry: { id, size = {x,y,z}, attachments = { [name] = {x,y,z} }, tier, name, frame, lite }, or nil
+-- when the mesh is not uploaded (id 0) or the entry is malformed (the default body part stays). lite = true: the
+-- part's `lite` mesh (the v9 set the low detail level wears, Config.Detail.meshes), its own size and attachments; the
+-- full mesh when the entry has no usable lite one. frame = the frame id (BodyAssetData.frames): that family's part,
+-- the default family's when the frame has none; the lite set is the default family's at every frame
+function BodyTiers.PartEntry(tier, name, d, lite, frame)
+	d = d or load()
+	local tiers, fid = familyOf(d, frame)
+	local t = tierOf(tiers, tier)
 	local parts = type(t) == "table" and type(t.parts) == "table" and t.parts or nil
 	local e = parts and parts[name]
 	if type(e) ~= "table" then
 		return nil
 	end
 	local isLite = false
-	if lite and type(e.lite) == "table" and idOf(e.lite.mesh) and vec3(e.lite.size) then
-		e, isLite = e.lite, true
+	if lite then
+		local le = e.lite
+		if not (type(le) == "table" and idOf(le.mesh) and vec3(le.size)) and fid ~= BodyTiers.DEFAULT_FRAME then
+			-- (the frames carry no lite set: the default family's lite part)
+			local dt = tierOf(type(d) == "table" and d.tiers or nil, tier)
+			local de = type(dt) == "table" and type(dt.parts) == "table" and dt.parts[name] or nil
+			le = type(de) == "table" and de.lite or nil
+		end
+		if type(le) == "table" and idOf(le.mesh) and vec3(le.size) then
+			e, isLite, fid = le, true, BodyTiers.DEFAULT_FRAME
+		end
 	end
 	local id = idOf(e.mesh)
 	local size = vec3(e.size)
@@ -237,14 +339,15 @@ function BodyTiers.PartEntry(tier, name, d, lite)
 			end
 		end
 	end
-	return { id = id, size = size, attachments = atts, tier = tier, name = name, lite = isLite }
+	return { id = id, size = size, attachments = atts, tier = tier, name = name, lite = isLite, frame = fid }
 end
 
--- a tier's gear-fit measure (BodyAssetData tiers[n].fit[key]: { width, depth, girth, y }, unscaled studs), or nil
-function BodyTiers.Fit(tier, key, d)
+-- a tier's gear-fit measure (BodyAssetData tiers[n].fit[key]: { width, depth, girth, y }, unscaled studs), or nil;
+-- frame (optional) = that frame's family's measure
+function BodyTiers.Fit(tier, key, d, frame)
 	d = d or load()
-	local tiers = type(d) == "table" and type(d.tiers) == "table" and d.tiers or nil
-	local t = tiers and (tiers[tier] or tiers[tostring(tier)])
+	local tiers = familyOf(d, frame)
+	local t = tierOf(tiers, tier)
 	local f = type(t) == "table" and type(t.fit) == "table" and t.fit[key] or nil
 	if type(f) == "table" and tonumber(f.width) and tonumber(f.depth) then
 		return f

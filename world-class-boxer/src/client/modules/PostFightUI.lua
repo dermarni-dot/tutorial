@@ -192,7 +192,7 @@ function PostFightUI.Open(data)
 	-- the announcer's call (a line of the ring announcer's script)
 	local call
 	if res.outcome == "draw" then
-		call = string.format("\"...this bout is declared a draw.\"")
+		call = "\"...this bout is declared a draw.\""
 	elseif stoppage then
 		call = string.format("\"...the winner, by %s... %s!\"", string.upper(METHOD[res.method] or res.method), string.upper(won and youName or oppName))
 	else

@@ -1576,7 +1576,9 @@ scen("stagger", 2.0, { punchAt(0.3, "B", "rearhook", "R"), { 0.6, "A", "act", "h
 scen("hurt_wobbly", 3.0, { { 0, "A", "Daze", 2 }, { 0, "A", "Guard", "hurt" } })
 scen("dazed3", 3.0, { { 0, "A", "Daze", 3 }, { 0, "A", "Guard", "dazed" } })
 -- knockdowns: the server's order (DownPose & co, then Guard = down), the count, the get-up act, Guard back to stance
-local function kdScen(id, pose, kind, hand, sev, getup, count, ko, zone)
+-- opts (v10): dir = DownDir, dist = DownDist, move = { dx, dz, dur } the server's walk into the ropes / the corner
+local function kdScen(id, pose, kind, hand, sev, getup, count, ko, zone, opts)
+	opts = opts or {}
 	local w = WIND[kind]
 	local tc = 0.3 + w
 	local ev = { punchAt(0.3, "B", kind, hand, zone) }
@@ -1586,15 +1588,23 @@ local function kdScen(id, pose, kind, hand, sev, getup, count, ko, zone)
 		table.insert(ev, { tc, "A", "act", string.format("hit|%s|heavy|%.2f|%s", kind, sev, hand) })
 	end
 	table.insert(ev, { tc, "A", "DownPose", pose })
-	table.insert(ev, { tc, "A", "DownDir", (pose == "face" or pose == "forward" or pose == "knee") and 0.7 or math.pi })
+	table.insert(ev, { tc, "A", "DownDir", opts.dir or ((pose == "face" or pose == "forward" or pose == "knee") and 0.7 or math.pi) })
+	if opts.dist then
+		table.insert(ev, { tc, "A", "DownDist", opts.dist })
+	end
 	table.insert(ev, { tc, "A", "KOKind", ko or false })
 	table.insert(ev, { tc, "A", "Count", 0 })
 	table.insert(ev, { tc + 0.001, "A", "Guard", "down" })
+	if opts.move then
+		table.insert(ev, { tc + 0.002, "A", "move", opts.move })
+	end
 	local dur
 	if ko then
 		local wall = ({ oneshot = 1.75, crumple = 1.75, delayed = 2.6, standing = 0.6 })[ko] or 1.75
 		if ko == "crumple" and pose == "back" then
 			wall += 0.2
+		elseif pose == "ropes" or pose == "corner" then
+			wall += 0.35
 		end
 		if ko == "standing" then
 			-- (the referee catches him: FightEngine RefCatch, CATCH_TIME later the wave-off)
@@ -1616,7 +1626,7 @@ local function kdScen(id, pose, kind, hand, sev, getup, count, ko, zone)
 		table.insert(ev, { up, "A", "KOKind", false })
 		dur = up + getup + 1.2
 	end
-	scen(id, dur, ev, { ref = true, every = 4, focus = { 0.2, dur } })
+	scen(id, dur, ev, { ref = true, every = 4, focus = { 0.2, dur }, kdAt = tc })
 end
 kdScen("kd_back", "back", "cross", "R", 1.1, 2.4, 4)
 kdScen("kd_sit", "sit", "jab", "L", 0.9, 1.3, 3)
@@ -1632,6 +1642,13 @@ kdScen("ko_body", "knee", "leadhook", "L", 1.4, nil, nil, "crumple", "body")
 kdScen("ko_uppercut", "back", "uppercut", "R", 1.4, nil, nil, "oneshot")
 kdScen("ko_hook_face", "face", "leadhook", "L", 1.4, nil, nil, "oneshot")
 kdScen("ko_standing", "standing", "rearhook", "R", 1.4, nil, nil, "standing")
+-- v10: the flash knockdown, and the falls into the ropes / the corner (the server walks his root there over the
+-- stagger: the move; DownDist as FightMotion.RopeTravel sets it)
+kdScen("kd_flash", "flash", "jab", "L", 0.9, 1.1, 2)
+kdScen("kd_ropes", "ropes", "cross", "R", 1.1, 2.0, 4, nil, nil, { dir = math.pi, dist = 1.5, move = { 0, 1.5, 0.45 } })
+kdScen("kd_corner", "corner", "rearhook", "R", 1.1, 2.0, 4, nil, nil, { dir = math.pi * 0.75, dist = 1.2, move = { 0.85, 0.85, 0.45 } })
+kdScen("ko_ropes", "ropes", "cross", "R", 1.4, nil, nil, "crumple", nil, { dir = math.pi, dist = 1.5, move = { 0, 1.5, 0.45 } })
+kdScen("ko_corner", "corner", "rearhook", "R", 1.4, nil, nil, "crumple", nil, { dir = math.pi * 0.75, dist = 1.2, move = { 0.85, 0.85, 0.45 } })
 -- between rounds and after
 scen("rest_stool", 4, { { 0.2, "A", "Guard", "rest" }, { 0.2, "A", "Stam", 0.4 } }, { stool = true, every = 4 })
 scen("win_lose", 5, { { 0.2, "A", "Guard", "win" }, { 0.2, "B", "Guard", "lose" } }, { every = 4 })
@@ -1736,7 +1753,7 @@ local function fightClip(tier)
 		end)
 		local ei = 1
 		local t0 = VT
-		local out = { clip = "fight", id = sc.id, tier = tier, frames = {}, ref = sc.ref or false }
+		local out = { clip = "fight", id = sc.id, tier = tier, frames = {}, ref = sc.ref or false, kdAt = sc.kdAt }
 		do
 			-- the action window (the filmstrip's frames): from just before the first event to well after the last
 			local lo, hi = math.huge, 0

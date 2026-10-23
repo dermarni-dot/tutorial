@@ -474,6 +474,196 @@ function Ceremony.Play(msg)
 	return scene
 end
 
+------------------------------------------------------------------------
+-- The post-fight scene (every fight: the server's PostFight.Run sends t = "postfight" once: the announcer's lines on
+-- their beats, the winner / loser / referee models, the centre, the facing, raiseAt, hold; "postfightEnd" closes it).
+-- This side: the camera (a slow drift round the three men while the cards are read, a cut to the winner as the hand
+-- goes up), the announcer's banner (the WCB band: the kicker, the line being read, the names), the crowd (VenueFX's
+-- React hook when the venue has one, else Cheer / Screens), SKIP as the belt ceremony's.
+------------------------------------------------------------------------
+local function buildResultGui(msg)
+	local sg = UI.New("ScreenGui", { Name = "PostFightSceneUI", ResetOnSpawn = false, IgnoreGuiInset = false, DisplayOrder = 32,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Parent = player:WaitForChild("PlayerGui") })
+	local root = UI.MountRoot(sg, "Root")
+	local canvas = UI.CanvasSize(root)
+	local short = canvas.Y < 560
+	local ui = { sg = sg, root = root }
+	local barH = short and 0.07 or 0.09
+	ui.top = UI.Frame(root, { Name = "LetterTop", BackgroundColor3 = Color3.new(0, 0, 0), Size = UDim2.new(1, 0, barH, 0), Position = UDim2.fromScale(0, -barH) })
+	ui.bottom = UI.Frame(root, { Name = "LetterBottom", BackgroundColor3 = Color3.new(0, 0, 0), Size = UDim2.new(1, 0, barH, 0), Position = UDim2.fromScale(0, 1) })
+	UI.Tween(ui.top, { Position = UDim2.fromScale(0, 0) }, TweenInfo.new(0.5, Enum.EasingStyle.Quad))
+	UI.Tween(ui.bottom, { Position = UDim2.fromScale(0, 1 - barH) }, TweenInfo.new(0.5, Enum.EasingStyle.Quad))
+	local w = math.min(short and 660 or 900, canvas.X - 40)
+	local h = short and 104 or 138
+	local band = UI.Frame(root, { Name = "Banner", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1 - barH, -10), Size = UDim2.fromOffset(w, h), BackgroundColor3 = T.bg, BackgroundTransparency = 1 })
+	UI.Glass(band, { transparency = 0.12, radius = UI.R.lg })
+	ui.band = band
+	local stripe = UI.Frame(band, { Name = "Stripe", Size = UDim2.new(1, 0, 0, 4), BackgroundColor3 = msg.title and T.gold or T.red })
+	UI.Gradient(stripe, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.7, 0.2), NumberSequenceKeypoint.new(1, 1) }))
+	ui.stripe = stripe
+	local x, tw = 18, w - 36
+	local names = type(msg.names) == "table" and msg.names or {}
+	local kind = msg.kind and string.upper(tostring(msg.kind)) or "OFFICIAL RESULT"
+	ui.kicker = UI.Text(band, msg.title and ("CHAMPIONSHIP  ·  " .. kind) or ("OFFICIAL RESULT  ·  " .. kind), { Name = "Kicker", Face = "displayMed", TextSize = short and 14 or 17, TextColor3 = T.gold,
+		Position = UDim2.fromOffset(x, short and 8 or 12), Size = UDim2.fromOffset(tw, short and 18 or 22), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	ui.line = UI.Text(band, "", { Name = "Line", Face = "display", TextSize = short and 24 or 34, TextColor3 = T.text, Position = UDim2.fromOffset(x, short and 26 or 34), Size = UDim2.fromOffset(tw, short and 50 or 66),
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, TextScaled = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center })
+	UI.New("UITextSizeConstraint", { MaxTextSize = short and 24 or 34, MinTextSize = 12, Parent = ui.line })
+	ui.names = UI.Text(band, string.format("%s   vs   %s", string.upper(names[1] or ""), string.upper(names[2] or "")), { Name = "Names", Font = T.semi, TextSize = short and 11 or 12, TextColor3 = T.sub,
+		Position = UDim2.fromOffset(x, short and 80 or 108), Size = UDim2.fromOffset(tw, 16), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	local sh = math.max(40, UI.MinHit(root))
+	ui.skip = UI.Button(root, "SKIP", { Name = "Skip", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 12), Size = UDim2.fromOffset(math.max(120, sh * 2.4), sh), BackgroundColor3 = T.panel2, TextSize = 16 })
+	local hint = UI.Text(ui.skip, "", { Name = "Hint", Font = T.semi, TextSize = 11, TextColor3 = T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 1, 4), Size = UDim2.fromOffset(160, 14),
+		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+	UI.BindHint(hint, UI.KeyHint("SPACE", Enum.KeyCode.ButtonB, "TAP"))
+	return ui
+end
+
+local function smooth01(x)
+	x = math.clamp(x, 0, 1)
+	return x * x * (3 - 2 * x)
+end
+local function flat(v)
+	return V3(v.X, 0, v.Z)
+end
+
+-- the camera: t = seconds in, raiseAt = the hand's beat; group = { center, face, right, winner (root pos or nil),
+-- ref (root pos or nil) } -> CFrame, fov
+local function resultShot(t, raiseAt, group, draw)
+	local center, face, right = group.center, group.face, group.right
+	local eye = center + UP * 2.2
+	if t < raiseAt or draw then
+		-- the three of them from the camera side, a slow drift from the winner's side across to the other
+		local k = math.clamp(t / math.max(raiseAt, 6), 0, 1)
+		local a = math.rad(-22 + 44 * k)
+		local dir = face * math.cos(a) + right * math.sin(a)
+		local from = center + dir * (9.5 - 1.2 * k) + UP * (3.6 - 0.4 * k)
+		return CFrame.lookAt(from, eye), 48
+	end
+	-- the hand goes up: a push in on the winner, the referee at his shoulder
+	local k = smooth01((t - raiseAt) / 2.2)
+	local wp = group.winner or center
+	local toW = flat(wp - center)
+	local side = toW.Magnitude > 0.1 and toW.Unit or right
+	local from = wp + face * (6.2 - 1.6 * k) + side * (1.4 - 0.4 * k) + UP * (2.4 + 1.0 * k)
+	return CFrame.lookAt(from, wp + UP * (1.9 + 0.5 * k)), 44 - 4 * k
+end
+
+function Ceremony.PlayPostFight(msg)
+	if active then
+		finish(active, false)
+	end
+	local lines = type(msg.lines) == "table" and msg.lines or {}
+	local raiseAt = tonumber(msg.raiseAt) or 6
+	local dur = (tonumber(msg.dur) or raiseAt + 4) + (tonumber(msg.hold) or 3)
+	local center = typeof(msg.center) == "Vector3" and msg.center or Vector3.zero
+	local face = typeof(msg.face) == "Vector3" and msg.face.Magnitude > 0.1 and msg.face.Unit or V3(0, 0, -1)
+	local right = face:Cross(UP)
+	local draw = msg.outcome == "draw"
+	local won = (msg.you == "red" and msg.outcome == "win") or (msg.you == "blue" and msg.outcome == "loss")
+	local scene = { t0 = os.clock(), conns = {}, B = { dur = dur }, winner = msg.winner, postfight = true }
+	active = scene
+	if AnimCeremony and AnimCeremony.Install then
+		pcall(AnimCeremony.Install)
+	end
+	player:SetAttribute("Ceremony", true)
+	local cam = workspace.CurrentCamera
+	scene.fov = cam.FieldOfView
+	cam.CameraType = Enum.CameraType.Scriptable
+	local fightUI = player:FindFirstChild("PlayerGui") and player.PlayerGui:FindFirstChild("FightUI")
+	if fightUI then
+		scene.fightUIEnabled = fightUI.Enabled
+		fightUI.Enabled = false
+	end
+	local lv = level()
+	local folder = Instance.new("Folder")
+	folder.Name = "PostFightFX"
+	folder.Parent = workspace
+	scene.folder = folder
+	local okC, conf = pcall(confetti, folder, center, lv)
+	if not okC then
+		conf = nil
+	end
+	local spots = (msg.title and lv >= 2) and spotlights(folder, center, lv) or {}
+	local okUI, ui = pcall(buildResultGui, msg)
+	scene.ui = okUI and ui or nil
+	if scene.ui then
+		ui.skip.MouseButton1Click:Connect(function()
+			finish(scene, true)
+		end)
+	end
+	ContextActionService:BindActionAtPriority("CeremonySkip", function(_, st)
+		if st == Enum.UserInputState.Begin then
+			finish(scene, true)
+		end
+		return Enum.ContextActionResult.Sink
+	end, false, Enum.ContextActionPriority.High.Value + 50, Enum.KeyCode.Space, Enum.KeyCode.Return, Enum.KeyCode.ButtonB, Enum.KeyCode.ButtonA)
+	-- the crowd: the hush for the cards, the roar for the name (VenueFX.React when the venue has it)
+	local function crowd(kind, amount)
+		if vfx("React", kind, { amount = amount, outcome = msg.outcome, method = msg.method, you = msg.you }) == nil then
+			vfx("Cheer", amount)
+		end
+	end
+	crowd("hush", 0.3)
+	-- the announcer's lines on their beats (timers, so a sim without a render step shows them too)
+	for _, l in ipairs(lines) do
+		task.delay(math.max(0, tonumber(l.at) or 0), function()
+			if scene.done or not scene.ui then
+				return
+			end
+			local label = scene.ui.line
+			label.Text = tostring(l.text or "")
+			label.TextTransparency = 1
+			UI.Tween(label, { TextTransparency = 0 }, TweenInfo.new(0.25, Enum.EasingStyle.Quad))
+			if l.kind == "winner" or l.kind == "draw" then
+				label.TextColor3 = (won or draw) and T.gold or T.text
+				if won then
+					UI.GoldText(label)
+				end
+				scene.ui.stripe.BackgroundColor3 = won and T.gold or (draw and T.sub or T.red)
+				crowd(won and "roar" or (draw and "murmur" or "boo"), won and 1 or 0.7)
+				local names = type(msg.names) == "table" and msg.names or {}
+				local wName = msg.outcome == "win" and names[1] or (msg.outcome == "loss" and names[2] or nil)
+				vfx("Screens", wName and ("WINNER\n" .. string.upper(wName)) or "DRAW")
+				if conf and (msg.title or won) then
+					conf:Emit(lv >= 3 and 180 or 90)
+				end
+			elseif l.kind == "card" then
+				label.TextColor3 = T.text
+				crowd("murmur", 0.45)
+			end
+		end)
+	end
+	-- the camera
+	local group = { center = center, face = face, right = right }
+	scene.conn = RunService.RenderStepped:Connect(function()
+		if scene.done then
+			return
+		end
+		local t = os.clock() - scene.t0
+		if t > dur + 2 then
+			finish(scene, false) -- (the server's end never came)
+			return
+		end
+		cam = workspace.CurrentCamera
+		if cam.CameraType ~= Enum.CameraType.Scriptable then
+			cam.CameraType = Enum.CameraType.Scriptable
+		end
+		local wroot = partOf(msg.winner, "HumanoidRootPart")
+		group.winner = wroot and wroot.Position or nil
+		local goal, fov = resultShot(t, raiseAt, group, draw)
+		cam.CFrame = goal
+		cam.FieldOfView = fov
+		for _, s in ipairs(spots) do
+			s.part.CFrame = CFrame.lookAt(s.base, group.winner or center)
+		end
+	end)
+	table.insert(scene.conns, player.CharacterRemoving:Connect(function()
+		finish(scene, false)
+	end))
+	return scene
+end
+
 local started = false
 function Ceremony.Start()
 	if started then
@@ -490,7 +680,13 @@ function Ceremony.Start()
 				warn("[Ceremony]", err)
 				finish(active, true)
 			end
-		elseif msg.t == "ceremonyEnd" then
+		elseif msg.t == "postfight" then
+			local ok, err = pcall(Ceremony.PlayPostFight, msg)
+			if not ok then
+				warn("[Ceremony] postfight:", err)
+				finish(active, true)
+			end
+		elseif msg.t == "ceremonyEnd" or msg.t == "postfightEnd" then
 			if active then
 				active.serverEnded = true
 			end

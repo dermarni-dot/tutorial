@@ -2,7 +2,8 @@
 -- body the HumanoidDescription builds (empty body-part ids: the engine's default parts); each of the 14
 -- non-head parts is swapped for its tier's MeshPart with Humanoid:ReplaceBodyPartR15, and only when that
 -- part's tier changes (a swap replicates one part).
--- * templates: one MeshPart per (tier, part), made once per server with AssetService:CreateMeshPartAsync
+-- * templates: one MeshPart per (frame, tier, part) (the frame's mesh family, BodyTiers.PartEntry; the tiers table's
+--   .frame, else the model's Frame attribute), made once per server with AssetService:CreateMeshPartAsync
 --   (pcall; concurrent callers wait for the same load; a failed id is retried after RETRY seconds) and given
 --   the part-space RigAttachments / accessory attachments from BodyAssetData, an OriginalSize and every
 --   attachment's OriginalPosition (the unscaled values the engine's body scaling multiplies) and an
@@ -101,13 +102,15 @@ local function prepare(mp, e)
 	mp:SetAttribute("BodyTier", e.tier)
 	mp:SetAttribute("BodyMesh", e.id)
 	mp:SetAttribute("BodyLite", e.lite == true or nil)
+	mp:SetAttribute("BodyFrame", e.frame)
 	return mp
 end
 
--- the template for (tier, part name), or nil + reason (not uploaded / failed: the caller keeps its part). Yields
--- on the first call for a key (CreateMeshPartAsync); later calls are free
-function BuilderTiers.Template(tier, name, lite)
-	local e = BodyTiers.PartEntry(tier, name, nil, lite)
+-- the template for (tier, part name) of a frame's family (frame nil = the default family), or nil + reason (not
+-- uploaded / failed: the caller keeps its part). Yields on the first call for a key (CreateMeshPartAsync); later calls
+-- are free
+function BuilderTiers.Template(tier, name, lite, frame)
+	local e = BodyTiers.PartEntry(tier, name, nil, lite, frame)
 	if not e then
 		return nil, "not uploaded"
 	end
@@ -143,13 +146,23 @@ function BuilderTiers.Template(tier, name, lite)
 	return mp
 end
 
--- load every uploaded template in the background (server start), so the first boxers do not wait on them
+-- load every uploaded template in the background (server start), so the first boxers do not wait on them: the
+-- default family and the lite set first, then the other frames' families
 function BuilderTiers.Preload()
 	task.spawn(function()
 		for _, lite in ipairs({ false, true }) do
 			for tier = 1, BodyTiers.TIERS do
 				for _, name in ipairs(BodyTiers.PARTS) do
 					BuilderTiers.Template(tier, name, lite)
+				end
+			end
+		end
+		for _, frame in ipairs(BodyTiers.Frames()) do
+			if frame ~= BodyTiers.DEFAULT_FRAME then
+				for tier = 1, BodyTiers.TIERS do
+					for _, name in ipairs(BodyTiers.PARTS) do
+						BuilderTiers.Template(tier, name, false, frame)
+					end
 				end
 			end
 		end
@@ -359,24 +372,40 @@ function BuilderTiers.FixHipHeight(model)
 	return nil
 end
 
--- swap every part whose tier changed. tiers = { [part] = 1..5 } (BodyTiers.Tiers); scale = Vector3 (W, H, D)
--- the description applied. Returns the number of parts swapped and the model's tier key (attribute BodyTiers:
--- the tiers the parts really show, 0 = a default part). lite = true: the detail set of the low level (the v9 meshes)
-function BuilderTiers.Apply(model, tiers, scale, lite)
+-- the frame a swap is for: the tiers table's frame (BodyTiers.Tiers), else the model's Frame attribute (Builder's
+-- body attributes), else the default family
+function BuilderTiers.FrameFor(model, tiers)
+	local f = type(tiers) == "table" and tiers.frame or nil
+	if type(f) ~= "string" or f == "" then
+		f = model and model:GetAttribute("Frame") or nil
+	end
+	if type(f) ~= "string" or f == "" then
+		f = BodyTiers.DEFAULT_FRAME
+	end
+	return f
+end
+
+-- swap every part whose tier (or frame family / detail set) changed. tiers = { [part] = 1..5, frame = id }
+-- (BodyTiers.Tiers); scale = Vector3 (W, H, D) the description applied. Returns the number of parts swapped and the
+-- model's tier key (attribute BodyTiers: the tiers the parts really show, 0 = a default part). lite = true: the detail
+-- set of the low level (the v9 meshes). frame (optional) overrides the tiers table's frame
+function BuilderTiers.Apply(model, tiers, scale, lite, frame)
 	local hum = model and model:FindFirstChildOfClass("Humanoid")
 	if not (hum and type(tiers) == "table") then
 		return 0, nil
 	end
+	frame = type(frame) == "string" and frame or BuilderTiers.FrameFor(model, tiers)
 	local n = 0
 	for _, name in ipairs(BodyTiers.PARTS) do
 		local want = tiers[name]
 		local cur = model:FindFirstChild(name)
-		-- (the mesh this tier's part shows in the wanted detail set: another set's part of the same tier is swapped too)
-		local e = want and BodyTiers.PartEntry(want, name, nil, lite)
+		-- (the mesh this tier's part shows in the wanted detail set and frame family: a part of the same tier from
+		-- another set or family is swapped too)
+		local e = want and BodyTiers.PartEntry(want, name, nil, lite, frame)
 		local otherSet = e ~= nil and cur ~= nil and cur:GetAttribute("BodyTier") == want and cur:GetAttribute("BodyMesh") ~= e.id
 		if want and cur and (cur:GetAttribute("BodyTier") ~= want or otherSet) then
 			local wasIn = model.Parent ~= nil
-			local template = BuilderTiers.Template(want, name, lite)
+			local template = BuilderTiers.Template(want, name, lite, frame)
 			-- (the load may have yielded: a model in the world may be gone; a new NPC is built before it is parented)
 			if template and not (wasIn and model.Parent == nil) and swap(model, hum, name, template, scale) then
 				n += 1
@@ -410,6 +439,12 @@ function BuilderTiers.Apply(model, tiers, scale, lite)
 	end
 	if model:GetAttribute("BodyTiers") ~= key then
 		model:SetAttribute("BodyTiers", key)
+	end
+	-- the family the parts show (the frame id; the default family's name when the frame has no meshes of its own)
+	local ut = model:FindFirstChild("UpperTorso")
+	local shownFrame = ut and ut:GetAttribute("BodyFrame") or nil
+	if model:GetAttribute("BodyFrame") ~= shownFrame then
+		model:SetAttribute("BodyFrame", shownFrame)
 	end
 	return n, key
 end

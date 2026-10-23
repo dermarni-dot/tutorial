@@ -425,3 +425,21 @@ lune run tools/sim/v9_anim.luau --tiers 3 --clips walk,snapturn --no-mesh --nope
   starts stopped, `ProcAnim` on the model, back on while the rig is released (climbing) and off again on the ground;
   snap turns without a bank, with the head's lead, the twist and the pelvis' lag bounded; a held curve still banked, the
   head still leading a turn in place, a start's forward lean bounded.
+
+## Knockdowns and knockouts on the canvas: v10_ko_render
+
+```sh
+lune run tools/sim/v9_anim.luau --tiers 3 --clips fight --only kd_back,kd_flash,kd_ropes,kd_corner,ko_oneshot_back,ko_crumple_side,ko_crumple_back,ko_delayed_face,ko_ropes,ko_corner --out DIR
+/opt/bpyenv/bin/python tools/sim/v10_ko_render.py DIR previews/final/v10/ko [--only id,id] [--times 0,0.2,0.5,1,2] [--views side,high] [--samples N] [--tag v10]
+```
+
+The fall of every knockdown / knockout scenario at fixed times after the knockdown (`kdAt` in the clip's JSON: the
+frame Guard went "down"), one sheet per view (`high`: a raised side view, the body against the floor marks), and a
+ground report (`<tag>_<id>_ground.json`, also printed): per picked frame the lowest vertex of the body meshes against
+the canvas (Y = 0: negative = sunk, positive = floating), the pelvis and head heights, and the pelvis' travel per
+recorded frame once he is down (the slide). The v10 scenarios: `kd_flash` (the flash knockdown), `kd_ropes` /
+`kd_corner` / `ko_ropes` / `ko_corner` (the server's walk into the ropes / the corner as a root move, DownDist as
+FightMotion.RopeTravel sets it). AnimDown v10: the canvas is measured by a ray every frame, every joint within human
+range (AnimDown.LIMITS), nothing airborne (the final Transforms pulled onto the canvas in footLock), a landing slide
+and a settle; the physics side (the root held, the limbs released to ball sockets after an out-cold KO) is
+src/server/Ragdoll.lua + src/client/modules/Ragdoll.lua and can only be verified in Studio (no physics here).
