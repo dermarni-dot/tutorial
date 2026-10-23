@@ -152,6 +152,133 @@ POSES.cerCelebrate = function(p, rig, t, d, w, model, dt)
 	return p
 end
 
+------------------------------------------------------------------------
+-- the post-fight scene (PostFight: both men in the centre, the referee between them)
+--   pfWait        a fighter waiting on the verdict: gloves hanging, the chest heaving, a glance at the referee
+--   pfHold        the referee between them, a wrist in each hand (arms down and a little out), looking ahead
+--   pfRaiseL      the referee raising HIS left arm (the man at his left won), head turned to him
+--   pfRaiseR      the referee raising HIS right arm (the man at his right won)
+--   pfRaiseBoth   a draw: both arms up
+--   pfHandUpR     the winner's right arm raised by the referee (the fist high, the chest up, a look up)
+--   pfHandUpL     the same, the left arm
+--   pfLose        the loser: head down, gloves on the hips, a slow shake of the head
+------------------------------------------------------------------------
+POSES.pfWait = function(p, rig, t, d, w, model, dt)
+	local k = into(rig, "pfWait", dt, 0.5)
+	base(p, rig, t, dt)
+	local br = sin(t * 2.6) * 0.035 -- heavy breathing
+	local glance = 0.22 * (0.5 + 0.5 * sin(t * 0.45))
+	to(p, "W", A(0.1 + br, 0, 0), k)
+	to(p, "Neck", A(-0.02 - br * 0.5, glance, 0), k)
+	to(p, "RS", A(0.12, 0, 0.3 + br * 0.4), k)
+	to(p, "RE", A(0.42, 0, 0), k)
+	to(p, "LS", A(0.12, 0, -0.3 - br * 0.4), k)
+	to(p, "LE", A(0.42, 0, 0), k)
+	rig.lookW = 0.35
+	return p
+end
+
+POSES.pfHold = function(p, rig, t, d, w, model, dt)
+	local k = into(rig, "pfHold", dt, 0.5)
+	base(p, rig, t, dt)
+	to(p, "W", A(0.04, 0, 0), k)
+	to(p, "Neck", A(0.04, 0, 0), k)
+	to(p, "RS", A(-0.1, 0, 0.9), k)
+	to(p, "RE", A(0.2, 0, 0), k)
+	to(p, "LS", A(-0.1, 0, -0.9), k)
+	to(p, "LE", A(0.2, 0, 0), k)
+	rig.lookW = 0.4
+	return p
+end
+
+local function refRaise(p, rig, t, dt, k, left, both)
+	to(p, "W", A(0.04, left and 0.1 or -0.1, 0), k)
+	to(p, "Neck", A(0.12, both and 0 or (left and 0.45 or -0.45), 0), k)
+	if left or both then
+		to(p, "LS", A(0.18, 0, -2.6), k)
+		to(p, "LE", A(0.3, 0, 0), k)
+	else
+		to(p, "LS", A(-0.1, 0, -0.9), k)
+		to(p, "LE", A(0.2, 0, 0), k)
+	end
+	if (not left) or both then
+		to(p, "RS", A(0.18, 0, 2.6), k)
+		to(p, "RE", A(0.3, 0, 0), k)
+	else
+		to(p, "RS", A(-0.1, 0, 0.9), k)
+		to(p, "RE", A(0.2, 0, 0), k)
+	end
+	rig.lookW = 0
+end
+
+POSES.pfRaiseL = function(p, rig, t, d, w, model, dt)
+	local k = into(rig, "pfRaiseL", dt, 0.45)
+	base(p, rig, t, dt)
+	refRaise(p, rig, t, dt, k, true, false)
+	return p
+end
+
+POSES.pfRaiseR = function(p, rig, t, d, w, model, dt)
+	local k = into(rig, "pfRaiseR", dt, 0.45)
+	base(p, rig, t, dt)
+	refRaise(p, rig, t, dt, k, false, false)
+	return p
+end
+
+POSES.pfRaiseBoth = function(p, rig, t, d, w, model, dt)
+	local k = into(rig, "pfRaiseBoth", dt, 0.45)
+	base(p, rig, t, dt)
+	refRaise(p, rig, t, dt, k, false, true)
+	return p
+end
+
+local function handUp(p, rig, t, dt, k, rightArm)
+	local b = sin(t * 2.2) * 0.03
+	to(p, "W", A(0.12 + b, 0, rightArm and -0.05 or 0.05), k)
+	to(p, "Neck", A(0.16, rightArm and -0.12 or 0.12, 0), k)
+	if rightArm then
+		to(p, "RS", A(0.12, 0, 2.72), k)
+		to(p, "RE", A(0.22, 0, 0), k)
+		to(p, "LS", A(0.2, 0, -0.38), k)
+		to(p, "LE", A(0.9, 0, 0), k)
+	else
+		to(p, "LS", A(0.12, 0, -2.72), k)
+		to(p, "LE", A(0.22, 0, 0), k)
+		to(p, "RS", A(0.2, 0, 0.38), k)
+		to(p, "RE", A(0.9, 0, 0), k)
+	end
+	rig.lookW = 0.3
+end
+
+POSES.pfHandUpR = function(p, rig, t, d, w, model, dt)
+	local k = into(rig, "pfHandUpR", dt, 0.4)
+	base(p, rig, t, dt)
+	handUp(p, rig, t, dt, k, true)
+	return p
+end
+
+POSES.pfHandUpL = function(p, rig, t, d, w, model, dt)
+	local k = into(rig, "pfHandUpL", dt, 0.4)
+	base(p, rig, t, dt)
+	handUp(p, rig, t, dt, k, false)
+	return p
+end
+
+POSES.pfLose = function(p, rig, t, d, w, model, dt)
+	local k = into(rig, "pfLose", dt, 0.7)
+	base(p, rig, t, dt)
+	local br = sin(t * 1.4) * 0.03
+	local shake = sin(t * 4.2) * 0.12 * (0.5 + 0.5 * sin(t * 0.6))
+	to(p, "W", A(-0.1 + br, 0, 0), k)
+	to(p, "Neck", A(-0.55 - br, shake, 0), k)
+	to(p, "RS", A(-0.25, 0, 0.55) * A(0, 0.9, 0), k)
+	to(p, "RE", A(1.6, 0, 0), k)
+	to(p, "LS", A(-0.25, 0, -0.55) * A(0, -0.9, 0), k)
+	to(p, "LE", A(1.6, 0, 0), k)
+	rig.lookW = 0
+	return p
+end
+
 -- add the poses to the Animator's table (AnimGym.POSE: the same module table the Animator plays from)
 local installed = false
 function AnimCeremony.Install()

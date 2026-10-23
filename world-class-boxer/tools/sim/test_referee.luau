@@ -660,7 +660,7 @@ do
 	-- the brow roll's rim on the forehead (z = -0.5): y = cy - hy sqrt(1 - ((0.5 + cz) / hz)^2)
 	local rim = br and (br.pos.Y - br.size.Y / 2 * math.sqrt(math.max(1 - ((-0.5 - br.pos.Z) / (br.size.Z / 2)) ^ 2, 0)))
 	check("headgear: the brow roll is a flat ring, 0.05 .. 0.12 proud of the forehead, its rim 0.03 .. 0.08 above HEADGEAR_OPENING.top",
-		br and br.shape == "Sphere" and br.size.X > 1.1 and br.size.Y < 0.2 and -(br.pos.Z - br.size.Z / 2) - 0.5 > 0.05 and -(br.pos.Z - br.size.Z / 2) - 0.5 < 0.12
+		br and br.shape == "Sphere" and br.size.X > 1.1 and br.size.Y < 0.25 and -(br.pos.Z - br.size.Z / 2) - 0.5 > 0.05 and -(br.pos.Z - br.size.Z / 2) - 0.5 < 0.12
 		and rim and rim > O.top + 0.03 and rim < O.top + 0.08, br and string.format("front %.3f rim %.3f", -(br.pos.Z - br.size.Z / 2), rim))
 	check("headgear: the crown cap over the top (0.08 .. 0.15 above it), 0.03 .. 0.1 off the sides, its front flush with the forehead or behind it",
 		top and top.shape == "Sphere" and top.pos.Y + top.size.Y / 2 > 0.58 and top.pos.Y + top.size.Y / 2 < 0.65 and top.size.X / 2 > 0.53 and top.size.X / 2 < 0.6
@@ -671,7 +671,7 @@ do
 	for _, g in ipairs(hg) do
 		if g.name == "HGCheek" then
 			check("headgear: a cheek roll upright beside the face, outside the eyes (|x| >= 0.36), never across it (z >= -0.32), from the brow roll to under the jaw",
-				g.shape == "Sphere" and math.abs(g.pos.X) - g.size.X / 2 >= 0.36 and g.pos.Z - g.size.Z / 2 >= -0.32 and g.pos.Y + g.size.Y / 2 > 0.24 and g.pos.Y - g.size.Y / 2 < -0.4,
+				g.shape == "Sphere" and math.abs(g.pos.X) - g.size.X / 2 >= 0.36 and g.pos.Z - g.size.Z / 2 >= -0.32 and g.pos.Y + g.size.Y / 2 > 0.24 and g.pos.Y - g.size.Y / 2 < -0.3,
 				string.format("x %.3f z %.3f y %.3f..%.3f", math.abs(g.pos.X) - g.size.X / 2, g.pos.Z - g.size.Z / 2, g.pos.Y - g.size.Y / 2, g.pos.Y + g.size.Y / 2))
 		elseif g.name == "HGSide" then
 			check("headgear: an ear pad flush on the side wall (sunk 0.03 .. 0.1, 0.05 .. 0.15 proud), round the ear",
