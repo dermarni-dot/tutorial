@@ -552,7 +552,7 @@ A.chamber = function(seg, j, t, M, mem, sk, rng)
 		end
 	elseif every(mem, "look", t, mix(sk, 0, 0.7)) then
 		local tg = j.target(t)
-		local db = mix(sk, 0.008, 0.08)
+		local db = math.min(0.08, mix(sk, 0.008, 0.08))
 		hold(out, mem, "up", j.P < tg - db)
 		hold(out, mem, "down", j.P > tg + db)
 		if j.ear > 0.9 then

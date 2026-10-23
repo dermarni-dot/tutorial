@@ -3190,7 +3190,7 @@ function Training.DrillPlan(act, lv, params)
 			table.insert(segs, { j = "needle", c = 0.66 + r:NextNumber() * 0.18, w = tw(0.09, 0.05), sweep = tw(0.8, 1.2) + s * 0.04, dur = 3.5,
 				gap = s == 1 and (W.combo + W.rest + W.round) or W.shot })
 		end
-		table.insert(segs, { j = "burst", dur = 4, target = tw(3.4, 4.8), gap = W.shot + W.rest + W.round })
+		table.insert(segs, { j = "burst", dur = 4, target = tw(3.7, 4.8), gap = W.shot + W.rest + W.round })
 	elseif kind == "rhythm" then
 		-- ACCELERATING RHYTHM: a round starts on its tempo and picks up through the round (seg.accel, to a
 		-- cap): alternate hands and keep up with the bag; round two adds doubles (and triplets up top)
@@ -3288,7 +3288,7 @@ function Training.DrillPlan(act, lv, params)
 			for k = 1, math.min(len, #flow) do
 				seq[k] = flow[k]
 			end
-			table.insert(segs, { j = "seq", ids = seq, limit = 1.5 + #seq * tw(0.9, 0.6), gap = fi == 1 and (W.move + W.rest + W.round) or W.flow })
+			table.insert(segs, { j = "seq", ids = seq, limit = 1.4 + #seq * tw(0.8, 0.55), gap = fi == 1 and (W.move + W.rest + W.round) or W.flow })
 		end
 	elseif kind == "reps" then
 		for set = 1, 2 do
@@ -3308,8 +3308,8 @@ function Training.DrillPlan(act, lv, params)
 			local lo = math.clamp(0.6 + r:NextNumber() * 0.14, 0.5, 0.96 - width)
 			table.insert(segs, { j = "lift", mode = "slam", rep = rep, lo = lo, width = width, speed = tw(0.8, 1.1) + rep * 0.03, wait = 5, gap = rep == 1 and W.intro or (W.slam + W.catch) })
 		end
-		local amp = tw(0.28, 0.48)
-		table.insert(segs, { j = "wobble", name = "PLANK ON THE BALL", duration = math.floor(tw(12, 15)), band = tw(0.26, 0.18), kick = 0.22,
+		local amp = tw(0.34, 0.5)
+		table.insert(segs, { j = "wobble", name = "PLANK ON THE BALL", duration = math.floor(tw(12, 15)), band = tw(0.22, 0.16), kick = 0.2,
 			drift = { amp, 0.9 + r:NextNumber() * 0.6, r:NextNumber() * 6.28, amp * 0.6, 2.1 + r:NextNumber() * 0.9, r:NextNumber() * 6.28 },
 			bias = (r:NextNumber() < 0.5 and -1 or 1) * tw(0.14, 0.22), gap = W.slam + W.catch + W.rest + W.round })
 	elseif kind == "pace" then

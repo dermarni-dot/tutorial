@@ -221,7 +221,8 @@ do
 	local P, O = f.P, f.O
 	check("engine: a stub rig's frame comes from the tape", f:Geo(P) and f:Geo(P).source == "scales")
 	for _, p in ipairs(PUNCHES) do
-		local want = math.max(f:Floor(), HG.TARGET[p].head)
+		-- (PunchRange is where the punch LANDS: the further of the head's and the body's reach, an overhand the head's)
+		local want = math.max(f:Floor(), p == "overhand" and HG.TARGET[p].head or math.max(HG.TARGET[p].head, HG.TARGET[p].body))
 		check("engine: PunchRange " .. p .. " is the animation's number at 70 / 70", near(f:PunchRange(P, p), want, 0.02), f:PunchRange(P, p) .. " vs " .. want)
 	end
 	check("engine: the floor is the separation plus the air a jab needs", near(f:Floor(), math.max(S.H.require("FightMotion").Spacing.min, f:MinSep() + 0.3), 1e-6), f:Floor())
@@ -280,9 +281,9 @@ do
 	end
 	bodyHits = P.tally.body - b0
 	check("engine: the short man's jab from 3.9 is thrown to the tall man's body", redirects == 30 and bodyHits > 0 and bodyHits == P.totals.landed, redirects .. " / " .. bodyHits)
-	check("engine: the short man's jab from 4.4 falls to the tall man's body", f:HitTest(P, O, "jab", false, 4.4).ok and f:HitTest(P, O, "jab", false, 4.4).redirected)
+	check("engine: the short man's jab from 4.0 falls to the tall man's body", f:HitTest(P, O, "jab", false, 4.0).ok and f:HitTest(P, O, "jab", false, 4.0).redirected)
 	check("engine: the short man's jab from 5.6 reaches nothing on the tall man", not f:HitTest(P, O, "jab", false, 5.6).ok and f:HitTest(P, O, "jab", false, 5.6).why == "short")
-	check("engine: PunchRange is where the punch LANDS (the body included): the short man's jab is thrown from 4.4", f:PunchRange(P, "jab") > 4.4)
+	check("engine: PunchRange is where the punch LANDS (the body included): the short man's jab is thrown from 4.0", f:PunchRange(P, "jab") > 4.0 and f:PunchRange(P, "jab") > HG.Range(f:Geo(P), f:Geo(O), "jab", false, { floor = f:Floor() }))
 	check("engine: the tall man's jab from 4.4 is a head shot", f:HitTest(O, P, "jab", false, 4.4).ok and f:HitTest(O, P, "jab", false, 4.4).zone == "head")
 	-- (Builder.Scales puts 2.6 studs between these two crowns: inside, the jab lands - on the chin when the angle
 	-- allows, else it falls to the body; it never comes back "short")

@@ -882,7 +882,7 @@ J.icebath = function(seg, M, TapHold)
 		elseif flip == "off" then
 			-- how calming the breath was: how full (0.4 .. 0.9) times how empty it started (0.6 .. 0.15)
 			local full, fromEmpty = s.l >= 0.8, (s.startL or 1) <= 0.25
-			local q = clamp((s.l - 0.35) / 0.5, 0, 1) * clamp((0.65 - (s.startL or 1)) / 0.45, 0, 1)
+			local q = clamp((s.l - 0.4) / 0.5, 0, 1) * clamp((0.6 - (s.startL or 1)) / 0.45, 0, 1)
 			local good = q >= 0.75
 			s.breaths += 1
 			s.calm = q > 0 and q or nil
@@ -1468,7 +1468,7 @@ PLAN.pullup = function(segs, lv, r, Wt)
 		for rep = 1, 3 do
 			-- (the level mostly shortens the time to the chin and the pull: the swing stays readable)
 			table.insert(segs, { j = "pullup", set = set, rep = rep, omega = 3.0 + 0.4 * f, ph = r:NextNumber() * 6.28, a0 = 0.2 + 0.05 * rep,
-				amax = 1.1 - 0.1 * f, gain = 0.28 - 0.04 * f - 0.01 * (set - 1), sink = 0.04 + 0.015 * f, swingAdd = 0.26 + 0.2 * f, damp = 0.06, hollowDamp = 0.55 - 0.15 * f,
+				amax = 1.1 - 0.1 * f, gain = 0.26 - 0.03 * f - 0.01 * (set - 1), sink = 0.04 + 0.015 * f, swingAdd = 0.3 + 0.16 * f, damp = 0.06, hollowDamp = 0.55 - 0.15 * f,
 				wait = 4, limit = 6.5 - 0.8 * f, gap = repGap(Wt, set, rep) })
 		end
 	end
