@@ -990,12 +990,12 @@ def upper_torso(tr, fr):
         Lb(26, 30, 2.88, 2.95, 3.01, g("pec", 0, -0.006, -0.009)),              # the pec's lower edge
         Lb(62, 7, 3.28, 3.40, 3.52, g("pec", 0, -0.004, -0.006)),               # deltopectoral line
         # ---- abs: two columns, three rows, the linea alba, the tendinous lines, the semilunaris
-        Lb(9, 10, 2.80, 2.90, 3.00, g("abs", 0.004, 0.012, 0.024)),
-        Lb(9, 10, 2.59, 2.69, 2.79, g("abs", 0.004, 0.012, 0.024)),
-        Lb(9, 9, 2.40, 2.48, 2.57, g("abs", 0.003, 0.010, 0.020)),
-        Lb(0, 4, 2.38, 2.70, 3.02, g("abs", 0, -0.004, -0.011)),                # linea alba
-        Lb(9, 16, 2.775, 2.795, 2.815, g("abs", 0, -0.002, -0.009)),            # ab row lines
-        Lb(9, 16, 2.565, 2.585, 2.605, g("abs", 0, -0.002, -0.008)),
+        Lb(10, 13, 2.79, 2.90, 3.01, g("abs", 0.004, 0.012, 0.018)),
+        Lb(10, 13, 2.58, 2.69, 2.80, g("abs", 0.004, 0.012, 0.018)),
+        Lb(10, 12, 2.40, 2.48, 2.58, g("abs", 0.003, 0.010, 0.015)),
+        Lb(0, 4, 2.38, 2.70, 3.02, g("abs", 0, -0.004, -0.009)),                # linea alba
+        Lb(10, 18, 2.77, 2.795, 2.82, g("abs", 0, -0.002, -0.006)),             # ab row lines
+        Lb(10, 18, 2.56, 2.585, 2.61, g("abs", 0, -0.002, -0.0055)),
         Lb(20, 4, 2.42, 2.70, 3.00, g("abs", 0, -0.003, -0.008), drift=-6),     # linea semilunaris
         # ---- side: serratus fingers (diagonal), obliques and the flank roll (the hem row 2.45 stays on the legacy hull)
         Lb(56, 9, 3.00, 3.04, 3.08, g("abs", 0.003, 0.009, 0.012)),
@@ -1008,8 +1008,8 @@ def upper_torso(tr, fr):
         Lb(135, 40, 2.55, 3.05, 3.38, g("lat", 0.012, 0.085, 0.0), k=1.1),
         Lb(106, 20, 3.00, 3.22, 3.42, g("lat", 0.008, 0.05, 0.004)),            # the lat's outer sweep under the armpit
         Lb(168, 14, 2.34, 2.72, 3.12, g("lat", 0.005, 0.025, 0.004)),           # erector columns
-        Lb(180, 5, 2.34, 2.95, 3.62, g("lat", -0.007, -0.012, -0.015)),         # spine groove
-        Lb(180, 42, 3.18, 3.42, 3.60, g("trap", 0.008, 0.042, 0.0)),            # the traps' diamond
+        Lb(180, 5, 2.34, 2.90, 3.42, g("lat", -0.007, -0.012, -0.015)),         # spine groove (ends under the traps)
+        Lb(180, 44, 3.16, 3.44, 3.70, g("trap", 0.008, 0.042, 0.0)),            # the traps' diamond, into the slope
         Lb(180, 14, 2.94, 3.14, 3.34, g("trap", 0.003, 0.012, 0.004)),          # its tail
         Lb(150, 22, 3.18, 3.34, 3.50, g("lat", 0.004, 0.028, 0.006)),           # infraspinatus
         Lb(118, 16, 3.14, 3.26, 3.40, g("lat", 0.003, 0.02, 0.005)),            # teres major
@@ -1020,7 +1020,7 @@ def upper_torso(tr, fr):
         Lb(0, 12, 3.60, 3.65, 3.72, g("pec", -0.010, -0.004, -0.004)),           # the notch at the throat
         Lb(180, 62, 3.56, 3.70, 3.86, g("trap", 0.02, 0.07, 0.0)),               # upper traps into the neck (the slope)
         Lb(22, 10, 3.68, 3.78, 3.90, g("trap", 0.008, 0.010, 0.006)),           # sternocleidomastoid
-        Lb(180, 8, 3.70, 3.78, 3.90, g("trap", -0.004, -0.004, -0.004)),        # the nape's groove
+        Lb(180, 7, 3.72, 3.80, 3.90, g("trap", -0.002, -0.002, -0.003)),        # the nape's groove
     ]
     sd = ([YW, 2.32, 2.36, 3.36, 3.42, 3.54, 3.57, 3.84], [0.6, 0.6, 1.3, 1.3, 0.9, 0.9, 1.7, 1.7])
     return loft(torso_sec(fr), tr["m"], YW, 3.84, (0.22, 1.0, 2, 0.88), (0.05, 1.0, 2), nb=36, nseg=42, bias=0.5,

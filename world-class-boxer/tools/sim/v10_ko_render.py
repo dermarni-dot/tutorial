@@ -38,6 +38,36 @@ BODY_PARTS = {"Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm"
               "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot"}
 
 
+def ko_scene(scene_dir, fr, samples, view, res):
+    """v9_render.fight_scene with the whole scene shifted so the fallen man's pelvis sits under the camera's focus
+    (he goes a body length away from his root as he falls: the fixed framing lost him)"""
+    _, _, pelvis, _ = mesh_stats(fr)
+    root = fr.get("root") or [0, 0, 0]
+    cx, cz = (float(pelvis[0]), float(pelvis[2])) if pelvis is not None else (root[0], root[2])
+    off = (-cx, 0, -cz)
+    vw = v9.FIGHT_VIEWS[view]
+    sc = v9.v8.V8Scene(res=res, samples=samples, lens=50, bg=(0.11, 0.115, 0.125))
+    v9.v8.add_boxer(sc, scene_dir, v9.frame_dict(fr), offset=off)
+    if fr.get("opp"):
+        v9.v8.add_boxer(sc, scene_dir, v9.frame_dict(fr["opp"]), offset=off)
+    if fr.get("ref"):
+        v9.v8.add_boxer(sc, scene_dir, v9.frame_dict(fr["ref"]), offset=off)
+    for k in range(-6, 7):
+        P, T = v9.v8.box(0.03, 0.012, 12.0)
+        sc.add_world(P + np.array([k - (cx - round(cx)), 0.006, 0]), T, "markx", mat=sc.gear_mat((0.42, 0.42, 0.45), "SmoothPlastic", 0), smooth=False)
+        P, T = v9.v8.box(12.0, 0.012, 0.03)
+        sc.add_world(P + np.array([0, 0.006, k - (cz - round(cz))]), T, "markz", mat=sc.gear_mat((0.42, 0.42, 0.45), "SmoothPlastic", 0), smooth=False)
+    if os.environ.get("V9_FAST", "1") == "1":
+        sc.sc.cycles.max_bounces = 3
+        sc.sc.cycles.transparent_max_bounces = 8
+    cam = sc.cam
+    if vw["ortho"]:
+        cam.data.type = "ORTHO"
+        cam.data.ortho_scale = vw["ortho"]
+    sc.rig(vw["focus"], 5.0)
+    return sc, vw
+
+
 def mesh_stats(fr):
     """lowest vertex (name, y) over the body meshes, the pelvis and head centres"""
     low, lowName = 99.0, None
@@ -110,7 +140,7 @@ def render_scenario(scene_dir, out_dir, clip, times, views, samples, tag):
         paths, labels = [], []
         for dt, i in picks:
             fr = frames[i]
-            sc, vw = v9.fight_scene(scene_dir, fr, samples, view, (420, 360))
+            sc, vw = ko_scene(scene_dir, fr, samples, view, (420, 360))
             p = os.path.join(out_dir, f"_{tag}_{sid}_{view}_{i}.png")
             sc.render(p, view=vw["view"], dist=vw["dist"], focus=vw["focus"])
             paths.append(p)

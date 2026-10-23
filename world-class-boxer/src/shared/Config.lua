@@ -1108,13 +1108,13 @@ Config.City = {
 	CedarLane = { z = -40, w = 25, x0 = -427.5, x1 = -252.5 },
 	-- east
 	RiversideDrive = { x = 760, w = 25, z0 = -640, z1 = 482.5 },
-	Park = { x0 = 265, x1 = 740, z0 = -280, z1 = 285 },
+	Park = { x0 = 265, x1 = 740, z0 = -180, z1 = 285 },
 	Boardwalk = { x0 = 860, x1 = 884 },
 	-- north
 	ArenaWay = { x = 0, w = 41, z0 = -470, z1 = -302.5 },
 	Arena = { x = 0, z = -640, r = 120 },
 	EliteWay = { x = 420, w = 25, z0 = -380, z1 = -302.5 },
-	FoundryStreet = { z = -580, w = 25, x0 = 540, x1 = 747.5 },
+	FoundryStreet = { z = -290, w = 25, x0 = 252.5, x1 = 747.5 }, -- the loop's north road carried on east to the river
 }
 
 ------------------------------------------------------------------------
