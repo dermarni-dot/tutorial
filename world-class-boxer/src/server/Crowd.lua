@@ -57,7 +57,9 @@ local RED = rgb(200, 25, 30)
 
 -- the seat pitch (studs between neighbours) and the rows of real rigs per venue tier (row 0 is always full rigs)
 Crowd.SEAT = 3.0
-Crowd.PHYSICAL_ROWS = { [1] = 2, [2] = 3, [3] = 2, [4] = 2 }
+-- the real rigs sit a little wider (fewer parts a row; the printed rows behind keep the tighter pitch)
+Crowd.RIG_SEAT = 3.4
+Crowd.PHYSICAL_ROWS = { [1] = 2, [2] = 2, [3] = 2, [4] = 2 }
 -- fans per box, boxes per block side
 Crowd.VIP_SEATS = 4
 
@@ -341,9 +343,9 @@ local function hatOf(m, L, headCF, size)
 		return
 	end
 	if L.hat == "cap" then
-		local cap = blob(m, "Hat", V3(size * 1.12, size * 0.5, size * 1.12), headCF * CF(0, size * 0.36, 0.02), L.hatColor, M.Fabric, FANP)
+		-- the peak: the cap sits a little forward of the crown
+		local cap = blob(m, "Hat", V3(size * 1.14, size * 0.46, size * 1.4), headCF * CF(0, size * 0.36, -size * 0.12), L.hatColor, M.Fabric, FANP)
 		cap:SetAttribute("Kind", "cap")
-		fanPart(m, "HatBrim", V3(size * 0.9, 0.06, size * 0.55), headCF * CF(0, size * 0.3, -size * 0.6), L.hatColor, M.Fabric)
 	elseif L.hat == "beanie" then
 		local b = blob(m, "Hat", V3(size * 1.1, size * 0.72, size * 1.1), headCF * CF(0, size * 0.3, 0), L.hatColor, M.Fabric, FANP)
 		b:SetAttribute("Kind", "beanie")
@@ -456,8 +458,11 @@ local function seating(st, spec, rot, b, row, kind, seatsX)
 		end
 		return
 	end
-	-- a block's row of fixed seats: the cushions and the backs, one slab each, the dividers printed on the back
-	prop(st, "SeatRow", V3(w, 0.5, 1.5), rot * CF(xc, y + 0.7, zc + 0.2), col, M.Fabric, { CastShadow = false })
+	-- a block's row of fixed seats: the backs as one slab with the dividers printed on it; the cushions as a slab
+	-- only on the rows with real rigs (the printed rows draw their own)
+	if kind == "seats" and #seatsX > 0 then
+		prop(st, "SeatRow", V3(w, 0.5, 1.5), rot * CF(xc, y + 0.7, zc + 0.2), col, M.Fabric, { CastShadow = false })
+	end
 	local back = prop(st, "SeatBack", V3(w, 1.6, 0.3), rot * CF(xc, y + 1.6, zc + 1.05), col, M.Fabric, { CastShadow = false })
 	local sg = gui(back, FACE.Front, 8, 1, 1)
 	local n = math.max(1, math.floor(w / Crowd.SEAT))
@@ -493,7 +498,7 @@ end
 
 -- stair lights down an aisle edge: one per row step
 local function stairLights(st, spec, rot, x, row)
-	if spec.rowRise <= 0 or row == 0 then
+	if spec.rowRise <= 0 or row == 0 or (spec.tier >= 4 and row % 2 == 0) then
 		return
 	end
 	local d0 = spec.rowStart + row * spec.rowGap
@@ -540,7 +545,9 @@ local function vipBox(st, crowd, spec, rot, xc, row, side, rng, idx)
 		local base = rot * CF(x, y, zc + 0.6)
 		prop(m, "VIPSeat", V3(2.0, 0.55, 2.0), base * CF(0, 0.75, 0), rgb(22, 22, 26), M.Leather, { CastShadow = false })
 		prop(m, "VIPSeatBack", V3(2.0, 2.2, 0.4), base * CF(0, 1.9, 1.0), rgb(22, 22, 26), M.Leather, { CastShadow = false })
-		prop(m, "VIPArm", V3(0.25, 0.5, 1.6), base * CF(i == 1 and -1.1 or 1.1, 1.25, 0.2), rgb(30, 30, 34), M.Leather, { CastShadow = false })
+		if i == 1 or i == Crowd.VIP_SEATS then
+			prop(m, "VIPArm", V3(0.25, 0.5, 1.6), base * CF(i == 1 and -1.1 or 1.1, 1.25, 0.2), rgb(30, 30, 34), M.Leather, { CastShadow = false })
+		end
 		local f = fan(crowd, base * CF(0, 1.0, 0), rng, { rig = "full", pose = "sit", dress = "vip" })
 		f:SetAttribute("Row", row)
 		f:SetAttribute("Side", side)
@@ -767,7 +774,7 @@ function Crowd.Build(arena, spec, kit)
 				stairLights(stands, spec, rot, aisleX, row)
 				-- seats
 				local seatsX = {}
-				local n = math.floor(w / Crowd.SEAT)
+				local n = math.floor(w / (row < physRows and Crowd.RIG_SEAT or Crowd.SEAT))
 				for i = 1, n do
 					table.insert(seatsX, b[1] + (i - 0.5) * (w / n))
 				end

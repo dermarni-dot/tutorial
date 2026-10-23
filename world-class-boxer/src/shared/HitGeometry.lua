@@ -43,14 +43,15 @@ HitGeometry.BASE = 4.3
 HitGeometry.MIN_SEP = 3.25
 HitGeometry.CLINCH = 4.8
 
--- the punch's shape by kind: where it starts (origin: shoulderY + o x arm), how far the glove may leave that
--- height at full reach (the angles it can be thrown at, up and down, degrees), how a target above / below the
--- shoulder changes its reach (up / down: R x (1 - k x dy / R)), the dip a body shot takes (x arm)
+-- the punch's shape by kind: where it starts (origin: shoulderY + o x arm), the angles it can be thrown at (up /
+-- down, degrees, at full reach), how far up and down the glove gets from the origin as a share of the arm (the
+-- vertical reach: an uppercut rises a whole arm and the legs' drive, a hook barely rises, an overhand comes down
+-- over the top; a straight or a hook dips to the body as far as it reaches out), the dip a body shot takes (x arm)
 local KIND = {
-	straight = { o = 0, up = 50, down = 48, upCost = 0.12, downCost = 0.03, dip = 0.25 },
-	hook = { o = 0.02, up = 34, down = 40, upCost = 0.25, downCost = 0.05, dip = 0.3 },
-	uppercut = { o = -0.1, up = 85, down = 24, upCost = -0.12, downCost = 0.45, dip = 0 },
-	overhand = { o = 0.2, up = 20, down = 58, upCost = 0.5, downCost = -0.08, dip = 0 },
+	straight = { o = 0, up = 50, down = 48, vUp = 0.92, vDown = -1, rise = 0.2, dip = 0.25 },
+	hook = { o = 0.02, up = 34, down = 40, vUp = 0.6, vDown = -1, rise = 0.1, dip = 0.3 },
+	uppercut = { o = -0.1, up = 85, down = 24, vUp = 1.0, vDown = 0.5, rise = 0.35, dip = 0 },
+	overhand = { o = 0.2, up = 20, down = 58, vUp = 0.45, vDown = 1.05, rise = 0.2, dip = 0 },
 }
 HitGeometry.KIND = KIND
 local PUNCH_KIND = { jab = "straight", cross = "straight", leadhook = "hook", rearhook = "hook", uppercut = "uppercut", overhand = "overhand" }
@@ -200,7 +201,8 @@ end
 
 -- A's punch at B: the zones B offers, from A's shoulder (heights above B's soles are A's: both stand on the
 -- same canvas). bendB 0..1 lowers B's head and chest; dipA (a body shot) lowers A's origin.
--- opts: { mul (a special's range multiplier), bend (B's 0..1), noRedirect (a head shot never falls to the body) }
+-- opts: { mul (a special's range multiplier), bend (B's 0..1), floor (the fight's close floor, root to root),
+-- noRedirect (a head shot never falls to the body) }
 -- Returns { ok, zone ("head" | "body"), why ("short" | "high" | "low"), need (the distance the glove had to
 -- cover), reach (R + tol), margin = reach - need, dy }
 local function zoneBand(B, zone, bend)
@@ -217,31 +219,44 @@ local function tryZone(A, B, kind, K, ptype, zone, dist, opts)
 	local dip = opts.body and K.dip * A.arm or 0
 	local oY = A.shoulderY + K.o * A.arm - dip
 	-- the horizontal distance the glove must cover: root to root, less the zone's front (the shoulder stands
-	-- over the root)
-	local h = math.max(0.2, dist - front)
+	-- over the root). Inside the fight's floor (FightMotion.Spacing.min: as close as the bodies get, every punch
+	-- reaches) only the height decides
+	local floor = num(opts.floor, 0)
+	local h = math.max(0, dist - front)
+	local hAng = math.max(h, floor - front, 1.2)
+	local hReach = dist <= floor and 0 or h
 	-- the heights the punch can be at out there (its angles), against the zone's band
-	local pLo, pHi = oY - h * math.tan(math.rad(K.down)), oY + h * math.tan(math.rad(K.up))
+	local pLo, pHi = oY - hAng * math.tan(math.rad(K.down)), oY + hAng * math.tan(math.rad(K.up))
 	local bLo, bHi = math.max(lo, pLo), math.min(hi, pHi)
 	if bLo > bHi then
-		return { ok = false, zone = zone, why = (lo > pHi) and "high" or "low", need = math.huge, reach = 0, margin = -math.huge, dy = 0 }
+		return { ok = false, zone = zone, why = (lo > pHi) and "high" or "low", need = math.huge, reach = 0, margin = -math.huge, dy = (lo > pHi) and (lo - oY) or (hi - oY) }
 	end
 	-- the point of the zone nearest the punch's own height (a tall man's chin, a short man's forehead)
 	local y = math.clamp(oY, bLo, bHi)
 	local dy = y - oY
-	local R = reachOf(A, ptype, opts.mul)
-	local cost = dy >= 0 and K.upCost or K.downCost
-	R = R * (1 - cost * math.min(1, math.abs(dy) / R))
+	-- the reach: out, the calibrated R; up and down, the arm (an ellipse about the origin)
+	local Rh = reachOf(A, ptype, opts.mul)
+	local armR = (A.arm + A.glove) * (opts.mul or 1)
+	local Rv
+	if dy >= 0 then
+		Rv = armR * K.vUp + K.rise * A.hScale
+	else
+		Rv = K.vDown < 0 and math.max(Rh, armR) or armR * K.vDown
+	end
 	local tol = TOL * (A.glove + front)
-	local need = math.sqrt(h * h + dy * dy)
-	local reach = R + tol
-	return { ok = need <= reach, zone = zone, why = need > reach and "short" or nil, need = need, reach = reach, margin = reach - need, dy = dy }
+	local norm = math.sqrt((hReach / Rh) ^ 2 + (dy / Rv) ^ 2)
+	local limit = 1 + tol / Rh
+	-- (need / reach in studs along the glove's line, for the read-outs)
+	local need = math.sqrt(hReach * hReach + dy * dy)
+	local reach = norm > 1e-6 and need * limit / norm or Rh + tol
+	return { ok = norm <= limit, zone = zone, why = norm > limit and "short" or nil, need = need, reach = reach, margin = reach - need, dy = dy }
 end
 
 function HitGeometry.Test(A, B, ptype, body, dist, opts)
 	opts = opts or {}
 	local kind = PUNCH_KIND[ptype] or "straight"
 	local K = KIND[kind]
-	local o = { mul = opts.mul, bend = opts.bend, body = body == true }
+	local o = { mul = opts.mul, bend = opts.bend, floor = opts.floor, body = body == true }
 	local want = body and "body" or "head"
 	local r = tryZone(A, B, kind, K, ptype, want, dist, o)
 	if r.ok or body or opts.noRedirect then
@@ -352,7 +367,7 @@ do
 		for _ = 1, 40 do
 			local mid = (lo + hi) / 2
 			CAL[p] = mid
-			if HitGeometry.Test(U, U, p, false, target, nil).ok then
+			if HitGeometry.Test(U, U, p, false, target, { noRedirect = true }).ok then
 				hi = mid
 			else
 				lo = mid

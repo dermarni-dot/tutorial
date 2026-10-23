@@ -23,6 +23,7 @@ end
 local X, Y = f(1.2, 1.4, 1.4), f(0.86, 0.7, 0.7)
 print("extremes MinSep", HG.MinSep(X, Y), HG.MinSep(X, X), HG.MinSep(Y, Y), "clinch", HG.ClinchRange(X, Y), HG.ClinchRange(Y, X))
 print("prefs S v T", (function() local p = HG.PunchPrefs(S, T); return p.jab, p.uppercut end)())
+local FLOOR = 3.4
 local M1, M2 = f(66/70, 0.92, 0.92, 66, 66), f(76/70, 1.05, 1.03, 76, 76)
 print("moderate 66 v 76:")
 for _, p in ipairs({ "jab", "cross", "leadhook", "uppercut", "overhand" }) do
@@ -30,3 +31,8 @@ for _, p in ipairs({ "jab", "cross", "leadhook", "uppercut", "overhand" }) do
 		HG.Range(M1, M2, p, false), HG.Range(M1, M2, p, true), HG.Range(M2, M1, p, false), HG.Range(M2, M1, p, true), HG.Range(M1, M1, p, false), HG.Range(M2, M2, p, false), HG.Range(M1, M2, p, false, { bend = 1 })))
 end
 print("minsep moderate", HG.MinSep(M1, M2))
+print("with floor 3.4 (extreme S v T), head verdicts at 3.4:")
+for _, p in ipairs({ "jab", "cross", "leadhook", "uppercut", "overhand" }) do
+	local r1, r2 = HG.Test(S, T, p, false, 3.4, { floor = 3.4 }), HG.Test(T, S, p, false, 3.4, { floor = 3.4 })
+	print(string.format("%-9s S>T %s %s %s | T>S %s %s %s", p, tostring(r1.ok), r1.zone, tostring(r1.why), tostring(r2.ok), r2.zone, tostring(r2.why)))
+end
