@@ -100,13 +100,13 @@ local MISTAKES = { straight = { "duck", "weave" }, hook = { "parry", "parry", "s
 -- defence; punish = how often it fires into his misses and the end of his combinations; press = its work rate
 -- while it walks him down (his back to the ropes, him retreating); volume = the work rate at range; inside =
 -- the work rate up close (a swarmer lives there, an out-boxer leaves); smother = how readily it ties up a man
--- who rushes it; body = its extra share to the body
+-- who rushes it; body = its extra share to the body; check = how readily it jabs a man as he steps into range
 local TACTICS = {
-	OutBoxer = { counter = 1.1, punish = 1.15, press = 0.85, volume = 1.25, inside = 0.8, smother = 1.6, body = 0 },
-	Swarmer = { counter = 0.85, punish = 1.05, press = 1.35, volume = 1.1, inside = 1.35, smother = 0.5, body = 0.12 },
-	Slugger = { counter = 0.9, punish = 1.2, press = 1.2, volume = 0.9, inside = 1.15, smother = 0.8, body = 0.05 },
-	CounterPuncher = { counter = 1.5, punish = 1.45, press = 0.85, volume = 0.95, inside = 0.95, smother = 1, body = 0 },
-	BoxerPuncher = { counter = 1.2, punish = 1.2, press = 1.05, volume = 1.05, inside = 1.05, smother = 0.9, body = 0.04 },
+	OutBoxer = { counter = 1.1, punish = 1.15, press = 0.85, volume = 1.25, inside = 0.8, smother = 1.6, body = 0, check = 1.7 },
+	Swarmer = { counter = 0.85, punish = 1.05, press = 1.35, volume = 1.1, inside = 1.35, smother = 0.5, body = 0.12, check = 0.4 },
+	Slugger = { counter = 0.9, punish = 1.2, press = 1.2, volume = 0.9, inside = 1.15, smother = 0.8, body = 0.05, check = 0.7 },
+	CounterPuncher = { counter = 1.5, punish = 1.45, press = 0.85, volume = 0.95, inside = 0.95, smother = 1, body = 0, check = 1.3 },
+	BoxerPuncher = { counter = 1.2, punish = 1.2, press = 1.05, volume = 1.05, inside = 1.05, smother = 0.9, body = 0.04, check = 1 },
 }
 FightAI.TACTICS = TACTICS
 local DEFAULT_TACTICS = TACTICS.BoxerPuncher
@@ -1137,6 +1137,16 @@ function FightAI:Think(now)
 			engine:Clinch(F)
 			return
 		end
+	end
+	-- he walks onto its jab: a man stepping into range (closing at a stride, not punching) meets the jab on the way in
+	-- (or the 1-2) - the out-boxer's trade, a swarmer's least
+	if self.oBack < -1.2 and O.state ~= "punching" and self:Fits("jab", dist) and dist > jab * 0.7 and self.mode ~= "survive"
+		and self.rng:NextNumber() < 0.3 * self.tactics.check * (0.4 + 0.6 * self.skill) then
+		self.queue = self:Fits("cross", dist) and self.rng:NextNumber() < 0.4 and { { p = "cross", body = false } } or {}
+		self:Throw("jab", false)
+		self:ChainNext()
+		self:Note(now, "jabs him on the way in")
+		return
 	end
 	-- the opening it saw him give (OnOppMiss: his punch missed, a perception delay ago): fire into it
 	if now >= self.openAt and now < self.openUntil and self:Fits("cross", dist) then

@@ -8,6 +8,7 @@ if process.args[4] and process.args[4] ~= "" then
 	luau.load(process.args[4], { environment = setmetatable({ AIC = S.Config.FightAI, S = S }, { __index = _G }) })()
 end
 local w, ko, rr, modes = 0, 0, 0, {}
+local st = { rt = 0, rl = 0, bt = 0, bl = 0, secs = 0, rkd = 0, bkd = 0, rd = 0, bd = 0 }
 local N = 24
 for i = 1, N do
 	local r = S.Fight({ red = { style = a, level = 60, noTraits = true }, blue = { style = b, level = 60, noTraits = true }, rounds = 6, seed = i * 7919 + 13,
@@ -15,7 +16,8 @@ for i = 1, N do
 	w += r.winner == "red" and 1 or (r.winner == "draw" and 0.5 or 0)
 	if r.method == "KO" or r.method == "TKO" then ko += 1 end
 	rr += r.round
+	st.rt += r.thrown.red; st.rl += r.landed.red; st.bt += r.thrown.blue; st.bl += r.landed.blue; st.secs += r.seconds; st.rkd += r.kd.red; st.bkd += r.kd.blue; st.rd += r.P.damageDealt; st.bd += r.O.damageDealt
 end
 local t = {}
 for k, v in pairs(modes) do table.insert(t, k .. "=" .. v) end
-print(string.format("%s vs %s: red %.2f ko %.2f r%.1f | blue modes %s", a, b, w / N, ko / N, rr / N, table.concat(t, " ")))
+print(string.format("%s vs %s: red %.2f ko %.2f r%.1f | red %.0f/min %.0f%% dmg %.0f kd %d | blue %.0f/min %.0f%% dmg %.0f kd %d | blue modes %s", a, b, w / N, ko / N, rr / N, st.rt / st.secs * 60, st.rl / st.rt * 100, st.rd / N, st.rkd, st.bt / st.secs * 60, st.bl / st.bt * 100, st.bd / N, st.bkd, table.concat(t, " ")))
