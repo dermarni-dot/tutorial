@@ -1097,7 +1097,7 @@ Config.City = {
 		frontN = 290, -- the north row's fronts
 		lanes = { { z = 327.25, dir = 1 }, { z = 314.75, dir = -1 } }, -- eastbound south of the centre line, westbound north
 		parkLanes = { 304.25, 337.75 },
-		pedLanes = { 296, 350 },
+		pedLanes = { 293.5, 348 }, -- where the pedestrians walk (CityVisuals); the furniture keeps to the kerbs and the fronts
 		crosswalks = { -17, 17 }, -- across Main Street, either side of Champion Ave
 		shopsX = { -560, 560 },
 		northRowX = { -400, 250 },

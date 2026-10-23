@@ -9,7 +9,7 @@
 --   tier 2  parking meters, hydrants, planters, bike racks, A-frame boards, cafe seating, shop sign
 --           goose-neck lamps (NightLens), striped awning valances, parapets, window sills and lintels,
 --           pole banners and pennants, crowd barriers, life rings and mooring bollards
---   tier 3  window piers, AC units, door handles, downspouts, rooftop vents, sidewalk cracks and stains
+--   tier 3  window piers, AC units, downspouts, rooftop vents, sidewalk cracks and stains
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -369,7 +369,7 @@ local function parapet(m, s)
 end
 
 local function shopFine(m, s, rng)
-	-- downspout at one end, a rooftop vent, the door handle
+	-- downspout at one end, a rooftop vent (the doorways stay clear: the prompts live there)
 	local x = s.w / 2 - 0.8
 	if s.marquee then
 		x = s.w / 2 + 2.6
@@ -379,9 +379,6 @@ local function shopFine(m, s, rng)
 	local vx = rng:NextNumber(-s.w / 3, s.w / 3)
 	VCyl(m, "RoofVent", 1.8, 1.0, s.cf * CF(vx, s.h + 1.1, s.depth * 0.35), C.steelLight, M.Metal)
 	VCyl(m, "RoofVentCap", 0.4, 1.6, s.cf * CF(vx, s.h + 2.9, s.depth * 0.35), C.steelLight, M.Metal)
-	if s.doorX then
-		Part(m, "DoorHandle", V3(0.15, 1.6, 0.15), s.cf * CF(s.doorX + 1.3, SW_H + 3.6, -0.5), C.chrome, M.Metal, { shadow = false })
-	end
 	for _ = 1, 2 do
 		local cx = rng:NextNumber(-s.w / 2 + 2, s.w / 2 - 2)
 		K.Patch(m, "SidewalkCrack", 3, 3, s.cf * CF(cx, SW_H, -rng:NextNumber(2, 5)) * A(0, rng:NextNumber(0, 6.28), 0), "cracks", nil, 0.2)
@@ -495,8 +492,8 @@ local function block1(b)
 		-- the signal cabinets, mailboxes and newspaper boxes at the junctions
 		for _, j in ipairs(JUNCTIONS) do
 			if inBlock(j - 30, b) then
-				cabinet(m, CF(j - 30, SW_H, MAIN.z0 - 4.5))
-				K.Place(MAILBOX, m, CF(j - 34, SW_H, MAIN.z1 + 4.5) * A(0, math.pi, 0))
+				cabinet(m, CF(j - 30, SW_H, MAIN.z0 - 3.4))
+				K.Place(MAILBOX, m, CF(j - 34, SW_H, MAIN.z1 + 3.4) * A(0, math.pi, 0))
 			end
 			if inBlock(j + 30, b) then
 				cabinet(m, CF(j + 30, SW_H, MAIN.z1 + 4.5) * A(0, math.pi, 0))
@@ -518,10 +515,10 @@ local function block2(b, shops)
 				slot += 1
 				local kind = slot % 4
 				if kind == 1 then
-					K.Place(PLANTER, m, CF(x, SW_H, MAIN.z0 - 3.2))
+					K.Place(PLANTER, m, CF(x, SW_H, MAIN.z0 - 2.4))
 				elseif kind == 2 then
-					K.Place(BIKERACK, m, CF(x, SW_H, MAIN.z0 - 3.6) * A(0, math.pi / 2, 0))
-					K.Place(BIKE, m, CF(x - 1.0, SW_H, MAIN.z0 - 3.6) * A(0, math.pi / 2, 0) * A(RAD(6), 0, 0))
+					K.Place(BIKERACK, m, CF(x, SW_H, MAIN.z0 - 3.0) * A(0, math.pi / 2, 0))
+					K.Place(BIKE, m, CF(x - 1.0, SW_H, MAIN.z0 - 3.0) * A(0, math.pi / 2, 0) * A(RAD(6), 0, 0))
 				elseif kind == 3 then
 					K.Place(HYDRANT, m, CF(x, SW_H, MAIN.z0 - 2.4))
 				else
@@ -578,7 +575,7 @@ local function block2(b, shops)
 					for _, dx in ipairs({ -s.w * 0.28, s.w * 0.28 }) do
 						K.Place(CAFESET, m, s.cf * CF(dx, SW_H, -5.5))
 					end
-					aFrame(m, s.cf * CF(0, SW_H, -8.6), ({ "TODAY'S\nSPECIAL", "FRESH\nCOFFEE", "CHAMPS\nEAT FREE*" })[rng:NextInteger(1, 3)])
+					aFrame(m, s.cf * CF(0, SW_H, -3.2), ({ "TODAY'S\nSPECIAL", "FRESH\nCOFFEE", "CHAMPS\nEAT FREE*" })[rng:NextInteger(1, 3)])
 				elseif rng:NextNumber() < 0.4 and not s.columns and not s.canopy then
 					aFrame(m, s.cf * CF(-s.w * 0.3, SW_H, -5), ({ "OPEN\nCOME IN", "SALE\nTODAY", "CHAMPS\nWELCOME" })[rng:NextInteger(1, 3)])
 				end

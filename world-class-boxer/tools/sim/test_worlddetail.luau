@@ -125,9 +125,9 @@ keep("weight-room doorway", { -52, 0.6, -17.5 }, { -48, 9, 18 }) -- the gaps bet
 keep("cardio doorway", { 48, 0.6, -17.5 }, { 52, 9, 18 })
 keep("boxing-lobby walkway", { -45, 0.6, 5 }, { 45, 8, 18 }) -- the open floor between the boxing area and the lobby
 keep("services walkway", { -66, 0.6, 33 }, { -50, 8, 60 }) -- from the lobby to the lockers, barber and bar
--- Main Street lanes (Config.City.MainStreet, CityVisuals: pedestrians at z 296 / 350, cars at 314.75 / 327.25)
-keep("north pedestrian lane", { -620, 0.95, 295.5 }, { 860, 3.6, 296.5 })
-keep("south pedestrian lane", { -620, 0.95, 349.5 }, { 860, 3.6, 350.5 })
+-- Main Street lanes (Config.City.MainStreet, CityVisuals: pedestrians at z 293.5 / 348, cars at 314.75 / 327.25)
+keep("north pedestrian lane", { -620, 0.95, 293 }, { 860, 3.6, 294 })
+keep("south pedestrian lane", { -620, 0.95, 347.5 }, { 860, 3.6, 348.5 })
 keep("traffic lanes", { -620, 0.45, 308.5 }, { 860, 5.5, 333.5 })
 
 local function isPrompt(n)
