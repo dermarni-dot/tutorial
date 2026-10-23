@@ -148,48 +148,68 @@ TIERS = {
 FRAMES = {
     "Lean": dict(
         key="lean",
-        tx=[0.96, 0.94, 0.94, 0.93, 0.92, 0.90], tf=[0.98, 0.96, 0.96, 0.97, 0.98, 0.99], tb=[0.98, 0.96, 0.97, 0.98, 0.98, 0.99],
-        neck=([0.64, 0.42, 0.40], [0.30, 0.27, 0.27], [0.32, 0.30, 0.30]), p=-0.25,
-        arm=[1.0, 0.95, 0.93, 0.92, 0.92], fore=[1.0, 0.98, 0.95, 0.94, 0.95], thigh=[1.0, 0.98, 0.97, 0.98, 1.0],
-        calf=[1.0, 0.98, 0.95, 0.95, 0.97, 1.0], calf_pk=0.80,
-        gain=dict(pec=0.75, delt=0.85, lat=0.85, trap=0.55, arm=0.8, fore=0.9, calf=0.9, abs=1.15, leg=0.9, defin=1.3),
-        soft=0.0),
+        skel=dict(torso=1.02, leg=1.08, lowerleg=1.10, arm=1.03, forearm=1.08, armw=0.92, hand=0.90, lower=(0.90, 0.92), foot=0.90),
+        tx=[0.95, 0.90, 0.92, 0.93, 0.92, 0.90], tf=[0.95, 0.90, 0.93, 0.95, 0.96, 0.98], tb=[0.95, 0.92, 0.95, 0.96, 0.97, 0.98],
+        neck=([0.58, 0.38, 0.36], [0.28, 0.25, 0.25], [0.30, 0.28, 0.28]), p=-0.45,
+        arm=[1.0, 0.98, 0.97, 0.97, 0.97], fore=[1.0, 0.99, 0.97, 0.96, 0.97], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
+        calf=[1.0, 0.98, 0.95, 0.95, 0.97, 1.0], calf_pk=0.82,
+        gain=dict(pec=0.7, delt=0.8, lat=0.85, trap=0.5, arm=0.8, fore=0.9, calf=0.85, abs=1.2, leg=1.0, defin=1.35),
+        soft=0.0, fat=0.0, ribs=1.0, knobs=1.0),
     "Athletic": dict(
         key="athletic",
-        tx=[1.00, 1.00, 1.02, 1.04, 1.03, 1.02], tf=[1.0, 1.0, 1.02, 1.03, 1.02, 1.0], tb=[1.0, 1.0, 1.03, 1.04, 1.03, 1.0],
-        neck=([0.74, 0.47, 0.44], [0.32, 0.29, 0.29], [0.34, 0.32, 0.32]), p=0.0,
+        skel=dict(torso=1.0, leg=1.0, lowerleg=1.0, arm=1.0, forearm=1.0, armw=1.0, hand=1.0, lower=(1.0, 1.0), foot=1.0),
+        tx=[0.97, 0.95, 1.02, 1.07, 1.07, 1.05], tf=[0.98, 0.97, 1.02, 1.04, 1.03, 1.0], tb=[0.98, 0.98, 1.03, 1.05, 1.04, 1.0],
+        neck=([0.72, 0.45, 0.42], [0.32, 0.29, 0.29], [0.34, 0.32, 0.32]), p=-0.3,
         arm=[1.0, 1.0, 1.0, 1.0, 1.0], fore=[1.0, 1.0, 1.0, 1.0, 1.0], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
         calf=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0], calf_pk=0.75,
         gain=dict(pec=1.0, delt=1.0, lat=1.0, trap=1.0, arm=1.0, fore=1.0, calf=1.0, abs=1.0, leg=1.0, defin=1.0),
-        soft=0.0),
+        soft=0.0, fat=0.0, ribs=0.3, knobs=0.3),
     "Muscular": dict(
         key="muscular",
-        tx=[1.00, 1.02, 1.07, 1.11, 1.10, 1.09], tf=[1.0, 1.02, 1.06, 1.08, 1.06, 1.02], tb=[1.0, 1.03, 1.08, 1.10, 1.08, 1.03],
-        neck=([0.82, 0.52, 0.47], [0.34, 0.31, 0.31], [0.37, 0.35, 0.35]), p=0.1,
-        arm=[1.0, 1.06, 1.09, 1.09, 1.08], fore=[1.0, 1.02, 1.06, 1.08, 1.08], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
-        calf=[1.0, 1.01, 1.05, 1.07, 1.04, 1.0], calf_pk=0.74,
-        gain=dict(pec=1.2, delt=1.3, lat=1.3, trap=1.3, arm=1.3, fore=1.15, calf=1.1, abs=1.0, leg=1.0, defin=1.0),
-        soft=0.0),
+        skel=dict(torso=1.0, leg=1.02, lowerleg=1.0, arm=1.0, forearm=1.0, armw=1.10, hand=1.06, lower=(1.06, 1.04), foot=1.04),
+        tx=[0.98, 0.96, 1.08, 1.17, 1.19, 1.16], tf=[1.0, 1.0, 1.08, 1.12, 1.10, 1.03], tb=[1.0, 1.02, 1.10, 1.14, 1.12, 1.04],
+        neck=([0.82, 0.52, 0.47], [0.34, 0.31, 0.31], [0.37, 0.35, 0.35]), p=-0.2,
+        arm=[1.0, 1.03, 1.05, 1.05, 1.04], fore=[1.0, 1.01, 1.03, 1.04, 1.04], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
+        calf=[1.0, 1.02, 1.07, 1.09, 1.05, 1.0], calf_pk=0.74,
+        gain=dict(pec=1.3, delt=1.4, lat=1.4, trap=1.3, arm=1.35, fore=1.15, calf=1.15, abs=1.0, leg=1.0, defin=1.0),
+        soft=0.0, fat=0.0, ribs=0.0, knobs=0.0, built=1.0),
     "Power Build": dict(
         key="power",
-        tx=[1.00, 1.06, 1.13, 1.19, 1.19, 1.18], tf=[1.0, 1.05, 1.09, 1.11, 1.09, 1.04], tb=[1.0, 1.06, 1.12, 1.14, 1.12, 1.05],
-        neck=([0.94, 0.61, 0.54], [0.36, 0.33, 0.33], [0.42, 0.39, 0.38]), p=0.2,
-        arm=[1.0, 1.10, 1.15, 1.15, 1.13], fore=[1.0, 1.05, 1.14, 1.16, 1.14], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
-        calf=[1.0, 1.02, 1.10, 1.12, 1.06, 1.0], calf_pk=0.70,
-        gain=dict(pec=1.25, delt=1.5, lat=1.3, trap=1.8, arm=1.35, fore=1.5, calf=1.25, abs=0.8, leg=1.0, defin=0.8),
-        soft=0.15),
+        skel=dict(torso=0.98, leg=0.93, lowerleg=0.92, arm=0.94, forearm=0.96, armw=1.16, hand=1.12, lower=(1.10, 1.14), foot=1.06),
+        tx=[1.0, 1.06, 1.12, 1.16, 1.17, 1.17], tf=[1.02, 1.12, 1.20, 1.22, 1.16, 1.06], tb=[1.02, 1.10, 1.18, 1.20, 1.16, 1.06],
+        neck=([1.00, 0.74, 0.64], [0.40, 0.37, 0.36], [0.46, 0.43, 0.41]), p=-0.1,
+        arm=[1.0, 1.04, 1.06, 1.06, 1.05], fore=[1.0, 1.05, 1.12, 1.14, 1.12], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
+        calf=[1.0, 1.02, 1.08, 1.10, 1.05, 1.0], calf_pk=0.70,
+        gain=dict(pec=1.2, delt=1.4, lat=1.3, trap=2.0, arm=1.3, fore=1.6, calf=1.2, abs=0.7, leg=1.0, defin=0.75),
+        soft=0.2, fat=0.25, ribs=0.0, knobs=0.0, built=0.6),
     "Heavyweight Build": dict(
         key="heavy",
-        tx=[1.00, 1.08, 1.11, 1.12, 1.10, 1.08], tf=[1.0, 1.10, 1.14, 1.14, 1.10, 1.04], tb=[1.0, 1.08, 1.12, 1.13, 1.10, 1.04],
-        neck=([0.88, 0.57, 0.51], [0.36, 0.33, 0.33], [0.40, 0.37, 0.36]), p=0.1,
-        arm=[1.0, 1.05, 1.08, 1.08, 1.06], fore=[1.0, 1.02, 1.06, 1.07, 1.06], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
+        skel=dict(torso=1.0, leg=0.98, lowerleg=0.97, arm=0.98, forearm=0.98, armw=1.10, hand=1.12, lower=(1.16, 1.14), foot=1.12),
+        tx=[1.0, 1.10, 1.12, 1.12, 1.10, 1.08], tf=[1.02, 1.16, 1.20, 1.16, 1.10, 1.04], tb=[1.02, 1.10, 1.14, 1.14, 1.10, 1.04],
+        neck=([0.92, 0.62, 0.56], [0.40, 0.37, 0.37], [0.44, 0.40, 0.39]), p=-0.35,
+        arm=[1.0, 1.03, 1.05, 1.05, 1.04], fore=[1.0, 1.02, 1.05, 1.06, 1.05], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
         calf=[1.0, 1.02, 1.09, 1.10, 1.05, 1.0], calf_pk=0.70,
-        gain=dict(pec=1.15, delt=1.1, lat=1.15, trap=1.3, arm=1.15, fore=1.15, calf=1.2, abs=0.5, leg=1.0, defin=0.45),
-        soft=0.6),
+        gain=dict(pec=1.1, delt=1.0, lat=1.1, trap=1.2, arm=1.1, fore=1.1, calf=1.15, abs=0.35, leg=1.0, defin=0.35),
+        soft=0.7, fat=1.0, ribs=0.0, knobs=0.0, built=0.3),
 }
 FRAME_ORDER = ["Lean", "Athletic", "Muscular", "Power Build", "Heavyweight Build"]
 DEFAULT_FRAME = "Athletic"
 FRAME_BY_KEY = {v["key"]: k for k, v in FRAMES.items()}
+
+
+def part_extra(fr, base):
+    """the frame's extra scale (game space, x / y / z) on a part, from its skeleton factors: limb lengths along the
+    bones, the lower body's width / depth (the pelvis, thighs, calves and feet together, so the trunks and boots fitted
+    on the Athletic frame fit when scaled by the same factors: BodyAssetData.frames[id].gearScale), the arms' girth
+    and the hands' size"""
+    k = fr["skel"]
+    lx, lz = k["lower"]
+    return {
+        "UpperTorso": (1.0, k["torso"], 1.0), "LowerTorso": (lx, 1.0, lz),
+        "UpperLeg": (lx, k["leg"], lz), "LowerLeg": (lx, k["lowerleg"], lz), "Foot": (k["foot"], k["foot"], k["foot"]),
+        "UpperArm": (k["armw"], k["arm"], k["armw"]), "LowerArm": (k["armw"], k["forearm"], k["armw"]),
+        "Hand": (k["hand"], k["hand"], k["hand"]),
+    }[base]
 
 
 def frame_of(f):
@@ -852,18 +872,32 @@ def torso_section(fr):
     neck_p = [2.6, 2.3, 2.2]
     neck_cz = [0.015, 0.035, 0.04]
 
+    lx, lz = fr["skel"]["lower"]
+    fat = fr.get("fat", 0.0)
+
     def scaled(s, m):
         out = dict(base(s, m))
-        out["ax"] = out["ax"] * pchip(kn, kx, s)
-        out["af"] = out["af"] * pchip(kn, kf, s)
-        out["ab"] = out["ab"] * pchip(kn, kb, s)
-        out["p"] = out["p"] + dp * np.clip((s - 2.3) / 0.3, 0, 1)
+        # the hem rows (under the trunks' band, s <= 2.45) carry the pelvis scale the LowerTorso and the band wear;
+        # above them the frame's own ribcage (tx / tf / tb), blended over 2.45..2.75
+        w = np.clip((s - 2.45) / 0.30, 0, 1)
+        w = w * w * (3 - 2 * w)
+        out["ax"] = out["ax"] * (lx * (1 - w) + pchip(kn, kx, s) * w)
+        out["af"] = out["af"] * (lz * (1 - w) + pchip(kn, kf, s) * w)
+        out["ab"] = out["ab"] * (lz * (1 - w) + pchip(kn, kb, s) * w)
+        # a rounder ribcage (the exponent drops from the hem to the chest), the frame's own shift on top
+        out["p"] = out["p"] - 0.35 * np.clip((s - 2.5) / 0.5, 0, 1) + dp * np.clip((s - 2.3) / 0.3, 0, 1)
         if soft > 0:  # the heavyweight's layer: fuller above the hem (never under the band)
-            w = np.clip((s - 2.5) / 0.3, 0, 1)
-            w = w * w * (3 - 2 * w) * np.clip((3.62 - s) / 0.12, 0, 1)
-            out["ax"] = out["ax"] + 0.02 * soft * w
-            out["af"] = out["af"] + 0.03 * soft * w
-            out["ab"] = out["ab"] + 0.015 * soft * w
+            ws = np.clip((s - 2.5) / 0.3, 0, 1)
+            ws = ws * ws * (3 - 2 * ws) * np.clip((3.62 - s) / 0.12, 0, 1)
+            out["ax"] = out["ax"] + 0.02 * soft * ws
+            out["af"] = out["af"] + 0.03 * soft * ws
+            out["ab"] = out["ab"] + 0.015 * soft * ws
+        if fat > 0:  # the belly and the flanks: a fat layer that shrinks with the tier (above the band)
+            k = fat * (1.0 - 0.75 * m)
+            wb = np.clip((s - 2.42) / 0.12, 0, 1) * np.clip((3.05 - s) / 0.25, 0, 1)
+            out["af"] = out["af"] + 0.10 * k * wb
+            out["ax"] = out["ax"] + 0.05 * k * wb
+            out["ab"] = out["ab"] + 0.02 * k * wb
         return out
 
     def call(s, m):
@@ -874,8 +908,9 @@ def torso_section(fr):
         if hi.any():
             sh = s[hi]
             tier = 1.0 + 0.05 * m  # a trained neck is a little thicker
+            chin = 0.03 * fat * (1.0 - 0.6 * m)  # the heavyweight's thick, soft neck
             for key, vals, k0 in (("ax", nx, 1.0), ("af", nf, 0.6), ("ab", nb, 0.8)):
-                v = [float(top[key][0])] + [x * (1 + (tier - 1) * k0) for x in vals]
+                v = [float(top[key][0])] + [x * (1 + (tier - 1) * k0) + chin for x in vals]
                 out[key][hi] = pchip(NECK_S, v, sh)
             out["p"][hi] = pchip(NECK_S, [float(top["p"][0])] + neck_p, sh)
             out["cz"][hi] = pchip(NECK_S, [0.0] + neck_cz, sh)
@@ -911,7 +946,7 @@ def arm_x(tr, fr=None):
     m = tr["m"]
     ax_t = float(torso_sec(fr)(np.array([3.30]), m)["ax"][0])
     ax_a = float(arm_section(fr)(np.array([3.30]), m)["ax"][0])
-    ST, SA = game_scale("UpperTorso")[0], game_scale("UpperArm")[0]
+    ST, SA = game_scale("UpperTorso")[0], game_scale("UpperArm")[0] * fr["skel"]["armw"]
     return 1.0 + (ST * (ax_t - 1.0) - ARM_SINK) / SA + ax_a
 
 
@@ -933,21 +968,26 @@ def tier_joints(tr, fr=None):
 
 def game_joints(tr, n=None, fr=None):
     """prototype joints -> game rest space (feet on Y = 0): chained from the root, each segment scaled by the
-    part it lies in. Returns (G, Jo): game joints, prototype joints (both with Left / Right / Grip)."""
+    part it lies in and by the frame's skeleton factors (part_extra: the frame's own limb lengths and hip width).
+    Returns (G, Jo): game joints, prototype joints (both with Left / Right / Grip)."""
+    fr = frame_of(fr)
     Jo = {k: np.array(v, float) for k, v in tier_joints(tr, fr).items()}
-    ST, SA, SH = game_scale("UpperTorso"), game_scale("UpperArm"), game_scale("Hand")
-    SL, SF = game_scale("UpperLeg"), game_scale("Foot")
+    X = lambda base: np.array(part_extra(fr, base), float)  # noqa: E731
+    ST, SA, SH = game_scale("UpperTorso") * X("UpperTorso"), game_scale("UpperArm") * X("UpperArm"), game_scale("Hand") * X("Hand")
+    SLT = game_scale("LowerTorso") * X("LowerTorso")
+    SL, SLL, SF = game_scale("UpperLeg") * X("UpperLeg"), game_scale("LowerLeg") * X("LowerLeg"), game_scale("Foot") * X("Foot")
+    SFA = game_scale("LowerArm") * X("LowerArm")
     G = {"Root": np.zeros(3)}
     r = Jo["Root"]
     for k in ("Waist", "Neck"):
         G[k] = ST * (Jo[k] - r)
     for side, sg in (("Right", 1), ("Left", -1)):
-        G[side + "Hip"] = ST * (Jo[side + "Hip"] - r)
+        G[side + "Hip"] = SLT * (Jo[side + "Hip"] - r)
         G[side + "Knee"] = G[side + "Hip"] + SL * (Jo[side + "Knee"] - Jo[side + "Hip"])
-        G[side + "Ankle"] = G[side + "Knee"] + SL * (Jo[side + "Ankle"] - Jo[side + "Knee"])
+        G[side + "Ankle"] = G[side + "Knee"] + SLL * (Jo[side + "Ankle"] - Jo[side + "Knee"])
         s15 = np.array([sg * R15_SHOULDER[0], R15_SHOULDER[1], R15_SHOULDER[2]])
         G[side + "Elbow"] = ST * (s15 - r) + SA * (Jo[side + "Elbow"] - s15)
-        G[side + "Wrist"] = G[side + "Elbow"] + SA * (Jo[side + "Wrist"] - Jo[side + "Elbow"])
+        G[side + "Wrist"] = G[side + "Elbow"] + SFA * (Jo[side + "Wrist"] - Jo[side + "Elbow"])
         G[side + "Grip"] = G[side + "Wrist"] + SH * (Jo[side + "Grip"] - Jo[side + "Wrist"])
         # the shoulder pivot on the arm's axis (the upper arm is mapped about the elbow: this is where its dome lands)
         G[side + "Shoulder"] = G[side + "Elbow"] + SA * (Jo[side + "Shoulder"] - Jo[side + "Elbow"])
@@ -957,9 +997,10 @@ def game_joints(tr, n=None, fr=None):
     return G, Jo
 
 
-def to_game(lp, base, key, Jo, G):
-    """maps one prototype part into game space about its anchor joint `key`; normals by the inverse transpose"""
-    S = game_scale(base)
+def to_game(lp, base, key, Jo, G, fr=None):
+    """maps one prototype part into game space about its anchor joint `key` (x the frame's extra scale on the part);
+    normals by the inverse transpose"""
+    S = game_scale(base) * (np.array(part_extra(frame_of(fr), base), float) if fr is not None else 1.0)
     P = G[key] + (lp["P"] - Jo[key]) * S
     N = lp["N"] / S
     N = N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
@@ -1022,6 +1063,23 @@ def upper_torso(tr, fr):
         Lb(180, 62, 3.56, 3.70, 3.86, g("trap", 0.02, 0.07, 0.0)),               # upper traps into the neck (the slope)
         Lb(22, 10, 3.68, 3.78, 3.90, g("trap", 0.008, 0.010, 0.006)),           # sternocleidomastoid
         Lb(180, 7, 3.72, 3.80, 3.90, g("trap", -0.002, -0.002, -0.003)),        # the nape's groove
+    ]
+    built = fr.get("built", 0.0) * tr["f"]  # the naturally built frames carry a chest / lats / delt roots at tier 1
+    L += [
+        Lb(27, 40, 2.98, 3.22, 3.50, 0.05 * built, k=1.2), Lb(135, 40, 2.55, 3.05, 3.38, 0.045 * built, k=1.1),
+        Lb(90, 36, 3.42, 3.54, 3.68, 0.025 * built), Lb(180, 44, 3.18, 3.44, 3.70, 0.02 * built),
+    ]
+    ribs = fr.get("ribs", 0.0) * tr["f"] * (1.0 - 0.5 * tr["m"])  # the lean frame's ribs and sternum show
+    L += [
+        Lb(0, 6, 2.95, 3.20, 3.44, -0.010 * ribs), Lb(0, 5, 2.75, 2.90, 3.00, -0.006 * ribs),
+        Lb(40, 5, 2.80, 2.90, 2.98, -0.005 * ribs, drift=-25), Lb(50, 5, 2.72, 2.82, 2.90, -0.005 * ribs, drift=-25),
+        Lb(60, 5, 2.64, 2.74, 2.82, -0.004 * ribs, drift=-25),
+    ]
+    fat = fr.get("fat", 0.0) * tr["f"] * (1.0 - 0.75 * tr["m"])
+    L += [
+        Lb(0, 50, 2.36, 2.62, 2.98, 0.045 * fat, k=0.8),            # the belly's round
+        Lb(85, 24, 2.34, 2.52, 2.70, 0.035 * fat),                  # love handles
+        Lb(0, 40, 2.95, 3.03, 3.12, -0.008 * fat),                  # the fold under the chest
     ]
     sd = ([YW, 2.32, 2.36, 3.36, 3.42, 3.54, 3.57, 3.84], [0.6, 0.6, 1.3, 1.3, 0.9, 0.9, 1.7, 1.7])
     return loft(torso_sec(fr), tr["m"], YW, 3.84, (0.22, 1.0, 2, 0.88), (0.05, 1.0, 2), nb=36, nseg=42, bias=0.5,
@@ -1089,7 +1147,9 @@ def lower_arm(tr, fr):
         Lb(82, 6, 2.36, 2.56, 2.76, g("fore", 0, -0.003, -0.006), sym=False),           # brachioradialis / extensor line
         Lb(-20, 5, 2.20, 2.30, 2.40, g("fore", 0.003, 0.0, 0.004), sym=False),          # the wrist's tendons
     ]
-    b = [Bp((X + 0.11, 2.21, 0.10), (0.05, 0.05, 0.05, 0.05, 0.08, 0.08), 0.006 * tr["f"])]  # ulna's knob
+    kn = fr.get("knobs", 0.0) * tr["f"]
+    b = [Bp((X + 0.11, 2.21, 0.10), (0.05, 0.05, 0.05, 0.05, 0.08, 0.08), 0.006 * tr["f"]),  # ulna's knob
+         Bp((X + 0.0, YE - 0.02, 0.22), (0.10, 0.10, 0.07, 0.07, 0.08, 0.08), 0.014 * kn)]   # the elbow's point (olecranon)
     m = tr["m"]
     return loft(sec, m, YWR, YE, (dome_r("LowerArm", sec, YWR, m), 1.0, 2, 0.9),
                 (dome_r("LowerArm", sec, YE, m), 1.0, 2), nb=10, nseg=20, frame=VERT(X), shrink=[(YE, 0.10, 0.06)],
@@ -1149,7 +1209,10 @@ def upper_leg(tr, fr):
         Lb(180, 5, 1.08, 1.30, 1.56, g("leg", 0, -0.001, -0.005), sym=False),         # their line
         Lb(176, 34, 1.60, 1.72, 1.80, g("leg", 0.010, 0.03, 0.0), sym=False),         # the glute fold (under the hem)
     ]
-    b = [Bp((X - 0.02, 1.00, -0.30), (0.09, 0.09, 0.08, 0.08, 0.08, 0.08), 0.012 * tr["f"])]  # kneecap
+    kn = fr.get("knobs", 0.0) * tr["f"]
+    b = [Bp((X - 0.02, 1.00, -0.30), (0.09, 0.09, 0.08, 0.08, 0.08, 0.08), 0.012 * tr["f"] + 0.012 * kn),  # kneecap
+         Bp((X + 0.16, 1.00, 0.0), (0.06, 0.06, 0.07, 0.07, 0.12, 0.12), 0.010 * kn),   # the knee's outer condyle
+         Bp((X - 0.16, 1.00, 0.0), (0.06, 0.06, 0.07, 0.07, 0.12, 0.12), 0.010 * kn)]   # inner condyle
     m = tr["m"]
     return loft(sec, m, YK, YH, (dome_r("UpperLeg", sec, YK, m), 1.0, 2, 0.88),
                 (dome_r("UpperLeg", sec, YH, m), 1.0, 3), nb=14, nseg=20, frame=VERT(X), shrink=[(YH, 0.16, 0.06)],
@@ -1289,9 +1352,9 @@ def build_tier(bpy, n, proto=False, frame=DEFAULT_FRAME):
     for base, fn in BUILDERS.items():
         lp = fn(tr, fr)
         if base in ("UpperTorso", "LowerTorso"):
-            parts[base] = lp if proto else to_game(lp, base, ANCHOR[base], Jo, G)
+            parts[base] = lp if proto else to_game(lp, base, ANCHOR[base], Jo, G, fr)
         else:
-            lp = lp if proto else to_game(lp, base, "Right" + ANCHOR[base], Jo, G)
+            lp = lp if proto else to_game(lp, base, "Right" + ANCHOR[base], Jo, G, fr)
             parts["Right" + base] = lp
             parts["Left" + base] = mirror_lp(lp)
     parts["_J"] = {k: tuple(float(x) for x in v) for k, v in G.items()}
@@ -1389,7 +1452,8 @@ def proto_y(part_base, y0, parts):
     """a prototype height on one part -> game height (that part's mapping)"""
     G, Jo = parts["_J"], parts["_J0"]
     key = ANCHOR[part_base] if part_base in ("UpperTorso", "LowerTorso") else "Right" + ANCHOR[part_base]
-    return G[key][1] + (y0 - Jo[key][1]) * game_scale(part_base)[1]
+    ex = part_extra(frame_of(parts.get("_frame")), part_base)[1]
+    return G[key][1] + (y0 - Jo[key][1]) * game_scale(part_base)[1] * ex
 
 
 # gear fit: girths (convex hull, studs) at fixed anatomical heights, from the prototype's muscle centres
@@ -1454,10 +1518,22 @@ def export_tier(n, parts, frame=DEFAULT_FRAME):
                      "attachments": atts, "nv": pc.nv, "nt": pc.nt}
         total += pc.nt
     data = {"tier": n, "name": TIERS[n]["name"], "frame": fr["id"], "frameKey": fr["key"], "params": TIERS[n],
-            "tris": total, "fit": fit_sizes(parts), "armAxisX": round(float(Jt["RightElbow"][0]), 4), "parts": rec}
+            "tris": total, "fit": fit_sizes(parts), "armAxisX": round(float(Jt["RightElbow"][0]), 4), "parts": rec,
+            "gearScale": {b: [round(float(x), 4) for x in part_extra(fr, b)] for b in
+                          ("UpperTorso", "LowerTorso", "UpperArm", "LowerArm", "Hand", "UpperLeg", "LowerLeg", "Foot")},
+            "unit": frame_unit(parts)}
     with open(os.path.join(outdir, "parts.json"), "w") as f:
         json.dump(data, f, indent=1)
     return data
+
+
+def frame_unit(parts):
+    """the frame's rig heights (what unit_rig gives the Athletic frame): joints, hip / shoulder / neck heights"""
+    G = parts["_J"]
+    j = {k: [round(float(x), 4) for x in v] for k, v in G.items() if not k.startswith("Left")}
+    return {"joints": j, "rootHeight": round(float(G["Root"][1]), 4), "hipHeight": round(float(G["RightHip"][1]), 4),
+            "neckHeight": round(float(G["Neck"][1]), 4), "shoulderHeight": round(float(G["RightShoulder"][1]), 4),
+            "wristHeight": round(float(G["RightWrist"][1]), 4), "standingHeight": round(float(G["Neck"][1] + HEAD_SIZE), 4)}
 
 
 def unit_rig(tiers):
@@ -1820,6 +1896,8 @@ def main():
         for n, d in tiers_d.items():
             rec["tiers"][str(n)] = d
         rec["armAxisX"] = {str(n): d["armAxisX"] for n, d in sorted(rec["tiers"].items(), key=lambda kv: int(kv[0]))}
+        t3 = rec["tiers"].get("3") or next(iter(rec["tiers"].values()))
+        rec["gearScale"], rec["unit"] = t3["gearScale"], t3["unit"]
         frames_rec[FRAMES[fid]["key"]] = rec
     tiers_rec = dict(old.get("tiers") or {})
     for n, d in ath.items():
