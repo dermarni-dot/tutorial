@@ -50,11 +50,17 @@
         "GymDecor": {
           "$path": "src/server/GymDecor.lua"
         },
+        "Judging": {
+          "$path": "src/server/Judging.lua"
+        },
         "MapBuilder": {
           "$path": "src/server/MapBuilder.lua"
         },
         "Poser": {
           "$path": "src/server/Poser.lua"
+        },
+        "PostFight": {
+          "$path": "src/server/PostFight.lua"
         },
         "PvP": {
           "$path": "src/server/PvP.lua"

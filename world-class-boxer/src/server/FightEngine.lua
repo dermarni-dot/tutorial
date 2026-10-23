@@ -3616,6 +3616,10 @@ end
 local baseSend = Fight.Send
 function Fight:Send(msg)
 	if Judging and type(msg) == "table" and self.P and self.O then
+		if self.live and self.roundEnd then
+			-- (the round clock at the last live event: a stoppage's "at 1:32 of round 3" for the announcer)
+			self.judgeRoundLeft = self.roundEnd - self:Now()
+		end
 		local who = msg.who == "you" and self.P or (msg.who == "opp" and self.O or nil)
 		if who then
 			local t = msg.t

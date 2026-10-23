@@ -1588,8 +1588,8 @@ end
 -- (followHead below rebuilds it when the Head's Size changes after the build).
 -- The pads (Head.HG, in spans; see tools/sim/test_bodytiers / test_referee, which check these against the
 -- forbidden front region without any model of the head mesh):
--- * HGBrow: the brow roll, a flat ring round the head just above the brows (its rim meets the forehead at
---   y 0.27, above HEADGEAR_OPENING.top; 0.08 proud at the front, sunk inside the head at the back)
+-- * HGBrow: the brow roll, a ring round the head just above the brows (its rim meets the forehead at y 0.27,
+--   above HEADGEAR_OPENING.top; 0.07 proud at the front, sunk inside the head at the back)
 -- * HGTop: the crown cap over the top, flush with the forehead under the brow roll, 0.11 thick on the crown
 -- * HGShell: the back shell, a half-dome behind the ears down to the nape (the part Diag measures)
 -- * HGCheek x2: the cheek bolsters, upright rolls beside the face from the brow roll to under the jaw, outside
@@ -1617,13 +1617,13 @@ end
 -- the pads in head spans (centre x / y / z, then the size w x h x d; cheek: a roll of radius r and length h; strap:
 -- its end points a (under the ear pad) and b (under the chin), its width w and thickness t)
 Head.HG = {
-	brow = { y = 0.305, z = -0.04, w = 1.16, h = 0.15, d = 1.08 },
+	brow = { y = 0.33, z = -0.04, w = 1.14, h = 0.22, d = 1.06 },
 	top = { y = 0.36, z = 0.04, w = 1.14, h = 0.5, d = 1.08 },
 	back = { y = 0.02, z = 0.2, w = 1.22, h = 0.84, d = 0.86 },
-	cheek = { x = 0.46, y = -0.06, z = -0.2, r = 0.09, h = 0.76 },
-	side = { x = 0.52, y = 0, z = -0.02, w = 0.16, h = 0.6, d = 0.62 },
-	ears = { y = 0, z = -0.02, d = 0.6, len = 1.2 },
-	hole = { x = 0.595, y = 0.02, z = -0.02, w = 0.03, h = 0.16, d = 0.12 },
+	cheek = { x = 0.46, y = -0.04, z = -0.2, r = 0.09, h = 0.62 },
+	side = { x = 0.52, y = 0, z = -0.02, w = 0.14, h = 0.56, d = 0.58 },
+	ears = { y = 0, z = -0.02, d = 0.56, len = 1.18 },
+	hole = { x = 0.585, y = 0.02, z = -0.02, w = 0.03, h = 0.16, d = 0.12 },
 	strap = { a = { 0.5, -0.28, 0.02 }, b = { 0.08, -0.52, -0.24 }, w = 0.07, t = 0.025 },
 }
 
