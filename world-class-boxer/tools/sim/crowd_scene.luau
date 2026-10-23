@@ -638,7 +638,6 @@ end
 -- build
 ------------------------------------------------------------------------
 local scene = { roots = {}, counts = {}, level = LEVEL, cameras = {}, crowd = {} }
-local scene = { roots = {}, counts = {}, level = LEVEL, cameras = {} }
 local function record(name, root)
 	if not root then
 		return

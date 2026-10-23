@@ -1,38 +1,52 @@
-"""Muscle-tier R15 body parts: the standard smooth Roblox R15 body with muscles added in 5 tiers (1 lean,
-2 toned, 3 athletic, 4 muscular, 5 elite), at the game's athletic proportions (CONTRACT.md), plus a plain
-"default body" reconstruction (tier 0) for comparison.
+"""Frame x muscle-tier R15 body parts (v12): five body FRAMES (Config.BodyTypes: Lean, Athletic, Muscular, Power Build,
+Heavyweight Build), each in 5 muscle tiers (1 lean, 2 toned, 3 athletic, 4 muscular, 5 elite), at the game's
+proportions (CONTRACT.md), plus a plain "default body" reconstruction (tier 0) for comparison.
 
 Run with Blender's Python (Cycles CPU renders); faces.py draws the face textures the renders use:
     python3 tools/body/faces.py
-    /opt/bpyenv/bin/python tools/body/build_body.py                 # build + export + 5 sheets
+    /opt/bpyenv/bin/python tools/body/build_body.py                 # build + export every frame + sheets
     /opt/bpyenv/bin/python tools/body/build_body.py --no-render     # build + export only
-    /opt/bpyenv/bin/python tools/body/build_body.py --samples 24 --sheets 1,4
+    /opt/bpyenv/bin/python tools/body/build_body.py --frames lean,power --tiers 1,5 --sheets frames --samples 24
 
 Outputs
-    tools/body/out/tier<N>/<Part>.mesh   Roblox mesh v2.00, vertices relative to the part's bbox centre
-                                         (= the MeshPart origin Roblox gives an imported mesh)
-    tools/body/out/tier<N>/parts.json    per part: size (bbox = OriginalSize), attachments (part space: every R15
-                                         RigAttachment, the body accessory attachments, Grip on hands), tris;
-                                         per tier: fit (gear girths / widths at fixed heights)
-    tools/body/out/body_tiers.json       unit (the unscaled rig the meshes are modelled for) + all tiers
-    tools/body/blend/body_tiers.blend    rest-pose parts per tier + the lineup scene
-    <scratch>/lineup_front.png, views_34_back.png, compare_proportions_t3.png, guard_pose.png, faces_heads.png
+    tools/body/out/tier<N>/<Part>.mesh                 the Athletic frame (the default family: what BodyAssetData.tiers
+                                                       carries, what the gear is fitted on), Roblox mesh v2.00, vertices
+                                                       relative to the part's bbox centre
+    tools/body/out/tier<N>/parts.json                  per part: size (bbox = OriginalSize), attachments (part space:
+                                                       every R15 RigAttachment, the body accessory attachments, Grip on
+                                                       hands), tris; per tier: fit (gear girths / widths at fixed heights)
+    tools/body/out/frames/<frame>/tier<N>/...          the other four frames (lean, muscular, power, heavy), the same files
+    tools/body/out/body_tiers.json                     unit (the unscaled rig the meshes are modelled for) + all tiers + frames
+    tools/body/blend/body_tiers.blend                  rest-pose parts per tier + the lineup scene (Athletic)
+    <scratch>/frames_t<N>_<view>.png, lineup_front.png, views_34_back.png, guard_pose.png, faces_heads.png
 
 Coordinates: game space, numerically (no axis conversion): studs, +X = the character's right, +Y up,
 -Z forward. Each part is modelled on the R15 Classic Block rig's joint pivots (SKELETON below, the approved
 prototype), then mapped into the game's proportions (game_joints / to_game: the Rthro blend x SLIM_W / SLIM_D the
 game builds today), every part scaled about the joint it hangs from so the pivots stay shared. Feet on Y = 0.
-Every part is its own closed shell. At a joint both neighbours carry the same
-cross-section and end in a dome centred near the pivot, so each part's rounded end hides inside its
-neighbour (the default body's ball-joint trick) and no gap opens when a joint turns.
+Every part is its own closed shell. At a joint both neighbours carry the same cross-section and end in a dome
+centred on the pivot (a near-sphere in game space), so each part's rounded end hides inside its neighbour and no
+gap opens when a joint turns.
 
-Modelling: each part is a low-res loft (super-elliptic rings along the bone, domed ends) whose vertices are
-exactly every 4th vertex of a refined loft. Smooth ellipsoidal "muscle" bells (growing with the tier) displace
-the refined surface, and its normals are what the low-res mesh carries (Roblox meshes store per-vertex
-normals), so soft muscle forms read at game triangle counts with clean quad topology (no decimation).
-Joints: the parent's end (UpperTorso at the waist, UpperArm at the elbow, UpperLeg at the knee, LowerTorso
-at its hem) finishes on a clean ring and tucks inward ("tucked rim"), the child is a few % thinner there, so
-the seam is a crisp line like the default body's instead of two surfaces crossing.
+Modelling (v12): each part is a low-res loft (super-elliptic rings along the bone, domed ends) whose vertices are
+exactly every 4th vertex of a refined loft. The MUSCLES are a smooth displacement field over the loft's own
+parameter plane (height along the bone s, azimuth round the bone): every muscle is a lobe with a longitudinal
+envelope (where its belly sits, how it tapers toward its tendons) and an angular lobe (where it sits round the limb
+and how far it wraps), added to the ring radius before the ring is placed. Neighbouring lobes overlap and sum, so
+the deltoid wraps over the biceps / triceps origins, the pec plate runs into the front delt, the lats widen the back
+toward the armpit, the forearm mass sits toward the elbow: the cross-section itself changes shape along the bone
+(no ellipsoid bumps glued onto a tube). Narrow negative lobes are the separations (sternum, linea alba, the
+deltopectoral line, biceps / triceps). The refined surface's normals are what the low-res mesh carries (Roblox
+meshes store per-vertex normals), so the forms read at game triangle counts with clean quad topology. Bony
+landmarks (knuckles, ankle bones, kneecap) stay small local bumps (bell).
+
+Frames: the FRAMES table. The silhouette lives in the base profiles (the ribcage's width and depth, the shoulder
+top, the trapezius slope into a real neck column, the arm and calf girths) and in the arm axis: the shoulder pivot
+sits where the frame's upper arm rests against the frame's torso (arm_x), so a Lean frame's shoulders are narrow
+and a Power frame's wide, whatever the HumanoidDescription scales. The gear is fitted on the Athletic frame
+(build_gear.py): under the trunks (the LowerTorso, the UpperTorso's hem, the thighs) and at the wrist and ankle
+every frame keeps the Athletic (legacy v11) section, so the band, seat, shorts legs, gloves, wraps and boots fit
+every frame; the frame's own mass is carried by the HumanoidDescription Width / Depth (Config.BodyTypes).
 """
 import argparse
 import json
@@ -90,14 +104,7 @@ for _k in list(J):
         J["Left" + _k[5:]] = (-x, y, z)
 J["Root"] = (0.0, Y_LT, 0.0)  # the block LowerTorso centre (RootRigAttachment: copy from the live rig)
 HEAD_C = (0.0, J["Neck"][1] + 0.6, 0.0)
-ARM_X, LEG_X = 1.5, 0.5  # ARM_X: the R15 Block arm axis (reference only; the tiers use arm_x below)
-
-
-def arm_x(tr):
-    """the arm's axis per tier: the upper arm's inner side sits against the torso's side in the relaxed pose.
-    The Shoulder pivot stays at the R15 position (x = +-1); the Elbow / Wrist pivots lie on this axis."""
-    return 1.20 + 0.22 * tr["m"]
-
+ARM_X, LEG_X = 1.5, 0.5  # ARM_X: the R15 Block arm axis (reference only; the frames use arm_x below)
 
 # the shoulder pivot (v9): on the arm's own axis, where the upper arm's top dome is centred, a little under the R15
 # height (the dome is a ball joint: it turns in place, never swinging out through the chest or up past the neck).
@@ -106,18 +113,6 @@ def arm_x(tr):
 YS_PIVOT = 3.53
 R15_SHOULDER = (1.0, Y_LT + 1.563, 0.0)
 
-
-def tier_joints(tr):
-    Jt = dict(J)
-    ax = arm_x(tr)
-    for side, sg in (("Right", 1), ("Left", -1)):
-        Jt[side + "Shoulder"] = (sg * ax, YS_PIVOT, 0.0)
-        for jn in ("Elbow", "Wrist"):
-            x, y, z = J[side + jn]
-            Jt[side + jn] = (sg * ax, y, z)
-        # the hand's grip point: palm centre, a little inside the wrist axis
-        Jt[side + "Grip"] = (sg * (ax - 0.06), 1.98, 0.0)
-    return Jt
 YW, YN, YS = J["Waist"][1], J["Neck"][1], J["RightShoulder"][1]
 YE, YWR, YH, YK, YA = J["RightElbow"][1], J["RightWrist"][1], J["RightHip"][1], J["RightKnee"][1], J["RightAnkle"][1]
 
@@ -129,7 +124,6 @@ PART_JOINTS = {
 }
 PARTS = ["UpperTorso", "LowerTorso"] + [s + p for s in ("Right", "Left") for p in
                                         ("UpperArm", "LowerArm", "Hand", "UpperLeg", "LowerLeg", "Foot")]
-# triangles come from each part's loft resolution (nb rings x nseg segments, caps); ~6.7k per body
 
 # ------------------------------------------------------------------------------------------ tiers
 # f = base features on (0 for the plain default-body reconstruction), m = muscle mass 0..1,
@@ -142,6 +136,74 @@ TIERS = {
     4: dict(name="muscular", f=1.0, m=0.75, d=0.88),
     5: dict(name="elite", f=1.0, m=1.0, d=1.0),
 }
+
+# ------------------------------------------------------------------------------------------ frames
+# One entry per Config.BodyTypes id. key = the out/frames/<key> folder (Athletic is out/tier<N>, the default family).
+# Torso rows are multipliers on the legacy (v11 Athletic) section at the UpperTorso knots s = 2.45, 2.75, 3.05, 3.30,
+# 3.48, 3.58 (prototype heights: the hem row 2.45 must stay <= 1: the trunks' band is hulled on it); neck = (ax, af,
+# ab) at s = 3.66 (the trapezius slope), 3.74 and 3.84 (the neck column, which enters the head at 3.811); arm / fore /
+# calf = girth multipliers along those bones (1 at the elbow row's neighbour, the wrist and the ankle); p = the torso's
+# super-ellipse exponent shift (rounder < 0 < blockier); gain = the muscle lobes' mass / definition gains per group;
+# soft = a subcutaneous layer (rounds the forms: the heavyweight).
+FRAMES = {
+    "Lean": dict(
+        key="lean",
+        tx=[0.96, 0.94, 0.94, 0.93, 0.92, 0.90], tf=[0.98, 0.96, 0.96, 0.97, 0.98, 0.99], tb=[0.98, 0.96, 0.97, 0.98, 0.98, 0.99],
+        neck=([0.64, 0.42, 0.40], [0.30, 0.27, 0.27], [0.32, 0.30, 0.30]), p=-0.25,
+        arm=[1.0, 0.95, 0.93, 0.92, 0.92], fore=[1.0, 0.98, 0.95, 0.94, 0.95], thigh=[1.0, 0.98, 0.97, 0.98, 1.0],
+        calf=[1.0, 0.98, 0.95, 0.95, 0.97, 1.0], calf_pk=0.80,
+        gain=dict(pec=0.75, delt=0.85, lat=0.85, trap=0.55, arm=0.8, fore=0.9, calf=0.9, abs=1.15, leg=0.9, defin=1.3),
+        soft=0.0),
+    "Athletic": dict(
+        key="athletic",
+        tx=[1.00, 1.00, 1.02, 1.04, 1.03, 1.02], tf=[1.0, 1.0, 1.02, 1.03, 1.02, 1.0], tb=[1.0, 1.0, 1.03, 1.04, 1.03, 1.0],
+        neck=([0.74, 0.47, 0.44], [0.32, 0.29, 0.29], [0.34, 0.32, 0.32]), p=0.0,
+        arm=[1.0, 1.0, 1.0, 1.0, 1.0], fore=[1.0, 1.0, 1.0, 1.0, 1.0], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
+        calf=[1.0, 1.0, 1.0, 1.0, 1.0, 1.0], calf_pk=0.75,
+        gain=dict(pec=1.0, delt=1.0, lat=1.0, trap=1.0, arm=1.0, fore=1.0, calf=1.0, abs=1.0, leg=1.0, defin=1.0),
+        soft=0.0),
+    "Muscular": dict(
+        key="muscular",
+        tx=[1.00, 1.02, 1.07, 1.11, 1.10, 1.09], tf=[1.0, 1.02, 1.06, 1.08, 1.06, 1.02], tb=[1.0, 1.03, 1.08, 1.10, 1.08, 1.03],
+        neck=([0.82, 0.52, 0.47], [0.34, 0.31, 0.31], [0.37, 0.35, 0.35]), p=0.1,
+        arm=[1.0, 1.06, 1.09, 1.09, 1.08], fore=[1.0, 1.02, 1.06, 1.08, 1.08], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
+        calf=[1.0, 1.01, 1.05, 1.07, 1.04, 1.0], calf_pk=0.74,
+        gain=dict(pec=1.2, delt=1.3, lat=1.3, trap=1.3, arm=1.3, fore=1.15, calf=1.1, abs=1.0, leg=1.0, defin=1.0),
+        soft=0.0),
+    "Power Build": dict(
+        key="power",
+        tx=[1.00, 1.06, 1.13, 1.19, 1.19, 1.18], tf=[1.0, 1.05, 1.09, 1.11, 1.09, 1.04], tb=[1.0, 1.06, 1.12, 1.14, 1.12, 1.05],
+        neck=([0.94, 0.61, 0.54], [0.36, 0.33, 0.33], [0.42, 0.39, 0.38]), p=0.2,
+        arm=[1.0, 1.10, 1.15, 1.15, 1.13], fore=[1.0, 1.05, 1.14, 1.16, 1.14], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
+        calf=[1.0, 1.02, 1.10, 1.12, 1.06, 1.0], calf_pk=0.70,
+        gain=dict(pec=1.25, delt=1.5, lat=1.3, trap=1.8, arm=1.35, fore=1.5, calf=1.25, abs=0.8, leg=1.0, defin=0.8),
+        soft=0.15),
+    "Heavyweight Build": dict(
+        key="heavy",
+        tx=[1.00, 1.08, 1.11, 1.12, 1.10, 1.08], tf=[1.0, 1.10, 1.14, 1.14, 1.10, 1.04], tb=[1.0, 1.08, 1.12, 1.13, 1.10, 1.04],
+        neck=([0.88, 0.57, 0.51], [0.36, 0.33, 0.33], [0.40, 0.37, 0.36]), p=0.1,
+        arm=[1.0, 1.05, 1.08, 1.08, 1.06], fore=[1.0, 1.02, 1.06, 1.07, 1.06], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
+        calf=[1.0, 1.02, 1.09, 1.10, 1.05, 1.0], calf_pk=0.70,
+        gain=dict(pec=1.15, delt=1.1, lat=1.15, trap=1.3, arm=1.15, fore=1.15, calf=1.2, abs=0.5, leg=1.0, defin=0.45),
+        soft=0.6),
+}
+FRAME_ORDER = ["Lean", "Athletic", "Muscular", "Power Build", "Heavyweight Build"]
+DEFAULT_FRAME = "Athletic"
+FRAME_BY_KEY = {v["key"]: k for k, v in FRAMES.items()}
+
+
+def frame_of(f):
+    """a frame id, key or dict -> the FRAMES entry (with its id under 'id')"""
+    if isinstance(f, dict):
+        return f
+    f = f or DEFAULT_FRAME
+    fid = f if f in FRAMES else FRAME_BY_KEY.get(f)
+    if fid is None:
+        raise KeyError("unknown frame %r" % (f,))
+    fr = dict(FRAMES[fid])
+    fr["id"] = fid
+    return fr
+
 
 # ------------------------------------------------------------------------------------------ game proportions
 # Every part is modelled above on the Classic R15 block skeleton (the approved prototype's style), then mapped
@@ -162,53 +224,14 @@ HEAD_FRAME = 0.82                   # Builder FRAME_PROPORTIONS.Athletic.head
 HEAD_SIZE = 1.2 * HEAD_FRAME * RTHRO["Head"][0]  # 0.927: today's head; the game's HeadScale = 0.82 x 0.942
 ANCHOR = {"UpperTorso": "Waist", "LowerTorso": "Root", "UpperArm": "Elbow", "LowerArm": "Elbow",
           "Hand": "Wrist", "UpperLeg": "Hip", "LowerLeg": "Knee", "Foot": "Ankle"}
-# per tier: the arm axis' extra x in game space so the upper arm's inner side rests on the torso's side
-# (the arm fix, re-measured at the new proportions; see arm_gap() in the build log). v11 slim pass: the arm comes in by
-# what the slimmer torso side and upper arm opened between them (the mean gap over the arm's resting contact, game
-# y 4.25-4.65, kept where it was), so the arms do not stand out from the body
+# (v11) the arm axis' extra x per tier in game space, kept for the lite builders (tools/body/lite); the v12 frames put
+# the arm where it rests against the frame's torso (arm_x) and use no extra shift
 ARM_DX = {0: 0.0, 1: -0.085, 2: -0.098, 3: -0.11, 4: -0.122, 5: -0.13}
 
 
 def game_scale(base):
     rx, ry, rz = RTHRO[base]
     return np.array([rx * SLIM_W, ry, rz * SLIM_D])
-
-
-def game_joints(tr, n=None):
-    """prototype joints -> game rest space (feet on Y = 0): chained from the root, each segment scaled by the
-    part it lies in. Returns (G, Jo): game joints, prototype joints (both with Left / Right / Grip)."""
-    Jo = {k: np.array(v, float) for k, v in tier_joints(tr).items()}
-    ST, SA, SH = game_scale("UpperTorso"), game_scale("UpperArm"), game_scale("Hand")
-    SL, SF = game_scale("UpperLeg"), game_scale("Foot")
-    G = {"Root": np.zeros(3)}
-    r = Jo["Root"]
-    for k in ("Waist", "Neck"):
-        G[k] = ST * (Jo[k] - r)
-    dx = ARM_DX.get(n, 0.0) if n is not None else 0.0
-    for side, sg in (("Right", 1), ("Left", -1)):
-        G[side + "Hip"] = ST * (Jo[side + "Hip"] - r)
-        G[side + "Knee"] = G[side + "Hip"] + SL * (Jo[side + "Knee"] - Jo[side + "Hip"])
-        G[side + "Ankle"] = G[side + "Knee"] + SL * (Jo[side + "Ankle"] - Jo[side + "Knee"])
-        s15 = np.array([sg * R15_SHOULDER[0], R15_SHOULDER[1], R15_SHOULDER[2]])
-        G[side + "Elbow"] = ST * (s15 - r) + SA * (Jo[side + "Elbow"] - s15)
-        G[side + "Elbow"][0] += sg * dx
-        G[side + "Wrist"] = G[side + "Elbow"] + SA * (Jo[side + "Wrist"] - Jo[side + "Elbow"])
-        G[side + "Grip"] = G[side + "Wrist"] + SH * (Jo[side + "Grip"] - Jo[side + "Wrist"])
-        # the shoulder pivot on the arm's axis (the upper arm is mapped about the elbow: this is where its dome lands)
-        G[side + "Shoulder"] = G[side + "Elbow"] + SA * (Jo[side + "Shoulder"] - Jo[side + "Elbow"])
-    floor = G["RightAnkle"][1] - SF[1] * Jo["RightAnkle"][1]  # the foot's sole is at prototype Y = 0
-    for k in G:
-        G[k] = G[k] - np.array([0.0, floor, 0.0])
-    return G, Jo
-
-
-def to_game(lp, base, key, Jo, G):
-    """maps one prototype part into game space about its anchor joint `key`; normals by the inverse transpose"""
-    S = game_scale(base)
-    P = G[key] + (lp["P"] - Jo[key]) * S
-    N = lp["N"] / S
-    N = N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
-    return {"P": P, "N": N, "U": lp["U"], "T": lp["T"]}
 
 
 # ------------------------------------------------------------------------------------------ maths
@@ -361,7 +384,47 @@ def _shrink(ps, shrink):
     return f
 
 
-def _grid(prof, m, rings, phis, frame, shrink):
+# ------------------------------------------------------------------------------------------ muscle lobes
+def kern(u):
+    """C1 bump: 1 at 0, 0 at |u| >= 1 with zero slope there"""
+    u = np.clip(np.abs(u), 0, 1)
+    return (1 - u * u) ** 2
+
+
+def Lb(phi, w, s_lo, s_pk, s_hi, a, drift=0.0, sym=True, k=1.0):
+    """a muscle lobe on a part's (s, azimuth) plane: centred at azimuth `phi` (deg: 0 front, +90 = +X, +-180 back),
+    half-width `w` deg; along the bone it rises from s_lo to its belly at s_pk and falls to s_hi; `a` = the radius it
+    adds at the belly (prototype studs, < 0 for a separation); drift = deg per unit s the centre moves with height
+    (diagonal muscles); sym = mirrored at -phi (torso lobes; a lobe at 0 / 180 stays single); k = the kernel's
+    sharpening (k > 1 narrows the crest, the foot stays where it is)"""
+    return dict(phi=float(phi), w=float(w), s_lo=float(s_lo), s_pk=float(s_pk), s_hi=float(s_hi), a=float(a),
+                drift=float(drift), sym=sym, k=float(k))
+
+
+def lobe_field(S, ANG, lobes):
+    """radius displacement (R, nseg) from the lobes at ring heights S (R,) and azimuths ANG (R, nseg) in degrees"""
+    D = np.zeros_like(ANG)
+    for L in lobes:
+        if abs(L["a"]) < 1e-9:
+            continue
+        s = S[:, None]
+        lo, pk, hi = L["s_lo"], L["s_pk"], L["s_hi"]
+        E = np.where(s < pk, kern((s - pk) / max(pk - lo, 1e-6)), kern((s - pk) / max(hi - pk, 1e-6)))
+        E = np.where((s <= lo) | (s >= hi), 0.0, E)
+        centres = [L["phi"]]
+        if L["sym"] and abs(L["phi"]) > 1e-6 and abs(abs(L["phi"]) - 180) > 1e-6:
+            centres.append(-L["phi"])
+        for c in centres:
+            cc = c + L["drift"] * (s - pk) * (1 if c >= 0 else -1)
+            d = (ANG - cc + 180.0) % 360.0 - 180.0
+            G = kern(d / L["w"])
+            if L["k"] != 1.0:
+                G = G ** L["k"]
+            D += L["a"] * E * G
+    return D
+
+
+def _grid(prof, m, rings, phis, frame, shrink, lobes=()):
     O, A, X, Z = [np.asarray(v, float) for v in frame]
     S = np.array([r[0] for r in rings])
     SC = np.array([r[1] for r in rings])
@@ -369,13 +432,21 @@ def _grid(prof, m, rings, phis, frame, shrink):
     pr = prof(PS, m)
     sh = _shrink(PS, shrink)
     nseg = len(phis)
+    R = np.empty((len(rings), nseg))
+    for i in range(len(rings)):
+        R[i] = superr(phis, pr["ax"][i], pr["af"][i], pr["ab"][i], pr["p"][i])
+    if lobes:
+        x = R * np.sin(phis)[None, :]
+        z = -R * np.cos(phis)[None, :]
+        ANG = np.degrees(np.arctan2(x, -z))
+        R = np.maximum(R + lobe_field(S, ANG, lobes), 0.02)
+    R = R * SC[:, None] * sh[:, None]
     P = np.empty((len(rings), nseg, 3))
     C = np.empty((len(rings), 3))
     for i in range(len(rings)):
-        r = superr(phis, pr["ax"][i], pr["af"][i], pr["ab"][i], pr["p"][i]) * SC[i] * sh[i]
         c = O + A * S[i] + X * pr["cx"][i] + Z * pr["cz"][i]
         C[i] = c
-        P[i] = c[None, :] + np.outer(r * np.sin(phis), X) + np.outer(-r * np.cos(phis), Z)
+        P[i] = c[None, :] + np.outer(R[i] * np.sin(phis), X) + np.outer(-R[i] * np.cos(phis), Z)
     return P, C, S
 
 
@@ -416,11 +487,11 @@ def _orient_out(V, T, centres):
 
 
 def loft(prof, m, s_lo, s_hi, cap_lo, cap_hi, nb, nseg, frame=None, bias=0.0, sdens=None, shrink=(),
-         bumps=(), sub=4):
-    """Low-res loft whose vertices are exactly every `sub`-th vertex of a refined loft; the muscle bumps
-    displace the refined surface and its normals are what the low-res mesh carries (a vertex-density
-    "normal map"). cap = (height, exponent, rings). Returns lp {P, N, U, T} with a duplicated UV seam
-    column at the back (phi = +-pi) and single pole vertices."""
+         bumps=(), sub=4, lobes=()):
+    """Low-res loft whose vertices are exactly every `sub`-th vertex of a refined loft; the muscle lobes shape the
+    refined rings (lobe_field), the bumps (bell) displace the refined surface along its normals, and its normals are
+    what the low-res mesh carries (a vertex-density "normal map"). cap = (height, exponent, rings). Returns lp
+    {P, N, U, T} with a duplicated UV seam column at the back (phi = +-pi) and single pole vertices."""
     frame = frame or ((0, 0, 0), (0, 1, 0), (1, 0, 0), (0, 0, 1))
     k = sub
     rd = _ring_specs(s_lo, s_hi, cap_lo, cap_hi, nb, sdens, k)
@@ -429,7 +500,7 @@ def loft(prof, m, s_lo, s_hi, cap_lo, cap_hi, nb, nseg, frame=None, bias=0.0, sd
     key = {(round(r[0], 9), round(r[1], 9)): i for i, r in enumerate(rd)}
     ridx = [key[(round(r[0], 9), round(r[1], 9))] for r in rl]
     phd = _phis(nseg * k, bias)
-    Pd, Cd, Sd = _grid(prof, m, rd, phd, frame, shrink)
+    Pd, Cd, Sd = _grid(prof, m, rd, phd, frame, shrink, lobes)
     O, A, X, Z = [np.asarray(v, float) for v in frame]
     pr0, pr1 = prof(np.array([s_lo, s_hi]), m)["cx"], prof(np.array([s_lo, s_hi]), m)["cz"]
     pole_lo = (O + A * (s_lo - cap_lo[0]) + X * pr0[0] + Z * pr1[0]) if cap_lo else None
@@ -552,7 +623,7 @@ def merge_lp(lps):
     return {"P": np.vstack(P), "N": np.vstack(N), "U": np.vstack(U), "T": np.vstack(T)}
 
 
-# ------------------------------------------------------------------------------------------ muscles
+# ------------------------------------------------------------------------------------------ bumps (landmarks)
 def bell(P, c, ext, rot=None, p=2.0, flat=0.0):
     """smooth ellipsoidal bump: 1 at the centre, 0 at the boundary, zero slope there.
     ext = (x-, x+, y-, y+, z-, z+) half extents per signed local axis; p > 2 squares the outline in the
@@ -611,14 +682,9 @@ def sym(bumps):
 
 
 # ------------------------------------------------------------------------------------------ the slim pass (v11)
-# "slim down the body a little": every part's cross-section (the profile's half width ax in local x, its half depths
-# af / ab in z) is narrowed by a factor along the bone, more at the waist and mid limbs, less at the ends, and more
-# with the tier's mass (tiers 4-5 lose the most bulk); the muscle bells' mass term is cut to BULK, the definition
-# (separation) terms are kept. Every factor is the same on both sides of a joint (the waist, elbow and knee: the tucked
-# seams and the domes keep their fit), and 1 at the wrist and ankle (the hand and foot, and the glove / boot fitted
-# to them, are shared over tiers). The limb domes (JOINT_DOME) shrink with their section, so they stay near-spheres
-# about the pivots. The pivots do not move; the arm axis comes in by ARM_DX (the slimmer torso).
-# per part base: knots (prototype s), (reduction at m = 0, its extra at m = 1) for x and for z
+# Kept as the LEGACY section (the v11 Athletic bodies the gear was fitted on, tools/body/lite's builders import it):
+# every part's cross-section narrowed along its bone, more at the waist and mid limbs, less at the ends, more with the
+# tier's mass; 1 at the wrist and ankle. The v12 frames evaluate Slim(legacy profile) wherever the gear touches.
 SLIM = {
     "Torso": dict(s=[1.58, 1.80, 2.00, 2.21, 2.45, 2.75, 3.05, 3.30, 3.48, 3.60],
                   x=([0.05, 0.05, 0.05, 0.07, 0.10, 0.10, 0.09, 0.08, 0.05, 0.04],
@@ -670,7 +736,7 @@ class Slim:
 
 
 def dome(key, base, s, tr):
-    """a limb's joint dome height, shrunk with its section at the joint (it stays a near-sphere about the pivot)"""
+    """(v11) a limb's joint dome height, shrunk with its section at the joint (it stays a near-sphere about the pivot)"""
     kx, kz = slim_k(base, [s], tr["m"])
     return JOINT_DOME[key] * float((kx[0] + kz[0]) / 2)
 
@@ -678,15 +744,23 @@ def dome(key, base, s, tr):
 # ------------------------------------------------------------------------------------------ joints
 # the height (prototype units along the bone) of the domes that close each limb part at a joint. Every dome is a
 # near-sphere ABOUT ITS PIVOT in game space (height x the part's game Y scale ~ its game radius there), so turning
-# the joint turns the dome in place: nothing swings out through the neighbour (the v8 domes reached 1.5-2 radii past
-# the pivot and showed through the seat, the back of the knee, the elbow and the chest on every step and punch).
-# shoulder: 0.30 / 1.342 (upper arm Y scale); elbow 0.26 / 1.342; wrist 0.155 / 1.342; hip 0.35 / 1.506 (upper
-# leg); knee 0.25 / 1.506
+# the joint turns the dome in place: nothing swings out through the neighbour. shoulder: 0.30 / 1.342 (upper arm Y
+# scale); elbow 0.26 / 1.342; wrist 0.155 / 1.342; hip 0.35 / 1.506 (upper leg); knee 0.25 / 1.506
 JOINT_DOME = {"shoulder": 0.224, "elbow": 0.194, "wrist": 0.115, "hip": 0.232, "knee": 0.166}
+# (v12) a dome's height from the section it closes: game radius = game height -> h = r x (x scale / y scale)
+DOME_K = {"UpperArm": 0.869 / 1.342, "LowerArm": 0.869 / 1.342, "UpperLeg": 0.788 / 1.506, "LowerLeg": 0.788 / 1.506}
 
 
-# ------------------------------------------------------------------------------------------ parts
+def dome_r(base, prof, s, m):
+    """a dome height for the section prof gives at s (a near-sphere about the pivot in game space)"""
+    pr = prof(np.array([s]), m)
+    r = float((pr["ax"][0] + (pr["af"][0] + pr["ab"][0]) / 2) / 2)
+    return DOME_K[base] * r
+
+
+# ------------------------------------------------------------------------------------------ legacy profiles (v11)
 def torso_prof():
+    """the v11 torso section (both torso parts), before the slim pass"""
     s = [1.58, 1.80, 2.00, 2.21, 2.45, 2.75, 3.05, 3.30, 3.48, 3.60]
     return Prof(
         s,
@@ -700,141 +774,330 @@ def torso_prof():
     )
 
 
+LEGACY = {
+    "Torso": Slim(torso_prof(), "Torso"),
+    "UpperArm": Slim(Prof([YE, 3.00, 3.20, 3.40, 3.52],
+                          ax=([0.29, 0.30, 0.32, 0.35, 0.37], [0.03, 0.05, 0.07, 0.09, 0.10]),
+                          af=([0.28, 0.29, 0.31, 0.33, 0.35], [0.02, 0.04, 0.05, 0.06, 0.07]),
+                          p=2.1, cx=[0.0, 0.0, 0.0, -0.01, -0.03]), "UpperArm"),
+    "LowerArm": Slim(Prof([YWR, 2.30, 2.50, 2.70, YE],
+                          ax=([0.15, 0.18, 0.23, 0.27, 0.29], [0.01, 0.02, 0.04, 0.05, 0.03]),
+                          af=([0.19, 0.20, 0.235, 0.265, 0.28], [0.01, 0.02, 0.03, 0.04, 0.02]),
+                          p=2.1), "LowerArm"),
+    "UpperLeg": Slim(Prof([YK, 1.15, 1.40, 1.65, 1.82],
+                          ax=([0.31, 0.34, 0.38, 0.41, 0.42], [0.02, 0.045, 0.05, 0.03, 0.01]),
+                          af=([0.30, 0.33, 0.37, 0.40, 0.41], [0.02, 0.04, 0.06, 0.05, 0.02]),
+                          ab=([0.30, 0.33, 0.37, 0.41, 0.44], [0.02, 0.03, 0.05, 0.05, 0.04]),
+                          p=2.15, cx=([0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.02, 0.025, 0.015, 0.0])), "UpperLeg"),
+    "LowerLeg": Slim(Prof([YA, 0.35, 0.55, 0.75, 0.90, YK],
+                          ax=([0.17, 0.185, 0.225, 0.27, 0.295, 0.31], [0.01, 0.02, 0.03, 0.04, 0.03, 0.02]),
+                          af=([0.18, 0.19, 0.22, 0.25, 0.28, 0.30], [0.01, 0.01, 0.02, 0.03, 0.02, 0.02]),
+                          ab=([0.18, 0.20, 0.25, 0.29, 0.30, 0.30], [0.01, 0.02, 0.04, 0.05, 0.04, 0.02]),
+                          p=2.1), "LowerLeg"),
+}
+
+
+class Scaled:
+    """a profile = a legacy section x per-knot factors (pchip between the knots; x on ax, z on af / ab), with
+    optional rows replaced outright above `cut` (the torso's neck) and a per-row exponent shift"""
+
+    def __init__(self, base, knots, kx, kz=None, dp=0.0, soft=0.0, rows=None):
+        self.base, self.knots, self.kx, self.kz, self.dp, self.soft = base, knots, kx, kz if kz is not None else kx, dp, soft
+        self.rows = rows  # (s_knots, {key: (v0, v1)}) merged in above rows' first s
+
+    def __call__(self, s, m):
+        s = np.asarray(s, float)
+        out = dict(self.base(s, m))
+        kx = pchip(self.knots, self.kx, s)
+        kz = pchip(self.knots, self.kz, s)
+        out["ax"] = out["ax"] * kx + self.soft
+        out["af"] = out["af"] * kz + self.soft
+        out["ab"] = out["ab"] * kz + self.soft * 0.8
+        out["p"] = out["p"] + self.dp
+        if self.rows is not None:
+            rs, rv = self.rows
+            w = np.clip((s - rs[0]) / max(rs[1] - rs[0], 1e-6), 0, 1)
+            w = w * w * (3 - 2 * w)
+            for key, (v0, v1) in rv.items():
+                val = pchip(rs, np.asarray(v0, float) + m * (np.asarray(v1, float) - np.asarray(v0, float)), s)
+                out[key] = out[key] * (1 - w) + val * w
+        return out
+
+
+# ------------------------------------------------------------------------------------------ the frame's sections
+T_KNOTS = [2.45, 2.75, 3.05, 3.30, 3.48, 3.58]
+NECK_S = [3.58, 3.66, 3.74, 3.84]  # the shoulder top row, the trapezius slope, the neck column (into the head at 3.811)
+
+
+def torso_section(fr):
+    """the UpperTorso's section for a frame: the legacy section under the trunks (<= 2.45), the frame's own ribcage
+    and shoulder width above, and its trapezius slope into a neck column"""
+    nx, nf, nb = fr["neck"]
+    tx, tf, tb = fr["tx"], fr["tf"], fr["tb"]
+    top = lambda v: [v[-1]] + list(v)  # noqa: E731  (the shoulder top row's value, then the slope / column)
+    kn = [1.58] + T_KNOTS
+    rows = (NECK_S, {
+        "ax": (top([x * 0.98 for x in nx]), top([x * 1.04 for x in nx])),
+        "af": (top(nf), top([x * 1.03 for x in nf])),
+        "ab": (top(nb), top([x * 1.05 for x in nb])),
+        "p": ([2.9, 2.6, 2.3, 2.2], [2.9, 2.6, 2.3, 2.2]),
+        "cz": ([0.0, 0.015, 0.035, 0.04], [0.0, 0.015, 0.035, 0.04]),
+    })
+    # (the top row's value is set after the slope rows start: the rows' blend begins at NECK_S[0] with weight 0)
+    rows[1]["ax"] = ([tx[-1] * 0.96 * 0.0 + nx[0] * 1.35] + [x * 0.98 for x in nx], [nx[0] * 1.4] + [x * 1.04 for x in nx])
+    sec = Scaled(LEGACY["Torso"], kn, [1.0] + list(tx), [1.0] + list(tf), dp=fr["p"], soft=0.0, rows=rows)
+    sec.kz_b = [1.0] + list(tb)
+    base_call = sec.__call__
+
+    def call(s, m):
+        out = base_call(s, m)
+        s_ = np.asarray(s, float)
+        kb = pchip(kn, sec.kz_b, s_) / pchip(kn, sec.kz, s_)
+        out["ab"] = out["ab"] * kb
+        # the heavyweight's layer: fuller above the hem (never under the band)
+        if fr["soft"] > 0:
+            w = np.clip((s_ - 2.5) / 0.3, 0, 1)
+            w = w * w * (3 - 2 * w) * np.clip((3.62 - s_) / 0.12, 0, 1)
+            out["ax"] = out["ax"] + 0.02 * fr["soft"] * w
+            out["af"] = out["af"] + 0.03 * fr["soft"] * w
+            out["ab"] = out["ab"] + 0.015 * fr["soft"] * w
+        return out
+    sec.__call__ = call
+    sec.call = call
+    return sec
+
+
+class Sec:
+    """a callable profile from a function"""
+
+    def __init__(self, fn):
+        self.fn = fn
+
+    def __call__(self, s, m):
+        return self.fn(s, m)
+
+
+def torso_sec(fr):
+    return Sec(torso_section(fr).call)
+
+
+def arm_section(fr):
+    return Scaled(LEGACY["UpperArm"], [YE, 3.00, 3.20, 3.40, 3.52], fr["arm"])
+
+
+def fore_section(fr):
+    return Scaled(LEGACY["LowerArm"], [YWR, 2.30, 2.50, 2.70, YE], fr["fore"])
+
+
+def thigh_section(fr):
+    return Scaled(LEGACY["UpperLeg"], [YK, 1.15, 1.40, 1.65, 1.82], fr["thigh"])
+
+
+def calf_section(fr):
+    return Scaled(LEGACY["LowerLeg"], [YA, 0.35, 0.55, 0.75, 0.90, YK], fr["calf"])
+
+
+def arm_x(tr, fr=None):
+    """the arm's axis: where the frame's upper arm rests against the frame's torso side (in game space the arm's
+    inner face sinks ARM_SINK into the torso at the armpit row s = 3.30); the Shoulder, Elbow and Wrist pivots lie on
+    it. (v11's tiers: 1.20 + 0.22 m with ARM_DX, which this reproduces for the Athletic frame.)"""
+    fr = frame_of(fr)
+    m = tr["m"]
+    ax_t = float(torso_sec(fr)(np.array([3.30]), m)["ax"][0])
+    ax_a = float(arm_section(fr)(np.array([3.30]), m)["ax"][0])
+    ST, SA = game_scale("UpperTorso")[0], game_scale("UpperArm")[0]
+    return 1.0 + (ST * (ax_t - 1.0) - ARM_SINK) / SA + ax_a
+
+
+ARM_SINK = 0.025
+
+
+def tier_joints(tr, fr=None):
+    Jt = dict(J)
+    ax = arm_x(tr, fr)
+    for side, sg in (("Right", 1), ("Left", -1)):
+        Jt[side + "Shoulder"] = (sg * ax, YS_PIVOT, 0.0)
+        for jn in ("Elbow", "Wrist"):
+            x, y, z = J[side + jn]
+            Jt[side + jn] = (sg * ax, y, z)
+        # the hand's grip point: palm centre, a little inside the wrist axis
+        Jt[side + "Grip"] = (sg * (ax - 0.06), 1.98, 0.0)
+    return Jt
+
+
+def game_joints(tr, n=None, fr=None):
+    """prototype joints -> game rest space (feet on Y = 0): chained from the root, each segment scaled by the
+    part it lies in. Returns (G, Jo): game joints, prototype joints (both with Left / Right / Grip)."""
+    Jo = {k: np.array(v, float) for k, v in tier_joints(tr, fr).items()}
+    ST, SA, SH = game_scale("UpperTorso"), game_scale("UpperArm"), game_scale("Hand")
+    SL, SF = game_scale("UpperLeg"), game_scale("Foot")
+    G = {"Root": np.zeros(3)}
+    r = Jo["Root"]
+    for k in ("Waist", "Neck"):
+        G[k] = ST * (Jo[k] - r)
+    for side, sg in (("Right", 1), ("Left", -1)):
+        G[side + "Hip"] = ST * (Jo[side + "Hip"] - r)
+        G[side + "Knee"] = G[side + "Hip"] + SL * (Jo[side + "Knee"] - Jo[side + "Hip"])
+        G[side + "Ankle"] = G[side + "Knee"] + SL * (Jo[side + "Ankle"] - Jo[side + "Knee"])
+        s15 = np.array([sg * R15_SHOULDER[0], R15_SHOULDER[1], R15_SHOULDER[2]])
+        G[side + "Elbow"] = ST * (s15 - r) + SA * (Jo[side + "Elbow"] - s15)
+        G[side + "Wrist"] = G[side + "Elbow"] + SA * (Jo[side + "Wrist"] - Jo[side + "Elbow"])
+        G[side + "Grip"] = G[side + "Wrist"] + SH * (Jo[side + "Grip"] - Jo[side + "Wrist"])
+        # the shoulder pivot on the arm's axis (the upper arm is mapped about the elbow: this is where its dome lands)
+        G[side + "Shoulder"] = G[side + "Elbow"] + SA * (Jo[side + "Shoulder"] - Jo[side + "Elbow"])
+    floor = G["RightAnkle"][1] - SF[1] * Jo["RightAnkle"][1]  # the foot's sole is at prototype Y = 0
+    for k in G:
+        G[k] = G[k] - np.array([0.0, floor, 0.0])
+    return G, Jo
+
+
+def to_game(lp, base, key, Jo, G):
+    """maps one prototype part into game space about its anchor joint `key`; normals by the inverse transpose"""
+    S = game_scale(base)
+    P = G[key] + (lp["P"] - Jo[key]) * S
+    N = lp["N"] / S
+    N = N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+    return {"P": P, "N": N, "U": lp["U"], "T": lp["T"]}
+
+
+# ------------------------------------------------------------------------------------------ the muscles
+def A(tr, fr, g, f=0.0, m=0.0, d=0.0):
+    """a lobe's amplitude: the base feature and the mass term by the frame's gain for the group, the definition term by
+    its definition gain; the heavyweight's layer softens every separation"""
+    G = fr["gain"]
+    v = G.get(g, 1.0) * (f * tr["f"] + m * tr["m"]) + G["defin"] * d * tr["d"]
+    if v < 0:
+        v *= (1 - 0.5 * fr["soft"])
+    return v
+
+
 VERT = lambda x: ((x, 0, 0), (0, 1, 0), (1, 0, 0), (0, 0, 1))  # noqa: E731
 
 
-def upper_torso(tr):
-    b = [
-        # pecs: a broad plate with a defined lower edge rising toward the armpit
-        Bp((0.40, 3.23, -0.40), (0.37, 0.46, 0.21, 0.42, 0.5, 0.5), amp(tr, 0.012, 0.10, 0.01), rotz(12), 2.4, 0.15),
-        # sternum line between the pecs
-        Bp((0.0, 3.16, -0.45), (0.06, 0.06, 0.26, 0.24, 0.3, 0.3), amp(tr, 0, -0.01, -0.012)),
-        # linea alba
-        Bp((0.0, 2.65, -0.45), (0.04, 0.04, 0.34, 0.34, 0.3, 0.3), amp(tr, 0, -0.004, -0.010)),
-        # obliques
-        Bp((0.70, 2.45, -0.18), (0.16, 0.16, 0.24, 0.26, 0.3, 0.3), amp(tr, 0.0, 0.03, 0.004)),
-        # serratus (soft fingers under the armpit)
-        Bp((0.76, 2.96, -0.24), (0.10, 0.10, 0.14, 0.14, 0.14, 0.14), amp(tr, 0, 0.015, 0.01), rotz(-25)),
-        # lats: V taper
-        Bp((0.84, 3.08, 0.18), (0.22, 0.20, 0.45, 0.32, 0.30, 0.30), amp(tr, 0.0, 0.07, 0.0)),
-        Bp((0.55, 2.98, 0.42), (0.34, 0.34, 0.55, 0.40, 0.25, 0.25), amp(tr, 0.0, 0.06, 0.008), rotz(-18)),  # lat sweep
-        Bp((0.15, 2.45, 0.40), (0.12, 0.14, 0.34, 0.32, 0.25, 0.25), amp(tr, 0.0, 0.025, 0.01)),  # erectors
-        # traps: neck-to-shoulder slope, upper back
-        Bp((0.34, 3.78, 0.08), (0.30, 0.42, 0.34, 0.18, 0.35, 0.30), amp(tr, 0.02, 0.095, 0.0)),
-        Bp((0.42, 3.40, 0.40), (0.36, 0.38, 0.34, 0.30, 0.25, 0.25), amp(tr, 0.005, 0.055, 0.004)),  # upper back
-        # shoulder cap: the torso's shoulder rounds into the deltoid (no notch from the front / 3/4)
-        Bp((0.90, 3.56, 0.0), (0.24, 0.16, 0.22, 0.20, 0.36, 0.36), amp(tr, 0.025, 0.05, 0.0)),
-        # spine groove
-        Bp((0.0, 2.95, 0.45), (0.07, 0.07, 0.75, 0.65, 0.3, 0.3), amp(tr, -0.006, -0.014, -0.02)),
+def upper_torso(tr, fr):
+    g = lambda *a, **k: A(tr, fr, *a, **k)  # noqa: E731
+    L = [
+        # ---- front: the pec plate (steep lower edge, soft above), its tie-in to the front delt, the sternum
+        Lb(27, 40, 2.98, 3.22, 3.50, g("pec", 0.014, 0.085, 0.008), k=1.2),
+        Lb(60, 24, 3.26, 3.40, 3.54, g("pec", 0.008, 0.045, 0.004)),            # pec -> delt tie-in
+        Lb(0, 7, 2.98, 3.20, 3.44, g("pec", 0, -0.010, -0.012)),                # sternum line
+        Lb(26, 30, 2.88, 2.95, 3.01, g("pec", 0, -0.006, -0.009)),              # the pec's lower edge
+        Lb(62, 7, 3.28, 3.40, 3.52, g("pec", 0, -0.004, -0.006)),               # deltopectoral line
+        # ---- abs: two columns, three rows, the linea alba, the tendinous lines, the semilunaris
+        Lb(9, 10, 2.80, 2.90, 3.00, g("abs", 0.004, 0.012, 0.024)),
+        Lb(9, 10, 2.59, 2.69, 2.79, g("abs", 0.004, 0.012, 0.024)),
+        Lb(9, 9, 2.40, 2.48, 2.57, g("abs", 0.003, 0.010, 0.020)),
+        Lb(0, 4, 2.38, 2.70, 3.02, g("abs", 0, -0.004, -0.011)),                # linea alba
+        Lb(9, 16, 2.775, 2.795, 2.815, g("abs", 0, -0.002, -0.009)),            # ab row lines
+        Lb(9, 16, 2.565, 2.585, 2.605, g("abs", 0, -0.002, -0.008)),
+        Lb(20, 4, 2.42, 2.70, 3.00, g("abs", 0, -0.003, -0.008), drift=-6),     # linea semilunaris
+        # ---- side: serratus fingers (diagonal), obliques and the flank roll (the hem row 2.45 stays on the legacy hull)
+        Lb(56, 9, 3.00, 3.04, 3.08, g("abs", 0.003, 0.009, 0.012)),
+        Lb(58, 9, 2.91, 2.95, 2.99, g("abs", 0.003, 0.009, 0.012)),
+        Lb(60, 9, 2.82, 2.86, 2.90, g("abs", 0.003, 0.008, 0.011)),
+        Lb(62, 8, 2.73, 2.77, 2.81, g("abs", 0.002, 0.007, 0.009)),
+        Lb(72, 22, 2.46, 2.56, 2.72, g("abs", 0.006, 0.026, 0.004)),            # external oblique
+        Lb(86, 16, 2.50, 2.60, 2.74, g("abs", 0.003, 0.016, 0.006)),            # the flank roll
+        # ---- back: the lats' V, the erectors, the spine groove, the traps' diamond and slope, infraspinatus / teres
+        Lb(135, 40, 2.55, 3.05, 3.38, g("lat", 0.012, 0.085, 0.0), k=1.1),
+        Lb(106, 20, 3.00, 3.22, 3.42, g("lat", 0.008, 0.05, 0.004)),            # the lat's outer sweep under the armpit
+        Lb(168, 14, 2.34, 2.72, 3.12, g("lat", 0.005, 0.025, 0.004)),           # erector columns
+        Lb(180, 5, 2.34, 2.95, 3.62, g("lat", -0.007, -0.012, -0.015)),         # spine groove
+        Lb(180, 42, 3.18, 3.42, 3.60, g("trap", 0.008, 0.042, 0.0)),            # the traps' diamond
+        Lb(180, 14, 2.94, 3.14, 3.34, g("trap", 0.003, 0.012, 0.004)),          # its tail
+        Lb(150, 22, 3.18, 3.34, 3.50, g("lat", 0.004, 0.028, 0.006)),           # infraspinatus
+        Lb(118, 16, 3.14, 3.26, 3.40, g("lat", 0.003, 0.02, 0.005)),            # teres major
+        Lb(112, 16, 3.38, 3.47, 3.58, g("delt", 0.006, 0.026, 0.0)),            # the rear delt's root on the back
+        # ---- shoulders and neck: the girdle's rounding under the delt, the clavicles, the traps rising into the neck
+        Lb(90, 36, 3.42, 3.54, 3.68, g("delt", 0.012, 0.045, 0.0)),
+        Lb(30, 28, 3.58, 3.62, 3.67, g("pec", 0.006, 0.0, 0.004)),              # clavicle ridge
+        Lb(0, 12, 3.60, 3.65, 3.72, g("pec", -0.010, -0.004, -0.004)),           # the notch at the throat
+        Lb(180, 62, 3.56, 3.70, 3.86, g("trap", 0.02, 0.07, 0.0)),               # upper traps into the neck (the slope)
+        Lb(22, 10, 3.68, 3.78, 3.90, g("trap", 0.008, 0.010, 0.006)),           # sternocleidomastoid
+        Lb(180, 8, 3.70, 3.78, 3.90, g("trap", -0.004, -0.004, -0.004)),        # the nape's groove
     ]
-    # six-pack: 3 rows x 2 columns of soft pillows
-    for y, ey, w in ((2.93, 0.125, 1.0), (2.695, 0.122, 1.0), (2.465, 0.118, 0.92)):
-        b.append(Bp((0.165, y, -0.42), (0.15, 0.16 * w, ey, ey, 0.3, 0.3), amp(tr, 0.003, 0.012, 0.027),
-                    rotz(-3), 2.2, 0.12))
-    # (v10 detail) the forms the denser loft can carry: separations between the abs' rows (the tendinous lines), the
-    # linea semilunaris between the abs and the obliques, the pecs' lower edge and the pec-delt tie-in, the serratus'
-    # fingers, the external oblique's flank roll, the clavicles, the scapulae (infraspinatus, teres major) and the
-    b += [
-        Bp((0.165, 2.812, -0.44), (0.16, 0.16, 0.05, 0.05, 0.3, 0.3), amp(tr, 0, -0.0014, -0.0077)),   # ab row lines
-        Bp((0.165, 2.58, -0.44), (0.16, 0.16, 0.05, 0.05, 0.3, 0.3), amp(tr, 0, -0.0014, -0.007)),
-        Bp((0.335, 2.70, -0.40), (0.05, 0.05, 0.42, 0.36, 0.3, 0.3), amp(tr, 0, -0.0021, -0.0077), rotz(-8)),  # semilunaris
-        Bp((0.38, 2.97, -0.44), (0.32, 0.3, 0.05, 0.05, 0.3, 0.3), amp(tr, 0, -0.0028, -0.0084), rotz(14)),  # pec's lower edge
-        Bp((0.74, 3.44, -0.30), (0.12, 0.14, 0.16, 0.14, 0.2, 0.22), amp(tr, 0.004, 0.035, 0.006), rotz(30)),  # pec-delt tie-in
-        Bp((0.70, 3.40, -0.36), (0.05, 0.05, 0.15, 0.13, 0.2, 0.2), amp(tr, 0, -0.0014, -0.0049), rotz(28)),  # deltopectoral line
-        Bp((0.35, 3.64, -0.33), (0.30, 0.30, 0.025, 0.03, 0.2, 0.2), amp(tr, 0.006, 0.0, 0.004), rotz(-8)),  # clavicle
-        Bp((0.62, 2.28, -0.16), (0.14, 0.14, 0.12, 0.16, 0.3, 0.3), amp(tr, 0.002, 0.025, 0.008)),  # oblique flank roll
-        Bp((0.16, 3.05, 0.44), (0.18, 0.16, 0.28, 0.24, 0.2, 0.2), amp(tr, 0.0, 0.012, 0.004), rotz(18)),  # lower trap
-        Bp((0.0, 3.30, 0.44), (0.34, 0.34, 0.42, 0.24, 0.2, 0.2), amp(tr, 0.0, 0.014, 0.004), None, 1.6),  # mid / lower trap diamond
-        Bp((0.50, 3.28, 0.44), (0.17, 0.16, 0.14, 0.16, 0.22, 0.22), amp(tr, 0.0, 0.025, 0.008), rotz(-12)),  # infraspinatus
-        Bp((0.70, 3.10, 0.36), (0.16, 0.16, 0.13, 0.15, 0.22, 0.22), amp(tr, 0.0, 0.022, 0.005), rotz(-30)),  # teres major
-    ]
-    for k, (yy, zz) in enumerate(((3.04, -0.27), (2.94, -0.25), (2.84, -0.22), (2.75, -0.19))):
-        b.append(Bp((0.76 - 0.012 * k, yy, zz), (0.07, 0.07, 0.035, 0.035, 0.1, 0.12), amp(tr, 0, 0.008, 0.012), rotz(-28)))
-    sd = ([YW, 2.32, 2.36, 3.36, 3.42, 3.54], [0.6, 0.6, 1.3, 1.3, 0.8, 0.8])
-    return loft(Slim(torso_prof(), "Torso"), tr["m"], YW, 3.54, (0.22, 1.0, 2, 0.88), (0.33, 0.85, 6), nb=30, nseg=42, bias=0.5,
-                sdens=sd, bumps=sym(b))
+    sd = ([YW, 2.32, 2.36, 3.36, 3.42, 3.54, 3.57, 3.84], [0.6, 0.6, 1.3, 1.3, 0.9, 0.9, 1.7, 1.7])
+    return loft(torso_sec(fr), tr["m"], YW, 3.84, (0.22, 1.0, 2, 0.88), (0.05, 1.0, 2), nb=36, nseg=42, bias=0.5,
+                sdens=sd, lobes=L)
 
 
-def lower_torso(tr):
-    b = [
-        Bp((0.36, 1.99, 0.30), (0.34, 0.36, 0.17, 0.24, 0.30, 0.36), amp(tr, 0.03, 0.06, 0.0)),  # glutes
-        Bp((0.0, 2.10, -0.42), (0.22, 0.22, 0.14, 0.10, 0.3, 0.3), amp(tr, 0.0, 0.012, 0.01)),  # lower abs
-        Bp((0.0, 2.0, 0.45), (0.05, 0.05, 0.17, 0.15, 0.3, 0.3), amp(tr, -0.0105, -0.007, 0)),  # cleft
-        # (v10 detail) the glutes' upper shelf and the side hollow, the lumbar dimples, the iliac crest's V-lines
-        Bp((0.30, 2.13, 0.36), (0.26, 0.30, 0.10, 0.12, 0.25, 0.25), amp(tr, 0.006, 0.02, 0.004)),  # glute medius shelf
-        Bp((0.66, 1.98, 0.10), (0.08, 0.08, 0.12, 0.10, 0.2, 0.2), amp(tr, 0, -0.006, -0.008)),  # side hollow
-        Bp((0.15, 2.19, 0.44), (0.05, 0.05, 0.05, 0.05, 0.2, 0.2), amp(tr, -0.0021, -0.0014, -0.0056)),  # dimples
-        Bp((0.24, 2.10, -0.40), (0.05, 0.05, 0.16, 0.14, 0.25, 0.25), amp(tr, 0, -0.0028, -0.0084), rotz(-38)),  # V-line
+def lower_torso(tr, fr):
+    g = lambda *a, **k: A(tr, fr, *a, **k)  # noqa: E731
+    L = [
+        Lb(148, 46, 1.84, 1.99, 2.17, g("leg", 0.03, 0.06, 0.0)),               # glutes
+        Lb(180, 5, 1.84, 1.98, 2.14, g("leg", -0.010, -0.007, 0.0)),            # the cleft
+        Lb(0, 32, 1.98, 2.10, 2.24, g("abs", 0.0, 0.012, 0.010)),               # lower abs
+        Lb(150, 36, 2.06, 2.13, 2.22, g("leg", 0.006, 0.02, 0.004)),            # glute medius shelf
+        Lb(96, 10, 1.90, 1.98, 2.08, g("leg", 0, -0.006, -0.008)),              # the side hollow
+        Lb(166, 6, 2.15, 2.19, 2.24, g("leg", -0.002, -0.001, -0.005)),         # lumbar dimples
+        Lb(24, 5, 1.98, 2.10, 2.24, g("abs", 0, -0.003, -0.008), drift=-30),    # the V-lines
     ]
     # the child of the waist joint: a touch thinner near it so the UpperTorso's dome dives cleanly under
-    return loft(Slim(torso_prof(), "Torso"), tr["m"], 1.82, 2.30, (0.26, 1.0, 5, 0.9), (0.18, 1.0, 2), nb=9, nseg=32, bias=0.2,
-                shrink=[(YW, 0.10, 0.04)], bumps=sym(b))
+    return loft(LEGACY["Torso"], tr["m"], 1.82, 2.30, (0.26, 1.0, 5, 0.9), (0.18, 1.0, 2), nb=9, nseg=32, bias=0.2,
+                shrink=[(YW, 0.10, 0.04)], lobes=L)
 
 
-def upper_arm(tr):
-    pr = Prof([YE, 3.00, 3.20, 3.40, 3.52],
-              ax=([0.29, 0.30, 0.32, 0.35, 0.37], [0.03, 0.05, 0.07, 0.09, 0.10]),
-              af=([0.28, 0.29, 0.31, 0.33, 0.35], [0.02, 0.04, 0.05, 0.06, 0.07]),
-              p=2.1, cx=[0.0, 0.0, 0.0, -0.01, -0.03])
-    X = arm_x(tr)
-    b = [
-        Bp((X + 0.08, 3.50, 0.0), (0.32, 0.28, 0.40, 0.30, 0.36, 0.36), amp(tr, 0.012, 0.075, 0.0)),  # delt cap
-        Bp((X - 0.02, 3.48, -0.20), (0.26, 0.24, 0.32, 0.25, 0.20, 0.25), amp(tr, 0.0, 0.05, 0.0)),  # front delt
-        Bp((X - 0.17, 3.58, 0.0), (0.18, 0.22, 0.24, 0.16, 0.34, 0.34), amp(tr, 0.01, 0.025, 0.0)),  # delt wrap over the shoulder
-        Bp((X - 0.02, 3.48, 0.20), (0.26, 0.24, 0.30, 0.25, 0.25, 0.20), amp(tr, 0.0, 0.035, 0.0)),  # rear delt
-        Bp((X, 3.08, -0.22), (0.24, 0.24, 0.22, 0.32, 0.26, 0.26), amp(tr, 0.008, 0.08, 0.008)),  # biceps
-        Bp((X + 0.04, 3.20, 0.22), (0.20, 0.24, 0.30, 0.24, 0.25, 0.25), amp(tr, 0.008, 0.075, 0.005)),  # triceps
-        Bp((X + 0.22, 3.22, 0.0), (0.06, 0.08, 0.10, 0.08, 0.25, 0.25), amp(tr, 0, 0, -0.008)),  # delt insertion
-        # (v10 detail) the deltoid's three heads parted by shallow lines, the biceps' peak and the brachialis under its
-        # outer edge, the triceps' horseshoe (long head / lateral head and the flat tendon above the elbow)
-        Bp((X + 0.10, 3.40, -0.19), (0.05, 0.05, 0.18, 0.14, 0.12, 0.12), amp(tr, 0, -0.0014, -0.0056), rotx(-12)),  # front / side delt
-        Bp((X + 0.10, 3.40, 0.19), (0.05, 0.05, 0.18, 0.14, 0.12, 0.12), amp(tr, 0, -0.0014, -0.0049), rotx(12)),  # side / rear delt
-        Bp((X + 0.02, 3.06, -0.26), (0.12, 0.12, 0.12, 0.14, 0.12, 0.14), amp(tr, 0.002, 0.03, 0.01)),  # biceps peak
-        Bp((X + 0.21, 2.98, -0.08), (0.08, 0.08, 0.14, 0.10, 0.14, 0.14), amp(tr, 0.002, 0.025, 0.006)),  # brachialis
-        Bp((X - 0.06, 3.18, 0.25), (0.11, 0.12, 0.22, 0.18, 0.12, 0.14), amp(tr, 0.003, 0.03, 0.008)),  # triceps long head
-        Bp((X + 0.16, 3.22, 0.18), (0.10, 0.10, 0.18, 0.14, 0.12, 0.14), amp(tr, 0.002, 0.026, 0.008)),  # lateral head
-        Bp((X + 0.04, 2.98, 0.28), (0.10, 0.10, 0.06, 0.06, 0.12, 0.12), amp(tr, 0, -0.004, -0.010)),  # triceps tendon flat
-        Bp((X + 0.0, 3.17, -0.30), (0.10, 0.10, 0.24, 0.20, 0.06, 0.06), amp(tr, 0, 0, -0.004)),  # biceps' mid line
+def upper_arm(tr, fr):
+    g = lambda *a, **k: A(tr, fr, *a, **k)  # noqa: E731
+    sec = arm_section(fr)
+    X = arm_x(tr, fr)
+    # (right arm: 0 front, +90 outer, -90 inner against the torso, 180 back)
+    L = [
+        # the deltoid: one cap wrapping front, side and back (not the inner face), its three heads as crests, the
+        # grooves between them and the insertion V over the biceps / brachialis
+        Lb(55, 150, 3.20, 3.44, 3.62, g("delt", 0.012, 0.055, 0.0), sym=False),
+        Lb(-32, 30, 3.26, 3.42, 3.56, g("delt", 0.006, 0.028, 0.004), sym=False),
+        Lb(88, 32, 3.26, 3.44, 3.58, g("delt", 0.008, 0.034, 0.004), sym=False),
+        Lb(150, 30, 3.24, 3.40, 3.56, g("delt", 0.004, 0.02, 0.003), sym=False),
+        Lb(26, 6, 3.28, 3.40, 3.52, g("delt", 0, -0.002, -0.006), sym=False),
+        Lb(122, 6, 3.28, 3.40, 3.52, g("delt", 0, -0.002, -0.005), sym=False),
+        Lb(80, 24, 3.12, 3.19, 3.27, g("delt", 0, -0.005, -0.008), sym=False),       # the insertion V
+        # the biceps (front, a little inward), its peak, the brachialis under its outer edge
+        Lb(-18, 50, 2.92, 3.10, 3.34, g("arm", 0.010, 0.07, 0.008), sym=False, k=1.15),
+        Lb(-24, 22, 3.02, 3.10, 3.20, g("arm", 0.002, 0.022, 0.012), sym=False),
+        Lb(56, 20, 2.94, 3.04, 3.18, g("arm", 0.003, 0.024, 0.006), sym=False),
+        Lb(-14, 4, 3.00, 3.14, 3.28, g("arm", 0, 0, -0.004), sym=False),             # the biceps' mid line
+        # the triceps: long head (back, inward), lateral head (back, outward), the flat tendon above the elbow
+        Lb(-150, 32, 3.00, 3.20, 3.44, g("arm", 0.008, 0.06, 0.006), sym=False),
+        Lb(150, 32, 2.98, 3.20, 3.40, g("arm", 0.008, 0.058, 0.006), sym=False),
+        Lb(180, 16, 2.90, 2.99, 3.08, g("arm", 0, -0.004, -0.010), sym=False),
+        # the separations between the biceps and the triceps (outer and inner)
+        Lb(100, 7, 2.94, 3.12, 3.32, g("arm", 0, -0.004, -0.008), sym=False),
+        Lb(-104, 7, 2.96, 3.12, 3.30, g("arm", 0, -0.003, -0.006), sym=False),
     ]
-    # (both ends are ball joints: the elbow dome and the shoulder dome are near-spheres about their pivots in game
-    # space - JOINT_DOME - so the arm turns in place at both)
-    return loft(Slim(pr, "UpperArm"), tr["m"], YE, YS_PIVOT, (dome("elbow", "UpperArm", YE, tr), 1.0, 2, 0.88),
-                (dome("shoulder", "UpperArm", YS_PIVOT, tr), 1.0, 4), nb=11,
-                nseg=22, frame=VERT(X), bumps=b)
+    m = tr["m"]
+    return loft(sec, m, YE, YS_PIVOT, (dome_r("UpperArm", sec, YE, m), 1.0, 2, 0.88),
+                (dome_r("UpperArm", sec, YS_PIVOT, m), 1.0, 4), nb=12, nseg=22, frame=VERT(X), lobes=L)
 
 
-def lower_arm(tr):
-    pr = Prof([YWR, 2.30, 2.50, 2.70, YE],
-              ax=([0.15, 0.18, 0.23, 0.27, 0.29], [0.01, 0.02, 0.04, 0.05, 0.03]),
-              af=([0.19, 0.20, 0.235, 0.265, 0.28], [0.01, 0.02, 0.03, 0.04, 0.02]),
-              p=2.1)
-    X = arm_x(tr)
-    b = [
-        Bp((X + 0.07, 2.64, -0.08), (0.22, 0.22, 0.38, 0.22, 0.24, 0.24), amp(tr, 0.006, 0.045, 0.0)),  # brachioradialis
-        Bp((X - 0.10, 2.62, -0.04), (0.18, 0.18, 0.32, 0.18, 0.22, 0.22), amp(tr, 0.004, 0.04, 0.0)),  # flexors
-        # (v10 detail) the extensors on the back of the forearm and the line between them and the brachioradialis, the
-        # flexors' belly over the inner front, the wrist's tendons and the ulna's knob
-        Bp((X + 0.10, 2.58, 0.13), (0.13, 0.13, 0.30, 0.18, 0.14, 0.16), amp(tr, 0.004, 0.035, 0.006)),  # extensors
-        Bp((X + 0.17, 2.55, 0.02), (0.05, 0.05, 0.3, 0.16, 0.12, 0.12), amp(tr, 0, -0.0014, -0.0049)),  # their line
-        Bp((X - 0.08, 2.66, -0.15), (0.12, 0.12, 0.22, 0.14, 0.12, 0.14), amp(tr, 0.003, 0.03, 0.008)),  # flexor belly
-        Bp((X - 0.13, 2.25, -0.04), (0.06, 0.06, 0.14, 0.12, 0.035, 0.035), amp(tr, 0.003, 0.0, 0.005)),  # wrist tendons
-        Bp((X + 0.11, 2.21, 0.10), (0.05, 0.05, 0.05, 0.05, 0.08, 0.08), amp(tr, 0.006, 0.0, 0.0)),  # ulna's knob
+def lower_arm(tr, fr):
+    g = lambda *a, **k: A(tr, fr, *a, **k)  # noqa: E731
+    sec = fore_section(fr)
+    X = arm_x(tr, fr)
+    L = [
+        Lb(36, 46, 2.42, 2.66, 2.85, g("fore", 0.008, 0.055, 0.0), sym=False, k=1.1),   # brachioradialis (toward the elbow)
+        Lb(-56, 46, 2.34, 2.60, 2.80, g("fore", 0.006, 0.045, 0.0), sym=False),         # the flexor mass
+        Lb(-70, 22, 2.50, 2.64, 2.76, g("fore", 0.002, 0.022, 0.008), sym=False),       # flexor belly
+        Lb(126, 36, 2.40, 2.60, 2.80, g("fore", 0.004, 0.036, 0.006), sym=False),       # extensors
+        Lb(82, 6, 2.36, 2.56, 2.76, g("fore", 0, -0.003, -0.006), sym=False),           # brachioradialis / extensor line
+        Lb(-20, 5, 2.20, 2.30, 2.40, g("fore", 0.003, 0.0, 0.004), sym=False),          # the wrist's tendons
     ]
-    return loft(Slim(pr, "LowerArm"), tr["m"], YWR, YE, (dome("wrist", "LowerArm", YWR, tr), 1.0, 2, 0.9),
-                (dome("elbow", "LowerArm", YE, tr), 1.0, 2), nb=10, nseg=20,
-                frame=VERT(X), shrink=[(YE, 0.10, 0.06)], bumps=b)
+    b = [Bp((X + 0.11, 2.21, 0.10), (0.05, 0.05, 0.05, 0.05, 0.08, 0.08), 0.006 * tr["f"])]  # ulna's knob
+    m = tr["m"]
+    return loft(sec, m, YWR, YE, (dome_r("LowerArm", sec, YWR, m), 1.0, 2, 0.9),
+                (dome_r("LowerArm", sec, YE, m), 1.0, 2), nb=10, nseg=20, frame=VERT(X), shrink=[(YE, 0.10, 0.06)],
+                bumps=b, lobes=L)
 
 
-def hand(tr):
-    X = arm_x(tr)
+def hand(tr, fr=None):
+    X = arm_x(tr, fr)
     # (the back of the hand narrows into the wrist, a little thinner than the forearm's tucked rim there, so the seam
-    # is the forearm's clean ring, never the two surfaces crossing)
+    # is the forearm's clean ring, never the two surfaces crossing). The hand is the same on every frame: the gloves
+    # and wraps are one mesh for all
     pr = Prof([1.93, 2.05, YWR],
               ax=([0.135, 0.165, 0.132], [0.01, 0.01, 0.006]),
               af=([0.215, 0.212, 0.158], [0.01, 0.01, 0.004]),
               p=[3.0, 3.0, 2.4], cx=[-0.02, 0.0, 0.0])
-    # (v10 detail) the back of the hand carries the knuckles (one per finger, over its base) and the tendons running
-    # up to them; the palm the thumb's pad (thenar) and the heel under the little finger (hypothenar)
     b = []
     for z, k in ((-0.15, 1.0), (-0.05, 1.08), (0.05, 1.0), (0.148, 0.85)):
         b.append(Bp((X + 0.12, 1.985, z), (0.06, 0.06, 0.045, 0.04, 0.042, 0.042), 0.016 * k))  # knuckle
@@ -845,13 +1108,12 @@ def hand(tr):
         Bp((X - 0.15, 2.0, 0.0), (0.05, 0.05, 0.07, 0.06, 0.12, 0.12), -0.008),  # the palm's hollow
     ]
     shells = [loft(pr, tr["m"], 1.93, YWR, (0.06, 1.0, 2), (0.12, 1.0, 2), nb=6, nseg=16, frame=VERT(X), bumps=b)]
-    # fingers: index at the front (-Z), relaxed curl toward the body (-X for the right hand); four joints each (the
-    # knuckle, the middle and the end joints bulge a little) and slimmer than v9's so a sliver of gap parts them
-    for i, (z, L, r) in enumerate(((-0.158, 0.17, 0.0495), (-0.053, 0.185, 0.0515), (0.052, 0.175, 0.0495),
-                                   (0.152, 0.145, 0.046))):
+    # fingers: index at the front (-Z), relaxed curl toward the body (-X for the right hand); four joints each
+    for i, (z, Lf, r) in enumerate(((-0.158, 0.17, 0.0495), (-0.053, 0.185, 0.0515), (0.052, 0.175, 0.0495),
+                                    (0.152, 0.145, 0.046))):
         y0 = 1.975
-        pts = [(X - 0.005, y0, z), (X - 0.03, y0 - 0.45 * L, z), (X - 0.062, y0 - 0.77 * L, z * 1.01),
-               (X - 0.105, y0 - L, z * 1.02)]
+        pts = [(X - 0.005, y0, z), (X - 0.03, y0 - 0.45 * Lf, z), (X - 0.062, y0 - 0.77 * Lf, z * 1.01),
+               (X - 0.105, y0 - Lf, z * 1.02)]
         shells.append(tube(pts, [r * 1.02, r * 1.05, r * 0.97, r * 0.86], nside=8, kcap=2,
                            uvbox=(0.2 * i, 0.8, 0.2 * i + 0.2, 1.0)))
     pts = [(X - 0.03, 2.10, -0.16), (X - 0.065, 2.03, -0.225), (X - 0.10, 1.965, -0.25), (X - 0.128, 1.925, -0.256)]
@@ -861,72 +1123,58 @@ def hand(tr):
     return merge_lp(shells)
 
 
-def upper_leg(tr):
-    pr = Prof([YK, 1.15, 1.40, 1.65, 1.82],
-              ax=([0.31, 0.34, 0.38, 0.41, 0.42], [0.02, 0.045, 0.05, 0.03, 0.01]),
-              af=([0.30, 0.33, 0.37, 0.40, 0.41], [0.02, 0.04, 0.06, 0.05, 0.02]),
-              ab=([0.30, 0.33, 0.37, 0.41, 0.44], [0.02, 0.03, 0.05, 0.05, 0.04]),
-              p=2.15, cx=([0.0, 0.0, 0.0, 0.0, 0.0], [0.0, 0.02, 0.025, 0.015, 0.0]))
+def upper_leg(tr, fr):
+    g = lambda *a, **k: A(tr, fr, *a, **k)  # noqa: E731
+    sec = thigh_section(fr)
     X = LEG_X
-    b = [
-        Bp((X + 0.02, 1.42, -0.33), (0.24, 0.24, 0.40, 0.35, 0.30, 0.30), amp(tr, 0.008, 0.06, 0.0)),  # quads
-        Bp((X - 0.15, 1.14, -0.24), (0.14, 0.15, 0.14, 0.22, 0.20, 0.20), amp(tr, 0.004, 0.05, 0.012)),  # teardrop
-        Bp((X + 0.26, 1.36, -0.05), (0.16, 0.16, 0.36, 0.30, 0.30, 0.30), amp(tr, 0.0, 0.03, 0.0)),  # outer sweep
-        Bp((X, 1.36, 0.32), (0.28, 0.28, 0.35, 0.30, 0.25, 0.25), amp(tr, 0.004, 0.04, 0.0)),  # hamstrings
-        Bp((X - 0.02, 1.72, 0.36), (0.32, 0.30, 0.18, 0.09, 0.25, 0.25), amp(tr, 0.012, 0.035, 0.0)),  # glute fold (stays under the hem)
-        # (v10 detail) the quads as three heads (rectus femoris down the front, vastus lateralis outside, the VMO's
-        # teardrop over the knee's inner side) with the lines between them, the sartorius' diagonal, the adductors, the
-        # hamstrings split (biceps femoris outside, semitendinosus inside) and the kneecap
-        Bp((X + 0.0, 1.40, -0.38), (0.11, 0.11, 0.32, 0.20, 0.12, 0.14), amp(tr, 0.003, 0.03, 0.01)),  # rectus femoris
-        Bp((X + 0.22, 1.30, -0.24), (0.12, 0.12, 0.32, 0.22, 0.16, 0.16), amp(tr, 0.003, 0.03, 0.008)),  # vastus lateralis
-        Bp((X + 0.13, 1.36, -0.36), (0.05, 0.05, 0.3, 0.26, 0.1, 0.1), amp(tr, 0, -0.0021, -0.007), rotz(-6)),  # RF / VL line
-        Bp((X - 0.11, 1.38, -0.33), (0.05, 0.05, 0.3, 0.26, 0.1, 0.1), amp(tr, 0, -0.0021, -0.0056), rotz(18)),  # RF / VM line
-        Bp((X - 0.15, 1.12, -0.27), (0.10, 0.10, 0.10, 0.14, 0.12, 0.12), amp(tr, 0.003, 0.03, 0.012)),  # the VMO teardrop
-        Bp((X - 0.12, 1.50, -0.22), (0.05, 0.05, 0.3, 0.26, 0.12, 0.12), amp(tr, 0, -0.0014, -0.0049), rotx(-25) @ rotz(28)),  # sartorius
-        Bp((X - 0.30, 1.50, -0.05), (0.12, 0.12, 0.24, 0.12, 0.16, 0.16), amp(tr, 0.003, 0.025, 0.0)),  # adductors
-        Bp((X + 0.14, 1.32, 0.33), (0.12, 0.12, 0.30, 0.20, 0.12, 0.14), amp(tr, 0.002, 0.025, 0.006)),  # biceps femoris
-        Bp((X - 0.12, 1.30, 0.32), (0.12, 0.12, 0.30, 0.20, 0.12, 0.14), amp(tr, 0.002, 0.025, 0.006)),  # semitendinosus
-        Bp((X + 0.01, 1.30, 0.38), (0.05, 0.05, 0.3, 0.22, 0.1, 0.1), amp(tr, 0, -0.0014, -0.0056)),  # their line
-        Bp((X - 0.02, 1.00, -0.30), (0.09, 0.09, 0.08, 0.08, 0.08, 0.08), amp(tr, 0.012, 0.0, 0.0)),  # kneecap
+    # (right leg: 0 front, +90 outer, -90 inner, 180 back). Under the trunks the section is the legacy one; the forms
+    # that show under the hem are the teardrop, the kneecap and the hamstrings' lower bellies
+    L = [
+        Lb(-4, 30, 1.14, 1.42, 1.72, g("leg", 0.008, 0.045, 0.006), sym=False),       # rectus femoris
+        Lb(58, 32, 1.10, 1.32, 1.64, g("leg", 0.006, 0.040, 0.004), sym=False),       # vastus lateralis (the sweep)
+        Lb(-44, 28, 1.02, 1.12, 1.24, g("leg", 0.005, 0.03, 0.012), sym=False),       # the VMO teardrop
+        Lb(22, 5, 1.10, 1.36, 1.62, g("leg", 0, -0.002, -0.006), sym=False),          # RF / VL line
+        Lb(-26, 5, 1.12, 1.38, 1.60, g("leg", 0, -0.002, -0.005), sym=False),         # RF / VM line
+        Lb(-60, 5, 1.20, 1.45, 1.70, g("leg", 0, -0.001, -0.004), sym=False, drift=40),  # sartorius
+        Lb(-100, 28, 1.26, 1.50, 1.72, g("leg", 0.003, 0.02, 0.0), sym=False),        # adductors
+        Lb(160, 30, 1.10, 1.34, 1.62, g("leg", 0.006, 0.03, 0.004), sym=False),       # biceps femoris
+        Lb(-156, 30, 1.08, 1.32, 1.60, g("leg", 0.006, 0.03, 0.004), sym=False),      # semitendinosus
+        Lb(180, 5, 1.08, 1.30, 1.56, g("leg", 0, -0.001, -0.005), sym=False),         # their line
+        Lb(176, 34, 1.60, 1.72, 1.80, g("leg", 0.010, 0.03, 0.0), sym=False),         # the glute fold (under the hem)
     ]
-    # (the top is a ball joint centred on the hip pivot - JOINT_DOME: the thigh turns inside the pelvis without its
-    # top swinging out through the seat; the knee end the same)
-    return loft(Slim(pr, "UpperLeg"), tr["m"], YK, YH, (dome("knee", "UpperLeg", YK, tr), 1.0, 2, 0.88),
-                (dome("hip", "UpperLeg", YH, tr), 1.0, 3), nb=14, nseg=20,
-                frame=VERT(X), shrink=[(YH, 0.16, 0.06)], bumps=b)
+    b = [Bp((X - 0.02, 1.00, -0.30), (0.09, 0.09, 0.08, 0.08, 0.08, 0.08), 0.012 * tr["f"])]  # kneecap
+    m = tr["m"]
+    return loft(sec, m, YK, YH, (dome_r("UpperLeg", sec, YK, m), 1.0, 2, 0.88),
+                (dome_r("UpperLeg", sec, YH, m), 1.0, 3), nb=14, nseg=20, frame=VERT(X), shrink=[(YH, 0.16, 0.06)],
+                bumps=b, lobes=L)
 
 
-def lower_leg(tr):
-    pr = Prof([YA, 0.35, 0.55, 0.75, 0.90, YK],
-              ax=([0.17, 0.185, 0.225, 0.27, 0.295, 0.31], [0.01, 0.02, 0.03, 0.04, 0.03, 0.02]),
-              af=([0.18, 0.19, 0.22, 0.25, 0.28, 0.30], [0.01, 0.01, 0.02, 0.03, 0.02, 0.02]),
-              ab=([0.18, 0.20, 0.25, 0.29, 0.30, 0.30], [0.01, 0.02, 0.04, 0.05, 0.04, 0.02]),
-              p=2.1)
+def lower_leg(tr, fr):
+    g = lambda *a, **k: A(tr, fr, *a, **k)  # noqa: E731
+    sec = calf_section(fr)
     X = LEG_X
-    b = [
-        Bp((X - 0.09, 0.70, 0.22), (0.17, 0.15, 0.24, 0.20, 0.20, 0.20), amp(tr, 0.008, 0.06, 0.0)),  # medial calf
-        Bp((X + 0.09, 0.75, 0.22), (0.15, 0.17, 0.22, 0.20, 0.20, 0.20), amp(tr, 0.005, 0.045, 0.0)),  # lateral calf
-        Bp((X + 0.06, 0.70, -0.20), (0.12, 0.14, 0.30, 0.20, 0.20, 0.20), amp(tr, 0.0, 0.02, 0.0)),  # tibialis
-        # (v10 detail) the calf's two heads parted, the soleus under them, the shin's edge, the Achilles' tendon and
-        # the ankle bones (the inner one higher, the outer lower and further back)
-        Bp((X, 0.74, 0.29), (0.05, 0.05, 0.16, 0.12, 0.1, 0.1), amp(tr, 0, -0.0021, -0.0056)),  # calf heads' line
-        Bp((X + 0.0, 0.52, 0.20), (0.18, 0.18, 0.12, 0.14, 0.12, 0.14), amp(tr, 0.003, 0.025, 0.004)),  # soleus
-        Bp((X - 0.02, 0.62, -0.25), (0.03, 0.03, 0.30, 0.26, 0.08, 0.08), amp(tr, 0.004, 0.0, 0.004)),  # shin's edge
-        Bp((X, 0.36, 0.19), (0.05, 0.05, 0.14, 0.10, 0.06, 0.06), amp(tr, 0.006, 0.0, 0.002)),  # Achilles
-        Bp((X - 0.17, 0.385, -0.01), (0.05, 0.05, 0.05, 0.045, 0.06, 0.06), 0.022 * tr["f"]),  # inner ankle bone
-        Bp((X + 0.175, 0.36, 0.03), (0.05, 0.05, 0.045, 0.045, 0.06, 0.06), 0.02 * tr["f"]),  # outer ankle bone
+    pk = fr["calf_pk"]  # where the calf's belly sits (high and small on the lean frame, low and full on the heavy)
+    L = [
+        Lb(-148, 44, 0.52, pk, 0.93, g("calf", 0.010, 0.065, 0.0), sym=False, k=1.1),  # gastrocnemius, medial head
+        Lb(148, 40, 0.54, pk + 0.02, 0.93, g("calf", 0.007, 0.052, 0.0), sym=False),   # lateral head
+        Lb(180, 6, 0.60, pk + 0.02, 0.90, g("calf", 0, -0.003, -0.007), sym=False),    # between the heads
+        Lb(170, 64, 0.40, 0.52, 0.66, g("calf", 0.004, 0.028, 0.004), sym=False),      # soleus
+        Lb(38, 30, 0.48, 0.68, 0.88, g("calf", 0.003, 0.024, 0.0), sym=False),         # tibialis anterior
+        Lb(-6, 8, 0.44, 0.66, 0.92, g("calf", 0.004, 0.0, 0.004), sym=False),          # the shin's edge
+        Lb(180, 14, 0.29, 0.37, 0.46, g("calf", 0.006, 0.0, 0.002), sym=False),        # Achilles
     ]
-    return loft(Slim(pr, "LowerLeg"), tr["m"], YA, YK, (0.18, 1.0, 3), (dome("knee", "LowerLeg", YK, tr), 1.0, 2), nb=11,
-                nseg=18, frame=VERT(X),
-                shrink=[(YK, 0.10, 0.06)], bumps=b)
+    b = [Bp((X - 0.17, 0.385, -0.01), (0.05, 0.05, 0.05, 0.045, 0.06, 0.06), 0.022 * tr["f"]),  # inner ankle bone
+         Bp((X + 0.175, 0.36, 0.03), (0.05, 0.05, 0.045, 0.045, 0.06, 0.06), 0.02 * tr["f"])]   # outer ankle bone
+    m = tr["m"]
+    return loft(sec, m, YA, YK, (0.18, 1.0, 3), (dome_r("LowerLeg", sec, YK, m), 1.0, 2), nb=11, nseg=18,
+                frame=VERT(X), shrink=[(YK, 0.10, 0.06)], bumps=b, lobes=L)
 
 
-def foot(tr):
+def foot(tr, fr=None):
     s = [-0.25, -0.12, 0.05, 0.25, 0.40]  # local s = -Z (forward) from the ankle
     pr = Prof(s, ax=[0.185, 0.205, 0.215, 0.235, 0.225],
               af=[0.20, 0.22, 0.17, 0.085, 0.055],  # "front" = up from yc
               ab=[0.15, 0.15, 0.15, 0.15, 0.15], p=[2.6, 2.6, 2.6, 2.8, 2.8])
-    # (v10 detail) the heel's round, the arch's rise on the inner side, the toes' knuckle line over the front
     X = LEG_X
     b = [Bp((X, 0.11, 0.22), (0.12, 0.12, 0.09, 0.09, 0.08, 0.10), 0.012 * tr["f"]),  # heel
          Bp((X - 0.17, 0.05, -0.05), (0.06, 0.06, 0.05, 0.05, 0.14, 0.14), -0.012 * tr["f"]),  # arch
@@ -1022,16 +1270,17 @@ def side_joint(part, side):
             for j in PART_JOINTS[part]]
 
 
-def build_tier(bpy, n, proto=False):
-    """the tier's 14 parts in game rest space (feet on Y = 0) + "_J" (game joints) / "_J0" (prototype joints).
-    proto=True keeps the prototype's Classic block proportions (comparison renders only)"""
+def build_tier(bpy, n, proto=False, frame=DEFAULT_FRAME):
+    """the (frame, tier)'s 14 parts in game rest space (feet on Y = 0) + "_J" (game joints) / "_J0" (prototype
+    joints) / "_frame". proto=True keeps the prototype's Classic block proportions (comparison renders only)"""
     tr = TIERS[n]
-    G, Jo = game_joints(tr, n)
+    fr = frame_of(frame)
+    G, Jo = game_joints(tr, n, fr)
     if proto:
         G = Jo
     parts = {}
     for base, fn in BUILDERS.items():
-        lp = fn(tr)
+        lp = fn(tr, fr)
         if base in ("UpperTorso", "LowerTorso"):
             parts[base] = lp if proto else to_game(lp, base, ANCHOR[base], Jo, G)
         else:
@@ -1040,6 +1289,7 @@ def build_tier(bpy, n, proto=False):
             parts["Left" + base] = mirror_lp(lp)
     parts["_J"] = {k: tuple(float(x) for x in v) for k, v in G.items()}
     parts["_J0"] = {k: tuple(float(x) for x in v) for k, v in Jo.items()}
+    parts["_frame"] = fr["id"]
     return parts
 
 
@@ -1077,7 +1327,6 @@ def surface(lp, x, y, z, d):
 # accessory attachments (rest space) per part: the body accessory points Roblox's R15 rig carries
 def accessory_points(name, lp, Jt):
     side = "Right" if name.startswith("Right") else ("Left" if name.startswith("Left") else "")
-    sg = -1 if side == "Left" else 1
     out = {}
     if name == "UpperTorso":
         yc = (Jt["Waist"][1] + Jt["Neck"][1]) / 2  # the UpperTorso box centre (the default's BodyFront height)
@@ -1141,6 +1390,7 @@ FIT_AT = {
     "chest": ("UpperTorso", 3.23), "waist": ("UpperTorso", 2.42), "hips": ("LowerTorso", 1.99),
     "upperArm": ("UpperArm", 3.10), "forearm": ("LowerArm", 2.62), "wrist": ("LowerArm", 2.22),
     "thigh": ("UpperLeg", 1.45), "knee": ("UpperLeg", 1.05), "calf": ("LowerLeg", 0.72), "ankle": ("LowerLeg", 0.40),
+    "neck": ("UpperTorso", 3.78),
 }
 
 
@@ -1158,8 +1408,16 @@ def fit_sizes(parts):
     return out
 
 
-def export_tier(n, parts):
-    outdir = os.path.join(OUT, "tier%d" % n)
+def out_dir(n, frame=DEFAULT_FRAME):
+    fr = frame_of(frame)
+    if fr["id"] == DEFAULT_FRAME:
+        return os.path.join(OUT, "tier%d" % n)
+    return os.path.join(OUT, "frames", fr["key"], "tier%d" % n)
+
+
+def export_tier(n, parts, frame=DEFAULT_FRAME):
+    fr = frame_of(frame)
+    outdir = out_dir(n, fr)
     os.makedirs(outdir, exist_ok=True)
     rec = {}
     total = 0
@@ -1188,8 +1446,8 @@ def export_tier(n, parts):
                      "rest_center": [round(float(x), 4) for x in cen],
                      "attachments": atts, "nv": pc.nv, "nt": pc.nt}
         total += pc.nt
-    data = {"tier": n, "name": TIERS[n]["name"], "params": TIERS[n], "tris": total, "fit": fit_sizes(parts),
-            "parts": rec}
+    data = {"tier": n, "name": TIERS[n]["name"], "frame": fr["id"], "frameKey": fr["key"], "params": TIERS[n],
+            "tris": total, "fit": fit_sizes(parts), "armAxisX": round(float(Jt["RightElbow"][0]), 4), "parts": rec}
     with open(os.path.join(outdir, "parts.json"), "w") as f:
         json.dump(data, f, indent=1)
     return data
@@ -1417,9 +1675,30 @@ def label(path, labels, title=None, strip=44):
     return path
 
 
+CY = 3.25  # frame centre height (a 70-inch boxer stands ~6.2 studs)
+
+
+def render_frame_sheets(bpy, built, tiers, samples, views=("front", "back", "side", "34")):
+    """the five frames side by side at each of `tiers`, one image per view: <scratch>/frames_t<N>_<view>.png"""
+    paths = []
+    frames = [f for f in FRAME_ORDER if any((f, n) in built for n in tiers)]
+    yaws = {"front": 0, "back": 180, "side": 90, "34": -38}
+    sp = 3.6
+    for n in tiers:
+        for view in views:
+            st = Stage(bpy, (1800, 760), samples)
+            st.floor()
+            fs = [f for f in frames if (f, n) in built]
+            for i, f in enumerate(fs):
+                st.figure("F%d" % i, built[(f, n)], -(i - (len(fs) - 1) / 2) * sp, yaw=yaws[view], face="determined")
+            p = st.shoot(os.path.join(SCRATCH, "frames_t%d_%s.png" % (n, view)), 0, CY, len(fs) * sp + 0.4, elev=3)
+            label(p, ["%s (T%d)" % (f, n) for f in fs], "Body frames, tier %d (%s): %s" % (n, TIERS[n]["name"], view))
+            paths.append(p)
+    return paths
+
+
 def render_sheets(bpy, tiers, which, samples):
     paths = []
-    CY = 3.25  # frame centre height (a 70-inch boxer stands ~6.2 studs)
     if 1 in which:
         st = Stage(bpy, (1600, 800), samples)
         st.floor()
@@ -1442,18 +1721,6 @@ def render_sheets(bpy, tiers, which, samples):
         p = st.shoot(os.path.join(SCRATCH, "views_34_back.png"), 0, CY, 6 * sp2 + 0.3, elev=6)
         label(p, ["1 lean 3/4", "3 athletic 3/4", "5 elite 3/4", "1 lean back", "3 athletic back", "5 elite back"],
               "Tiers 1 / 3 / 5: three-quarter and back views")
-        paths.append(p)
-    if 3 in which:
-        st = Stage(bpy, (1600, 800), samples)
-        st.floor()
-        old = build_tier(bpy, 3, proto=True)
-        order = [(old, 0), (tiers[3], 0), (old, -38), (tiers[3], -38), (old, 90), (tiers[3], 90)]
-        sp2 = 3.1
-        for i, (pt, yaw) in enumerate(order):
-            st.figure("C%d" % i, pt, -(i - 2.5) * sp2, yaw=yaw)
-        p = st.shoot(os.path.join(SCRATCH, "compare_proportions_t3.png"), 0, CY, 6 * sp2 + 0.3, elev=5)
-        label(p, ["prototype (Classic)", "game proportions", "prototype 3/4", "game 3/4", "prototype side",
-                  "game side"], "Tier 3: the prototype's Classic block proportions vs the game's athletic rig")
         paths.append(p)
     if 4 in which:
         st = Stage(bpy, (1600, 800), samples)
@@ -1506,33 +1773,72 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-render", action="store_true")
     ap.add_argument("--samples", type=int, default=40)
-    ap.add_argument("--sheets", default="1,2,3,4,5")
-    ap.add_argument("--tiers", default="0,1,2,3,4,5")
+    ap.add_argument("--sheets", default="frames,1,2,4,5", help="frames = the frame lineups; 1,2,4,5 = the Athletic tier sheets")
+    ap.add_argument("--tiers", default="1,2,3,4,5")
+    ap.add_argument("--frames", default=",".join(FRAMES[f]["key"] for f in FRAME_ORDER), help="frame keys (lean,athletic,...)")
+    ap.add_argument("--frame-sheet-tiers", default="1,5")
+    ap.add_argument("--no-blend", action="store_true")
     a = ap.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:])
     import bpy
     os.makedirs(SCRATCH, exist_ok=True)
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    tiers, summary = {}, {}
-    for n in (int(x) for x in a.tiers.split(",")):
-        tiers[n] = build_tier(bpy, n)
-        if n >= 1:
-            d = export_tier(n, tiers[n])
-            summary[n] = d
-            print("tier %d %-9s %5d tris" % (n, d["name"], d["tris"]), {k: v["nt"] for k, v in d["parts"].items()
-                                                                      if not k.startswith("Left")})
-    if summary:
-        unit = unit_rig(tiers)
-        with open(os.path.join(OUT, "body_tiers.json"), "w") as f:
+    want_tiers = [int(x) for x in a.tiers.split(",")]
+    want_frames = [frame_of(k)["id"] for k in a.frames.split(",")]
+    built, summary = {}, {}
+    for fid in want_frames:
+        for n in want_tiers:
+            parts = build_tier(bpy, n, frame=fid)
+            built[(fid, n)] = parts
+            if n >= 1:
+                d = export_tier(n, parts, fid)
+                summary.setdefault(fid, {})[n] = d
+                print("%-17s tier %d %-9s %5d tris  armX %.3f  span %.2f  chest %.2f  neck %.2f" % (
+                    fid, n, d["name"], d["tris"], d["armAxisX"], d["fit"]["shoulderSpan"], d["fit"]["chest"]["width"],
+                    d["fit"]["neck"]["width"]), flush=True)
+    # body_tiers.json: unit from the Athletic frame (built here or read back from its parts.json)
+    bt_path = os.path.join(OUT, "body_tiers.json")
+    old = json.load(open(bt_path)) if os.path.exists(bt_path) else {}
+    ath = summary.get(DEFAULT_FRAME) or {}
+    if all(n in built.get and False for n in ()):  # (placeholder, never true)
+        pass
+    if DEFAULT_FRAME in want_frames and all(n in ath for n in (1, 2, 3, 4, 5)):
+        unit = unit_rig({n: built[(DEFAULT_FRAME, n)] for n in (1, 2, 3, 4, 5)})
+    else:
+        unit = old.get("unit")
+    frames_rec = dict(old.get("frames") or {})
+    for fid, tiers_d in summary.items():
+        if fid == DEFAULT_FRAME:
+            continue
+        rec = frames_rec.get(FRAMES[fid]["key"]) or {"id": fid, "tiers": {}}
+        rec["id"] = fid
+        rec["tiers"] = dict(rec.get("tiers") or {})
+        for n, d in tiers_d.items():
+            rec["tiers"][str(n)] = d
+        rec["armAxisX"] = {str(n): d["armAxisX"] for n, d in sorted(rec["tiers"].items(), key=lambda kv: int(kv[0]))}
+        frames_rec[FRAMES[fid]["key"]] = rec
+    tiers_rec = dict(old.get("tiers") or {})
+    for n, d in ath.items():
+        tiers_rec[str(n)] = d
+    if unit is not None:
+        with open(bt_path, "w") as f:
             json.dump({"unit": unit, "prototype_skeleton": {k: list(v) for k, v in J.items()},
-                       "r15_block_reference": R15_BLOCK,
-                       "tiers": {str(k): v for k, v in summary.items()}}, f, indent=1)
+                       "r15_block_reference": R15_BLOCK, "tiers": tiers_rec, "frames": frames_rec,
+                       "frameOrder": FRAME_ORDER, "defaultFrame": DEFAULT_FRAME}, f, indent=1)
         print("unit", json.dumps({k: unit[k] for k in ("rootHeight", "hipHeight", "shoulderHeight", "neckHeight",
                                                        "standingHeight", "armAxisX")}))
     if not a.no_render:
-        for p in render_sheets(bpy, tiers, [int(x) for x in a.sheets.split(",")], a.samples):
-            print("sheet", p)
-    if all(n in tiers for n in (1, 2, 3, 4, 5)):
-        save_blend(bpy, tiers)
+        sheets = a.sheets.split(",")
+        if "frames" in sheets:
+            fst = [int(x) for x in a.frame_sheet_tiers.split(",") if int(x) in want_tiers]
+            for p in render_frame_sheets(bpy, built, fst, a.samples):
+                print("sheet", p)
+        num = [int(x) for x in sheets if x.isdigit()]
+        ath_tiers = {n: built[(DEFAULT_FRAME, n)] for n in want_tiers if (DEFAULT_FRAME, n) in built}
+        if num and all(n in ath_tiers for n in (1, 2, 3, 4, 5)):
+            for p in render_sheets(bpy, ath_tiers, num, a.samples):
+                print("sheet", p)
+    if not a.no_blend and all((DEFAULT_FRAME, n) in built for n in (1, 2, 3, 4, 5)):
+        save_blend(bpy, {n: built[(DEFAULT_FRAME, n)] for n in (1, 2, 3, 4, 5)})
         print("blend", BLEND)
 
 

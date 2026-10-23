@@ -754,7 +754,8 @@ do
 	function KM.rangeTest(p, body)
 		local HG = KM.hitGeo()
 		local geo = F.geo
-		local me, opp = getRoot(player.Character), getRoot(F.opp)
+		local char = player.Character
+		local me, opp = char and char:FindFirstChild("HumanoidRootPart"), F.opp and F.opp:FindFirstChild("HumanoidRootPart")
 		if not (HG and type(geo) == "table" and geo.you and geo.opp and me and opp) then
 			return nil
 		end
@@ -762,7 +763,7 @@ do
 		local ok, r = pcall(HG.Test, geo.you, geo.opp, p, body == true, d.Magnitude, { floor = geo.floor, bend = KM.oppBend(), noRedirect = p == "overhand" })
 		return ok and r or nil
 	end
-	KM.rangeTag = UI.Chip(hud, "RANGE", T.sub, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 214), h = 22, TextSize = 12 })
+	KM.rangeTag, KM.rangeLabel = UI.Chip(hud, "RANGE", T.sub, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 214), h = 22, TextSize = 12 })
 	KM.rangeTag.Visible = false
 	KM.rangeAt, KM.rangeText = 0, ""
 	-- the read-out, 8 times a second during a live round: the longest punch that lands from here (jab, then the
@@ -793,7 +794,9 @@ do
 		end
 		if text ~= KM.rangeText then
 			KM.rangeText = text
-			UI.ChipSet(tag, text, color)
+			KM.rangeLabel.Text = text
+			KM.rangeLabel.TextColor3 = color
+			tag.BackgroundColor3 = T.bg:Lerp(color, 0.12)
 		end
 		if not tag.Visible then
 			tag.Visible = true
@@ -3615,6 +3618,18 @@ function KM.predictPunch(p, body, counter, buffered)
 	pred.chainUntil = pred.busyUntil + Combos.Window(windup)
 	pred.id += 1
 	char:SetAttribute("PredChain", pred.chainN)
+	-- the reach (Shared.HitGeometry, the server's own test on the same frames): a head shot that will fall to a
+	-- much taller man's body is predicted there (the server throws it there: Fight:Punch); one that cannot land
+	-- from here says so now rather than when the server's miss comes back
+	local verdict = KM.rangeTest and KM.rangeTest(p, body)
+	if verdict then
+		if verdict.redirected and not body then
+			body = true
+		end
+		if not verdict.ok and showFlash and flash then
+			showFlash(flash, verdict.why == "high" and "TOO HIGH  ·  GO TO THE BODY" or (verdict.why == "low" and "TOO LOW" or "OUT OF RANGE"), T.sub, 0.4)
+		end
+	end
 	char:SetAttribute("PredAct", string.format("%s|%s|%s|%.2f", p, hand, body and "body" or "head", windup) .. (pred.chainN >= 2 and ("||" .. pred.chainN) or ""))
 	char:SetAttribute("PredActId", pred.id)
 end

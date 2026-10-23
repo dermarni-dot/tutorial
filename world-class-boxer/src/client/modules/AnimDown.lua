@@ -682,16 +682,19 @@ local FALLS = {
 	-- the server walks his root into the ropes over the first 0.45 s: the planted feet take the steps
 	ropes = { { 0.45, "stagger", SMOOTH }, { 0.6, "ropeArch", OUT, 0.7 }, { 0.92, "ropeArch2", SMOOTH }, { 1.5, "ropeSit", GRAV, 0.8 } },
 	corner = { { 0.45, "stagger", SMOOTH }, { 0.6, "cornerHit", OUT, 0.7 }, { 1.05, "cornerSlide", SMOOTH }, { 1.55, "cornerSit", GRAV, 0.8 } },
-	-- knockouts: the backward collapse (crumple + back) goes at the knees first, then folds back
-	koBack = { { 0.2, "kneesGo", GRAV }, { 0.46, "sitSlump", GRAV, 0.8 }, { 0.8, "onBackLimp", GRAV, 1.3 } },
+	-- knockouts: the backward collapse (crumple + back): stiff back on the heels first, then the knees go and he
+	-- folds onto his backside and back
+	koBack = { { 0.18, "stiffBack", OUT }, { 0.38, "kneesGo", GRAV }, { 0.62, "sitSlump", GRAV, 0.8 }, { 0.95, "onBackLimp", GRAV, 1.3 } },
 	-- a body shot that ends it (crumple + knee): he folds onto his knees over the punch, a beat there, then tips
 	-- over onto his side
 	koKnee = { { 0.22, "buckleF", SMOOTH }, { 0.52, "kneel", GRAV, 0.7 }, { 0.84, "kneelFold", SMOOTH }, { 1.16, "onSide", GRAV, 1.1 } },
 }
 FALLS.standing = FALLS.knee -- unknown use of "standing" without a KO: treat as a sagging knee
 -- until when (same units) the feet stay planted: the knees give on planted feet, then the fall leaves them
-local PLANT = { flash = 0.14, sit = 0.16, knee = 0.25, forward = 0.15, face = 0.15, back = 0.16, side = 0.18, ropes = 0.92, corner = 0.6, koBack = 0.2,
+local PLANT = { flash = 0.14, sit = 0.16, knee = 0.25, forward = 0.15, face = 0.15, back = 0.16, side = 0.18, ropes = 0.92, corner = 0.6, koBack = 0.38,
 	koKnee = 0.22 }
+-- falls that end on a knee / the hands / held by the ropes never slide on landing
+local NO_SLIDE = { kneel = true, kneelFold = true, handsKnees = true, ropeSit = true, cornerSit = true }
 
 local GETUPS = {
 	back = { { 0.22, "backStir", SMOOTH }, { 0.42, "rollSide", SMOOTH }, { 0.6, "handsKnees", SMOOTH }, { 0.78, "kneelPush", SMOOTH } },
@@ -744,6 +747,8 @@ local function build(name, p, rig, d, t)
 		cornerSlide(p, rig)
 	elseif name == "cornerSit" then
 		cornerSit(p, rig)
+	elseif name == "stiffBack" then
+		stiffBack(p, rig)
 	elseif name == "kneesGo" then
 		kneesGo(p, rig)
 	elseif name == "sitSlump" then
@@ -828,13 +833,14 @@ function AnimDown.start(rig, t)
 	}
 	rig.model:SetAttribute("KOLanded", nil)
 	if ko == "oneshot" then
-		-- a stiff timber fall: backwards unless he was caught going forward
+		-- a stiff timber fall: backwards unless he was caught going forward (already past the balance point and
+		-- turning: the punch tipped him, the fall itself takes about half a second of real time)
 		d.timber = (pose == "face" or pose == "forward") and -1 or 1
-		d.theta = 0.08 * d.timber
-		d.omega = (0.9 + rig.rng:NextNumber() * 0.4) * d.timber
+		d.theta = 0.12 * d.timber
+		d.omega = (1.25 + rig.rng:NextNumber() * 0.35) * d.timber
 	elseif ko == "delayed" then
-		-- out on his feet for a beat (never longer than HOLD_MAX of wall time), then the legs go
-		d.delay = 0.5 + rig.rng:NextNumber() * (HOLD_MAX - 0.5)
+		-- out on his feet, wobbling, for a beat or two (HOLD_MIN..HOLD_MAX of wall time), then the legs go
+		d.delay = HOLD_MIN + rig.rng:NextNumber() * (HOLD_MAX - HOLD_MIN)
 		d.stepAt = d.delay * (0.3 + rig.rng:NextNumber() * 0.2)
 	elseif ko == "crumple" and pose == "back" then
 		d.keys, d.plantT = FALLS.koBack, PLANT.koBack
@@ -1356,19 +1362,29 @@ local function clearCorner(rig, p, d)
 	end
 end
 
--- rest the pose on the canvas (unless the feet are planted: the leg IK does that)
-local function onCanvas(rig, p)
+-- rest the pose on the canvas (unless the feet are planted: the leg IK does that); clear = how far above it
+local function onCanvas(rig, p, clear)
 	if rig.plant then
 		return
 	end
+	clear = clear or CLEAR
 	local out = rig.fkOut or {}
 	rig.fkOut = out
-	R.groundSolve(rig, p, out, 0.03)
+	R.groundSolve(rig, p, out, clear)
 	-- (an arm laid on the canvas no longer props the body: rest it again)
-	R.liftArms(rig, p, out, 0.04)
-	R.groundSolve(rig, p, out, 0.03)
-	R.liftArms(rig, p, out, 0.04)
-	headDown(rig, p, out, 0.03)
+	R.liftArms(rig, p, out, clear + 0.01)
+	R.groundSolve(rig, p, out, clear)
+	R.liftArms(rig, p, out, clear + 0.01)
+	headDown(rig, p, out, clear)
+end
+
+-- the clearance above the canvas for this frame: CLEAR through the fall, settling onto it after the landing
+local function clearance(d, t)
+	local at = d and (d.landT or d.settleT)
+	if not at then
+		return CLEAR
+	end
+	return lerp(CLEAR, CLEAR_REST, smooth((t - at) / SETTLE))
 end
 
 ------------------------------------------------------------------------
@@ -1400,6 +1416,26 @@ function AnimDown.footLock(rig, out, dt)
 	end
 	local fk = R.fk(rig, out, rig.flFk or {})
 	rig.flFk = fk
+	-- nothing floats: the body's lowest point (trunk, head, legs, upper arms: what carries weight) rests on the
+	-- canvas on the final Transforms too. The output filter lags a fast drop by up to a quarter stud, and a blend
+	-- between two keys can lift the whole body off the canvas for a few frames: here it is pulled down onto it
+	-- (never lifted: floorClamp does that after). A falling man is never airborne - he is on his feet until he is
+	-- on his knees, his seat or his back.
+	if not rig.ragdoll then
+		local clear = rig.downClear or CLEAR
+		local low = R.lowest(rig, fk)
+		local gap = low - (g.groundY + clear)
+		if gap > 1e-3 and gap < 3 then
+			local sh = CF(0, -gap, 0)
+			out.Root = sh * out.Root
+			for _, k in ipairs(KEYS) do
+				local cf = fk[k]
+				if cf then
+					fk[k] = sh * cf
+				end
+			end
+		end
+	end
 	local rc = rig.root.CFrame
 	local locks = rig.footLocks
 	if not locks then
