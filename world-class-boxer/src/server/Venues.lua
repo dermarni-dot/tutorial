@@ -17,8 +17,8 @@
 --   Rope = 12 invisible proxies (Size.Z = length along LookVector, attrs RopeTier 1..3 bottom->top,
 --   RopeSide 1..4, Sag) each holding the visible Beams RopeBeam / RopeShine between Attachments
 --   RopeA (+Z end) and RopeB (-Z end). Post / Pad / TurnbucklePad stand upright (FightClient fades
---   them). Crowd/Fan (+Head), Spots/*, TallyLight, Pyro/PyroRed|PyroBlue, Jumbotron / BigScreen with
---   a label named ScreenText.
+--   them). Crowd/Fan (+Head, ArmL/R, Lap...: Crowd.lua), Stands/*, Bowl/RowPrint|BowlTier (CrowdFX draws
+--   their fans), Spots/*, TallyLight, Pyro/PyroRed|PyroBlue, Jumbotron / BigScreen with a label named ScreenText.
 local ServerStorage = game:GetService("ServerStorage")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
@@ -35,6 +35,8 @@ do
 	end)
 	Catalog = ok and mod or nil
 end
+-- the crowd and the stands (fans, seats, VIP boxes, media, camera platforms): built on the templates, applied per fight
+local Crowd = require(script.Parent:WaitForChild("Crowd"))
 
 local Venues = {}
 
@@ -417,147 +419,8 @@ local function ringTable(parent, name, cf, len, cloth, text)
 end
 
 ------------------------------------------------------------------------
--- Crowd
+-- Crowd: src/server/Crowd.lua (Crowd.Build on the template, Crowd.Apply per fight)
 ------------------------------------------------------------------------
--- rows with real fans (what the ringside / walkout cameras read: bodies, hair, arms VenueFX throws
--- up). Every row behind is a printed row: one slab per seating block whose ring-facing surface
--- gets RichText "heads" from VenueFX.setupBowl on the fighting client, like the upper bowl. A
--- Stadium clone carries ~550 crowd parts that way instead of ~3,200, an Arena ~400 instead of ~1,200
-local PHYSICAL_ROWS = 3
--- every seat the template's real rows and printed rows could hold: the template is built sold out and each fight
--- empties it down to its own house (Venues.CrowdFill). The real fans of a sold-out Stadium are ~270 (about 700
--- parts with heads, front-row arms and hair caps), close to the 0.92 house the old templates always carried; the
--- printed rows and the upper bowl are RichText on the fighting client (no parts), and Graphics Low prints the
--- real rows behind the front one too (VenueFX applyImpostors)
-local CAPACITY = 1
-
-local function buildCrowd(arena, spec, rng)
-	local crowd = Instance.new("Folder")
-	crowd.Name = "Crowd"
-	crowd.Parent = arena
-	local prints = arena:FindFirstChild("Bowl") or Instance.new("Folder")
-	prints.Name = "Bowl"
-	prints.Parent = arena
-	-- body sizes and hair come from their own stream so the seating draws stay as they were
-	local vary = Random.new(spec.half * 977 + spec.tier * 31 + spec.rows)
-	for side = 0, 3 do
-		local rot = CFrame.Angles(0, side * math.pi / 2, 0)
-		for row = 0, spec.rows - 1 do
-			local dist = spec.rowStart + row * spec.rowGap
-			local h = row * spec.rowRise
-			local stepColor = spec.chairs and rgb(60, 60, 70) or rgb(35, 35, 42)
-			-- seat rows behind every row of fans (empty seats show when the house is not full)
-			local blocks = {}
-			if side == 0 or side == 2 then
-				local w = dist - 5
-				for _, sx in ipairs({ -1, 1 }) do
-					table.insert(blocks, { w = w, x = sx * (5 + w / 2) })
-				end
-			else
-				table.insert(blocks, { w = dist * 2 + 10, x = 0 })
-			end
-			for _, b in ipairs(blocks) do
-				if h > 0 then
-					deco(arena, "Stand", V3(b.w, h + 0.5, spec.rowGap), rot * CF(b.x, (h + 0.5) / 2, dist + spec.rowGap / 2), stepColor, M.Concrete)
-				end
-				if spec.seats then
-					-- the seat-back strip stands on the stand (top h + 0.5); the ringside row on the floor
-					local seatY = h > 0 and (h + 0.5 + 0.6) or 0.6
-					prop(arena, "SeatRow", V3(b.w, 1.2, 0.35), rot * CF(b.x, seatY, dist + spec.rowGap / 2 + 0.8), spec.seats, M.Fabric, { CastShadow = false })
-				end
-				if row >= PHYSICAL_ROWS then
-					-- the printed row: the slab's Front face (towards the ring) gets the heads client-side
-					local seatCol = spec.seats or rgb(30, 30, 36)
-					local slab = prop(prints, "RowPrint", V3(b.w, 3.0, 0.8), rot * CF(b.x, h + 0.5 + 1.5, dist + spec.rowGap / 2), seatCol:Lerp(BLACK, 0.5), M.Fabric, { CastShadow = false })
-					local sg = gui(slab, FACE.Front, 4, 1, 1)
-					sg.Name = "CrowdPrint"
-					frame(sg, { Name = "Seats", Size = UDim2.fromScale(1, 1), BackgroundColor3 = seatCol:Lerp(Color3.new(), 0.35) })
-					slab:SetAttribute("CrowdRows", 1)
-					slab:SetAttribute("CrowdCols", math.max(4, math.floor(b.w / 2.4)))
-					slab:SetAttribute("Fill", CAPACITY)
-				end
-			end
-			local seats = row < PHYSICAL_ROWS and math.floor((dist * 2) / 3.2) or -1
-			for i = 0, seats do
-				local x = -dist + i * 3.2
-				local aisle = (side == 0 or side == 2) and math.abs(x) < 5
-				-- the template seats a full house (CAPACITY); each fight's applyCrowd keeps the share its importance draws
-				if not aisle and rng:NextNumber() < CAPACITY then
-					local base = rot * CF(x, h + 0.5, dist + spec.rowGap / 2)
-					if spec.chairs then
-						deco(arena, "Chair", V3(1.8, 1.6, 1.8), base * CF(0, 0.8, 0.3), rgb(70, 70, 80), M.Metal, { CanCollide = false })
-					end
-					local shirt = SHIRTS[rng:NextInteger(1, #SHIRTS)]
-					local y = spec.chairs and 2 or 1
-					-- no two fans the same build: broad / narrow shoulders, tall / short (seat stays put)
-					local sw, sh = 1.6 * (0.88 + vary:NextNumber() * 0.26), 2 * (0.9 + vary:NextNumber() * 0.2)
-					local cy = y - (2 - sh) / 2
-					local fan = deco(crowd, "Fan", V3(sw, sh, 1), base * CF(0, cy, 0), c3(shirt), M.Fabric, { CanCollide = false, CastShadow = false, CanQuery = false, CanTouch = false })
-					fan:SetAttribute("Row", row)
-					local headCF = base * CF(0, cy + sh / 2 + 0.6, 0)
-					local head = deco(fan, "Head", V3(1.2, 1.2, 1.2), headCF, skinColor(rng), nil, { CanCollide = false, CastShadow = false, CanQuery = false, CanTouch = false })
-					head.Shape = Enum.PartType.Ball
-					-- the camera-facing rows get hair caps; the rows behind stay one block + one ball (part budget)
-					if row <= 1 and vary:NextNumber() < 0.75 then
-						blob(fan, "Hair", V3(1.25, 0.6, 1.25), headCF * CF(0, 0.38, 0.05), hairColor(vary), M.Fabric, { CanCollide = false, CastShadow = false, CanQuery = false, CanTouch = false })
-					end
-					-- the front row is what the camera sees: they get arms VenueFX can throw in the air
-					if row == 0 then
-						for _, sx in ipairs({ -1, 1 }) do
-							local arm = prop(fan, sx < 0 and "ArmL" or "ArmR", V3(0.42, 1.6, 0.45), base * CF(sx * (sw / 2 + 0.22), y + 0.05, -0.05), fan.Color, M.Fabric, { CastShadow = false })
-							arm:SetAttribute("Side", sx)
-						end
-					end
-				end
-			end
-		end
-	end
-	return crowd
-end
-
--- the big upper bowl (Arena / Stadium): one slab per side whose ring-facing surface carries rows
--- of RichText "heads" - thousands of fans for ~40 GUI objects instead of thousands of parts
-local function buildBowl(arena, spec, rng)
-	local S = spec.size
-	local R0 = spec.rowStart + spec.rows * spec.rowGap + 1
-	local y0 = (spec.rows - 1) * spec.rowRise + 3.5
-	local R1 = S / 2 - 3
-	local y1 = math.min(spec.height - 10, y0 + (R1 - R0) * 0.72)
-	spec.bowlTop = y1
-	local dR, dy = R1 - R0, y1 - y0
-	local slopeLen = math.sqrt(dR * dR + dy * dy)
-	local width = R0 + R1
-	local nRows = math.clamp(math.floor(slopeLen / 2.6), 10, 26)
-	local bowl = arena:FindFirstChild("Bowl") or Instance.new("Folder") -- (buildCrowd's printed rows share it)
-	bowl.Name = "Bowl"
-	bowl.Parent = arena
-	for side = 0, 3 do
-		local a = side * math.pi / 2
-		local o = V3(math.sin(a), 0, math.cos(a))
-		local mid = o * ((R0 + R1) / 2) + V3(0, (y0 + y1) / 2, 0)
-		local s = (o * dR + V3(0, dy, 0)).Unit
-		local n = (-o * dy + V3(0, dR, 0)).Unit
-		local zAxis = -n
-		local xAxis = s:Cross(zAxis)
-		local slab = prop(bowl, "BowlTier", V3(width, slopeLen, 1.2), CFrame.fromMatrix(mid, xAxis, s, zAxis), spec.seats or rgb(30, 30, 36), M.Fabric, { CastShadow = false })
-		local sg = gui(slab, FACE.Front, 4, 1, 1)
-		sg.Name = "CrowdPrint"
-		frame(sg, { Name = "Seats", Size = UDim2.fromScale(1, 1), BackgroundColor3 = (spec.seats or rgb(30, 30, 36)):Lerp(Color3.new(), 0.35) })
-		-- the heads themselves are generated by VenueFX on the fighting client only (zero replication)
-		slab:SetAttribute("CrowdRows", nRows)
-		slab:SetAttribute("Fill", CAPACITY)
-		for i = 1, nRows - 1, 2 do
-			frame(sg, { Name = "SeatLine", Size = UDim2.fromScale(1, 0.18 / nRows), Position = UDim2.fromScale(0, i / nRows), BackgroundColor3 = rgb(10, 10, 12), BackgroundTransparency = 0.5 })
-		end
-		-- aisle stairs
-		for _, ax in ipairs({ 0.25, 0.5, 0.75 }) do
-			frame(sg, { Name = "Aisle", Size = UDim2.fromScale(0.012, 1), Position = UDim2.fromScale(ax, 0), BackgroundColor3 = rgb(70, 70, 76) })
-		end
-		-- the bowl's front fascia carries a ring of LED (VenueFX drives it)
-		local fascia = prop(bowl, "LEDRibbon", V3(width * (R0 / ((R0 + R1) / 2)) * 0.98, 1.6, 0.3), CFrame.lookAt(o * (R0 - 0.4) + V3(0, y0 - 0.3, 0), V3(0, y0 - 0.3, 0)), BLACK, M.SmoothPlastic, { CastShadow = false })
-		fascia:SetAttribute("Upper", true)
-	end
-end
 
 ------------------------------------------------------------------------
 -- Ring
@@ -890,33 +753,7 @@ local function buildRingside(arena, spec, rng)
 			frame(sg, { Size = UDim2.fromScale(0.94, 0.9), Position = UDim2.fromScale(0.03, 0.05), BackgroundColor3 = rgb(40, 90, 60) })
 		end
 	end
-	-- VIP rows on both walkway sides (their fans join the Crowd so they cheer with everyone)
-	if spec.vip then
-		local crowd = arena:FindFirstChild("Crowd")
-		local vary = Random.new(spec.half * 613 + spec.tier)
-		for _, z in ipairs({ -1, 1 }) do
-			for row = 0, 1 do
-				for i = 0, 4 do
-					local x = -(6.5 + i * 2.1)
-					local pos = V3(x, 0, z * (E + 4.6 + row * 2.6))
-					local cf = faceAxis(pos, V3(0, 0, z))
-					chair(side, cf, rgb(110, 20, 26), true)
-					if crowd and rng:NextNumber() < 0.9 then
-						local fan = deco(crowd, "Fan", V3(1.6, 1.9, 1), cf * CF(0, 2.75, 0.1), c3(SHIRTS[rng:NextInteger(1, #SHIRTS)]):Lerp(BLACK, 0.4), M.Fabric,
-							{ CanCollide = false, CastShadow = false, CanQuery = false, CanTouch = false })
-						fan:SetAttribute("Row", 0)
-						fan:SetAttribute("VIP", true)
-						local head = deco(fan, "Head", V3(1.15, 1.15, 1.15), cf * CF(0, 4.25, 0.1), skinColor(rng), nil, { CanCollide = false, CastShadow = false, CanQuery = false, CanTouch = false })
-						head.Shape = Enum.PartType.Ball
-						-- right behind the walkways and in every walkout shot: most VIPs get hair
-						if vary:NextNumber() < 0.8 then
-							blob(fan, "Hair", V3(1.2, 0.58, 1.2), head.CFrame * CF(0, 0.36, 0.05), hairColor(vary), M.Fabric, { CastShadow = false })
-						end
-					end
-				end
-			end
-		end
-	end
+	-- (the VIP boxes, the media box and the photographers' pit are Crowd.Build's)
 	-- cornermen (2 per fighter corner) wait on the floor by their corner during rounds
 	local CORNER = { Red = { -1, RED }, Blue = { 1, BLUE } }
 	for name, c in pairs(CORNER) do
@@ -1773,10 +1610,9 @@ local function buildTemplate(kind)
 	local rng = Random.new(#kind * 31)
 	buildRing(arena, spec)
 	if spec.rows > 0 then
-		buildCrowd(arena, spec, rng)
-	end
-	if spec.bowl then
-		buildBowl(arena, spec, Random.new(#kind * 53))
+		-- the stands, the fans (sold out; Venues.New empties it to the night's house), the VIP / media boxes, the
+		-- camera platforms, the photographers and (bowl venues) the upper bowl; sets spec.bowlTop
+		Crowd.Build(arena, spec, { tvCamera = tvCamera })
 	end
 	buildRingside(arena, spec, Random.new(#kind * 71))
 	if kind ~= "Gym" then
@@ -1995,60 +1831,9 @@ function Venues.CrowdFill(importance, popularity)
 end
 
 -- the crowd: the fight's share of the full house (Venues.CrowdFill); supporters wear the red corner and hold signs
+-- (Crowd.Apply: the front rows fill first, the standing room only when it is packed; CrowdShare on the arena)
 local function applyCrowd(arena, spec, share, supporters, nick, seed)
-	local crowd = arena:FindFirstChild("Crowd")
-	if not crowd then
-		return
-	end
-	local rng = Random.new(seed)
-	local keep = math.clamp(tonumber(share) or 1, 0, 1)
-	local fans = {}
-	for _, fan in ipairs(crowd:GetChildren()) do
-		if fan.Name == "Fan" and fan:IsA("BasePart") then
-			if keep < 1 and not fan:GetAttribute("VIP") and rng:NextNumber() > keep then
-				fan:Destroy()
-			else
-				table.insert(fans, fan)
-			end
-		end
-	end
-	-- the upper bowl reads the same share from the arena attribute (VenueFX)
-	arena:SetAttribute("CrowdShare", math.floor(keep * 100) / 100)
-	local share = math.clamp(tonumber(supporters) or 0, 0, 1)
-	if share <= 0 or #fans == 0 then
-		return
-	end
-	local reds = { rgb(200, 25, 30), rgb(170, 20, 26), rgb(230, 50, 50), rgb(240, 240, 240) }
-	local supporterList = {}
-	for _, fan in ipairs(fans) do
-		-- supporters bunch up on the red side of the house
-		local z = fan.Position.Z
-		local p = share * (z < 0 and 0.85 or 0.25)
-		if rng:NextNumber() < p then
-			fan.Color = reds[rng:NextInteger(1, #reds)]
-			for _, arm in ipairs(fan:GetChildren()) do
-				if arm.Name == "ArmL" or arm.Name == "ArmR" then
-					arm.Color = fan.Color
-				end
-			end
-			fan:SetAttribute("Supporter", true)
-			table.insert(supporterList, fan)
-		end
-	end
-	local signs = math.min(#supporterList, math.floor(2 + share * 14))
-	local texts = { "GO %s!", "%s #1", "%s TIME", "WE LOVE %s", "%s!!!" }
-	for i = 1, signs do
-		local fan = table.remove(supporterList, rng:NextInteger(1, #supporterList))
-		local who = (type(nick) == "string" and nick ~= "") and string.upper(nick) or "RED CORNER"
-		local s = prop(fan, "FanSign", V3(2.6, 1.5, 0.1), fan.CFrame * CF(0, 3.3, -0.3), rgb(250, 250, 245), M.SmoothPlastic, { CastShadow = false })
-		for _, face in ipairs({ FACE.Front, FACE.Back }) do
-			local sg = gui(s, face, 30, 1, 1)
-			label(sg, { Size = UDim2.fromScale(0.92, 0.8), Position = UDim2.fromScale(0.04, 0.1), Text = string.format(texts[(i - 1) % #texts + 1], who), TextColor3 = rgb(190, 20, 26), Face = "marker" })
-		end
-		if i % 2 == 0 then
-			s.Color = rgb(255, 220, 60)
-		end
-	end
+	Crowd.Apply(arena, spec, share, supporters, nick, seed)
 end
 
 -- the sparring room follows the gym facility tier (Config.GymTiers 1..4)

@@ -496,6 +496,7 @@ local NPC_FACES = {
 	{ "wcb_smirk", 0.07 }, { "wcb_confident", 0.07 }, { "wcb_grit", 0.05 }, { "wcb_cool", 0.04 },
 	{ "wcb_scarred", 0.03 }, { "wcb_grin", 0.02 }, { "wcb_toothy", 0.01 }, { "wcb_wink", 0.01 },
 }
+Looks.NPC_FACES = NPC_FACES -- (the crowd draws its spectators' faces from the same list: src/server/Crowd.lua)
 
 function Looks.Random(seed, gender, opts)
 	opts = opts or {}

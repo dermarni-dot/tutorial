@@ -47,10 +47,10 @@ HitGeometry.CLINCH = 4.8
 -- height at full reach (the angles it can be thrown at, up and down, degrees), how a target above / below the
 -- shoulder changes its reach (up / down: R x (1 - k x dy / R)), the dip a body shot takes (x arm)
 local KIND = {
-	straight = { o = 0, up = 50, down = 48, upCost = 0.3, downCost = 0.05, dip = 0.25 },
-	hook = { o = 0.02, up = 32, down = 40, upCost = 0.4, downCost = 0.05, dip = 0.3 },
-	uppercut = { o = -0.1, up = 85, down = 24, upCost = -0.15, downCost = 0.45, dip = 0 },
-	overhand = { o = 0.2, up = 20, down = 58, upCost = 0.6, downCost = -0.08, dip = 0 },
+	straight = { o = 0, up = 50, down = 48, upCost = 0.12, downCost = 0.03, dip = 0.25 },
+	hook = { o = 0.02, up = 34, down = 40, upCost = 0.25, downCost = 0.05, dip = 0.3 },
+	uppercut = { o = -0.1, up = 85, down = 24, upCost = -0.12, downCost = 0.45, dip = 0 },
+	overhand = { o = 0.2, up = 20, down = 58, upCost = 0.5, downCost = -0.08, dip = 0 },
 }
 HitGeometry.KIND = KIND
 local PUNCH_KIND = { jab = "straight", cross = "straight", leadhook = "hook", rearhook = "hook", uppercut = "uppercut", overhand = "overhand" }
@@ -200,7 +200,7 @@ end
 
 -- A's punch at B: the zones B offers, from A's shoulder (heights above B's soles are A's: both stand on the
 -- same canvas). bendB 0..1 lowers B's head and chest; dipA (a body shot) lowers A's origin.
--- opts: { mul (a special's range multiplier), bend (B's), range (ptype -> range table, else RANGE) }
+-- opts: { mul (a special's range multiplier), bend (B's 0..1), noRedirect (a head shot never falls to the body) }
 -- Returns { ok, zone ("head" | "body"), why ("short" | "high" | "low"), need (the distance the glove had to
 -- cover), reach (R + tol), margin = reach - need, dy }
 local function zoneBand(B, zone, bend)
@@ -244,7 +244,7 @@ function HitGeometry.Test(A, B, ptype, body, dist, opts)
 	local o = { mul = opts.mul, bend = opts.bend, body = body == true }
 	local want = body and "body" or "head"
 	local r = tryZone(A, B, kind, K, ptype, want, dist, o)
-	if r.ok or body then
+	if r.ok or body or opts.noRedirect then
 		return r
 	end
 	-- a head shot that cannot get up there (a much taller man, out at range) lands on the body when the
@@ -259,15 +259,33 @@ function HitGeometry.Test(A, B, ptype, body, dist, opts)
 	return r
 end
 
--- the root-to-root distance out to which A's punch lands on B's zone (level stances): bisection on Test
+-- the root-to-root distance out to which A's punch lands on B's zone itself (level stances, no falling to the
+-- body): the far edge of where Test says yes (a sweep out, then a bisection: up close a tall man's straight can
+-- be "low" on a short head before it is in range further out)
 function HitGeometry.Range(A, B, ptype, body, opts)
-	local lo, hi = 0.5, 12
-	if not HitGeometry.Test(A, B, ptype, body, lo, opts).ok then
-		return lo
+	local o = table.clone(opts or {})
+	o.noRedirect = true
+	local lastOk, firstBad = nil, nil
+	local d = 0.5
+	while d <= 12 do
+		if HitGeometry.Test(A, B, ptype, body, d, o).ok then
+			lastOk = d
+		elseif lastOk then
+			firstBad = d
+			break
+		end
+		d += 0.25
 	end
-	for _ = 1, 26 do
+	if not lastOk then
+		return 0
+	end
+	if not firstBad then
+		return lastOk
+	end
+	local lo, hi = lastOk, firstBad
+	for _ = 1, 22 do
 		local mid = (lo + hi) / 2
-		if HitGeometry.Test(A, B, ptype, body, mid, opts).ok then
+		if HitGeometry.Test(A, B, ptype, body, mid, o).ok then
 			lo = mid
 		else
 			hi = mid
@@ -282,14 +300,14 @@ end
 -- centre-to-centre spacing two bodies need so chests and the gloves held up in front of them never sink into each
 -- other: both torsos' half depths, both pairs of gloves, and a little air that grows with the pair (the unit pair
 -- gives FightMotion.Spacing.minSep)
-local SEP_GLOVE, SEP_AIR = 1.6, 1.32
+local SEP_GLOVE, SEP_AIR = 1.6, 1.256
 function HitGeometry.MinSep(A, B)
 	return A.torsoHalfD + B.torsoHalfD + SEP_GLOVE * (A.glove + B.glove) + SEP_AIR * (A.hScale + B.hScale) / 2
 end
 
 -- how far out A can tie B up: A's arm and glove wrap past B's chest, plus the step in (the unit pair gives
 -- FightMotion.Spacing.clinch)
-local CLINCH_STEP = 1.475
+local CLINCH_STEP = 1.417
 function HitGeometry.ClinchRange(A, B)
 	return A.arm + A.glove + B.torsoHalfD + CLINCH_STEP * A.hScale
 end

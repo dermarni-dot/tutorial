@@ -38,6 +38,9 @@
         "CityMap": {
           "$path": "src/server/CityMap.lua"
         },
+        "Crowd": {
+          "$path": "src/server/Crowd.lua"
+        },
         "DataManager": {
           "$path": "src/server/DataManager.lua"
         },
