@@ -453,16 +453,6 @@ do
 		end
 		check("brain: it reads a man backing away (his retreat speed)", ai.oBack > 1, ai.oBack)
 	end
-	-- the prediction it trusts only while it works: wrong guesses against a man with no pattern switch it off
-	do
-		local f, ai = newFight("CounterPuncher", 80)
-		ai.predAcc = 0.5
-		for i = 1, 12 do
-			ai.expect = { p = "cross", conf = 0.9, at = S.now() }
-			ai:OnOppPunch("leadhook", false, 0.3, { hand = "L" })
-		end
-		check("brain: its guesses keep missing, its prediction rate falls", ai.predAcc < 0.3, ai.predAcc)
-	end
 	-- the punch for the distance: the jab and the cross from range, the hooks and the uppercut from inside (the
 	-- animation's hook lunges out past the jab and registers where it lands, but a boxer does not choose it there)
 	do

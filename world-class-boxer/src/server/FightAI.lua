@@ -448,11 +448,6 @@ function FightAI:OnOppPunch(ptype, body, windup, info)
 	if expect and now - expect.at > 1.2 then
 		expect = nil
 	end
-	-- how well its read of him is working (a running hit rate of what it expected against what came): a boxer
-	-- whose guesses keep coming up wrong against a man with no pattern stops guessing and just watches
-	if expect then
-		self.predAcc = (self.predAcc or 0.5) * 0.85 + (expect.p == ptype and 0.15 or 0)
-	end
 	local np, nconf = self.read:Predict(ptype)
 	self.expect = np and { p = np, conf = nconf, at = now } or nil
 	-- (read and learn the player's combination even while busy: the sequence counts either way)
@@ -513,8 +508,8 @@ function FightAI:OnOppPunch(ptype, body, windup, info)
 	local early = 0
 	if now < self.drawUntil then
 		early = 0.5 -- (it drew the lead: it was waiting for exactly this)
-	elseif expect and expect.conf >= AIC.predictFrom / math.max(0.5, self.tier.read) and (self.predAcc or 0.5) >= 0.4 and engine.tutorial == nil then
-		early = math.min(0.85, AIC.predictCut * expect.conf * (0.4 + 0.6 * self.skill) * math.min(1.3, self.tier.read) * math.min(1, (self.predAcc or 0.5) / 0.6))
+	elseif expect and expect.conf >= AIC.predictFrom / math.max(0.5, self.tier.read) and engine.tutorial == nil then
+		early = math.min(0.85, AIC.predictCut * expect.conf * (0.4 + 0.6 * self.skill) * math.min(1.3, self.tier.read))
 		local P = Config.Punches[expect.p]
 		if P and self.rng:NextNumber() < expect.conf then
 			-- it commits to the punch it expected (right or wrong)
@@ -785,7 +780,10 @@ function FightAI:Fits(ptype, dist)
 	local kind = Config.Punches[ptype] and Config.Punches[ptype].kind or "straight"
 	local k = INSIDE[kind]
 	if k then
-		return dist <= math.min(range * k, self.engine:PunchRange(self.F, "jab") * INSIDE_JAB[kind])
+		-- (the discipline grows with the boxer: a raw one still swings his hooks from out at the jab's range)
+		local raw = (1 - self.skill) ^ 2
+		local ij = INSIDE_JAB[kind] + (0.95 - INSIDE_JAB[kind]) * raw
+		return dist <= math.min(range * k, self.engine:PunchRange(self.F, "jab") * ij)
 	end
 	return dist <= range + 0.25
 end
@@ -881,7 +879,7 @@ function FightAI:BuildCombo()
 			local pool, total = {}, 0
 			for _, opt in ipairs({
 				{ "cross", 0.4 }, { "leadhook", 0.25 + finish }, { "rearhook", 0.18 + finish }, { "uppercut", 0.15 + finish },
-				{ "overhand", 0.03 + self.arch.overhand + finish }, { "jab", 0.7 - 2 * finish },
+				{ "overhand", 0.03 + self.arch.overhand + finish }, { "jab", (0.4 + 0.5 * self.skill) * (1 - 2 * finish) },
 			}) do
 				if self:Fits(opt[1], dist) then
 					local w = opt[2] * (pref[opt[1]] or 1)
@@ -1175,6 +1173,11 @@ function FightAI:Think(now)
 	-- back off every shot that hits his gloves turned every exchange into a knockdown)
 	if F.blocking then
 		counterK *= 0.4
+	end
+	-- a Counter Specialist lives on the man in the middle of his flurry: it fires back into it far more often
+	local csT = engine.Trait and engine:Trait(F, "CounterSpecialist") or 0
+	if csT > 0 and O.chain and not O.chain.closed and O.chain.punches >= 2 then
+		counterK = math.min(0.9, counterK * (1 + 1.5 * csT))
 	end
 	if now < F.counterUntil and self:Fits("jab", dist) and self.rng:NextNumber() < counterK then
 		self:Throw(self:CounterPunch(dist), false)

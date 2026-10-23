@@ -834,7 +834,7 @@ end
 -- punches thrown / landed so far and the AI's last decisions with their reasons ("out of range 4.8 > 4.1", "busy",
 -- "attack (work floor)", "clinch"), the last punch's verdict (why it missed, its margin, the facing, the network
 -- delay and whether the lag compensation stood the client's hit) and the AI's read of the man in front of it (his
--- retreat, his circling, its prediction rate, his favourite punch and guard). Every read is guarded: a field the
+-- retreat, his circling, his favourite punch and guard). Every read is guarded: a field the
 -- engine does not have prints as "?"
 ------------------------------------------------------------------------
 local function try(fn, ...)
@@ -914,8 +914,8 @@ function Diag.FightLines(fight)
 						fav, share = a, b
 					end
 				end
-				table.insert(lines, string.format("   AI read: his favourite %s (%s) guard %s retreat %s studs/s circling %s prediction rate %s | style %s",
-					tostring(fav), n2(share), n2(ai.read and try(ai.read.BlockShare, ai.read)), n2(ai.oBack), n2(ai.oCircle), n2(ai.predAcc),
+				table.insert(lines, string.format("   AI read: his favourite %s (%s) guard %s retreat %s studs/s circling %s | style %s",
+					tostring(fav), n2(share), n2(ai.read and try(ai.read.BlockShare, ai.read)), n2(ai.oBack), n2(ai.oCircle),
 					tostring(ai.style and ai.style.id)))
 			end
 			if F.geoFallback then
