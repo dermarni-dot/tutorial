@@ -882,3 +882,324 @@ local function buildEstates(root)
 	K.flowerBed(f, CF(gx, 0.42, -845) * ANG(0, 0, 0), 60, 2.4, rng)
 	lightZone(f, "EstateZone", V3(E.x1 - E.x0, 50, E.z1 - E.z0), CF((E.x0 + E.x1) / 2, 25, (E.z0 + E.z1) / 2), "Mansion")
 end
+
+------------------------------------------------------------------------
+-- East: Riverside Park, Riverside Drive, the promenade, boardwalk, pier, the river and its bridge
+------------------------------------------------------------------------
+local function segDist(p, a, b)
+	local ab = b - a
+	local t = math.clamp((p - a):Dot(ab) / ab:Dot(ab), 0, 1)
+	return (p - (a + ab * t)).Magnitude
+end
+
+local function buildEast(root)
+	local f = folder(root, "Park")
+	local rng = Random.new(2024)
+	local P, RD = CITY.Park, CITY.RiversideDrive
+	-- the park lawn and its railings (gates on the loop side and on Main Street)
+	K.lawn(f, P.x0, P.x1, P.z0, P.z1, rng, { patches = 6 })
+	K.lawn(f, P.x0, 540, -277.5 + LW + 0.6 + OUTER, P.z0, rng, { patches = 2 }) -- the north meadow
+	for _, r in ipairs(K.cutRanges(P.z0, P.z1, { { -106, -94 }, { 54, 66 }, { 194, 206 } })) do
+		K.fenceIron(f, V3(P.x0, SW_H, r[1]), V3(P.x0, SW_H, r[2]), 5)
+	end
+	for _, z in ipairs({ -100, 60, 200 }) do
+		K.kerbRamp(f, V3(LOOP.x1 + LW + 1.2, 0, z), V3(-1, 0, 0), 8)
+		K.crosswalk(f, V3(LOOP.x1, 0, z), true, LOOP.w, 8)
+	end
+	-- paths: from the three west gates and the two south gates, meeting at the fountain plaza
+	local fo = V3(480, 0, 40)
+	local ct = V3(340, 0, -100) -- basketball court
+	local pond = V3(610, 0, -70)
+	local band = V3(400, 0, 190) -- bandstand
+	local play = V3(640, 0, 190) -- playground
+	local paths = {
+		{ V3(P.x0, 0, -100), V3(ct.X - 50, 0, -100) }, { V3(ct.X + 50, 0, -100), V3(fo.X - 20, 0, 20) },
+		{ V3(P.x0, 0, 60), V3(fo.X - 30, 0, 50) }, { V3(P.x0, 0, 200), V3(band.X - 20, 0, 196) }, { V3(band.X + 20, 0, 190), V3(fo.X, 0, 70) },
+		{ V3(336, 0, P.z1), V3(band.X - 10, 0, 210) }, { V3(546, 0, P.z1), V3(fo.X + 20, 0, 70) }, { V3(fo.X + 30, 0, 40), V3(pond.X - 60, 0, -40) },
+		{ V3(fo.X + 30, 0, 60), V3(play.X - 30, 0, 180) }, { V3(pond.X + 40, 0, -20), V3(RD.x - 12.5 - 9, 0, 40) }, { V3(play.X + 30, 0, 190), V3(RD.x - 12.5 - 9, 0, 200) },
+	}
+	for _, seg in ipairs(paths) do
+		local a, b = seg[1], seg[2]
+		part(f, "ParkPath", V3(8, 0.2, (b - a).Magnitude + 2), CFrame.lookAt((a + b) / 2 + V3(0, 0.26, 0), b + V3(0, 0.26, 0)), Color3.fromRGB(196, 176, 140), M.Pavement, { collide = true })
+	end
+	-- fountain plaza: paving, the big basin, a ring of benches and beds, lamps
+	part(f, "FountainPlaza", V3(70, 0.2, 70), CF(fo + V3(0, 0.26, 0)), K.PAVING, M.Pavement, { collide = true })
+	vcyl(f, "FountainBasin", 2.2, 30, CF(fo + V3(0, 0.3, 0)), Color3.fromRGB(170, 168, 162), M.Granite, { collide = true })
+	vcyl(f, "FountainWater", 0.3, 28, CF(fo + V3(0, 2.1, 0)), Color3.fromRGB(70, 150, 210), M.Glass, { transparency = 0.25 })
+	vcyl(f, "FountainPillar", 7, 3, CF(fo + V3(0, 0.3, 0)), Color3.fromRGB(180, 178, 172), M.Granite)
+	vcyl(f, "FountainBowl", 1.2, 10, CF(fo + V3(0, 7.3, 0)), Color3.fromRGB(180, 178, 172), M.Granite)
+	vcyl(f, "FountainBowlWater", 0.15, 9, CF(fo + V3(0, 8.4, 0)), Color3.fromRGB(80, 160, 220), M.Glass, { transparency = 0.2 })
+	local jet = part(f, "FountainJet", V3(0.5, 0.5, 0.5), CF(fo + V3(0, 8.9, 0)), C.white, M.SmoothPlastic, { transparency = 1, shadow = false })
+	local pe = Instance.new("ParticleEmitter")
+	pe.Rate = 40
+	pe.Lifetime = NumberRange.new(1.0, 1.4)
+	pe.Speed = NumberRange.new(13, 16)
+	pe.SpreadAngle = Vector2.new(9, 9)
+	pe.Acceleration = Vector3.new(0, -28, 0)
+	pe.Size = NumberSequence.new(0.6, 0.25)
+	pe.Transparency = NumberSequence.new(0.3, 0.8)
+	pe.Color = ColorSequence.new(Color3.fromRGB(220, 240, 255))
+	pe.LightEmission = 0.3
+	pe.Parent = jet
+	for k = 0, 7 do
+		local a = k * RAD(45) + RAD(22.5)
+		K.bench(f, fo + V3(math.cos(a) * 24, 0.46, math.sin(a) * 24), RAD(90) - a, 6.4, C.wood)
+		if k % 2 == 0 then
+			K.parkLamp(f, fo + V3(math.cos(a + RAD(22.5)) * 31, 0.46, math.sin(a + RAD(22.5)) * 31), true)
+		else
+			K.bin(f, fo + V3(math.cos(a + RAD(22.5)) * 30, 0.46, math.sin(a + RAD(22.5)) * 30))
+		end
+	end
+	for _, a in ipairs({ 0, 90, 180, 270 }) do
+		K.flowerBed(f, CF(fo + V3(math.cos(RAD(a)) * 20, 0.46, math.sin(RAD(a)) * 20)) * ANG(0, RAD(90 - a), 0), 10, 2, rng)
+	end
+	K.vendorCart(f, CF(fo + V3(-30, 0.46, -32)) * ANG(0, RAD(30), 0), "icecream")
+	K.vendorCart(f, CF(fo + V3(34, 0.46, 30)) * ANG(0, RAD(-150), 0), "hotdog")
+	-- the basketball court: full size with fence, two hoops, benches
+	part(f, "CourtApron", V3(100, 0.24, 62), CF(ct + V3(0, 0.12, 0)), Color3.fromRGB(150, 150, 150), M.Concrete, { collide = true })
+	part(f, "Court", V3(90, 0.3, 50), CF(ct + V3(0, 0.15, 0)), Color3.fromRGB(46, 92, 140), M.SmoothPlastic, { collide = true })
+	local lines = part(f, "CourtLines", V3(90, 0.02, 50), CF(ct + V3(0, 0.31, 0)), Color3.new(), M.SmoothPlastic, { transparency = 1 })
+	local lg = gui(lines, Enum.NormalId.Top, 6, 1, 300)
+	local function box(xs, ys, w, h)
+		local fr = frame(lg, { Size = UDim2.fromScale(w, h), Position = UDim2.fromScale(xs, ys), BackgroundTransparency = 1 })
+		local st = Instance.new("UIStroke")
+		st.Color = C.white
+		st.Thickness = 3
+		st.Parent = fr
+		return fr
+	end
+	box(0.02, 0.03, 0.96, 0.94)
+	box(0.5, 0.03, 0.0, 0.94)
+	local circle = box(0.43, 0.38, 0.14, 0.24)
+	Instance.new("UICorner", circle).CornerRadius = UDim.new(0.5, 0)
+	box(0.02, 0.33, 0.18, 0.34)
+	box(0.8, 0.33, 0.18, 0.34)
+	for _, s in ipairs({ -1, 1 }) do
+		local hx = ct.X + s * 48
+		part(f, "HoopPole", V3(0.6, 13, 0.6), CF(hx, 6.5, ct.Z), C.steel, M.Metal, { collide = true })
+		part(f, "HoopArm", V3(4, 0.5, 0.5), CF(hx - s * 2, 12.4, ct.Z), C.steel, M.Metal)
+		part(f, "Backboard", V3(0.25, 4, 6.4), CF(hx - s * 4, 12.4, ct.Z), C.white, M.SmoothPlastic, { transparency = 0.15 })
+		cyl(f, "Rim", 0.2, 1.8, CF(hx - s * 5.2, 11.0, ct.Z) * ANG(0, 0, RAD(90)), Color3.fromRGB(240, 110, 30), M.Metal)
+	end
+	K.fenceChain(f, V3(ct.X - 50, 0.24, ct.Z - 31), V3(ct.X + 50, 0.24, ct.Z - 31), 12)
+	K.fenceChain(f, V3(ct.X - 50, 0.24, ct.Z + 31), V3(ct.X - 6, 0.24, ct.Z + 31), 12)
+	K.fenceChain(f, V3(ct.X + 6, 0.24, ct.Z + 31), V3(ct.X + 50, 0.24, ct.Z + 31), 12)
+	K.fenceChain(f, V3(ct.X - 50, 0.24, ct.Z - 31), V3(ct.X - 50, 0.24, ct.Z + 31), 12)
+	K.fenceChain(f, V3(ct.X + 50, 0.24, ct.Z - 31), V3(ct.X + 50, 0.24, ct.Z + 31), 12)
+	ball(f, "Basketball", 1.1, CF(ct + V3(12, 0.85, 6)), Color3.fromRGB(230, 110, 30), M.Rubber)
+	K.bench(f, ct + V3(-20, 0.24, 27), RAD(180), 6.4, C.wood)
+	K.bench(f, ct + V3(20, 0.24, 27), RAD(180), 6.4, C.wood)
+	for _, x in ipairs({ -48, 48 }) do
+		K.streetLight(f, V3(ct.X + x, 0.24, ct.Z - 28), V3(-math.sign(x), 0, 0.3).Unit, true, 26)
+	end
+	-- the pond with its deck and a willow-ish birch group
+	vcyl(f, "PondBank", 0.36, 150, CF(pond), Color3.fromRGB(150, 140, 110), M.Sand, { collide = true })
+	vcyl(f, "Pond", 0.3, 136, CF(pond), Color3.fromRGB(52, 110, 150), M.Glass, { transparency = 0.2, reflect = 0.3, collide = true })
+	part(f, "PondDeck", V3(24, 0.5, 30), CF(pond + V3(-62, 0.9, 10)), Color3.fromRGB(150, 116, 84), M.WoodPlanks, { collide = true })
+	K.railing(f, pond + V3(-50, 1.1, -5), pond + V3(-50, 1.1, 25))
+	K.railing(f, pond + V3(-74, 1.1, 25), pond + V3(-50, 1.1, 25))
+	K.railing(f, pond + V3(-74, 1.1, -5), pond + V3(-50, 1.1, -5))
+	K.bench(f, pond + V3(-66, 1.15, 10), RAD(90), 6.4, C.wood)
+	for k = 0, 2 do
+		local a = RAD(40 + k * 50)
+		blob(f, "LilyPads", V3(6, 0.15, 5), CF(pond + V3(math.cos(a) * 50, 0.34, math.sin(a) * 50)), Color3.fromRGB(70, 130, 60), M.Grass, { shadow = false })
+	end
+	for k = 0, 5 do
+		local a = RAD(k * 60 + 15)
+		K.tree(f, pond + V3(math.cos(a) * 84, 0.14, math.sin(a) * 84), k % 2 == 0 and "birch" or "oak", rng:NextNumber(30, 44), rng)
+	end
+	-- the bandstand: a raised round stage under a conical roof on eight posts
+	vcyl(f, "BandstandBase", 1.6, 32, CF(band), Color3.fromRGB(200, 196, 186), M.Concrete, { collide = true })
+	vcyl(f, "BandstandFloor", 0.3, 28, CF(band + V3(0, 1.6, 0)), Color3.fromRGB(150, 116, 84), M.WoodPlanks, { collide = true })
+	for k = 0, 7 do
+		local a = k * RAD(45)
+		vcyl(f, "BandstandPost", 12, 0.9, CF(band + V3(math.cos(a) * 12.5, 1.9, math.sin(a) * 12.5)), C.white, M.Wood, { collide = true })
+	end
+	K.railing(f, band + V3(12.5, 1.9, 0), band + V3(8.8, 1.9, 8.8), C.white)
+	K.railing(f, band + V3(-12.5, 1.9, 0), band + V3(-8.8, 1.9, 8.8), C.white)
+	K.railing(f, band + V3(-12.5, 1.9, 0), band + V3(-8.8, 1.9, -8.8), C.white)
+	K.railing(f, band + V3(12.5, 1.9, 0), band + V3(8.8, 1.9, -8.8), C.white)
+	blob(f, "BandstandRoof", V3(34, 12, 34), CF(band + V3(0, 13.6, 0)), Color3.fromRGB(60, 90, 70), M.Slate)
+	vcyl(f, "BandstandFinial", 3, 1.2, CF(band + V3(0, 19.2, 0)), C.gold, M.Metal)
+	nightPoint(f, CF(band + V3(0, 12, 0)), Color3.fromRGB(255, 226, 180), 30, 1)
+	-- the playground: bark, a climbing frame with slide, swings, a seesaw, benches
+	part(f, "PlaygroundBark", V3(60, 0.24, 44), CF(play + V3(0, 0.26, 0)), Color3.fromRGB(120, 86, 56), M.Ground, { collide = true })
+	part(f, "SlideTower", V3(7, 9, 7), CF(play + V3(-16, 4.9, -8)), Color3.fromRGB(40, 110, 200), M.SmoothPlastic, { collide = true })
+	part(f, "SlideRoof", V3(8, 1, 8), CF(play + V3(-16, 10.4, -8)) * ANG(0, RAD(45), 0), Color3.fromRGB(240, 170, 60), M.SmoothPlastic)
+	part(f, "Slide", V3(3, 0.4, 16), CF(play + V3(-16, 4.8, 2)) * ANG(RAD(32), 0, 0), Color3.fromRGB(240, 200, 40), M.SmoothPlastic, { collide = true })
+	part(f, "ClimbWall", V3(0.6, 9, 7), CF(play + V3(-19.6, 4.9, -8)), Color3.fromRGB(200, 60, 60), M.SmoothPlastic, { collide = true })
+	for k = 0, 3 do
+		part(f, "SwingPost", V3(0.5, 10, 0.5), CF(play + V3(2 + k * 8, 5.4, 12)), Color3.fromRGB(200, 40, 40), M.Metal, { collide = true })
+	end
+	part(f, "SwingBeam", V3(26, 0.5, 0.5), CF(play + V3(14, 10.4, 12)), Color3.fromRGB(200, 40, 40), M.Metal)
+	for _, x in ipairs({ 6, 14, 22 }) do
+		part(f, "SwingSeat", V3(2, 0.3, 0.8), CF(play + V3(x, 3.4, 12)), C.black, M.Rubber)
+		for _, dx in ipairs({ -0.8, 0.8 }) do
+			part(f, "SwingChain", V3(0.1, 7, 0.1), CF(play + V3(x + dx, 7, 12)), C.steelLight, M.Metal, { shadow = false })
+		end
+	end
+	part(f, "Seesaw", V3(14, 0.4, 1.4), CF(play + V3(14, 2.4, -10)) * ANG(0, 0, RAD(12)), Color3.fromRGB(60, 160, 80), M.SmoothPlastic)
+	part(f, "SeesawPivot", V3(1.4, 2.4, 1.4), CF(play + V3(14, 1.3, -10)), C.steel, M.Metal, { collide = true })
+	for _, p in ipairs({ { -28, 24 }, { 28, 24 } }) do
+		K.bench(f, play + V3(p[1], 0.38, p[2]), RAD(180), 6.4, C.wood)
+	end
+	K.bin(f, play + V3(0, 0.38, 25))
+	K.fencePicket(f, play + V3(-32, 0.3, -24), play + V3(32, 0.3, -24))
+	-- picnic tables, lamps along the paths, bins, the park signs at the gates, trees everywhere else
+	local picnic = { V3(300, 0, -20), V3(430, 0, 120), V3(560, 0, 240), V3(700, 0, 110), V3(300, 0, 250), V3(690, 0, -150) }
+	for k, p in ipairs(picnic) do
+		K.picnicTable(f, p + V3(0, 0.14, 0), RAD(k * 37))
+	end
+	for _, seg in ipairs(paths) do
+		local a, b = seg[1], seg[2]
+		local n = math.max(1, math.floor((b - a).Magnitude / 70))
+		for k = 1, n do
+			local t = (k - 0.5) / n
+			local p = a:Lerp(b, t)
+			local side = (b - a).Unit:Cross(Vector3.yAxis) * 6
+			K.parkLamp(f, p + side + V3(0, 0.14, 0), k % 2 == 1)
+			if k % 2 == 0 then
+				K.bench(f, p - side + V3(0, 0.14, 0), math.atan2((b - a).X, (b - a).Z), 6.4, C.wood)
+			end
+		end
+	end
+	for _, z in ipairs({ -100, 60, 200 }) do
+		K.postSign(f, CF(P.x0 + 10, 0.14, z - 10) * ANG(0, RAD(90), 0), 14, 3.6, 5, "RIVERSIDE PARK", Color3.fromRGB(255, 230, 170), Color3.fromRGB(60, 40, 26))
+	end
+	local function clear(p)
+		if (p - fo).Magnitude < 42 or (p - pond).Magnitude < 90 or (p - band).Magnitude < 24 then
+			return false
+		end
+		if math.abs(p.X - ct.X) < 56 and math.abs(p.Z - ct.Z) < 38 then
+			return false
+		end
+		if math.abs(p.X - play.X) < 36 and math.abs(p.Z - play.Z) < 28 then
+			return false
+		end
+		for _, seg in ipairs(paths) do
+			if segDist(p, seg[1], seg[2]) < 12 then
+				return false
+			end
+		end
+		for _, q in ipairs(picnic) do
+			if (p - q).Magnitude < 12 then
+				return false
+			end
+		end
+		return true
+	end
+	local n, tries = 0, 0
+	local kinds = { "oak", "oak", "maple", "pine", "birch", "cherry", "poplar" }
+	while n < 64 and tries < 800 do
+		tries += 1
+		local p = V3(rng:NextNumber(P.x0 + 12, P.x1 - 12), 0.14, rng:NextNumber(P.z0 + 12, P.z1 - 12))
+		if clear(p) then
+			n += 1
+			K.tree(f, p, kinds[rng:NextInteger(1, #kinds)], rng:NextNumber(30, 50), rng)
+		end
+	end
+	for _ = 1, 14 do
+		K.tree(f, V3(rng:NextNumber(P.x0 + 10, 530), 0.14, rng:NextNumber(-262, P.z0 - 8)), rng:NextNumber() < 0.6 and "pine" or "oak", rng:NextNumber(34, 50), rng)
+	end
+	lightZone(f, "ParkZone", V3(P.x1 - P.x0, 60, P.z1 - P.z0), CF((P.x0 + P.x1) / 2, 30, (P.z0 + P.z1) / 2), "Street")
+
+	-- Riverside Drive, the promenade lawn with its path, the boardwalk, the quay railing, the pier
+	local wf = folder(root, "Waterfront")
+	K.roadZ(wf, "RiversideDrive", RD.z0, RD.z1, RD.x, RD.w, { y = ROAD_Y - 0.004, sw = { w = 8, e = 10 }, gaps = { { MAIN.z0, MAIN.z1 }, { CITY.SecondStreet.z - 12.5, CITY.SecondStreet.z + 12.5 }, { -302.5, -277.5 } } })
+	lightsZ(wf, RD.z0 + 20, RD.z1 - 20, RD.x + 12.5 + 1.6, V3(-1, 0, 0), 70, nil, 2)
+	K.lawn(wf, RD.x + 12.5 + 10.6, CITY.Boardwalk.x0, RD.z0, RD.z1, rng, { patches = 5 })
+	slab(wf, "PromenadePath", 818, 826, RD.z0, RD.z1, 0.3, Color3.fromRGB(196, 176, 140), M.Pavement)
+	local BW = CITY.Boardwalk
+	slab(wf, "Boardwalk", BW.x0, BW.x1, RD.z0, RD.z1, SW_H, Color3.fromRGB(140, 104, 72), M.WoodPlanks)
+	slab(wf, "QuayWall", BW.x1, BW.x1 + 2, RD.z0, RD.z1, SW_H, Color3.fromRGB(110, 106, 100), M.Concrete, true, -9)
+	for _, r in ipairs(K.cutRanges(RD.z0, RD.z1, { { 52, 68 }, { -300, -280 } })) do
+		K.railing(wf, V3(BW.x1 + 1, SW_H, r[1]), V3(BW.x1 + 1, SW_H, r[2]))
+	end
+	for z = RD.z0 + 30, RD.z1 - 30, 60 do
+		K.bench(wf, V3(BW.x0 + 6, SW_H, z), RAD(-90), 6.4, C.wood)
+		K.parkLamp(wf, V3(BW.x0 + 2, SW_H, z + 30), true)
+		if z % 120 == 30 then
+			K.bin(wf, V3(BW.x0 + 3, SW_H, z + 10))
+		end
+	end
+	for z = RD.z0 + 50, RD.z1 - 50, 90 do
+		K.tree(wf, V3(800, 0.14, z), ({ "oak", "cherry", "poplar" })[(z // 90) % 3 + 1], rng:NextNumber(30, 40), rng)
+	end
+	-- the pier
+	local pz = 60
+	slab(wf, "PierDeck", BW.x1, BW.x1 + 110, pz - 8, pz + 8, SW_H + 0.1, Color3.fromRGB(130, 96, 66), M.WoodPlanks, true, SW_H - 0.6)
+	for x = BW.x1 + 10, BW.x1 + 108, 14 do
+		for _, dz in ipairs({ -7, 7 }) do
+			vcyl(wf, "PierPile", 12, 1.6, CF(x, -10, pz + dz), Color3.fromRGB(80, 60, 44), M.Wood)
+		end
+	end
+	K.railing(wf, V3(BW.x1 + 1, SW_H + 0.1, pz - 8), V3(BW.x1 + 110, SW_H + 0.1, pz - 8))
+	K.railing(wf, V3(BW.x1 + 1, SW_H + 0.1, pz + 8), V3(BW.x1 + 110, SW_H + 0.1, pz + 8))
+	K.railing(wf, V3(BW.x1 + 110, SW_H + 0.1, pz - 8), V3(BW.x1 + 110, SW_H + 0.1, pz + 8))
+	for _, x in ipairs({ BW.x1 + 36, BW.x1 + 80 }) do
+		K.parkLamp(wf, V3(x, SW_H + 0.1, pz - 6), true)
+		K.bench(wf, V3(x, SW_H + 0.1, pz + 5), RAD(180), 6.4, C.wood)
+	end
+	local pav = V3(BW.x1 + 96, SW_H + 0.1, pz)
+	for _, c in ipairs({ { -6, -6 }, { 6, -6 }, { 6, 6 }, { -6, 6 } }) do
+		vcyl(wf, "PavilionPost", 10, 0.8, CF(pav + V3(c[1], 0, c[2])), C.white, M.Wood, { collide = true })
+	end
+	part(wf, "PavilionRoof", V3(15, 0.6, 15), CF(pav + V3(0, 10.3, 0)), Color3.fromRGB(40, 80, 120), M.Metal)
+	blob(wf, "PavilionTop", V3(14, 6, 14), CF(pav + V3(0, 12, 0)), Color3.fromRGB(40, 80, 120), M.Metal)
+	local ps = part(wf, "PierSign", V3(16, 3, 0.3), CF(BW.x1 + 4, SW_H + 9, pz) * ANG(0, RAD(90), 0), Color3.fromRGB(20, 40, 60), M.SmoothPlastic)
+	for _, dz in ipairs({ -7.5, 7.5 }) do
+		part(wf, "PierSignPost", V3(0.6, 7.5, 0.6), CF(BW.x1 + 4, SW_H + 3.75, pz + dz), Color3.fromRGB(20, 40, 60), M.Metal, { collide = true })
+	end
+	GymDecor.Sign(ps, Enum.NormalId.Front, "RIVERSIDE PIER", Color3.fromRGB(255, 230, 170), Color3.fromRGB(20, 40, 60), 30)
+	GymDecor.Sign(ps, Enum.NormalId.Back, "RIVERSIDE PIER", Color3.fromRGB(255, 230, 170), Color3.fromRGB(20, 40, 60), 30)
+	-- moored boats
+	for k, bz in ipairs({ pz - 16, pz + 18, pz + 34 }) do
+		local bc = CF(BW.x1 + 30 + k * 14, -1.2, bz) * ANG(0, RAD(90 + k * 6), 0)
+		part(wf, "BoatHull", V3(6, 2.6, 18), bc * CF(0, 0.6, 0), ({ C.white, Color3.fromRGB(30, 60, 120), Color3.fromRGB(200, 40, 40) })[k], M.SmoothPlastic)
+		part(wf, "BoatBow", V3(6, 2.6, 5), bc * CF(0, 0.6, -11.5), ({ C.white, Color3.fromRGB(30, 60, 120), Color3.fromRGB(200, 40, 40) })[k], M.SmoothPlastic, { class = "WedgePart" })
+		part(wf, "BoatCabin", V3(4.4, 2.4, 6), bc * CF(0, 3.1, 2), Color3.fromRGB(240, 240, 236), M.SmoothPlastic)
+		vcyl(wf, "BoatMast", 16, 0.3, bc * CF(0, 1.9, -3), C.steelLight, M.Metal)
+	end
+	-- the boathouse at the north end of the promenade
+	local bh = CF(828, 0, -300)
+	part(wf, "Boathouse", V3(44, 16, 30), bh * CF(0, 8, 0), Color3.fromRGB(96, 120, 140), M.WoodPlanks, { collide = true })
+	local ra = (bh * CF(0, 16 + 3.5, -7.5)).Position
+	local rb = (bh * CF(0, 16 + 3.5, 7.5)).Position
+	part(wf, "BoathouseRoof", V3(46, 7, 15.6), CFrame.lookAt(ra, ra + V3(0, 0, -1)), Color3.fromRGB(60, 62, 70), M.Slate, { class = "WedgePart" })
+	part(wf, "BoathouseRoof", V3(46, 7, 15.6), CFrame.lookAt(rb, rb + V3(0, 0, 1)), Color3.fromRGB(60, 62, 70), M.Slate, { class = "WedgePart" })
+	part(wf, "BoathouseDoor", V3(0.4, 11, 14), bh * CF(22.1, 5.5, 0), Color3.fromRGB(200, 60, 60), M.Wood)
+	local bs = part(wf, "BoathouseSign", V3(30, 3, 0.3), bh * CF(0, 12.5, 15.2), Color3.fromRGB(20, 40, 60), M.SmoothPlastic)
+	GymDecor.Sign(bs, Enum.NormalId.Back, "RIVERSIDE BOATHOUSE  -  ROWING CLUB", Color3.fromRGB(255, 230, 170), Color3.fromRGB(20, 40, 60), 30)
+	-- the river, the far bank and the bridge carrying Foundry Street across
+	local R = CITY.River
+	local B = CITY.Bounds
+	K.water(wf, R.x0, R.x1, B.z0, B.z1, -1.6, 7)
+	slab(wf, "FarBank", R.x1, R.x1 + 3, B.z0, B.z1, 0.6, Color3.fromRGB(110, 106, 100), M.Concrete, true, -9)
+	local bz = CITY.FoundryStreet.z
+	slab(wf, "Bridge", RD.x + 12.5, R.x1 + 2, bz - 14, bz + 14, 6, K.ASPHALT, M.Asphalt, true, 4.2)
+	K.dashesX(wf, RD.x + 12.5, R.x1, bz, K.LINE_YELLOW)
+	for _, x in ipairs({ RD.x + 12.5 + 1, R.x1 + 1 }) do
+		-- (the deck sits 5.7 above the road: ramps either side)
+		local dir = x < 900 and -1 or 1
+		local rc = CFrame.lookAt(V3(x + dir * 30, 3.15, bz), V3(x + dir * 30 + dir * 1, 3.15, bz))
+		part(wf, "BridgeRamp", V3(28, 5.7, 60), rc * ANG(0, 0, 0), K.ASPHALT, M.Asphalt, { class = "WedgePart", collide = true })
+	end
+	for _, dz in ipairs({ -14.5, 14.5 }) do
+		K.railing(wf, V3(RD.x + 12.5, 6, bz + dz), V3(R.x1 + 2, 6, bz + dz), Color3.fromRGB(60, 90, 120))
+		for x = 900, R.x1 - 20, 60 do
+			K.streetLight(wf, V3(x, 6, bz + dz), V3(0, 0, -math.sign(dz)), (x // 60) % 2 == 0, 26)
+		end
+	end
+	for x = 920, R.x1 - 40, 80 do
+		part(wf, "BridgePier", V3(10, 16, 32), CF(x, -4, bz), Color3.fromRGB(120, 116, 110), M.Concrete)
+	end
+	for _, dz in ipairs({ -16, 16 }) do
+		for _, x in ipairs({ 940, 1090 }) do
+			part(wf, "BridgePylon", V3(4, 44, 4), CF(x, 22, bz + dz), Color3.fromRGB(60, 90, 120), M.Metal)
+		end
+		rod(wf, "BridgeCable", V3(940, 44, bz + dz), V3(1015, 10, bz + dz), 0.5, C.steelLight, M.Metal)
+		rod(wf, "BridgeCable", V3(1090, 44, bz + dz), V3(1015, 10, bz + dz), 0.5, C.steelLight, M.Metal)
+		rod(wf, "BridgeCable", V3(940, 44, bz + dz), V3(880, 8, bz + dz), 0.5, C.steelLight, M.Metal)
+		rod(wf, "BridgeCable", V3(1090, 44, bz + dz), V3(1148, 8, bz + dz), 0.5, C.steelLight, M.Metal)
+	end
+end
