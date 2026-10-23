@@ -474,17 +474,17 @@ local zones = {}
 -- crushes the shadows; the tint carries the mood)
 local GRADES = {
 	GymWarm = {
-		{ b = 0, c = 0.04, s = -0.06, tint = Color3.fromRGB(255, 236, 212) }, -- tired, yellowed
-		{ b = 0, c = 0.03, s = 0, tint = Color3.fromRGB(255, 246, 236) },
-		{ b = 0.01, c = 0.04, s = 0.02, tint = Color3.fromRGB(246, 249, 255) }, -- crisp
-		{ b = 0.01, c = 0.05, s = 0.06, tint = Color3.fromRGB(255, 241, 218) }, -- rich and golden
+		{ b = 0.01, c = 0.04, s = -0.03, tint = Color3.fromRGB(255, 238, 216) }, -- tired, yellowed (still readable)
+		{ b = 0.01, c = 0.03, s = 0.02, tint = Color3.fromRGB(255, 246, 236) },
+		{ b = 0.02, c = 0.04, s = 0.04, tint = Color3.fromRGB(246, 249, 255) }, -- crisp
+		{ b = 0.02, c = 0.05, s = 0.08, tint = Color3.fromRGB(255, 241, 218) }, -- rich and golden
 	},
 	GymElite = { b = 0.01, c = 0.04, s = -0.02, tint = Color3.fromRGB(238, 245, 255) },
 	Barbershop = { b = 0.01, c = 0.04, s = 0.05, tint = Color3.fromRGB(255, 238, 216) },
 	Apartment = { b = 0, c = 0.02, s = -0.03, tint = Color3.fromRGB(255, 241, 228) },
 	Store = { b = 0.02, c = 0.03, s = 0.03, tint = Color3.fromRGB(246, 250, 255) },
 	Mansion = { b = 0.01, c = 0.05, s = 0.06, tint = Color3.fromRGB(255, 239, 212) },
-	Street = { b = 0, c = 0.02, s = 0, tint = Color3.fromRGB(255, 255, 255) },
+	Street = { b = 0.02, c = 0.05, s = 0.08, tint = Color3.fromRGB(255, 251, 244) }, -- bright, warm daylight outdoors (the town is meant to read colourful)
 }
 local NEUTRAL = { b = 0, c = 0, s = 0, tint = Color3.new(1, 1, 1) }
 local grade -- the client-only ZoneGrade effect

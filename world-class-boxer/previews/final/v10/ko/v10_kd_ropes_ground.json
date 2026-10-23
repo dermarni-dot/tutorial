@@ -1,0 +1,48 @@
+{
+ "id": "kd_ropes",
+ "kdAt": 0.54,
+ "frames": [
+  {
+   "dt": 0.0,
+   "t": 0.5333,
+   "lowest": 0.039,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.565,
+   "headY": 5.452
+  },
+  {
+   "dt": 0.2,
+   "t": 0.7333,
+   "lowest": 0.024,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.41,
+   "headY": 5.196
+  },
+  {
+   "dt": 0.5,
+   "t": 1.0667,
+   "lowest": 0.021,
+   "lowestPart": "RightFoot",
+   "pelvisY": 2.621,
+   "headY": 5.1
+  },
+  {
+   "dt": 1.0,
+   "t": 1.5333,
+   "lowest": 0.062,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.519,
+   "headY": 5.162
+  },
+  {
+   "dt": 2.0,
+   "t": 2.5333,
+   "lowest": 0.049,
+   "lowestPart": "RightFoot",
+   "pelvisY": 1.708,
+   "headY": 4.449
+  }
+ ],
+ "slideAfter": 1.722,
+ "slideMaxStep": 0.223
+}

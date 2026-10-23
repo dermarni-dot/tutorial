@@ -1437,9 +1437,17 @@ function AnimDown.footLock(rig, out, dt)
 		local low = R.lowest(rig, fk)
 		for _, s in ipairs(R.SIDES) do
 			local kA = s .. "A"
-			local foot, fs = fk[kA], g.sz[kA]
-			if foot and fs then
-				local sz = V3(fs.X * 0.95, fs.Y + 2 * ((g[s] and g[s].sink) or 0) + 0.04, fs.Z * 1.12)
+			local foot, fs, leg = fk[kA], g.sz[kA], g[s]
+			if foot and fs and leg and leg.ah and leg.toeX and leg.heelX and g.jc1i[kA] then
+				-- the drawn sole: from the heel to the toe tip under the ankle (the rig's measured shoe), its width the
+				-- foot's - a pitched or rolled foot stands on the sole's nearest corner
+				local ank = foot * g.jc1i[kA]:Inverse()
+				local w = fs.X * 0.45
+				local y = -leg.ah
+				low = min(low, ank:PointToWorldSpace(V3(w, y, -leg.toeX)).Y, ank:PointToWorldSpace(V3(-w, y, -leg.toeX)).Y,
+					ank:PointToWorldSpace(V3(w, y, leg.heelX)).Y, ank:PointToWorldSpace(V3(-w, y, leg.heelX)).Y)
+			elseif foot and fs then
+				local sz = V3(fs.X * 0.95, fs.Y + 2 * ((leg and leg.sink) or 0) + 0.04, fs.Z * 1.12)
 				low = min(low, R.boxLow(foot, sz))
 			end
 			local kS = s .. "S"

@@ -27,7 +27,7 @@ def lineup(scene_dir, out_dir, clips, tier, view, samples, tag):
     clips = sorted(clips, key=lambda c: ORDER.index(c["frame"]) if c["frame"] in ORDER else 99)
     n = len(clips)
     gap = 3.9
-    width = (n - 1) * gap + 3.4
+    width = (n - 1) * gap + 4.6
     H = 7.4
     res_y = 820
     res_x = int(res_y * width / H)
@@ -39,9 +39,12 @@ def lineup(scene_dir, out_dir, clips, tier, view, samples, tag):
         d = {"meshes": fr["meshes"], "head": fr["head"], "parts": fr.get("parts", []), "hair": []}
         root = fr.get("root") or [0, 0, 0]
         k = i - (n - 1) / 2
-        # the figures stand along X; a yawed view turns the whole row, so each figure is drawn at its own spot in the
-        # row and the camera orbits the row's centre
-        off = (-k * gap - root[0], 0, -root[2])
+        # the row runs along X for the front / back / 3-4 views; the side view (the camera on +X) spreads it along Z,
+        # the nearest figure (the last of the order) toward the viewer's right as v9_render's filmstrips do
+        if view == "side":
+            off = (-root[0], 0, -k * gap - root[2])
+        else:
+            off = (-k * gap - root[0], 0, -root[2])
         v8.add_boxer(sc, scene_dir, d, offset=off)
         labels.append("%s  T%d" % (c["frame"], tier))
     cam = sc.cam

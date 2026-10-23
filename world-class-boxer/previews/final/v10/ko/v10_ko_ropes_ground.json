@@ -1,0 +1,48 @@
+{
+ "id": "ko_ropes",
+ "kdAt": 0.54,
+ "frames": [
+  {
+   "dt": 0.0,
+   "t": 0.5333,
+   "lowest": 0.039,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.565,
+   "headY": 5.452
+  },
+  {
+   "dt": 0.2,
+   "t": 0.7333,
+   "lowest": 0.073,
+   "lowestPart": "RightFoot",
+   "pelvisY": 2.44,
+   "headY": 5.209
+  },
+  {
+   "dt": 0.5,
+   "t": 1.0667,
+   "lowest": 0.015,
+   "lowestPart": "RightFoot",
+   "pelvisY": 2.578,
+   "headY": 5.075
+  },
+  {
+   "dt": 1.0,
+   "t": 1.5333,
+   "lowest": 0.014,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.579,
+   "headY": 4.949
+  },
+  {
+   "dt": 2.0,
+   "t": 2.5333,
+   "lowest": 0.049,
+   "lowestPart": "RightFoot",
+   "pelvisY": 1.711,
+   "headY": 4.465
+  }
+ ],
+ "slideAfter": 0.041,
+ "slideMaxStep": 0.014
+}

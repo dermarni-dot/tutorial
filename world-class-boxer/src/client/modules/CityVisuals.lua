@@ -310,6 +310,22 @@ local function apartmentDressing(f, P)
 	end
 end
 
+-- The homes were drawn for the old two-thirds-scale town: scaled about their site to match the
+-- CityKit neighbours (a 36-stud house, 2.7 m parking bays). Parts further than maxDist from the site
+-- (the mansion's gate plaque) keep their place.
+local HOME_SCALE = { House = 2.0, Mansion = 1.8 }
+local function scaleAbout(f, base, k, maxDist)
+	for _, d in ipairs(f:GetDescendants()) do
+		if d:IsA("BasePart") then
+			local rel = base:ToObjectSpace(d.CFrame)
+			if not maxDist or rel.Position.Magnitude < maxDist then
+				d.Size = d.Size * k
+				d.CFrame = base * CF(rel.Position * k) * (rel - rel.Position)
+			end
+		end
+	end
+end
+
 local function houseBuild(f, P, base)
 	local owned = P.owned or {}
 	local wall = Color3.fromRGB(226, 214, 190)
@@ -573,10 +589,12 @@ local function updateHomes(P)
 	local hb = siteCF("HomeHouse")
 	group("HomeHouse", (owned.House and hb) and common or "", function(f)
 		houseBuild(f, P, hb)
+		scaleAbout(f, hb, HOME_SCALE.House)
 	end)
 	local vb = siteCF("HomeMansion")
 	group("HomeMansion", (owned.Mansion and vb) and (common .. (siteCF("MansionGarage") and "|g" or "")) or "", function(f)
 		villaBuild(f, P, vb)
+		scaleAbout(f, vb, HOME_SCALE.Mansion, 160)
 	end)
 	setGate(owned.Mansion == true)
 	forSaleSigns(P)
@@ -595,20 +613,24 @@ local function updateCars(P)
 	group("Cars", key, function(f)
 		local plate = surnameOf(P):upper():sub(1, 8)
 		if bay then
-			CityProps.SportsCar(f, bay, cars[1], nil, plate)
+			scaledCar(f, bay, cars[1], nil, plate)
 		end
 		if home == "House" then
 			local hb = siteCF("HomeHouse")
 			if hb then
-				CityProps.SportsCar(f, hb * CF(9.5, 0.18, -12), cars[1], nil, plate)
+				-- (the house is built at HOME_SCALE: the drive and garage are twice houseBuild's numbers)
+				scaledCar(f, hb * CF(19, 0.18, -26), cars[1], nil, plate)
 				-- (the garage is the gym when you own one, so the second car only shows without it)
 				if owned.Garage and cars[2] and not owned.HomeGym then
-					CityProps.SportsCar(f, hb * CF(9.5, 0.25, 4), cars[2], nil, plate)
+					scaledCar(f, hb * CF(19, 0.25, 8), cars[2], nil, plate)
 				end
 			end
 		elseif home == "Apartment" then
-			-- kerbside in front of Riverside Apartments
-			CityProps.SportsCar(f, CF(115, 0.3, 180.2) * ANG(0, RAD(-90), 0), cars[1], nil, plate)
+			-- kerbside in front of Riverside Apartments (Site_ApartmentKerb: the parking lane)
+			local kerb = siteCF("ApartmentKerb")
+			if kerb then
+				scaledCar(f, kerb, cars[1], nil, plate)
+			end
 		end
 	end)
 	for _, p in ipairs(screens("Reserved")) do
@@ -1208,14 +1230,33 @@ local function updateFans(P)
 end
 
 -- Main Street life: pedestrians on both sidewalks and everyday traffic in the two lanes.
--- Street cross-section (z): north curb 167 | eastbound lane ~169.6 | centre line 172.2 | westbound
--- lane ~174.8 | parked cars 180.2 (CityMap) | south curb 183. Hatchbacks are +-2.48 wide at the
--- wheels, so neighbouring lanes and the parked row never touch.
-local PED_LANES = { 166.3, 184.6 }
-local CAR_LANES = { { z = 169.6, dir = 1 }, { z = 174.8, dir = -1 } }
-local CROSSWALK_X = { -12.5, 12.5 } -- module scope: animate() runs at 30 Hz and must not allocate
-local HEADWAY = 14 -- studs kept to the car in front (a car is ~9 long)
-local STREET_SPAN = 680 -- traffic loops x -340..340
+-- Main Street's cross-section is Config.City.MainStreet: two 12.5-stud lanes (eastbound south of
+-- the centre line, westbound north), the parking lanes outside them, the sidewalks' walking lines.
+-- Traffic cars are CityProps hatchbacks scaled to real size (CAR_SCALE: 13 studs long, 6.2 wide), so
+-- neighbouring lanes and the parked rows never touch.
+local MAINST = Config.City.MainStreet
+local PED_LANES = MAINST.pedLanes
+local CAR_LANES = MAINST.lanes
+local CROSSWALK_X = MAINST.crosswalks -- module scope: animate() runs at 30 Hz and must not allocate
+local HEADWAY = 22 -- studs kept to the car in front (a car is ~13 long)
+local STREET_SPAN = MAINST.x1 - MAINST.x0 -- traffic loops the whole street
+local STREET_MID = (MAINST.x0 + MAINST.x1) / 2
+local CAR_SCALE = 1.45 -- CityProps cars were drawn at ~2/3 scale: 1.45 puts a sports car at 4.2 m
+
+-- builds a CityProps car at cf and scales every part about cf (sizes and offsets), so the same car
+-- reads at real-world size next to CityKit's traffic and the 2.7 m parking bays
+local function scaledCar(parent, cf, kind, color, plate, k)
+	k = k or CAR_SCALE
+	local m = CityProps.SportsCar(parent, cf, kind, color, plate)
+	for _, d in ipairs(m:GetDescendants()) do
+		if d:IsA("BasePart") then
+			local rel = cf:ToObjectSpace(d.CFrame)
+			d.Size = d.Size * k
+			d.CFrame = cf * CF(rel.Position * k) * (rel - rel.Position)
+		end
+	end
+	return m
+end
 
 local bulkParts, bulkCFrames = {}, {}
 local function bulkSet(p, cf)
@@ -1229,7 +1270,7 @@ end
 -- one walking pose; set = bulkSet in the loop, directSet when building (so nobody waits at the
 -- world origin for the first animation frame)
 local function posePed(e, swing, set)
-	local cf = CF(e.x, 0.5, e.z) * ANG(0, e.dir > 0 and RAD(-90) or RAD(90), 0)
+	local cf = CF(e.x, Config.City.SidewalkY, e.z) * ANG(0, e.dir > 0 and RAD(-90) or RAD(90), 0)
 	local lift = math.abs(swing) * 0.08
 	set(e.legL, cf * CF(-0.35, 2.2, 0) * ANG(swing, 0, 0) * CF(0, -1.1, 0))
 	set(e.legR, cf * CF(0.35, 2.2, 0) * ANG(-swing, 0, 0) * CF(0, -1.1, 0))
@@ -1244,7 +1285,7 @@ local function posePed(e, swing, set)
 end
 
 local function poseCar(c, set)
-	local cf = CF(c.x, 0.3, c.z) * ANG(0, c.dir > 0 and RAD(-90) or RAD(90), 0)
+	local cf = CF(c.x, Config.City.RoadY, c.z) * ANG(0, c.dir > 0 and RAD(-90) or RAD(90), 0)
 	for i, p in ipairs(c.parts) do
 		set(p, cf * c.rel[i])
 	end
@@ -1258,7 +1299,7 @@ local function buildStreetLife(f, count)
 	local rng = Random.new(77)
 	for i = 1, count do
 		local lane = PED_LANES[(i % 2) + 1]
-		local e = { x = rng:NextNumber(-300, 300), z = lane + rng:NextNumber(-0.3, 0.3), dir = rng:NextNumber() < 0.5 and -1 or 1, speed = rng:NextNumber(3.5, 5.5), phase = rng:NextNumber(0, 6) }
+		local e = { x = rng:NextNumber(MAINST.x0 + 40, MAINST.x1 - 40), z = lane + rng:NextNumber(-0.6, 0.6), dir = rng:NextNumber() < 0.5 and -1 or 1, speed = rng:NextNumber(3.5, 5.5), phase = rng:NextNumber(0, 6) }
 		local shirt = SHIRTS[rng:NextInteger(1, #SHIRTS)]
 		local pants = ({ Color3.fromRGB(40, 50, 80), Color3.fromRGB(30, 30, 34), Color3.fromRGB(120, 100, 80) })[rng:NextInteger(1, 3)]
 		local skin = skinColor(rng)
@@ -1276,13 +1317,13 @@ local function buildStreetLife(f, count)
 		posePed(e, 0, directSet)
 		table.insert(peds, e)
 	end
-	for i = 1, 4 do
+	for i = 1, 8 do
 		local lane = CAR_LANES[(i % 2) + 1]
-		local x0 = -300 + i * 140
-		local c = { parts = {}, rel = {}, x = x0, z = lane.z, dir = lane.dir, speed = rng:NextNumber(16, 22), wait = 0 }
+		local x0 = MAINST.x0 + 60 + i * (STREET_SPAN - 120) / 8
+		local c = { parts = {}, rel = {}, x = x0, z = lane.z, dir = lane.dir, speed = rng:NextNumber(18, 26), wait = 0 }
 		-- built at its lane start, offsets taken from there (not from the world origin)
-		local start = CF(x0, 0.3, lane.z) * ANG(0, lane.dir > 0 and RAD(-90) or RAD(90), 0)
-		local m = CityProps.SportsCar(f, start, "Hatchback", TRAFFIC_COLORS[(i - 1) % #TRAFFIC_COLORS + 1])
+		local start = CF(x0, Config.City.RoadY, lane.z) * ANG(0, lane.dir > 0 and RAD(-90) or RAD(90), 0)
+		local m = scaledCar(f, start, "Hatchback", TRAFFIC_COLORS[(i - 1) % #TRAFFIC_COLORS + 1])
 		for _, d in ipairs(m:GetDescendants()) do
 			if d:IsA("BasePart") then
 				-- moved every frame: never solid, so it can't shove you or block a ray
@@ -1391,7 +1432,7 @@ local NEAR = 180
 -- else WIN_RANGE) and dropped again further out, so nothing replicates. The skyline towers carry a
 -- range past the whole map: they all face the centre, so the faces you see are across the ring
 ------------------------------------------------------------------------
-local WIN_RANGE = 460 -- the Main Street shop fronts
+local WIN_RANGE = 760 -- the Main Street shop fronts
 local WIN_HYST = 80 -- hysteresis: built inside the range, destroyed beyond range + this
 local WIN_MAX = 48 -- grids alive at once (nearest first)
 local WIN_STEP = 8 -- grids built per pass (the first pass would otherwise make ~1,700 Frames at once)

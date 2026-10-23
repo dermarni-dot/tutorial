@@ -1,0 +1,48 @@
+{
+ "id": "kd_flash",
+ "kdAt": 0.45999999999999996,
+ "frames": [
+  {
+   "dt": 0.0,
+   "t": 0.4667,
+   "lowest": 0.032,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.549,
+   "headY": 5.446
+  },
+  {
+   "dt": 0.2,
+   "t": 0.6667,
+   "lowest": 0.032,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.074,
+   "headY": 4.54
+  },
+  {
+   "dt": 0.5,
+   "t": 0.9333,
+   "lowest": 0.122,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 1.872,
+   "headY": 4.59
+  },
+  {
+   "dt": 1.0,
+   "t": 1.4667,
+   "lowest": 0.115,
+   "lowestPart": "RightFoot",
+   "pelvisY": 1.856,
+   "headY": 4.537
+  },
+  {
+   "dt": 2.0,
+   "t": 2.4667,
+   "lowest": 0.115,
+   "lowestPart": "RightFoot",
+   "pelvisY": 1.856,
+   "headY": 4.494
+  }
+ ],
+ "slideAfter": 0.601,
+ "slideMaxStep": 0.047
+}

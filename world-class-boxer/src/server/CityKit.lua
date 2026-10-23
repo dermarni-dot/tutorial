@@ -323,6 +323,18 @@ local function cutRanges(a, b, gaps)
 end
 K.cutRanges = cutRanges
 
+-- the gaps of both lists together (either may be nil)
+function K.joinGaps(a, b)
+	local out = {}
+	for _, g in ipairs(a or {}) do
+		table.insert(out, g)
+	end
+	for _, g in ipairs(b or {}) do
+		table.insert(out, g)
+	end
+	return out
+end
+
 -- a road along X: centre z, width w, from x1 to x2.
 -- opts: kerbs (default true), sw = { n = width, s = width } sidewalks on the north (-Z) / south (+Z) side,
 -- center = "dash" | "double" | "none" (default dash, yellow), lanes (default 2: white dashes between
@@ -338,14 +350,15 @@ function K.roadX(parent, name, x1, x2, zc, w, opts)
 	for _, side in ipairs({ -1, 1 }) do
 		local edge = zc + side * w / 2
 		local swW = opts.sw and (side < 0 and opts.sw.n or opts.sw.s) or 0
-		for _, r in ipairs(cutRanges(x1, x2, gaps)) do
+		local sideGaps = K.joinGaps(gaps, side < 0 and opts.gapsN or opts.gapsS)
+		for _, r in ipairs(cutRanges(x1, x2, sideGaps)) do
 			if kerbs then
 				part(f, "Kerb", V3(r[2] - r[1], SW_H - y, 0.6), CF((r[1] + r[2]) / 2, (SW_H + y) / 2, edge + side * 0.3), KERB, M.Concrete, { collide = true })
 				part(f, "Gutter", V3(r[2] - r[1], 0.02, 1.4), CF((r[1] + r[2]) / 2, y + 0.01, edge - side * 0.7), K.GUTTER, M.Asphalt, { shadow = false })
 			end
 		end
 		if swW > 0 then
-			for _, r in ipairs(cutRanges(x1, x2, opts.swGaps or gaps)) do
+			for _, r in ipairs(cutRanges(x1, x2, opts.swGaps or sideGaps)) do
 				local z1, z2 = edge + side * 0.6, edge + side * (0.6 + swW)
 				slab(f, "Sidewalk", r[1], r[2], math.min(z1, z2), math.max(z1, z2), SW_H, opts.swColor or SIDEWALK, M.Concrete)
 			end
@@ -378,14 +391,15 @@ function K.roadZ(parent, name, z1, z2, xc, w, opts)
 	for _, side in ipairs({ -1, 1 }) do
 		local edge = xc + side * w / 2
 		local swW = opts.sw and (side < 0 and opts.sw.w or opts.sw.e) or 0
-		for _, r in ipairs(cutRanges(z1, z2, gaps)) do
+		local sideGaps = K.joinGaps(gaps, side < 0 and opts.gapsW or opts.gapsE)
+		for _, r in ipairs(cutRanges(z1, z2, sideGaps)) do
 			if kerbs then
 				part(f, "Kerb", V3(0.6, SW_H - y, r[2] - r[1]), CF(edge + side * 0.3, (SW_H + y) / 2, (r[1] + r[2]) / 2), KERB, M.Concrete, { collide = true })
 				part(f, "Gutter", V3(1.4, 0.02, r[2] - r[1]), CF(edge - side * 0.7, y + 0.01, (r[1] + r[2]) / 2), K.GUTTER, M.Asphalt, { shadow = false })
 			end
 		end
 		if swW > 0 then
-			for _, r in ipairs(cutRanges(z1, z2, opts.swGaps or gaps)) do
+			for _, r in ipairs(cutRanges(z1, z2, opts.swGaps or sideGaps)) do
 				local xa, xb = edge + side * 0.6, edge + side * (0.6 + swW)
 				slab(f, "Sidewalk", math.min(xa, xb), math.max(xa, xb), r[1], r[2], SW_H, opts.swColor or SIDEWALK, M.Concrete)
 			end
@@ -589,20 +603,15 @@ function K.car(parent, cf, color, kind)
 	for _, x in ipairs({ -(W / 2 - 0.5), W / 2 - 0.5 }) do
 		for _, z in ipairs({ -L * 0.31, L * 0.3 }) do
 			cyl(m, "Wheel", 1.0, wheelR * 2, cf * CF(x, wheelR, z), dark, M.Rubber)
-			cyl(m, "Hubcap", 1.04, wheelR * 1.2, cf * CF(x, wheelR, z), Color3.fromRGB(190, 192, 198), M.Metal, { shadow = false })
 		end
 	end
 	for _, x in ipairs({ -W * 0.32, W * 0.32 }) do
 		part(m, "Headlight", V3(1.3, 0.6, 0.12), cf * CF(x, bodyY0 + B * 0.7, -L / 2 - 0.04), Color3.fromRGB(255, 250, 230), M.Neon, { shadow = false })
 		part(m, "Taillight", V3(1.3, 0.55, 0.12), cf * CF(x, bodyY0 + B * 0.7, L / 2 + 0.04), Color3.fromRGB(220, 30, 30), M.Neon, { shadow = false })
 	end
-	part(m, "Grille", V3(W * 0.42, B * 0.4, 0.1), cf * CF(0, bodyY0 + B * 0.55, -L / 2 - 0.04), dark, M.SmoothPlastic, { shadow = false })
 	part(m, "BumperF", V3(W + 0.2, 0.7, 0.5), cf * CF(0, bodyY0 + 0.4, -L / 2 - 0.1), dark, M.SmoothPlastic)
 	part(m, "BumperB", V3(W + 0.2, 0.7, 0.5), cf * CF(0, bodyY0 + 0.4, L / 2 + 0.1), dark, M.SmoothPlastic)
 	part(m, "Plate", V3(1.8, 0.6, 0.06), cf * CF(0, bodyY0 + 0.95, L / 2 + 0.38), C.white, M.SmoothPlastic, { shadow = false })
-	for _, x in ipairs({ -1, 1 }) do
-		part(m, "Mirror", V3(0.7, 0.45, 0.5), cf * CF(x * (cw / 2 + 0.3), cabY - CH * 0.1, CO - CL / 2 + CH * 1.1), color, M.SmoothPlastic, { shadow = false })
-	end
 	if s.taxi then
 		local ts = part(m, "TaxiSign", V3(3.0, 0.9, 1.0), cf * CF(0, cabY + CH / 2 + 0.65, CO), Color3.fromRGB(250, 240, 200), M.Neon, { shadow = false })
 		GymDecor.Sign(ts, Enum.NormalId.Left, "TAXI", C.black, Color3.fromRGB(250, 240, 200), 40)
@@ -972,7 +981,9 @@ function K.parkingLot(parent, x1, x2, z1, z2, opts)
 			local cf = CF(cx, ROAD_Y - 0.02, rz + BAY_D / 2) * ANG(0, dir < 0 and 0 or RAD(180), 0)
 			table.insert(bays, cf)
 			local _ = nose
-			part(f, "WheelStop", V3(6, 0.5, 0.7), CF(cx, ROAD_Y + 0.23, dir < 0 and rz + 2.2 or rz + BAY_D - 2.2), Color3.fromRGB(196, 192, 184), M.Concrete, { collide = true })
+			if opts.stops then
+				part(f, "WheelStop", V3(6, 0.5, 0.7), CF(cx, ROAD_Y + 0.23, dir < 0 and rz + 2.2 or rz + BAY_D - 2.2), Color3.fromRGB(196, 192, 184), M.Concrete, { collide = true })
+			end
 			if idx ~= opts.reserved and rng:NextNumber() < (opts.fill or 0.5) then
 				local kinds = { "sedan", "sedan", "hatch", "suv", "pickup", "van" }
 				K.car(f, cf * ANG(0, RAD(rng:NextNumber(-2, 2)), 0), K.CAR_COLORS[rng:NextInteger(1, #K.CAR_COLORS)], kinds[rng:NextInteger(1, #kinds)])

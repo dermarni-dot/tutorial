@@ -1,0 +1,48 @@
+{
+ "id": "ko_uppercut",
+ "kdAt": 0.6,
+ "frames": [
+  {
+   "dt": 0.0,
+   "t": 0.6,
+   "lowest": 0.048,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.583,
+   "headY": 5.481
+  },
+  {
+   "dt": 0.2,
+   "t": 0.8,
+   "lowest": 0.062,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.646,
+   "headY": 5.354
+  },
+  {
+   "dt": 0.5,
+   "t": 1.1333,
+   "lowest": 0.097,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.492,
+   "headY": 4.525
+  },
+  {
+   "dt": 1.0,
+   "t": 1.6,
+   "lowest": 0.125,
+   "lowestPart": "RightFoot",
+   "pelvisY": 2.208,
+   "headY": 4.356
+  },
+  {
+   "dt": 2.0,
+   "t": 2.6,
+   "lowest": 0.05,
+   "lowestPart": "LowerTorso",
+   "pelvisY": 0.523,
+   "headY": 0.579
+  }
+ ],
+ "slideAfter": 0.005,
+ "slideMaxStep": 0.002
+}

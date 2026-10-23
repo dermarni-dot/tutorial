@@ -35,8 +35,17 @@
         "Career": {
           "$path": "src/server/Career.lua"
         },
+        "CityHomes": {
+          "$path": "src/server/CityHomes.lua"
+        },
+        "CityKit": {
+          "$path": "src/server/CityKit.lua"
+        },
         "CityMap": {
           "$path": "src/server/CityMap.lua"
+        },
+        "CityShops": {
+          "$path": "src/server/CityShops.lua"
         },
         "Crowd": {
           "$path": "src/server/Crowd.lua"

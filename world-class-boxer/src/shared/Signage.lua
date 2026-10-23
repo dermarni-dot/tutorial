@@ -67,6 +67,12 @@ Signage.Locations = {
 	{ id = "motel", kind = "shop", shop = "STARLIGHT MOTEL", name = "STARLIGHT MOTEL", short = "STARLIGHT", sub = "MOTEL  ·  VACANCY", icon = "bed", bg = rgb(16, 20, 40), fg = rgb(255, 120, 180), accent = rgb(255, 120, 180) },
 	{ id = "motors", kind = "shop", shop = "PRESTIGE MOTORS", name = "PRESTIGE MOTORS", short = "PRESTIGE", sub = "MOTORS", icon = "car", bg = rgb(12, 12, 16), fg = rgb(220, 220, 230), accent = rgb(220, 220, 230) },
 	{ id = "gas", kind = "shop", shop = "FUEL & GO", name = "FUEL & GO", short = "FUEL & GO", sub = "SNACKS  ·  ICE", icon = "pump", bg = rgb(200, 30, 36), fg = WHITE, accent = WHITE },
+	-- the rest of town (CityMap v10: the park, the waterfront, the field, the fire station, the market)
+	{ id = "park", kind = "place", name = "RIVERSIDE PARK", short = "RIVERSIDE PARK", sub = "COURT  ·  POND  ·  BANDSTAND", icon = "tree", bg = rgb(60, 40, 26), fg = rgb(255, 230, 170), accent = rgb(255, 230, 170) },
+	{ id = "boardwalk", kind = "place", name = "RIVERSIDE BOARDWALK", short = "THE BOARDWALK", sub = "PIER  ·  BOATHOUSE", icon = "anchor", bg = rgb(20, 40, 60), fg = rgb(255, 230, 170), accent = rgb(255, 230, 170) },
+	{ id = "field", kind = "place", name = "WCB TRAINING FIELD", short = "TRAINING FIELD", sub = "TRACK  ·  ROADWORK", icon = "bolt", bg = rgb(18, 18, 22), fg = GOLD, accent = GOLD },
+	{ id = "fire", kind = "place", name = "CITY FIRE STATION 7", short = "STATION 7", sub = "CITY FIRE DEPARTMENT", icon = "flame", bg = rgb(120, 20, 20), fg = WHITE, accent = WHITE },
+	{ id = "market", kind = "place", name = "DOCKSIDE MARKET", short = "DOCKSIDE", sub = "MARKET", icon = "bag", bg = rgb(20, 40, 60), fg = rgb(255, 230, 170), accent = rgb(255, 230, 170) },
 	-- the fight venues (venue = the Venues kind; Config.Venues names)
 	{ id = "community", kind = "venue", venue = "CommunityCenter", name = "COMMUNITY CENTER", short = "COMMUNITY CENTER", sub = "LOCAL BOXING NIGHT", icon = "people", bg = CREAM, fg = rgb(170, 25, 30), accent = rgb(170, 25, 30) },
 	{ id = "club", kind = "venue", venue = "ClubArena", name = "CITY CLUB ARENA", short = "CITY CLUB ARENA", sub = "FIGHT NIGHT", icon = "ring", bg = rgb(14, 14, 18), fg = GOLD, accent = GOLD },

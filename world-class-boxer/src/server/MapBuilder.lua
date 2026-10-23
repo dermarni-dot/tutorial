@@ -12,6 +12,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Signage = require(Shared:WaitForChild("Signage"))
 local Typography = require(Shared:WaitForChild("Typography"))
 local GymDecor = require(script.Parent:WaitForChild("GymDecor"))
+local CityKit = require(script.Parent:WaitForChild("CityKit"))
 local CityMap = require(script.Parent:WaitForChild("CityMap"))
 
 local MapBuilder = {}
@@ -652,9 +653,11 @@ function MapBuilder.BuildGym()
 	local X1, X2, Z1, Z2, H = -110, 110, -80, 80, 30
 
 	-- ground, floors, walls, roof
-	-- ground with a hole where the pool basin sits (x -28..28, z -123..-101)
-	local grass = Color3.fromRGB(86, 128, 70)
-	local GX1, GX2, GZ1, GZ2 = -380, 380, -410, 350
+	-- the ground covers the whole town (Config.City.Bounds) with a hole where the pool basin sits
+	-- (x -28..28, z -123..-101) and a gap for the river (CityMap fills it with water and the far bank)
+	local grass = Color3.fromRGB(90, 134, 70)
+	local B, R = Config.City.Bounds, Config.City.River
+	local GX1, GX2, GZ1, GZ2 = B.x0, R.x0, B.z0, B.z1
 	local HX1, HX2, HZ1, HZ2 = -28, 28, -123, -101
 	local function ground(x1, x2, z1, z2)
 		deco(gym, "Ground", V3(x2 - x1, 2, z2 - z1), CF((x1 + x2) / 2, -1, (z1 + z2) / 2), grass, Enum.Material.Grass)
@@ -663,6 +666,7 @@ function MapBuilder.BuildGym()
 	ground(GX1, GX2, GZ1, HZ1)
 	ground(GX1, HX1, HZ1, HZ2)
 	ground(HX2, GX2, HZ1, HZ2)
+	ground(R.x1, B.x1, GZ1, GZ2)
 	deco(gym, "Floor", V3(X2 - X1, 0.4, Z2 - Z1), CF(0, 0.2, 0), WOOD, Enum.Material.WoodPlanks)
 	local function openings(list, door)
 		local out = {}
@@ -886,17 +890,25 @@ function MapBuilder.BuildGym()
 	local track = Instance.new("Folder")
 	track.Name = "Track"
 	track.Parent = gym
-	local corners = { V3(-160, 0, 120), V3(160, 0, 120), V3(160, 0, -190), V3(-160, 0, -190) }
-	for i = 1, 4 do
-		local a, b = corners[i], corners[i % 4 + 1]
-		local mid = (a + b) / 2
-		local len = (b - a).Magnitude + 10
-		deco(track, "Road", V3(10, 0.3, len), CFrame.lookAt(mid + V3(0, 0.15, 0), b + V3(0, 0.15, 0)), Color3.fromRGB(60, 60, 64), Enum.Material.Asphalt)
-		deco(track, "RoadLine", V3(0.4, 0.32, len - 6), CFrame.lookAt(mid + V3(0, 0.16, 0), b + V3(0, 0.16, 0)), Color3.fromRGB(240, 220, 120), nil, { CanCollide = false })
-	end
-	deco(track, "EntrancePath", V3(10, 0.3, 36), CF(0, 0.15, 97), Color3.fromRGB(150, 140, 130), Enum.Material.Concrete)
-	-- either side of the path, the doorway's width (x -10..10) between the hall floor (z 80) and the
-	-- sidewalk (z 81.1) was bare ground: concrete it, flush with the path
+	-- the Gym Loop (Config.City.Loop): two 12.5-stud lanes with kerbs, gutters, a dashed centre line,
+	-- an 8-stud sidewalk inside and a 10-stud one outside; the junctions with Champion Ave (south),
+	-- Cedar Lane (west), Arena Way and Foundry Street (north) break the kerbs and lines
+	local L = Config.City.Loop
+	local LW = L.w / 2
+	local AVE, CED, AW, EW = Config.City.ChampionAve, Config.City.CedarLane, Config.City.ArenaWay, Config.City.EliteWay
+	local corners = { { L.x0 - LW, L.x1 + LW }, { L.z0 + LW, L.z1 - LW } }
+	CityKit.roadX(track, "LoopSouth", corners[1][1], corners[1][2], L.z1, L.w, {
+		sw = { n = 8, s = 10 }, gapsN = { { L.x0 - LW, L.x0 + LW }, { L.x1 - LW, L.x1 + LW }, { 180, 200 } }, gapsS = { { AVE.x - AVE.w / 2, AVE.x + AVE.w / 2 } },
+	})
+	CityKit.roadX(track, "LoopNorth", corners[1][1], corners[1][2], L.z0, L.w, {
+		sw = { n = 10, s = 8 }, gapsS = { { L.x0 - LW, L.x0 + LW }, { L.x1 - LW, L.x1 + LW } }, gapsN = { { AW.x - AW.w / 2, AW.x + AW.w / 2 } },
+		-- Foundry Street carries on east from the north-east corner: no kerb across it
+		gaps = { { L.x1 + LW - 0.1, L.x1 + LW + 0.1 } },
+	})
+	CityKit.roadZ(track, "LoopWest", corners[2][1], corners[2][2], L.x0, L.w, { y = 0.296, sw = { w = 10, e = 8 }, gapsW = { { CED.z - 12.5, CED.z + 12.5 } } })
+	CityKit.roadZ(track, "LoopEast", corners[2][1], corners[2][2], L.x1, L.w, { y = 0.296, sw = { w = 8, e = 10 }, gapsE = { { -115, -85 }, { 45, 75 }, { 185, 215 } } })
+	-- the gym's doorway threshold: the doorway's width (x -10..10) between the hall floor (z 80) and the
+	-- sidewalk (z 81.1) was bare ground: concrete it, flush with the plaza CityMap lays in front
 	for _, x in ipairs({ -7.5, 7.5 }) do
 		deco(track, "EntranceThreshold", V3(5, 0.3, 1.2), CF(x, 0.15, 80.6), Color3.fromRGB(150, 140, 130), Enum.Material.Concrete)
 	end
@@ -904,54 +916,34 @@ function MapBuilder.BuildGym()
 	cps.Name = "TrackCheckpoints"
 	cps.Parent = gym
 	local cpPositions = {
-		V3(12, 0, 120), V3(160, 0, 120), V3(160, 0, -35), V3(160, 0, -190),
-		V3(0, 0, -190), V3(-160, 0, -190), V3(-160, 0, -35), V3(-160, 0, 120),
+		V3(12, 0, L.z1), V3(L.x1, 0, L.z1), V3(L.x1, 0, (L.z0 + L.z1) / 2), V3(L.x1, 0, L.z0),
+		V3(0, 0, L.z0), V3(L.x0, 0, L.z0), V3(L.x0, 0, (L.z0 + L.z1) / 2), V3(L.x0, 0, L.z1),
 	}
 	for i, pos in ipairs(cpPositions) do
-		local cp = deco(cps, "CP" .. i, V3(10, 8, 1), CF(pos + V3(0, 4, 0)), Color3.fromRGB(255, 200, 40), nil, { Transparency = 1, CanCollide = false, CanQuery = false })
+		local cp = deco(cps, "CP" .. i, V3(L.w, 8, 1), CF(pos + V3(0, 4, 0)), Color3.fromRGB(255, 200, 40), nil, { Transparency = 1, CanCollide = false, CanQuery = false })
 		cp:SetAttribute("Index", i)
 	end
 	local trackStation = Instance.new("Model")
 	trackStation.Name = "Station_track"
 	trackStation.Parent = gym
-	local tb = deco(trackStation, "Base", V3(1, 1, 1), CF(0, 1, 112), Color3.new(), nil, { Transparency = 1, CanCollide = false, CanQuery = false })
+	local tb = deco(trackStation, "Base", V3(1, 1, 1), CF(0, 1, L.z1 - LW - 4), Color3.new(), nil, { Transparency = 1, CanCollide = false, CanQuery = false })
 	tb:SetAttribute("Station", "track")
-	buildAction(trackStation, "PromptPart", "Start Roadwork", "Roadwork Route", V3(0, 0, 112), { Activity = "Roadwork", Station = "track" }, Color3.fromRGB(255, 200, 40))
-	-- start/finish arch straddles the loop road (posts off the tarmac) over a chequered line
-	local startArch = deco(track, "StartArch", V3(1.2, 1.2, 15.6), CF(12, 11, 120), TRIM)
-	deco(track, "ArchPostL", V3(1, 11, 1), CF(12, 5.5, 112.8), Color3.fromRGB(30, 30, 30))
-	deco(track, "ArchPostR", V3(1, 11, 1), CF(12, 5.5, 127.2), Color3.fromRGB(30, 30, 30))
+	buildAction(trackStation, "PromptPart", "Start Roadwork", "Roadwork Route", V3(0, 0, L.z1 - LW - 4), { Activity = "Roadwork", Station = "track" }, Color3.fromRGB(255, 200, 40))
+	-- start/finish arch straddles the loop road (posts on the kerbs) over a chequered line
+	local archX = 12
+	local startArch = deco(track, "StartArch", V3(1.6, 1.6, L.w + 4), CF(archX, 16, L.z1), TRIM)
+	deco(track, "ArchPostL", V3(1.4, 16, 1.4), CF(archX, 8, L.z1 - LW - 1.2), Color3.fromRGB(30, 30, 30))
+	deco(track, "ArchPostR", V3(1.4, 16, 1.4), CF(archX, 8, L.z1 + LW + 1.2), Color3.fromRGB(30, 30, 30))
+	local archSign = deco(track, "ArchSign", V3(0.4, 3, 18), CF(archX, 14, L.z1), Color3.fromRGB(18, 18, 22))
+	sign(archSign, Enum.NormalId.Left, "ROADWORK START / FINISH", Color3.fromRGB(18, 18, 22), Color3.fromRGB(255, 200, 40))
+	sign(archSign, Enum.NormalId.Right, "ROADWORK START / FINISH", Color3.fromRGB(18, 18, 22), Color3.fromRGB(255, 200, 40))
 	for row = 0, 1 do
-		for k = 0, 9 do
-			deco(track, "FinishLine", V3(1, 0.04, 1), CF(11.5 + row, 0.34, 115.5 + k), (row + k) % 2 == 0 and Color3.fromRGB(240, 240, 240) or Color3.fromRGB(20, 20, 22), nil, { CanCollide = false, CanQuery = false })
+		for k = 0, 11 do
+			deco(track, "FinishLine", V3(1, 0.04, 2), CF(archX - 0.5 + row, 0.32, L.z1 - 11 + k * 2), (row + k) % 2 == 0 and Color3.fromRGB(240, 240, 240) or Color3.fromRGB(20, 20, 22), nil, { CanCollide = false, CanQuery = false })
 		end
 	end
-	label(startArch, "ROADWORK START", Color3.fromRGB(255, 200, 40), 2, 120)
-	-- scenery: trees along the loop (CityMap adds street lights and clears trees where the town is)
-	local rng = Random.new(5)
-	for _ = 1, 70 do
-		local side = rng:NextInteger(1, 4)
-		local t = rng:NextNumber(-1, 1)
-		local pos
-		if side == 1 then
-			local x = t * 175
-			if math.abs(x) < 14 then
-				x = (x < 0 and -1 or 1) * (14 + math.abs(x))
-			end
-			pos = V3(x, 0, 133 + rng:NextNumber(0, 24))
-		elseif side == 2 then
-			pos = V3(180 + rng:NextNumber(0, 40), 0, -35 + t * 170)
-		elseif side == 3 then
-			pos = V3(t * 175, 0, -210 - rng:NextNumber(0, 40))
-		else
-			pos = V3(-180 - rng:NextNumber(0, 40), 0, -35 + t * 170)
-		end
-		local h = rng:NextNumber(8, 14)
-		local trunk = deco(gym, "Trunk", V3(h, 1.4, 1.4), CF(pos + V3(0, h / 2, 0)) * CFrame.Angles(0, 0, math.rad(90)), Color3.fromRGB(95, 65, 40), Enum.Material.Wood)
-		trunk.Shape = Enum.PartType.Cylinder
-		local leaves = deco(gym, "Leaves", V3(1, 1, 1) * rng:NextNumber(7, 11), CF(pos + V3(0, h + 2, 0)), Color3.fromRGB(50 + rng:NextInteger(0, 30), 110 + rng:NextInteger(0, 40), 50), Enum.Material.Grass)
-		leaves.Shape = Enum.PartType.Ball
-	end
+	label(startArch, "ROADWORK START", Color3.fromRGB(255, 200, 40), 2, 160)
+	local _ = EW
 
 	-- the building's furniture, decor and light rig, then the town around it
 	GymDecor.Build(gym)
@@ -966,16 +958,26 @@ function MapBuilder.BuildGym()
 	-- every surface a lamp missed near black. A warm ~15% fill keeps shadows readable while the
 	-- lamps, windows and CharacterLight still do the shaping (not flat). Soft shadows for the same
 	-- reason. The client's Ambience sets the exposure per place (LightLevels) and the time of day.
-	Lighting.ClockTime = 14
-	Lighting.Brightness = 2.8
-	Lighting.Ambient = Color3.fromRGB(120, 112, 104)
-	Lighting.OutdoorAmbient = Color3.fromRGB(132, 136, 146)
-	Lighting.ExposureCompensation = 0
+	-- A bright, vibrant early afternoon: a strong warm sun (Brightness 3.6, ColorShift_Top warm),
+	-- a soft neutral fill so shadows stay open and readable, crisp shadows (ShadowSoftness 0.2).
+	Lighting.ClockTime = 13.6
+	Lighting.Brightness = 3.6
+	Lighting.Ambient = Color3.fromRGB(138, 132, 126)
+	Lighting.OutdoorAmbient = Color3.fromRGB(150, 158, 172)
+	Lighting.ColorShift_Top = Color3.fromRGB(255, 240, 216)
+	Lighting.ColorShift_Bottom = Color3.fromRGB(210, 220, 240)
+	Lighting.ExposureCompensation = 0.1
 	Lighting.GeographicLatitude = 34
 	pcall(function()
 		Lighting.EnvironmentDiffuseScale = 1
-		Lighting.EnvironmentSpecularScale = 0.5
-		Lighting.ShadowSoftness = 0.4
+		Lighting.EnvironmentSpecularScale = 0.7
+		Lighting.ShadowSoftness = 0.2
+	end)
+	pcall(function()
+		local sky = Lighting:FindFirstChildOfClass("Sky") or Instance.new("Sky")
+		sky.SunAngularSize = 14
+		sky.MoonAngularSize = 11
+		sky.Parent = Lighting
 	end)
 	local function effect(class, name, props)
 		local e = Lighting:FindFirstChild(name)
@@ -992,21 +994,23 @@ function MapBuilder.BuildGym()
 	-- FightClient finds these by name and switches them off on fight nights
 	-- a gentle global grade: the zone grades (Ambience) add the per-room look on top, so this one
 	-- stays near neutral (stacked contrast crushed the shadows)
-	effect("ColorCorrectionEffect", "GymGrade", { Brightness = 0.01, Contrast = 0.04, Saturation = 0.06, TintColor = Color3.fromRGB(255, 249, 242) })
-	effect("BloomEffect", "GymBloom", { Intensity = 0.35, Size = 24, Threshold = 1.8 })
-	effect("SunRaysEffect", "GymSunRays", { Intensity = 0.05, Spread = 0.6 })
+	-- (a touch more saturation and contrast than before: the town is meant to read colourful by day)
+	effect("ColorCorrectionEffect", "GymGrade", { Brightness = 0.03, Contrast = 0.08, Saturation = 0.14, TintColor = Color3.fromRGB(255, 250, 244) })
+	effect("BloomEffect", "GymBloom", { Intensity = 0.3, Size = 28, Threshold = 1.6 })
+	effect("SunRaysEffect", "GymSunRays", { Intensity = 0.08, Spread = 0.7 })
+	-- a thin, bright atmosphere: low density with a little haze so the far skyline and hills recede
 	local atm = Lighting:FindFirstChildOfClass("Atmosphere") or Instance.new("Atmosphere")
-	atm.Density = 0.24
-	atm.Offset = 0.12
-	atm.Color = Color3.fromRGB(212, 204, 190)
-	atm.Decay = Color3.fromRGB(122, 130, 144)
-	atm.Glare = 0.15
-	atm.Haze = 1.0
+	atm.Density = 0.28
+	atm.Offset = 0.3
+	atm.Color = Color3.fromRGB(222, 228, 238)
+	atm.Decay = Color3.fromRGB(150, 172, 204)
+	atm.Glare = 0.25
+	atm.Haze = 1.6
 	atm.Parent = Lighting
 	pcall(function()
 		local clouds = workspace.Terrain:FindFirstChildOfClass("Clouds") or Instance.new("Clouds")
-		clouds.Cover = 0.5
-		clouds.Density = 0.55
+		clouds.Cover = 0.38
+		clouds.Density = 0.5
 		clouds.Color = Color3.fromRGB(255, 255, 255)
 		clouds.Parent = workspace.Terrain
 	end)

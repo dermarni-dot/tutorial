@@ -148,7 +148,7 @@ local function buildCampus(root)
 
 	-- member parking east of the plaza: one row of 2.7 x 5 m bays nosing the gym, the aisle open to
 	-- the loop road through a dropped kerb (x 180..200); bay 9 stays empty for the player's own car
-	local bays = K.parkingLot(f, 40, 200, 100, inZ, { rng = rng, fill = 0.45, reserved = 9, lights = false })
+	local bays = K.parkingLot(f, 40, 200, 100, inZ, { rng = rng, fill = 0.45, reserved = 9, lights = false, stops = true })
 	K.kerbRamp(f, V3(190, 0, LOOP.z1 - LW - 1.2), V3(0, 0, 1), 18)
 	slab(f, "LotEntry", 181, 199, inZ, LOOP.z1 - LW, ROAD_Y - 0.01, K.ASPHALT_OLD, M.Asphalt)
 	local bay = bays[9] or CF(120, ROAD_Y, 109)
@@ -534,7 +534,7 @@ local function buildDowntown(root)
 	-- the WCB Sports Network's rooftop screen is a billboard (slot "Network")
 	K.billboard(f, CFrame.lookAt(V3(-40, 160 + 14, zf + 2), V3(-40, 174, zf - 100)), 50, 16, "Network", K.ADS[8], 8)
 	-- the public lot and the market hall east of the gas station
-	K.parkingLot(f, 660, 740, MAIN.frontS, MAIN.frontS + 60, { rng = rng, fill = 0.5 })
+	K.parkingLot(f, 660, 740, MAIN.frontS, MAIN.frontS + 60, { rng = rng, fill = 0.4 })
 	local mk = CF(815, 0, MAIN.frontS)
 	part(f, "MarketHall", V3(70, 16, 60), mk * CF(0, 8, 30), Color3.fromRGB(96, 60, 46), M.Brick, { collide = true })
 	part(f, "MarketRoof", V3(74, 1, 64), mk * CF(0, 16.5, 30), Color3.fromRGB(60, 62, 70), M.Metal)
@@ -855,8 +855,8 @@ local function buildEstates(root)
 	part(f, "VillaPodium", V3(120, 1.0, 40), CF(gx, 0.5, -865), Color3.fromRGB(226, 220, 206), M.Limestone, { collide = true })
 	part(f, "PodiumSteps", V3(24, 0.6, 3), CF(gx, 0.3, -843.5), Color3.fromRGB(226, 220, 206), M.Limestone, { collide = true })
 	site("HomeMansion", CFrame.lookAt(V3(gx, 1.0, -865), V3(gx, 1.0, -800)))
-	site("MansionPool", CFrame.lookAt(V3(gx - 90, 0.3, -840), V3(gx - 90, 0.3, -800)))
-	site("MansionGarage", CFrame.lookAt(V3(gx + 100, 0.3, -870), V3(gx + 100, 0.3, -800)))
+	site("MansionPool", CFrame.lookAt(V3(gx - 50, 0.3, -851), V3(gx - 50, 0.3, -800))) -- (CityVisuals scales the villa x1.8 about Site_HomeMansion: this lands at gx - 90)
+	site("MansionGarage", CFrame.lookAt(V3(gx + 56, 0.3, -868), V3(gx + 56, 0.3, -800)))
 	site("EstateGate", CFrame.lookAt(V3(gx, 0.3, E.z1 + 14), V3(gx, 0.3, E.z1 - 20)))
 	promptPart(f, "HomePrompt", V3(gx, 3.4, -841), "Enter mansion", "Hillcrest Estates", { Action = "Home", Kind = "Mansion" }, Color3.fromRGB(255, 220, 120))
 	-- palms along the drive and round the forecourt, hedges inside the south wall, garden lamps
@@ -1203,3 +1203,622 @@ local function buildEast(root)
 		rod(wf, "BridgeCable", V3(1090, 44, bz + dz), V3(1148, 8, bz + dz), 0.5, C.steelLight, M.Metal)
 	end
 end
+
+------------------------------------------------------------------------
+-- North: Arena Way, the plaza and the Grand Arena with its parking lots
+------------------------------------------------------------------------
+local function buildArena(root)
+	local f = folder(root, "Arena")
+	local rng = Random.new(77)
+	local AW, AR = CITY.ArenaWay, CITY.Arena
+	local c = V3(AR.x, 0, AR.z)
+	local R, H = AR.r, 70
+	-- the boulevard: two carriageways round a planted median, wide sidewalks, banners on the lamps
+	local cw = (AW.w - 9) / 2
+	K.roadZ(f, "ArenaWayW", AW.z0, AW.z1, AW.x - 4.5 - cw / 2, cw, { y = ROAD_Y - 0.004, sw = { w = 12 }, center = "none" })
+	K.roadZ(f, "ArenaWayE", AW.z0, AW.z1, AW.x + 4.5 + cw / 2, cw, { y = ROAD_Y - 0.004, sw = { e = 12 }, center = "none" })
+	slab(f, "Median", AW.x - 4.5, AW.x + 4.5, AW.z0 + 10, AW.z1 - 10, SW_H, K.PAVING, M.Pavement)
+	for z = AW.z0 + 24, AW.z1 - 24, 24 do
+		K.tree(f, V3(AW.x, SW_H, z), "palm", rng:NextNumber(30, 38), rng)
+		K.streetLight(f, V3(AW.x - AW.w / 2 - 1.6, SW_H, z + 12), V3(1, 0, 0), true)
+		K.streetLight(f, V3(AW.x + AW.w / 2 + 1.6, SW_H, z + 12), V3(-1, 0, 0), true)
+	end
+	K.dashesZ(f, AW.z0, AW.z1, AW.x - 4.5 - cw / 2, K.LINE_WHITE, 8, 16, 0.4)
+	K.dashesZ(f, AW.z0, AW.z1, AW.x + 4.5 + cw / 2, K.LINE_WHITE, 8, 16, 0.4)
+	K.crosswalk(f, V3(AW.x, 0, AW.z1 - 4), true, AW.w, 8)
+	K.crosswalk(f, V3(AW.x - 26, 0, LOOP.z0), false, LOOP.w, 8)
+	K.crosswalk(f, V3(AW.x + 26, 0, LOOP.z0), false, LOOP.w, 8)
+	K.trafficSignal(f, V3(-30, SW_H, LOOP.z0 + LW + 2), V3(0, 0, -1), 22, V3(-1, 0, 0), "GYM LOOP")
+	K.trafficSignal(f, V3(30, SW_H, LOOP.z0 - LW - 2), V3(0, 0, 1), 22, V3(1, 0, 0), "GYM LOOP")
+	K.trafficSignal(f, V3(30, SW_H, LOOP.z0 + LW + 2), V3(-1, 0, 0), 20, V3(0, 0, -1), "ARENA WAY")
+	K.streetSign(f, V3(-28, SW_H, LOOP.z0 - LW - 2), "ARENA WAY", 0, "GYM LOOP")
+	-- the plaza in front of the arena: paving bands, flags, light towers, ticket booths, the fan site
+	slab(f, "ArenaPlaza", -170, 170, -530, AW.z0, 0.3, Color3.fromRGB(176, 170, 160), M.Pavement)
+	for k = 0, 6 do
+		slab(f, "PlazaBand", -170, 170, -520 + k * 8, -518.5 + k * 8, 0.31, Color3.fromRGB(120, 110, 100), M.Concrete)
+	end
+	for i, x in ipairs({ -75, -45, -15, 15, 45, 75 }) do
+		K.flagPole(f, V3(x, 0.3, AW.z0 - 10), 36, (i % 2 == 0) and C.gold or C.red, (i % 2 == 0) and "WCB" or "FIGHT\nNIGHT", (i % 2 == 0) and C.black or C.white)
+	end
+	for _, x in ipairs({ -150, 150 }) do
+		part(f, "LightTower", V3(2.2, 100, 2.2), CF(x, 50, -500), Color3.fromRGB(70, 72, 80), M.Metal, { collide = true })
+		local head = part(f, "TowerLights", V3(14, 5, 1.4), CFrame.lookAt(V3(x, 98, -500), V3(0, 10, -520)), Color3.fromRGB(255, 255, 235), M.Neon, { shadow = false })
+		local l = spot(emitter(f, head.CFrame * CF(0, 0, -1)), Enum.NormalId.Front, Color3.fromRGB(255, 250, 230), 220, 1.6, 50)
+		l.Enabled = false
+		tag(l, "NightLight")
+	end
+	for _, x in ipairs({ -120, 120 }) do
+		part(f, "TicketBooth", V3(14, 11, 10), CF(x, 5.8, -485), Color3.fromRGB(40, 42, 50), M.Concrete, { collide = true })
+		local tb = part(f, "TicketWindow", V3(10, 5, 0.1), CF(x, 5.2, -479.9), Color3.fromRGB(170, 205, 230), M.Glass, { transparency = 0.4, shadow = false })
+		local _ = tb
+		local ts = part(f, "TicketSign", V3(12, 2.4, 0.3), CF(x, 9.6, -479.8), Color3.fromRGB(150, 16, 24), M.SmoothPlastic)
+		GymDecor.Sign(ts, Enum.NormalId.Front, "BOX OFFICE", Color3.fromRGB(255, 220, 90), Color3.fromRGB(150, 16, 24), 30)
+	end
+	for _, x in ipairs({ -100, -60, 60, 100 }) do
+		K.planter(f, CF(x, 0.3, -470 - 8), 10, 3)
+		K.bench(f, V3(x, 0.3, -492), 0, 6.4, C.wood)
+		K.bin(f, V3(x + 5, 0.3, -496))
+	end
+	for _, x in ipairs({ -30, 30 }) do
+		K.vendorCart(f, CF(x, 0.3, -488) * ANG(0, RAD(x < 0 and -20 or 20), 0), x < 0 and "hotdog" or "pretzel")
+	end
+	site("FanArena", CFrame.lookAt(V3(0, 0.3, -500), V3(0, 0.3, -520)), { Len = 40, Rows = 2 })
+	-- the arena: a drum of 28 bays (glass band, LED ring, ribs) under a shallow dome; the entrance
+	-- block on the south with the big screen, canopy, doors and banners
+	local segs = 28
+	for k = 0, segs - 1 do
+		local a = (k + 0.5) / segs * math.pi * 2
+		local dir = V3(math.sin(a), 0, math.cos(a))
+		local pos = c + dir * R + V3(0, H / 2, 0)
+		local w = 2 * R * math.sin(math.pi / segs) + 1
+		local cf = CFrame.lookAt(pos, pos + dir)
+		part(f, "ArenaWall", V3(w, H, 4), cf, Color3.fromRGB(56, 58, 66), M.Concrete, { collide = true })
+		part(f, "ArenaGlass", V3(w, 14, 0.5), cf * CF(0, -H / 2 + 12, -2.2), Color3.fromRGB(120, 170, 220), M.Glass, { transparency = 0.15, reflect = 0.2 })
+		part(f, "ArenaGlass", V3(w, 10, 0.5), cf * CF(0, 10, -2.2), Color3.fromRGB(120, 170, 220), M.Glass, { transparency = 0.15, reflect = 0.2 })
+		part(f, "ArenaLED", V3(w, 2.2, 0.4), cf * CF(0, H / 2 - 4, -2.25), k % 2 == 0 and Color3.fromRGB(255, 40, 50) or C.gold, M.Neon, { shadow = false })
+		part(f, "ArenaRib", V3(1.4, H - 6, 1.4), cf * CF(w / 2 - 0.7, -2, -2.6), Color3.fromRGB(80, 82, 90), M.Metal)
+	end
+	vcyl(f, "ArenaRoof", 3, 2 * R + 6, CF(c + V3(0, H, 0)), Color3.fromRGB(70, 72, 80), M.Metal)
+	blob(f, "ArenaDome", V3(2 * R - 16, 40, 2 * R - 16), CF(c + V3(0, H + 3, 0)), Color3.fromRGB(205, 210, 218), M.Metal)
+	vcyl(f, "ArenaSpire", 24, 3, CF(c + V3(0, H + 22, 0)), C.steelLight, M.Metal)
+	ball(f, "ArenaSpireLight", 2.6, CF(c + V3(0, H + 47, 0)), Color3.fromRGB(255, 40, 40), M.Neon, { shadow = false })
+	local FZ = -530 -- the entrance block's facade
+	part(f, "EntranceBlock", V3(120, 48, 30), CF(0, 24, FZ - 15), Color3.fromRGB(40, 42, 50), M.Concrete, { collide = true })
+	part(f, "EntranceTrim", V3(120.6, 1.6, 30.6), CF(0, 48.8, FZ - 15), Color3.fromRGB(190, 20, 30), M.SmoothPlastic)
+	local screen = part(f, "ArenaScreen", V3(70, 24, 1), CF(0, 34, FZ + 0.6), Color3.fromRGB(8, 8, 12), M.SmoothPlastic)
+	local sg = gui(screen, Enum.NormalId.Back, 8, 0, 2500)
+	frame(sg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(8, 8, 12) })
+	frame(sg, { Size = UDim2.fromScale(1, 0.22), BackgroundColor3 = Color3.fromRGB(190, 20, 30) })
+	label(sg, "GRAND ARENA", { Name = "ScreenTop", TextColor3 = Color3.new(1, 1, 1), Size = UDim2.fromScale(0.9, 0.18), Position = UDim2.fromScale(0.05, 0.02) })
+	label(sg, "FIGHT NIGHT", { Name = "ScreenHeadline", TextColor3 = C.gold, Size = UDim2.fromScale(0.9, 0.38), Position = UDim2.fromScale(0.05, 0.26) })
+	label(sg, "SATURDAY  -  WORLD TITLE ON THE LINE", { Name = "ScreenSub", TextColor3 = Color3.new(1, 1, 1), Face = "signSub", Size = UDim2.fromScale(0.9, 0.16), Position = UDim2.fromScale(0.05, 0.7) })
+	screen:SetAttribute("Kind", "ArenaScreen")
+	tag(screen, "CityScreen")
+	K.neonOutline(f, CF(0, 34, FZ + 1.3), 70.6, 24.6, Color3.fromRGB(255, 60, 70))
+	local nameBand = part(f, "ArenaName", V3(80, 5, 0.6), CF(0, 19.5, FZ + 0.4), Color3.fromRGB(14, 14, 18), M.SmoothPlastic)
+	Signage.Board(nameBand, Enum.NormalId.Back, "arena", { maxDist = 2000 })
+	part(f, "EntranceCanopy", V3(90, 1.6, 16), CF(0, 15, FZ + 8), Color3.fromRGB(30, 30, 34), M.Metal)
+	for _, x in ipairs({ -42, -14, 14, 42 }) do
+		part(f, "CanopyPost", V3(1.4, 14.4, 1.4), CF(x, 7.2, FZ + 15), Color3.fromRGB(30, 30, 34), M.Metal, { collide = true })
+	end
+	for k = 0, 5 do
+		part(f, "ArenaDoor", V3(9, 12, 0.3), CF(-32 + k * 12.8, 6.4, FZ + 0.15), Color3.fromRGB(160, 200, 230), M.Glass, { transparency = 0.3 })
+	end
+	part(f, "ArenaSteps", V3(110, 0.6, 10), CF(0, 0.3 + 0.3, FZ + 5), Color3.fromRGB(150, 148, 144), M.Concrete, { collide = true })
+	part(f, "ArenaSteps", V3(110, 0.6, 5), CF(0, 0.9 + 0.3, FZ + 2.5), Color3.fromRGB(150, 148, 144), M.Concrete, { collide = true })
+	for i, x in ipairs({ -50, 50 }) do
+		local b = part(f, "ArenaBanner", V3(8, 26, 0.3), CF(x, 30, FZ + 0.1), i == 1 and Color3.fromRGB(190, 20, 30) or Color3.fromRGB(20, 40, 120), M.Fabric)
+		GymDecor.Sign(b, Enum.NormalId.Back, i == 1 and "LIVE\nFIGHTS" or "WORLD\nTITLE", Color3.new(1, 1, 1), nil, 20)
+	end
+	for _, x in ipairs({ -30, 30 }) do
+		spot(emitter(f, CF(x, 14, FZ + 8)), Enum.NormalId.Bottom, Color3.fromRGB(255, 225, 180), 34, 1.6, 110)
+	end
+	-- parking lots both sides, access lanes from the plaza
+	for _, side in ipairs({ -1, 1 }) do
+		slab(f, "ArenaLane", side > 0 and 170 or -200, side > 0 and 200 or -170, -560, AW.z0, ROAD_Y - 0.01, K.ASPHALT, M.Asphalt)
+		K.parkingLot(f, side > 0 and 180 or -420, side > 0 and 420 or -180, -740, -560, { rng = rng, fill = 0.22 })
+		local lotSign = part(f, "LotSign", V3(10, 3, 0.3), CF(side * 185, 8, -552), Color3.fromRGB(30, 60, 160), M.SmoothPlastic)
+		GymDecor.Sign(lotSign, Enum.NormalId.Back, "P  ARENA PARKING", C.white, Color3.fromRGB(30, 60, 160), 40)
+		part(f, "LotSignPole", V3(0.4, 6.5, 0.4), CF(side * 185, 3.25, -552), C.steel, M.Metal)
+	end
+	-- a service yard behind the arena: trucks, a loading dock
+	slab(f, "ServiceYard", -80, 80, -800, -760, ROAD_Y - 0.01, K.ASPHALT_OLD, M.Asphalt)
+	for i, x in ipairs({ -50, -20, 20 }) do
+		K.car(f, CF(x, ROAD_Y, -782) * ANG(0, 0, 0), K.CAR_COLORS[(i * 2) % #K.CAR_COLORS + 1], "van")
+	end
+	K.fenceChain(f, V3(-80, 0.3, -800), V3(80, 0.3, -800), 8)
+	lightZone(f, "ArenaZone", V3(400, 90, 400), CF(0, 45, -640), "Street")
+end
+
+------------------------------------------------------------------------
+-- North-east: the WCB Elite Performance Center (a bigger, newer gym across town). The shell is
+-- shared; its roller shutters, lights and the elite decor open up for you (CityVisuals) once your
+-- facility reaches the Elite tier (Catalog.GymTier index >= 3). Then Foundry Street's warehouses and
+-- the construction site east of the loop.
+------------------------------------------------------------------------
+local ELITE = { x0 = 320, x1 = 520, z0 = -560, z1 = -420, h = 36 }
+CityMap.EliteCenter = ELITE
+
+local function buildEliteCenter(root)
+	local f = folder(root, "EliteCenter")
+	local E = ELITE
+	local EW = CITY.EliteWay
+	local rng = Random.new(99)
+	local cx, cz = (E.x0 + E.x1) / 2, (E.z0 + E.z1) / 2
+	local clad = Color3.fromRGB(44, 46, 52)
+	local glassC = Color3.fromRGB(150, 190, 215)
+	-- access road from Foundry Street, the plaza with its sprint lane, the car park
+	K.roadZ(f, "EliteWay", EW.z0, EW.z1, EW.x, EW.w, { y = ROAD_Y - 0.004, sw = { w = 8, e = 8 } })
+	slab(f, "ElitePlaza", E.x0 - 20, E.x1 + 20, E.z1, EW.z0, 0.3, Color3.fromRGB(190, 190, 194), M.Pavement)
+	local lane = part(f, "SprintLane", V3(120, 0.08, 10), CF(cx - 20, 0.34, -400), Color3.fromRGB(170, 50, 44), M.Rubber)
+	local lg = gui(lane, Enum.NormalId.Top, 4, 1, 200)
+	for k = 1, 3 do
+		frame(lg, { Size = UDim2.new(1, 0, 0, 2), Position = UDim2.fromScale(0, k / 4), BackgroundColor3 = C.white })
+	end
+	K.parkingLot(f, E.x1 + 24, E.x1 + 120, E.z1 - 60, EW.z0, { rng = rng, fill = 0.3 })
+	-- building: plinth, floor, solid back and sides, glass curtain wall on the south front
+	part(f, "ElitePlinth", V3(E.x1 - E.x0 + 6, 0.8, E.z1 - E.z0 + 6), CF(cx, 0.4, cz), Color3.fromRGB(120, 120, 126), M.Concrete, { collide = true })
+	part(f, "EliteFloor", V3(E.x1 - E.x0, 0.3, E.z1 - E.z0), CF(cx, 0.95, cz), Color3.fromRGB(58, 60, 66), M.Rubber, { collide = true })
+	part(f, "EliteBackWall", V3(E.x1 - E.x0, E.h, 1.6), CF(cx, E.h / 2, E.z0), clad, M.Concrete, { collide = true })
+	for _, x in ipairs({ E.x0, E.x1 }) do
+		part(f, "EliteSideWall", V3(1.6, E.h, E.z1 - E.z0), CF(x, E.h / 2, cz), clad, M.Concrete, { collide = true })
+	end
+	part(f, "EliteRoof", V3(E.x1 - E.x0 + 4, 1.6, E.z1 - E.z0 + 8), CF(cx, E.h + 0.8, cz + 2), Color3.fromRGB(30, 32, 36), M.Metal, { collide = true })
+	for k = 0, 8 do
+		part(f, "RoofFin", V3(0.8, 3.4, E.z1 - E.z0 + 6), CF(E.x0 + 10 + k * (E.x1 - E.x0 - 20) / 8, E.h + 3.2, cz + 2), Color3.fromRGB(70, 72, 80), M.Metal)
+	end
+	local doorW = 20
+	for _, sp in ipairs({ { E.x0, cx - doorW / 2 }, { cx + doorW / 2, E.x1 } }) do
+		local w = sp[2] - sp[1]
+		part(f, "EliteGlass", V3(w, E.h - 1.2, 0.4), CF((sp[1] + sp[2]) / 2, (E.h - 1.2) / 2 + 0.8, E.z1), glassC, M.Glass, { transparency = 0.35, reflect = 0.15, collide = true })
+		for k = 0, math.floor(w / 8) do
+			part(f, "EliteMullion", V3(0.45, E.h - 1.2, 0.6), CF(sp[1] + k * w / math.floor(w / 8), (E.h - 1.2) / 2 + 0.8, E.z1), Color3.fromRGB(26, 26, 30), M.Metal)
+		end
+	end
+	part(f, "EliteTransom", V3(doorW + 1.5, E.h - 15, 1.0), CF(cx, 15 + (E.h - 15) / 2, E.z1), clad, M.Concrete, { collide = true })
+	for _, sx in ipairs({ -1, 1 }) do
+		local sh = part(f, "EliteShutter", V3(doorW / 2, 14.2, 0.5), CF(cx + sx * doorW / 4, 7.9, E.z1 + 0.25), Color3.fromRGB(150, 152, 158), M.DiamondPlate, { collide = true })
+		local sg = gui(sh, Enum.NormalId.Back, 8, 0.6, 200)
+		for k = 0, 11 do
+			frame(sg, { Size = UDim2.new(1, 0, 0, 2), Position = UDim2.fromScale(0, k / 12), BackgroundColor3 = Color3.fromRGB(90, 92, 98) })
+		end
+	end
+	part(f, "EliteCanopy", V3(doorW + 16, 0.8, 10), CF(cx, 15.6, E.z1 + 5), Color3.fromRGB(26, 26, 30), M.Metal)
+	local band = part(f, "EliteSign", V3(70, 4.6, 0.5), CF(cx, E.h - 4, E.z1 + 0.6), Color3.fromRGB(16, 16, 20), M.SmoothPlastic)
+	local bsg = Signage.Board(band, Enum.NormalId.Back, "elite", { maxDist = 1500 })
+	local bwm = bsg:FindFirstChild("Wordmark", true)
+	if bwm then
+		bwm.Name = "SignText"
+		bwm.TextColor3 = Color3.fromRGB(120, 128, 140)
+	end
+	-- inside: glass partitions with doorways split recovery / motion capture / sports science
+	for _, px in ipairs({ E.x0 + 66, E.x1 - 66 }) do
+		for _, sp in ipairs({ { E.z0 + 1, cz - 6 }, { cz + 6, E.z1 - 1 } }) do
+			part(f, "ElitePartition", V3(0.4, 16, sp[2] - sp[1]), CF(px, 9, (sp[1] + sp[2]) / 2), Color3.fromRGB(200, 220, 235), M.Glass, { transparency = 0.55, collide = true })
+		end
+	end
+	for _, x in ipairs({ E.x0 + 33, cx, E.x1 - 33 }) do
+		for _, z in ipairs({ cz - 36, cz, cz + 36 }) do
+			local fix = part(f, "EliteLightPanel", V3(10, 0.25, 3), CF(x, E.h - 0.25, z), Color3.fromRGB(230, 236, 246), M.SmoothPlastic, { shadow = false })
+			local l = spot(fix, Enum.NormalId.Bottom, Color3.fromRGB(228, 238, 255), 44, 1.5, 120)
+			l.Name = "EliteCenterLight"
+			l.Enabled = false
+		end
+	end
+	lightZone(f, "EliteZone", V3(E.x1 - E.x0, E.h, E.z1 - E.z0), CF(cx, E.h / 2, cz), "GymElite")
+	site("EliteCenter", CFrame.lookAt(V3(cx, 1.1, E.z1 - 10), V3(cx, 1.1, E.z0)))
+	site("EliteEntrance", CFrame.lookAt(V3(cx, 0.3, E.z1 + 10), V3(cx, 0.3, E.z1)))
+	site("EliteRecovery", CFrame.lookAt(V3(E.x0 + 33, 1.1, cz), V3(E.x0 + 33, 1.1, E.z1)))
+	site("EliteMocap", CFrame.lookAt(V3(cx, 1.1, cz - 4), V3(cx, 1.1, E.z1)))
+	site("EliteLab", CFrame.lookAt(V3(E.x1 - 33, 1.1, cz), V3(E.x1 - 33, 1.1, E.z1)))
+	promptPart(f, "ElitePrompt", V3(cx - doorW / 2 - 4, 3.2, E.z1 + 4), "Elite Performance Center", "Facility tier", { Action = "EliteCenter" }, Color3.fromRGB(150, 220, 255))
+	for _, x in ipairs({ E.x0 - 10, cx, E.x1 + 10 }) do
+		K.streetLight(f, V3(x, 0.3, EW.z0 + 4), V3(0, 0, -1), true)
+	end
+	for _, x in ipairs({ E.x0 - 14, E.x1 + 14 }) do
+		K.flagPole(f, V3(x, 0.3, E.z1 + 12), 36, Color3.fromRGB(150, 220, 255), "WCB", C.black)
+	end
+	for _, p in ipairs({ V3(E.x0 - 30, 0.14, E.z1 + 30), V3(E.x1 + 150, 0.14, E.z1 - 20), V3(E.x0 - 40, 0.14, E.z0 + 20) }) do
+		K.tree(f, p, "poplar", rng:NextNumber(40, 50), rng)
+	end
+end
+
+-- Foundry Street carries the loop's north road east to the river: warehouses, the container yard,
+-- the silos and stack; the construction site south of it
+local function buildIndustrial(root)
+	local f = folder(root, "Industrial")
+	local rng = Random.new(1313)
+	local FS = CITY.FoundryStreet
+	local EW = CITY.EliteWay
+	K.roadX(f, "FoundryStreet", FS.x0, FS.x1, FS.z, FS.w, { sw = { n = 8, s = 8 }, gapsN = { { EW.x - 12.5, EW.x + 12.5 }, { 600, 630 } }, gapsS = { { 640, 670 } } })
+	lightsX(f, FS.x0 + 30, FS.x1 - 20, FS.z - 12.5 - 1.6, V3(0, 0, 1), 70, nil, 2)
+	K.streetSign(f, V3(EW.x + 14, SW_H, FS.z - 14), "FOUNDRY ST", 0, "ELITE WAY")
+	K.roadSign(f, V3(EW.x - 14, SW_H, FS.z - 14), 0, "stop")
+	K.crosswalk(f, V3(EW.x, 0, FS.z - 15), true, EW.w, 8)
+	-- the yards: asphalt with chain-link round them, gates on Foundry Street
+	slab(f, "IndustrialYard", 550, 745, -600, FS.z - 12.5 - 8.6, ROAD_Y - 0.02, K.ASPHALT_OLD, M.Asphalt)
+	K.fenceChain(f, V3(550, 0.3, -321), V3(598, 0.3, -321), 8)
+	K.fenceChain(f, V3(632, 0.3, -321), V3(745, 0.3, -321), 8)
+	K.fenceChain(f, V3(550, 0.3, -321), V3(550, 0.3, -600), 8)
+	K.fenceChain(f, V3(550, 0.3, -600), V3(745, 0.3, -600), 8)
+	local steel = Color3.fromRGB(150, 154, 160)
+	local function warehouse(x0, x1, z0, z1, h, name, color, bays)
+		local cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
+		local m = model(f, "Warehouse")
+		part(m, "WarehouseBody", V3(x1 - x0, h, z1 - z0), CF(cx, h / 2, cz), color or steel, M.DiamondPlate, { collide = true })
+		part(m, "WarehouseBase", V3(x1 - x0 + 0.4, 4, z1 - z0 + 0.4), CF(cx, 2, cz), Color3.fromRGB(90, 92, 96), M.Concrete)
+		local ra = V3(cx, h + 4, z0 + (z1 - z0) / 4)
+		local rb = V3(cx, h + 4, z1 - (z1 - z0) / 4)
+		part(m, "WarehouseRoof", V3(x1 - x0 + 2, 8, (z1 - z0) / 2 + 1), CFrame.lookAt(ra, ra + V3(0, 0, -1)), Color3.fromRGB(80, 84, 92), M.Metal, { class = "WedgePart" })
+		part(m, "WarehouseRoof", V3(x1 - x0 + 2, 8, (z1 - z0) / 2 + 1), CFrame.lookAt(rb, rb + V3(0, 0, 1)), Color3.fromRGB(80, 84, 92), M.Metal, { class = "WedgePart" })
+		for k = 1, bays do
+			local dx = x0 + k * (x1 - x0) / (bays + 1)
+			part(m, "RollerDoor", V3(16, 14, 0.4), CF(dx, 7.6, z1 + 0.2), Color3.fromRGB(60, 80, 110), M.Metal)
+			part(m, "LoadingDock", V3(18, 4, 6), CF(dx, 2, z1 + 3), Color3.fromRGB(120, 120, 124), M.Concrete, { collide = true })
+			part(m, "DockBumper", V3(18, 1, 0.6), CF(dx, 3.6, z1 + 6.2), C.black, M.Rubber, { shadow = false })
+		end
+		local ws = part(m, "WarehouseSign", V3((x1 - x0) * 0.5, 5, 0.4), CF(cx, h - 4, z1 + 0.2), Color3.fromRGB(26, 28, 34), M.SmoothPlastic)
+		GymDecor.Sign(ws, Enum.NormalId.Back, name, C.white, Color3.fromRGB(26, 28, 34), 30)
+		for k = 0, 3 do
+			part(m, "WarehouseVent", V3(4, 2.4, 4), CF(x0 + 20 + k * (x1 - x0 - 40) / 3, h + 7, cz), steel, M.Metal)
+		end
+		return m
+	end
+	warehouse(560, 680, -440, -350, 24, "IRONWORKS SUPPLY CO.", Color3.fromRGB(150, 154, 160), 3)
+	warehouse(600, 740, -590, -470, 28, "RIVERSIDE COLD STORAGE", Color3.fromRGB(96, 110, 130), 3)
+	-- the container yard west of the cold store, a forklift's worth of pallets, trucks
+	local cols = { Color3.fromRGB(150, 50, 40), Color3.fromRGB(40, 80, 150), Color3.fromRGB(60, 120, 70), Color3.fromRGB(200, 120, 30), Color3.fromRGB(120, 124, 132) }
+	for k = 0, 2 do
+		K.container(f, CF(572, ROAD_Y, -480 - k * 11) * ANG(0, RAD(90), 0), cols[k + 1], "WCB LINES")
+	end
+	K.container(f, CF(572, ROAD_Y + 8.7, -485.5) * ANG(0, RAD(90), 0), cols[4], "WCB LINES")
+	K.container(f, CF(572, ROAD_Y, -560) * ANG(0, RAD(90), 0), cols[5])
+	for i, x in ipairs({ 600, 640, 680 }) do
+		K.car(f, CF(x, ROAD_Y, -336) * ANG(0, RAD(180), 0), K.CAR_COLORS[i + 2], i == 2 and "pickup" or "van")
+	end
+	for _, x in ipairs({ 590, 700 }) do
+		K.streetLight(f, V3(x, ROAD_Y, -455), V3(0, 0, 1), true, 30)
+	end
+	-- silos and the stack at the west end of the yard
+	for i, x in ipairs({ 470, 500 }) do
+		vcyl(f, "Silo", 60, 20, CF(x, 0.3, -600), Color3.fromRGB(200, 202, 206), M.Metal, { collide = true })
+		blob(f, "SiloCap", V3(21, 10, 21), CF(x, 62, -600), Color3.fromRGB(170, 172, 178), M.Metal)
+		if i == 1 then
+			local ss = part(f, "SiloSign", V3(14, 14, 0.3), CF(x, 36, -589.7), Color3.fromRGB(200, 202, 206), M.SmoothPlastic)
+			GymDecor.Sign(ss, Enum.NormalId.Back, "IRON\nWORKS", Color3.fromRGB(150, 50, 40), Color3.fromRGB(200, 202, 206), 30)
+		end
+	end
+	vcyl(f, "Smokestack", 110, 9, CF(530, 0.3, -640), Color3.fromRGB(120, 70, 60), M.Brick, { collide = true })
+	for k = 0, 2 do
+		vcyl(f, "StackBand", 2, 9.4, CF(530, 70 + k * 16, -640), C.white, M.SmoothPlastic, { shadow = false })
+	end
+	ball(f, "StackLight", 2, CF(530, 111.5, -640), Color3.fromRGB(255, 40, 40), M.Neon, { shadow = false })
+	part(f, "BoilerHouse", V3(60, 26, 40), CF(500, 13, -650), Color3.fromRGB(120, 70, 60), M.Brick, { collide = true })
+	K.fenceChain(f, V3(440, 0.3, -560), V3(560, 0.3, -560), 8)
+	K.fenceChain(f, V3(440, 0.3, -560), V3(440, 0.3, -700), 8)
+	K.fenceChain(f, V3(440, 0.3, -700), V3(560, 0.3, -700), 8)
+
+	-- the construction site east of the loop: hoarding, dirt, a concrete frame going up, a tower
+	-- crane, scaffolding, site cabins, materials, cones, the developer's board
+	local cs = folder(root, "Construction")
+	local sx0, sx1, sz0, sz1 = 580, 720, -265, -190
+	part(cs, "SiteDirt", V3(sx1 - sx0, 0.3, sz1 - sz0), CF((sx0 + sx1) / 2, 0.15, (sz0 + sz1) / 2), Color3.fromRGB(120, 92, 62), M.Ground, { collide = true })
+	for _, r in ipairs(K.cutRanges(sx0, sx1, { { 640, 670 } })) do
+		K.hoarding(cs, V3(r[1], 0.3, sz0), V3(r[2], 0.3, sz0), Color3.fromRGB(40, 90, 170))
+	end
+	K.hoarding(cs, V3(sx0, 0.3, sz1), V3(sx1, 0.3, sz1), Color3.fromRGB(40, 90, 170))
+	K.hoarding(cs, V3(sx0, 0.3, sz0), V3(sx0, 0.3, sz1), Color3.fromRGB(40, 90, 170))
+	K.hoarding(cs, V3(sx1, 0.3, sz0), V3(sx1, 0.3, sz1), Color3.fromRGB(40, 90, 170))
+	local gate = part(cs, "SiteGate", V3(30, 7.8, 0.3), CF(655, 4.2, sz0), Color3.fromRGB(150, 154, 160), M.DiamondPlate, { transparency = 0.5, collide = true })
+	local _ = gate
+	local board = part(cs, "SiteBoard", V3(28, 10, 0.4), CF(610, 12, sz0 - 1), C.white, M.SmoothPlastic)
+	for _, x in ipairs({ 598, 622 }) do
+		part(cs, "SiteBoardPost", V3(0.6, 17, 0.6), CF(x, 8.5, sz0 - 1), Color3.fromRGB(60, 50, 40), M.Wood, { collide = true })
+	end
+	local bsg = gui(board, Enum.NormalId.Front, 20, 0.2, 500)
+	frame(bsg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = C.white })
+	frame(bsg, { Size = UDim2.fromScale(1, 0.26), BackgroundColor3 = Color3.fromRGB(40, 90, 170) })
+	label(bsg, "APEX BUILDERS", { TextColor3 = C.white, Size = UDim2.fromScale(0.9, 0.2), Position = UDim2.fromScale(0.05, 0.03) })
+	label(bsg, "COMING 2027\nWCB TRAINING TOWER\n12 STOREYS  -  ROOFTOP RING", { TextColor3 = Color3.fromRGB(30, 30, 34), Face = "signSub", Size = UDim2.fromScale(0.9, 0.6), Position = UDim2.fromScale(0.05, 0.32) })
+	-- the frame: three floors of slabs on columns, the core, rebar on top
+	local fx, fz = 650, -225
+	for lvl = 0, 3 do
+		part(cs, "FrameSlab", V3(60, 1.2, 40), CF(fx, 0.6 + lvl * 12, fz), Color3.fromRGB(170, 170, 166), M.Concrete, { collide = true })
+		if lvl < 3 then
+			for _, dx in ipairs({ -27, -9, 9, 27 }) do
+				for _, dz in ipairs({ -17, 0, 17 }) do
+					part(cs, "FrameColumn", V3(2, 10.8, 2), CF(fx + dx, 1.2 + 5.4 + lvl * 12, fz + dz), Color3.fromRGB(170, 170, 166), M.Concrete, { collide = true })
+				end
+			end
+		end
+	end
+	part(cs, "FrameCore", V3(12, 48, 12), CF(fx + 18, 24, fz + 8), Color3.fromRGB(150, 150, 146), M.Concrete, { collide = true })
+	for k = 0, 5 do
+		part(cs, "Rebar", V3(0.2, 6, 0.2), CF(fx - 26 + k * 10, 40, fz - 16), Color3.fromRGB(120, 70, 50), M.Metal, { shadow = false })
+	end
+	-- scaffolding along the west face
+	for lvl = 0, 3 do
+		part(cs, "ScaffoldDeck", V3(4, 0.3, 42), CF(fx - 33, 11.5 + lvl * 12, fz), Color3.fromRGB(190, 150, 90), M.WoodPlanks)
+		part(cs, "ScaffoldRail", V3(0.2, 0.2, 42), CF(fx - 35, 13.4 + lvl * 12, fz), steel, M.Metal, { shadow = false })
+	end
+	for _, dz in ipairs({ -20, -10, 0, 10, 20 }) do
+		for _, dx in ipairs({ -35, -31 }) do
+			part(cs, "ScaffoldPost", V3(0.3, 48, 0.3), CF(fx + dx, 24, fz + dz), steel, M.Metal)
+		end
+	end
+	part(cs, "ScaffoldNet", V3(0.1, 46, 42), CF(fx - 36, 24, fz), Color3.fromRGB(60, 160, 90), M.Fabric, { transparency = 0.5, shadow = false })
+	-- the tower crane
+	local cb = V3(fx + 40, 0.3, fz - 10)
+	part(cs, "CraneBase", V3(10, 2, 10), CF(cb + V3(0, 1, 0)), Color3.fromRGB(120, 120, 124), M.Concrete, { collide = true })
+	part(cs, "CraneMast", V3(5, 95, 5), CF(cb + V3(0, 49.5, 0)), Color3.fromRGB(240, 200, 40), M.Metal, { transparency = 0.25, collide = true })
+	part(cs, "CraneCab", V3(5, 5, 6), CF(cb + V3(0, 99, -3)), Color3.fromRGB(240, 200, 40), M.Metal)
+	part(cs, "CraneJib", V3(4, 3.5, 90), CF(cb + V3(0, 101.5, -45)), Color3.fromRGB(240, 200, 40), M.Metal, { transparency = 0.25 })
+	part(cs, "CraneCounterJib", V3(4, 3.5, 28), CF(cb + V3(0, 101.5, 14)), Color3.fromRGB(240, 200, 40), M.Metal, { transparency = 0.25 })
+	part(cs, "CraneCounterweight", V3(6, 5, 8), CF(cb + V3(0, 100, 24)), Color3.fromRGB(120, 120, 124), M.Concrete)
+	part(cs, "CraneApex", V3(2.5, 18, 2.5), CF(cb + V3(0, 112, 0)), Color3.fromRGB(240, 200, 40), M.Metal)
+	rod(cs, "CraneTie", cb + V3(0, 121, 0), cb + V3(0, 103, -88), 0.4, C.steelLight, M.Metal)
+	rod(cs, "CraneTie", cb + V3(0, 121, 0), cb + V3(0, 103, 26), 0.4, C.steelLight, M.Metal)
+	part(cs, "CraneTrolley", V3(5, 2, 4), CF(cb + V3(0, 99, -60)), Color3.fromRGB(60, 60, 66), M.Metal)
+	rod(cs, "CraneCable", cb + V3(0, 98, -60), cb + V3(0, 48, -60), 0.2, C.steelLight, M.Metal)
+	part(cs, "CraneHook", V3(1.4, 2.6, 1.4), CF(cb + V3(0, 46.5, -60)), Color3.fromRGB(60, 60, 66), M.Metal)
+	part(cs, "SlungBeam", V3(1.2, 1.2, 14), CF(cb + V3(0, 44, -60)), Color3.fromRGB(120, 70, 50), M.Metal)
+	ball(cs, "CraneLight", 1.4, CF(cb + V3(0, 121.5, 0)), Color3.fromRGB(255, 40, 40), M.Neon, { shadow = false })
+	-- cabins, materials, a mixer, cones, a dumpster, a portaloo
+	for k = 0, 1 do
+		part(cs, "SiteCabin", V3(24, 9, 10), CF(sx0 + 16, 4.9, sz1 - 12 - k * 13), Color3.fromRGB(230, 232, 236), M.SmoothPlastic, { collide = true })
+		part(cs, "CabinWindow", V3(8, 3, 0.1), CF(sx0 + 16, 5.6, sz1 - 12 - k * 13 - 5.05), Color3.fromRGB(170, 205, 230), M.Glass, { shadow = false })
+	end
+	part(cs, "Portaloo", V3(4.4, 8, 4.4), CF(sx0 + 36, 4.3, sz1 - 8), Color3.fromRGB(40, 110, 200), M.SmoothPlastic, { collide = true })
+	for k = 0, 2 do
+		part(cs, "PalletStack", V3(8, 4 + k, 8), CF(sx1 - 14 - k * 10, 2.3 + k / 2, sz1 - 14), Color3.fromRGB(190, 160, 110), M.Wood, { collide = true })
+	end
+	blob(cs, "SandPile", V3(20, 6, 16), CF(sx1 - 30, 2.5, sz0 + 22), Color3.fromRGB(200, 180, 130), M.Sand)
+	blob(cs, "GravelPile", V3(16, 5, 14), CF(sx1 - 52, 2.2, sz0 + 20), Color3.fromRGB(130, 128, 124), M.Slate)
+	local mixer = CF(sx0 + 44, 0.3, sz0 + 30)
+	part(cs, "MixerBody", V3(8, 6, 18), mixer * CF(0, 4, 0), Color3.fromRGB(240, 200, 40), M.Metal, { collide = true })
+	cyl(cs, "MixerDrum", 10, 7, mixer * CF(0, 8.5, 3) * ANG(0, RAD(90), RAD(12)), Color3.fromRGB(230, 232, 236), M.Metal)
+	for _, z in ipairs({ -6, 5 }) do
+		for _, x in ipairs({ -4, 4 }) do
+			cyl(cs, "Wheel", 1.4, 3.2, mixer * CF(x, 1.6, z), C.black, M.Rubber)
+		end
+	end
+	for k = 0, 5 do
+		K.cone(cs, V3(644 + k * 4, 0.3, sz0 - 4))
+	end
+	K.dumpster(cs, CF(sx0 + 60, 0.3, sz1 - 8), Color3.fromRGB(200, 90, 30))
+	K.streetLight(cs, V3(sx0 + 6, 0.3, sz0 + 6), V3(1, 0, 0.5).Unit, true, 26)
+	K.streetLight(cs, V3(sx1 - 6, 0.3, sz1 - 6), V3(-1, 0, -0.5).Unit, false, 26)
+end
+
+------------------------------------------------------------------------
+-- Billboards around town: generic ads for everyone, your sponsors / fight promos for you
+------------------------------------------------------------------------
+local function buildBillboards(root)
+	local f = folder(root, "Billboards")
+	local ADS = K.ADS
+	local list = {
+		{ "Champion", CFrame.lookAt(V3(-34, 20, 240), V3(0, 20, 240)), 36, 12, ADS[3] },
+		{ "Cafe", CFrame.lookAt(V3(-222, 60, MAIN.frontS + 40), V3(-222, 60, 200)), 44, 14, ADS[1], 10 },
+		{ "Apartments", CFrame.lookAt(V3(189, 72, MAIN.frontS + 36), V3(189, 72, 200)), 44, 14, ADS[2], 10 },
+		{ "Loop", CFrame.lookAt(V3(262, 20, -230), V3(0, 20, -230)), 36, 12, ADS[4] },
+		{ "ArenaW", CFrame.lookAt(V3(-40, 24, -395), V3(-40, 24, -300)), 40, 13, ADS[3] },
+		{ "ArenaE", CFrame.lookAt(V3(40, 24, -395), V3(40, 24, -300)), 40, 13, ADS[5] },
+		{ "Oak", CFrame.lookAt(V3(-470, 20, 262), V3(-440, 20, 300)), 32, 11, ADS[6] },
+		{ "River", CFrame.lookAt(V3(790, 22, 440), V3(760, 22, 400)), 36, 12, ADS[7] },
+		{ "Foundry", CFrame.lookAt(V3(300, 24, -324), V3(300, 24, -290)), 40, 13, ADS[2] },
+	}
+	for _, b in ipairs(list) do
+		K.billboard(f, b[2], b[3], b[4], b[1], b[5], b[6])
+	end
+end
+
+------------------------------------------------------------------------
+-- Far away: the mountain training camp (Mountain / Elite Camp owners can travel here during a
+-- camp; CityVisuals tints the local atmosphere while you are inside the pod)
+------------------------------------------------------------------------
+local CAMP = V3(-3000, 0, 3000)
+CityMap.CampCenter = CAMP
+
+local function buildCamp(root)
+	local f = folder(root, "TrainingCamp")
+	local rng = Random.new(1985)
+	local snow = Color3.fromRGB(236, 240, 246)
+	part(f, "CampGround", V3(480, 2, 480), CF(CAMP + V3(0, -1, 0)), snow, M.Snow, { collide = true })
+	blob(f, "CampHill", V3(220, 70, 140), CF(CAMP + V3(0, -8, -180)), snow, M.Snow)
+	blob(f, "CampHill", V3(180, 60, 120), CF(CAMP + V3(-160, -10, -120)), snow, M.Snow)
+	-- log cabin with porch, chimney smoke and a warm window
+	local cab = CF(CAMP + V3(0, 0, -30))
+	part(f, "Cabin", V3(36, 14, 22), cab * CF(0, 7, 0), Color3.fromRGB(110, 74, 46), M.WoodPlanks, { collide = true })
+	local a = (cab * CF(0, 16.5, -5.5)).Position
+	local b = (cab * CF(0, 16.5, 5.5)).Position
+	part(f, "CabinRoof", V3(39, 5, 12), CFrame.lookAt(a, a + V3(0, 0, -1)), Color3.fromRGB(240, 244, 250), M.Snow, { class = "WedgePart", collide = true })
+	part(f, "CabinRoof", V3(39, 5, 12), CFrame.lookAt(b, b + V3(0, 0, 1)), Color3.fromRGB(240, 244, 250), M.Snow, { class = "WedgePart", collide = true })
+	local chim = part(f, "Chimney", V3(3, 8, 3), cab * CF(11, 17, 4), Color3.fromRGB(110, 106, 100), M.Cobblestone)
+	local smoke = Instance.new("ParticleEmitter")
+	smoke.Rate = 5
+	smoke.Lifetime = NumberRange.new(4, 6)
+	smoke.Speed = NumberRange.new(2, 3)
+	smoke.Size = NumberSequence.new(1.5, 5)
+	smoke.Transparency = NumberSequence.new(0.5, 1)
+	smoke.Color = ColorSequence.new(Color3.fromRGB(200, 200, 205))
+	smoke.Parent = chim
+	part(f, "CabinPorch", V3(20, 0.8, 7), cab * CF(0, 0.4, -14.5), Color3.fromRGB(90, 60, 38), M.WoodPlanks, { collide = true })
+	part(f, "CabinDoor", V3(CITY.Door.w, CITY.Door.h, 0.25), cab * CF(0, 0.8 + CITY.Door.h / 2, -11.1), Color3.fromRGB(70, 46, 30), M.Wood)
+	local win = part(f, "CabinWindow", V3(5, 4, 0.15), cab * CF(-9, 7, -11.08), Color3.fromRGB(255, 200, 120), M.Neon, { transparency = 0.2, shadow = false })
+	point(win, Color3.fromRGB(255, 190, 120), 18, 0.9)
+	for _, x in ipairs({ -9, 9 }) do
+		vcyl(f, "PorchPost", 9, 0.9, cab * CF(x, 0.8, -17), Color3.fromRGB(90, 60, 38), M.Wood, { collide = true })
+	end
+	part(f, "PorchRoof", V3(22, 0.6, 8), cab * CF(0, 10.2, -15), Color3.fromRGB(240, 244, 250), M.Snow)
+	-- the Rocky corner: log pile, chopping block and axe, a heavy bag on a frame, campfire
+	for k = 0, 5 do
+		cyl(f, "Log", 8, 1.6, cab * CF(-22, 0.8 + math.floor(k / 3) * 1.4, -2 + (k % 3) * 1.7), Color3.fromRGB(120, 84, 52), M.Wood)
+	end
+	vcyl(f, "ChopBlock", 2.6, 3, cab * CF(-21, 0, -11), Color3.fromRGB(130, 92, 58), M.Wood, { collide = true })
+	part(f, "AxeHandle", V3(0.3, 4, 0.3), cab * CF(-21, 3.8, -11) * ANG(0, 0, RAD(25)), Color3.fromRGB(150, 110, 70), M.Wood)
+	part(f, "AxeHead", V3(1.2, 0.7, 0.2), cab * CF(-20.3, 3.0, -11) * ANG(0, 0, RAD(25)), C.steelLight, M.Metal)
+	local bagCF = cab * CF(20, 0, -20)
+	for _, x in ipairs({ -3.5, 3.5 }) do
+		part(f, "BagFramePost", V3(0.8, 11, 0.8), bagCF * CF(x, 5.5, 0), Color3.fromRGB(100, 70, 44), M.Wood, { collide = true })
+	end
+	part(f, "BagFrameBeam", V3(8, 0.8, 0.8), bagCF * CF(0, 11, 0), Color3.fromRGB(100, 70, 44), M.Wood)
+	part(f, "BagChain", V3(0.15, 3.0, 0.15), bagCF * CF(0, 9.1, 0), C.steelLight, M.Metal)
+	vcyl(f, "CampBag", 5.2, 2.2, bagCF * CF(0, 2.4, 0), Color3.fromRGB(110, 70, 40), M.Leather, { collide = true })
+	local fire = CF(CAMP + V3(0, 0, -2))
+	for k = 0, 2 do
+		cyl(f, "FireLog", 4, 0.7, fire * ANG(0, RAD(k * 60), 0) * CF(0, 0.4, 0), Color3.fromRGB(70, 48, 30), M.Wood)
+	end
+	for k = 0, 7 do
+		local ang = k * RAD(45)
+		ball(f, "FireStone", 1.3, fire * CF(math.cos(ang) * 3.2, 0.5, math.sin(ang) * 3.2), Color3.fromRGB(110, 106, 100), M.Slate)
+	end
+	local flame = part(f, "Campfire", V3(0.6, 0.6, 0.6), fire * CF(0, 1.0, 0), Color3.fromRGB(255, 140, 40), M.Neon, { transparency = 1, shadow = false })
+	local fe = Instance.new("ParticleEmitter")
+	fe.Rate = 16
+	fe.Lifetime = NumberRange.new(0.5, 0.9)
+	fe.Speed = NumberRange.new(2, 4)
+	fe.Size = NumberSequence.new(1.2, 0.1)
+	fe.Color = ColorSequence.new(Color3.fromRGB(255, 200, 80), Color3.fromRGB(255, 70, 20))
+	fe.LightEmission = 0.8
+	fe.Parent = flame
+	point(flame, Color3.fromRGB(255, 150, 70), 22, 1.4)
+	for k = 0, 2 do
+		local ang = k * RAD(120) + RAD(60)
+		cyl(f, "SeatLog", 6, 1.6, fire * ANG(0, ang, 0) * CF(0, 0.8, 7) * ANG(0, RAD(90), 0), Color3.fromRGB(100, 70, 44), M.Wood, { collide = true })
+	end
+	-- pines all round, a frozen pond, the camp sign, prompts
+	local n = 0
+	while n < 26 do
+		local p = CAMP + V3(rng:NextNumber(-220, 220), 0, rng:NextNumber(-170, 220))
+		if (p - CAMP).Magnitude > 55 then
+			n += 1
+			K.tree(f, p, "pine", rng:NextNumber(36, 56), rng)
+		end
+	end
+	vcyl(f, "FrozenPond", 0.3, 60, CF(CAMP + V3(120, 0, 80)), Color3.fromRGB(200, 226, 240), M.Ice, { collide = true })
+	K.postSign(f, CF(CAMP + V3(0, 0, 44)), 18, 3.6, 5, nil, nil, Color3.fromRGB(70, 46, 30), "camp")
+	site("Camp", CFrame.lookAt(CAMP + V3(0, 0, 24), CAMP + V3(0, 0, -30)))
+	promptPart(f, "SleepPrompt", (cab * CF(4, 2.6, -15)).Position, "Sleep in the cabin", "Training camp", { Action = "Sleep" }, Color3.fromRGB(170, 170, 255))
+	promptPart(f, "LeavePrompt", CAMP + V3(0, 2.6, 36), "Back to the city", "Training camp", { Action = "LeaveCamp" }, Color3.fromRGB(255, 220, 120))
+end
+
+------------------------------------------------------------------------
+-- The far skyline: the city beyond the river, the south, the north behind the arena
+------------------------------------------------------------------------
+local function buildSkyline(root)
+	local f = folder(root, "Skyline")
+	local rng = Random.new(31337)
+	local B = CITY.Bounds
+	-- across the river: a dense downtown seen from the boardwalk, facing west
+	for z = B.z0 + 80, B.z1 - 80, 80 do
+		local w = rng:NextInteger(50, 90)
+		K.tower(f, V3(CITY.River.x1 + 60 + rng:NextNumber(0, 50), 0, z + rng:NextNumber(-12, 12)), w, rng:NextInteger(50, 80), rng:NextInteger(110, 300), V3(-1, 0, 0), rng, { crown = rng:NextNumber() < 0.3 })
+		if rng:NextNumber() < 0.5 then
+			K.tower(f, V3(CITY.River.x1 + 180 + rng:NextNumber(0, 40), 0, z + 40), rng:NextInteger(50, 80), 60, rng:NextInteger(140, 340), V3(-1, 0, 0), rng, {})
+		end
+	end
+	-- south of downtown, behind the 2nd Street towers
+	for x = -880, 880, 110 do
+		K.tower(f, V3(x + rng:NextNumber(-15, 15), 0, 840 + rng:NextNumber(0, 60)), rng:NextInteger(60, 100), 70, rng:NextInteger(150, 320), V3(0, 0, -1), rng, { crown = rng:NextNumber() < 0.25 })
+	end
+	for x = -800, 800, 160 do
+		K.tower(f, V3(x + rng:NextNumber(-20, 20), 0, 980), rng:NextInteger(70, 110), 70, rng:NextInteger(200, 360), V3(0, 0, -1), rng, {})
+	end
+	-- north behind the arena: a lower, older skyline and chimneys
+	for x = -900, 900, 130 do
+		if math.abs(x) > 60 then
+			K.tower(f, V3(x + rng:NextNumber(-15, 15), 0, -1000 - rng:NextNumber(0, 60)), rng:NextInteger(50, 90), 60, rng:NextInteger(100, 240), V3(0, 0, 1), rng, { tone = rng:NextInteger(0, 1) })
+		end
+	end
+	for _, x in ipairs({ -420, -380, 460 }) do
+		vcyl(f, "Chimney", 120 + (x % 80), 10, CF(x, 0, -940), Color3.fromRGB(120, 70, 60), M.Brick)
+		ball(f, "ChimneyLight", 2.2, CF(x, 121.5 + (x % 80), -940), Color3.fromRGB(255, 40, 40), M.Neon, { shadow = false })
+	end
+	-- the west: low blocks between the houses and the hills, south-west of Oak Street
+	for z = 360, 760, 110 do
+		K.tower(f, V3(-760 + rng:NextNumber(-20, 20), 0, z), rng:NextInteger(50, 80), 60, rng:NextInteger(40, 90), V3(1, 0, 0), rng, { tone = 3 })
+	end
+end
+
+------------------------------------------------------------------------
+-- Travel
+------------------------------------------------------------------------
+-- where to stand outside a home (in front of its door / gate)
+function CityMap.HomeExit(profile, kind)
+	kind = CityHomes.HomeKind(profile, kind) or kind
+	local sitesCF = kind and K.Sites["Home" .. kind]
+	if not sitesCF then
+		return nil
+	end
+	if kind == "Mansion" then
+		return sitesCF * CF(0, 3.2, -28)
+	elseif kind == "House" then
+		return sitesCF * CF(-7, 3.2, -18)
+	end
+	return sitesCF * CF(0, 3.2, -1.5)
+end
+
+-- server travel targets (Main's travel handlers): where = home | outside | elite | city | estate | camp
+-- -> CFrame or nil, error text
+function CityMap.TravelCFrame(player, profile, where, kind)
+	if where == "home" then
+		return CityHomes.Enter(player, profile, kind)
+	elseif where == "outside" then
+		local cf = CityMap.HomeExit(profile, kind or CityHomes.Current(player))
+		if not cf then
+			return nil, "You don't own a home yet."
+		end
+		return cf
+	elseif where == "elite" then
+		local ok, idx = pcall(Catalog.GymTier, profile.gym and profile.gym.levels, profile.owned, profile.tier)
+		if not ok or (tonumber(idx) or 1) < 3 then
+			return nil, "The Elite Performance Center opens when your gym reaches the Elite tier (Gym tab)."
+		end
+		local s = K.Sites.EliteCenter
+		return s and s * CF(0, 3.2, 0) or nil, s and "elite" or "Not built"
+	elseif where == "city" then
+		-- the corner of Champion Ave and Main Street, facing the shops
+		return CF(-17, SW_H + 3.2, MAIN.z0 - 5) * ANG(0, RAD(180), 0)
+	elseif where == "estate" then
+		local s = K.Sites.EstateGate
+		return s and s * CF(0, 3.2, 0) or nil
+	elseif where == "camp" then
+		local owned = type(profile.owned) == "table" and profile.owned or {}
+		if not profile.camp then
+			return nil, "You can only go to camp during a fight camp."
+		end
+		if not (owned.MountainCamp or owned.EliteCamp) then
+			return nil, "Buy the Mountain or Elite Training Camp in the Shop first."
+		end
+		local s = K.Sites.Camp
+		return s and s * CF(0, 3.2, 0) or nil
+	end
+	return nil, "Unknown place"
+end
+
+------------------------------------------------------------------------
+-- Entry point
+------------------------------------------------------------------------
+function CityMap.Build(gym)
+	local root = Instance.new("Folder")
+	root.Name = "City"
+	root.Parent = gym
+	K.Init(folder(root, "Sites"))
+	CityHomes.Init(folder(root, "Homes"))
+	-- the layout the client reads (CityDetail / CityVisuals also read Config.City)
+	root:SetAttribute("Scale", "v10")
+	local sections = {
+		{ "campus", buildCampus }, { "downtown", buildDowntown }, { "west", buildWest }, { "east", buildEast },
+		{ "arena", buildArena }, { "estates", buildEstates }, { "elite", buildEliteCenter }, { "industrial", buildIndustrial },
+		{ "billboards", buildBillboards }, { "camp", buildCamp }, { "skyline", buildSkyline },
+	}
+	for _, s in ipairs(sections) do
+		local ok, err = pcall(s[2], root)
+		if not ok then
+			warn("[CityMap] " .. s[1] .. " failed: " .. tostring(err))
+		end
+	end
+	return root
+end
+
+return CityMap

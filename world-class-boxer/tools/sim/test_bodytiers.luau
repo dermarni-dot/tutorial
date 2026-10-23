@@ -206,7 +206,10 @@ do
 						if e.frame ~= fid then
 							table.insert(missing, fid .. tier .. n .. "(default family)")
 						end
-						if e.id == base.id then
+						-- (the hands and feet are the same part on every frame: gloves, wraps and boots are one mesh; under the
+						-- trunks the LowerTorso and thighs keep the Athletic section the trunks are fitted to, so the bigger frames
+						-- share them too - their lower body differs by the description's Width / Depth)
+						if e.id == base.id and not (n:find("Hand") or n:find("Foot") or n == "LowerTorso" or n:find("UpperLeg")) then
 							table.insert(missing, fid .. tier .. n .. "(same mesh as Athletic)")
 						end
 						for an in pairs(base.attachments) do
@@ -730,10 +733,22 @@ do
 		local n1 = BuilderTiers.Apply(model, BodyTiers.Tiers(build(50), { potential = 0.95 }), scale)
 		local ut = model:FindFirstChild("UpperTorso")
 		check("frame swap: the default family first", n1 == 14 and ut:GetAttribute("BodyFrame") == "Athletic" and model:GetAttribute("BodyFrame") == "Athletic", n1)
+		-- (the parts whose mesh differs between the two families: the hands and feet are shared, so they stay)
+		local function differing(fa, fb)
+			local k = 0
+			for _, n in ipairs(BodyTiers.PARTS) do
+				if BodyTiers.PartEntry(3, n, REAL, false, fa).id ~= BodyTiers.PartEntry(3, n, REAL, false, fb).id then
+					k += 1
+				end
+			end
+			return k
+		end
+		local want2 = differing("Athletic", "Power Build")
 		local n2 = BuilderTiers.Apply(model, BodyTiers.Tiers(build(50), { potential = 1.15 }, BuilderTiers.Current(model)), scale)
 		ut = model:FindFirstChild("UpperTorso")
 		local pe = BodyTiers.PartEntry(3, "UpperTorso", REAL, false, "Power Build")
-		check("frame swap: a new frame swaps every part of the same tier", n2 == 14 and ut:GetAttribute("BodyFrame") == "Power Build"
+		check("frame swap: a new frame swaps every part of the same tier whose mesh differs (" .. want2 .. ")", n2 == want2 and want2 >= 10
+			and ut:GetAttribute("BodyFrame") == "Power Build"
 			and ut:GetAttribute("BodyMesh") == pe.id and ut:GetAttribute("BodyTier") == 3 and model:GetAttribute("BodyFrame") == "Power Build", n2)
 		local n3 = BuilderTiers.Apply(model, BodyTiers.Tiers(build(50), { potential = 1.15 }, BuilderTiers.Current(model)), scale)
 		check("frame swap: change-only", n3 == 0, n3)
@@ -742,7 +757,7 @@ do
 		local plain = BodyTiers.Tiers(build(50), { potential = 1.15 })
 		plain.frame = nil
 		local n4 = BuilderTiers.Apply(model, plain, scale)
-		check("frame swap: the model's Frame attribute", n4 == 14 and model:FindFirstChild("UpperTorso"):GetAttribute("BodyFrame") == "Lean", n4)
+		check("frame swap: the model's Frame attribute", n4 == differing("Power Build", "Lean") and model:FindFirstChild("UpperTorso"):GetAttribute("BodyFrame") == "Lean", n4)
 	end
 end
 
