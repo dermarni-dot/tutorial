@@ -1069,7 +1069,24 @@ def arm_section(fr):
 
 
 def fore_section(fr):
-    return Scaled(LEGACY["LowerArm"], [YWR, 2.30, 2.50, 2.70, YE], [a * b for a, b in zip(fr["fore"], FORE_TAPER)])
+    """the forearm's section; (v17) its top blends to 0.99 x the upper arm's radius at the elbow IN GAME SPACE (the two
+    parts have their own scales), so a straight elbow shows one continuous limb, the forearm a hair inside"""
+    base = Scaled(LEGACY["LowerArm"], [YWR, 2.30, 2.50, 2.70, YE], [a * b for a, b in zip(fr["fore"], FORE_TAPER)])
+    arm = arm_section(fr)
+    SA = game_scale("UpperArm") * np.array(part_extra(fr, "UpperArm"), float)
+    SF = game_scale("LowerArm") * np.array(part_extra(fr, "LowerArm"), float)
+
+    def call(s, m):
+        s = np.asarray(s, float)
+        out = dict(base(s, m))
+        a, f = arm(np.array([YE]), m), base(np.array([YE]), m)
+        w = np.clip((s - 2.62) / (YE - 2.62), 0, 1)
+        w = w * w * (3 - 2 * w)
+        for key, sc in (("ax", SA[0] / SF[0]), ("af", SA[2] / SF[2]), ("ab", SA[2] / SF[2])):
+            ratio = 0.99 * float(a[key][0]) * sc / max(float(f[key][0]), 1e-6)
+            out[key] = out[key] * (1 + (ratio - 1) * w)
+        return out
+    return Sec(call)
 
 
 def thigh_section(fr):
@@ -1092,7 +1109,7 @@ def arm_x(tr, fr=None):
     return 1.0 + (ST * (ax_t - 1.0) - ARM_SINK) / SA + ax_a
 
 
-ARM_SINK = 0.025
+ARM_SINK = 0.025  # (v17: 0.045 tried: the arm closer, but a raised arm then uncovers more of the torso side)
 
 
 def tier_joints(tr, fr=None):
@@ -1202,7 +1219,8 @@ def upper_torso(tr, fr):
         # waist), the erector columns either side of a deep spine groove, the lower traps / rhomboids' diamond,
         # infraspinatus / teres round the shoulder blade
         Lb(135, 40, 2.55, 3.05, 3.38, g("lat", 0.012, 0.085, 0.0), k=1.1),
-        Lb(106, 20, 3.00, 3.22, 3.42, g("lat", 0.008, 0.065, 0.006)),           # the lat's outer sweep under the armpit
+        Lb(106, 22, 2.84, 3.16, 3.42, g("lat", 0.012, 0.080, 0.006)),           # the lat's outer sweep under the armpit
+        Lb(92, 22, 3.22, 3.38, 3.52, -0.010 * tr["f"] - 0.010 * tr["m"]),        # (v17) the armpit's hollow
         Lb(122, 12, 2.55, 2.95, 3.32, g("lat", 0, -0.003, -0.008), drift=-67),  # the lat's edge (the V)
         Lb(168, 14, 2.34, 2.72, 3.12, g("lat", 0.005, 0.036, 0.006)),           # erector columns
         Lb(180, 7, 2.34, 2.85, 3.42, g("lat", -0.008, -0.016, -0.022), k=1.4),  # spine groove (ends under the traps)
@@ -1286,6 +1304,7 @@ def upper_arm(tr, fr):
         Lb(124, 11, 3.22, 3.40, 3.56, g("delt", 0.0, -0.0084, -0.021), sym=False, k=1.3),  # side / rear
         Lb(80, 26, 3.11, 3.18, 3.26, g("delt", 0, -0.006, -0.012), sym=False, k=1.3),  # the insertion V
         Lb(-60, 11, 3.20, 3.34, 3.48, g("delt", 0.0, -0.0042, -0.0112), sym=False),       # where the delt tucks under the pec
+        Lb(-80, 26, 3.08, 3.30, 3.50, g("arm", 0.004, 0.016, 0.004), sym=False),         # (v17) coracobrachialis, to the armpit
         # the biceps (front, a little inward), its peak, the brachialis under its outer edge and the groove between
         Lb(-18, 50, 2.90, 3.10, 3.36, g("arm", 0.010, 0.07, 0.008), sym=False),
         Lb(-24, 26, 2.98, 3.09, 3.22, g("arm", 0.002, 0.018, 0.010), sym=False),     # the peak
@@ -1532,6 +1551,36 @@ def side_joint(part, side):
             for j in PART_JOINTS[part]]
 
 
+# (v17) a shoulder cap on the UpperTorso (a shell from the trapezius over the arm's dome) needs the torso's bounding
+# box to reach past the shoulder pivot (the dome overhangs the ribcage: Lean's torso ends at x 0.75, its pivot at
+# 0.90); the box is the MeshPart's Size, which HitGeometry reads as the torso's width (torsoHalfW, shoulderHalf), so it
+# waits for HitGeometry to read the core width instead (BuilderTiers sets BodyCoreSize). Inside the box only a
+# patch over the trapezius fits, and its crossing with the dome showed as a crack: not built.
+HOOD = False
+
+
+def ray_hits(P, T, o, D, chunk=96):
+    """nearest positive hit distance (inf if none) of rays o + t D (D: (m, 3) unit) on the mesh (P, T)"""
+    P, T = np.asarray(P, float), np.asarray(T, int)
+    a, b, c = P[T[:, 0]], P[T[:, 1]], P[T[:, 2]]
+    e1, e2 = b - a, c - a
+    out = np.full(len(D), np.inf)
+    s = np.asarray(o, float) - a
+    for k in range(0, len(D), chunk):
+        d = D[k:k + chunk]
+        h = np.cross(d[:, None, :], e2[None])
+        det = np.einsum("tk,mtk->mt", e1, h)
+        ok = np.abs(det) > 1e-12
+        f = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
+        u = f * np.einsum("tk,mtk->mt", s, h)
+        q = np.cross(s, e1)
+        v = f * np.einsum("mk,tk->mt", d, q)
+        t = f * np.einsum("tk,tk->t", e2, q)[None, :]
+        hit = ok & (u >= 0) & (u <= 1) & (v >= 0) & (u + v <= 1) & (t > 1e-6)
+        out[k:k + chunk] = np.where(hit, t, np.inf).min(axis=1)
+    return out
+
+
 SHAPE_STATS = {}  # "<frame key>/T<n>/<part>" -> (largest silhouette kink in degrees, largest raised lobe / radius)
 KINK_MAX = 22.0   # shape_check: degrees of slope change between neighbouring rings on any of the four outlines
 PROTRUDE_MAX = 0.14  # shape_check: a lobe's raised displacement over the local base radius (SAT_POS + rounding)
@@ -1563,13 +1612,66 @@ def silhouette_kinks(lp, base):
     return worst
 
 
+GAP_MAX = 0.06          # junction_check: the widest gap (studs) between the arm's inner face and the torso, armpit line
+ELBOW_MAX = 0.015       # junction_check: |1 - forearm / upper arm radius| at the elbow
+
+
+def junction_check(parts):
+    """(v17) the shoulder / elbow junction of one built body (game space, rest): the gap between the right arm's inner
+    face and the torso's side from the armpit down (front-view slab |z| < 0.12), the front outline's largest kink over
+    the shoulder (torso and arm together, from the neck's base to the armpit), the forearm / upper arm radius ratio
+    at the elbow. Returns a dict"""
+    J = parts["_J"]
+    t, a = parts["UpperTorso"]["P"], parts["RightUpperArm"]["P"]
+    f = parts["RightLowerArm"]["P"]
+    P0 = np.array(J["RightShoulder"])
+    gaps = []
+    for dy in np.arange(0.30, 1.01, 0.05):
+        y = P0[1] - dy
+        st = t[(np.abs(t[:, 1] - y) < 0.03) & (np.abs(t[:, 2]) < 0.12)]
+        sa = a[(np.abs(a[:, 1] - y) < 0.03) & (np.abs(a[:, 2]) < 0.12)]
+        if len(st) and len(sa):
+            gaps.append(float(sa[:, 0].min() - st[:, 0].max()))
+    # the front outline: the highest point of torso + arm per x column from the neck's base out over the dome
+    U = np.vstack([t, a])  # (the silhouette: every vertex at that x, whatever its depth)
+    xs = np.arange(0.40, P0[0] + 0.05, 0.03)
+    ys = []
+    for x in xs:
+        c = U[np.abs(U[:, 0] - x) < 0.025]
+        ys.append(c[:, 1].max() if len(c) else np.nan)
+    ys = np.array(ys)
+    ok = np.isfinite(ys)
+    ang = np.degrees(np.arctan2(np.diff(ys[ok]), np.diff(xs[ok])))
+    kink = float(np.max(np.abs(np.diff(ang)))) if len(ang) > 1 else 0.0
+    # the notch: how far the outline dips below the straight line from the trapezius to the dome's crown
+    i_top = int(np.nanargmax(np.where(xs > P0[0] - 0.25, ys, -np.inf)))
+    line = ys[0] + (ys[i_top] - ys[0]) * (xs[:i_top + 1] - xs[0]) / max(xs[i_top] - xs[0], 1e-6)
+    notch = float(np.nanmax(line - ys[:i_top + 1])) if i_top > 0 else 0.0
+    # the elbow: the two parts' radii (x half-width) at the elbow pivot's height
+    E = np.array(J["RightElbow"])
+    ra = a[np.abs(a[:, 1] - (E[1] + 0.03)) < 0.015]
+    rf = f[np.abs(f[:, 1] - (E[1] - 0.03)) < 0.015]
+    ratio = float((rf[:, 0].max() - rf[:, 0].min()) / max(ra[:, 0].max() - ra[:, 0].min(), 1e-6)) if len(ra) and len(rf) else 1.0
+    return {"gap": max(gaps) if gaps else 0.0, "gapTop": gaps[0] if gaps else 0.0, "kink": kink, "notch": notch,
+            "elbow": ratio}
+
+
 def shape_check(frames=None, tiers=(1, 3, 5), verbose=True):
     """(v15) builds every frame x tier and reports per part the largest silhouette kink and the largest raised lobe
     share; returns the list of (key, kink, protrusion) over KINK_MAX / PROTRUDE_MAX"""
     bad = []
+    junction = {}
     for f in frames or FRAME_ORDER:
         for n in tiers:
-            build_tier(None, n, frame=f)
+            parts = build_tier(None, n, frame=f)
+            junction["%s/T%d" % (FRAMES[f]["key"], n)] = junction_check(parts)
+    for k, jc in sorted(junction.items()):
+        flag = jc["gapTop"] > GAP_MAX or abs(1 - jc["elbow"]) > ELBOW_MAX
+        if flag:
+            bad.append((k + "/junction", jc["gapTop"], jc["elbow"]))
+        if verbose:
+            print("%-28s armpit gap %+.3f (widest %+.3f)  shoulder outline kink %4.1f deg notch %.3f  elbow %.3f%s" % (
+                k, jc["gapTop"], jc["gap"], jc["kink"], jc["notch"], jc["elbow"], "  <-- over" if flag else ""))
     for k, (kink, prot) in sorted(SHAPE_STATS.items()):
         flag = kink > KINK_MAX or prot > PROTRUDE_MAX
         if flag:
@@ -2232,6 +2334,63 @@ def render_muscle_sheets(bpy, built, n, samples, tag):
     return paths
 
 
+SHOULDER_FRAMES = ("Lean", "Muscular", "Power Build", "Heavyweight Build")
+SHOULDER_VIEWS = (("front", 0.0, False), ("side", 90.0, False), ("back", 180.0, False), ("34", 35.0, False),
+                  ("guard_front", 0.0, True), ("guard_34", 35.0, True))
+
+
+def render_shoulder_sheets(bpy, built, n, samples, tag):
+    """<scratch>/shoulders/<tag>/<view>_t<n>.png: the right shoulder of each SHOULDER_FRAMES frame close up (the
+    torso, the right arm, the head), each figure placed so its shoulder pivot sits in the middle of its slot"""
+    out = os.path.join(SCRATCH, "shoulders", tag)
+    os.makedirs(out, exist_ok=True)
+    fs = [f for f in SHOULDER_FRAMES if (f, n) in built]
+    only = ("UpperTorso", "RightUpperArm", "RightLowerArm", "RightHand", "LeftUpperArm")
+    paths = []
+    sp, hgt = 2.3, 2.0
+    for view, yaw, guard in SHOULDER_VIEWS:
+        width = len(fs) * sp
+        st = Stage(bpy, (1800, int(round(1800 * hgt / width))), samples)
+        labels = []
+        cy = 0.0
+        for i, f in enumerate(fs):
+            parts = built[(f, n)]
+            hs, S = height_norm(parts)
+            sh = S @ np.array(list(parts["_J"]["RightShoulder"]) + [1.0])
+            R = roty(yaw)
+            rs = R @ sh[:3]
+            slot = -(i - (len(fs) - 1) / 2) * sp
+            place = M4(R, (slot - rs[0], 0, -rs[2]))
+            cy += rs[1] / len(fs)
+            pm = pose_mats(parts["_J"], sh=5.0, el=7.0, guard=guard)
+            for pn in only:
+                st.add("S%s_%d_%s" % (view, i, pn), parts[pn], place @ S @ pm[pn], st.skin)
+            neck = np.array(parts["_J"]["Neck"]) * np.array([1.0, hs, 1.0])
+            hd = head_size(f)
+            st.add("S%s_%d_Head" % (view, i), None, place, st.headmat("determined"),
+                   D=head_mesh(neck + np.array([0, hd / 2, 0]), hd))
+            labels.append("%s T%d %s (%s)" % (f.split(" ")[0], n, view.replace("_", " "), tag))
+        q = st.shoot(os.path.join(out, "%s_t%d.png" % (view, n)), 0, cy - 0.25, width, elev=4)
+        label(q, labels, strip=34)
+        paths.append(q)
+    return paths
+
+
+def compose_shoulders(dest, tiers=(1, 5), tags=("before", "after")):
+    """dest/shoulders_<view>_t<n>.png: each view's strip, before over after"""
+    os.makedirs(dest, exist_ok=True)
+    outs = []
+    for n in tiers:
+        for view, *_ in SHOULDER_VIEWS:
+            strips = [os.path.join(SCRATCH, "shoulders", t, "%s_t%d.png" % (view, n)) for t in tags]
+            strips = [q for q in strips if os.path.exists(q)]
+            if strips:
+                outs.append(stack_strips(strips, os.path.join(dest, "shoulders_%s_t%d.png" % (view, n)),
+                                         "The shoulder junction, tier %d, %s (%s)" % (n, view.replace("_", " "),
+                                                                                       " / ".join(tags))))
+    return outs
+
+
 def compose_muscles(dest, n=5, tags=("before", "after")):
     """dest/compare_<sheet>_t<n>.png: for each MUSCLE_SHEETS sheet, every view's strip of each tag stacked (before
     over after)"""
@@ -2399,6 +2558,10 @@ def main():
                 print("sheet", p)
             for p in render_heads_necks(bpy, built, fst, a.samples):
                 print("sheet", p)
+        if "shoulders" in sheets:  # (v17) the shoulder junction close-ups (SHOULDER_FRAMES) at every --tiers tier
+            for n in want_tiers:
+                for p in render_shoulder_sheets(bpy, built, n, a.samples, a.muscle_tag):
+                    print("sheet", p)
         if "muscles" in sheets:  # the muscle-definition close-ups (Lean, Muscular, Power Build) at every --tiers tier
             for n in want_tiers:
                 for p in render_muscle_sheets(bpy, built, n, a.samples, a.muscle_tag):
