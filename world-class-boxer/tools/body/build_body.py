@@ -490,6 +490,7 @@ VOL_BACK = 0.6
 TAUBIN = 2
 LOBE_MIN_SEG = 1.0
 LOBE_MIN_RING = 1.5
+BAKE_CAPTURE = {}  # (v16) {"sub": k}: loft refines k times and appends its dense grid to ["grids"] (bake_skin.py)
 LOBE_STATS = {}   # (v15) per loft call: the largest raised displacement over the base radius (shape_check reads it)
 _GRID_CTX = {}    # set by loft(): the low-res segment angle / ring spacing and the part name for the stats
 
@@ -613,7 +614,7 @@ def loft(prof, m, s_lo, s_hi, cap_lo, cap_hi, nb, nseg, frame=None, bias=0.0, sd
     what the low-res mesh carries (a vertex-density "normal map"). cap = (height, exponent, rings). Returns lp
     {P, N, U, T} with a duplicated UV seam column at the back (phi = +-pi) and single pole vertices."""
     frame = frame or ((0, 0, 0), (0, 1, 0), (1, 0, 0), (0, 0, 1))
-    k = sub
+    k = BAKE_CAPTURE.get("sub") or sub  # (v16) bake_skin.py: the high surface is the same loft refined further
     rd = _ring_specs(s_lo, s_hi, cap_lo, cap_hi, nb, sdens, k)
     rl = _ring_specs(s_lo, s_hi, cap_lo, cap_hi, nb, sdens, 1)
     # low ring i -> refined ring index
@@ -638,6 +639,10 @@ def loft(prof, m, s_lo, s_hi, cap_lo, cap_hi, nb, nseg, frame=None, bias=0.0, sd
     N = vnormals(V, T)
     R, nd = Pd.shape[:2]
     Vg = V[: R * nd].reshape(R, nd, 3)
+    if BAKE_CAPTURE.get("sub"):
+        BAKE_CAPTURE.setdefault("grids", []).append({"V": Vg.copy(), "N": N[: R * nd].reshape(R, nd, 3).copy(),
+                                                     "S": np.array([r[0] for r in rd]), "phis": np.asarray(phd),
+                                                     "PS": np.array([r[2] for r in rd]), "frame": frame})
     Ng = N[: R * nd].reshape(R, nd, 3)
     # low-res grid
     cols = np.arange(nseg) * k
@@ -1726,6 +1731,57 @@ def out_dir(n, frame=DEFAULT_FRAME):
     return os.path.join(OUT, "frames", fr["key"], "tier%d" % n)
 
 
+def vertex_tangents(P, N, U, T):
+    """(v16) per-vertex tangent frames for normal mapping: tangent = the surface direction of +u, orthogonal to the
+    vertex normal; w = +-1 so that cross(N, tangent) * w points toward the top of the texture image (the mesh v
+    decreasing: the files' UVs are top-left origin), i.e. the OpenGL tangent-space convention Roblox reads. The same
+    frames are what bake_skin.py bakes against (MikkTSpace-like: accumulated per triangle, then orthonormalised)"""
+    P, N, U = (np.asarray(x, float) for x in (P, N, U))
+    T = np.asarray(T, int)
+    t = np.zeros_like(P)
+    b = np.zeros_like(P)
+    p0, p1, p2 = P[T[:, 0]], P[T[:, 1]], P[T[:, 2]]
+    u0, u1, u2 = U[T[:, 0]], U[T[:, 1]], U[T[:, 2]]
+    e1, e2 = p1 - p0, p2 - p0
+    d1, d2 = u1 - u0, u2 - u0
+    det = d1[:, 0] * d2[:, 1] - d2[:, 0] * d1[:, 1]
+    ok = np.abs(det) > 1e-12
+    r = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)[:, None]
+    tu = (e1 * d2[:, 1:2] - e2 * d1[:, 1:2]) * r      # dP/du
+    tv = (e2 * d1[:, 0:1] - e1 * d2[:, 0:1]) * r      # dP/dv (v down the image)
+    for k in range(3):
+        np.add.at(t, T[:, k], tu)
+        np.add.at(b, T[:, k], tv)
+    Nn = N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+    t = t - Nn * np.sum(t * Nn, axis=1, keepdims=True)
+    bad = np.linalg.norm(t, axis=1) < 1e-9
+    if bad.any():  # (a pole: any direction across the normal)
+        alt = np.cross(Nn[bad], np.array([0.0, 1.0, 0.0]))
+        alt[np.linalg.norm(alt, axis=1) < 1e-6] = np.array([1.0, 0.0, 0.0])
+        t[bad] = alt
+    t = t / np.maximum(np.linalg.norm(t, axis=1, keepdims=True), 1e-12)
+    up = -b  # toward the top of the image
+    w = np.where(np.sum(np.cross(Nn, t) * up, axis=1) >= 0, 1.0, -1.0)
+    return t, w
+
+
+def write_mesh_tan(path, pc, tangents, signs):
+    """hairlib.write_mesh_v2 with real per-vertex tangents (int8 x 3 + the bitangent sign) instead of a constant"""
+    import struct
+    pc.T = hl.front_faces(pc)
+    out = bytearray(b"version 2.00\n")
+    out += struct.pack("<HBBII", 12, 40, 12, pc.nv, pc.nt)
+    for (p, n, uv, c), tg, w in zip(zip(pc.P, pc.N, pc.U, pc.C), tangents, signs):
+        out += struct.pack("<3f3f2f", p[0], p[1], p[2], n[0], n[1], n[2], uv[0], uv[1])
+        out += struct.pack("<4b", *[int(max(-127, min(127, round(x * 127)))) for x in tg], 127 if w > 0 else -127)
+        out += struct.pack("<4B", *[max(0, min(255, int(round(x * 255)))) for x in c])
+    for a, b2, c in pc.T:
+        out += struct.pack("<3I", a, b2, c)
+    with open(path, "wb") as f:
+        f.write(bytes(out))
+    return len(out)
+
+
 def export_tier(n, parts, frame=DEFAULT_FRAME):
     fr = frame_of(frame)
     outdir = out_dir(n, fr)
@@ -1744,7 +1800,8 @@ def export_tier(n, parts, frame=DEFAULT_FRAME):
         pc.C = [(1.0, 1.0, 1.0, 1.0)] * len(pc.P)
         pc.T = [tuple(int(i) for i in t) for t in lp["T"]]
         fn = os.path.join(outdir, name + ".mesh")
-        hl.write_mesh_v2(fn, pc)
+        tg, sg = vertex_tangents(lp["P"], lp["N"], lp["U"], lp["T"])
+        write_mesh_tan(fn, pc, tg, sg)
         base = name.replace("Right", "").replace("Left", "")
         side = "Right" if name.startswith("Right") else ("Left" if name.startswith("Left") else "")
         atts = {}

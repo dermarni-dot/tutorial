@@ -27,6 +27,7 @@ local BuilderTiers = {}
 
 local Shared = script.Parent
 local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
+local BodySurfaces = require(Shared:WaitForChild("BodySurfaces"))
 
 local V3 = Vector3.new
 BuilderTiers.RETRY = 120 -- seconds before a failed mesh id is tried again
@@ -362,6 +363,9 @@ local function swap(model, hum, name, template, scale)
 	if scale then
 		new:SetAttribute("BodyScale", scale)
 	end
+	-- (v16) the skin surface maps: a clone of the authored SurfaceAppearance for the part's tier and frame, tinted to
+	-- the part's Color and following it (none on a lite part; BodySurfaces)
+	pcall(BodySurfaces.Attach, new)
 	for _, w in ipairs(holders) do
 		if w.Parent then
 			if w.Part0 == old then

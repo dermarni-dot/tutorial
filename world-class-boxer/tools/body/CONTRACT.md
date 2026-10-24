@@ -151,6 +151,36 @@ about the pivots) and the elbow / wrist / hip / knee / ankle heights are unchang
   lobe share of the radius; exit 1 over KINK_MAX (22 deg) / PROTRUDE_MAX (0.14). v14: up to 45 deg / 0.54; v15: 20.8 /
   0.13. Tris unchanged (29,744 per body).
 
+### Skin surface maps (v16)
+
+* What Roblox allows (Roblox-Client-Tracker API dump; Roblox creator-docs `SurfaceAppearance.yaml`,
+  `art/modeling/surface-appearance.md`): SurfaceAppearance ColorMap / NormalMap / RoughnessMap / MetalnessMap (and their
+  *Content forms) are PluginSecurity to write, "most SurfaceAppearance properties cannot be modified by scripts";
+  `Color` and `AlphaMode` are script-writable. `Color` "applies as a multiplier" on the ColorMap ("texel color times
+  SurfaceAppearance.Color"; near-white greyscale maps tint best; tinting "does not affect performance" and one map can
+  serve many tints); it does not apply to MeshPart.Color. NormalMap: "OpenGL format - Tangent Space" only. Texture
+  maps up to 1024 px are the practical maximum (4096 supported for uploads).
+* So: the maps are authored by Rojo (`src/shared/BodySurfaceSet.model.json` -> ReplicatedStorage.Shared.BodySurfaceSet
+  .T<n>.<Part>; Rojo 7.7 writes them as ColorMapContent / NormalMapContent / RoughnessMapContent) and cloned at run
+  time by `BodySurfaces.Attach` (BuilderTiers.swap): the clone is named `BodySkin`, its `Color` = the part's Color and
+  follows it (a Color-changed connection), AlphaMode Overlay with an opaque map. Lite (crowd) parts, the hands, the
+  feet and the LowerTorso wear none. The skin tone path is the tint; the hands / head keep MeshPart.Color = the same
+  skin, and the ColorMap is pure white where nothing is occluded, so the tones match.
+* `tools/body/bake_skin.py`: per (surface tier 1-5, part type UpperTorso 1024 px / UpperArm / LowerArm / UpperLeg /
+  LowerLeg 512 px) a tangent-space normal map, a greyscale ColorMap (AO + cavity: 1 - 0.32 x darkening) and a
+  RoughnessMap (0.60 base, glossier on raised muscle, matte in creases), baked in UV space from the part's loft refined
+  8x (the muscle fields, the bony bumps) plus fine detail (skin grain, pec / deltoid striations, forearm / biceps /
+  calf veins at tiers 4-5, elbow / knee creases), on the Athletic frame. One set serves every frame (same UVs, the
+  grooves at the same (phi, s)); BodySurfaceData.shift: Power Build one tier softer, Heavyweight Build two. Left limbs
+  share the right limb's maps (mirrored mesh, same UVs, the tangent sign flips).
+* The meshes now carry real per-vertex tangents (`build_body.vertex_tangents`, `write_mesh_tan`: tangent = +u, w so that
+  cross(N, T) w points to the image top) instead of hairlib's constant, the frame the bake uses.
+* `tools/body/publish_skin.py` uploads the 75 images (Image, the body cache) and writes `BodySurfaceData.lua` (ids,
+  sizes, shift, budget) and the model. Budget: one boxer's maps 5.3 MB block-compressed (32 MB raw RGBA), all 25 sets
+  26.7 MB (160 MB raw); a crowd costs nothing (lite).
+* Previews: `bake_skin.py --no-bake --preview lean,muscular,power --preview-tiers 5 --lineups 1,3,5 --dest ...`
+  (Cycles: base colour = skin x ColorMap, the RoughnessMap, a tangent-space normal map node).
+
 ## BodyAssetData.lua (generated)
 
 ```lua

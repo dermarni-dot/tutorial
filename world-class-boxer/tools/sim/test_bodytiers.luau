@@ -2134,6 +2134,130 @@ do
 	check("cap: nothing visible below Head.CAP_CLEAR in front of the face", #low == 0, table.concat(low, "; ", 1, math.min(#low, 8)))
 end
 
+------------------------------------------------------------------------
+-- (v16) skin surfaces: the swapped full-detail parts carry a clone of the authored SurfaceAppearance for their
+-- (surface tier, part type), tinted to the part's Color and following it; lite parts and the hands / feet /
+-- LowerTorso carry none (BodySurfaces, BuilderTiers.swap)
+------------------------------------------------------------------------
+do
+	local BodySurfaces = H.require("BodySurfaces")
+	local Color3 = roblox.Color3
+	local SD = BodySurfaces.Data
+	local fsLib = require("@lune/fs")
+	local serde = require("@lune/serde")
+	-- the generated data and the Rojo model agree, every id uploaded
+	local bases = { "UpperTorso", "UpperArm", "LowerArm", "UpperLeg", "LowerLeg" }
+	local okModel, model = pcall(function()
+		return serde.decode("json", fsLib.readFile("../../src/shared/BodySurfaceSet.model.json"))
+	end)
+	local missing, mismatch = 0, 0
+	for t = 1, 5 do
+		for _, b in ipairs(bases) do
+			local e = SD.tiers and SD.tiers[t] and SD.tiers[t][b]
+			if not (e and (e.color or 0) > 0 and (e.normal or 0) > 0 and (e.rough or 0) > 0) then
+				missing += 1
+			elseif okModel then
+				local found = false
+				for _, tf in ipairs(model.Children or {}) do
+					if tf.Name == "T" .. t then
+						for _, sa in ipairs(tf.Children or {}) do
+							if sa.Name == b and sa.ClassName == "SurfaceAppearance" then
+								local p = sa.Properties or {}
+								found = p.ColorMap == "rbxassetid://" .. e.color and p.NormalMap == "rbxassetid://" .. e.normal
+									and p.RoughnessMap == "rbxassetid://" .. e.rough
+							end
+						end
+					end
+				end
+				if not found then
+					mismatch += 1
+				end
+			end
+		end
+	end
+	check("skin: BodySurfaceData has every (tier, part) set uploaded", missing == 0, missing)
+	check("skin: BodySurfaceSet.model.json authors the same ids", okModel and mismatch == 0, okModel and mismatch or model)
+	check("skin: Power Build one surface tier softer, Heavyweight Build two", BodySurfaces.TierFor("Power Build", 5) == 4
+		and BodySurfaces.TierFor("Heavyweight Build", 5) == 3 and BodySurfaces.TierFor("Lean", 5) == 5
+		and BodySurfaces.TierFor("Heavyweight Build", 1) == 1 and BodySurfaces.TierFor("Athletic", 0) == nil)
+	-- a fake authored set (the test host does not mount .model.json): T<n>/<Part> SurfaceAppearances
+	local set = E.new("Folder")
+	set.Name = "BodySurfaceSet"
+	for t = 1, 5 do
+		local tf = E.new("Folder", set)
+		tf.Name = "T" .. t
+		for _, b in ipairs(bases) do
+			local sa = E.new("SurfaceAppearance", tf)
+			sa.Name = b
+			sa:SetAttribute("SetTier", t)
+		end
+	end
+	BodySurfaces.SetSource(set)
+	BodyTiers.SetData(REAL)
+	for _, frame in ipairs({ "Athletic", "Power Build", "Heavyweight Build" }) do
+		BuilderTiers.Reset()
+		BuilderTiers.Services = { AssetService = fakeAssets(), Content = Content }
+		local m = newRig(Vector3.new(1, 1, 1), "keep")
+		local skin = Color3.fromRGB(150, 104, 72)
+		for _, n in ipairs(BodyTiers.PARTS) do
+			local p = m:FindFirstChild(n)
+			if p then
+				p.Color = skin
+			end
+		end
+		local tiers = BodyTiers.Tiers(build(90), { potential = 0.95 })
+		tiers.frame = frame
+		BuilderTiers.Apply(m, tiers, Vector3.new(1, 1, 1), false, frame)
+		local bad, none = {}, {}
+		for _, n in ipairs(BodyTiers.PARTS) do
+			local p = m:FindFirstChild(n)
+			local sa = p and p:FindFirstChild(BodySurfaces.NAME)
+			if BodySurfaces.BASE[n] then
+				local want = BodySurfaces.TierFor(p:GetAttribute("BodyFrame"), p:GetAttribute("BodyTier"))
+				if not (sa and sa:IsA("SurfaceAppearance") and sa:GetAttribute("SetTier") == want and sa.Color == skin) then
+					table.insert(bad, n)
+				end
+			elseif sa then
+				table.insert(none, n)
+			end
+		end
+		check("skin: every swapped part wears its set, tinted to its Color (" .. frame .. ")", #bad == 0, table.concat(bad, ", "))
+		check("skin: hands, feet and the LowerTorso wear none (" .. frame .. ")", #none == 0, table.concat(none, ", "))
+		-- the tint follows the part (a new skin tone, a flush)
+		local ra = m:FindFirstChild("RightUpperArm")
+		ra.Color = Color3.fromRGB(90, 60, 40)
+		local sa = ra:FindFirstChild(BodySurfaces.NAME)
+		check("skin: the tint follows the part's Color (" .. frame .. ")", sa and sa.Color == ra.Color, sa and tostring(sa.Color))
+		if frame == "Athletic" then
+			-- the lite (crowd) set: swapped to the lite meshes, the surfaces come off
+			BuilderTiers.Apply(m, BodyTiers.Tiers(build(90), { potential = 0.95 }, BuilderTiers.Current(m)), Vector3.new(1, 1, 1), true)
+			local left = 0
+			for n in pairs(BodySurfaces.BASE) do
+				local p = m:FindFirstChild(n)
+				if p and p:FindFirstChild(BodySurfaces.NAME) then
+					left += 1
+				end
+			end
+			check("skin: lite parts wear no surface", left == 0, left)
+			-- and back on with the detailed set
+			BuilderTiers.Apply(m, BodyTiers.Tiers(build(90), { potential = 0.95 }, BuilderTiers.Current(m)), Vector3.new(1, 1, 1))
+			local ut = m:FindFirstChild("UpperTorso")
+			check("skin: back on with the detailed set", ut and ut:FindFirstChild(BodySurfaces.NAME) ~= nil)
+		end
+		m:Destroy()
+	end
+	-- no authored set (an old place file): nothing attached, nothing breaks
+	BodySurfaces.SetSource(E.new("Folder"))
+	BuilderTiers.Reset()
+	BuilderTiers.Services = { AssetService = fakeAssets(), Content = Content }
+	local m = newRig(Vector3.new(1, 1, 1), "keep")
+	local n = BuilderTiers.Apply(m, BodyTiers.Tiers(build(90), { potential = 0.95 }), Vector3.new(1, 1, 1))
+	local ut = m:FindFirstChild("UpperTorso")
+	check("skin: without an authored set the swap still works, no surface", n == 14 and ut and ut:FindFirstChild(BodySurfaces.NAME) == nil, n)
+	m:Destroy()
+	BodySurfaces.SetSource(nil)
+end
+
 print(string.format("test_bodytiers: %d passed, %d failed", pass, fail))
 if fail > 0 then
 	error("test_bodytiers failed")
