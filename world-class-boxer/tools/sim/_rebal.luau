@@ -8,6 +8,21 @@ for i = 1, #process.args do
 	elseif process.args[i - 1] ~= "--root" then table.insert(args, process.args[i]) end
 end
 local S = FS.new({ root = ROOT })
+-- --set Damage.head=0.27,KO.count.aiUp=0.5 (Config paths)
+do
+	local at = table.find(args, "--set")
+	if at then
+		for kv in args[at + 1]:gmatch("[^,]+") do
+			local path, v = kv:match("^(.-)=(.*)$")
+			local t, keys = S.Config, {}
+			for k in path:gmatch("[^%.]+") do table.insert(keys, tonumber(k) or k) end
+			for i = 1, #keys - 1 do t = t[keys[i]] end
+			t[keys[#keys]] = tonumber(v)
+		end
+		table.remove(args, at + 1)
+		table.remove(args, at)
+	end
+end
 local MODE, N = args[1] or "pace", tonumber(args[2]) or 48
 local STYLES = { "OutBoxer", "Swarmer", "Slugger", "BoxerPuncher", "CounterPuncher" }
 local function run(n, spec, seed0)
@@ -93,4 +108,51 @@ if MODE == "diag" then
 	local ms = {}
 	for k, v in pairs(modes) do table.insert(ms, string.format("%s %.0f%%", k, v / tot * 100)) end
 	print("modes: " .. table.concat(ms, " "))
+end
+if MODE == "why" then
+	local lvl = tonumber(args[3]) or 60
+	local reasons, sev, kdRound, endRound = {}, {}, {}, {}
+	local conc, hp, tierTime = 0, 0, 0
+	for i = 1, N do
+		local r = S.Fight({ red = { style = STYLES[(i % 5) + 1], level = lvl }, blue = { style = STYLES[((i + 2) % 5) + 1], level = lvl }, rounds = 6, seed = i * 7919 + 13 })
+		local f = r.fight
+		local k = tostring(f.reason or r.method)
+		reasons[k] = (reasons[k] or 0) + 1
+		for _, kd in ipairs(f.knockdowns) do
+			local key = kd.severity .. "/" .. tostring(kd.cause)
+			sev[key] = (sev[key] or 0) + 1
+			kdRound[kd.round] = (kdRound[kd.round] or 0) + 1
+		end
+		if f.finished then endRound[r.round] = (endRound[r.round] or 0) + 1 end
+		local L = r.winner == "red" and r.O or r.P
+		conc += L.concPeak
+		hp += L.healthCap
+	end
+	local function dump(t, label)
+		local a = {}
+		for k, v in pairs(t) do table.insert(a, tostring(k) .. "=" .. v) end
+		table.sort(a)
+		print(label .. table.concat(a, "  "))
+	end
+	dump(reasons, "end: ")
+	dump(sev, "kd severity/cause: ")
+	dump(kdRound, "kd by round: ")
+	dump(endRound, "stoppage by round: ")
+	print(string.format("loser concPeak %.2f healthCap %.0f", conc / N, hp / N))
+end
+if MODE == "count" then
+	local Fight = S.FightEngine._Fight
+	local orig = Fight.GetUpAbility
+	local rows = {}
+	Fight.GetUpAbility = function(self, F)
+		local a = orig(self, F)
+		if not rows[F] then
+			table.insert(rows, string.format("kd#%d sev %-6s ab %.2f hp %4.1f conc %.2f chin %d comp %d rec %d", F.kdTotal, tostring(F.downSeverity), a, F.health, F.conc, F.data.stats.Chin, F.data.mental.Composure, F.data.stats.Recovery))
+		end
+		return a
+	end
+	for i = 1, N do
+		S.Fight({ red = { style = STYLES[(i % 5) + 1], level = 60 }, blue = { style = STYLES[((i + 2) % 5) + 1], level = 60 }, rounds = 6, seed = i * 7919 + 13 })
+	end
+	for i = 1, math.min(40, #rows) do print(rows[i]) end
 end

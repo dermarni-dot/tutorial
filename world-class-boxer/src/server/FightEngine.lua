@@ -2325,7 +2325,9 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 			fall = fallFor(ptype, false, severity)
 		end
 	end
-	local heavy = (body and dmg >= bdRef * 1.4) or (not body and (rel >= 2 or (counter and rel >= 1.75)))
+	-- (a heavy shot hurts him: KO.hurt / hurtCounter of the reference shot - was 2 / 1.75, when every clean hook and
+	-- uppercut inside was "heavy" and a busy fight kept both men hurt, covering and wide open)
+	local heavy = (body and dmg >= bdRef * 1.4) or (not body and (rel >= KO.hurt or (counter and rel >= KO.hurtCounter)))
 	if heavy then
 		O.hurtUntil = now + 1.4 + rel * 0.6
 	end
@@ -2483,12 +2485,27 @@ function Fight:SetBlock(F, on)
 	end
 	local was = F.blocking
 	F.blocking = on and true or false
+	if F.blocking and not was then
+		F.blockAt = self:Now() -- (a guard held past DEPTH.shellAfter is a shell: Fight:GuardMul)
+	end
 	if F.state ~= "punching" then
 		F.state = on and "blocking" or "idle"
 	end
 	if F.blocking and not was then
 		self:NoteDefense(F, "block", 0)
 	end
+end
+
+-- what the guard costs (regen or move): the hands up between punches cost a little; a shell - held past
+-- DEPTH.shellAfter seconds, or the shell special - costs the full price (it was the full price for any guard, and a
+-- boxer keeping his hands up while walked down lost his legs and his breath with them)
+function Fight:GuardMul(F, now, what)
+	local D = DEPTH.shell
+	local shell = now < (F.shellUntil or 0) or now - (F.blockAt or now) > D.after
+	if what == "move" then
+		return shell and D.move or D.guardMove
+	end
+	return shell and D.regen or D.guardRegen
 end
 
 -- a dodge window's share for F right now: pinned on the ropes he has less room (a Ring General slides off them)
@@ -3703,7 +3720,12 @@ function Fight:Count(F)
 	local ability = self:GetUpAbility(F)
 	local aiUpAt = nil
 	if not F.isPlayer then
-		local p = ability + 0.15
+		-- (most men beat the first count; the second and the third are harder - GetUpAbility counts them - and a
+		-- concussed head stays down: KO.count.aiUp was 0.15, when a heavy first knockdown ended most fights)
+		local p = ability + KO.count.aiUp
+		if F.kdTotal == 1 and sev ~= "heavy" then
+			p = math.max(p, KO.count.firstUp) -- (even a raw boxer with a glass chin usually beats his first count)
+		end
 		if sev == "flash" then
 			p = 1
 		elseif sev == "heavy" then
@@ -3805,7 +3827,11 @@ function Fight:GetUp(F, n)
 		return
 	end
 	-- referee check: glassy eyes, unsteady legs, no answer -> it's over
-	local risk = F.conc * 0.6 + F.tier * 0.12 - (F.data.mental.Composure or 50) / 400 + (sev == "heavy" and 0.08 or 0) + (F.kdRound >= 2 and 0.1 or 0)
+	-- (KO.count: the referee waves off a man who is not there; the second knockdown of a round and the third of a
+	-- fight weigh on it; was conc x 0.6 + tier x 0.12, too quick once the concussion carries over the rounds)
+	local C = KO.count
+	local risk = F.conc * C.refConc + F.tier * C.refTier - (F.data.mental.Composure or 50) / 400 + (sev == "heavy" and C.refHeavy or 0)
+		+ (F.kdRound >= 2 and C.refSecond or 0) + (F.kdTotal >= 3 and C.refThird or 0)
 	if sev == "flash" then
 		risk -= 0.2
 	end
@@ -4162,7 +4188,7 @@ function Fight:UpdateMovement(F, dt)
 			if F.state == "punching" then
 				speed *= 0.45
 			elseif F.blocking then
-				speed *= 0.6
+				speed *= self:GuardMul(F, now, "move")
 			end
 			if self:IsHurt(F) then
 				speed *= 0.6
@@ -4419,7 +4445,7 @@ function Fight:Update(dt)
 		if F.state == "punching" then
 			regen *= 0.2
 		elseif F.blocking then
-			regen *= 0.5
+			regen *= self:GuardMul(F, now, "regen")
 		elseif F.state == "clinch" then
 			regen *= 1.6
 		end

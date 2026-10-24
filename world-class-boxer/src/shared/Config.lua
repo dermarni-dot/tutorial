@@ -506,6 +506,12 @@ Config.KO = {
 	flash = 0.035, -- tier 0: only a clean COUNTER can drop a fighter (a flash knockdown)
 	flashMinHd = 1.0, -- ... and only when hd/hdRef is at least this
 	flashFresh = 0.35, comboFlash = 0.6, comboClean = 0.75,
+	hurt = 2.9, hurtCounter = 2.5, -- a head shot this many times the reference shot hurts him (FightEngine: hurtUntil)
+	-- the count (FightEngine.Count / GetUp): an AI boxer beats it with GetUpAbility + aiUp (less for a heavy fall);
+	-- the referee's look after it waves him off at conc x refConc + tier x refTier - Composure / 400 (+ refHeavy for a
+	-- heavy fall, refSecond for the second knockdown of a round, refThird from the third of the fight)
+	-- (firstUp: the least chance an AI boxer beats his first count of the fight, unless the fall was heavy)
+	count = { aiUp = 0.4, firstUp = 0.8, refConc = 0.35, refTier = 0.06, refHeavy = 0.05, refSecond = 0.12, refThird = 0.15 },
 	hdExp = 1.2, hdMin = 0.2, hdMax = 2.5,
 	counterMul = 1.6,
 	chinBase = 1.45, condBase = 1.15, stamBase = 1.25, stamK = 0.45, powerBase = 0.85, accBase = 0.7, accK = 0.6,
@@ -513,7 +519,9 @@ Config.KO = {
 	composureK = 0.002, -- x (1 - composureK * (Composure - 50)) on the defender
 	cap = 0.92,
 	tierDamage = 0.1, -- incoming head damage x (1 + tierDamage * tier): hurt fighters take more
-	severity = { heavyTier = 2, heavyHd = 1.8, outHd = 2.5 }, -- knockdown severity: flash | normal | heavy | out
+	-- (heavyTier was 2: nearly every knockdown comes at tier 2, so all of them were heavy - a longer count, a worse
+	-- get-up, more concussion - and the first knockdown ended most fights)
+	severity = { heavyTier = 3, heavyHd = 1.8, outHd = 2.5 }, -- knockdown severity: flash | normal | heavy | out
 	falls = { "back", "side", "knee", "sit", "face" }, -- DownPose attribute values
 }
 
@@ -552,7 +560,7 @@ end
 -- bodyDrain = the stamina a body shot takes; chip = what comes through a guard; bodyKd = the body knockdown and the
 -- liver's odds. (head was 0.48 and the body 1 while the AI threw ~30 punches a minute; at 40-50 with more landing
 -- at the visible reach, equal men stopped each other in a round or two - tools/sim/test_fightai's bands)
-Config.Damage = { head = 0.33, body = 0.72, bodyDrain = 0.8, chip = 0.7, bodyKd = 0.85 }
+Config.Damage = { head = 0.27, body = 0.72, bodyDrain = 0.8, chip = 0.7, bodyKd = 0.6 }
 
 -- Concussion: F.conc 0..1 inside a fight; career-long condition.trauma 0..100 feeds the start value.
 Config.Concussion = {
@@ -561,10 +569,10 @@ Config.Concussion = {
 	-- (it builds over the fight: it cleared in under a minute - 0.006 + Recovery x 0.00012 a second and 0.12 a rest -
 	-- so the damage of the early rounds was forgotten by the late ones; now the man who has taken the punishment
 	-- carries it, slower, less accurate, easier to hurt and to drop, and the championship rounds are dangerous)
-	perHeadDamage = 1 / 60, -- conc += hd * this * punch.ko * (1.3 - Chin/150)
-	perKnockdown = 0.25, perFlashKnockdown = 0.1,
-	decay = 0.0008, decayPerRecovery = 0.00001, -- per second: decay + Recovery * decayPerRecovery
-	restHeal = 0.05, restHealElite = 0.08, -- between rounds
+	perHeadDamage = 1 / 180, -- conc += hd * this * punch.ko * (1.3 - Chin/150)
+	perKnockdown = 0.2, perFlashKnockdown = 0.1,
+	decay = 0.0004, decayPerRecovery = 0.000005, -- per second: decay + Recovery * decayPerRecovery
+	restHeal = 0.04, restHealElite = 0.07, -- between rounds
 	damage = 0.5, -- incoming head damage x (1 + damage * conc)
 	-- effect magnitudes at conc = 1 (scale linearly)
 	windup = 0.35, -- punch windup x (1 + windup * conc)
@@ -612,6 +620,9 @@ Config.FightDepth = {
 	windAt = 0.2, windAfter = 2.5, windRegen = 2.4, windTime = 6, windGive = 0.12, breatheAfter = 1.5, breatheRegen = 1.3,
 	momHit = 0.03, momDmg = 0.03, momRegen = 0.06, momDecay = 0.035, momScore = 1.2,
 	pressWin = 4, pressPunches = 5, pressRange = 1.0, pressRegen = 0.8, pressHit = 0.03, ropeDist = 2.2, ropeHit = 0.05, ropeRegen = 0.85,
+	-- the guard's cost (Fight:GuardMul): hands up between punches - regen x guardRegen, feet x guardMove; held past
+	-- `after` seconds (or the shell special) it is a shell - regen x regen, feet x move (the old price of any guard)
+	shell = { after = 1.2, regen = 0.5, move = 0.6, guardRegen = 0.8, guardMove = 0.85 },
 	clinchDmg = 0.35, clinchMax = 4, clinchGap = 0.45, clinchSmother = 0.7, clinchMinHold = 0.4, breakBusy = 0.3, breakBalance = 12, breakAngle = 0.7,
 }
 
@@ -631,7 +642,7 @@ Config.FightAI = {
 	-- ropes, just missed); floorMin = the fewest punches a minute even the most forgiving bout's AI throws. (work is
 	-- held where equal AIs throw ~35 a minute: the engine's health, damage and knockdown rules were balanced on ~30,
 	-- and an AI at 50 ended equal fights in a round - tools/sim/test_fightai's bands)
-	think = { 0.24, 0.13 }, work = 0.55, stepIn = 1.0, openWork = 1.15, floorMin = 7,
+	think = { 0.24, 0.13 }, work = 0.6, stepIn = 1.0, openWork = 1.15, floorMin = 7,
 	-- the difficulty by level (Config.FightAI.Tier(level): the career's tiers, interpolated between the rows).
 	-- react = the perception and motor delays x this; read = how much it leans on its read of him (prediction,
 	-- adaptation, the rhythm counter); work = its punch rate x this; floor = the fewest punches a minute it throws
@@ -639,12 +650,12 @@ Config.FightAI = {
 	-- defences x this. (The low rows carry more work: FightAI's work also scales with the boxer's own skill, and a raw
 	-- AI at the base rate stood and watched a busy beginner outwork it)
 	tiers = {
-		{ level = 0, name = "Debut", react = 1.15, read = 0.7, work = 1.25, floor = 18, mistake = 1.1 },
-		{ level = 30, name = "Prospect", react = 1.0, read = 0.9, work = 1.12, floor = 21, mistake = 0.9 },
+		{ level = 0, name = "Debut", react = 1.6, read = 0.35, work = 0.95, floor = 17, mistake = 1.8 },
+		{ level = 30, name = "Prospect", react = 1.05, read = 0.85, work = 1.12, floor = 21, mistake = 0.95 },
 		{ level = 50, name = "Regional", react = 0.9, read = 1.1, work = 1.0, floor = 23, mistake = 0.7 },
-		{ level = 70, name = "National", react = 0.8, read = 1.3, work = 0.95, floor = 26, mistake = 0.45 },
-		{ level = 85, name = "World", react = 0.72, read = 1.45, work = 0.95, floor = 30, mistake = 0.2 },
-		{ level = 99, name = "Elite", react = 0.66, read = 1.6, work = 1.0, floor = 34, mistake = 0.08 },
+		{ level = 70, name = "National", react = 0.8, read = 1.3, work = 1.02, floor = 28, mistake = 0.45 },
+		{ level = 85, name = "World", react = 0.72, read = 1.45, work = 1.08, floor = 33, mistake = 0.2 },
+		{ level = 99, name = "Elite", react = 0.66, read = 1.6, work = 1.12, floor = 37, mistake = 0.08 },
 	},
 }
 -- the AI difficulty at an overall level: the row's numbers, interpolated between the tiers

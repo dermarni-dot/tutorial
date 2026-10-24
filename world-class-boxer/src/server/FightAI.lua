@@ -1172,7 +1172,9 @@ function FightAI:Think(now)
 	-- (out of the guard - the window a blocked shot opens - the counter is the exception, not the rule: a boxer firing
 	-- back off every shot that hits his gloves turned every exchange into a knockdown)
 	if F.blocking then
-		counterK *= 0.4
+		-- (but walked down, the block-and-fire-back is the answer to a man who keeps coming: the guard takes his shots
+		-- and the counter goes in behind them)
+		counterK *= self:Pressed(dist, jab) and 0.8 or 0.4
 	end
 	-- a Counter Specialist lives on the man in the middle of his flurry: it fires back into it far more often
 	local csT = engine.Trait and engine:Trait(F, "CounterSpecialist") or 0
@@ -1182,6 +1184,10 @@ function FightAI:Think(now)
 	if now < F.counterUntil and self:Fits("jab", dist) and self.rng:NextNumber() < counterK then
 		self:Throw(self:CounterPunch(dist), false)
 		self:Note(now, "counter")
+		return
+	end
+	-- walked down: the answers to a pressure fighter (AnswerPressure)
+	if self:AnswerPressure(now, dist, jab, clinchRange) then
 		return
 	end
 	-- walked onto: a man rushing in with his hands going is met - an inside fighter fires back with the short
@@ -1317,6 +1323,74 @@ function FightAI:Think(now)
 	end
 end
 
+-- is it being walked down? He is on top of it with his hands going (the engine's pressure: his punches from
+-- inside in the last few seconds), or he crowds it at close range throwing
+function FightAI:Pressed(dist, jab)
+	local F, O, engine = self.F, self.O, self.engine
+	if F.pressured then
+		return true
+	end
+	return dist < jab * 0.85 and engine.RecentThrows ~= nil and engine:RecentThrows(O, 4) >= 4
+end
+
+-- the answers to pressure (a skilled boxer more often, a raw one hardly): off the ropes on a pivot, the step back
+-- that makes him miss and the counter behind it, a short combination fired into the gap between his, the uppercut
+-- as he walks in, the clinch that smothers him when it is tired or hurt. A pressure fighter who walks in throwing
+-- pays for it; one who walks a raw boxer down still finds him there
+function FightAI:AnswerPressure(now, dist, jab, clinchRange)
+	local F, O, engine = self.F, self.O, self.engine
+	if self.mode == "finish" or self.mode == "gamble" or engine.tutorial ~= nil or not self:Pressed(dist, jab) then
+		return false
+	end
+	local k = (0.15 + 0.6 * self.skill) * math.min(1.25, self.tier.read)
+	local r = self.rng:NextNumber()
+	-- pinned on the ropes: turn him (the pivot) before anything else
+	local myRope = engine.RopeDist and engine:RopeDist(F) or 99
+	if myRope < 2.6 and now >= (F.nextPivot or 0) and r < k * 0.6 then
+		engine:Pivot(F, self.circleDir)
+		self:Note(now, "pressure: pivots off the ropes")
+		return true
+	end
+	-- tired or hurt with him on top of it: tie him up
+	local worn = F.stamina < F.maxStam * 0.35 or (F.tier or 0) >= 1 or (engine.Mom and engine:Mom(F) < -0.35)
+	if worn and dist < clinchRange and engine:CanClinch(F) and self.rng:NextNumber() < k * 0.45 * self.tactics.smother then
+		engine:Clinch(F)
+		self:Note(now, "pressure: smothers him")
+		return true
+	end
+	-- he is throwing in its face: the step back (he falls short; its counter window opens on the miss)
+	if O.state == "punching" and F.stamina > F.maxStam * 0.3 and self.rng:NextNumber() < k * 0.3 then
+		engine:Dodge(F, "pull", self.circleDir)
+		self.nextThink = math.min(self.nextThink, F.busyUntil + 0.02)
+		self:Note(now, "pressure: steps back")
+		return true
+	end
+	if F.stamina < 10 then
+		return false
+	end
+	-- he walks in: the uppercut (or the short hook) meets him on the way
+	if O.state ~= "punching" and self.oBack < -0.6 and self:Fits("uppercut", dist) and self.rng:NextNumber() < k * 0.5 then
+		local p = self.rng:NextNumber() < 0.6 and "uppercut" or "leadhook"
+		self.queue = self:Fits("cross", dist) and self.rng:NextNumber() < 0.5 and { { p = "cross", body = false } } or {}
+		self:Throw(p, false)
+		self:ChainNext()
+		self:Note(now, "pressure: meets him coming in")
+		return true
+	end
+	-- the gap between his punches: a short combination first (inside, the hooks and uppercuts; the body to slow him)
+	if O.state ~= "punching" and self:Fits("leadhook", dist) and self.rng:NextNumber() < k * 0.45 then
+		local combos = { { "leadhook", "uppercut" }, { "uppercut", "leadhook" }, { "leadhook", "cross" }, { "rearhook", "leadhook" } }
+		local c = combos[self.rng:NextInteger(1, #combos)]
+		local bodyFirst = self.rng:NextNumber() < self.bodyBias + 0.15
+		self.queue = { { p = c[2], body = false } }
+		self:Throw(c[1], bodyFirst and c[1] ~= "uppercut")
+		self:ChainNext()
+		self:Note(now, "pressure: fires in his gap")
+		return true
+	end
+	return false
+end
+
 -- the guard between its punches: inside his reach (his jab and a step) a boxer keeps his hands up whenever he
 -- is not throwing - it costs no punch (its next one drops it), turns his head shots into chips and softens the
 -- body shots: the defence quality that keeps a harder, busier AI's fights going the rounds instead of a slugfest
@@ -1336,6 +1410,10 @@ function FightAI:HandsUp(now, dist)
 	-- (light: the guard slows the feet and the breath - the engine's - so a boxer keeps it up between his punches
 	-- now and then, a raw one hardly at all; a man shelled up for every think lost the work rate and the fight)
 	local k = (0.1 + 0.3 * self.skill) * (0.75 + self.arch.block) * (0.85 + 0.15 * self.tier.read) * (engine.aiDefense or 1)
+	-- walked down, the hands stay up (the engine's guard costs little until it is a held shell: Config.FightDepth.shell)
+	if self:Pressed(dist, engine:PunchRange(F, "jab")) then
+		k *= 1.8
+	end
 	if self.rng:NextNumber() < k then
 		engine:SetBlock(F, true)
 		self.blockUntil = math.max(self.blockUntil, now + 0.45 + 0.25 * self.skill)
