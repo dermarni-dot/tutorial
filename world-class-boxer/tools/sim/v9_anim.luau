@@ -674,6 +674,19 @@ do
 	env.script = { Parent = SPS, Name = "Animator" }
 	local chunk = luau.load(fs.readFile(file), { debugName = "Animator.client.lua", environment = env })
 	ltask.spawn(chunk)
+	-- the Animator may yield while it loads (an optional module's WaitForChild with a timeout yields once):
+	-- let it finish setting up (AnimRig.rigs) before any clip drives a frame
+	-- (read the host's module cache, not H.require: asking for a module mid-load trips the cycle guard)
+	local function rigsReady()
+		local c = H.cache[H.files.AnimRig]
+		return c ~= nil and type(c.value) == "table" and c.value.rigs ~= nil
+	end
+	local guard = 0
+	while not rigsReady() and guard < 600 do
+		guard += 1
+		ltask.wait()
+	end
+	assert(rigsReady(), "v9_anim: the Animator did not finish loading")
 end
 local DT = 1 / 60
 local NOPEN = args.nopen == true
