@@ -608,7 +608,7 @@ local function outfitBuild(folder, model, app, opts, sp)
 	local ut, lt, head = part(model, "UpperTorso"), part(model, "LowerTorso"), part(model, "Head")
 	local black = Color3.fromRGB(16, 16, 18)
 	if ut then
-		local s = ut.Size
+		local s = BodyTiers.CoreSize(ut) -- (v17: the torso's own width, not the shoulder caps')
 		local d = 0.55 * (head and head.Size.X or 1.2)
 		-- shirt collar round the neck, button placket down the front
 		mk(folder, ut, "Collar", V3(0.14, d * 1.18, d * 1.18), ut.CFrame * CF(0, s.Y * 0.5 + 0.04, 0.02) * ANG(0, 0, RAD(90)), shirt, "Cylinder", FABRIC)
@@ -1663,7 +1663,7 @@ local function torsoPoint(torso, a, v)
 	else
 		r = 0.5 / math.max(math.abs(math.sin(a)), math.abs(math.cos(a)), 1e-3)
 	end
-	local s = torso.Size
+	local s = BodyTiers.CoreSize(torso) -- (v17: TORSO_SURF is measured on the torso without its shoulder caps)
 	return V3(math.sin(a) * r * s.X, v * s.Y, -math.cos(a) * r * s.Z)
 end
 
@@ -1673,7 +1673,7 @@ function Body.SurfaceMark(folder, torso, name, u, v, w, h, color, transparency, 
 	rise = rise or 0.004
 	local a = 0
 	for _ = 1, 16 do
-		local x = torsoPoint(torso, a, v).X / torso.Size.X
+		local x = torsoPoint(torso, a, v).X / BodyTiers.CoreSize(torso).X
 		a = math.clamp(a + (u - x) * 1.5, -1.5, 1.5)
 	end
 	local p = torsoPoint(torso, a, v)
@@ -1724,7 +1724,7 @@ function Body.SetDamage(model, app, dmg)
 		return
 	end
 	local skin = Looks.Color(Looks.SkinTones[(app and app.skin) or 5])
-	local s = ut.Size
+	local s = BodyTiers.CoreSize(ut) -- (v17: the ribs' width, not the shoulder caps')
 	-- women: on the bare midriff, under the sports top (which ends at -0.18 Y)
 	local female = app and app.gender == 2
 	local cy, cy2, hMax = -0.2, -0.24, 0.36

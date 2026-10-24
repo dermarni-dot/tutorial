@@ -3294,7 +3294,8 @@ function AnimFight.applyAct(p, rig, act, t)
 			local c = ut.Position
 			local to = V3(c.X - rc.X, 0, c.Z - rc.Z)
 			to = to.Magnitude > 0.1 and to.Unit or rc.LookVector
-			local hx = ut.Size.X * 0.5 + 0.05
+			local utc = ut:GetAttribute("BodyCoreSize") -- (v17: the chest's width, not the shoulder caps')
+			local hx = (typeof(utc) == "Vector3" and utc.X or ut.Size.X) * 0.5 + 0.05
 			for _, s in ipairs(R.SIDES) do
 				local side = rc.RightVector * (s == "L" and -hx or hx)
 				R.armIK(rig, p, s, c + side + to * 0.3 + V3(0, 0.2, 0), e)

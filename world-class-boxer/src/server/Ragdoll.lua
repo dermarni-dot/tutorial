@@ -179,7 +179,9 @@ function Ragdoll.Release(model, opts)
 			if part and part:IsA("BasePart") then
 				local col = Instance.new("Part")
 				col.Name = "RagCol"
-				col.Size = part.Size * COL_SHRINK
+				-- (v17) the UpperTorso's own box, not its mesh box widened by the shoulder caps (BodyCoreSize, BuilderTiers)
+				local core = part:GetAttribute("BodyCoreSize")
+				col.Size = (typeof(core) == "Vector3" and core or part.Size) * COL_SHRINK
 				col.CFrame = part.CFrame
 				col.Transparency = 1
 				col.CanCollide = true

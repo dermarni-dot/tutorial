@@ -346,7 +346,9 @@ function AnimRig.computeGeo(rig)
 	g.hipW = abs(g.L.hip0.X - g.R.hip0.X)
 	-- torso size: guard targets are authored for a 2 x 1.6 x 1 UpperTorso and scale with the body
 	local utPart = part1(J.W.motor)
-	local us = utPart and utPart.Size or V3(2, 1.6, 1)
+	-- (v17) the torso's own size (BodyCoreSize: the mesh box includes the shoulder caps over the arms)
+	local usc = utPart and utPart:GetAttribute("BodyCoreSize")
+	local us = typeof(usc) == "Vector3" and usc or (utPart and utPart.Size) or V3(2, 1.6, 1)
 	g.utScale = V3(us.X / 2, us.Y / 1.6, us.Z)
 	g.utSize = us
 	-- arms (for punch IK)

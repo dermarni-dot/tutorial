@@ -539,7 +539,8 @@ local function bodyOf(model, head)
 		return nil
 	end
 	local k = head.Size.Y / 1.2
-	local ts = torso.Size
+	local tsc = torso:GetAttribute("BodyCoreSize") -- (v17: the torso's own size, not the shoulder caps')
+	local ts = typeof(tsc) == "Vector3" and tsc or torso.Size
 	-- a little clearance over the proxy: the visible body (meshes) is fuller than it
 	local c = 0.035 * k
 	local b = {

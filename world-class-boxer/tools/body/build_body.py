@@ -1220,7 +1220,7 @@ def upper_torso(tr, fr):
         # infraspinatus / teres round the shoulder blade
         Lb(135, 40, 2.55, 3.05, 3.38, g("lat", 0.012, 0.085, 0.0), k=1.1),
         Lb(106, 22, 2.84, 3.16, 3.42, g("lat", 0.012, 0.080, 0.006)),           # the lat's outer sweep under the armpit
-        Lb(92, 22, 3.22, 3.38, 3.52, -0.010 * tr["f"] - 0.010 * tr["m"]),        # (v17) the armpit's hollow
+        Lb(92, 22, 3.16, 3.30, 3.44, -0.010 * tr["f"] - 0.010 * tr["m"]),        # (v17) the armpit's hollow (under the widest ring: the body width stays v16's)
         Lb(122, 12, 2.55, 2.95, 3.32, g("lat", 0, -0.003, -0.008), drift=-67),  # the lat's edge (the V)
         Lb(168, 14, 2.34, 2.72, 3.12, g("lat", 0.005, 0.036, 0.006)),           # erector columns
         Lb(180, 7, 2.34, 2.85, 3.42, g("lat", -0.008, -0.016, -0.022), k=1.4),  # spine groove (ends under the traps)
@@ -1267,8 +1267,12 @@ def upper_torso(tr, fr):
     ]
     sd = ([YW, 2.32, 2.36, 3.36, 3.42, 3.54, 3.57, NECK_TOP], [0.6, 0.6, 1.3, 1.3, 0.9, 0.9, 1.7, 1.7])
     # (v13) 52 x 56: the rings are ~0.03 prototype apart over the chest (no banding on the super-elliptic sections)
-    return loft(torso_sec(fr), tr["m"], YW, NECK_TOP, (0.22, 1.0, 2, 0.88), (0.03, 1.0, 2), nb=56, nseg=76, bias=0.5,
-                sdens=sd, lobes=L)
+    # (v17: 68 segments, the shoulder caps take the rest of the 10k)
+    lp = loft(torso_sec(fr), tr["m"], YW, NECK_TOP, (0.22, 1.0, 2, 0.88), (0.03, 1.0, 2), nb=56, nseg=76, bias=0.5,
+              sdens=sd, lobes=L)
+    if CAP:  # (v17) the strip under v = CAP_V0 is the shoulder caps' (build_tier adds them)
+        lp["U"] = lp["U"] * np.array([1.0, CAP_V0])
+    return lp
 
 
 def lower_torso(tr, fr):
@@ -1551,12 +1555,23 @@ def side_joint(part, side):
             for j in PART_JOINTS[part]]
 
 
-# (v17) a shoulder cap on the UpperTorso (a shell from the trapezius over the arm's dome) needs the torso's bounding
-# box to reach past the shoulder pivot (the dome overhangs the ribcage: Lean's torso ends at x 0.75, its pivot at
-# 0.90); the box is the MeshPart's Size, which HitGeometry reads as the torso's width (torsoHalfW, shoulderHalf), so it
-# waits for HitGeometry to read the core width instead (BuilderTiers sets BodyCoreSize). Inside the box only a
-# patch over the trapezius fits, and its crossing with the dome showed as a crack: not built.
-HOOD = False
+# ------------------------------------------------------------------------------------------ the shoulder cap (v17)
+# The upper arm is its own part turning about the shoulder pivot, so the junction is made on the UpperTorso: a cap
+# round the pivot that flows from the trapezius over the top, the front and the back of the arm's dome (the deltoid's
+# acromial origin), its rim tucked under the nearer of the torso and the arm in EVERY shoulder pose (CAP_POSES), so no
+# lip ever shows and the dome is never seen as a ball beside a flat side. It widens the UpperTorso's mesh box in X only;
+# the game reads the torso's width from BodyCoreSize (the box without the caps; parts.json "core").
+CAP = True
+CAP_V0 = 0.86           # the torso loft's UVs end at v = CAP_V0; the two caps share the strip below it
+CAP_ROWS, CAP_COLS = 11, 32
+CAP_LIFT = (0.015, 0.004)  # the interior: the dome x (1 + a) + b studs
+CAP_SOFT = 0.04         # the smooth max's softness: the fillet from the trapezius onto the deltoid (studs)
+CAP_TUCK = 0.012        # the rim: this far inside the nearer surface
+CAP_BRIDGE = 0.0        # how far past the dome a torso surface may be for the cap to bridge the notch to it (studs)
+CAP_RIM = 0.6           # the rim band starts at this share of the cap's angular reach
+CAP_POSES = ([("p%+d" % d, rotx(d)) for d in (-30, 30, 60, 90)] + [("ab%+d" % d, rotz(d)) for d in (30, 60, -10)]
+             + [("guard", roty(38) @ rotx(48) @ rotz(4))])
+CAP_STATS = {}          # "<frame key>/T<n>" -> the cap's numbers (junction_check reads them)
 
 
 def ray_hits(P, T, o, D, chunk=96):
@@ -1579,6 +1594,129 @@ def ray_hits(P, T, o, D, chunk=96):
         hit = ok & (u >= 0) & (u <= 1) & (v >= 0) & (u + v <= 1) & (t > 1e-6)
         out[k:k + chunk] = np.where(hit, t, np.inf).min(axis=1)
     return out
+
+
+def _cap_dirs(theta, phi):
+    """unit directions: theta from +Y, phi round Y from +X (lateral for the right arm) toward -Z (the front)"""
+    st = np.sin(theta)
+    return np.stack([st * np.cos(phi), np.cos(theta), -st * np.sin(phi)], axis=-1)
+
+
+def shoulder_cap(torso, arm, P0, key=None):
+    """the right cap (lp, game space) for a torso / right upper arm pair (rest) and the shoulder pivot P0"""
+    P0 = np.asarray(P0, float)
+    tlo, thi = torso["P"].min(0), torso["P"].max(0)
+    phi = np.linspace(0, 2 * math.pi, CAP_COLS, endpoint=False)
+    # the reach per azimuth: lateral 55, front 64, medial 80, back 71 deg
+    thmax = np.radians(67.5 - 12.5 * np.cos(phi) - 3.5 * np.sin(phi))
+    rows = np.linspace(0, 1, CAP_ROWS + 1)[1:]
+    D = _cap_dirs(thmax[None, :] * rows[:, None], np.repeat(phi[None, :], CAP_ROWS, axis=0)).reshape(-1, 3)
+    D = np.vstack([[0.0, 1.0, 0.0], D])
+    a_rest = ray_hits(arm["P"], arm["T"], P0, D)
+    fin = np.isfinite(a_rest)
+    a_rest = np.where(fin, a_rest, np.max(a_rest[fin]))
+    a_min = a_rest.copy()
+    # the dome (the arm's triangles above the pivot at rest): its furthest reach along each ray over the poses, so
+    # the cap's interior covers it however the arm turns (the shaft leaving the shoulder is not the dome)
+    TD = arm["T"][(arm["P"][arm["T"], 1] > P0[1]).all(axis=1)]
+    a_dome = a_rest.copy()
+    for _, R in CAP_POSES:
+        Pr = (arm["P"] - P0) @ R.T + P0
+        hit = ray_hits(Pr, arm["T"], P0, D)
+        a_min = np.minimum(a_min, np.where(np.isfinite(hit), hit, a_rest))
+        hd = ray_hits(Pr, TD, P0, D)
+        a_dome = np.maximum(a_dome, np.where(np.isfinite(hd), hd, 0.0))
+    # a smooth upper envelope (the pose maxima are patchy: a crumpled crown on the coarse shell): the reach past the
+    # rest dome dilated (a max over the ring neighbours, twice) then blurred round the azimuth and down the rows,
+    # the pole row the mean of the first ring
+    E = np.vstack([np.full((1, CAP_COLS), a_dome[0] - a_rest[0]),
+                   (a_dome[1:] - a_rest[1:]).reshape(CAP_ROWS, CAP_COLS)])
+    for _ in range(2):
+        M = np.maximum(E, np.maximum(np.roll(E, 1, axis=1), np.roll(E, -1, axis=1)))
+        M[1:-1] = np.maximum(M[1:-1], np.maximum(M[:-2], M[2:]))
+        E = M
+    for _ in range(6):
+        E = 0.5 * E + 0.25 * (np.roll(E, 1, axis=1) + np.roll(E, -1, axis=1))
+        E[1:-1] = 0.5 * E[1:-1] + 0.25 * (E[:-2] + E[2:])
+        E[0] = E[1].mean()
+    a_dome = a_rest + np.maximum(np.concatenate([[E[0].mean()], E[1:].ravel()]), 0.0)
+    t_d = ray_hits(torso["P"], torso["T"], P0, D)
+    target = a_dome * (1 + CAP_LIFT[0]) + CAP_LIFT[1]
+    k = CAP_SOFT
+    # the fillet only where a torso surface is near the dome (no torso on that ray, or one well past the cap: the
+    # lifted dome alone)
+    t_c = np.where(np.isfinite(t_d), t_d, 9.0)
+    m = np.maximum(target, t_c)
+    smax = m + k * np.log(np.exp((target - m) / k) + np.exp((t_c - m) / k))
+    inner = np.where(np.isfinite(t_d) & (t_d < target + 3 * k), smax, target)
+    rim = np.minimum(a_min, np.where(np.isfinite(t_d), t_d, 9.0)) - CAP_TUCK
+    u = np.concatenate([[0.0], np.repeat(rows, CAP_COLS)])
+    w = np.clip((u - CAP_RIM) / (1 - CAP_RIM), 0, 1)
+    w = w * w * (3 - 2 * w)
+    r = inner * (1 - w) + np.minimum(rim, inner) * w
+    # the notch: rays that leave the dome and cross air before they meet the trapezius / chest (the torso past the
+    # dome by less than CAP_BRIDGE): there the cap bridges from the dome at the top to just under the torso at the
+    # rim, so the outline runs neck -> trapezius -> deltoid. The mask is smoothed round the azimuth and down the rows
+    notch = (np.isfinite(t_d) & (t_d > target) & (t_d < target + CAP_BRIDGE)).astype(float)
+    G = notch[1:].reshape(CAP_ROWS, CAP_COLS)
+    for _ in range(3):
+        G = 0.5 * G + 0.25 * (np.roll(G, 1, axis=1) + np.roll(G, -1, axis=1))
+        G[1:-1] = 0.5 * G[1:-1] + 0.25 * (G[:-2] + G[2:])
+    nm = np.concatenate([[0.0], G.ravel()])
+    bw = np.clip((u - 0.2) / 0.8, 0, 1)
+    bw = (bw * bw * (3 - 2 * bw)) * nm
+    tb = np.where(np.isfinite(t_d), np.minimum(t_d, target + CAP_BRIDGE), target) - CAP_TUCK
+    r = r * (1 - bw) + np.maximum(tb, r) * bw
+    V = P0 + D * r[:, None]
+    # the torso's height and depth stay the box's (only X widens): a point past them is drawn in along its ray
+    for ax_ in (1, 2):
+        for lim, sgn in ((thi[ax_] - 0.003, 1), (tlo[ax_] + 0.003, -1)):
+            over = (V[:, ax_] - lim) * sgn > 0
+            if over.any():
+                r[over] = np.maximum((lim - P0[ax_]) / D[over, ax_], 0.0)
+                V = P0 + D * r[:, None]
+    T = []
+    nc = CAP_COLS
+    for j in range(nc):
+        T.append((0, 1 + (j + 1) % nc, 1 + j))
+    for i in range(CAP_ROWS - 1):
+        for j in range(nc):
+            a0, a1 = 1 + i * nc + j, 1 + i * nc + (j + 1) % nc
+            T += [(a0, a1, a1 + nc), (a0, a1 + nc, a0 + nc)]
+    T = np.array(T, int)
+    N = vnormals(V, T)
+    if np.mean(np.sum(N * D, axis=1)) < 0:
+        T = T[:, ::-1]
+        N = vnormals(V, T)
+    # near the rim the shading is the surface it tucks under (smooth across the seam)
+    near = w > 0
+    if near.any():
+        def surf_normal(lp, pts):
+            idx = np.argmin(np.linalg.norm(pts[:, None, :] - lp["P"][None, :, :], axis=2), axis=1)
+            return lp["N"][idx]
+        under_t = (np.where(np.isfinite(t_d), t_d, 9.0) < a_min)[near][:, None]
+        ns = np.where(under_t, surf_normal(torso, V[near]), surf_normal(arm, V[near]))
+        N[near] = N[near] * (1 - w[near, None]) + ns * w[near, None]
+        N = N / np.maximum(np.linalg.norm(N, axis=1, keepdims=True), 1e-12)
+    uu = np.concatenate([[0.5], np.tile((np.arange(nc) + 0.5) / nc, CAP_ROWS)]) * 0.48 + 0.01
+    vv = CAP_V0 + 0.006 + (1 - CAP_V0 - 0.012) * u
+    if key:
+        CAP_STATS[key] = {"lift": float(np.max(inner - a_rest)), "tuck": float(np.min((np.minimum(a_min, t_c) - r)[w > 0.99]))
+                          if (w > 0.99).any() else 0.0, "dirs": D, "r": r.copy(), "w": w.copy(), "P0": P0.copy(),
+                          "thmax": thmax, "rows": rows}
+    return {"P": V, "N": N, "U": np.stack([uu, vv], axis=1), "T": T}
+
+
+def add_shoulder_caps(parts, fr, n):
+    """(v17) both caps merged into parts["UpperTorso"] (game space); core_n = the torso loft's vertex count"""
+    J = parts["_J"]
+    t = parts["UpperTorso"]
+    cr = shoulder_cap(t, parts["RightUpperArm"], J["RightShoulder"], key="%s/T%d" % (fr["key"], n))
+    cl = {"P": cr["P"] * np.array([-1.0, 1.0, 1.0]), "N": cr["N"] * np.array([-1.0, 1.0, 1.0]),
+          "U": cr["U"] + np.array([0.5, 0.0]), "T": cr["T"][:, ::-1].copy()}
+    merged = merge_lp([t, cr, cl])
+    merged["core_n"] = len(t["P"])
+    parts["UpperTorso"] = merged
 
 
 SHAPE_STATS = {}  # "<frame key>/T<n>/<part>" -> (largest silhouette kink in degrees, largest raised lobe / radius)
@@ -1656,6 +1794,55 @@ def junction_check(parts):
             "elbow": ratio}
 
 
+CAP_POKE_MAX = 0.004    # cap_check: the posed arm's dome may pass the cap's interior by at most this (studs)
+CAP_CEIL_MAX = 0.015    # cap_check: a poke where the cap is clamped to the torso box's top (the box height cannot grow
+#                         without moving the mesh centre): reported apart, with this limit
+CAP_EXPOSE_MAX = 0.010  # cap_check: the cap's rim may stand outside both the posed arm and the torso by at most this
+
+
+def cap_check(parts):
+    """(v17) the right shoulder cap against the right upper arm over rest + CAP_POSES: poke = how far the posed arm's
+    surface passes the cap along the cap's own rays in its interior (rim blend 0), expose = how far a rim vertex (rim
+    blend 1) stands outside both the posed arm and the torso core (a visible edge). Returns the worst over the poses"""
+    J = parts["_J"]
+    t = parts["UpperTorso"]
+    if "core_n" not in t:
+        return {"poke": 0.0, "expose": 0.0, "pose": "-"}
+    cn = t["core_n"]
+    TT = t["T"][(t["T"] < cn).all(axis=1)]
+    P0 = np.array(J["RightShoulder"])
+    V = t["P"][cn:cn + 1 + CAP_ROWS * CAP_COLS]
+    D = V - P0
+    r = np.linalg.norm(D, axis=1)
+    D = D / np.maximum(r[:, None], 1e-12)
+    u = np.concatenate([[0.0], np.repeat(np.linspace(0, 1, CAP_ROWS + 1)[1:], CAP_COLS)])
+    w = np.clip((u - CAP_RIM) / (1 - CAP_RIM), 0, 1)
+    t_d = ray_hits(t["P"][:cn], TT, P0, D)
+    arm = parts["RightUpperArm"]
+    # the dome: the arm's triangles above the pivot at rest (the shaft leaving the shoulder in a raise is not exposure)
+    TD = arm["T"][(arm["P"][arm["T"], 1] > P0[1]).all(axis=1)]
+    worst = {"poke": -9.0, "expose": -9.0, "pose": "-"}
+    for name, R in [("rest", np.eye(3))] + list(CAP_POSES):
+        Pr = (arm["P"] - P0) @ R.T + P0
+        a = ray_hits(Pr, arm["T"], P0, D)
+        ad = ray_hits(Pr, TD, P0, D)
+        ceil = t["P"][:cn, 1].max() - V[:, 1] < 0.005
+        inn = (w <= 0) & np.isfinite(ad) & ~ceil
+        poke = float(np.max(ad[inn] - r[inn])) if inn.any() else -9.0
+        inc = (w <= 0) & np.isfinite(ad) & ceil
+        cpk = float(np.max(ad[inc] - r[inc])) if inc.any() else -9.0
+        if cpk > worst.get("ceil", -9.0):
+            worst["ceil"], worst["ceilPose"] = cpk, name
+        rimm = w >= 0.99
+        cover = np.minimum(np.where(np.isfinite(a), a, 9.0), np.where(np.isfinite(t_d), t_d, 9.0))
+        expose = float(np.max(r[rimm] - cover[rimm])) if rimm.any() else -9.0
+        if poke > worst["poke"]:
+            worst["poke"], worst["pokePose"] = poke, name
+        if expose > worst["expose"]:
+            worst["expose"], worst["pose"] = expose, name
+    return worst
+
+
 def shape_check(frames=None, tiers=(1, 3, 5), verbose=True):
     """(v15) builds every frame x tier and reports per part the largest silhouette kink and the largest raised lobe
     share; returns the list of (key, kink, protrusion) over KINK_MAX / PROTRUDE_MAX"""
@@ -1664,14 +1851,22 @@ def shape_check(frames=None, tiers=(1, 3, 5), verbose=True):
     for f in frames or FRAME_ORDER:
         for n in tiers:
             parts = build_tier(None, n, frame=f)
-            junction["%s/T%d" % (FRAMES[f]["key"], n)] = junction_check(parts)
+            jc = junction_check(parts)
+            jc.update(cap_check(parts))
+            junction["%s/T%d" % (FRAMES[f]["key"], n)] = jc
     for k, jc in sorted(junction.items()):
         flag = jc["gapTop"] > GAP_MAX or abs(1 - jc["elbow"]) > ELBOW_MAX
         if flag:
             bad.append((k + "/junction", jc["gapTop"], jc["elbow"]))
+        cflag = jc["poke"] > CAP_POKE_MAX or jc["expose"] > CAP_EXPOSE_MAX or jc.get("ceil", -9) > CAP_CEIL_MAX
+        if cflag:
+            bad.append((k + "/cap", jc["poke"], jc["expose"]))
         if verbose:
             print("%-28s armpit gap %+.3f (widest %+.3f)  shoulder outline kink %4.1f deg notch %.3f  elbow %.3f%s" % (
                 k, jc["gapTop"], jc["gap"], jc["kink"], jc["notch"], jc["elbow"], "  <-- over" if flag else ""))
+            print("%-28s cap: dome poke %+.4f (%s)  at box top %+.4f (%s)  rim exposed %+.4f (%s)%s" % (
+                k, jc["poke"], jc.get("pokePose", "-"), jc.get("ceil", -9), jc.get("ceilPose", "-"), jc["expose"],
+                jc["pose"], "  <-- over" if cflag else ""))
     for k, (kink, prot) in sorted(SHAPE_STATS.items()):
         flag = kink > KINK_MAX or prot > PROTRUDE_MAX
         if flag:
@@ -1707,6 +1902,8 @@ def build_tier(bpy, n, proto=False, frame=DEFAULT_FRAME):
     parts["_J"] = {k: tuple(float(x) for x in v) for k, v in G.items()}
     parts["_J0"] = {k: tuple(float(x) for x in v) for k, v in Jo.items()}
     parts["_frame"] = fr["id"]
+    if CAP and not proto:
+        add_shoulder_caps(parts, fr, n)
     return parts
 
 
@@ -1915,6 +2112,15 @@ def export_tier(n, parts, frame=DEFAULT_FRAME):
         rec[name] = {"mesh_file": name + ".mesh", "size": [round(float(x), 4) for x in hi - lo],
                      "rest_center": [round(float(x), 4) for x in cen],
                      "attachments": atts, "nv": pc.nv, "nt": pc.nt}
+        if lp.get("core_n"):  # (v17) the body's own box (the torso without the shoulder caps): BodyCoreSize
+            C = lp["P"][: lp["core_n"]]
+            clo, chi = C.min(0), C.max(0)
+            # the caps only widen the box: its centre and its height / depth are the core's
+            if np.abs((clo + chi) / 2 - cen).max() > 1e-3 or abs((chi - clo)[1] - (hi - lo)[1]) > 1e-3 or \
+                    abs((chi - clo)[2] - (hi - lo)[2]) > 1e-3:
+                raise SystemExit("%s %s: the shoulder caps moved the box beyond X (core %s, box %s)" % (
+                    fr["id"], name, chi - clo, hi - lo))
+            rec[name]["core"] = [round(float(x), 4) for x in chi - clo]
         total += pc.nt
     data = {"tier": n, "name": TIERS[n]["name"], "frame": fr["id"], "frameKey": fr["key"], "params": TIERS[n],
             "tris": total, "fit": fit_sizes(parts), "armAxisX": round(float(Jt["RightElbow"][0]), 4), "parts": rec,

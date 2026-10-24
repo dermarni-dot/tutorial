@@ -225,7 +225,17 @@ function HitGeometry.Frame(model, soleY, fallback)
 		if typeof(p) == "Instance" and not p:IsA("BasePart") then
 			return nil
 		end
-		local sx, sy, sz = vec(p.Size)
+		-- (v17) the body's own size: the UpperTorso's mesh box includes the shoulder caps over the arms (BodyCoreSize,
+		-- BuilderTiers); every other part, or a rig without the attribute, its Size
+		-- (pcall: a plain-table test rig has no GetAttribute)
+		local size = p.Size
+		local okc, c = pcall(function()
+			return p:GetAttribute("BodyCoreSize")
+		end)
+		if okc and typeof(c) == "Vector3" then
+			size = c
+		end
+		local sx, sy, sz = vec(size)
 		local _, py = vec(p.Position)
 		if not (sx and py) or sx <= 0 or sy <= 0 or sz <= 0 then
 			return nil

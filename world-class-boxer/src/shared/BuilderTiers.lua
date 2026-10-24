@@ -107,6 +107,11 @@ local function prepare(mp, e)
 	mp:SetAttribute("BodyMesh", e.id)
 	mp:SetAttribute("BodyLite", e.lite == true or nil)
 	mp:SetAttribute("BodyFrame", e.frame)
+	-- (v17) the body's own box over the mesh box (the UpperTorso's shoulder caps widen the latter): BodyCoreSize
+	local c = e.core or e.size
+	if c[1] ~= e.size[1] or c[2] ~= e.size[2] or c[3] ~= e.size[3] then
+		mp:SetAttribute("BodyCoreRatio", Vector3.new(c[1] / e.size[1], c[2] / e.size[2], c[3] / e.size[3]))
+	end
 	return mp
 end
 
@@ -366,6 +371,23 @@ local function swap(model, hum, name, template, scale)
 	-- (v16) the skin surface maps: a clone of the authored SurfaceAppearance for the part's tier and frame, tinted to
 	-- the part's Color and following it (none on a lite part; BodySurfaces)
 	pcall(BodySurfaces.Attach, new)
+	-- (v17) the body's own size (BodyCoreSize = Size x BodyCoreRatio), kept in step with any later rescale
+	local cr = new:GetAttribute("BodyCoreRatio")
+	if typeof(cr) == "Vector3" then
+		local function core()
+			new:SetAttribute("BodyCoreSize", new.Size * cr)
+		end
+		core()
+		new:GetPropertyChangedSignal("Size"):Connect(core)
+		-- its mass stays the body's: a Box-fidelity MeshPart weighs its box (Size, caps included), so the density is
+		-- scaled by core volume / box volume (the Humanoid is tuned for an R15 body's mass)
+		pcall(function()
+			local pp = new.CurrentPhysicalProperties
+			local k = cr.X * cr.Y * cr.Z
+			new.CustomPhysicalProperties = PhysicalProperties.new(pp.Density * k, pp.Friction, pp.Elasticity,
+				pp.FrictionWeight, pp.ElasticityWeight)
+		end)
+	end
 	for _, w in ipairs(holders) do
 		if w.Parent then
 			if w.Part0 == old then

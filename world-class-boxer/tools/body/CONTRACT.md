@@ -181,6 +181,38 @@ about the pivots) and the elbow / wrist / hip / knee / ankle heights are unchang
 * Previews: `bake_skin.py --no-bake --preview lean,muscular,power --preview-tiers 5 --lineups 1,3,5 --dest ...`
   (Cycles: base colour = skin x ColorMap, the RoughnessMap, a tangent-space normal map node).
 
+### The shoulder junction (v17)
+
+* The UpperTorso owns a shoulder cap per side (`build_body.shoulder_cap`, merged after the loft: `core_n` = the loft's
+  vertex count): a 11 x 32 shell about the shoulder pivot covering the arm's dome from the trapezius out over the
+  deltoid. Its radius per ray = a smooth envelope (dilated, blurred) of the dome's furthest reach over rest + CAP_POSES (pitch -30..90, abduction -10..60, the
+  guard) x 1.015 + 0.004, smooth-maxed into the torso where the torso is near (CAP_SOFT), and toward the rim (from
+  u 0.6) drawn in to 0.012 under the nearer of the arm (its closest over the poses) and the torso: the dome turns under
+  it, the rim never shows. Height and depth stay inside the loft's box (only X widens); the normals near the rim are
+  the surface it tucks under. UVs: the strip v > 0.86 of the UpperTorso map (the loft is squeezed to v 0..0.86), left
+  half the right cap, right half the left; bake_skin fills it flat (normal 0,0,1, colour 1, the loft's mean roughness).
+* The cap widens the UpperTorso's bounding box (MeshPart Size.X), not its body. BodyAssetData's UpperTorso records
+  `core` = the loft's box (no cap; same centre, Y and Z, export asserts it); BuilderTiers sets
+  `BodyCoreRatio = core / size` before the swap and, after it, the attribute `BodyCoreSize` (Vector3) = Size x ratio,
+  kept current on Size changes. Every reader that means the body's width reads `BodyTiers.CoreSize(part)`
+  (BodyCoreSize, else Size): HitGeometry (torso half width, shoulder span), AnimRig utScale, AnimFight clinch, Poser
+  grip, HairFX, the officials' collar / towel / text, the surface marks, Ragdoll's UpperTorso collider. The swap also
+  scales the part's density by core / box volume (CustomPhysicalProperties) so a Box-fidelity UpperTorso weighs its
+  body, not its caps. Size/OriginalSize ratios (BuilderGear, Diag,
+  Builder) stay valid (both include the cap); the robe keeps Size (it must cover the cap). The hit boundaries and
+  MinSep of every frame pairing are unchanged (test_hitdetect / spacing / aiacts / fightai / frametraits /
+  charphysics / gear / npcbuild / referee outputs identical).
+* Gear: the referee shirt / coach polo sleeves (a sphere about the pivot + ease) cover every visible cap vertex at
+  tiers 1-5; the sports top's straps stay medial of the cap (x 0.75 < 0.80).
+* Also: the armpit hollow (s 3.16-3.44, under the widest ring: the core width equals v16's to 0.0005) and the lat's sweep (torso lobes), the coracobrachialis on the arm toward the armpit, the
+  forearm's top matched to 0.99 x the upper arm's radius at the elbow in game space.
+* `build_body.py --check-shape` also gates the junction: the armpit gap (GAP_MAX 0.06), the elbow ratio (ELBOW_MAX
+  0.015), the cap over rest + CAP_POSES: dome poke (the dome's triangles past the cap's interior, CAP_POKE_MAX 0.004),
+  rim exposure (a rim vertex outside both the posed arm and the torso, CAP_EXPOSE_MAX 0.010) and, apart, a poke where
+  the cap is clamped to the box's top (CAP_CEIL_MAX 0.015: Power Build T5 pitched 90 deg, 0.0115).
+* Sheets: `build_body.py --no-export --no-blend --sheets shoulders --tiers 1,5 --muscle-tag after` (front, side, back,
+  3/4, guard front / 3/4; Lean, Muscular, Power, Heavyweight), composed into previews/final/v10/bodies/shoulders/.
+
 ## BodyAssetData.lua (generated)
 
 ```lua
@@ -192,6 +224,7 @@ return {
 			UpperTorso = {
 				mesh = 0,          -- Mesh asset id
 				size = { x, y, z },-- the mesh's bounding box = the MeshPart's unscaled Size (OriginalSize)
+				core = { x, y, z },-- (v17, UpperTorso only, when it differs) the body's box without the shoulder caps
 				attachments = { NeckRigAttachment = { x, y, z }, WaistRigAttachment = {...}, ... },
 				                   -- part-space positions of every R15 RigAttachment (and Grip on hands)
 			},

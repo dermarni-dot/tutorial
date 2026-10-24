@@ -106,6 +106,8 @@ def main():
                             "model/x-file-mesh-data", dry, local)
             used.append(mid)
             parts[name] = {"mesh": mid, "size": rec["size"], "attachments": rec["attachments"], "nt": rec["nt"]}
+            if rec.get("core") and rec["core"] != rec["size"]:  # (v17) the body's box without the shoulder caps
+                parts[name]["core"] = rec["core"]
         return parts
 
     for pj in tier_dirs(OUT):

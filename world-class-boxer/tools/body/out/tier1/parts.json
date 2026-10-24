@@ -9,12 +9,12 @@
   "m": 0.0,
   "d": 0.0
  },
- "tris": 29744,
+ "tris": 31088,
  "fit": {
   "chest": {
    "y": 4.529,
-   "girth": 3.645,
-   "width": 1.419,
+   "girth": 3.64,
+   "width": 1.413,
    "depth": 0.798
   },
   "waist": {
@@ -32,7 +32,7 @@
   "upperArm": {
    "y": 4.343,
    "girth": 1.692,
-   "width": 0.513,
+   "width": 0.514,
    "depth": 0.552
   },
   "forearm": {
@@ -85,9 +85,9 @@
   "UpperTorso": {
    "mesh_file": "UpperTorso.mesh",
    "size": [
-    1.6682,
+    2.398,
     2.4858,
-    0.8083
+    0.8082
    ],
    "rest_center": [
     0.0,
@@ -118,7 +118,7 @@
     "BodyFrontAttachment": [
      0.0,
      0.0923,
-     -0.3788
+     -0.3789
     ],
     "BodyBackAttachment": [
      0.0,
@@ -132,17 +132,22 @@
     ],
     "RightCollarAttachment": [
      0.8038,
-     0.7964,
+     1.0582,
      -0.0083
     ],
     "LeftCollarAttachment": [
      -0.8038,
-     0.7964,
+     1.0582,
      -0.0083
     ]
    },
-   "nv": 4622,
-   "nt": 9120
+   "nv": 5328,
+   "nt": 10464,
+   "core": [
+    1.6682,
+    2.4858,
+    0.8082
+   ]
   },
   "LowerTorso": {
    "mesh_file": "LowerTorso.mesh",
@@ -231,25 +236,25 @@
   "RightLowerArm": {
    "mesh_file": "RightLowerArm.mesh",
    "size": [
-    0.4645,
-    1.3059,
-    0.494
+    0.4786,
+    1.3128,
+    0.508
    ],
    "rest_center": [
     0.9803,
-    3.5772,
-    0.0015
+    3.5807,
+    0.0013
    ],
    "attachments": {
     "RightElbowRigAttachment": [
      0.0,
-     0.4248,
-     -0.0015
+     0.4213,
+     -0.0013
     ],
     "RightWristRigAttachment": [
      0.0,
-     -0.5052,
-     -0.0015
+     -0.5087,
+     -0.0013
     ]
    },
    "nv": 816,
@@ -398,25 +403,25 @@
   "LeftLowerArm": {
    "mesh_file": "LeftLowerArm.mesh",
    "size": [
-    0.4645,
-    1.3059,
-    0.494
+    0.4786,
+    1.3128,
+    0.508
    ],
    "rest_center": [
     -0.9803,
-    3.5772,
-    0.0015
+    3.5807,
+    0.0013
    ],
    "attachments": {
     "LeftElbowRigAttachment": [
      -0.0,
-     0.4248,
-     -0.0015
+     0.4213,
+     -0.0013
     ],
     "LeftWristRigAttachment": [
      -0.0,
-     -0.5052,
-     -0.0015
+     -0.5087,
+     -0.0013
     ]
    },
    "nv": 816,

@@ -362,7 +362,21 @@ function BodyTiers.PartEntry(tier, name, d, lite, frame)
 			end
 		end
 	end
-	return { id = id, size = size, attachments = atts, tier = tier, name = name, lite = isLite, frame = fid }
+	-- (v17) core = the body's own box (the UpperTorso without its shoulder caps; = size otherwise): what the game
+	-- reads as the torso's width (BodyTiers.CoreSize)
+	local core = (not isLite and vec3(e.core)) or size
+	return { id = id, size = size, core = core, attachments = atts, tier = tier, name = name, lite = isLite, frame = fid }
+end
+
+-- (v17) the body's own size of a part: the UpperTorso's mesh box includes the shoulder caps over the arms' domes, which
+-- are not the torso's width; BuilderTiers sets BodyCoreSize (scaled like Size). Any other part, or a part without the
+-- attribute: its Size
+function BodyTiers.CoreSize(part)
+	local c = part and part:GetAttribute("BodyCoreSize")
+	if typeof(c) == "Vector3" then
+		return c
+	end
+	return part and part.Size
 end
 
 -- a tier's gear-fit measure (BodyAssetData tiers[n].fit[key]: { width, depth, girth, y }, unscaled studs), or nil;

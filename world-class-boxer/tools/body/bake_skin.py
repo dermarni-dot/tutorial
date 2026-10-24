@@ -269,6 +269,13 @@ def bake_part(n, base, res):
     dark = 0.55 * np.clip(-hc / 0.005, 0, 1) + 0.45 * np.clip(-ha / 0.016, 0, 1)
     color = np.clip(1.0 - 0.32 * dark, 0, 1)
     rough = np.clip(0.60 - 0.10 * np.clip(ha / 0.010, 0, 1) + 0.18 * dark, 0.35, 0.90)
+    if base == "UpperTorso" and B.CAP:
+        # (v17) the shoulder caps' strip (v past the loft's CAP_V0): smooth skin, a flat normal, no occlusion, the
+        # loft's mean roughness (the mesh normals carry the cap's shape; its rim tucks under the arm and torso)
+        cap = v > B.CAP_V0
+        normal[cap] = (128, 128, 255)
+        color = np.where(cap, 1.0, color)
+        rough = np.where(cap, float(rough[~cap].mean()), rough)
     c8 = np.clip(np.round(color * 255), 0, 255).astype(np.uint8)
     r8 = np.clip(np.round(rough * 255), 0, 255).astype(np.uint8)
     stats = {"normalDev": float(np.degrees(np.arccos(np.clip(ts[..., 2], -1, 1))).mean()),

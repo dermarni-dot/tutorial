@@ -622,12 +622,30 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "04c7661487b78bc53c7bfe7d4fadf19035bb73ed9f40470e826f7e0d1c321055": {
+  "at": "2026-10-24T06:45:48Z",
+  "file": "out/frames/heavy/tier1/UpperTorso.mesh",
+  "id": 94095130199906,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T1 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "04cc0e2c99379b530392090622444c61303511bdbafd0c5e81894e89b13585dc": {
   "at": "2026-10-24T03:00:26Z",
   "file": "out/frames/lean/tier1/LeftLowerLeg.mesh",
   "id": 80656172902467,
   "moderation": "Approved",
   "name": "WCB Body lean T1 LeftLowerLeg",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "04cd566bc30b828dc1bd6d7fded834795b7fae6aa493500be337ba7ee1870383": {
+  "at": "2026-10-24T06:21:48Z",
+  "file": "out/frames/lean/tier3/LeftLowerArm.mesh",
+  "id": 75586953541123,
+  "moderation": "Approved",
+  "name": "WCB Body lean T3 LeftLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -955,6 +973,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "07a4057833d3d6f6fde1fb45219228672d0c3c406d46524d4c410ba28c005bc8": {
+  "at": "2026-10-24T06:22:23Z",
+  "file": "out/frames/muscular/tier1/UpperTorso.mesh",
+  "id": 100742704272695,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T1 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "07a545dd4b2eee194b650a20e05422740a0a04ce6ce89df0cce48dc60f37e40e": {
   "at": "2026-10-24T04:17:50Z",
   "file": "out/frames/lean/tier1/LowerTorso.mesh",
@@ -1035,6 +1062,15 @@
   "name": "WCB Skin T5 LowerArm normal",
   "state": "Active",
   "type": "Image"
+ },
+ "084d086a87c1d35e6a48b3cb05cfa70da9a5686a8058c3770671865624619389": {
+  "at": "2026-10-24T07:12:23Z",
+  "file": "out/frames/power/tier2/UpperTorso.mesh",
+  "id": 128903909944963,
+  "moderation": "Approved",
+  "name": "WCB Body power T2 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
  },
  "0869c9fcf3386227c4150b38394600f90fba0a44399b30faaaf7fa041d905afc": {
   "at": "2026-10-23T21:38:18Z",
@@ -1187,6 +1223,15 @@
   "name": "WCB Gear T2 BootShaft_R",
   "type": "Mesh"
  },
+ "09819836bb709828f241e809d5f8d421152e4bd43fed0ae53e0b63cbc0339794": {
+  "at": "2026-10-24T06:24:09Z",
+  "file": "out/frames/power/tier3/RightLowerArm.mesh",
+  "id": 73700836701558,
+  "moderation": "Approved",
+  "name": "WCB Body power T3 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "09a40bb53453c506789335cef7063177e74a4c464f091a70138a1984751cc001": {
   "at": "2026-10-24T04:25:30Z",
   "file": "out/frames/power/tier5/UpperTorso.mesh",
@@ -1248,6 +1293,15 @@
   "name": "WCB Gear T4 Top",
   "state": "Active",
   "type": "Mesh"
+ },
+ "0a3dad7967f03bb4fb9f7098c9614d7954ad870655ee58994ebf431ceabf486c": {
+  "at": "2026-10-24T06:25:27Z",
+  "file": "out/skin/T1/UpperArm_color.png",
+  "id": 126778281393795,
+  "moderation": "Approved",
+  "name": "WCB Skin T1 UpperArm color",
+  "state": "Active",
+  "type": "Image"
  },
  "0a3eeb94ec46848a2576ca9ef014934a4d544dbc84cb3bdccd48ff24754517a1": {
   "at": "2026-10-24T00:27:52Z",
@@ -1401,6 +1455,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "0b9081e64af076234367721f518e6aea16e7046d8cdca549c296b6a702bc65f0": {
+  "at": "2026-10-24T06:20:26Z",
+  "file": "out/frames/heavy/tier3/RightLowerArm.mesh",
+  "id": 97640309107102,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T3 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "0bbd3db4eee306680fb51893cf0b346b15aa4ca3767d56354044001d697f95ad": {
   "at": "2026-10-18T03:30:29Z",
   "file": "out/gear/tier1/GloveCuff_R.mesh",
@@ -1409,6 +1472,15 @@
   "name": "WCB Gear T1 GloveCuff_R",
   "state": "Active",
   "type": "Mesh"
+ },
+ "0bc191a9a163bdd424c4da67948a0a128ec84b6150ab0a7b35d8e7d78101ab51": {
+  "at": "2026-10-24T06:26:07Z",
+  "file": "out/skin/T2/UpperTorso_normal.png",
+  "id": 124476044842190,
+  "moderation": "Approved",
+  "name": "WCB Skin T2 UpperTorso normal",
+  "state": "Active",
+  "type": "Image"
  },
  "0bcfbfdec7ad1105a262104f3af3246e9cc74a79972a154bce316dc3fd6617c7": {
   "at": "2026-10-23T03:56:10Z",
@@ -1487,6 +1559,15 @@
   "id": 138982964823798,
   "moderation": "Approved",
   "name": "WCB Body power T5 LeftUpperLeg",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "0c314985abcd0e643a07f7ae0ed53742de4479b55c745f5df93eef2265ded4c5": {
+  "at": "2026-10-24T06:19:13Z",
+  "file": "out/tier3/LeftLowerArm.mesh",
+  "id": 70390225193979,
+  "moderation": "Approved",
+  "name": "WCB Body T3 LeftLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -1633,6 +1714,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "0df64e1183bc0b706c82a9fbbc0ffd67e8b2e9af2bf39ff68eda854fe8a4291b": {
+  "at": "2026-10-24T06:23:53Z",
+  "file": "out/frames/power/tier2/RightUpperArm.mesh",
+  "id": 99568836798890,
+  "moderation": "Approved",
+  "name": "WCB Body power T2 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "0e138a4c244758b94d6876308b697bc0ac244518997cae16ba1330270fb5d189": {
   "at": "2026-10-24T04:25:45Z",
   "file": "out/frames/power/tier5/LeftUpperLeg.mesh",
@@ -1641,6 +1731,15 @@
   "name": "WCB Body power T5 LeftUpperLeg",
   "state": "Active",
   "type": "Mesh"
+ },
+ "0e15515a7ac457927760d003e5a2354d219f660c789a969803130d04e6713cfc": {
+  "at": "2026-10-24T06:25:32Z",
+  "file": "out/skin/T1/UpperArm_rough.png",
+  "id": 135359194410912,
+  "moderation": "Approved",
+  "name": "WCB Skin T1 UpperArm rough",
+  "state": "Active",
+  "type": "Image"
  },
  "0e3b79626da4649c1112abb802a01403136eb338d1854bacc67e6aaf07391b2c": {
   "at": "2026-10-24T04:13:35Z",
@@ -1684,6 +1783,15 @@
   "id": 103846230599507,
   "moderation": "Approved",
   "name": "WCB Body heavy T3 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "0e738b2dbf9ae06f7bc13f472dde5d81073500ba387430bb9d0fcfc3a2a51b83": {
+  "at": "2026-10-24T06:21:27Z",
+  "file": "out/frames/lean/tier1/RightLowerArm.mesh",
+  "id": 95994505423818,
+  "moderation": "Approved",
+  "name": "WCB Body lean T1 RightLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -1948,6 +2056,15 @@
   "id": 101202416338442,
   "moderation": "Approved",
   "name": "WCB Gear T1 TrunkLegLong_R",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "10b22e60937e94660cd97d30bab0654779681f41fb73c2d5d33a4ab5be315a41": {
+  "at": "2026-10-24T06:21:59Z",
+  "file": "out/frames/lean/tier4/LeftUpperArm.mesh",
+  "id": 96842593746078,
+  "moderation": "Approved",
+  "name": "WCB Body lean T4 LeftUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -2271,6 +2388,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "12f9bbede6b3d33e6afa4ede8492c6343222e6d856a42320b24550560bb6cc6f": {
+  "at": "2026-10-24T06:45:56Z",
+  "file": "out/frames/heavy/tier4/UpperTorso.mesh",
+  "id": 92400187584504,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T4 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "130b83401941ced5b6b5ff1fe574ae3627838bfa50e5ed07299ca2e7391470e2": {
   "at": "2026-10-24T00:31:25Z",
   "file": "out/frames/power/tier1/LeftLowerLeg.mesh",
@@ -2297,6 +2423,15 @@
   "name": "WCB Gear T5 TrunkHem_R",
   "state": "Active",
   "type": "Mesh"
+ },
+ "132575a13e9bfaa54053bbd308b1750ef16240e0ff53cd1e1ff2de1a2b50ef5f": {
+  "at": "2026-10-24T06:26:39Z",
+  "file": "out/skin/T4/LowerArm_color.png",
+  "id": 84252541380424,
+  "moderation": "Approved",
+  "name": "WCB Skin T4 LowerArm color",
+  "state": "Active",
+  "type": "Image"
  },
  "1332f985631b6d14eb73a52b68fbc7937436aac1dfda722a519e8a9bffcdabb4": {
   "at": "2026-10-23T03:57:19Z",
@@ -2441,6 +2576,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "1428b383490468921c8769aa09eac0cbef31ebe2c9f5d262db52a396d09e1afe": {
+  "at": "2026-10-24T06:25:35Z",
+  "file": "out/skin/T1/UpperTorso_color.png",
+  "id": 134021990664983,
+  "moderation": "Approved",
+  "name": "WCB Skin T1 UpperTorso color",
+  "state": "Active",
+  "type": "Image"
+ },
  "142f5bc9f6f0e121658ebc597ca4618c17373c7a1200e80bb700ccbeb5b84254": {
   "at": "2026-10-23T03:56:17Z",
   "file": "out/frames/lean/tier2/LeftUpperLeg.mesh",
@@ -2528,6 +2672,15 @@
   "state": "Active",
   "type": "Image"
  },
+ "1522bef22baa50484327a0df52bfadc2420b5e3e53b53543b22da1541de21e52": {
+  "at": "2026-10-24T06:24:36Z",
+  "file": "out/frames/power/tier5/RightLowerArm.mesh",
+  "id": 89691961560768,
+  "moderation": "Approved",
+  "name": "WCB Body power T5 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "1529161266faab6f9d8fcaba5d91f040f2f84b3be803d5b92aa74710840e0bbe": {
   "at": "2026-10-23T03:58:36Z",
   "file": "out/frames/muscular/tier3/RightLowerLeg.mesh",
@@ -2537,12 +2690,30 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "152da3211ee33dd7d6d375e07ed850442c10f7e007b112ea31e1339b5e5fceaa": {
+  "at": "2026-10-24T06:25:20Z",
+  "file": "out/skin/T1/LowerArm_color.png",
+  "id": 78886784412755,
+  "moderation": "Approved",
+  "name": "WCB Skin T1 LowerArm color",
+  "state": "Active",
+  "type": "Image"
+ },
  "153269c87e63d0751a842fd42ea7e66c6922aada48b798bfd832bf492b671634": {
   "at": "2026-10-20T00:49:46Z",
   "file": "out/tier2/LeftLowerArm.mesh",
   "id": 119819755759883,
   "moderation": "Approved",
   "name": "WCB Body T2 LeftLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "15a0e6c6106bd433b102b6a9f7dfe834e7fd2c80095497f9c33aa071056c2e03": {
+  "at": "2026-10-24T06:22:15Z",
+  "file": "out/frames/lean/tier5/LeftLowerArm.mesh",
+  "id": 132394383917360,
+  "moderation": "Approved",
+  "name": "WCB Body lean T5 LeftLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -2606,6 +2777,15 @@
   "id": 118600888422647,
   "moderation": "Approved",
   "name": "WCB Body heavy T1 LeftLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "163383de906cd13da2af4f92a2057dc8f5b4e2387a617ad51fed10a9050d050d": {
+  "at": "2026-10-24T06:46:21Z",
+  "file": "out/frames/muscular/tier3/UpperTorso.mesh",
+  "id": 132487605738232,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T3 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -2941,6 +3121,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "18bbec27c1766fd223e7299bd14a4f7e64555d7c3beb7443893f327b47c67422": {
+  "at": "2026-10-24T06:23:21Z",
+  "file": "out/frames/muscular/tier5/LeftUpperArm.mesh",
+  "id": 121190882795380,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T5 LeftUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "18d1b835b83356e1726443168eb68aa0ecae5d19900ef77e8ce5cbcab2b52642": {
   "at": "2026-10-23T14:50:27Z",
   "file": "out/frames/muscular/tier5/LeftHand.mesh",
@@ -3138,6 +3327,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "19a1158d509d128d4c67ad3704b16ccbdd2e9f3f67c2967b3dd16733b1c0e15c": {
+  "at": "2026-10-24T06:23:50Z",
+  "file": "out/frames/power/tier2/LeftLowerArm.mesh",
+  "id": 74071269160470,
+  "moderation": "Approved",
+  "name": "WCB Body power T2 LeftLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "19afce03721c92eb52c6c4f789afa7d566b483240b5abce23edb853aa3524a72": {
   "at": "2026-10-20T18:40:27Z",
   "file": "out/gear/tier2/OffShin_R.mesh",
@@ -3145,6 +3343,15 @@
   "moderation": "Approved",
   "name": "WCB Gear T2 OffShin_R",
   "type": "Mesh"
+ },
+ "19b7c953f7863b0b416518921ca0a454e9a1f30085f7d927610cda09d805bb40": {
+  "at": "2026-10-24T06:25:30Z",
+  "file": "out/skin/T1/UpperArm_normal.png",
+  "id": 111861311112574,
+  "moderation": "Approved",
+  "name": "WCB Skin T1 UpperArm normal",
+  "state": "Active",
+  "type": "Image"
  },
  "19c0272b96f1feb11d5eaeef9e3b3774bc39badee75eda5d31f289073378dd07": {
   "at": "2026-10-18T03:31:51Z",
@@ -3235,6 +3442,15 @@
   "name": "WCB Body lean T3 LeftLowerLeg",
   "state": "Active",
   "type": "Mesh"
+ },
+ "1a72e1e05975aa0ec2aa29b9b48a8ab6c552138f434bb81b1dbd0a76d6a890b0": {
+  "at": "2026-10-24T06:48:57Z",
+  "file": "out/skin/T1/UpperTorso_normal.png",
+  "id": 114413845123240,
+  "moderation": "Approved",
+  "name": "WCB Skin T1 UpperTorso normal",
+  "state": "Active",
+  "type": "Image"
  },
  "1ad2647ab43eac18aab7a8f1189627de45ca13c03bcdd2b2b8b5b341afefcbb5": {
   "at": "2026-10-20T18:52:12Z",
@@ -3458,6 +3674,15 @@
   "name": "WCB Body lean T3 RightLowerLeg",
   "state": "Active",
   "type": "Mesh"
+ },
+ "1c7b1453784fce6f0e7b63d334bc3a215668cea32a585fb074a7e81bd5b137c0": {
+  "at": "2026-10-24T06:25:50Z",
+  "file": "out/skin/T2/LowerArm_normal.png",
+  "id": 118521137090398,
+  "moderation": "Approved",
+  "name": "WCB Skin T2 LowerArm normal",
+  "state": "Active",
+  "type": "Image"
  },
  "1c7faebfa877f2ce1ab3d0d50c0ba2d9cf62da6822fb4dd141d62aa75e2a3a5d": {
   "at": "2026-10-23T14:42:28Z",
@@ -3950,6 +4175,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "21c810f32d9766b8b71928b7665c06f40a51fbdfaa0e1729d25882fa9a2ebe75": {
+  "at": "2026-10-24T06:23:07Z",
+  "file": "out/frames/muscular/tier4/LeftUpperArm.mesh",
+  "id": 124199236343150,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T4 LeftUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "21effaf110dcc542961807b38ed8c57b121a55047230c3a8e8c23dddc342829b": {
   "at": "2026-10-23T22:50:54Z",
   "file": "out/frames/power/tier5/RightUpperArm.mesh",
@@ -4091,6 +4325,15 @@
   "id": 72020130855597,
   "moderation": "Approved",
   "name": "WCB Body power T3 RightUpperLeg",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "2307ff90df1de95fa2efde01fcef8797b0356526d7b14d6b36d9fa615267be02": {
+  "at": "2026-10-24T06:22:45Z",
+  "file": "out/frames/muscular/tier2/RightUpperArm.mesh",
+  "id": 76281156186613,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T2 RightUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -4301,6 +4544,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "254e9349a0b38fdea49fe6ffd033de0b3a3f3c728784a11c9b1d6b727d5b6a20": {
+  "at": "2026-10-24T07:12:31Z",
+  "file": "out/frames/power/tier5/UpperTorso.mesh",
+  "id": 90407363899016,
+  "moderation": "Approved",
+  "name": "WCB Body power T5 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "256326553297e6c21c36884a057e21854eb031fa7b8de768a254efbcbc93a4bd": {
   "at": "2026-10-23T03:57:37Z",
   "file": "out/frames/lean/tier5/LeftUpperLeg.mesh",
@@ -4343,6 +4595,15 @@
   "id": 75220399583745,
   "moderation": "Approved",
   "name": "WCB Body power T3 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "25dfbd8a56c108d2bbba7f2a233ed33fe910ed5c31f773608eb1640d32248544": {
+  "at": "2026-10-24T07:12:08Z",
+  "file": "out/frames/muscular/tier1/UpperTorso.mesh",
+  "id": 75934703179348,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T1 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -4794,6 +5055,33 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "2acac2b4f9f188cdd7d83ad2bec7c47b87f7865035c7b77a391ae12c2681a017": {
+  "at": "2026-10-24T06:19:29Z",
+  "file": "out/tier4/RightUpperArm.mesh",
+  "id": 72669505593848,
+  "moderation": "Approved",
+  "name": "WCB Body T4 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "2aebd313f9daef1c6f16ecaa72ef6c49f022d3d3a9efd9243ce1b91b878af90d": {
+  "at": "2026-10-24T06:46:40Z",
+  "file": "out/frames/power/tier4/UpperTorso.mesh",
+  "id": 117567557298098,
+  "moderation": "Approved",
+  "name": "WCB Body power T4 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "2aec7938efb45ab93c9ece6c6ffc697e5988c283e8950d71f6e4048b9ef9abbf": {
+  "at": "2026-10-24T06:18:38Z",
+  "file": "out/tier1/UpperTorso.mesh",
+  "id": 125213922518254,
+  "moderation": "Approved",
+  "name": "WCB Body T1 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "2b15635cd6b5b50c14daa6fead360439530788a268d95ad703b35be40c761dd8": {
   "at": "2026-10-18T03:36:39Z",
   "file": "out/gear/tier4/WrapWrist_R.mesh",
@@ -4978,6 +5266,15 @@
   "id": 126479160496554,
   "moderation": "Approved",
   "name": "WCB Body lean T3 LeftLowerLeg",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "2c1907385ebee97c3e5712089b7f4011b9295dc8c20566e9e83bc0dc96dfae8d": {
+  "at": "2026-10-24T06:19:21Z",
+  "file": "out/tier4/UpperTorso.mesh",
+  "id": 85672375231461,
+  "moderation": "Approved",
+  "name": "WCB Body T4 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -5203,6 +5500,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "2e7f2325a152562b986b523b5ea1cd5709f318b7646a0a96fbcd5a529233b021": {
+  "at": "2026-10-24T06:26:02Z",
+  "file": "out/skin/T2/UpperTorso_color.png",
+  "id": 92811723582675,
+  "moderation": "Approved",
+  "name": "WCB Skin T2 UpperTorso color",
+  "state": "Active",
+  "type": "Image"
+ },
  "2e7fda0a345e66075904776dcde74212989ff63f89fb8d25dd8c22e70fa57051": {
   "at": "2026-10-20T18:53:29Z",
   "file": "out/gear/tier3/WrapWrist_R.mesh",
@@ -5318,6 +5624,15 @@
   "name": "WCB Gear T3 OffSleeveHem_R",
   "state": "Active",
   "type": "Mesh"
+ },
+ "2ff66a6458a16e8a98115c5db25c314d6a9b06789332029ae9ff98b512894544": {
+  "at": "2026-10-24T06:26:43Z",
+  "file": "out/skin/T4/LowerArm_rough.png",
+  "id": 109373804024901,
+  "moderation": "Approved",
+  "name": "WCB Skin T4 LowerArm rough",
+  "state": "Active",
+  "type": "Image"
  },
  "30022ccc2b9fabe6c057d92702482598bb570983130ade47717720460ac99c61": {
   "at": "2026-10-24T02:58:07Z",
@@ -5585,6 +5900,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "324e659096230b40efebac943d4e3be86a06496421df63ca528b70ceb8277243": {
+  "at": "2026-10-24T06:19:16Z",
+  "file": "out/tier3/RightUpperArm.mesh",
+  "id": 96802169890070,
+  "moderation": "Approved",
+  "name": "WCB Body T3 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "327206c905695265ee48dd290b6b7536369df8984e3cfbf3d5dd21113ccc5876": {
   "at": "2026-10-23T14:42:37Z",
   "file": "out/tier5/RightHand.mesh",
@@ -5626,6 +5950,15 @@
   "id": 120638703951935,
   "moderation": "Approved",
   "name": "WCB Body T2 LeftUpperLeg",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "3316abe18adcdd1f22739f7c7f54cd13003a98b3386655353f0df9bccd65969f": {
+  "at": "2026-10-24T06:19:40Z",
+  "file": "out/tier5/LeftLowerArm.mesh",
+  "id": 124933903417485,
+  "moderation": "Approved",
+  "name": "WCB Body T5 LeftLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -5840,6 +6173,15 @@
   "id": 122101265013426,
   "moderation": "Approved",
   "name": "WCB Gear T5 OffPoloButtons lite",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "3522a6bbf78c7a8f8475cc28f6b203b1dae11e4992dea081f8329cd1c454e9ad": {
+  "at": "2026-10-24T07:12:28Z",
+  "file": "out/frames/power/tier4/UpperTorso.mesh",
+  "id": 104352202514515,
+  "moderation": "Approved",
+  "name": "WCB Body power T4 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -6153,6 +6495,15 @@
   "state": "Active",
   "type": "Image"
  },
+ "37acd181257a9053d98cc4a716e2cdc6875c6b6c309593f3cfa662aad94b9608": {
+  "at": "2026-10-24T06:25:44Z",
+  "file": "out/skin/T1/UpperTorso_rough.png",
+  "id": 120779952994342,
+  "moderation": "Approved",
+  "name": "WCB Skin T1 UpperTorso rough",
+  "state": "Active",
+  "type": "Image"
+ },
  "37d5663ead49044a068e242c96c552473a9174bc6f6744c2a95cfe75ac330283": {
   "at": "2026-10-24T03:04:46Z",
   "file": "out/frames/muscular/tier5/LeftUpperLeg.mesh",
@@ -6171,12 +6522,30 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "37ee0507785fe8c1cba7767e8861a1a6caa8aa334cf5d244dbb42798a555c87e": {
+  "at": "2026-10-24T07:12:13Z",
+  "file": "out/frames/muscular/tier3/UpperTorso.mesh",
+  "id": 95075832410171,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T3 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "37f3c3354d0c1041c15612f20c371fbe1b0e594efa1ce3fca91af575cd5b9d9c": {
   "at": "2026-10-24T00:21:45Z",
   "file": "out/tier4/LeftLowerLeg.mesh",
   "id": 115281463769133,
   "moderation": "Approved",
   "name": "WCB Body T4 LeftLowerLeg",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "37fa64cd2a793dc512487f2cd27ba1b1325f590d63c2b2ba3b5ff477b639bbb4": {
+  "at": "2026-10-24T06:22:59Z",
+  "file": "out/frames/muscular/tier3/RightUpperArm.mesh",
+  "id": 91836873888786,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T3 RightUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -6222,6 +6591,15 @@
   "id": 119894310446965,
   "moderation": "Approved",
   "name": "WCB Body power T3 LowerTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "3872aa0fedfc55fe113b8d1957b640fef0ab5592684c749c624cb7c680f0365b": {
+  "at": "2026-10-24T06:20:07Z",
+  "file": "out/frames/heavy/tier2/LeftLowerArm.mesh",
+  "id": 117073348063204,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T2 LeftLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -6377,6 +6755,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "39a312758dcbb2747dc02dc2cb4f28ae7f15c96e039b3d7248e89d2d85e153db": {
+  "at": "2026-10-24T06:18:52Z",
+  "file": "out/tier2/UpperTorso.mesh",
+  "id": 89525307448729,
+  "moderation": "Approved",
+  "name": "WCB Body T2 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "39aeed3adc5860cb6291c781b9389474d6009c9fd2c3701ccea702a913a6c0d0": {
   "at": "2026-10-24T04:07:15Z",
   "file": "out/skin/T3/LowerLeg_rough.png",
@@ -6434,6 +6821,15 @@
   "id": 77969614685582,
   "moderation": "Approved",
   "name": "WCB Gear T2 OffShin_R",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "3a137cf080263fb7d9e384ae0d7b29135bd9d02560fe22b0f1c121a0b6a7ae02": {
+  "at": "2026-10-24T06:18:44Z",
+  "file": "out/tier1/LeftLowerArm.mesh",
+  "id": 104615895154748,
+  "moderation": "Approved",
+  "name": "WCB Body T1 LeftLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -6641,6 +7037,15 @@
   "name": "WCB Gear T3 OffSleeveHem_L lite",
   "type": "Mesh"
  },
+ "3c04e7a877be4154eb086515b5134cd4eb9d87464348940be005fa7b5a07cadf": {
+  "at": "2026-10-24T06:26:36Z",
+  "file": "out/skin/T3/UpperTorso_rough.png",
+  "id": 72722103591474,
+  "moderation": "Approved",
+  "name": "WCB Skin T3 UpperTorso rough",
+  "state": "Active",
+  "type": "Image"
+ },
  "3c054c042eae6c786ddd90065de04bfd7f204a0f0613865b2d9abdd2794a8b72": {
   "at": "2026-10-20T18:39:56Z",
   "file": "out/gear/tier2/OffPlacket.mesh",
@@ -6739,6 +7144,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "3c716d0de5e7d33faec2af1b1a1089507949365c55e481cc43bcf9658c9327c4": {
+  "at": "2026-10-24T06:21:40Z",
+  "file": "out/frames/lean/tier2/RightLowerArm.mesh",
+  "id": 93714012085135,
+  "moderation": "Approved",
+  "name": "WCB Body lean T2 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "3c8a918127efe3cc69e2507447ae2b9b470c5880b61aa1d111a0e2f98515f50e": {
   "at": "2026-10-23T19:52:38Z",
   "file": "out/frames/muscular/tier2/LeftUpperArm.mesh",
@@ -6823,6 +7237,15 @@
   "id": 70411392469412,
   "moderation": "Approved",
   "name": "WCB Body power T5 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "3d6400f9756e170f92201faa47ecaaa6aa36147f6436954fc187aae59f631c57": {
+  "at": "2026-10-24T07:11:53Z",
+  "file": "out/frames/heavy/tier5/UpperTorso.mesh",
+  "id": 88516067435085,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T5 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -7102,6 +7525,15 @@
   "name": "WCB Gear T2 TrunkLeg_L",
   "type": "Mesh"
  },
+ "3f7dc85ab09974eadd5b4d15e9b0a94d1990c5b9817accee61fe39176a71d5de": {
+  "at": "2026-10-24T06:46:18Z",
+  "file": "out/frames/muscular/tier2/UpperTorso.mesh",
+  "id": 88730940820762,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T2 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "3f811089697a6d584fc9835d802e61e5c51040bdb47bf3d94c7d2c0783f7915e": {
   "at": "2026-10-23T19:54:32Z",
   "file": "out/frames/muscular/tier5/LeftUpperLeg.mesh",
@@ -7188,6 +7620,15 @@
   "id": 90028277669136,
   "moderation": "Approved",
   "name": "WCB Body muscular T4 RightLowerLeg",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "401175df2ab6bb043aeb14270558049e4d1a28eb61bd9cc6beca15d04e8f63da": {
+  "at": "2026-10-24T06:22:43Z",
+  "file": "out/frames/muscular/tier2/LeftLowerArm.mesh",
+  "id": 136290196914835,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T2 LeftLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -7407,6 +7848,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "41e8553ea07c83b929d487409ee7868d4f5bdaf4fe631f45421f97989abbb148": {
+  "at": "2026-10-24T06:26:51Z",
+  "file": "out/skin/T4/UpperArm_rough.png",
+  "id": 100437834031380,
+  "moderation": "Approved",
+  "name": "WCB Skin T4 UpperArm rough",
+  "state": "Active",
+  "type": "Image"
+ },
  "4258b2a4891ed7046e6cd877b8fa5f129313b42be1b7ebf8eac1845241b3d67f": {
   "at": "2026-10-23T19:56:45Z",
   "file": "out/frames/power/tier5/RightLowerArm.mesh",
@@ -7415,6 +7865,15 @@
   "name": "WCB Body power T5 RightLowerArm",
   "state": "Active",
   "type": "Mesh"
+ },
+ "4260c228d8a70c9fa381bdbbd69b72cce545a0c9fffbf933d6dad461e6fe109c": {
+  "at": "2026-10-24T06:26:19Z",
+  "file": "out/skin/T3/UpperArm_color.png",
+  "id": 105846051263182,
+  "moderation": "Approved",
+  "name": "WCB Skin T3 UpperArm color",
+  "state": "Active",
+  "type": "Image"
  },
  "42864cc4d29e33d4adf6f39231aa5f0889186579dc6f1e4b5e1bc8264449c837": {
   "at": "2026-10-24T00:28:35Z",
@@ -7431,6 +7890,15 @@
   "id": 84354679963484,
   "moderation": "Approved",
   "name": "WCB Body power T3 LeftLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "42a295911bb229da3b8614a19a81939e7e5769584f662d8193928fdd9f72c358": {
+  "at": "2026-10-24T06:18:41Z",
+  "file": "out/tier1/LeftUpperArm.mesh",
+  "id": 105472195848893,
+  "moderation": "Approved",
+  "name": "WCB Body T1 LeftUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -7494,6 +7962,15 @@
   "id": 88196622653585,
   "moderation": "Approved",
   "name": "WCB Gear T4 TrunkStripe_L",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "4348c1ac7ffdff770dcc01c8b6a5d20dbed8cf843d69f509f7b5fba9c5aa22a6": {
+  "at": "2026-10-24T06:20:34Z",
+  "file": "out/frames/heavy/tier4/LeftLowerArm.mesh",
+  "id": 112133262235775,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T4 LeftLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -7565,6 +8042,15 @@
   "id": 136802429390688,
   "moderation": "Approved",
   "name": "WCB Body T3 LeftLowerLeg",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "43cdfe1092e5e2dda6d44da8590b7a1ca065c09751b862c80ec8f8ec16aa4f48": {
+  "at": "2026-10-24T07:11:33Z",
+  "file": "out/tier2/UpperTorso.mesh",
+  "id": 87970269372505,
+  "moderation": "Approved",
+  "name": "WCB Body T2 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -7793,6 +8279,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "45c28e1618e0c17e2fb3f3e1372f823551af95b9a979926247f859b970908631": {
+  "at": "2026-10-24T06:26:53Z",
+  "file": "out/skin/T4/UpperTorso_color.png",
+  "id": 104790092170012,
+  "moderation": "Approved",
+  "name": "WCB Skin T4 UpperTorso color",
+  "state": "Active",
+  "type": "Image"
+ },
  "45ca366067709aaf9d7976b7c344f611ffd2c591a551269e4489762950e917af": {
   "at": "2026-10-23T14:51:10Z",
   "file": "out/frames/power/tier1/LeftLowerLeg.mesh",
@@ -7811,12 +8306,30 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "45e7d0bce8aee05072ab53df428edf6f76337ef50c67f8c6c8b5d5059c88a57c": {
+  "at": "2026-10-24T06:25:59Z",
+  "file": "out/skin/T2/UpperArm_rough.png",
+  "id": 101026766911034,
+  "moderation": "Approved",
+  "name": "WCB Skin T2 UpperArm rough",
+  "state": "Active",
+  "type": "Image"
+ },
  "45feb1432d829b81797898027cf4decf833fe5450e4c560504917dbc8d5d50ae": {
   "at": "2026-10-23T03:59:06Z",
   "file": "out/frames/muscular/tier5/RightLowerArm.mesh",
   "id": 84891945984885,
   "moderation": "Approved",
   "name": "WCB Body muscular T5 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "465c830d4cfd0f4c2fb877ecb9ce61f1f10095c2868a0798511048580e6c2ddd": {
+  "at": "2026-10-24T06:23:23Z",
+  "file": "out/frames/muscular/tier5/LeftLowerArm.mesh",
+  "id": 139998273374421,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T5 LeftLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -7838,6 +8351,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "466a4775d6780013eff04350ec7836a0b029c6132208edae1374b6842ff7a918": {
+  "at": "2026-10-24T06:19:10Z",
+  "file": "out/tier3/LeftUpperArm.mesh",
+  "id": 88663022766482,
+  "moderation": "Approved",
+  "name": "WCB Body T3 LeftUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "46704205edd0ecb3ba80369ca938a85ce9637185513963ebcbc8921f44f9147d": {
   "at": "2026-10-23T22:50:34Z",
   "file": "out/frames/power/tier2/RightUpperArm.mesh",
@@ -7855,6 +8377,15 @@
   "name": "WCB Gear T1 OffShin_L",
   "type": "Mesh"
  },
+ "467c882f0cda04f61c52a9683ac49cca3ab1ab4c78a3381b0c5e18dbe84e4038": {
+  "at": "2026-10-24T06:49:40Z",
+  "file": "out/skin/T5/UpperTorso_color.png",
+  "id": 72318268448454,
+  "moderation": "Approved",
+  "name": "WCB Skin T5 UpperTorso color",
+  "state": "Active",
+  "type": "Image"
+ },
  "468efba965442b53e71336a570b89baa332a92a2012ceb08900067d97a86d9a1": {
   "at": "2026-10-18T18:52:47Z",
   "file": "out/gear/tier3/TrunkSeat.mesh",
@@ -7870,6 +8401,15 @@
   "id": 124911869727267,
   "moderation": "Approved",
   "name": "WCB Body heavy T1 LeftUpperLeg",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "46c37702f12ec017cd963e3a81d88decfde4c1327c588dbf2c1ab77e3277d465": {
+  "at": "2026-10-24T06:20:41Z",
+  "file": "out/frames/heavy/tier4/RightUpperArm.mesh",
+  "id": 125997018929700,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T4 RightUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -8106,6 +8646,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "4893138c1a652f51b0cbe5341e620bcb306711ed3e865a5ea5f181ffd5bcbd9d": {
+  "at": "2026-10-24T06:23:37Z",
+  "file": "out/frames/power/tier1/LeftLowerArm.mesh",
+  "id": 123247029030879,
+  "moderation": "Approved",
+  "name": "WCB Body power T1 LeftLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "48ac1a837aaf718adb960d4839363d05de4d98ab7313f6bec6b99875f5524e34": {
   "at": "2026-10-24T02:56:13Z",
   "file": "out/tier3/RightUpperArm.mesh",
@@ -8231,6 +8780,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "4a3417fd3d530f218728e12223cf7bcfc3b7aabb5d173f2758999c37e6f35aec": {
+  "at": "2026-10-24T06:45:54Z",
+  "file": "out/frames/heavy/tier3/UpperTorso.mesh",
+  "id": 96828382445916,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T3 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "4a3a6042e01106282f6732e2b2ff352755b4b007a937dfe08a1cce9c9ef591c0": {
   "at": "2026-10-20T00:54:45Z",
   "file": "out/gear/tier2/BootLaces_R.mesh",
@@ -8310,6 +8868,15 @@
   "name": "WCB Gear T3 OffButtons lite",
   "state": "Active",
   "type": "Mesh"
+ },
+ "4af14092f815868a1032d2ea1ec4d7a33a2f64bca91eda7adeba9ed96b819b2c": {
+  "at": "2026-10-24T06:26:46Z",
+  "file": "out/skin/T4/UpperArm_color.png",
+  "id": 140013848886156,
+  "moderation": "Approved",
+  "name": "WCB Skin T4 UpperArm color",
+  "state": "Active",
+  "type": "Image"
  },
  "4b0c9a2e12ca930d735c525c756fdc04a8edf99ca8833ab59a26ae98c08c3143": {
   "at": "2026-10-24T00:32:53Z",
@@ -8436,6 +9003,15 @@
   "name": "WCB Body power T1 UpperTorso",
   "state": "Active",
   "type": "Mesh"
+ },
+ "4bf67c713fa25f6604ddd6762a9001b4735691966e82d65f48b9ad24a9d8984a": {
+  "at": "2026-10-24T06:49:02Z",
+  "file": "out/skin/T1/UpperTorso_rough.png",
+  "id": 132229838703127,
+  "moderation": "Approved",
+  "name": "WCB Skin T1 UpperTorso rough",
+  "state": "Active",
+  "type": "Image"
  },
  "4bfbedbc31ba009d484990b7dbd5cf7326dc302bc7744db61afc3b45a2076f1b": {
   "at": "2026-10-23T14:51:28Z",
@@ -8587,12 +9163,30 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "4d4efefc2a8ff4c803823a4ee522c00c4a7cc164f8e996b85851fb3045f4ac41": {
+  "at": "2026-10-24T06:21:19Z",
+  "file": "out/frames/lean/tier1/LeftUpperArm.mesh",
+  "id": 119239094879016,
+  "moderation": "Approved",
+  "name": "WCB Body lean T1 LeftUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "4d586fccd7097b91d2031d8a1a386dc2790ce075be647ffd77c2df8f68a60c05": {
   "at": "2026-10-20T15:59:25Z",
   "file": "out/lite/gear/tier3/OffShin_L.mesh",
   "id": 113888256923992,
   "moderation": "Approved",
   "name": "WCB Gear T3 OffShin_L lite",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "4d5d001d520e30e3b7b9329cc6981dfdab214dedd1e45cb46abfd36f68e170bc": {
+  "at": "2026-10-24T06:45:28Z",
+  "file": "out/tier3/UpperTorso.mesh",
+  "id": 102686483939903,
+  "moderation": "Approved",
+  "name": "WCB Body T3 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -8901,6 +9495,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "4fa04ada89dae0644c0c6a9498e6e3c71d465095b77b81ccb5715c47bdf2df61": {
+  "at": "2026-10-24T06:26:31Z",
+  "file": "out/skin/T3/UpperTorso_normal.png",
+  "id": 128525793560014,
+  "moderation": "Approved",
+  "name": "WCB Skin T3 UpperTorso normal",
+  "state": "Active",
+  "type": "Image"
+ },
  "4fab798f26894cd06d8d487acfcfd873951cfc4b4ae340117182bd8d6a77f647": {
   "at": "2026-10-23T22:13:12Z",
   "file": "out/frames/lean/tier3/UpperTorso.mesh",
@@ -9080,6 +9683,15 @@
   "state": "Active",
   "type": "Image"
  },
+ "514af79adc57c35486759495851b1a2dc85b5c776a8faea7af70a738f4a72f4e": {
+  "at": "2026-10-24T06:23:04Z",
+  "file": "out/frames/muscular/tier4/UpperTorso.mesh",
+  "id": 92192431527730,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T4 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "51565afde5f626913b32ad08e5f867c5d7dbdf92944ab8d7773b33e60f931f56": {
   "at": "2026-10-24T04:15:59Z",
   "file": "out/frames/heavy/tier2/RightLowerLeg.mesh",
@@ -9097,6 +9709,15 @@
   "name": "WCB Skin T5 UpperTorso color",
   "state": "Active",
   "type": "Image"
+ },
+ "5197d6282132785486d4bb8a13b6afc7288d864faa428aba4974ac376f994033": {
+  "at": "2026-10-24T06:21:37Z",
+  "file": "out/frames/lean/tier2/RightUpperArm.mesh",
+  "id": 106094146993507,
+  "moderation": "Approved",
+  "name": "WCB Body lean T2 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
  },
  "519db0e876ea5bf7053b6f598451fa9cfcc4414de7a70f53f503761ddc07e005": {
   "at": "2026-10-20T00:54:55Z",
@@ -9349,6 +9970,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "53382903e0815d041f00de04c4af8fef7816001f73e3928572ae037af0b63c80": {
+  "at": "2026-10-24T06:49:04Z",
+  "file": "out/skin/T2/UpperTorso_color.png",
+  "id": 114275073387003,
+  "moderation": "Approved",
+  "name": "WCB Skin T2 UpperTorso color",
+  "state": "Active",
+  "type": "Image"
+ },
  "533e1c7dfc16b55e2c084f12a6241f00746ff55ec4625c68ac60d07b062f0343": {
   "at": "2026-10-23T14:43:50Z",
   "file": "out/frames/heavy/tier2/RightUpperLeg.mesh",
@@ -9382,6 +10012,15 @@
   "id": 73688966761105,
   "moderation": "Approved",
   "name": "WCB Gear T4 OffShin_R lite",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "539442e86d07dbecbfe31403a8f5eabc92445be6e7a852901127e88f8731e39d": {
+  "at": "2026-10-24T06:21:51Z",
+  "file": "out/frames/lean/tier3/RightUpperArm.mesh",
+  "id": 87510467322823,
+  "moderation": "Approved",
+  "name": "WCB Body lean T3 RightUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -9704,6 +10343,15 @@
   "id": 91856175822046,
   "moderation": "Approved",
   "name": "WCB Gear T1 OffSleeve_L",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "5678efd5a11c3bdcc046c2ac172953134211c017e7330bf330c6cb2530db6270": {
+  "at": "2026-10-24T06:21:32Z",
+  "file": "out/frames/lean/tier2/LeftUpperArm.mesh",
+  "id": 74767983883081,
+  "moderation": "Approved",
+  "name": "WCB Body lean T2 LeftUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -10038,6 +10686,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "58ea53541ef116ce627add5fb7a3fc886732e28709a9966386f5fc230653406e": {
+  "at": "2026-10-24T07:11:55Z",
+  "file": "out/frames/lean/tier1/UpperTorso.mesh",
+  "id": 130333932614016,
+  "moderation": "Approved",
+  "name": "WCB Body lean T1 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "591b6d8b3f683df31cbfa4c8a20a027020776d3856c2e1d40d764bfa2862422d": {
   "at": "2026-10-23T19:50:27Z",
   "file": "out/frames/lean/tier3/LeftUpperArm.mesh",
@@ -10091,12 +10748,30 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "59dd065ddc30de8ff9c02053098a5b9b37b892fb5ba33175cf0fcf54dbc07b42": {
+  "at": "2026-10-24T07:11:50Z",
+  "file": "out/frames/heavy/tier4/UpperTorso.mesh",
+  "id": 123431833921027,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T4 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "59e254dc7bf799abe5e3b76af5577252ab58fdfd3b2777c22535959715e4585f": {
   "at": "2026-10-23T22:49:11Z",
   "file": "out/frames/lean/tier3/RightUpperArm.mesh",
   "id": 139035192075238,
   "moderation": "Approved",
   "name": "WCB Body lean T3 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "59ec223d6c59fc8129b2101c7a135906e9db592f2cb8cf619711b861695d0be0": {
+  "at": "2026-10-24T06:23:26Z",
+  "file": "out/frames/muscular/tier5/RightUpperArm.mesh",
+  "id": 77711466164656,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T5 RightUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -10293,6 +10968,15 @@
   "id": 86367632135403,
   "moderation": "Approved",
   "name": "WCB Body T3 LowerTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "5c8267e9370942f63eb2c99773212136550f0875ea2ceb19bf27b4ab6a70b6db": {
+  "at": "2026-10-24T06:20:56Z",
+  "file": "out/frames/heavy/tier5/LeftUpperArm.mesh",
+  "id": 103748070379243,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T5 LeftUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -10493,6 +11177,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "5db9e9093a3e2ae0bb507d66df782508cfca52927aacb0ac4146a0657ff4a904": {
+  "at": "2026-10-24T06:19:18Z",
+  "file": "out/tier3/RightLowerArm.mesh",
+  "id": 130018649909012,
+  "moderation": "Approved",
+  "name": "WCB Body T3 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "5de384ce3b2429697f1824339b9e9ac8d5df84b9f8b18ed1b70891042e1ad596": {
   "at": "2026-10-20T18:29:40Z",
   "file": "out/lite/tier4/LeftUpperLeg.mesh",
@@ -10598,6 +11291,15 @@
   "name": "WCB Body T1 UpperTorso",
   "state": "Active",
   "type": "Mesh"
+ },
+ "5ea44e887c9c43f2674e01486fcec1cb77bf85d3d73faacdcce40bb7e7b6c791": {
+  "at": "2026-10-24T06:27:18Z",
+  "file": "out/skin/T5/UpperArm_rough.png",
+  "id": 96914140562260,
+  "moderation": "Approved",
+  "name": "WCB Skin T5 UpperArm rough",
+  "state": "Active",
+  "type": "Image"
  },
  "5ea57d638174ec5738187998774bbfa0f5b431e08cf3b7e8f996d28b069cd6de": {
   "at": "2026-10-20T18:48:24Z",
@@ -10912,6 +11614,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "60ad08ac57c2a5c1212cb59e72c5e119a60caf5e362f0a0661bd0a289fe2a85b": {
+  "at": "2026-10-24T06:45:59Z",
+  "file": "out/frames/heavy/tier5/UpperTorso.mesh",
+  "id": 89193850115526,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T5 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "610c5fd640c9be09e074d09ef26c0d8b4d90ebe95363b4fcfbf6b43d51de0d97": {
   "at": "2026-10-20T18:58:56Z",
   "file": "out/gear/tier4/TrunkLegLong_L.mesh",
@@ -10927,6 +11638,15 @@
   "id": 111798453534301,
   "moderation": "Approved",
   "name": "WCB Gear T4 TrunkHemLong_R",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "610fadf774075723e8c41903ea64c5238d4f5000a750ea1881a7ac9f2390c41b": {
+  "at": "2026-10-24T06:22:07Z",
+  "file": "out/frames/lean/tier4/RightLowerArm.mesh",
+  "id": 95906507376883,
+  "moderation": "Approved",
+  "name": "WCB Body lean T4 RightLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -10975,6 +11695,24 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "619f4e8ecc4b0ce1fd930c9098cf333ebf5a6778a5d881ae9e94dd19fccc9dff": {
+  "at": "2026-10-24T06:49:45Z",
+  "file": "out/skin/T5/UpperTorso_normal.png",
+  "id": 86797386473408,
+  "moderation": "Approved",
+  "name": "WCB Skin T5 UpperTorso normal",
+  "state": "Active",
+  "type": "Image"
+ },
+ "61a9202768632aed72cb5810dfc1f6d3d96cdd1503e34611770d79cd5d15e792": {
+  "at": "2026-10-24T06:23:42Z",
+  "file": "out/frames/power/tier1/RightLowerArm.mesh",
+  "id": 108041140427628,
+  "moderation": "Approved",
+  "name": "WCB Body power T1 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "61cb2fbf0711b84dd5eacc0a900e64ac2a2c14e9dcdf2757c6cf75e96a16afb6": {
   "at": "2026-10-23T14:47:59Z",
   "file": "out/frames/lean/tier5/RightHand.mesh",
@@ -11018,6 +11756,15 @@
   "name": "WCB Body T5 LeftUpperLeg",
   "state": "Active",
   "type": "Mesh"
+ },
+ "6225e4fc3683740a674738d69776a8ff76ac551f8fc1bb2cbf435b4412f22d5d": {
+  "at": "2026-10-24T06:27:30Z",
+  "file": "out/skin/T5/UpperTorso_rough.png",
+  "id": 101599716714442,
+  "moderation": "Approved",
+  "name": "WCB Skin T5 UpperTorso rough",
+  "state": "Active",
+  "type": "Image"
  },
  "6231f1f6877a66a693f1645a660696cbfee12bb502f05b8409a818907e8abddd": {
   "at": "2026-10-24T04:36:29Z",
@@ -11179,6 +11926,15 @@
   "state": "Active",
   "type": "Image"
  },
+ "63e08226c0c84af4ee888f6293bb87af35b1a66ada8ad14d529bc25099413db8": {
+  "at": "2026-10-24T06:19:05Z",
+  "file": "out/tier2/RightLowerArm.mesh",
+  "id": 71742863912846,
+  "moderation": "Approved",
+  "name": "WCB Body T2 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "63fb5067abae1b36621d5b38a3a68064a7d9a9abec995d3e66edfa14600912be": {
   "at": "2026-10-23T19:48:45Z",
   "file": "out/frames/heavy/tier5/LowerTorso.mesh",
@@ -11221,6 +11977,15 @@
   "id": 99733876234237,
   "moderation": "Approved",
   "name": "WCB Body power T4 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "645dcf3594ac47766a26a3f6b4bc8cfd8384efc87ade14eabcdeaa051a8cc6a3": {
+  "at": "2026-10-24T06:46:26Z",
+  "file": "out/frames/muscular/tier5/UpperTorso.mesh",
+  "id": 111841948237738,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T5 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -11365,6 +12130,15 @@
   "name": "WCB Gear T1 ShoeCollar_R",
   "type": "Mesh"
  },
+ "6541e23cf0c8550772d7119ea398a6f0781db0a8df2f884382fe61f81f84b480": {
+  "at": "2026-10-24T06:23:02Z",
+  "file": "out/frames/muscular/tier3/RightLowerArm.mesh",
+  "id": 95022729285328,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T3 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "6544eaf1bf0150ef43bec67c04e82eda4c07b0d829849a305d67287b871ebe52": {
   "at": "2026-10-20T16:00:02Z",
   "file": "out/lite/gear/tier3/OffThigh_L.mesh",
@@ -11427,12 +12201,30 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "658ea7161a212ef66d88c36c7d889af7e692ea21034ae0b45599b864995d11da": {
+  "at": "2026-10-24T06:23:48Z",
+  "file": "out/frames/power/tier2/LeftUpperArm.mesh",
+  "id": 131210782478585,
+  "moderation": "Approved",
+  "name": "WCB Body power T2 LeftUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "6599d573cb44368e8cae1c766136d2982592d2aea40db260e6f114a00c45d756": {
   "at": "2026-10-20T18:53:42Z",
   "file": "out/gear/tier4/AnkleSock_R.mesh",
   "id": 128420163194575,
   "moderation": "Approved",
   "name": "WCB Gear T4 AnkleSock_R",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "65d38d4815d268c991dce41fcd623b887ea71ad69d29c673fa50d6b770b9a8c3": {
+  "at": "2026-10-24T06:46:11Z",
+  "file": "out/frames/lean/tier4/UpperTorso.mesh",
+  "id": 120447851024982,
+  "moderation": "Approved",
+  "name": "WCB Body lean T4 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -11468,6 +12260,15 @@
   "id": 100704839922184,
   "moderation": "Approved",
   "name": "WCB Gear T4 OffSleeve_L",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "66355091882bd3089ec634271061f3a72078b5ed2382c783882d7043d863b468": {
+  "at": "2026-10-24T07:11:45Z",
+  "file": "out/frames/heavy/tier2/UpperTorso.mesh",
+  "id": 74559224470402,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T2 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -11525,6 +12326,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "669d7fde0d32689b1f7274d88fb165f9909ac2de671640888b32153c73dc0f0b": {
+  "at": "2026-10-24T06:24:12Z",
+  "file": "out/frames/power/tier4/UpperTorso.mesh",
+  "id": 139865475371914,
+  "moderation": "Approved",
+  "name": "WCB Body power T4 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "66ae13054ba2379070a8e01074b15c5f771bc4584b28704be1206fbe1c4259f7": {
   "at": "2026-10-20T15:55:42Z",
   "file": "out/lite/gear/tier1/OffShin_R.mesh",
@@ -11540,6 +12350,15 @@
   "id": 94523847205527,
   "moderation": "Approved",
   "name": "WCB Body muscular T4 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "66dda177939570816cb9f1c7e1622d1a7ac79cc9226823c3cbd478ce3177cf37": {
+  "at": "2026-10-24T06:22:53Z",
+  "file": "out/frames/muscular/tier3/LeftUpperArm.mesh",
+  "id": 135557572670158,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T3 LeftUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -11651,6 +12470,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "6775af49ab38a0efcc5fdd089e6c48476f0b795873150930576a3f73af0be2de": {
+  "at": "2026-10-24T06:45:26Z",
+  "file": "out/tier2/UpperTorso.mesh",
+  "id": 119576934793629,
+  "moderation": "Approved",
+  "name": "WCB Body T2 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "678bb6172ce8aad96d8e857c0373c498946367c3d09a03d62b678ee5559e14ac": {
   "at": "2026-10-19T19:53:04Z",
   "file": "out/faces/face_wcb_grin.png",
@@ -11710,6 +12538,15 @@
   "id": 71591633828631,
   "moderation": "Approved",
   "name": "WCB Gear T2 BootSock_R",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "67be636893232cf9b9cdbcd6e711b6135adae506d000370caed74216d12e21ed": {
+  "at": "2026-10-24T06:22:40Z",
+  "file": "out/frames/muscular/tier2/LeftUpperArm.mesh",
+  "id": 91982272526503,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T2 LeftUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -11863,6 +12700,15 @@
   "id": 115823329779262,
   "moderation": "Approved",
   "name": "WCB Gear T3 OffShirt",
+  "type": "Mesh"
+ },
+ "68b45425c1884b697cf26e7be2093a64262a99810a7afa2b68170b02426d64ee": {
+  "at": "2026-10-24T06:19:00Z",
+  "file": "out/tier2/LeftLowerArm.mesh",
+  "id": 82325810357364,
+  "moderation": "Approved",
+  "name": "WCB Body T2 LeftLowerArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "68efe7c231a995071b19938dd7ebb5b3b8adb3ef6a7fcb11047e37e76603c2ce": {
@@ -12115,6 +12961,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "6aa5fc39e2e0c38705b05f2493204a2615637a5adf0b9077ea0b9aa625cae1df": {
+  "at": "2026-10-24T06:25:57Z",
+  "file": "out/skin/T2/UpperArm_normal.png",
+  "id": 73974802485518,
+  "moderation": "Approved",
+  "name": "WCB Skin T2 UpperArm normal",
+  "state": "Active",
+  "type": "Image"
+ },
  "6aaba4818da81332c2e9482c4ca8d0b55a02d5ecca53855aa4bf814d3dea6128": {
   "at": "2026-10-20T19:03:00Z",
   "file": "out/lite/gear/tier5/OffPolo.mesh",
@@ -12302,6 +13157,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "6c215cde9c2e2a70573d3d76ba7df896240afed1da74ff675f5b2fd7e2826a91": {
+  "at": "2026-10-24T06:46:04Z",
+  "file": "out/frames/lean/tier2/UpperTorso.mesh",
+  "id": 107890519101528,
+  "moderation": "Approved",
+  "name": "WCB Body lean T2 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "6c2c14694e28e3fae612ea5f07e7752a1af64acf75f4e10898f67c2af485396a": {
   "at": "2026-10-20T18:40:09Z",
   "file": "out/lite/gear/tier2/OffPolo.mesh",
@@ -12309,6 +13173,15 @@
   "moderation": "Approved",
   "name": "WCB Gear T2 OffPolo lite",
   "type": "Mesh"
+ },
+ "6c389151c38a69065a521d8c6a6750f9ed85fb56ccbf475f0373b4255bde5df1": {
+  "at": "2026-10-24T06:49:28Z",
+  "file": "out/skin/T4/UpperTorso_color.png",
+  "id": 81967181797990,
+  "moderation": "Approved",
+  "name": "WCB Skin T4 UpperTorso color",
+  "state": "Active",
+  "type": "Image"
  },
  "6c3ba7758ed4fcc506ffae6bf3052c8e191bb57576762b829df000a4b0541244": {
   "at": "2026-10-24T04:50:44Z",
@@ -12453,6 +13326,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "6da5f5333c05f920f51361e74af3a62479fb2a211ceb458e8a9fb0fb37cfeac3": {
+  "at": "2026-10-24T07:12:15Z",
+  "file": "out/frames/muscular/tier4/UpperTorso.mesh",
+  "id": 103055727187210,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T4 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "6da94792b4dba0e8157e6ab53c935355d517aa315246e7014b47f27877f4dda4": {
   "at": "2026-10-18T03:31:43Z",
   "file": "out/gear/tier1/TrunkStripe_R.mesh",
@@ -12532,6 +13414,15 @@
   "name": "WCB Body lean T1 RightUpperArm",
   "state": "Active",
   "type": "Mesh"
+ },
+ "6ea5ef5a04c50bb1f2abf0c3a74786a51537cbe20bf188bda9e4944eeeabf8f9": {
+  "at": "2026-10-24T06:25:47Z",
+  "file": "out/skin/T2/LowerArm_color.png",
+  "id": 114025078599245,
+  "moderation": "Approved",
+  "name": "WCB Skin T2 LowerArm color",
+  "state": "Active",
+  "type": "Image"
  },
  "6ea6a1051992eb7e68219f32cd264ef941317b65da1a50b7126d267fa66f3eb1": {
   "at": "2026-10-20T00:52:19Z",
@@ -12622,6 +13513,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "6f5123b976c53fa1d9699f24844a06df1554b7e0dbb48f28b65aba9a329889d2": {
+  "at": "2026-10-24T06:22:56Z",
+  "file": "out/frames/muscular/tier3/LeftLowerArm.mesh",
+  "id": 76623147377921,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T3 LeftLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "6f523ba77de5da11e75a1c4f265d5813afded03d4eb1b45517492024abbf6098": {
   "at": "2026-10-24T02:57:17Z",
   "file": "out/tier5/LowerTorso.mesh",
@@ -12703,6 +13603,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "7020828ce9cdf8b85e2de1cbed26274d108c9d50991a135636e33c16a1e61af8": {
+  "at": "2026-10-24T06:19:32Z",
+  "file": "out/tier4/RightLowerArm.mesh",
+  "id": 129026343273844,
+  "moderation": "Approved",
+  "name": "WCB Body T4 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "703e5d4a3ba419507e7662e68f06667c9aea1197c8f6d02b9ee36a744b127917": {
   "at": "2026-10-18T03:29:57Z",
   "file": "out/gear/shared/BootFoot_L.mesh",
@@ -12712,12 +13621,30 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "707fa6eef8db913569afe4a5c3df0f5e9fb2a8ca20298b9d22c16690513ca401": {
+  "at": "2026-10-24T06:27:03Z",
+  "file": "out/skin/T4/UpperTorso_rough.png",
+  "id": 127094089562913,
+  "moderation": "Approved",
+  "name": "WCB Skin T4 UpperTorso rough",
+  "state": "Active",
+  "type": "Image"
+ },
  "7093f84e682455530d81effa4d7597006ba5f97eaacf7de537cad694a0a73899": {
   "at": "2026-10-20T15:59:09Z",
   "file": "out/lite/gear/tier3/OffPocket.mesh",
   "id": 100338266522319,
   "moderation": "Approved",
   "name": "WCB Gear T3 OffPocket lite",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "70a56ba2cb0d83bc240b65d207ed87c71fc197b767f4f26ebeabcfbc8bfc7fdb": {
+  "at": "2026-10-24T06:21:57Z",
+  "file": "out/frames/lean/tier4/UpperTorso.mesh",
+  "id": 122193937835179,
+  "moderation": "Approved",
+  "name": "WCB Body lean T4 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -12845,6 +13772,15 @@
   "name": "WCB Gear T3 OffShin_L",
   "type": "Mesh"
  },
+ "71708ecf18fd28728b3a3d1f4b2f576cd833ca300342592695ea4106c4544b4e": {
+  "at": "2026-10-24T06:24:06Z",
+  "file": "out/frames/power/tier3/RightUpperArm.mesh",
+  "id": 80994452356260,
+  "moderation": "Approved",
+  "name": "WCB Body power T3 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "71794e5d3b1f05c1c7c9dedd7d234708729c3f13edf4cc3c745528c6c82d2932": {
   "at": "2026-10-23T19:52:58Z",
   "file": "out/frames/muscular/tier2/RightUpperLeg.mesh",
@@ -12853,6 +13789,15 @@
   "name": "WCB Body muscular T2 RightUpperLeg",
   "state": "Active",
   "type": "Mesh"
+ },
+ "7186ed1b43ad64a9b8ecbb73f5c7c76078b7e9cec0b91563dd2efa7e5d9d729d": {
+  "at": "2026-10-24T06:27:15Z",
+  "file": "out/skin/T5/UpperArm_normal.png",
+  "id": 102605078568976,
+  "moderation": "Approved",
+  "name": "WCB Skin T5 UpperArm normal",
+  "state": "Active",
+  "type": "Image"
  },
  "718ea4e5104862f16c373bb1b2cab1481980167c0a236a061a996c82a7b341e5": {
   "at": "2026-10-20T00:50:15Z",
@@ -12904,6 +13849,15 @@
   "id": 113384117696126,
   "moderation": "Approved",
   "name": "WCB Body heavy T2 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "72413a4b235fe133265d2c8aafb15222e9011a66cea576708572d1f5f25ee4a5": {
+  "at": "2026-10-24T06:20:51Z",
+  "file": "out/frames/heavy/tier5/UpperTorso.mesh",
+  "id": 83863883428250,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T5 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -13013,6 +13967,24 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "7380e9eb467bb5d99428f0fcb998689bc09987aa00a3cd6509e11081c23f14e0": {
+  "at": "2026-10-24T06:49:38Z",
+  "file": "out/skin/T4/UpperTorso_rough.png",
+  "id": 74737831842639,
+  "moderation": "Approved",
+  "name": "WCB Skin T4 UpperTorso rough",
+  "state": "Active",
+  "type": "Image"
+ },
+ "73c47f081c9ed3c77b1324debffdd841b5b7e0a92b9d44d80d93c38e27dd8861": {
+  "at": "2026-10-24T06:22:29Z",
+  "file": "out/frames/muscular/tier1/LeftLowerArm.mesh",
+  "id": 79030667528178,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T1 LeftLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "73c636c5cb11fbd449ab8d1bdbfe6fbc97f045049470889e14b5572b9126bca0": {
   "at": "2026-10-23T14:48:50Z",
   "file": "out/frames/muscular/tier2/LowerTorso.mesh",
@@ -13021,6 +13993,15 @@
   "name": "WCB Body muscular T2 LowerTorso",
   "state": "Active",
   "type": "Mesh"
+ },
+ "73c6fdfa40cda2d95d9ab96189be17819d0d66ff4259bb2ba9b0676c05f1845c": {
+  "at": "2026-10-24T06:27:10Z",
+  "file": "out/skin/T5/LowerArm_rough.png",
+  "id": 100847254063692,
+  "moderation": "Approved",
+  "name": "WCB Skin T5 LowerArm rough",
+  "state": "Active",
+  "type": "Image"
  },
  "73e09f326407928e19a1b8e437bfdf8eb99b79c2a9c8ed7e4f5a980f99d01bbe": {
   "at": "2026-10-24T04:14:39Z",
@@ -13316,6 +14297,15 @@
   "state": "Active",
   "type": "Image"
  },
+ "7626c55902d40354a60297faef38b5c2a39b6684047cefe91f472f347d7c881c": {
+  "at": "2026-10-24T06:24:31Z",
+  "file": "out/frames/power/tier5/LeftLowerArm.mesh",
+  "id": 137999943296508,
+  "moderation": "Approved",
+  "name": "WCB Body power T5 LeftLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "7636b2bacdd086eae4a0eff1da5448392cce4639ac215ae31acc98cfdf3e4399": {
   "at": "2026-10-24T00:23:55Z",
   "file": "out/frames/heavy/tier4/LeftUpperArm.mesh",
@@ -13349,6 +14339,15 @@
   "id": 101655842601476,
   "moderation": "Approved",
   "name": "WCB Gear T5 TrunkStripe_L",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "7689ff03538905d841db815ebd0b34b0a71b5c5f6fe399d9977af66ed6f03315": {
+  "at": "2026-10-24T06:46:01Z",
+  "file": "out/frames/lean/tier1/UpperTorso.mesh",
+  "id": 80767901637527,
+  "moderation": "Approved",
+  "name": "WCB Body lean T1 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -13442,6 +14441,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "775d21f5a10a8df13d8e9453b4eaf6aefc9a334da58f67484dc8df7911975956": {
+  "at": "2026-10-24T06:26:24Z",
+  "file": "out/skin/T3/UpperArm_rough.png",
+  "id": 140069232694318,
+  "moderation": "Approved",
+  "name": "WCB Skin T3 UpperArm rough",
+  "state": "Active",
+  "type": "Image"
+ },
  "7761ef970e39e95702bcb4ba3fc211a59bcf732a7d592a354707ae08065f0486": {
   "at": "2026-10-20T15:59:38Z",
   "file": "out/gear/tier3/OffSleeveHem_L.mesh",
@@ -13478,6 +14486,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "77b4c18a6f37a3218fe097d87c24721675a2e4e6c0d18651702160aac416c9c7": {
+  "at": "2026-10-24T06:23:28Z",
+  "file": "out/frames/muscular/tier5/RightLowerArm.mesh",
+  "id": 109851081013680,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T5 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "77b4d8d72bdeccaa3d74d663136b5b439993f196dc7614e45a22df53e3e82a21": {
   "at": "2026-10-20T00:53:30Z",
   "file": "out/gear/tier1/TopBand.mesh",
@@ -13495,6 +14512,24 @@
   "name": "WCB Body heavy T1 RightUpperLeg",
   "state": "Active",
   "type": "Mesh"
+ },
+ "77d45e8a7009f6b931123bee5e41b086453887d06e0badb69cc4bda24fdfad50": {
+  "at": "2026-10-24T06:24:22Z",
+  "file": "out/frames/power/tier4/RightLowerArm.mesh",
+  "id": 71081254303771,
+  "moderation": "Approved",
+  "name": "WCB Body power T4 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "77dc5105b70df6b4a49e159d1af7c01effb10ed32926097070eb5b14fd6704e9": {
+  "at": "2026-10-24T06:49:21Z",
+  "file": "out/skin/T3/UpperTorso_normal.png",
+  "id": 100711597494712,
+  "moderation": "Approved",
+  "name": "WCB Skin T3 UpperTorso normal",
+  "state": "Active",
+  "type": "Image"
  },
  "77fa291c02c91709faee2aa39a107a0392092a5c4542358c5317f4fcde2395a4": {
   "at": "2026-10-20T19:06:29Z",
@@ -13708,6 +14743,15 @@
   "id": 114441528313195,
   "moderation": "Approved",
   "name": "WCB Gear T1 OffSleeveHem_L",
+  "type": "Mesh"
+ },
+ "79b733203f000ede204e857556479faa379fbf1804f32a5d5e7019ae9cf8eae1": {
+  "at": "2026-10-24T06:22:48Z",
+  "file": "out/frames/muscular/tier2/RightLowerArm.mesh",
+  "id": 77382710331890,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T2 RightLowerArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "79e3ef51fd72def536e5718b425d0aaeb08d9148dd83abccc8442f0df7a24ada": {
@@ -14058,6 +15102,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "7bc04fc6169c6b9479c30f544a47d156cbc3961a9552b27933a1a8a8b9b5832f": {
+  "at": "2026-10-24T07:12:20Z",
+  "file": "out/frames/power/tier1/UpperTorso.mesh",
+  "id": 128174022096919,
+  "moderation": "Approved",
+  "name": "WCB Body power T1 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "7bd29c5a99985eecf34629f4809aeefd5678f82b3f97c9a88934fd76bcb00cbf": {
   "at": "2026-10-20T19:01:09Z",
   "file": "out/gear/tier5/BootShaft_R.mesh",
@@ -14073,6 +15126,15 @@
   "id": 107221449747953,
   "moderation": "Approved",
   "name": "WCB Gear T3 BootSock_R",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "7bf2de48411f4b0e52bd0e812300d598c0879cfc9f7b32aae734bb872d4b602a": {
+  "at": "2026-10-24T06:23:34Z",
+  "file": "out/frames/power/tier1/LeftUpperArm.mesh",
+  "id": 75292199956232,
+  "moderation": "Approved",
+  "name": "WCB Body power T1 LeftUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -14215,6 +15277,15 @@
   "id": 84547570605005,
   "moderation": "Approved",
   "name": "WCB Gear T1 BootShaft_L",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "7cf17b2962a8333b13f9874cc1a8abb91653d0f048204eec1d20a4c31ce8fdb5": {
+  "at": "2026-10-24T06:18:46Z",
+  "file": "out/tier1/RightUpperArm.mesh",
+  "id": 128641943822780,
+  "moderation": "Approved",
+  "name": "WCB Body T1 RightUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -14384,6 +15455,15 @@
   "id": 94551521884060,
   "moderation": "Approved",
   "name": "WCB Body T3 LeftLowerLeg",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "7e082ee2873b15e85d5442bfc7b06d9a67c67055d40286b2fbee9825874d23aa": {
+  "at": "2026-10-24T06:18:49Z",
+  "file": "out/tier1/RightLowerArm.mesh",
+  "id": 73411002854455,
+  "moderation": "Approved",
+  "name": "WCB Body T1 RightLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -14681,6 +15761,15 @@
   "id": 79223867411350,
   "moderation": "Approved",
   "name": "WCB Body muscular T3 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "80ea7de96e3b7c90ae6e8a95a78df408285512791f4488d4c3eeab72fdc57a61": {
+  "at": "2026-10-24T06:23:39Z",
+  "file": "out/frames/power/tier1/RightUpperArm.mesh",
+  "id": 89170110295646,
+  "moderation": "Approved",
+  "name": "WCB Body power T1 RightUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -15077,6 +16166,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "844d4e3e4981dee70bc982fbbb9c88623db22578186c4d40144ac15294be7f08": {
+  "at": "2026-10-24T06:24:33Z",
+  "file": "out/frames/power/tier5/RightUpperArm.mesh",
+  "id": 137455156661002,
+  "moderation": "Approved",
+  "name": "WCB Body power T5 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "849d3b34bc5f8252f1f8be9f7d9975ec21d074d3bf0cd91a450b8e21ef959502": {
   "at": "2026-10-23T19:55:58Z",
   "file": "out/frames/power/tier3/LeftLowerLeg.mesh",
@@ -15255,6 +16353,15 @@
   "name": "WCB Body T4 RightUpperArm",
   "state": "Active",
   "type": "Mesh"
+ },
+ "85f23ad39eb76c9385febeca6331ea644cb35bf01b57f1d3daec80de5d5c0407": {
+  "at": "2026-10-24T06:25:40Z",
+  "file": "out/skin/T1/UpperTorso_normal.png",
+  "id": 87113019659990,
+  "moderation": "Approved",
+  "name": "WCB Skin T1 UpperTorso normal",
+  "state": "Active",
+  "type": "Image"
  },
  "85f5f2f15c89709b957af48aac8605bd33716364e2517976fe3412771f855a21": {
   "at": "2026-10-23T03:52:22Z",
@@ -15690,6 +16797,15 @@
   "state": "Active",
   "type": "Image"
  },
+ "8989a0eb1dd15bffcb71caeaa72ff4cde80b3cba1c652ea6c5b369f2f076c144": {
+  "at": "2026-10-24T07:11:58Z",
+  "file": "out/frames/lean/tier2/UpperTorso.mesh",
+  "id": 80850549960915,
+  "moderation": "Approved",
+  "name": "WCB Body lean T2 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "89a67e79d7a9bc2dd6d2a018ce49a008384e3e64abec0b1d9adf5172e78bcd43": {
   "at": "2026-10-20T18:57:21Z",
   "file": "out/gear/tier4/OffThigh_R.mesh",
@@ -15744,6 +16860,24 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "8a3ace0cf0c74388c5195d65ee00fe1726275d8c5d2c2f8b05b5e6f8a7b9069a": {
+  "at": "2026-10-24T06:19:24Z",
+  "file": "out/tier4/LeftUpperArm.mesh",
+  "id": 130583493335896,
+  "moderation": "Approved",
+  "name": "WCB Body T4 LeftUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "8a3ba6ee44ac5ea8f9708e8156f9b06fb987bd57c52b54095620a1a5bac9f1aa": {
+  "at": "2026-10-24T06:24:01Z",
+  "file": "out/frames/power/tier3/LeftUpperArm.mesh",
+  "id": 102794974450354,
+  "moderation": "Approved",
+  "name": "WCB Body power T3 LeftUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "8a5333806b7c8e89e64137a54b2e38f19699de7b110b94bba6b5e29a8c3d327e": {
   "at": "2026-10-20T00:57:10Z",
   "file": "out/gear/tier3/TopBand.mesh",
@@ -15786,6 +16920,15 @@
   "id": 76872250949451,
   "moderation": "Approved",
   "name": "WCB Body lean T1 RightLowerLeg",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "8abe1af6dcd8b70991519847d4cdf40d3209939f53d269e6defe57cf1e38f7fb": {
+  "at": "2026-10-24T06:20:29Z",
+  "file": "out/frames/heavy/tier4/UpperTorso.mesh",
+  "id": 92733262157131,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T4 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -15876,6 +17019,15 @@
   "id": 112953898265423,
   "moderation": "Approved",
   "name": "WCB Body heavy T5 RightLowerLeg",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "8b2c8210d16c57709a968051c6dcc288594a59cdda77195b6c26454bf0ae106a": {
+  "at": "2026-10-24T06:19:27Z",
+  "file": "out/tier4/LeftLowerArm.mesh",
+  "id": 84234299543946,
+  "moderation": "Approved",
+  "name": "WCB Body T4 LeftLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -16198,6 +17350,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "8dd129a919c2ff198673c8e2e6cd55c65e18fd76a2ad7a4079d8153f06f44805": {
+  "at": "2026-10-24T06:24:28Z",
+  "file": "out/frames/power/tier5/LeftUpperArm.mesh",
+  "id": 119986194867755,
+  "moderation": "Approved",
+  "name": "WCB Body power T5 LeftUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "8dfc78fa3e136c7968c235b0264c31ca2192accc0e585ea564956d81faf005e2": {
   "at": "2026-10-20T18:34:06Z",
   "file": "out/lite/gear/tier1/OffPoloButtons.mesh",
@@ -16260,6 +17421,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "8e7b8bfbfe35acea1aa2c29daac115db805097dbf1600ae60e49f52a57f7e0db": {
+  "at": "2026-10-24T06:49:13Z",
+  "file": "out/skin/T2/UpperTorso_rough.png",
+  "id": 76912113692199,
+  "moderation": "Approved",
+  "name": "WCB Skin T2 UpperTorso rough",
+  "state": "Active",
+  "type": "Image"
+ },
  "8e8c3c6ce281718eff8dd883f0922f0e97005dc5bef2a57e5e26724ac0ed139a": {
   "at": "2026-10-24T04:50:57Z",
   "file": "out/skin/T3/UpperLeg_color.png",
@@ -16293,6 +17463,15 @@
   "id": 79552332612806,
   "moderation": "Approved",
   "name": "WCB Gear T4 TrunkStripe_L lite",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "8ebee8dca903a83cc8e378b5f6d46fa6d4cd107cb915c730d8a3b03d9e529ef1": {
+  "at": "2026-10-24T06:22:02Z",
+  "file": "out/frames/lean/tier4/LeftLowerArm.mesh",
+  "id": 84834611309711,
+  "moderation": "Approved",
+  "name": "WCB Body lean T4 LeftLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -16383,6 +17562,15 @@
   "id": 126342117987856,
   "moderation": "Approved",
   "name": "WCB Gear T4 OffShirt lite",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "8fc7b62db072a02fee1e94b31625a825f002562143de5401753b6c899f236ccb": {
+  "at": "2026-10-24T06:20:23Z",
+  "file": "out/frames/heavy/tier3/RightUpperArm.mesh",
+  "id": 128758828861206,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T3 RightUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -16616,6 +17804,15 @@
   "id": 136880785333213,
   "moderation": "Approved",
   "name": "WCB Body power T2 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "9142a093589028574572fd67923fea91999879f31e39e689e91eaf8d7fd91cc9": {
+  "at": "2026-10-24T06:23:10Z",
+  "file": "out/frames/muscular/tier4/LeftLowerArm.mesh",
+  "id": 82325211223494,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T4 LeftLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -16974,6 +18171,15 @@
   "state": "Active",
   "type": "Image"
  },
+ "94f17ed712acbe6ecd44200ebe45f685997f434988221afa74f367d372d83b0c": {
+  "at": "2026-10-24T06:23:15Z",
+  "file": "out/frames/muscular/tier4/RightLowerArm.mesh",
+  "id": 109625426886553,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T4 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "94f86acc8184938862f96cca917df4932fc3a1f8a55f149d13210c509d48d8e4": {
   "at": "2026-10-24T00:28:14Z",
   "file": "out/frames/muscular/tier2/LeftUpperArm.mesh",
@@ -16992,6 +18198,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "95092ff121766a62965de8db487a715ba00cbac7a48876af4c28c3abe0451cdc": {
+  "at": "2026-10-24T06:45:51Z",
+  "file": "out/frames/heavy/tier2/UpperTorso.mesh",
+  "id": 106090024975520,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T2 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "950d25a6be9f77a6583287416a8b7236f470994d464702f28a0a5815b639dc28": {
   "at": "2026-10-20T00:58:15Z",
   "file": "out/gear/tier4/BootShaft_L.mesh",
@@ -17007,6 +18222,15 @@
   "id": 94857775094052,
   "moderation": "Approved",
   "name": "WCB Body T4 LeftUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "9543f0df37aec2d7b3df504a3c177c10f1ead6fa59822100c535a2eb6668dbbd": {
+  "at": "2026-10-24T06:19:51Z",
+  "file": "out/frames/heavy/tier1/LeftUpperArm.mesh",
+  "id": 95825602942182,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T1 LeftUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -17188,6 +18412,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "9721c548f21f20ebfd88b92a92902b4355ecb1b5a45b85a4139eab4377d75aa3": {
+  "at": "2026-10-24T06:26:27Z",
+  "file": "out/skin/T3/UpperTorso_color.png",
+  "id": 108479365905659,
+  "moderation": "Approved",
+  "name": "WCB Skin T3 UpperTorso color",
+  "state": "Active",
+  "type": "Image"
+ },
  "97385f95ddab2a4b4a45ae0cbe63eda3f536c2d8e1623e24d2c265ade7bb01ad": {
   "at": "2026-10-18T03:34:46Z",
   "file": "out/gear/tier3/Waistband.mesh",
@@ -17258,6 +18491,15 @@
   "state": "Active",
   "type": "Image"
  },
+ "97acad2dcac4de6ec763be5da3c07bffdf6ebbe8a8a435c840b6c7d30316fcff": {
+  "at": "2026-10-24T07:12:18Z",
+  "file": "out/frames/muscular/tier5/UpperTorso.mesh",
+  "id": 93201295915222,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T5 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "97beaa6dad9c9ac037c58fe61d0227740fae4ff00cd34b10a4a7c36363459e52": {
   "at": "2026-10-24T04:34:56Z",
   "file": "out/skin/T3/LowerLeg_normal.png",
@@ -17325,6 +18567,15 @@
   "id": 117038517843786,
   "moderation": "Approved",
   "name": "WCB Body muscular T3 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "9850bcd0be3038ecffaff2eb19a2cd7f5a63ede7b3288850e9dc74e73c1b1f09": {
+  "at": "2026-10-24T06:20:15Z",
+  "file": "out/frames/heavy/tier3/UpperTorso.mesh",
+  "id": 123666290088153,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T3 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -17454,6 +18705,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "99105ddc1514d319ad97ff366aea16034d460002c6780750c8064918842d51ce": {
+  "at": "2026-10-24T06:26:22Z",
+  "file": "out/skin/T3/UpperArm_normal.png",
+  "id": 103948026604423,
+  "moderation": "Approved",
+  "name": "WCB Skin T3 UpperArm normal",
+  "state": "Active",
+  "type": "Image"
+ },
  "99448c1c4e7d71bb068c7ca84bc7967b87a0bc57ea8bd534b1328285ee4297ea": {
   "at": "2026-10-20T00:57:02Z",
   "file": "out/gear/tier3/ShoeCollar_R.mesh",
@@ -17542,6 +18802,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "99e3b851dd3a31a3195469fc0ecf2214442a06746720f17bdadf670500b23644": {
+  "at": "2026-10-24T06:24:04Z",
+  "file": "out/frames/power/tier3/LeftLowerArm.mesh",
+  "id": 110201730644409,
+  "moderation": "Approved",
+  "name": "WCB Body power T3 LeftLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "99f76c0a661d8cb73a1e68a92774dec4cd0134c96711cbcb02ef136f2ada4d65": {
   "at": "2026-10-18T18:54:39Z",
   "file": "out/gear/tier5/TrunkLeg_R.mesh",
@@ -17595,6 +18864,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "9a74047c69558c726a9812449454f0b7b55cae43735f8d64e54fbbd1d598f230": {
+  "at": "2026-10-24T06:22:05Z",
+  "file": "out/frames/lean/tier4/RightUpperArm.mesh",
+  "id": 126066071229117,
+  "moderation": "Approved",
+  "name": "WCB Body lean T4 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "9a8608e790543f472cff4e61b87601973f5691c6b37dcd8c6d1d4b6710e091d6": {
   "at": "2026-10-20T16:03:10Z",
   "file": "out/lite/gear/tier5/OffSleeveHem_R.mesh",
@@ -17622,6 +18900,15 @@
   "state": "Active",
   "type": "Image"
  },
+ "9a97e32cf33a5fb260e68bef39d9b9a444abc617f1297746c78759d34f503162": {
+  "at": "2026-10-24T06:22:13Z",
+  "file": "out/frames/lean/tier5/LeftUpperArm.mesh",
+  "id": 112840827970262,
+  "moderation": "Approved",
+  "name": "WCB Body lean T5 LeftUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "9a9ed3e727830e5ca40bb4bc1096a5e90f1ba3b79a70572d937111964fefb31b": {
   "at": "2026-10-24T00:25:51Z",
   "file": "out/frames/lean/tier3/LeftUpperArm.mesh",
@@ -17637,6 +18924,15 @@
   "id": 104656795146035,
   "moderation": "Approved",
   "name": "WCB Body muscular T3 LeftLowerLeg",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "9ac31419ad34bb6c4d75ddf9de6377c5713a2056a0e548ec434e65464445de33": {
+  "at": "2026-10-24T07:12:05Z",
+  "file": "out/frames/lean/tier5/UpperTorso.mesh",
+  "id": 74699911992790,
+  "moderation": "Approved",
+  "name": "WCB Body lean T5 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -17890,6 +19186,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "9c9749f33223f44bcc716575e5f66a4dd760dd07a4a554a62d2b24d34a331592": {
+  "at": "2026-10-24T06:46:06Z",
+  "file": "out/frames/lean/tier3/UpperTorso.mesh",
+  "id": 117725587293657,
+  "moderation": "Approved",
+  "name": "WCB Body lean T3 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "9ca8239d58782650e2ed7a4c0d432843a2cd8ce7b8d8ed6c61da0ab3baa3e5d3": {
   "at": "2026-10-18T01:57:05Z",
   "file": "out/tier3/RightHand.mesh",
@@ -17916,6 +19221,15 @@
   "name": "WCB Gear T5 OffPocket lite",
   "state": "Active",
   "type": "Mesh"
+ },
+ "9cc8d699c21a9d81c2fae94f57836997a1d849d6458c747e5212ad4681f99b83": {
+  "at": "2026-10-24T06:27:25Z",
+  "file": "out/skin/T5/UpperTorso_normal.png",
+  "id": 98277401761638,
+  "moderation": "Approved",
+  "name": "WCB Skin T5 UpperTorso normal",
+  "state": "Active",
+  "type": "Image"
  },
  "9cd0423047f58d86cddafe93f2c00d2c9e70b93a30ccb537bb15809da480a593": {
   "at": "2026-10-23T19:51:32Z",
@@ -18479,6 +19793,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "a08fe6c86b4e16316e4ad220e15dc9cc824796d2344abd2f1ab239635c202844": {
+  "at": "2026-10-24T06:46:35Z",
+  "file": "out/frames/power/tier2/UpperTorso.mesh",
+  "id": 124679843929087,
+  "moderation": "Approved",
+  "name": "WCB Body power T2 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "a09200eaa84ea11466db18c141d8e27e689d93c8dafd316ff96b420ffe8bfd66": {
   "at": "2026-10-24T00:27:55Z",
   "file": "out/frames/muscular/tier1/LeftLowerLeg.mesh",
@@ -18631,6 +19954,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "a201b6d7b279e9b43f37b756cdb03fd476d9ed9474605ae42385fdc08346c76b": {
+  "at": "2026-10-24T07:12:10Z",
+  "file": "out/frames/muscular/tier2/UpperTorso.mesh",
+  "id": 134410860608894,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T2 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "a2031e2f02b49879153d89ac5a03defbe160ef8e239e2bf1e7ad5297427fced6": {
   "at": "2026-10-20T16:01:49Z",
   "file": "out/gear/tier4/OffThigh_R.mesh",
@@ -18700,6 +20032,15 @@
   "id": 83577963062413,
   "moderation": "Approved",
   "name": "WCB Body lean T1 RightLowerLeg",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "a2c274fca7f3f8d26c8e792b39cb5d690791575bc8b968eaf62d7944fdfc8f32": {
+  "at": "2026-10-24T06:45:43Z",
+  "file": "out/tier4/UpperTorso.mesh",
+  "id": 121927858672705,
+  "moderation": "Approved",
+  "name": "WCB Body T4 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -19159,6 +20500,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "a6c50cd03c80addf548a35a01ac78dec5bba1acda815ae73f346926a9da5529b": {
+  "at": "2026-10-24T06:24:17Z",
+  "file": "out/frames/power/tier4/LeftLowerArm.mesh",
+  "id": 79618542934624,
+  "moderation": "Approved",
+  "name": "WCB Body power T4 LeftLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "a6c6df67b18cd511f9a0ff2e8a883c8cc68d24aa4ae4b96335f93bc9999fb849": {
   "at": "2026-10-24T03:06:33Z",
   "file": "out/frames/power/tier4/LeftLowerArm.mesh",
@@ -19168,12 +20518,39 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "a6cd7632e89154ecb061a5a6b893f47f06b51763cbaea91bc1e6f9a7c43f9103": {
+  "at": "2026-10-24T06:22:10Z",
+  "file": "out/frames/lean/tier5/UpperTorso.mesh",
+  "id": 93388787694099,
+  "moderation": "Approved",
+  "name": "WCB Body lean T5 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "a6df2f1b8bdaaf4c6ac3ee905a36b41809c14ca802ad73c5b1e83bcaa5ed7b21": {
   "at": "2026-10-24T04:25:43Z",
   "file": "out/frames/power/tier5/RightLowerArm.mesh",
   "id": 124987848536647,
   "moderation": "Approved",
   "name": "WCB Body power T5 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "a6e752d64602db5e88fa019735b51da0ae8269408e7aa632a8230448b1609448": {
+  "at": "2026-10-24T06:26:14Z",
+  "file": "out/skin/T3/LowerArm_normal.png",
+  "id": 115549866884025,
+  "moderation": "Approved",
+  "name": "WCB Skin T3 LowerArm normal",
+  "state": "Active",
+  "type": "Image"
+ },
+ "a6f92a8450826a59bab7744fb4a17d87a33184e96238a6b8c90309aca27d58c8": {
+  "at": "2026-10-24T07:11:40Z",
+  "file": "out/tier5/UpperTorso.mesh",
+  "id": 132575526963477,
+  "moderation": "Approved",
+  "name": "WCB Body T5 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -19240,12 +20617,30 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "a76fef8e61f82cc6c69d9904b146c585c9c68aa316dc92ba5bb73fd615d6e62d": {
+  "at": "2026-10-24T06:19:35Z",
+  "file": "out/tier5/UpperTorso.mesh",
+  "id": 117410142925777,
+  "moderation": "Approved",
+  "name": "WCB Body T5 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "a792d7ff94abcce133336eead2d5aad7e0ebe6f154b5d22720641e7dc00d3d6a": {
   "at": "2026-10-20T15:54:20Z",
   "file": "out/gear/tier1/OffBadge.mesh",
   "id": 122685294187160,
   "moderation": "Approved",
   "name": "WCB Gear T1 OffBadge",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "a79a3092810ecefd55be3a4abbd2da350b1fbab443d8d2d152f88e4f6ae51d02": {
+  "at": "2026-10-24T06:46:16Z",
+  "file": "out/frames/muscular/tier1/UpperTorso.mesh",
+  "id": 130028843477202,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T1 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -19470,6 +20865,15 @@
   "name": "WCB Body T1 LowerTorso lite",
   "state": "Active",
   "type": "Mesh"
+ },
+ "a981d44c2c88485ca16af9d20e3f86207498a752436cecdc3498b69ff94dc81a": {
+  "at": "2026-10-24T06:25:54Z",
+  "file": "out/skin/T2/UpperArm_color.png",
+  "id": 72188441530871,
+  "moderation": "Approved",
+  "name": "WCB Skin T2 UpperArm color",
+  "state": "Active",
+  "type": "Image"
  },
  "a98d437ae593ab4af2a6fea5f3cea7a227e097226a3daf73267baac7dc35d428": {
   "at": "2026-10-24T04:13:08Z",
@@ -19768,6 +21172,15 @@
   "at": "2026-10-24T04:15:44Z",
   "file": "out/frames/heavy/tier2/RightUpperArm.mesh",
   "id": 108214071072200,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T2 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "ab97ca33ff0107245a8ab5632df2114bbaab8df62ad2878c051368e28f2df315": {
+  "at": "2026-10-24T06:20:10Z",
+  "file": "out/frames/heavy/tier2/RightUpperArm.mesh",
+  "id": 112629589666274,
   "moderation": "Approved",
   "name": "WCB Body heavy T2 RightUpperArm",
   "state": "Active",
@@ -20386,6 +21799,24 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "b08917ba32344274dfb2635c6c541618f6d21c91e6b6f791b5fc3ad30966ded0": {
+  "at": "2026-10-24T07:11:35Z",
+  "file": "out/tier3/UpperTorso.mesh",
+  "id": 73105069671048,
+  "moderation": "Approved",
+  "name": "WCB Body T3 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "b0ac64f371b3c72a2c867b7b13009a312e9a38290e497df7b2829104813507e9": {
+  "at": "2026-10-24T06:26:58Z",
+  "file": "out/skin/T4/UpperTorso_normal.png",
+  "id": 123335820791169,
+  "moderation": "Approved",
+  "name": "WCB Skin T4 UpperTorso normal",
+  "state": "Active",
+  "type": "Image"
+ },
  "b0aebe45011a9f905ef38fd4c99a2d54ea310fb8bdc1982688e43ae23b27894c": {
   "at": "2026-10-24T03:02:51Z",
   "file": "out/frames/muscular/tier1/LeftLowerLeg.mesh",
@@ -20520,6 +21951,15 @@
   "state": "Active",
   "type": "Image"
  },
+ "b19ac370f76b0f32b5ba4a1bdf85e38f80ccd65b356a8a8a0368f9d9dfa3b29b": {
+  "at": "2026-10-24T06:21:54Z",
+  "file": "out/frames/lean/tier3/RightLowerArm.mesh",
+  "id": 139887840911890,
+  "moderation": "Approved",
+  "name": "WCB Body lean T3 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "b1a87e200cf18ea0ce18b64697f5e4889e9b3741e054b6a615b13eeae5d17140": {
   "at": "2026-10-18T03:30:18Z",
   "file": "out/gear/tier1/BootSock_L.mesh",
@@ -20591,6 +22031,15 @@
   "name": "WCB Gear T2 OffPocket",
   "type": "Mesh"
  },
+ "b2374e4ad2bc5e6054f5045fd37bcef2ad72825cf2eb4be384b1e2a375739fab": {
+  "at": "2026-10-24T06:23:58Z",
+  "file": "out/frames/power/tier3/UpperTorso.mesh",
+  "id": 92258562955457,
+  "moderation": "Approved",
+  "name": "WCB Body power T3 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "b239011725f1f04f287d41b54ea526f0abdadc872eab6e787ff541b6b3ecf0c3": {
   "at": "2026-10-24T03:04:54Z",
   "file": "out/frames/muscular/tier5/RightLowerLeg.mesh",
@@ -20608,6 +22057,15 @@
   "name": "WCB Gear T4 AnkleSock_L",
   "state": "Active",
   "type": "Mesh"
+ },
+ "b278e738db5668ed627d7367afa48c1dc72bb2679e21ca13236725ab1c7de619": {
+  "at": "2026-10-24T06:26:17Z",
+  "file": "out/skin/T3/LowerArm_rough.png",
+  "id": 98029087080267,
+  "moderation": "Approved",
+  "name": "WCB Skin T3 LowerArm rough",
+  "state": "Active",
+  "type": "Image"
  },
  "b2832c78b4e2aa730797a7de9736552423b7b32db25f21c0e393188d9e5b8e6a": {
   "at": "2026-10-20T18:27:10Z",
@@ -21129,12 +22587,30 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "b69a69b705793aa49310314af1efcdf282e596d3066a0b874c2b2350ed307d91": {
+  "at": "2026-10-24T06:20:21Z",
+  "file": "out/frames/heavy/tier3/LeftLowerArm.mesh",
+  "id": 89628861006079,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T3 LeftLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "b69fc6231a14b488de6f9ba5d89fa512aaa2100e8f2b35adda9c09b4c69aec27": {
   "at": "2026-10-23T03:58:51Z",
   "file": "out/frames/muscular/tier4/LeftLowerLeg.mesh",
   "id": 84747769604942,
   "moderation": "Approved",
   "name": "WCB Body muscular T4 LeftLowerLeg",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "b6a36890f0d6529e128b65138cdc0b9069fb54f515455d8de762a34c7cdfefe2": {
+  "at": "2026-10-24T07:11:30Z",
+  "file": "out/tier1/UpperTorso.mesh",
+  "id": 81670461753463,
+  "moderation": "Approved",
+  "name": "WCB Body T1 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -21324,6 +22800,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "b82d4953509c45a60b3533a6006e63b3a777bbc13060b62383dc1c7bba42cb5d": {
+  "at": "2026-10-24T06:19:02Z",
+  "file": "out/tier2/RightUpperArm.mesh",
+  "id": 123604090631329,
+  "moderation": "Approved",
+  "name": "WCB Body T2 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "b84a984b78868427fbd7176aab48438443f8115df69a0a5ec5cdaa3504323fa2": {
   "at": "2026-10-24T04:08:36Z",
   "file": "out/skin/T5/LowerLeg_normal.png",
@@ -21392,6 +22877,15 @@
   "id": 113280505276807,
   "moderation": "Approved",
   "name": "WCB Gear T1 GloveStrap_R",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "b8ee03bf47076752b364a03877c97e971f023c69006a0da27478f58a2978a833": {
+  "at": "2026-10-24T06:19:08Z",
+  "file": "out/tier3/UpperTorso.mesh",
+  "id": 111543711794731,
+  "moderation": "Approved",
+  "name": "WCB Body T3 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -21573,6 +23067,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "bb3d12f5cc61100f6b3ee0e702e9aef7fae0aa87b4f338706ec2279a5d8085a7": {
+  "at": "2026-10-24T06:21:43Z",
+  "file": "out/frames/lean/tier3/UpperTorso.mesh",
+  "id": 93718683886352,
+  "moderation": "Approved",
+  "name": "WCB Body lean T3 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "bb5235c67089614ce776268a1a3a4ae2f9ff908089e35bfc86281f2ac8b92201": {
   "at": "2026-10-18T03:36:18Z",
   "file": "out/gear/tier4/TrunkLeg_R.mesh",
@@ -21614,6 +23117,15 @@
   "id": 119784910502758,
   "moderation": "Approved",
   "name": "WCB Gear T3 TrunkStripe_R",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "bba76077712ddc0fef21f52edb871e5838f8d385b2967d049b5426c92e2831f8": {
+  "at": "2026-10-24T06:45:23Z",
+  "file": "out/tier1/UpperTorso.mesh",
+  "id": 88245699965684,
+  "moderation": "Approved",
+  "name": "WCB Body T1 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -22164,6 +23676,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "bfdae9f0ea711d74966b072d54022c438da46063e146c1976906aa66a03cb7eb": {
+  "at": "2026-10-24T06:26:09Z",
+  "file": "out/skin/T2/UpperTorso_rough.png",
+  "id": 74133998627524,
+  "moderation": "Approved",
+  "name": "WCB Skin T2 UpperTorso rough",
+  "state": "Active",
+  "type": "Image"
+ },
  "bfe3d2bbee174dddfffe955a77f82b3807a06e01784ac5f04bf132c4178bcb81": {
   "at": "2026-10-20T18:41:09Z",
   "file": "out/gear/tier2/OffSleeve_R.mesh",
@@ -22189,6 +23710,15 @@
   "name": "WCB Skin T3 UpperTorso rough",
   "state": "Active",
   "type": "Image"
+ },
+ "c01d43aaa1765acad12579418932fcf3428495feb91cefb56d75882614a535d0": {
+  "at": "2026-10-24T06:20:18Z",
+  "file": "out/frames/heavy/tier3/LeftUpperArm.mesh",
+  "id": 129910364524921,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T3 LeftUpperArm",
+  "state": "Active",
+  "type": "Mesh"
  },
  "c01ebf781f06c2beef62658dddff6287f985d25a724590b2d82915f7c2e88d88": {
   "at": "2026-10-23T19:42:57Z",
@@ -22262,6 +23792,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "c0acae50e2e5d27b608969489a0b8629dee7c8546a825636b3f389432788f732": {
+  "at": "2026-10-24T06:46:43Z",
+  "file": "out/frames/power/tier5/UpperTorso.mesh",
+  "id": 90677841997660,
+  "moderation": "Approved",
+  "name": "WCB Body power T5 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "c0c5ca2b49e3f38b6a2478f3024a3253051f1e56f577df61528e5c08e862e9b9": {
   "at": "2026-10-23T19:48:25Z",
   "file": "out/frames/heavy/tier4/RightUpperArm.mesh",
@@ -22325,6 +23864,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "c14b37d8dc0aadf902690161d9f562fb28cbe1e970c7e0ced2fbff2f2d5bdc6e": {
+  "at": "2026-10-24T06:27:08Z",
+  "file": "out/skin/T5/LowerArm_normal.png",
+  "id": 110095582461444,
+  "moderation": "Approved",
+  "name": "WCB Skin T5 LowerArm normal",
+  "state": "Active",
+  "type": "Image"
+ },
  "c153f83cc066f41555327c01734bef06a92e36aa701211463f33b9ac5ade234b": {
   "at": "2026-10-23T14:46:24Z",
   "file": "out/frames/lean/tier2/RightUpperArm.mesh",
@@ -22384,6 +23932,15 @@
   "id": 73816319269031,
   "moderation": "Approved",
   "name": "WCB Body T2 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "c1b78f8f827a65543aa30c9ce954f8b85ddf8cd9f49aa5eae05a88c3cecba6fc": {
+  "at": "2026-10-24T06:46:33Z",
+  "file": "out/frames/power/tier1/UpperTorso.mesh",
+  "id": 105293194090930,
+  "moderation": "Approved",
+  "name": "WCB Body power T1 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -22459,6 +24016,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "c23f2a7d44f7c729b95cf4595da392d582b2291fda66c5b6dc6957e4396b0d07": {
+  "at": "2026-10-24T06:21:21Z",
+  "file": "out/frames/lean/tier1/LeftLowerArm.mesh",
+  "id": 126455474344107,
+  "moderation": "Approved",
+  "name": "WCB Body lean T1 LeftLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "c2419f5bead1982085c35e1df3a2e492cc7b89985d6ad0cf3192b6bd5c1a5aea": {
   "at": "2026-10-18T18:53:51Z",
   "file": "out/gear/tier4/Waistband.mesh",
@@ -22485,6 +24051,15 @@
   "name": "WCB Body muscular T1 LowerTorso",
   "state": "Active",
   "type": "Mesh"
+ },
+ "c2875cf08dd4ea6341a2e454a136405d011b136e61e7a50adbedfa55bfa30534": {
+  "at": "2026-10-24T06:26:12Z",
+  "file": "out/skin/T3/LowerArm_color.png",
+  "id": 113545387531027,
+  "moderation": "Approved",
+  "name": "WCB Skin T3 LowerArm color",
+  "state": "Active",
+  "type": "Image"
  },
  "c29c50846109bc627e855631a23c040f07a4bcaf64a412d4c023192cfecc3d9b": {
   "at": "2026-10-23T19:53:39Z",
@@ -22804,6 +24379,24 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "c4c167f45715d4d9a882ee2f888636622b96be42f70a6ab084453015ea100628": {
+  "at": "2026-10-24T06:19:46Z",
+  "file": "out/tier5/RightLowerArm.mesh",
+  "id": 133259431867450,
+  "moderation": "Approved",
+  "name": "WCB Body T5 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "c4c663ff0a7a02df1e9327622bd7a84290116151aad7b8d669f946233dd992cd": {
+  "at": "2026-10-24T06:23:12Z",
+  "file": "out/frames/muscular/tier4/RightUpperArm.mesh",
+  "id": 136505827540478,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T4 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "c4db89a3c94b6c4c508deefbf216fccc3363f2a4bbcc2a25f25ac67937a604c0": {
   "at": "2026-10-23T14:42:50Z",
   "file": "out/frames/heavy/tier1/LeftUpperArm.mesh",
@@ -22857,6 +24450,15 @@
   "name": "WCB Face Boxer Dazed",
   "state": "Active",
   "type": "Image"
+ },
+ "c5703ff3044eafa0b10dc07325a07deca8be00cc4cfcb9828a0ea558f74c78bc": {
+  "at": "2026-10-24T06:22:26Z",
+  "file": "out/frames/muscular/tier1/LeftUpperArm.mesh",
+  "id": 109408455305262,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T1 LeftUpperArm",
+  "state": "Active",
+  "type": "Mesh"
  },
  "c58a058028a2fc5a338b2ae236fcdb8fe1b87af58c95c4953c95078e67f4fc74": {
   "at": "2026-10-20T15:58:47Z",
@@ -22912,6 +24514,24 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "c63c8f3ab09271d58da2391a21c6c19452c0a1f3b93458cdee321b2934bbd15f": {
+  "at": "2026-10-24T06:49:33Z",
+  "file": "out/skin/T4/UpperTorso_normal.png",
+  "id": 88778601690387,
+  "moderation": "Approved",
+  "name": "WCB Skin T4 UpperTorso normal",
+  "state": "Active",
+  "type": "Image"
+ },
+ "c657c898ed79548a4e0a94e025750c941a22b18d255f1d73163e27eea7f65075": {
+  "at": "2026-10-24T06:24:25Z",
+  "file": "out/frames/power/tier5/UpperTorso.mesh",
+  "id": 98774842604116,
+  "moderation": "Approved",
+  "name": "WCB Body power T5 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "c657ee792d508305514fe4ea4d3553cb0f692247365578e78fe3c71a83b07ca7": {
   "at": "2026-10-24T00:20:55Z",
   "file": "out/tier3/RightLowerArm.mesh",
@@ -22920,6 +24540,15 @@
   "name": "WCB Body T3 RightLowerArm",
   "state": "Active",
   "type": "Mesh"
+ },
+ "c697c7e1688ee3da41d17d600d6b66eaec27a555712130559cc1065ed8933377": {
+  "at": "2026-10-24T06:25:25Z",
+  "file": "out/skin/T1/LowerArm_rough.png",
+  "id": 103446611216755,
+  "moderation": "Approved",
+  "name": "WCB Skin T1 LowerArm rough",
+  "state": "Active",
+  "type": "Image"
  },
  "c698d49ca45771212897dcf35727126ea39cfe827d325d7c2703dbaeb0e7a12f": {
   "at": "2026-10-20T19:04:13Z",
@@ -23162,6 +24791,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "c889d545a9e18dac3a1998a76c97ce88ec4563d2abd929ad7fecc8621282900c": {
+  "at": "2026-10-24T06:22:18Z",
+  "file": "out/frames/lean/tier5/RightUpperArm.mesh",
+  "id": 127609445998586,
+  "moderation": "Approved",
+  "name": "WCB Body lean T5 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "c89f779dd0a16cd40b24a38f2e7235cfb161c83ba30437db5c4b6cbeab512651": {
   "at": "2026-10-23T14:45:30Z",
   "file": "out/frames/lean/tier1/LeftLowerArm.mesh",
@@ -23304,6 +24942,24 @@
   "name": "WCB Gear T1 OffSleeve_R",
   "state": "Active",
   "type": "Mesh"
+ },
+ "c9ba060362bb5a2ee22202201df4a359a0375be75da2ad2a97687a56dff303df": {
+  "at": "2026-10-24T06:20:05Z",
+  "file": "out/frames/heavy/tier2/LeftUpperArm.mesh",
+  "id": 127429595136361,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T2 LeftUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "c9cdb1b0b9395bb81930fcd4b435d0943b4395b93798f661416ae37f6ac48929": {
+  "at": "2026-10-24T06:26:48Z",
+  "file": "out/skin/T4/UpperArm_normal.png",
+  "id": 99413460750598,
+  "moderation": "Approved",
+  "name": "WCB Skin T4 UpperArm normal",
+  "state": "Active",
+  "type": "Image"
  },
  "c9da35171ff6993efdfe4e1cf84d0b4003f85f80e3915459977382a84fc59abd": {
   "at": "2026-10-24T03:07:13Z",
@@ -23830,6 +25486,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "ceced591f0a1c9f53943da9ef2b284089f45b168fc23d316625901d9c98bb892": {
+  "at": "2026-10-24T06:45:46Z",
+  "file": "out/tier5/UpperTorso.mesh",
+  "id": 92793768480375,
+  "moderation": "Approved",
+  "name": "WCB Body T5 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "cedebd36adb23f2cffc698b0f392e4155152eab6d0120b0c66242f74b56c03ce": {
   "at": "2026-10-23T19:48:43Z",
   "file": "out/frames/heavy/tier5/UpperTorso.mesh",
@@ -23882,6 +25547,24 @@
   "moderation": "Approved",
   "name": "WCB Gear T2 TrunkLegLong_R",
   "type": "Mesh"
+ },
+ "cfb170a1d8fbcc3ab1967ea50259bd85aedfa1b46cfee04c4658a7f08c3d2983": {
+  "at": "2026-10-24T06:48:52Z",
+  "file": "out/skin/T1/UpperTorso_color.png",
+  "id": 102251498740883,
+  "moderation": "Approved",
+  "name": "WCB Skin T1 UpperTorso color",
+  "state": "Active",
+  "type": "Image"
+ },
+ "cfcc8c68ed2dfbd9e92deb8a241cfc04fdbb8156eb2a7e5172f9960574e49afe": {
+  "at": "2026-10-24T06:25:52Z",
+  "file": "out/skin/T2/LowerArm_rough.png",
+  "id": 124690667998635,
+  "moderation": "Approved",
+  "name": "WCB Skin T2 LowerArm rough",
+  "state": "Active",
+  "type": "Image"
  },
  "cfd13814a76146373c1fe22f20bf170bc084d322f59656238edc4ebf5aae185a": {
   "at": "2026-10-20T15:58:29Z",
@@ -24179,6 +25862,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "d178d59c6e0fe65e3d1a486fee09f26fe9f9b922c3038b7697eac017f0b0daa0": {
+  "at": "2026-10-24T06:27:13Z",
+  "file": "out/skin/T5/UpperArm_color.png",
+  "id": 97995208884077,
+  "moderation": "Approved",
+  "name": "WCB Skin T5 UpperArm color",
+  "state": "Active",
+  "type": "Image"
+ },
  "d1a74b0f0cc0427a1d86cac9320129887e76b395463b6876883585e52ae1334c": {
   "at": "2026-10-24T04:17:42Z",
   "file": "out/frames/heavy/tier5/RightUpperLeg.mesh",
@@ -24321,6 +26013,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "d263fe8a726ef2335e2a6d7856eec92e181db45f7923d0efd7f67cc97fd4cef3": {
+  "at": "2026-10-24T07:12:03Z",
+  "file": "out/frames/lean/tier4/UpperTorso.mesh",
+  "id": 84206528743228,
+  "moderation": "Approved",
+  "name": "WCB Body lean T4 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "d26966e51b445f491baf2e6e6b89e3319ea7e90535075c3e40aad200127f137a": {
   "at": "2026-10-20T18:53:17Z",
   "file": "out/lite/gear/tier3/Waistband.mesh",
@@ -24384,6 +26085,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "d332bc036894168b992b7d23231bd4a0663b8419209e564c51a260fd97b00863": {
+  "at": "2026-10-24T06:21:24Z",
+  "file": "out/frames/lean/tier1/RightUpperArm.mesh",
+  "id": 113310388311016,
+  "moderation": "Approved",
+  "name": "WCB Body lean T1 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "d3395a0d615126a20cab39c2945d2e03793ddfd073c02969f06791cad1f2f3dc": {
   "at": "2026-10-18T03:36:01Z",
   "file": "out/gear/tier4/TrunkHem_L.mesh",
@@ -24443,6 +26153,15 @@
   "id": 108805565217106,
   "moderation": "Approved",
   "name": "WCB Body lean T3 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "d386b8e2f9a37d75a123ea244807ff85ace3cebbac9a04260b7356f25a9fd9a1": {
+  "at": "2026-10-24T06:19:56Z",
+  "file": "out/frames/heavy/tier1/RightUpperArm.mesh",
+  "id": 114488005373905,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T1 RightUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -24554,6 +26273,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "d49d9c50886ba3caedd2911236596d1f69c5226ce6a70287edd25add4dd46598": {
+  "at": "2026-10-24T06:19:59Z",
+  "file": "out/frames/heavy/tier1/RightLowerArm.mesh",
+  "id": 137072808264361,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T1 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "d4a6253be09ce15e7ac6df4e2918a180a3a30c37c6a67b419be54ba858f4b1f4": {
   "at": "2026-10-23T22:47:32Z",
   "file": "out/tier1/RightUpperArm.mesh",
@@ -24615,6 +26343,24 @@
   "name": "WCB Gear T3 GloveCuff_R lite",
   "type": "Mesh"
  },
+ "d4ea2f241074673e40d5ae05100371e0f30fe5ac1f93f5522a38812aef153b07": {
+  "at": "2026-10-24T06:49:09Z",
+  "file": "out/skin/T2/UpperTorso_normal.png",
+  "id": 109245071329371,
+  "moderation": "Approved",
+  "name": "WCB Skin T2 UpperTorso normal",
+  "state": "Active",
+  "type": "Image"
+ },
+ "d5001886cc135d89a2b9b57ffff33cee9712b292b8f8df1e610137e17e6544f4": {
+  "at": "2026-10-24T06:22:21Z",
+  "file": "out/frames/lean/tier5/RightLowerArm.mesh",
+  "id": 103760190644831,
+  "moderation": "Approved",
+  "name": "WCB Body lean T5 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "d51aa4c271fc5b36a790354c515eebe95b45ca2d590d369e1da5aa46b80614f9": {
   "at": "2026-10-20T18:26:29Z",
   "file": "out/tier2/UpperTorso.mesh",
@@ -24631,6 +26377,15 @@
   "moderation": "Approved",
   "name": "WCB Body power T3 RightUpperArm",
   "state": "Active",
+  "type": "Mesh"
+ },
+ "d5215df9263ffaa28359e00f48d85f65f41ea289b15039417df450451fb0da02": {
+  "at": "2026-10-24T06:20:49Z",
+  "file": "out/frames/heavy/tier4/RightLowerArm.mesh",
+  "id": 129542637335773,
+  "moderation": "error",
+  "name": "WCB Body heavy T4 RightLowerArm",
+  "state": "GET https://apis.roblox.com/assets/v1/assets/129542637335773?readMask=moderation",
   "type": "Mesh"
  },
  "d531a4b2b457afa0ed4dca00b13f03264e0abad4fbfa427405fcd5186cc3fd79": {
@@ -24954,6 +26709,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "d7bdad2fc3168eb88ca77150e2480b6f8ddda0a81524b73bf6408800a7cb10a1": {
+  "at": "2026-10-24T07:11:38Z",
+  "file": "out/tier4/UpperTorso.mesh",
+  "id": 126786168537461,
+  "moderation": "Approved",
+  "name": "WCB Body T4 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "d7e077ce88aa86ff014e21432414582182a2b2280504ba004e186c93c2958c05": {
   "at": "2026-10-24T04:15:56Z",
   "file": "out/frames/heavy/tier2/RightUpperLeg.mesh",
@@ -25238,6 +27002,15 @@
   "id": 96869198477388,
   "moderation": "Approved",
   "name": "WCB Body power T3 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "d9ad9e1204739804486f9f4d7501e9b639202bf1c0d70eceffc356c470cf74ac": {
+  "at": "2026-10-24T06:22:32Z",
+  "file": "out/frames/muscular/tier1/RightUpperArm.mesh",
+  "id": 111651857917019,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T1 RightUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -25742,6 +27515,15 @@
   "name": "WCB Body heavy T1 RightUpperLeg",
   "type": "Mesh"
  },
+ "ddb31b41b2d1646233fd92dfc0a511bf99a63173cacb7648baaf10cf31f2fd96": {
+  "at": "2026-10-24T06:23:45Z",
+  "file": "out/frames/power/tier2/UpperTorso.mesh",
+  "id": 118200696840607,
+  "moderation": "Approved",
+  "name": "WCB Body power T2 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "ddc2facaca1d34345f3d44813127d5423459c4a432cd08ad5d8d34adceec54fd": {
   "at": "2026-10-24T04:34:39Z",
   "file": "out/skin/T2/UpperTorso_normal.png",
@@ -25895,6 +27677,24 @@
   "state": "Active",
   "type": "Image"
  },
+ "dedd76175e9803eb09db4a698f59b09452b19a3e6d7528ad29caa84e88c9124f": {
+  "at": "2026-10-24T06:22:37Z",
+  "file": "out/frames/muscular/tier2/UpperTorso.mesh",
+  "id": 77848621991128,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T2 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "df06299b5cad33d44d1a04b670b7bfa7533e164f1e3b35fdc11425cc76fd1b21": {
+  "at": "2026-10-24T06:26:41Z",
+  "file": "out/skin/T4/LowerArm_normal.png",
+  "id": 135935641600439,
+  "moderation": "Approved",
+  "name": "WCB Skin T4 LowerArm normal",
+  "state": "Active",
+  "type": "Image"
+ },
  "df3f8f288797701d0145a2eaaea5d226e5e8d9acd2d49928ef764e134bc82143": {
   "at": "2026-10-24T00:26:44Z",
   "file": "out/frames/lean/tier4/RightLowerLeg.mesh",
@@ -25940,6 +27740,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "df70a8158bb7006202620b07520f3327b2d25fc11f137053ef20592c1263a2b8": {
+  "at": "2026-10-24T06:27:05Z",
+  "file": "out/skin/T5/LowerArm_color.png",
+  "id": 89334868627075,
+  "moderation": "Approved",
+  "name": "WCB Skin T5 LowerArm color",
+  "state": "Active",
+  "type": "Image"
+ },
  "df7e2d0399b682dfb1a8605dd54c4ddeb75f81e560578c29193aaab3f06f549f": {
   "at": "2026-10-20T19:01:18Z",
   "file": "out/gear/tier5/BootSock_L.mesh",
@@ -25955,6 +27764,15 @@
   "id": 140186471491992,
   "moderation": "Approved",
   "name": "WCB Gear T5 OffCollar lite",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "dfc084d7702618df44a7bb1e078e0572c4e80cb6ffc78e14524f60fd3a9c25e2": {
+  "at": "2026-10-24T06:22:34Z",
+  "file": "out/frames/muscular/tier1/RightLowerArm.mesh",
+  "id": 120241141242187,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T1 RightLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -26017,6 +27835,15 @@
   "id": 97338463972274,
   "moderation": "Approved",
   "name": "WCB Gear T1 TrunkLeg_L",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "e0178dc96576c2ee843cc31e0fc2ccad15b08bb74998d7ceee91aab56118a198": {
+  "at": "2026-10-24T06:19:37Z",
+  "file": "out/tier5/LeftUpperArm.mesh",
+  "id": 139602885286299,
+  "moderation": "Approved",
+  "name": "WCB Body T5 LeftUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -26232,6 +28059,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "e161ad6a32e62404007b0a298846c94d122c2a9f4abbad51a9405d9e3a528877": {
+  "at": "2026-10-24T06:23:18Z",
+  "file": "out/frames/muscular/tier5/UpperTorso.mesh",
+  "id": 93948313786890,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T5 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "e16635086a2987b97b1047e0444b77dd8e9707d27ff5df0bb34f484c5740af8e": {
   "at": "2026-10-24T00:19:47Z",
   "file": "out/tier1/LeftLowerLeg.mesh",
@@ -26401,6 +28237,15 @@
   "name": "WCB Skin T5 UpperArm normal",
   "state": "Active",
   "type": "Image"
+ },
+ "e25c514aae00f32f83fd3f12d0cad78132d8836c64b0a8a88ecdc80d203d2d44": {
+  "at": "2026-10-24T06:46:38Z",
+  "file": "out/frames/power/tier3/UpperTorso.mesh",
+  "id": 118472890434749,
+  "moderation": "Approved",
+  "name": "WCB Body power T3 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
  },
  "e29f8c229a01e2f59622d6450491255c6b2a4b0cc5b9dc313af41b9ec29b6186": {
   "at": "2026-10-24T04:23:47Z",
@@ -26885,6 +28730,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "e6e1b073f093f06ea6e3d3b552dc45500018f2c8c400b56546bc180ce5c76443": {
+  "at": "2026-10-24T06:46:24Z",
+  "file": "out/frames/muscular/tier4/UpperTorso.mesh",
+  "id": 93833647098646,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T4 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "e6e655cf59466d4c3eeec71055af6e0b3854f957f3a13964d26ec03b0b02c1bb": {
   "at": "2026-10-23T14:49:57Z",
   "file": "out/frames/muscular/tier4/LeftHand.mesh",
@@ -26909,6 +28763,15 @@
   "id": 84957551877741,
   "moderation": "Approved",
   "name": "WCB Body lean T4 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "e749382d2fca4952161cc21df764ace0504e529a5b76a81aa1755c67cce4d2f1": {
+  "at": "2026-10-24T06:21:02Z",
+  "file": "out/frames/heavy/tier5/RightUpperArm.mesh",
+  "id": 117258378145049,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T5 RightUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -26957,6 +28820,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "e7be4828045779f066bd7fb135c7d48a960a3869bd82f78c63803c41ac19f2fc": {
+  "at": "2026-10-24T06:24:20Z",
+  "file": "out/frames/power/tier4/RightUpperArm.mesh",
+  "id": 96460104971138,
+  "moderation": "Approved",
+  "name": "WCB Body power T4 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "e7c4aa514639d5bf13155cedb288ca6aed40f4df1766945b6c14572e2ebfea79": {
   "at": "2026-10-23T14:47:27Z",
   "file": "out/frames/lean/tier4/RightLowerArm.mesh",
@@ -26983,6 +28855,15 @@
   "name": "WCB Body T5 LeftLowerLeg",
   "state": "Active",
   "type": "Mesh"
+ },
+ "e7e81e3d23a92b54fd209fe0c0bea7b800e713cc52e80a13117e3e69e146f3f4": {
+  "at": "2026-10-24T06:49:16Z",
+  "file": "out/skin/T3/UpperTorso_color.png",
+  "id": 104117577503982,
+  "moderation": "Approved",
+  "name": "WCB Skin T3 UpperTorso color",
+  "state": "Active",
+  "type": "Image"
  },
  "e7ee69959c34ece91278b3fa14a9d7523bc9136801af983341a3ff5e3f103b35": {
   "at": "2026-10-24T04:24:47Z",
@@ -27270,6 +29151,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "e9dd61e223caa070183c2fa74ece6e834c8faefe17e7e2ee3d6e7c514bd4ce6e": {
+  "at": "2026-10-24T06:18:57Z",
+  "file": "out/tier2/LeftUpperArm.mesh",
+  "id": 130208516601722,
+  "moderation": "Approved",
+  "name": "WCB Body T2 LeftUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "e9de6217cc56e37841551723a2ccec2625c86aad798d7c3d2acacf77ac1293b5": {
   "at": "2026-10-24T04:34:26Z",
   "file": "out/skin/T2/UpperLeg_color.png",
@@ -27285,6 +29175,15 @@
   "id": 96366608432581,
   "moderation": "Approved",
   "name": "WCB Body T5 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "ea6cdc3831812c23cc8bdc0156d00d9f7f93b16a9b4ffc9cd6b4a755eba69460": {
+  "at": "2026-10-24T07:12:25Z",
+  "file": "out/frames/power/tier3/UpperTorso.mesh",
+  "id": 90069769394160,
+  "moderation": "Approved",
+  "name": "WCB Body power T3 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -27333,12 +29232,30 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "eac37173a8395b084c4debb3ce447d4d1b16dd8e2e52cbdaea928fcf8abfb71b": {
+  "at": "2026-10-24T06:19:43Z",
+  "file": "out/tier5/RightUpperArm.mesh",
+  "id": 113595358488231,
+  "moderation": "Approved",
+  "name": "WCB Body T5 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "ead37c107740b3b90ac72c7a8087ab6df7094d908fc1692922ad95f578254248": {
   "at": "2026-10-23T19:50:15Z",
   "file": "out/frames/lean/tier2/LeftLowerLeg.mesh",
   "id": 124878509857663,
   "moderation": "Approved",
   "name": "WCB Body lean T2 LeftLowerLeg",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "eadc092714d81cfdacac34ba4115f5af4fc3d29a4749df515ab8e949ac927e46": {
+  "at": "2026-10-24T06:21:30Z",
+  "file": "out/frames/lean/tier2/UpperTorso.mesh",
+  "id": 93824156502080,
+  "moderation": "Approved",
+  "name": "WCB Body lean T2 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -27438,12 +29355,39 @@
   "name": "WCB Gear T2 GloveStrap_L lite",
   "type": "Mesh"
  },
+ "ec1b79b7fae09b7c97a78a00ec41cea84af3ea9a79c4dc708bea697a0e818ffc": {
+  "at": "2026-10-24T06:22:51Z",
+  "file": "out/frames/muscular/tier3/UpperTorso.mesh",
+  "id": 100512466583606,
+  "moderation": "Approved",
+  "name": "WCB Body muscular T3 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "ec26b478126d22c21adce310774d5dd5a98cc8a2da024b75acd44a7bf75aa7c4": {
+  "at": "2026-10-24T06:49:48Z",
+  "file": "out/skin/T5/UpperTorso_rough.png",
+  "id": 100135712032856,
+  "moderation": "Approved",
+  "name": "WCB Skin T5 UpperTorso rough",
+  "state": "Active",
+  "type": "Image"
+ },
  "ec58ec74424a57edbf586170baefc6f3bbe3af4a8439189c7546e83619740ed6": {
   "at": "2026-10-20T00:57:56Z",
   "file": "out/gear/tier3/WrapWrist_L.mesh",
   "id": 96066852660036,
   "moderation": "Approved",
   "name": "WCB Gear T3 WrapWrist_L",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "ec6f18cb7d47fdadb9b98f8581909760051827a9e880fcc5b176199aff19ca99": {
+  "at": "2026-10-24T06:21:06Z",
+  "file": "out/frames/heavy/tier5/RightLowerArm.mesh",
+  "id": 93006602308432,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T5 RightLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -27626,6 +29570,24 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "edb3ba68b0eeb19fe73f2d8136dfc8c98dd9d06904276b8c194ea36facd016ce": {
+  "at": "2026-10-24T06:21:46Z",
+  "file": "out/frames/lean/tier3/LeftUpperArm.mesh",
+  "id": 77898532317110,
+  "moderation": "Approved",
+  "name": "WCB Body lean T3 LeftUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "edb5b877192dd23f55c02440ae286ebf214e498b67cc34eea73398a1ccbfa498": {
+  "at": "2026-10-24T06:20:13Z",
+  "file": "out/frames/heavy/tier2/RightLowerArm.mesh",
+  "id": 79763664218008,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T2 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "edb828421a04c076bb9950fc9c1e865ac3fe8bbc2ec24d737b0cc517dcb459c8": {
   "at": "2026-10-23T14:43:43Z",
   "file": "out/frames/heavy/tier2/RightHand.mesh",
@@ -27650,6 +29612,15 @@
   "id": 121627681958221,
   "moderation": "Approved",
   "name": "WCB Body heavy T2 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "edd5a7364748e176cdec5de9d2af0ea1702b6349f9dae08bccaccec0d51d2a67": {
+  "at": "2026-10-24T06:21:16Z",
+  "file": "out/frames/lean/tier1/UpperTorso.mesh",
+  "id": 121314474859638,
+  "moderation": "Approved",
+  "name": "WCB Body lean T1 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -28034,6 +30005,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "f19bcf0e7af68300a24a6df8fccf600c17879f405dec4cf923e5340bf484cb55": {
+  "at": "2026-10-24T06:46:13Z",
+  "file": "out/frames/lean/tier5/UpperTorso.mesh",
+  "id": 103677498177058,
+  "moderation": "Approved",
+  "name": "WCB Body lean T5 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "f1a24b14384b4f46d7f16aed0648e0efa82dc2e877d1adad7e8dd41e441d3fa8": {
   "at": "2026-10-23T14:46:34Z",
   "file": "out/frames/lean/tier2/LeftLowerLeg.mesh",
@@ -28084,6 +30064,15 @@
   "id": 88226989288815,
   "moderation": "Approved",
   "name": "WCB Body T2 RightUpperArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "f1f4e2c2f861a530d85b31a7fabb96459a189740196047057e9ae369c17932aa": {
+  "at": "2026-10-24T06:20:59Z",
+  "file": "out/frames/heavy/tier5/LeftLowerArm.mesh",
+  "id": 137281989325252,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T5 LeftLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -28194,12 +30183,30 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "f2ca6b6dfdc1cdf68303f127db1e0c92edcaed7e33120283b564888b9cb75210": {
+  "at": "2026-10-24T07:11:43Z",
+  "file": "out/frames/heavy/tier1/UpperTorso.mesh",
+  "id": 138826914158193,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T1 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "f2ced96a64920c9ae41703eeb32a0a7067d7e823612447340a486743bda5ebac": {
   "at": "2026-10-20T15:57:15Z",
   "file": "out/gear/tier2/OffCollar.mesh",
   "id": 105639817809936,
   "moderation": "Approved",
   "name": "WCB Gear T2 OffCollar",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "f2f3ec02e0c1c75efad77c3c0505f7a048cf4b11ecf06f7d0b2eb45828a1937b": {
+  "at": "2026-10-24T07:12:00Z",
+  "file": "out/frames/lean/tier3/UpperTorso.mesh",
+  "id": 140208800241771,
+  "moderation": "Approved",
+  "name": "WCB Body lean T3 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -28426,6 +30433,15 @@
   "state": "Active",
   "type": "Image"
  },
+ "f4ee2990ed2c18392c19fc108ad9c00e2403962b88e0d291e6851219364fb436": {
+  "at": "2026-10-24T06:20:02Z",
+  "file": "out/frames/heavy/tier2/UpperTorso.mesh",
+  "id": 111999808984250,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T2 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "f4f7ddcc8148bc5fc7b9e5085f417c3da21347b98ef20e912207624e58ab6aeb": {
   "at": "2026-10-23T19:47:32Z",
   "file": "out/frames/heavy/tier2/LeftUpperLeg.mesh",
@@ -28458,6 +30474,15 @@
   "id": 121333111034666,
   "moderation": "Approved",
   "name": "WCB Body muscular T5 RightLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "f557f4aee0fa37e38aa7c183a37f567530467d27d3b142311d4d7758917e27eb": {
+  "at": "2026-10-24T06:20:32Z",
+  "file": "out/frames/heavy/tier4/LeftUpperArm.mesh",
+  "id": 107201080685767,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T4 LeftUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -28549,6 +30574,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "f636642adb8a27dac322cbaa94710d00cbb7f28a8cceb50e35a970f446b0f37c": {
+  "at": "2026-10-24T06:25:22Z",
+  "file": "out/skin/T1/LowerArm_normal.png",
+  "id": 100988431562211,
+  "moderation": "Approved",
+  "name": "WCB Skin T1 LowerArm normal",
+  "state": "Active",
+  "type": "Image"
+ },
  "f64b2f2cea8c0342c424bbc35d01db9ffdaf5c78ad0f13132d880bf48a86c133": {
   "at": "2026-10-18T03:37:16Z",
   "file": "out/gear/tier5/GloveStrap_L.mesh",
@@ -28602,6 +30636,15 @@
   "name": "WCB Body muscular T3 LeftUpperLeg",
   "state": "Active",
   "type": "Mesh"
+ },
+ "f74d246cef69c063220fbce483d90b4fbd90d3ad2afb4246fb7db176d6fca943": {
+  "at": "2026-10-24T06:27:20Z",
+  "file": "out/skin/T5/UpperTorso_color.png",
+  "id": 74006886222503,
+  "moderation": "Approved",
+  "name": "WCB Skin T5 UpperTorso color",
+  "state": "Active",
+  "type": "Image"
  },
  "f7701faf5233bdf1cc1b951af5b04c46e1ba67c913b9d4e8cf030eb246cbcb5b": {
   "at": "2026-10-18T03:34:16Z",
@@ -28663,6 +30706,15 @@
   "id": 70645495644945,
   "moderation": "Approved",
   "name": "WCB Gear T2 ShoeCollar_L",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "f7c3cc9c3176d7150426e172be131005258ab93d83e72913da7179d210a49a48": {
+  "at": "2026-10-24T06:23:56Z",
+  "file": "out/frames/power/tier2/RightLowerArm.mesh",
+  "id": 71980606520299,
+  "moderation": "Approved",
+  "name": "WCB Body power T2 RightLowerArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -28942,6 +30994,15 @@
   "state": "Active",
   "type": "Mesh"
  },
+ "fb5118839aa40a133146cbc8a720b53d203b4828988861f0f2a78eb6c2c65272": {
+  "at": "2026-10-24T06:49:26Z",
+  "file": "out/skin/T3/UpperTorso_rough.png",
+  "id": 114270017061235,
+  "moderation": "Approved",
+  "name": "WCB Skin T3 UpperTorso rough",
+  "state": "Active",
+  "type": "Image"
+ },
  "fb602b8b69e264a40638adcd6d567e933d8d7e861a72e6c2dae7a2af3da0f5dc": {
   "at": "2026-10-20T18:26:37Z",
   "file": "out/tier2/LeftLowerArm.mesh",
@@ -28966,6 +31027,15 @@
   "id": 89461441813804,
   "moderation": "Approved",
   "name": "WCB Body T5 RightHand",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "fb82597e96ad72967fbe2c869d77fcc895163f1d5949519c052cad3b398d6aee": {
+  "at": "2026-10-24T06:24:14Z",
+  "file": "out/frames/power/tier4/LeftUpperArm.mesh",
+  "id": 135427323265410,
+  "moderation": "Approved",
+  "name": "WCB Body power T4 LeftUpperArm",
   "state": "Active",
   "type": "Mesh"
  },
@@ -29184,6 +31254,15 @@
   "state": "Active",
   "type": "Image"
  },
+ "fcdfb53b3ece368c949af570a92d0d44489e9545f42cbad5c73642b80527bb0c": {
+  "at": "2026-10-24T07:11:48Z",
+  "file": "out/frames/heavy/tier3/UpperTorso.mesh",
+  "id": 100822216961167,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T3 UpperTorso",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "fcf85e6dd18180c6e5f3b1313a91f5a59943e907042da49d0b22303805caa4f0": {
   "at": "2026-10-24T00:24:55Z",
   "file": "out/frames/lean/tier1/LeftUpperArm.mesh",
@@ -29243,6 +31322,15 @@
   "id": 97455444071753,
   "moderation": "Approved",
   "name": "WCB Gear T4 OffTowel",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "fd6fb3f2b9b30aeca4861fc0a9c523c25ad8c74d53a270218a96830d2758df18": {
+  "at": "2026-10-24T06:23:31Z",
+  "file": "out/frames/power/tier1/UpperTorso.mesh",
+  "id": 91751141806708,
+  "moderation": "Approved",
+  "name": "WCB Body power T1 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },
@@ -29443,6 +31531,15 @@
   "name": "WCB Gear T2 GloveStrap_L",
   "type": "Mesh"
  },
+ "ff43e362a64c96e4395e5d6921d70f6feae012ad7ec6dce0b5c167911b289bf7": {
+  "at": "2026-10-24T06:19:54Z",
+  "file": "out/frames/heavy/tier1/LeftLowerArm.mesh",
+  "id": 131324477107747,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T1 LeftLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
  "ff537bfe93605f5871f69a21bddb15d03cf7fe29d6ad2ad9547e4f906bf8d229": {
   "at": "2026-10-23T19:49:53Z",
   "file": "out/frames/lean/tier2/LeftUpperArm.mesh",
@@ -29476,6 +31573,24 @@
   "id": 79925709374358,
   "moderation": "Approved",
   "name": "WCB Gear T4 OffSleeve_R lite",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "ffb2d9d7773b37f6b913b1326b1a8111f43cdd84894b8e421a1fa356b2659b98": {
+  "at": "2026-10-24T06:21:35Z",
+  "file": "out/frames/lean/tier2/LeftLowerArm.mesh",
+  "id": 130090704856550,
+  "moderation": "Approved",
+  "name": "WCB Body lean T2 LeftLowerArm",
+  "state": "Active",
+  "type": "Mesh"
+ },
+ "ffbf11edc1884f9dbf1ab21f17b248b5680090bc660ad67426243220f7ea7d93": {
+  "at": "2026-10-24T06:19:48Z",
+  "file": "out/frames/heavy/tier1/UpperTorso.mesh",
+  "id": 86723241177416,
+  "moderation": "Approved",
+  "name": "WCB Body heavy T1 UpperTorso",
   "state": "Active",
   "type": "Mesh"
  },

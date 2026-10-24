@@ -9,9 +9,9 @@
      "Name": "LowerArm",
      "ClassName": "SurfaceAppearance",
      "Properties": {
-      "ColorMap": "rbxassetid://82138325367484",
-      "NormalMap": "rbxassetid://112624178441484",
-      "RoughnessMap": "rbxassetid://130021781470341"
+      "ColorMap": "rbxassetid://78886784412755",
+      "NormalMap": "rbxassetid://100988431562211",
+      "RoughnessMap": "rbxassetid://103446611216755"
      }
     },
     {
@@ -27,9 +27,9 @@
      "Name": "UpperArm",
      "ClassName": "SurfaceAppearance",
      "Properties": {
-      "ColorMap": "rbxassetid://139175473564947",
-      "NormalMap": "rbxassetid://117613766889038",
-      "RoughnessMap": "rbxassetid://72695960437666"
+      "ColorMap": "rbxassetid://126778281393795",
+      "NormalMap": "rbxassetid://111861311112574",
+      "RoughnessMap": "rbxassetid://135359194410912"
      }
     },
     {
@@ -45,9 +45,9 @@
      "Name": "UpperTorso",
      "ClassName": "SurfaceAppearance",
      "Properties": {
-      "ColorMap": "rbxassetid://96319305875089",
-      "NormalMap": "rbxassetid://94387300783334",
-      "RoughnessMap": "rbxassetid://105068815567283"
+      "ColorMap": "rbxassetid://102251498740883",
+      "NormalMap": "rbxassetid://114413845123240",
+      "RoughnessMap": "rbxassetid://132229838703127"
      }
     }
    ]
@@ -60,9 +60,9 @@
      "Name": "LowerArm",
      "ClassName": "SurfaceAppearance",
      "Properties": {
-      "ColorMap": "rbxassetid://124366261544518",
-      "NormalMap": "rbxassetid://127162526871402",
-      "RoughnessMap": "rbxassetid://98366860918784"
+      "ColorMap": "rbxassetid://114025078599245",
+      "NormalMap": "rbxassetid://118521137090398",
+      "RoughnessMap": "rbxassetid://124690667998635"
      }
     },
     {
@@ -78,9 +78,9 @@
      "Name": "UpperArm",
      "ClassName": "SurfaceAppearance",
      "Properties": {
-      "ColorMap": "rbxassetid://127140025882197",
-      "NormalMap": "rbxassetid://133398065341524",
-      "RoughnessMap": "rbxassetid://83755896481211"
+      "ColorMap": "rbxassetid://72188441530871",
+      "NormalMap": "rbxassetid://73974802485518",
+      "RoughnessMap": "rbxassetid://101026766911034"
      }
     },
     {
@@ -96,9 +96,9 @@
      "Name": "UpperTorso",
      "ClassName": "SurfaceAppearance",
      "Properties": {
-      "ColorMap": "rbxassetid://132246346696160",
-      "NormalMap": "rbxassetid://122655205655461",
-      "RoughnessMap": "rbxassetid://103229941283354"
+      "ColorMap": "rbxassetid://114275073387003",
+      "NormalMap": "rbxassetid://109245071329371",
+      "RoughnessMap": "rbxassetid://76912113692199"
      }
     }
    ]
@@ -111,9 +111,9 @@
      "Name": "LowerArm",
      "ClassName": "SurfaceAppearance",
      "Properties": {
-      "ColorMap": "rbxassetid://92401017290112",
-      "NormalMap": "rbxassetid://94967369449649",
-      "RoughnessMap": "rbxassetid://73587573963327"
+      "ColorMap": "rbxassetid://113545387531027",
+      "NormalMap": "rbxassetid://115549866884025",
+      "RoughnessMap": "rbxassetid://98029087080267"
      }
     },
     {
@@ -129,9 +129,9 @@
      "Name": "UpperArm",
      "ClassName": "SurfaceAppearance",
      "Properties": {
-      "ColorMap": "rbxassetid://95444178746696",
-      "NormalMap": "rbxassetid://92071325096068",
-      "RoughnessMap": "rbxassetid://82613281516908"
+      "ColorMap": "rbxassetid://105846051263182",
+      "NormalMap": "rbxassetid://103948026604423",
+      "RoughnessMap": "rbxassetid://140069232694318"
      }
     },
     {
@@ -147,9 +147,9 @@
      "Name": "UpperTorso",
      "ClassName": "SurfaceAppearance",
      "Properties": {
-      "ColorMap": "rbxassetid://81247499777861",
-      "NormalMap": "rbxassetid://98554456185131",
-      "RoughnessMap": "rbxassetid://92560151930861"
+      "ColorMap": "rbxassetid://104117577503982",
+      "NormalMap": "rbxassetid://100711597494712",
+      "RoughnessMap": "rbxassetid://114270017061235"
      }
     }
    ]
@@ -162,9 +162,9 @@
      "Name": "LowerArm",
      "ClassName": "SurfaceAppearance",
      "Properties": {
-      "ColorMap": "rbxassetid://98780406465709",
-      "NormalMap": "rbxassetid://95960051058802",
-      "RoughnessMap": "rbxassetid://117659239175470"
+      "ColorMap": "rbxassetid://84252541380424",
+      "NormalMap": "rbxassetid://135935641600439",
+      "RoughnessMap": "rbxassetid://109373804024901"
      }
     },
     {
@@ -180,9 +180,9 @@
      "Name": "UpperArm",
      "ClassName": "SurfaceAppearance",
      "Properties": {
-      "ColorMap": "rbxassetid://131813984188942",
-      "NormalMap": "rbxassetid://95265065235455",
-      "RoughnessMap": "rbxassetid://71574617256314"
+      "ColorMap": "rbxassetid://140013848886156",
+      "NormalMap": "rbxassetid://99413460750598",
+      "RoughnessMap": "rbxassetid://100437834031380"
      }
     },
     {
@@ -198,9 +198,9 @@
      "Name": "UpperTorso",
      "ClassName": "SurfaceAppearance",
      "Properties": {
-      "ColorMap": "rbxassetid://129155085176691",
-      "NormalMap": "rbxassetid://92449195756603",
-      "RoughnessMap": "rbxassetid://125973454974890"
+      "ColorMap": "rbxassetid://81967181797990",
+      "NormalMap": "rbxassetid://88778601690387",
+      "RoughnessMap": "rbxassetid://74737831842639"
      }
     }
    ]
@@ -213,9 +213,9 @@
      "Name": "LowerArm",
      "ClassName": "SurfaceAppearance",
      "Properties": {
-      "ColorMap": "rbxassetid://132194648429248",
-      "NormalMap": "rbxassetid://118483793643751",
-      "RoughnessMap": "rbxassetid://108093878186198"
+      "ColorMap": "rbxassetid://89334868627075",
+      "NormalMap": "rbxassetid://110095582461444",
+      "RoughnessMap": "rbxassetid://100847254063692"
      }
     },
     {
@@ -231,9 +231,9 @@
      "Name": "UpperArm",
      "ClassName": "SurfaceAppearance",
      "Properties": {
-      "ColorMap": "rbxassetid://113214575153133",
-      "NormalMap": "rbxassetid://129707965468838",
-      "RoughnessMap": "rbxassetid://96125825321576"
+      "ColorMap": "rbxassetid://97995208884077",
+      "NormalMap": "rbxassetid://102605078568976",
+      "RoughnessMap": "rbxassetid://96914140562260"
      }
     },
     {
@@ -249,9 +249,9 @@
      "Name": "UpperTorso",
      "ClassName": "SurfaceAppearance",
      "Properties": {
-      "ColorMap": "rbxassetid://99253728578575",
-      "NormalMap": "rbxassetid://72405435731518",
-      "RoughnessMap": "rbxassetid://110710489332290"
+      "ColorMap": "rbxassetid://72318268448454",
+      "NormalMap": "rbxassetid://86797386473408",
+      "RoughnessMap": "rbxassetid://100135712032856"
      }
     }
    ]

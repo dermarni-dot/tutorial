@@ -152,7 +152,10 @@ function Poser.AttachProps(model, pose, level)
 		return
 	end
 	local folder = propFolder(model)
-	local sep = ut.Size.X + (ua and ua.Size.X or 1) -- distance between the hands along the body's X axis
+	-- (v17) the torso's own width (BodyCoreSize: its mesh box includes the shoulder caps over the arms)
+	local utc = ut:GetAttribute("BodyCoreSize")
+	local utw = typeof(utc) == "Vector3" and utc.X or ut.Size.X
+	local sep = utw + (ua and ua.Size.X or 1) -- distance between the hands along the body's X axis
 	local plateColors = { Color3.fromRGB(40, 40, 44), Color3.fromRGB(40, 40, 44), Color3.fromRGB(30, 60, 160), Color3.fromRGB(190, 30, 35) }
 	local plateColor = plateColors[math.clamp(level, 1, 4)]
 	if pose == "bench" then
