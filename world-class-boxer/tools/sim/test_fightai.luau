@@ -925,12 +925,15 @@ do
 	end)
 	check("balance: stoppages happen, but not every fight", ko >= 0.1 and ko <= 0.95, ko)
 	check("balance: fights last", rounds >= 2.5, rounds)
-	-- the harder AI's bands (FightAI's work rate, its defence and its punch choice against the engine's health and
-	-- knockdown rules; measured over 48 fights a cell when they were set: equal level 60, mixed styles, traits on -
-	-- about 4.3 rounds, 75-90% stoppages, 33-38 punches a minute each, 30% landed, 2.5 damage a landed punch;
-	-- 5cff75c, before the work-rate floors, read 83% / 4.1 rounds / 31 a minute / 31%). A busier AI that lands
-	-- more and harder ends its fights in a round or two: these hold it to fights that go the rounds
-	check("bands: equal men go the rounds (average past 3.5)", rounds >= 3.5, rounds)
+	-- the busy AI's bands (FightAI's work rate, its defence and its punch choice against the engine's damage, health,
+	-- concussion and knockdown rules - Config.Damage / KO / Concussion). Measured when set (tools/sim/balance.luau and
+	-- 48 fights a cell; equal level 60, mixed styles, traits on): about 43 punches a minute each, 32% landed, 5.0 of 6
+	-- rounds, ~52% stoppages, 1.7 damage a landed punch. Before the rebalance (41c40ca) the AI was held to ~36 a minute
+	-- and still read 82% stoppages / 3.9 rounds (82601e5: 33 a minute, 75%, 4.35 rounds). The sim's noise is about +-8%
+	-- on 24 fights, so the bands are the target with that margin: busy (36-52 a minute), 25-40% landed, fights that go
+	-- deep (4.3+ rounds on average) and a real share of them going to the cards (stoppages 25-75%)
+	check("bands: equal men go the rounds (average past 4.3)", rounds >= 4.3, rounds)
+	check("bands: and a real share go to the cards (stoppages 25-75%)", ko >= 0.25 and ko <= 0.75, ko)
 	local th, la, secs = 0, 0, 0
 	for i = 1, (QUICK and 6 or 12) do
 		local r = S.Fight({ red = { style = STYLES[(i % 5) + 1], level = 60 }, blue = { style = STYLES[((i + 2) % 5) + 1], level = 60 }, rounds = 6, seed = i * 7919 + 13 })
@@ -939,8 +942,8 @@ do
 		secs += r.seconds
 	end
 	local ppm, acc = th / math.max(1, secs) * 30, la / math.max(1, th)
-	check("bands: an AI throws a boxer's work rate (24-50 a minute)", ppm >= 24 and ppm <= 50, ppm)
-	check("bands: and lands a realistic share (22-40%)", acc >= 0.22 and acc <= 0.4, acc)
+	check("bands: an AI throws a busy boxer's work rate (36-52 a minute)", ppm >= 36 and ppm <= 52, ppm)
+	check("bands: and lands a realistic share (25-40%)", acc >= 0.25 and acc <= 0.4, acc)
 end
 do
 	-- the scripted players: a low-level AI is beatable, a high-level one a puzzle a one-trick player can't solve
@@ -956,6 +959,17 @@ do
 	check("balance: low-level AI is beatable (a thinking player wins some)", smart40 >= 0.1, smart40)
 	check("balance: high-level AI is a puzzle (a one-punch spammer rarely wins)", spam80 <= 0.2, spam80)
 	check("balance: thinking beats spamming against a good AI", smart80 >= spam80, smart80 .. " vs " .. spam80)
+	-- the rebalance's two ends (measured on 48 a cell when set: a novice beat the level-20 AI ~42%, the pressure bot the
+	-- level-60 AI ~48%, 82601e5 54%): a beginner can beat a debut-level AI, and walking a good AI down is no longer the
+	-- way to beat it (it pivots, steps back and counters, fires in the gaps, keeps its guard up and smothers)
+	local novice20 = rate(N, function(i)
+		return { red = { bot = "novice", style = "BoxerPuncher", level = 20 }, blue = { style = STYLES[(i % 5) + 1], level = 20 }, rounds = 6 }
+	end)
+	local pressure60 = rate(N, function(i)
+		return { red = { bot = "pressure", style = "BoxerPuncher", level = 60 }, blue = { style = STYLES[(i % 5) + 1], level = 60 }, rounds = 6 }
+	end)
+	check("balance: a debut-level AI is beatable by a beginner (a novice wins some)", novice20 >= 0.2, novice20)
+	check("balance: pressure alone does not beat a good AI most of the time", pressure60 <= 0.65, pressure60)
 	-- each trait takes something off the type it resists, but never makes it hopeless for a player who adapts
 	local pairsT = { { "IronChin", "power" }, { "BodyArmor", "body" }, { "Slick", "onetwo" }, { "CounterSpecialist", "volume" }, { "PressureProof", "pressure" } }
 	for _, tp in ipairs(pairsT) do

@@ -2082,6 +2082,11 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	chance *= 1 - DEPTH.damageHit * math.max(0, DEPTH.damageAt - F.health) / DEPTH.damageAt
 	vision = math.min(vision, 1 - DEPTH.visionHit * math.max(F.dmg.leftEye, F.dmg.rightEye))
 	chance *= O.frame.target -- [FrameTraits] the bigger man is the bigger target
+	-- the AI's tier (Config.FightAI.tiers[].aim): a debut opponent's punches are wilder
+	local aiTier = F.ai and F.ai.tier
+	if type(aiTier) == "table" and type(aiTier.aim) == "number" then
+		chance *= aiTier.aim
+	end
 	chance = math.clamp(chance * vision, 0.15, 0.95)
 	-- clean = how cleanly it landed (feeds the knockdown odds); 0.5 when it comes through a guard
 	local clean = 0.5
@@ -2415,7 +2420,11 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 end
 
 function Fight:Miss(F, O, ptype, why)
-	F.stamina = math.max(0, F.stamina - 1)
+	-- a whiffed power shot (not one merely short) costs Config.Damage.whiff of its stamina on top: the wild hooks of a
+	-- man walking in throwing are what empty his tank
+	local P = Config.Punches[ptype]
+	local whiff = (why ~= "short" and P and P.kind ~= "straight") and P.stam * (DAMAGE.whiff or 0) or 0
+	F.stamina = math.max(0, F.stamina - 1 - whiff)
 	if why == "miss" and O.data.stats.Countering > 55 then
 		O.counterUntil = self:Now() + 0.45
 	end

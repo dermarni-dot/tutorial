@@ -1111,6 +1111,34 @@ function FightAI:Think(now)
 		return
 	end
 	local clinchRange = engine.ClinchRange and engine:ClinchRange(F) or SPACING.clinch * rk
+	-- hurt and eating a flurry: a boxer who knows his trade does not stand there (the referee stops a man who takes
+	-- it without answering - FightEngine.CheckStoppage): he grabs, he shells up, or he lets one go back
+	if self.mode == "survive" and engine.Now then
+		local n = 0
+		for _, t in ipairs(F.recentHits or {}) do
+			if now - t <= 3 then
+				n += 1
+			end
+		end
+		if n >= 3 then
+			local k = 0.35 + 0.5 * self.skill
+			local r = self.rng:NextNumber()
+			if dist < clinchRange and engine:CanClinch(F) and r < k * 0.6 then
+				engine:Clinch(F)
+				self:Note(now, "under fire: holds")
+				return
+			elseif r < k and self:Fits("jab", dist) and F.stamina >= 6 then
+				self:Throw(self.rng:NextNumber() < 0.6 and "jab" or (self:Fits("leadhook", dist) and "leadhook" or "cross"), false)
+				self:Note(now, "under fire: fires back")
+				return
+			elseif r < k + 0.3 then
+				engine:SetBlock(F, true)
+				self.blockUntil = now + 1.0
+				self:Note(now, "under fire: shells up")
+				return
+			end
+		end
+	end
 	if self.mode == "survive" or self.mode == "reset" then
 		local hold = (self.mode == "survive" and (tier >= 1 and 0.6 or 0.35) or 0.12) * (0.7 + 0.3 * self.tactics.smother)
 		-- (and a boxer who knows his trade ties up to kill his momentum when it is all his)
@@ -1342,7 +1370,7 @@ function FightAI:AnswerPressure(now, dist, jab, clinchRange)
 	if self.mode == "finish" or self.mode == "gamble" or engine.tutorial ~= nil or not self:Pressed(dist, jab) then
 		return false
 	end
-	local k = (0.15 + 0.6 * self.skill) * math.min(1.25, self.tier.read)
+	local k = (0.12 + 0.75 * self.skill) * math.min(1.35, self.tier.read)
 	local r = self.rng:NextNumber()
 	-- pinned on the ropes: turn him (the pivot) before anything else
 	local myRope = engine.RopeDist and engine:RopeDist(F) or 99
@@ -1412,7 +1440,7 @@ function FightAI:HandsUp(now, dist)
 	local k = (0.1 + 0.3 * self.skill) * (0.75 + self.arch.block) * (0.85 + 0.15 * self.tier.read) * (engine.aiDefense or 1)
 	-- walked down, the hands stay up (the engine's guard costs little until it is a held shell: Config.FightDepth.shell)
 	if self:Pressed(dist, engine:PunchRange(F, "jab")) then
-		k *= 1.8
+		k = math.max(k * 1.8, (0.2 + 0.7 * self.skill) * math.min(1.3, self.tier.read) * (engine.aiDefense or 1))
 	end
 	if self.rng:NextNumber() < k then
 		engine:SetBlock(F, true)
@@ -1454,6 +1482,10 @@ function FightAI:TryFeint(now, dist)
 	local rate = (0.002 + 0.022 * self.skill) * styleK * (self.mode == "bait" and 1.5 or 1) * (0.7 + 0.3 * self.tier.read)
 	-- he blocks the moment it throws: feints work on him
 	rate *= 0.7 + self.read:ReactBlock()
+	-- and a man who keeps making its punches miss (a slick counter-puncher) is drawn with the feint, not the punch: it
+	-- shows him the jab, his defence goes, his counter is gone and its real one goes in
+	local thrown = F.totals and F.totals.thrown or 0
+	rate *= 1 + 2.5 * math.min(0.4, (self.obs.slips or 0) / math.max(15, thrown)) * (0.5 + 0.5 * self.skill)
 	if F.stamina < F.maxStam * 0.3 or self.rng:NextNumber() > rate then
 		return false
 	end

@@ -24,12 +24,13 @@ do
 	end
 end
 local MODE, N = args[1] or "pace", tonumber(args[2]) or 48
+local SEED0 = tonumber(process.env.SEED0 or "") or 0
 local STYLES = { "OutBoxer", "Swarmer", "Slugger", "BoxerPuncher", "CounterPuncher" }
 local function run(n, spec, seed0)
 	local st = { w = 0, ko = 0, rounds = 0, secs = 0, th = 0, la = 0, kd = 0, dmg = 0, early = 0, r1kd = 0 }
 	for i = 1, n do
 		local sp = spec(i)
-		sp.seed = (seed0 or 0) + i * 7919 + 13
+		sp.seed = (seed0 or SEED0) + i * 7919 + 13
 		local r = S.Fight(sp)
 		st.w += r.winner == "red" and 1 or (r.winner == "draw" and 0.5 or 0)
 		if r.method == "KO" or r.method == "TKO" or r.method == "RTD" then
@@ -58,7 +59,7 @@ if MODE == "pace" then
 	print(string.format("AIvAI L60 B-P mirror    %s", fmt(st, N)))
 elseif MODE == "bots" then
 	local lv = tonumber(args[3])
-	local bots = { "smart", "volume", "pressure", "counter", "spam", "novice" }
+	local bots = args[4] and string.split(args[4], ",") or { "smart", "volume", "pressure", "counter", "spam", "novice" }
 	for _, lvl in ipairs(lv and { lv } or { 20, 40, 60, 80 }) do
 		local line = string.format("L%2d ", lvl)
 		for _, bot in ipairs(bots) do
@@ -90,7 +91,11 @@ if MODE == "diag" then
 		agg.bkd += r.kd.red or 0; agg.akd += r.kd.blue or 0
 		agg.w += r.winner == "red" and 1 or 0; agg.rounds += r.round; agg.secs += r.seconds
 		agg.blockT += r.O.blockTime or 0
-		local m = (r.winner == "red" and "bot " or "ai ") .. tostring(r.method)
+		for _, kd in ipairs(r.fight.knockdowns) do
+			local key = kd.who .. ":" .. kd.severity .. "/" .. tostring(kd.cause) .. "/r" .. kd.round
+			meth[key] = (meth[key] or 0) + 1
+		end
+		local m = (r.winner == "red" and "bot " or "ai ") .. tostring(r.fight.reason or r.method)
 		meth[m] = (meth[m] or 0) + 1
 	end
 	local mins = agg.secs / 60
