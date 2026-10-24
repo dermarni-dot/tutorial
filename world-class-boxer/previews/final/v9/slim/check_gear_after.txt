@@ -1,0 +1,30 @@
+T1 band over seat  worst -0.015 (0 bins)
+T1 band over LT    worst -0.015 (0 bins)
+T1 band over UT    worst -0.021 (0 bins)
+T1 swing   -25: seat over LT+thighs worst +0.001 (0 bins)   leg over thigh worst -0.016
+T1 swing    +0: seat over LT+thighs worst +0.001 (0 bins)   leg over thigh worst -0.011
+T1 swing   +30: seat over LT+thighs worst +0.001 (0 bins)   leg over thigh worst -0.002
+T2 band over seat  worst -0.019 (0 bins)
+T2 band over LT    worst -0.017 (0 bins)
+T2 band over UT    worst -0.028 (0 bins)
+T2 swing   -25: seat over LT+thighs worst +0.001 (0 bins)   leg over thigh worst -0.004
+T2 swing    +0: seat over LT+thighs worst +0.001 (0 bins)   leg over thigh worst -0.009
+T2 swing   +30: seat over LT+thighs worst +0.001 (0 bins)   leg over thigh worst -0.009
+T3 band over seat  worst -0.017 (0 bins)
+T3 band over LT    worst -0.018 (0 bins)
+T3 band over UT    worst -0.030 (0 bins)
+T3 swing   -25: seat over LT+thighs worst -0.002 (0 bins)   leg over thigh worst -0.016
+T3 swing    +0: seat over LT+thighs worst -0.002 (0 bins)   leg over thigh worst -0.017
+T3 swing   +30: seat over LT+thighs worst -0.000 (0 bins)   leg over thigh worst -0.020
+T4 band over seat  worst -0.016 (0 bins)
+T4 band over LT    worst -0.020 (0 bins)
+T4 band over UT    worst -0.035 (0 bins)
+T4 swing   -25: seat over LT+thighs worst -0.003 (0 bins)   leg over thigh worst -0.021
+T4 swing    +0: seat over LT+thighs worst -0.003 (0 bins)   leg over thigh worst -0.019
+T4 swing   +30: seat over LT+thighs worst +0.007 (1 bins)   leg over thigh worst -0.021
+T5 band over seat  worst -0.014 (0 bins)
+T5 band over LT    worst -0.021 (0 bins)
+T5 band over UT    worst -0.042 (0 bins)
+T5 swing   -25: seat over LT+thighs worst -0.001 (0 bins)   leg over thigh worst -0.018
+T5 swing    +0: seat over LT+thighs worst -0.001 (0 bins)   leg over thigh worst -0.023
+T5 swing   +30: seat over LT+thighs worst +0.018 (3 bins)   leg over thigh worst -0.020

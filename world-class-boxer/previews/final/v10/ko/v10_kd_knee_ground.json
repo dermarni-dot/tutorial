@@ -1,0 +1,48 @@
+{
+ "id": "kd_knee",
+ "kdAt": 0.56,
+ "frames": [
+  {
+   "dt": 0.0,
+   "t": 0.5333,
+   "lowest": 0.039,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.565,
+   "headY": 5.452
+  },
+  {
+   "dt": 0.2,
+   "t": 0.7333,
+   "lowest": 0.031,
+   "lowestPart": "RightFoot",
+   "pelvisY": 2.223,
+   "headY": 4.955
+  },
+  {
+   "dt": 0.5,
+   "t": 1.0667,
+   "lowest": 0.087,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.287,
+   "headY": 4.882
+  },
+  {
+   "dt": 1.0,
+   "t": 1.5333,
+   "lowest": 0.232,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.408,
+   "headY": 4.238
+  },
+  {
+   "dt": 2.0,
+   "t": 2.5333,
+   "lowest": 0.207,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 1.864,
+   "headY": 2.874
+  }
+ ],
+ "slideAfter": 0.728,
+ "slideMaxStep": 0.054
+}

@@ -1,0 +1,48 @@
+{
+ "id": "ko_hook_face",
+ "kdAt": 0.56,
+ "frames": [
+  {
+   "dt": 0.0,
+   "t": 0.5333,
+   "lowest": 0.039,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.565,
+   "headY": 5.452
+  },
+  {
+   "dt": 0.2,
+   "t": 0.7333,
+   "lowest": 0.085,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.833,
+   "headY": 5.644
+  },
+  {
+   "dt": 0.5,
+   "t": 1.0667,
+   "lowest": 0.205,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.872,
+   "headY": 5.527
+  },
+  {
+   "dt": 1.0,
+   "t": 1.5333,
+   "lowest": 0.128,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.368,
+   "headY": 4.412
+  },
+  {
+   "dt": 2.0,
+   "t": 2.5333,
+   "lowest": 0.059,
+   "lowestPart": "LeftUpperLeg",
+   "pelvisY": 0.675,
+   "headY": 0.817
+  }
+ ],
+ "slideAfter": 0.003,
+ "slideMaxStep": 0.001
+}

@@ -1,0 +1,3817 @@
+-- Training: the advanced training system.
+-- Condition (energy, hydration, nutrition, sleep, fatigue), overtraining & injuries,
+-- days and sleep, meals, gym equipment levels/condition/repairs, gear wear,
+-- coaches, body evolution (21 sub-muscles -> 7 groups, soreness, supercompensation,
+-- detraining, vascularity, pump, body fat, weight, physique), weigh-ins, fight-night
+-- modifiers from the build, persistent face damage / head trauma, and save migration.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Catalog = require(Shared:WaitForChild("Catalog"))
+local Looks = require(Shared:WaitForChild("Looks"))
+local DrillScore = require(Shared:WaitForChild("DrillScore"))
+local TP = require(Shared:WaitForChild("TrainingPlan"))
+local FrameTraits = require(Shared:WaitForChild("FrameTraits")) -- [FrameTraits] the frame's stat growth (GainMultiplier)
+-- the AI boxers' ring traits and their scouting (fight system; optional: the coach tips read them if present)
+local Traits
+do
+	local m = Shared:FindFirstChild("Traits")
+	local ok, mod = false, nil
+	if m then
+		ok, mod = pcall(require, m)
+	end
+	Traits = (ok and type(mod) == "table" and type(mod.ForBoxer) == "function") and mod or nil
+end
+
+local Training = {}
+local rng = Random.new()
+local MG = Config.MuscleGrowth
+local FD = Config.FaceDamage
+
+local function clamp(v, a, b)
+	return math.clamp(v, a, b)
+end
+
+local function r2(n)
+	return math.floor(n * 100 + 0.5) / 100
+end
+
+-- a finite number or the default: NaN / inf / strings from a corrupt save never reach the math
+-- (one NaN in profile.body would spread through SyncGroups, weight and every fight)
+local function finite(v, default)
+	v = tonumber(v)
+	if v == nil or v ~= v or v == math.huge or v == -math.huge then
+		return default
+	end
+	return v
+end
+
+-- share of each sub-muscle in its group (group = sum(share * part))
+local PART_SHARE = {}
+for _, p in ipairs(Config.MuscleParts) do
+	PART_SHARE[p.id] = p.share
+end
+
+-- the body type (bone structure) sets the muscle cap: 100 * potential for every part and group
+function Training.Frame(profile)
+	local app = profile.appearance
+	local id = type(app) == "table" and type(app.body) == "table" and app.body.frame or nil
+	return Config.FindById(Config.BodyTypes, id) or Config.BodyTypes[2]
+end
+
+function Training.MuscleCap(profile)
+	return 100 * Training.Frame(profile).potential
+end
+
+-- lazily created C-only tables (old saves and fresh careers may not have them yet)
+local function conditionTable(profile, key)
+	local c = profile.condition
+	if type(c[key]) ~= "table" then
+		c[key] = {}
+	end
+	return c[key]
+end
+
+local function muscleLog(profile)
+	if type(profile.muscleLog) ~= "table" then
+		profile.muscleLog = {}
+	end
+	return profile.muscleLog
+end
+
+------------------------------------------------------------------------
+-- New-career defaults
+------------------------------------------------------------------------
+-- Everyone starts lean: each sub-muscle sits near a low group seed with mild genetic asymmetry
+-- (+-15%) and one naturally gifted part, so no two new boxers are built exactly alike.
+function Training.NewBody(frameId)
+	local frame = Config.FindById(Config.BodyTypes, frameId) or Config.BodyTypes[2]
+	local body = {}
+	for _, k in ipairs(Config.MuscleKeys) do
+		local seed = (6 + rng:NextNumber(0, 5)) * frame.potential
+		for _, p in ipairs(Config.MuscleGroupParts[k]) do
+			body[p.id] = math.floor(seed * (1 + rng:NextNumber(-0.15, 0.15)) * 10) / 10
+		end
+	end
+	local gifted = Config.MuscleParts[rng:NextInteger(1, #Config.MuscleParts)]
+	body[gifted.id] = math.floor(body[gifted.id] * 12.5) / 10
+	body.fat = 14 + rng:NextNumber(-1, 1.5)
+	body.vasc = 0
+	Config.SyncGroups(body)
+	return body
+end
+
+-- Per-part detraining floor: what the boxer started with, so neglect can never leave a muscle
+-- smaller than a brand-new boxer's (CreateProfile records the real seed with fromBody = true).
+-- Saves from before it get 6 * potential, the low end of NewBody's seed. C only, never sent.
+function Training.MuscleBase(profile, fromBody)
+	local base = profile.muscleBase
+	if type(base) ~= "table" then
+		base = {}
+		profile.muscleBase = base
+	end
+	local def = 6 * Training.Frame(profile).potential
+	local cap = Training.MuscleCap(profile)
+	local body = type(profile.body) == "table" and profile.body or {}
+	for k in pairs(base) do
+		if not PART_SHARE[k] then
+			base[k] = nil
+		end
+	end
+	for _, p in ipairs(Config.MuscleParts) do
+		local v = finite(base[p.id], nil)
+		if v == nil then
+			v = fromBody and finite(body[p.id], def) or def
+		end
+		base[p.id] = clamp(v, 0, cap)
+	end
+	return base
+end
+
+function Training.NewCondition()
+	-- sore = { [group] = 0..1 }, pending = { [partId] = growth due tonight }, trauma 0..100,
+	-- face = persistent dmg table or nil (Config.FaceDamage)
+	return {
+		energy = 100, hydration = 80, nutrition = 70, fatigue = 0, sleepQ = 0.8, injuries = {}, buffs = {}, water = 0, flexible = false,
+		sore = {}, pending = {}, trauma = 0,
+	}
+end
+
+function Training.NewGym()
+	local gym = { levels = {}, cond = {} }
+	for id, st in pairs(Catalog.Stations) do
+		gym.levels[id] = 1
+		gym.cond[id] = (id == "heavybag" or id == "speedbag" or id == "doubleend") and 60 or 80
+		if st.levels[1].cost > 0 then
+			gym.levels[id] = 0
+		end
+	end
+	return gym
+end
+
+function Training.NewGear()
+	local gear = {
+		owned = { gloves = { Worn = true }, shoes = { Sneakers = true }, wraps = { OldWraps = true }, mouthguard = { BoilBite = true }, robe = { None = true } },
+		equipped = { gloves = "Worn", shoes = "Sneakers", wraps = "OldWraps", mouthguard = "BoilBite", robe = "None" },
+		cond = {},
+	}
+	gear.cond["gloves:Worn"] = Catalog.Find(Catalog.Gloves, "Worn").startCondition
+	gear.cond["shoes:Sneakers"] = Catalog.Find(Catalog.Shoes, "Sneakers").startCondition
+	gear.cond["wraps:OldWraps"] = Catalog.Find(Catalog.Wraps, "OldWraps").startCondition
+	return gear
+end
+
+function Training.NewCoaches()
+	local c = {}
+	for _, spec in ipairs(Catalog.CoachSpecialties) do
+		c[spec.id] = 0
+	end
+	return c
+end
+
+------------------------------------------------------------------------
+-- Lookups
+------------------------------------------------------------------------
+function Training.Activity(id)
+	-- strings only: FindById matches the first entry without a name for a nil id
+	if type(id) ~= "string" then
+		return nil
+	end
+	return Config.FindById(Config.Activities, id)
+end
+
+function Training.StationLevel(profile, stationId)
+	local st = Catalog.Stations[stationId]
+	if not st then
+		return 1, nil
+	end
+	local lv = math.max(1, profile.gym.levels[stationId] or 1)
+	return lv, st.levels[math.min(lv, #st.levels)]
+end
+
+function Training.GearItem(profile, kind)
+	local id = profile.gear.equipped[kind]
+	return Catalog.Find(Catalog.GearList(kind) or {}, id), id
+end
+
+function Training.GearCondition(profile, kind)
+	local id = profile.gear.equipped[kind]
+	if kind == "mouthguard" or kind == "robe" then
+		return 100
+	end
+	return profile.gear.cond[kind .. ":" .. tostring(id)] or 100
+end
+
+function Training.Owned(profile, id)
+	return type(profile.owned) == "table" and profile.owned[id] == true
+end
+
+-- extra share from the Home Gym add-on (Catalog.Shop HomeGym.gains): stat gains AND muscle growth
+local function homeGymBonus(profile)
+	if Training.Owned(profile, "HomeGym") then
+		local item = Catalog.Find(Catalog.Shop, "HomeGym")
+		return item and tonumber(item.gains) or 0
+	end
+	return 0
+end
+
+-- the derived gym facility tier (Config.GymTiers): index, def. Never saved.
+function Training.GymTier(profile)
+	local ok, idx, def = pcall(Catalog.GymTier, profile.gym and profile.gym.levels, profile.owned, profile.tier)
+	if ok and type(def) == "table" then
+		return idx, def
+	end
+	return 1, Config.GymTiers[1]
+end
+
+-- the profile's injury list (empty for a profile with no condition yet: a player who has not made a boxer)
+local function injuryList(profile)
+	local c = type(profile) == "table" and type(profile.condition) == "table" and profile.condition or nil
+	return c and type(c.injuries) == "table" and c.injuries or {}
+end
+
+local function activeInjury(profile, id)
+	for _, inj in ipairs(injuryList(profile)) do
+		if inj.id == id and (tonumber(inj.days) or 0) > 0 then
+			return inj
+		end
+	end
+	return nil
+end
+
+-- is an injury of this id running? (fight hand-off: pData.concussed / pData.injuryCut)
+function Training.HasInjury(profile, id)
+	return activeInjury(profile, id) ~= nil
+end
+
+-- adds an injury (or extends a running one); sev 0..1 picks the length inside the def's range.
+-- healed = days it has already been healing (an injury dated in the past; x1.5 with the Physio like
+-- Training.Heal). Returns the injury name, whether it is new and the days left (0 = already over).
+local function addInjury(profile, id, sev, healed)
+	local def = Config.Injuries[id]
+	if not def then
+		return nil, false, 0
+	end
+	local c = profile.condition
+	if type(c.injuries) ~= "table" then
+		c.injuries = {}
+	end
+	local days = math.floor(def.days[1] + (def.days[2] - def.days[1]) * clamp(finite(sev, 0.5), 0, 1) + 0.5)
+	healed = math.max(0, finite(healed, 0)) * (Training.Owned(profile, "Physio") and 1.5 or 1)
+	days = math.max(0, days - healed)
+	if days <= 0 then
+		return def.name, false, 0
+	end
+	local cur = activeInjury(profile, id)
+	if cur then
+		cur.days = math.max(cur.days, days)
+		return def.name, false, cur.days
+	end
+	table.insert(c.injuries, { id = id, days = days })
+	return def.name, true, days
+end
+
+function Training.ActiveInjuries(profile)
+	local list = {}
+	for _, inj in ipairs(injuryList(profile)) do
+		if inj.days > 0 then
+			table.insert(list, inj)
+		end
+	end
+	return list
+end
+
+function Training.BlockedBy(profile, actId)
+	for _, inj in ipairs(Training.ActiveInjuries(profile)) do
+		local def = Config.Injuries[inj.id]
+		if def and table.find(def.blocks, actId) then
+			return def.name
+		end
+	end
+	return nil
+end
+
+------------------------------------------------------------------------
+-- Body: weight & development
+------------------------------------------------------------------------
+function Training.MuscleTotal(profile)
+	local t = 0
+	for _, k in ipairs(Config.MuscleKeys) do
+		t += profile.body[k] or 0
+	end
+	return t
+end
+
+function Training.Weight(profile)
+	local b = profile.body
+	return profile.physical.baseWeight + Training.MuscleTotal(profile) * 0.03 + ((b.fat or 14) - 14) * 1.1 + (profile.condition.water or 0)
+end
+
+function Training.SetBaseWeight(profile, targetWeight)
+	profile.physical.baseWeight = targetWeight - Training.MuscleTotal(profile) * 0.03 - ((profile.body.fat or 14) - 14) * 1.1
+end
+
+-- The one source of truth for a player's physique (Hub badge AND the rendered body, via
+-- Career.LookOpts opts.physique): a pinned appearance.body.physique wins, otherwise the build is
+-- classified by the shared Config rule. -> { id, name, desc, pinned }
+function Training.PhysiqueInfo(profile)
+	local app = type(profile.appearance) == "table" and profile.appearance or {}
+	local appBody = type(app.body) == "table" and app.body or {}
+	local pin = appBody.physique
+	local def = type(pin) == "string" and pin ~= "Auto" and Config.FindById(Config.Physiques, pin) or nil
+	local pinned = def ~= nil
+	if not def then
+		local champion = false
+		for _, held in pairs(type(profile.belts) == "table" and profile.belts or {}) do
+			if held == true then
+				champion = true
+			end
+		end
+		-- the last classified id gives the rule its hysteresis (a 0.1% fat change or one session must
+		-- not flip the badge and the rendered body back and forth at a threshold)
+		local c = type(profile.condition) == "table" and profile.condition or nil
+		local prev = c and type(c.physiqueId) == "string" and c.physiqueId or nil
+		local ok, id = pcall(Config.ClassifyPhysique, profile.body, {
+			frame = Training.Frame(profile).id, tier = profile.tier, overall = profile.overall, champion = champion,
+			weightClass = type(profile.physical) == "table" and profile.physical.weightClass or nil, prev = prev,
+		})
+		def = ok and Config.FindById(Config.Physiques, id) or nil
+		if def and c then
+			c.physiqueId = def.id
+		end
+		def = def or Config.FindById(Config.Physiques, prev or "Balanced") or Config.FindById(Config.Physiques, "Balanced")
+	end
+	return { id = def.id, name = def.name, desc = def.desc, pinned = pinned }
+end
+
+-- display name (Hub: P.physique)
+function Training.Physique(profile)
+	return Training.PhysiqueInfo(profile).name
+end
+
+------------------------------------------------------------------------
+-- Gains
+------------------------------------------------------------------------
+function Training.CoachBoost(profile, statKey)
+	local boost = 0
+	for _, spec in ipairs(Catalog.CoachSpecialties) do
+		local tier = profile.coaches[spec.id] or 0
+		if tier > 0 and table.find(spec.stats, statKey) then
+			boost += Catalog.CoachTiers[tier].boost
+		end
+	end
+	return boost
+end
+
+function Training.ConditionMultiplier(profile)
+	local c = profile.condition
+	local m = 1
+	if c.hydration < 15 then
+		m *= 0.6
+	elseif c.hydration < 30 then
+		m *= 0.8
+	end
+	if c.nutrition < 15 then
+		m *= 0.6
+	elseif c.nutrition < 30 then
+		m *= 0.8
+	end
+	-- (overtraining still bites past 60; a day's third session is not punished)
+	if c.fatigue > 80 then
+		m *= 0.5
+	elseif c.fatigue > 60 then
+		m *= 0.75
+	elseif c.fatigue > 45 then
+		m *= 0.9
+	end
+	if c.energy < 25 then
+		m *= 0.8
+	end
+	m *= 0.85 + 0.2 * (c.sleepQ or 0.8)
+	return m
+end
+
+function Training.GainMultiplier(profile, statKey, act)
+	local m = 1 + Training.CoachBoost(profile, statKey)
+	if Training.Owned(profile, "SmartSystem") then
+		m += 0.1
+	end
+	if Training.Owned(profile, "EliteCamp") then
+		m += 0.1
+	end
+	if Training.Owned(profile, "MountainCamp") and (statKey == "Stamina" or statKey == "Endurance") then
+		m += 0.1
+	end
+	-- Home Gym: extra reps at home add up (next to SmartSystem / EliteCamp)
+	m += homeGymBonus(profile)
+	local _, lv = Training.StationLevel(profile, act.station)
+	m *= lv and lv.mult or 1
+	-- [FrameTraits] the frame's nature: a Lean's hands and feet come quicker, a heavy frame's power and chin
+	m *= FrameTraits.GrowthMul(Training.Frame(profile).id, statKey)
+	if (profile.gym.cond[act.station] or 100) < 30 then
+		m *= 0.8
+	end
+	local spec = Config.FindById(Config.Specialties, profile.specialty)
+	if spec and spec.stats[statKey] then
+		m *= 1.25
+	end
+	local age = profile.identity.age
+	if age < 24 then
+		m *= 1.2
+	elseif age >= 34 then
+		m *= 0.5
+	elseif age >= 30 then
+		m *= 0.75
+	end
+	m *= 0.8 + profile.mental.Discipline / 250
+	m *= 1 + (profile.condition.buffs.gains or 0)
+	return m
+end
+
+-- Muscle growth multiplier for a session (stat gains use GainMultiplier): better equipment loads
+-- the muscle better (station level), a strength coach programs the lifting (half of the Power
+-- coach boost), young bodies build faster, the facility tier (recovery, sports science) and the
+-- Home Gym add a little. Worn-out equipment costs some.
+function Training.MuscleMultiplier(profile, act)
+	local m = 1
+	local _, lv = Training.StationLevel(profile, act.station)
+	m *= lv and lv.mult or 1
+	if act.station and (profile.gym.cond[act.station] or 100) < 30 then
+		m *= 0.85
+	end
+	m *= 1 + 0.5 * Training.CoachBoost(profile, "Power")
+	local age = tonumber(profile.identity.age) or 22
+	if age < 24 then
+		m *= 1.15
+	elseif age >= 34 then
+		m *= 0.6
+	elseif age >= 30 then
+		m *= 0.8
+	end
+	local _, tierDef = Training.GymTier(profile)
+	m *= tonumber(tierDef.growth) or 1
+	m *= 1 + homeGymBonus(profile)
+	return m
+end
+
+-- { [partId] = weight } an activity trains: act.parts (Config.ExerciseTargets), else each
+-- act.muscle group weight spread evenly over that group's parts (same group pace).
+function Training.Targets(act)
+	if type(act.parts) == "table" and next(act.parts) ~= nil then
+		return act.parts
+	end
+	local t = {}
+	for grp, w in pairs(act.muscle or {}) do
+		local parts = Config.MuscleGroupParts[grp]
+		if parts then
+			for _, p in ipairs(parts) do
+				t[p.id] = (t[p.id] or 0) + w
+			end
+		elseif PART_SHARE[grp] then
+			t[grp] = (t[grp] or 0) + w
+		end
+	end
+	return t
+end
+
+-- Early in a career the body bounces back: a low-tier boxer's sessions cost less energy and fatigue and
+-- carry less injury risk, so a new player can train several times in a row. Tier 1, tier 2, then full.
+local TIER_EASE = { 0.65, 0.82 }
+local function tierEase(profile)
+	return TIER_EASE[math.floor(finite(profile.tier, 1))] or 1
+end
+Training.TierEase = tierEase
+
+local function injuryRoll(profile, act, extraRisk, riskMul)
+	local c = profile.condition
+	if not act.injuries or #act.injuries == 0 then
+		return nil
+	end
+	local risk = 0
+	if c.fatigue > 50 then
+		risk += (c.fatigue - 50) / 220
+	end
+	if c.hydration < 25 then
+		risk += 0.04
+	end
+	if c.energy < 20 then
+		risk += 0.04
+	end
+	risk += extraRisk or 0
+	if risk <= 0 then
+		return nil
+	end
+	risk *= 1.2 - profile.stats.Recovery / 200
+	risk *= finite(riskMul, 1) * tierEase(profile)
+	if c.flexible then
+		risk *= 0.6
+	end
+	local wraps = Training.GearItem(profile, "wraps")
+	local punching = (act.wear and act.wear.gloves) ~= nil
+	if punching and wraps then
+		risk *= wraps.injury
+		if Training.GearCondition(profile, "gloves") < 30 then
+			risk *= 1.3
+		end
+	end
+	if act.wear and act.wear.shoes and Training.GearCondition(profile, "shoes") < 30 then
+		risk *= 1.3
+	end
+	if rng:NextNumber() >= risk then
+		return nil
+	end
+	local id = act.injuries[rng:NextInteger(1, #act.injuries)]
+	local def = Config.Injuries[id]
+	-- (a low-tier body bounces back: the layoff and the knock to the fatigue shrink with TierEase too,
+	-- never under a day)
+	local ease = tierEase(profile)
+	local days = math.max(1, math.ceil(rng:NextInteger(def.days[1], def.days[2]) * ease))
+	for _, inj in ipairs(c.injuries) do
+		if inj.id == id and inj.days > 0 then
+			inj.days += math.ceil(days / 2)
+			return def.name
+		end
+	end
+	table.insert(c.injuries, { id = id, days = days })
+	c.fatigue = clamp(c.fatigue + 10 * ease, 0, 100)
+	return def.name
+end
+
+function Training.WearGear(profile, kind, amount)
+	local item, id = Training.GearItem(profile, kind)
+	if not item or kind == "mouthguard" or kind == "robe" then
+		return
+	end
+	local key = kind .. ":" .. id
+	local cur = profile.gear.cond[key] or 100
+	profile.gear.cond[key] = clamp(cur - amount / (item.durability or 1), 0, 100)
+end
+
+------------------------------------------------------------------------
+-- Activities
+------------------------------------------------------------------------
+function Training.EnergyCost(profile, act, intensity)
+	local e = act.energy or 0
+	if act.id == "Sparring" then
+		e = ({ Light = 25, Medium = 35, Hard = 45 })[intensity or "Medium"] or 35
+	end
+	if Training.Owned(profile, "Nutritionist") then
+		e *= 0.9
+	end
+	e *= tierEase(profile)
+	-- a grooved drill (mastery 1+) costs a little less
+	if not act.recovery then
+		e *= TP.PerkValues((Training.Mastery(profile, act.id))).energy
+	end
+	return math.floor(e)
+end
+
+-- a day's water cut is bounded (Sleep resets condition.water); below this hydration the sauna is refused
+local MAX_WATER_CUT = -8
+local SAUNA_MIN_HYDRATION = 10
+
+function Training.CanDo(profile, act, intensity)
+	if not act then
+		return false, "Unknown activity"
+	end
+	if profile.retired then
+		return false, "You're retired."
+	end
+	local block = Training.BlockedBy(profile, act.id)
+	if block then
+		return false, "You can't do that with a " .. block .. ". Rest, ice baths and massage help it heal."
+	end
+	if act.requires and not Training.Owned(profile, act.requires) then
+		return false, "You need the " .. act.name .. " (Shop > Elite Equipment)."
+	end
+	if act.station and Catalog.Stations[act.station] and (profile.gym.levels[act.station] or 1) < 1 then
+		return false, "This station isn't unlocked yet."
+	end
+	if act.recovery then
+		if act.price and not (act.station == "massage" and Training.StationLevel(profile, "massage") >= 2) and profile.money < act.price then
+			return false, "A massage costs " .. Config.Money(act.price) .. "."
+		end
+		if (act.recovery.energy or 0) < 0 and profile.condition.energy < -act.recovery.energy then
+			return false, "Too exhausted. Sleep first."
+		end
+		if (act.recovery.water or 0) < 0 then
+			if finite(profile.condition.hydration, 80) <= SAUNA_MIN_HYDRATION then
+				return false, "Too dehydrated for the sauna. Drink water first."
+			end
+			if finite(profile.condition.water, 0) <= MAX_WATER_CUT + 0.05 then
+				return false, "You can't sweat out any more today. Sleep, then cut again tomorrow."
+			end
+		end
+		return true
+	end
+	local cost = Training.EnergyCost(profile, act, intensity)
+	if profile.condition.energy < cost then
+		return false, string.format("Not enough energy (%d needed, %d left). Eat, recover or sleep.", cost, math.floor(profile.condition.energy))
+	end
+	return true
+end
+
+------------------------------------------------------------------------
+-- Muscle growth: per sub-muscle targeting, soreness, supercompensation, pump
+------------------------------------------------------------------------
+local VASC_PER_SESSION = 1.5 -- body.vasc gained per point of act.vasc at quality 1 (diminishing toward 100)
+local PUMP_MAX_PARTS = 6
+
+-- Grows the parts an activity targets (Training.Targets) and re-derives the 7 groups.
+-- quality 0.4..1.5, scale = session share/intensity, condMult = Training.ConditionMultiplier.
+-- Per part: g = base * weight * quality * condMult * muscleBuff * MuscleMultiplier * room * scale
+-- * (1 - sorePenalty * sore[group]); room = 1 - (part + pending) / cap. `immediate` of g lands now,
+-- the rest goes to condition.pending (applied by Sleep). Returns
+-- { parts = {id = g}, groups = {grp = share-weighted g}, total, sore = {grp = value}, pump = {parts, level} | nil,
+--   vasc = gain | nil, soreBefore = max soreness of the trained groups before the session, soreGroup }
+function Training.GrowMuscles(profile, act, quality, scale, condMult)
+	local c = profile.condition
+	local body = profile.body
+	quality = clamp(finite(quality, 1), 0, 1.5)
+	scale = clamp(finite(scale, 1), 0, 2)
+	condMult = finite(condMult, nil) or Training.ConditionMultiplier(profile)
+	local cap = Training.MuscleCap(profile)
+	local muscleBuff = 1 + (type(c.buffs) == "table" and finite(c.buffs.muscle, 0) or 0)
+	local mult = Training.MuscleMultiplier(profile, act)
+	local sore = conditionTable(profile, "sore")
+	local pending = conditionTable(profile, "pending")
+	local log = muscleLog(profile)
+	local day = finite(profile.day, 1)
+	local targets = Training.Targets(act)
+
+	-- share-weighted group load of this session (bench: chest 1.3) drives soreness
+	local groupLoad, soreBefore, soreGroup = {}, 0, nil
+	for id, w in pairs(targets) do
+		local grp = Config.MusclePartGroup[id]
+		if grp and finite(w, 0) > 0 then
+			groupLoad[grp] = (groupLoad[grp] or 0) + PART_SHARE[id] * w
+		end
+	end
+	for grp in pairs(groupLoad) do
+		local s = finite(sore[grp], 0)
+		if s > soreBefore then
+			soreBefore, soreGroup = s, grp
+		end
+	end
+
+	local out = { parts = {}, groups = {}, total = 0, soreBefore = soreBefore, soreGroup = soreGroup }
+	for id, w in pairs(targets) do
+		local grp = Config.MusclePartGroup[id]
+		w = finite(w, 0)
+		if grp and w > 0 then
+			local cur = finite(body[id], Config.PartValue(body, id))
+			local pend = math.max(0, finite(pending[id], 0))
+			local room = clamp(1 - (cur + pend) / cap, 0, 1)
+			local soreMul = 1 - MG.sorePenalty * clamp(finite(sore[grp], 0), 0, 1)
+			local g = MG.base * w * quality * condMult * muscleBuff * mult * room * scale * soreMul
+			if g > 0 then
+				local now = g * MG.immediate
+				body[id] = math.min(cap, cur + now)
+				pending[id] = pend + (g - now)
+				out.parts[id] = g
+				out.groups[grp] = (out.groups[grp] or 0) + PART_SHARE[id] * g
+				out.total += PART_SHARE[id] * g
+			end
+			-- incidental work (a little calf on shadow boxing) does not hold off detraining
+			if w >= 0.25 then
+				log[id] = day
+			end
+		end
+	end
+	-- punching (any gloved work: bag, mitts, pads, sparring) keeps the neck braced against the
+	-- recoil: it holds off neck detraining without growing it (growth stays with Config targets).
+	-- Without this a pure bag-and-weights boxer ended up with a neck thinner than on day one.
+	if type(act.wear) == "table" and finite(act.wear.gloves, 0) > 0 then
+		log.neckSCM = day
+	end
+
+	-- soreness: the harder the session hits a group, the sorer it gets (0..1)
+	out.sore = {}
+	for grp, load in pairs(groupLoad) do
+		sore[grp] = clamp(finite(sore[grp], 0) + load * quality * MG.sorePerWeight * math.min(scale, 1.35), 0, 1)
+		out.sore[grp] = r2(sore[grp])
+	end
+
+	-- vascularity: vein-building lifts (act.vasc) and grip-heavy work (forearms) raise body.vasc
+	local vascW = act.vasc == true and MG.vascGain or finite(act.vasc, 0)
+	if vascW <= 0 and finite(targets.forearms, 0) > 0 then
+		vascW = targets.forearms * 0.25
+	end
+	if vascW > 0 then
+		local v = clamp(finite(body.vasc, 0), 0, 100)
+		local gain = vascW * VASC_PER_SESSION * quality * math.min(scale, 1.2) * (1 - v / 100)
+		body.vasc = clamp(v + gain, 0, 100)
+		out.vasc = gain
+	end
+
+	-- pump: the most heavily worked parts (>= 45% of the top weight), level from the top weight
+	local maxW = 0
+	for id, w in pairs(targets) do
+		if Config.MusclePartGroup[id] then
+			maxW = math.max(maxW, finite(w, 0))
+		end
+	end
+	if maxW > 0 then
+		local list = {}
+		for id, w in pairs(targets) do
+			if Config.MusclePartGroup[id] and finite(w, 0) >= maxW * 0.45 then
+				table.insert(list, id)
+			end
+		end
+		table.sort(list, function(a, b)
+			if targets[a] ~= targets[b] then
+				return targets[a] > targets[b]
+			end
+			return a < b
+		end)
+		while #list > PUMP_MAX_PARTS do
+			table.remove(list)
+		end
+		out.pump = { parts = list, level = r2(clamp(maxW / 2 * quality * math.min(scale, 1.2), 0.15, 1)) }
+	end
+
+	Config.SyncGroups(body)
+	return out
+end
+
+-- Turns condition.pending (supercompensation) into muscle. factor = sleep & food quality.
+-- Returns { [partId] = gain }, share-weighted total.
+local function applyPending(profile, factor)
+	local c = profile.condition
+	local pending = type(c.pending) == "table" and c.pending or nil
+	c.pending = {}
+	local grew, total = {}, 0
+	if not pending then
+		return grew, total
+	end
+	local body, cap = profile.body, Training.MuscleCap(profile)
+	factor = clamp(finite(factor, 1), 0, 1.5)
+	for id, g in pairs(pending) do
+		g = finite(g, 0) * factor
+		if PART_SHARE[id] and g > 0 then
+			local cur = finite(body[id], Config.PartValue(body, id))
+			local new = math.min(cap, cur + g)
+			if new > cur then
+				body[id] = new
+				grew[id] = new - cur
+				total += PART_SHARE[id] * (new - cur)
+			end
+		end
+	end
+	Config.SyncGroups(body)
+	return grew, total
+end
+
+-- names of the parts that grew most, for notes ("Chest (Lower/Mid Pecs), Triceps")
+local function topPartNames(map, n)
+	local ids = {}
+	for id in pairs(map) do
+		table.insert(ids, id)
+	end
+	table.sort(ids, function(a, b)
+		if map[a] ~= map[b] then
+			return map[a] > map[b]
+		end
+		return a < b
+	end)
+	local names = {}
+	for i = 1, math.min(n, #ids) do
+		table.insert(names, Config.MusclePartNames[ids[i]] or ids[i])
+	end
+	return table.concat(names, ", ")
+end
+
+-- Sets the post-workout pump on a character (attributes only; E's BodyFX swells the meshes
+-- client-side and fades it over Config.Pump.duration). Back-to-back sessions stack with
+-- diminishing returns instead of resetting. Safe to call with anything.
+function Training.ApplyPump(character, result)
+	local pump = type(result) == "table" and result.pump or nil
+	if type(pump) ~= "table" or type(pump.parts) ~= "table" or #pump.parts == 0 then
+		return false
+	end
+	local ok, err = pcall(function()
+		if typeof(character) ~= "Instance" or not character:IsA("Model") then
+			return false
+		end
+		local now = workspace:GetServerTimeNow()
+		local level = clamp(finite(pump.level, 0), 0, 1)
+		local prev = clamp(finite(character:GetAttribute("Pump"), 0), 0, 1)
+		local prevAt = finite(character:GetAttribute("PumpAt"), 0)
+		local left = prev * clamp(1 - (now - prevAt) / Config.Pump.duration, 0, 1)
+		local combined = clamp(math.max(level, left) + 0.25 * math.min(level, left), 0, 1)
+		local parts, seen = {}, {}
+		local function add(id)
+			if type(id) == "string" and PART_SHARE[id] and not seen[id] and #parts < 8 then
+				seen[id] = true
+				table.insert(parts, id)
+			end
+		end
+		for _, id in ipairs(pump.parts) do
+			add(id)
+		end
+		local old = character:GetAttribute("PumpParts")
+		if left > 0.05 and type(old) == "string" then
+			for id in string.gmatch(old, "[^,]+") do
+				add(id)
+			end
+		end
+		character:SetAttribute("Pump", math.floor(combined * 20 + 0.5) / 20)
+		character:SetAttribute("PumpParts", table.concat(parts, ","))
+		character:SetAttribute("PumpAt", now)
+		return true
+	end)
+	if not ok then
+		warn("[Boxer] ApplyPump failed:", err)
+	end
+	return ok and err == true
+end
+
+------------------------------------------------------------------------
+-- Training XP and the muscle history (the Muscle Progression screen)
+------------------------------------------------------------------------
+-- XP is a feel-good counter for the session toasts: it never feeds the fight math. Level n needs
+-- XP_LEVEL * n^2 in total, so the early levels come fast and a veteran still sees one now and then.
+local XP_LEVEL = 150
+function Training.XPInfo(xp)
+	xp = math.max(0, math.floor(finite(xp, 0)))
+	local level = math.floor(math.sqrt(xp / XP_LEVEL)) + 1
+	local from = XP_LEVEL * (level - 1) ^ 2
+	local to = XP_LEVEL * level ^ 2
+	return { level = level, xp = xp, into = xp - from, need = to - from }
+end
+
+-- one snapshot of the seven groups per career day (profile.muscleHist, capped, created lazily; an
+-- old save starts logging the day it loads). Career.Summary does not carry it: Main serves it on
+-- request (GetMuscleHistory) when the screen opens.
+local HISTORY_MAX = 90
+local function logMuscleHistory(profile)
+	local body = profile.body
+	if type(body) ~= "table" then
+		return
+	end
+	local hist = profile.muscleHist
+	if type(hist) ~= "table" then
+		hist = {}
+		profile.muscleHist = hist
+	end
+	local day = math.floor(finite(profile.day, 1))
+	local entry = { d = day }
+	for _, g in ipairs(Config.MuscleKeys) do
+		entry[g] = math.floor(finite(body[g], 0) * 10 + 0.5) / 10
+	end
+	local last = hist[#hist]
+	if type(last) == "table" and last.d == day then
+		hist[#hist] = entry
+	else
+		table.insert(hist, entry)
+	end
+	while #hist > HISTORY_MAX do
+		table.remove(hist, 1)
+	end
+end
+Training.LogMuscleHistory = logMuscleHistory
+
+-- the history as a clean list for the client: { { d = day, chest = v, ... }, ... } oldest first
+function Training.MuscleHistory(profile)
+	local out = {}
+	local hist = type(profile) == "table" and profile.muscleHist or nil
+	if type(hist) ~= "table" then
+		return out
+	end
+	for _, e in ipairs(hist) do
+		if type(e) == "table" and type(e.d) == "number" and e.d == e.d then
+			local row = { d = math.floor(e.d) }
+			for _, g in ipairs(Config.MuscleKeys) do
+				row[g] = r2(finite(e[g], 0))
+			end
+			table.insert(out, row)
+		end
+	end
+	return out
+end
+
+------------------------------------------------------------------------
+-- The training programme (Shared.TrainingPlan has the rules): the weekly plan, fight-camp phases and
+-- fight-night readiness, drill mastery and progressive overload, repeat / variety multipliers, daily
+-- goals and the weekly challenge, coach tips and the session report card. Everything lives in
+-- profile.train (created lazily, cleaned by Migrate) and profile.camp.prep (dies with the camp):
+--   train = { log = { { d = day, a = actId, q } } (last LOG_MAX sessions), mastery = { [actId] = { xp, ov } },
+--             plan = { start, days[7], template } | nil, goals = { day, list, week, weekly, streak, best,
+--             swept }, lastTrain = day, seed }
+------------------------------------------------------------------------
+local LOG_MAX = 90
+local TRAIN_ACT = {} -- the activities that train (not the recovery stations)
+for _, a in ipairs(Config.Activities) do
+	if not a.recovery then
+		TRAIN_ACT[a.id] = true
+	end
+end
+-- stats that fade when the gym is left alone (per day, of the part above 20, after STAT_GRACE idle days)
+local STAT_GRACE = 5
+local STAT_DETRAIN = { Stamina = 0.003, Endurance = 0.003, Recovery = 0.002, PunchSpeed = 0.0015, Reflexes = 0.0015, Footwork = 0.0015, Power = 0.001 }
+-- soreness on a group the session leans on costs stat gains too (the muscle has its own sorePenalty)
+local SORE_STAT_PENALTY = 0.3
+
+local function trainState(profile)
+	local t = profile.train
+	if type(t) ~= "table" then
+		t = {}
+		profile.train = t
+	end
+	if type(t.log) ~= "table" then
+		t.log = {}
+	end
+	if type(t.mastery) ~= "table" then
+		t.mastery = {}
+	end
+	if type(t.goals) ~= "table" then
+		t.goals = {}
+	end
+	if finite(t.seed, nil) == nil then
+		t.seed = rng:NextInteger(1, 999999)
+	end
+	if finite(t.lastTrain, nil) == nil then
+		t.lastTrain = math.floor(finite(profile.day, 1))
+	end
+	return t
+end
+Training.TrainState = trainState
+
+-- read-only: level, xp, overload of a drill (0, 0, 0 when never trained)
+function Training.Mastery(profile, actId)
+	local t = type(profile) == "table" and profile.train
+	local m = type(t) == "table" and type(t.mastery) == "table" and t.mastery[actId] or nil
+	if type(m) ~= "table" then
+		return 0, 0, 0
+	end
+	local xp = math.max(0, finite(m.xp, 0))
+	return (TP.MasteryLevel(xp)), xp, clamp(math.floor(finite(m.ov, 0)), 0, TP.OVERLOAD_MAX)
+end
+
+local function masteryOf(profile, actId)
+	local m = trainState(profile).mastery
+	local e = m[actId]
+	if type(e) ~= "table" then
+		e = { xp = 0, ov = 0 }
+		m[actId] = e
+	end
+	e.xp = math.max(0, finite(e.xp, 0))
+	e.ov = clamp(math.floor(finite(e.ov, 0)), 0, TP.OVERLOAD_MAX)
+	return e
+end
+
+-- the tier (0..3) of the hired coach whose persona has this perk
+local function coachPerk(profile, perk)
+	local coaches = type(profile.coaches) == "table" and profile.coaches or {}
+	for id, p in pairs(TP.CoachPersonas) do
+		if p.perk == perk then
+			return math.floor(clamp(finite(coaches[id], 0), 0, 3))
+		end
+	end
+	return 0
+end
+Training.CoachPerk = coachPerk
+
+-- the boxer the camp is against (world boxer record), or nil
+local function campOpponent(profile)
+	local camp = profile.camp
+	local offer = type(camp) == "table" and camp.offer or nil
+	local id = type(offer) == "table" and offer.oppId or nil
+	local world = type(profile.world) == "table" and profile.world or nil
+	local b = id ~= nil and world and type(world.boxers) == "table" and world.boxers[id] or nil
+	return type(b) == "table" and b or nil, type(offer) == "table" and offer or nil
+end
+
+local function inCamp(profile)
+	local camp = profile.camp
+	return type(camp) == "table" and finite(camp.daysTotal, 0) > 0
+end
+
+-- the camp's training log (days 1..total always present: a DataStore array may not have holes)
+local function campPrep(profile)
+	if not inCamp(profile) then
+		return nil
+	end
+	local camp = profile.camp
+	local total = math.floor(clamp(finite(camp.daysTotal, 0), 0, 60))
+	local prep = camp.prep
+	if type(prep) ~= "table" then
+		prep = {}
+		camp.prep = prep
+	end
+	if type(prep.days) ~= "table" then
+		prep.days = {}
+	end
+	for i = 1, total do
+		local d = prep.days[i]
+		if type(d) ~= "table" then
+			d = {}
+			prep.days[i] = d
+		end
+		d.n = math.max(0, math.floor(finite(d.n, 0)))
+		d.q = math.max(0, finite(d.q, 0))
+		d.hard = math.max(0, math.floor(finite(d.hard, 0)))
+	end
+	for i = #prep.days, total + 1, -1 do
+		prep.days[i] = nil
+	end
+	prep.over = math.max(0, math.floor(finite(prep.over, 0)))
+	return prep
+end
+
+-- the two focus blocks the camp's opponent calls for, and why
+function Training.CampFocus(profile)
+	local b, offer = campOpponent(profile)
+	local style = b and b.style or nil
+	local arch = b and b.archetype or nil
+	if not b and offer and type(offer.opp) == "table" then
+		-- (the offer's view carries display names: match them back to ids)
+		for _, s in ipairs(Config.Styles) do
+			if s.name == offer.opp.style then
+				style = s.id
+			end
+		end
+	end
+	return TP.CampFocus(style, arch)
+end
+
+-- today's focus blocks: the camp's (against the opponent) or the plan's; { ids }, "camp" | "plan" | nil
+function Training.TodayFocus(profile)
+	if inCamp(profile) then
+		local list = Training.CampFocus(profile)
+		return list, "camp"
+	end
+	local t = type(profile.train) == "table" and profile.train or nil
+	local id = t and TP.PlanFocus(t.plan, finite(profile.day, 1)) or nil
+	if id then
+		return { id }, "plan"
+	end
+	return nil, nil
+end
+
+-- the fight-night readiness of the camp (a forecast before fight night)
+function Training.Readiness(profile)
+	if not inCamp(profile) then
+		return nil
+	end
+	local ok, r = pcall(TP.Readiness, profile.camp, profile.condition, 2 * coachPerk(profile, "readiness"))
+	return ok and r or nil
+end
+
+-- the highest soreness of a group this activity really leans on (share-weighted load >= 0.15)
+local function soreLoad(profile, act)
+	local sore = type(profile.condition) == "table" and type(profile.condition.sore) == "table" and profile.condition.sore or {}
+	local load = {}
+	for id, w in pairs(Training.Targets(act)) do
+		local grp = Config.MusclePartGroup[id]
+		if grp then
+			load[grp] = (load[grp] or 0) + PART_SHARE[id] * finite(w, 0)
+		end
+	end
+	local worst, wg = 0, nil
+	for grp, l in pairs(load) do
+		local s = clamp(finite(sore[grp], 0), 0, 1)
+		if l >= 0.15 and s > worst then
+			worst, wg = s, grp
+		end
+	end
+	return worst, wg
+end
+
+-- What the programme does to one training session, read BEFORE its gains (Perform applies it):
+-- { rep, stale, variety, onPlan, focus, source, planMul, ov, ovMul, mastery, perk, sore, soreGroup,
+--   soreMul, statMul, muscleMul, nPrior, distinct, areas }
+function Training.SessionMods(profile, act, quality)
+	local day = math.floor(finite(profile.day, 1))
+	local t = type(profile.train) == "table" and profile.train or {}
+	local log = type(t.log) == "table" and t.log or {}
+	local nPrior, weekTotal, weekThis = 0, 0, 0
+	local distinct, areas = { [act.id] = true }, {}
+	for _, f in ipairs(TP.ActFocus[act.id] or {}) do
+		areas[f] = true
+	end
+	for _, e in ipairs(log) do
+		if type(e) == "table" and TRAIN_ACT[e.a] then
+			local d = finite(e.d, -1e9)
+			if d == day then
+				distinct[e.a] = true
+				if e.a == act.id then
+					nPrior += 1
+				end
+			end
+			if d > day - 7 and d <= day then
+				weekTotal += 1
+				if e.a == act.id then
+					weekThis += 1
+				end
+				for _, f in ipairs(TP.ActFocus[e.a] or {}) do
+					areas[f] = true
+				end
+			end
+		end
+	end
+	local nDistinct, nAreas = 0, 0
+	for _ in pairs(distinct) do
+		nDistinct += 1
+	end
+	for _, f in ipairs(TP.Areas) do
+		if areas[f] then
+			nAreas += 1
+		end
+	end
+	local rep = TP.RepeatMul(nPrior)
+	local stale = TP.StaleMul((weekThis + 1) / (weekTotal + 1), weekTotal + 1)
+	local variety = TP.VarietyBonus(nDistinct, nAreas, 0.01 * coachPerk(profile, "variety"))
+	local focus, source = Training.TodayFocus(profile)
+	local onPlan = false
+	for _, f in ipairs(focus or {}) do
+		if TP.OnFocus(act.id, f) then
+			onPlan = true
+		end
+	end
+	local lv, _, ov = Training.Mastery(profile, act.id)
+	local perk = TP.PerkValues(lv)
+	local planMul = onPlan and (1 + TP.PLAN_BONUS) or 1
+	local ovMul = TP.OverloadMul(ov, quality)
+	local sore, soreGroup = soreLoad(profile, act)
+	local soreMul = 1 - SORE_STAT_PENALTY * sore
+	return {
+		rep = rep, stale = stale, variety = variety, onPlan = onPlan, focus = focus, source = source, planMul = planMul,
+		ov = ov, ovMul = ovMul, mastery = lv, perk = perk, sore = sore, soreGroup = soreGroup, soreMul = soreMul,
+		statMul = rep * stale * (1 + variety) * planMul * ovMul * perk.gains * soreMul,
+		-- the muscles already have their own soreness limit: only the repeat counts there (softly)
+		muscleMul = math.sqrt(rep), nPrior = nPrior, distinct = nDistinct, areas = nAreas,
+	}
+end
+
+------------------------------------------------------------------------
+-- Goals
+------------------------------------------------------------------------
+local function weakestFocus(profile)
+	local best, bv = nil, math.huge
+	for _, k in ipairs(Config.StatKeys) do
+		local v = finite(type(profile.stats) == "table" and profile.stats[k], 30)
+		local f = TP.FocusForStat(k)
+		if f and v < bv then
+			best, bv = f, v
+		end
+	end
+	return best
+end
+
+local function goalsFor(profile, t, day)
+	local phase = TP.CampPhase(profile.camp)
+	local planFocus = TP.PlanFocus(t.plan, day)
+	local ctx = {
+		seed = t.seed, canSpar = Training.BlockedBy(profile, "Sparring") == nil, weakFocus = weakestFocus(profile),
+	}
+	if phase == "build" or phase == "peak" then
+		ctx.campTarget = TP.Phases[phase].target
+	elseif phase == "taper" then
+		ctx.taper = true
+	elseif planFocus == "rest" and not inCamp(profile) then
+		ctx.rest = true
+	elseif planFocus and not inCamp(profile) then
+		ctx.planFocus = planFocus
+	end
+	return TP.DailyGoals(day, ctx)
+end
+
+-- the day's goals and the week's challenge, (re)drawn when the day / week changed
+local function ensureGoals(profile)
+	local t = trainState(profile)
+	local G = t.goals
+	local day = math.floor(finite(profile.day, 1))
+	G.streak = math.max(0, math.floor(finite(G.streak, 0)))
+	G.best = math.max(G.streak, math.floor(finite(G.best, 0)))
+	if G.day ~= day or type(G.list) ~= "table" then
+		G.day = day
+		G.list = goalsFor(profile, t, day)
+		G.swept = false
+	end
+	local week = math.floor((day - 1) / TP.WEEK)
+	if G.week ~= week or type(G.weekly) ~= "table" then
+		G.week = week
+		G.weekly = TP.WeeklyGoal(week, { seed = t.seed, plan = type(t.plan) == "table" })
+	end
+	return G
+end
+Training.EnsureGoals = ensureGoals
+
+local function pay(profile, rw)
+	profile.money = finite(profile.money, 0) + (rw.money or 0)
+	profile.popularity = clamp(finite(profile.popularity, 0) + (rw.fame or 0), 0, 100)
+	profile.xp = math.max(0, math.floor(finite(profile.xp, 0))) + (rw.xp or 0)
+end
+
+-- does this event count for this goal? (variety, breadth and plan days are counted as sets in goalEvent)
+local function goalMatches(g, ev)
+	local k, session = g.kind, ev.kind == "session"
+	local q = finite(ev.q, 0)
+	return (k == "grade" and session and q >= 1.2)
+		or (k == "recover" and ev.kind == "recover")
+		or (k == "plan" and session and ev.onPlan == true)
+		or (k == "focus" and session and TP.OnFocus(ev.act, g.focus))
+		or (k == "camp" and session)
+		or (k == "record" and ev.kind == "record")
+		or (k == "fuel" and ev.kind == "meal" and TP.GOOD_MEALS[ev.meal] == true)
+		or (k == "spar" and session and ev.act == "Sparring")
+		or (k == "rest" and ev.kind == "rest")
+		or (k == "wsessions" and session and q >= 1.0)
+		or (k == "wmastery" and ev.kind == "mastery")
+		or (k == "woverload" and ev.kind == "overload")
+end
+
+-- One event for the goals: { kind = "session" | "recover" | "meal" | "record" | "mastery" | "overload" | "rest",
+-- act, q, onPlan, meal }. Completed goals are paid at once. -> { { text, money, xp, fame, weekly?, sweep? } }
+local function goalEvent(profile, ev)
+	local ok, out = pcall(function()
+		local G = ensureGoals(profile)
+		local tier = finite(profile.tier, 1)
+		local done = {}
+		local function bump(g, k)
+			if g.done then
+				return
+			end
+			g.n = math.min(g.need, math.max(0, finite(g.n, 0)) + (k or 1))
+			if g.n >= g.need then
+				g.done = true
+				local rw = TP.Reward(TP.GoalDefs[g.kind].weekly and "weekly" or "goal", tier, G.streak)
+				pay(profile, rw)
+				table.insert(done, { text = TP.GoalText(g), money = rw.money, xp = rw.xp, fame = rw.fame, weekly = TP.GoalDefs[g.kind].weekly == true })
+			end
+		end
+		local session = ev.kind == "session"
+		for _, g in ipairs(G.list) do
+			if g.kind == "variety" then
+				g.seen = type(g.seen) == "table" and g.seen or {}
+				if session and not g.seen[ev.act] then
+					g.seen[ev.act] = true
+					bump(g)
+				end
+			elseif goalMatches(g, ev) then
+				bump(g)
+			end
+		end
+		local w = G.weekly
+		if type(w) == "table" and not w.done then
+			local k = w.kind
+			if (k == "wbreadth" and session) or (k == "wplan" and ((session and ev.onPlan) or ev.kind == "rest")) then
+				-- (counted as a set: areas trained / days on plan)
+				w.seen = type(w.seen) == "table" and w.seen or {}
+				if k == "wbreadth" then
+					for _, f in ipairs(TP.ActFocus[ev.act] or {}) do
+						if table.find(TP.Areas, f) then
+							w.seen[f] = true
+						end
+					end
+				else
+					w.seen["d" .. tostring(G.day)] = true
+				end
+				local n = 0
+				for _ in pairs(w.seen) do
+					n += 1
+				end
+				if n > finite(w.n, 0) then
+					bump(w, n - finite(w.n, 0))
+				end
+			elseif goalMatches(w, ev) then
+				bump(w)
+			end
+		end
+		-- every daily goal done: the sweep, times the streak
+		if not G.swept then
+			local all = #G.list > 0
+			for _, g in ipairs(G.list) do
+				all = all and g.done == true
+			end
+			if all then
+				G.swept = true
+				local rw = TP.Reward("sweep", tier, G.streak)
+				pay(profile, rw)
+				table.insert(done, { text = string.format("Daily sweep%s", G.streak > 0 and string.format(" (streak x%d)", G.streak + 1) or ""), money = rw.money, xp = rw.xp, fame = rw.fame, sweep = true })
+			end
+		end
+		return done
+	end)
+	if not ok then
+		warn("[Boxer] goals:", out)
+		return {}
+	end
+	return out
+end
+Training.GoalEvent = goalEvent
+
+------------------------------------------------------------------------
+-- Coach tips (tailored to the weaknesses and the camp's opponent) and the report card
+------------------------------------------------------------------------
+local function coachVoice(profile, focusId)
+	local spec = TP.FocusCoach[focusId or ""]
+	local tier = spec and math.floor(finite(type(profile.coaches) == "table" and profile.coaches[spec], 0)) or 0
+	local names = spec and Catalog.CoachNames[spec]
+	if tier > 0 and type(names) == "table" and names[tier] then
+		local p = TP.CoachPersonas[spec]
+		return names[tier], p and p.persona or nil, spec
+	end
+	return "Gym coach", nil, nil
+end
+
+-- the drill that trains a stat hardest (and is not blocked by an injury)
+local function bestActFor(profile, stat)
+	local best, bw = nil, 0
+	for _, a in ipairs(Config.Activities) do
+		local w = not a.recovery and type(a.gains) == "table" and finite(a.gains[stat], 0) or 0
+		if w > 0 and not Training.BlockedBy(profile, a.id) and not (a.requires and not Training.Owned(profile, a.requires)) then
+			if w > bw + 1e-6 or (best and math.abs(w - bw) <= 1e-6 and finite(a.energy, 99) < finite(best.energy, 99)) then
+				best, bw = a, w
+			end
+		end
+	end
+	return best
+end
+
+local function focusDrills(focusId, n)
+	local f = TP.FocusById[focusId]
+	local names = {}
+	for i, id in ipairs(f and f.acts or {}) do
+		if i > (n or 2) then
+			break
+		end
+		local a = Training.Activity(id)
+		table.insert(names, a and a.name or id)
+	end
+	return table.concat(names, " and ")
+end
+
+-- trait words D's AI may give a boxer (b.traits: a list or a set of strings; read if present)
+local TRAIT_TIPS = {
+	{ "body", "conditioning", "He digs to the body. Core work (Medicine Ball) keeps the ribs safe." },
+	{ "counter", "ringiq", "He counters. Feint first and never pull straight back." },
+	{ "pressure", "endurance", "He brings pressure. The engine and the feet beat it." },
+	{ "swarm", "endurance", "He swarms. Build the gas to turn him." },
+	{ "power", "defence", "He has heavy hands. Keep the chin tucked and move your head." },
+	{ "ko", "defence", "He looks for the knockout. Defence first." },
+	{ "jab", "speed", "He lives on the jab. Quick feet get you past it." },
+	{ "southpaw", "ringiq", "A southpaw: mitt work on the lead-foot battle." },
+	{ "chin", "power", "He's durable. Sit down on your punches." },
+	{ "cardio", "endurance", "He'll go twelve hard rounds. So must you." },
+	{ "slow", "speed", "He's slow to start. Fast hands steal the early rounds." },
+}
+
+-- Shared.Traits ids -> the focus block and the drills that prepare the way round them
+local TRAIT_FOCUS = {
+	IronChin = { "power", "heavy bag (body hooks) and the medicine ball" }, BodyArmor = { "speed", "speed bag and mitts (head-hunting)" },
+	Slick = { "ringiq", "mitts (hooks and feints)" }, Weaver = { "ringiq", "mitts and the double-end bag (straights, uppercuts)" },
+	CounterSpecialist = { "defence", "shadow boxing and the double-end bag (single shots, feints)" }, Granite = { "endurance", "roadwork and the rope (out-work him)" },
+	PressureProof = { "speed", "ladder and the rope (box from range)" }, RingGeneral = { "speed", "ladder and the heavy bag (cut off the ring, the body)" },
+}
+
+-- up to `max` tips: { coach, persona, text, focus, act }
+function Training.CoachTips(profile, max)
+	max = max or 3
+	local tips, seen = {}, {}
+	local function add(focusId, text, actId)
+		if #tips >= max or seen[text] then
+			return
+		end
+		seen[text] = true
+		local name, persona = coachVoice(profile, focusId)
+		table.insert(tips, { coach = name, persona = persona, text = text, focus = focusId, act = actId })
+	end
+	local stats = type(profile.stats) == "table" and profile.stats or {}
+	local function st(s, k)
+		return finite(type(s) == "table" and s[k], 30)
+	end
+	-- 1. the fight: the opponent's style, his edges over you and his traits
+	if inCamp(profile) then
+		local b = campOpponent(profile)
+		local list, why = Training.CampFocus(profile)
+		local phase = TP.CampPhase(profile.camp)
+		local name = b and tostring(b.name or "He") or "Your opponent"
+		local lead = phase == "taper" and "Taper now: light work only, go in fresh. " or (phase == "peak" and "Peak week: fewer, harder sessions. " or "")
+		add(list[1], string.format("%s%s %s and %s are the camp's focus: %s.", lead, why, TP.FocusById[list[1]].name, TP.FocusById[list[2]].name, focusDrills(list[1])))
+		if b and type(b.stats) == "table" then
+			if st(b.stats, "Power") - st(stats, "Chin") >= 8 then
+				add("defence", string.format("%s hits hard (power %d against your chin %d). Double-End and Shadow work keep you out of the way.", name, st(b.stats, "Power"), st(stats, "Chin")), "DoubleEnd")
+			end
+			if st(b.stats, "Stamina") - st(stats, "Stamina") >= 8 then
+				add("endurance", string.format("%s has the bigger engine (%d against your %d). Roadwork and the rower this week.", name, st(b.stats, "Stamina"), st(stats, "Stamina")), "Roadwork")
+			end
+			if st(b.stats, "PunchSpeed") - st(stats, "Reflexes") >= 8 then
+				add("speed", string.format("%s's hands are fast (%d against your reflexes %d). The Double-End Bag sharpens your eyes.", name, st(b.stats, "PunchSpeed"), st(stats, "Reflexes")), "DoubleEnd")
+			end
+		end
+		-- his ring traits the tapes show (Shared.Traits scouting: met before, enough pro bouts, an elite corner)
+		if Traits and b then
+			local okS, scouted = pcall(function()
+				local list = Traits.ForBoxer({ id = b.id, style = b.style, archetype = b.archetype, overall = b.overall })
+				return Traits.Scout(list, { fights = b.record, h2h = b.h2h, elite = Training.EliteCorner(profile) })
+			end)
+			for _, t in ipairs(okS and type(scouted) == "table" and scouted or {}) do
+				local d = Traits.Data and Traits.Data[t.id]
+				local tf = TRAIT_FOCUS[t.id]
+				if t.known and d and tf then
+					add(tf[1], string.format("Scouting: %s is %s. %s Train it on the %s.", name, string.upper(d.name or t.id), d.counter or "", tf[2]))
+				end
+			end
+		end
+		local traits = b and b.traits
+		if type(traits) == "table" then
+			local words = {}
+			for k, v in pairs(traits) do
+				if type(v) == "string" then
+					table.insert(words, string.lower(v))
+				elseif type(k) == "string" and v then
+					table.insert(words, string.lower(k))
+				end
+			end
+			table.sort(words)
+			for _, w in ipairs(words) do
+				for _, e in ipairs(TRAIT_TIPS) do
+					if string.find(w, e[1], 1, true) then
+						add(e[2], e[3])
+						break
+					end
+				end
+			end
+		end
+		if coachPerk(profile, "readiness") > 0 and b and type(b.stats) == "table" then
+			-- the Ring IQ coach scouts: his weakest area
+			local wk, wv = nil, math.huge
+			for _, k in ipairs(Config.StatKeys) do
+				if st(b.stats, k) < wv then
+					wk, wv = k, st(b.stats, k)
+				end
+			end
+			if wk then
+				add("ringiq", string.format("Scouting report: his %s (%d) is the weak spot. Build the plan around it.", string.lower(Config.StatNames[wk] or wk), wv))
+			end
+		end
+	end
+	-- 2. the condition: soreness and fatigue first (they cost gains now)
+	local c = type(profile.condition) == "table" and profile.condition or {}
+	local sg, sv = nil, 0
+	for g, v in pairs(type(c.sore) == "table" and c.sore or {}) do
+		if finite(v, 0) > sv then
+			sg, sv = g, finite(v, 0)
+		end
+	end
+	if sv >= 0.5 and sg then
+		add("conditioning", string.format("Soreness in your %s: %d%%. Train something else today, or ice bath and massage it out.", string.lower(Config.MuscleNames[sg] or sg), math.floor(sv * 100 + 0.5)), "IceBath")
+	end
+	if finite(c.fatigue, 0) > 60 then
+		add("conditioning", "You're running on fumes. Recovery work or an early night will pay more than another session.", "Stretch")
+	end
+	-- 3. the two weakest stats
+	local order = {}
+	for _, k in ipairs(Config.StatKeys) do
+		table.insert(order, k)
+	end
+	table.sort(order, function(a, b)
+		if st(stats, a) ~= st(stats, b) then
+			return st(stats, a) < st(stats, b)
+		end
+		return a < b
+	end)
+	for i = 1, 2 do
+		local k = order[i]
+		local a = k and bestActFor(profile, k)
+		if a then
+			add(TP.FocusForStat(k), string.format("Your %s (%d) is a weak spot. %s builds it best.", Config.StatNames[k] or k, math.floor(st(stats, k)), a.name), a.id)
+		end
+	end
+	-- 4. the grind
+	local day = math.floor(finite(profile.day, 1))
+	local counts = {}
+	local log = type(profile.train) == "table" and type(profile.train.log) == "table" and profile.train.log or {}
+	for _, e in ipairs(log) do
+		if type(e) == "table" and e.d == day and TRAIN_ACT[e.a] then
+			counts[e.a] = (counts[e.a] or 0) + 1
+		end
+	end
+	for id, n in pairs(counts) do
+		if n >= 3 then
+			local a = Training.Activity(id)
+			add((TP.ActFocus[id] or {})[1], string.format("That's %d rounds of %s today. The gains are fading: switch drills.", n, a and a.name or id))
+		end
+	end
+	return tips
+end
+
+local function pctText(m)
+	return string.format("%+d%%", math.floor((m - 1) * 100 + 0.5))
+end
+
+-- the session report card: grade, what went well, what to fix, the multipliers, mastery / overload,
+-- the camp, a tip and the goals completed
+local function reportCard(profile, act, quality, mods, info)
+	local q = r2(quality)
+	local grade = Config.GradeFor(quality)
+	local well, fix, chips = {}, {}, {}
+	local c = profile.condition
+	if quality >= 1.2 then
+		table.insert(well, quality >= 1.35 and "World-class execution: nearly every rep clean." or "Sharp, clean work all the way through.")
+	elseif quality < 0.8 then
+		table.insert(fix, "Sloppy execution. Slow down and hit every cue before chasing speed.")
+	end
+	if mods then
+		if mods.onPlan then
+			table.insert(well, mods.source == "camp" and "On the camp's focus for this fight." or "On today's plan.")
+			table.insert(chips, { text = (mods.source == "camp" and "CAMP FOCUS " or "ON PLAN ") .. pctText(mods.planMul), good = true })
+		end
+		if mods.variety >= 0.04 then
+			table.insert(well, string.format("Good variety: %d drills today, %d areas this week.", mods.distinct, mods.areas))
+			table.insert(chips, { text = "VARIETY " .. pctText(1 + mods.variety), good = true })
+		end
+		if mods.ov > 0 then
+			table.insert(chips, { text = string.format("OVERLOAD %d %s", mods.ov, pctText(mods.ovMul)), good = mods.ovMul > 1 })
+		end
+		if mods.perk.gains > 1 then
+			table.insert(chips, { text = "MASTERY " .. pctText(mods.perk.gains), good = true })
+		end
+		if mods.rep < 1 then
+			table.insert(fix, string.format("%s again (%d today): repeats pay less. Switch drills.", act.name, mods.nPrior + 1))
+			table.insert(chips, { text = "REPEAT " .. pctText(mods.rep), good = false })
+		end
+		if mods.stale < 1 then
+			table.insert(fix, "This drill is most of your week. The body adapts: spread the work.")
+			table.insert(chips, { text = "STALE " .. pctText(mods.stale), good = false })
+		end
+		if mods.soreMul < 0.97 and mods.soreGroup then
+			table.insert(fix, string.format("Trained through soreness (%s): fewer gains. Recover it or train around it.", string.lower(Config.MuscleNames[mods.soreGroup] or mods.soreGroup)))
+			table.insert(chips, { text = "SORE " .. pctText(mods.soreMul), good = false })
+		end
+	end
+	if finite(c.fatigue, 0) > 70 then
+		table.insert(fix, "Fatigue over 70: you're overtraining. Recover or sleep.")
+	end
+	if finite(c.hydration, 80) < 30 then
+		table.insert(fix, "Dehydrated. Drink before the next session.")
+	elseif finite(c.nutrition, 70) < 30 then
+		table.insert(fix, "Under-fuelled. Eat before you train again.")
+	end
+	local m = info.mastery
+	if m and m.up then
+		table.insert(well, string.format("Mastery up: %s %s.", act.name, TP.MasteryName(m.level) or ""))
+	end
+	if info.overload and info.overload.to > info.overload.from then
+		table.insert(well, string.format("The load goes up: overload %d next time.", info.overload.to))
+	elseif info.overload and info.overload.to < info.overload.from then
+		table.insert(fix, string.format("The load comes down to overload %d. Own the reps first.", info.overload.to))
+	end
+	if #well == 0 then
+		table.insert(well, "You showed up and put the work in.")
+	end
+	while #well > 3 do
+		table.remove(well)
+	end
+	while #fix > 3 do
+		table.remove(fix)
+	end
+	local tips = Training.CoachTips(profile, 1)
+	local camp
+	local r = Training.Readiness(profile)
+	if r then
+		camp = { phase = TP.CampPhase(profile.camp), day = r.day, total = r.total, readiness = r.score, label = r.tier.name }
+	end
+	return {
+		grade = grade, q = q, well = well, fix = fix, chips = chips, mastery = m, overload = info.overload,
+		goals = info.goals, tip = tips[1], camp = camp, focus = mods and mods.focus or nil, onPlan = mods and mods.onPlan or false,
+	}
+end
+
+-- after a session (training or recovery): the log, the camp, mastery / overload, goals -> report info
+local function afterSession(profile, act, quality, mods)
+	local t = trainState(profile)
+	local day = math.floor(finite(profile.day, 1))
+	table.insert(t.log, { d = day, a = act.id, q = r2(quality) })
+	while #t.log > LOG_MAX do
+		table.remove(t.log, 1)
+	end
+	local training = TRAIN_ACT[act.id] == true
+	if training then
+		t.lastTrain = day
+	end
+	-- mastery: the coach of this drill's area and a mastered drill speed it up
+	local e = masteryOf(profile, act.id)
+	local lv0 = TP.MasteryLevel(e.xp)
+	local boost = 0
+	if TP.OnFocus(act.id, "speed") then
+		boost += 0.1 * coachPerk(profile, "mastery")
+	end
+	for id, other in pairs(t.mastery) do
+		if id ~= act.id and type(other) == "table" and TP.MasteryLevel(other.xp) >= 5 then
+			boost += 0.1
+			break
+		end
+	end
+	local gained = TP.MasteryGain(quality, mods and mods.rep or 1, boost)
+	e.xp += gained
+	local lv1, into, need = TP.MasteryLevel(e.xp)
+	local info = { goals = {} }
+	local perkText
+	for _, p in ipairs(TP.Perks) do
+		if p.level == lv1 then
+			perkText = p.text
+		end
+	end
+	info.mastery = { level = lv1, name = TP.MasteryName(lv1), into = into, need = need, gained = gained, up = lv1 > lv0, perk = lv1 > lv0 and perkText or nil }
+	if training then
+		local ov0 = e.ov
+		local easy = coachPerk(profile, "overloadEasy") > 0 and TP.OnFocus(act.id, "power")
+		e.ov = TP.NextOverload(e.ov, TP.OverloadCap(lv1), quality, easy)
+		info.overload = { from = ov0, to = e.ov, cap = TP.OverloadCap(lv1) }
+		local prep = campPrep(profile)
+		local i, total = TP.CampDay(profile.camp)
+		if prep and i and i <= total then
+			local d = prep.days[i]
+			d.n += 1
+			d.q = r2(d.q + quality)
+			d.hard += quality >= 1.2 and 1 or 0
+		end
+	end
+	-- goals
+	local function merge(list)
+		for _, g in ipairs(list) do
+			table.insert(info.goals, g)
+		end
+	end
+	merge(goalEvent(profile, { kind = training and "session" or "recover", act = act.id, q = quality, onPlan = mods and mods.onPlan }))
+	if lv1 > lv0 then
+		merge(goalEvent(profile, { kind = "mastery", act = act.id }))
+	end
+	if info.overload and info.overload.to > info.overload.from then
+		merge(goalEvent(profile, { kind = "overload", act = act.id }))
+	end
+	return info
+end
+
+-- the programme as the client shows it (Main's summary: P.training)
+function Training.ProgramView(profile)
+	local ok, view = pcall(function()
+		local t = trainState(profile)
+		local G = ensureGoals(profile)
+		local day = math.floor(finite(profile.day, 1))
+		local v = { day = day, streak = G.streak, bestStreak = G.best }
+		if type(t.plan) == "table" then
+			v.plan = { days = table.clone(t.plan.days), template = t.plan.template, today = TP.PlanDayIndex(t.plan, day) }
+		end
+		local focus, source = Training.TodayFocus(profile)
+		v.focus, v.source = focus, source
+		local function goalView(g)
+			return { kind = g.kind, text = TP.GoalText(g), n = math.floor(finite(g.n, 0)), need = math.floor(finite(g.need, 1)), done = g.done == true, icon = TP.GoalDefs[g.kind] and TP.GoalDefs[g.kind].icon }
+		end
+		v.goals = {}
+		for _, g in ipairs(G.list) do
+			table.insert(v.goals, goalView(g))
+		end
+		v.weekly = type(G.weekly) == "table" and goalView(G.weekly) or nil
+		v.swept = G.swept == true
+		local tier = finite(profile.tier, 1)
+		v.reward = { goal = TP.Reward("goal", tier, G.streak), sweep = TP.Reward("sweep", tier, G.streak), weekly = TP.Reward("weekly", tier, G.streak) }
+		-- mastery per drill and today's sessions per drill (the repeat multiplier the next one gets)
+		v.mastery, v.today = {}, {}
+		for id, e in pairs(t.mastery) do
+			if type(e) == "table" and Training.Activity(id) then
+				local lv, into, need = TP.MasteryLevel(e.xp)
+				v.mastery[id] = { lv = lv, into = math.floor(into), need = math.floor(need), ov = math.floor(finite(e.ov, 0)), cap = TP.OverloadCap(lv) }
+			end
+		end
+		for _, e in ipairs(t.log) do
+			if type(e) == "table" and e.d == day and type(e.a) == "string" then
+				v.today[e.a] = (v.today[e.a] or 0) + 1
+			end
+		end
+		if inCamp(profile) then
+			local r = Training.Readiness(profile)
+			local b = campOpponent(profile)
+			local list, why = Training.CampFocus(profile)
+			local i, total = TP.CampDay(profile.camp)
+			local prep = type(profile.camp.prep) == "table" and profile.camp.prep or {}
+			local d = type(prep.days) == "table" and type(prep.days[i]) == "table" and prep.days[i] or {}
+			v.camp = {
+				day = i, total = total, phases = TP.CampPhases(total), phase = TP.CampPhase(profile.camp), focus = list, why = why,
+				opp = b and b.name or nil, readiness = r and r.score or nil, label = r and r.tier.name or nil,
+				parts = r and r.parts or nil, over = r and r.over or false, drained = r and r.drained or false,
+				todayN = math.floor(finite(d.n, 0)),
+			}
+		end
+		v.tips = Training.CoachTips(profile, 3)
+		local idle = day - math.max(finite(t.lastTrain, day), finite(profile.lastFightDay, -1e9))
+		v.idle = math.max(0, math.floor(idle))
+		v.rust = idle > STAT_GRACE
+		return v
+	end)
+	if not ok then
+		warn("[Boxer] ProgramView:", view)
+		return nil
+	end
+	return view
+end
+
+-- the weekly plan: a template id ("none" clears it); the week starts today
+function Training.SetPlan(profile, templateId)
+	local t = trainState(profile)
+	if templateId == "none" or templateId == nil then
+		t.plan = nil
+		return true
+	end
+	local tpl = type(templateId) == "string" and TP.TemplateById[templateId] or nil
+	if not tpl then
+		return false, "Unknown plan"
+	end
+	t.plan = { start = math.floor(finite(profile.day, 1)), days = table.clone(tpl.days), template = tpl.id }
+	-- today's goals follow the new plan (progress made today is kept where the goal stays the same)
+	local G = ensureGoals(profile)
+	if not G.swept then
+		local old = G.list
+		G.list = goalsFor(profile, t, G.day)
+		for _, g in ipairs(G.list) do
+			for _, o in ipairs(old or {}) do
+				if o.kind == g.kind and o.focus == g.focus then
+					g.n, g.done, g.seen = o.n, o.done, o.seen
+				end
+			end
+		end
+	end
+	return true, tpl.name
+end
+
+-- one day of the plan (1..7) set to a focus block (a plan is made from Balanced when there is none)
+function Training.SetPlanDay(profile, index, focusId)
+	local t = trainState(profile)
+	index = math.floor(finite(index, 0))
+	if index < 1 or index > TP.WEEK then
+		return false, "Unknown day"
+	end
+	if type(focusId) ~= "string" or not TP.FocusById[focusId] then
+		return false, "Unknown focus"
+	end
+	if type(t.plan) ~= "table" then
+		Training.SetPlan(profile, "balanced")
+	end
+	t.plan.days[index] = focusId
+	t.plan.template = "custom"
+	return true
+end
+
+-- Apply a completed training session. quality 0.5..1.5 from the minigame.
+function Training.Perform(profile, act, quality, opts)
+	opts = opts or {}
+	quality = clamp(tonumber(quality) or 1, 0.4, 1.5)
+	local c = profile.condition
+	local result = { gains = {}, muscle = {}, notes = {} }
+	local condMult = Training.ConditionMultiplier(profile)
+	local scale = opts.scale or 1
+	-- the programme: repeats, staleness, variety, the plan / camp focus, overload, mastery, soreness
+	local okMods, mods = pcall(Training.SessionMods, profile, act, quality)
+	if not okMods then
+		warn("[Boxer] SessionMods:", mods)
+		mods = nil
+	end
+	local statMul = mods and finite(mods.statMul, 1) or 1
+	-- stat gains
+	for stat, weight in pairs(act.gains or {}) do
+		local cur = finite(profile.stats[stat], 10)
+		local dim = clamp(1 - (cur - 25) / 78, 0.05, 1.1)
+		local g = Config.GainScale * weight * Training.GainMultiplier(profile, stat, act) * quality * condMult * dim * scale * statMul
+		-- NaN-safe: math.min(cap, NaN) is the cap, so a NaN gain would max the stat out
+		local new = clamp(finite(cur + g, cur), 1, Config.StatCap)
+		result.gains[stat] = new - cur
+		profile.stats[stat] = new
+	end
+	-- muscle growth per sub-muscle, diminishing toward the frame's potential. Only part of it shows
+	-- at once: the rest is supercompensation (condition.pending) that Sleep turns into muscle,
+	-- scaled by sleep quality and food. Sore groups grow less and get hurt more easily.
+	local grown = Training.GrowMuscles(profile, act, quality, scale, condMult * (mods and finite(mods.muscleMul, 1) or 1))
+	result.muscle, result.parts, result.sore, result.pump = grown.groups, grown.parts, grown.sore, grown.pump
+	if grown.vasc then
+		result.vasc = grown.vasc
+	end
+	if act.fat then
+		-- a weight-cut day burns more of it
+		local cut = mods and mods.onPlan and type(mods.focus) == "table" and table.find(mods.focus, "weightcut") and TP.OnFocus(act.id, "weightcut")
+		local f = act.fat * 0.4 * quality * scale * (cut and TP.FocusById.weightcut.fatMul or 1)
+		profile.body.fat = clamp((profile.body.fat or 14) + f, 7, 30)
+		result.fat = f
+	end
+	-- condition costs
+	local energy = Training.EnergyCost(profile, act, opts.intensity) * (opts.energyScale or 1)
+	c.energy = clamp(c.energy - energy, 0, 100)
+	c.hydration = clamp(c.hydration - (act.hydration or 0) * scale, 0, 100)
+	c.nutrition = clamp(c.nutrition - (act.nutrition or 0) * scale, 0, 100)
+	local fat = (act.fatigue or 10) * scale * (Training.Owned(profile, "Nutritionist") and 0.85 or 1) * (mods and mods.perk.fatigue or 1) * tierEase(profile)
+	c.fatigue = clamp(c.fatigue + fat, 0, 100)
+	-- equipment & gear wear
+	if act.station and profile.gym.cond[act.station] then
+		profile.gym.cond[act.station] = clamp(profile.gym.cond[act.station] - rng:NextNumber(0.8, 1.8), 0, 100)
+	end
+	for kind, amount in pairs(act.wear or {}) do
+		Training.WearGear(profile, kind, amount * scale)
+	end
+	-- injuries from overtraining (loading a still-sore muscle adds risk)
+	-- (mastery's iron form and the defence coach's careful sparring lower it)
+	local riskMul = (mods and mods.perk.injury or 1) * (act.id == "Sparring" and (1 - 0.12 * coachPerk(profile, "sparSafe")) or 1)
+	local inj = injuryRoll(profile, act, (opts.extraRisk or 0) + MG.soreInjuryRisk * grown.soreBefore, riskMul)
+	if inj then
+		result.injury = inj
+		table.insert(result.notes, "INJURY: " .. inj .. ". Rest, ice baths and massage speed up healing.")
+	end
+	if grown.soreBefore >= 0.6 and grown.soreGroup then
+		table.insert(result.notes, string.format("Your %s was still sore: less growth and a higher injury risk. Recover (ice bath, massage, sleep) or train something else.",
+			string.lower(Config.MuscleNames[grown.soreGroup] or grown.soreGroup)))
+	end
+	if c.fatigue > 70 then
+		table.insert(result.notes, "You're overtraining. Gains are dropping and injury risk is high.")
+	end
+	if c.hydration < 25 then
+		table.insert(result.notes, "You're dehydrated. Grab water from the cooler.")
+	end
+	if c.nutrition < 25 then
+		table.insert(result.notes, "You're running on empty. Eat something at the Nutrition Bar.")
+	elseif c.nutrition < 40 and grown.total > 0.05 then
+		table.insert(result.notes, "Muscle is built overnight from food: eat before you sleep or tonight's growth is reduced.")
+	end
+	-- how sweaty the session leaves you (I sets the Sweat attribute through Builder.SetSweat)
+	result.sweat = math.floor(clamp((act.fatigue or 10) / 24 * quality * math.min(scale, 1.2), 0, 1) * 20 + 0.5) / 20
+	profile.mental.Discipline = clamp(profile.mental.Discipline + 0.3, 0, 100)
+	if act.id == "Sparring" then
+		profile.mental.Composure = clamp(profile.mental.Composure + 0.6, 0, 100)
+		profile.mental.Focus = clamp(profile.mental.Focus + 0.3, 0, 100)
+	end
+	profile.sessions = (profile.sessions or 0) + 1
+	profile.overall = Config.Overall(profile.stats)
+	if profile.camp then
+		table.insert(profile.camp.log, act.name)
+	end
+	-- training XP (the result screen's toast): the session's stat and muscle gains plus a base for
+	-- showing up, scaled by the grade
+	local statTotal = 0
+	for _, g in pairs(result.gains) do
+		statTotal += math.max(0, finite(g, 0))
+	end
+	local xp = math.floor((18 + statTotal * 45 + finite(grown.total, 0) * 24) * quality * math.min(scale, 1.5) * (mods and mods.rep or 1) + 0.5)
+	local before = Training.XPInfo(profile.xp)
+	profile.xp = before.xp + xp
+	-- mastery, overload, the camp log, goals (their XP lands on top) -> the report card
+	local okAfter, info = pcall(afterSession, profile, act, quality, mods)
+	if okAfter then
+		local okCard, card = pcall(reportCard, profile, act, quality, mods, info)
+		result.report = okCard and card or nil
+		if not okCard then
+			warn("[Boxer] report card:", card)
+		end
+	else
+		warn("[Boxer] afterSession:", info)
+	end
+	local after = Training.XPInfo(profile.xp)
+	result.xp, result.xpTotal, result.level = xp, after.xp, after
+	result.levelUp = after.level > before.level
+	logMuscleHistory(profile)
+	return result
+end
+
+-- A paid recovery the player could not pay for at the finish (Recover returned unpaid = true):
+-- the very next Training.Record for that activity stores nothing, as if noStore had been passed,
+-- so an unpaid session never counts towards sessions / best grade. Weak keys, never saved.
+local unpaidSession = setmetatable({}, { __mode = "k" })
+
+-- A sparring drill's focus goal (TrainingPlan.SparFocus), read from the spar's fight result: met, it adds
+-- TP.SPAR_FOCUS_BONUS to the session quality (the caller passes its quality in and uses .quality) and a
+-- small extra gain on the focus stats. Returns nil for no / an unknown focus, else
+-- { id, name, goal, met, value, need, quality, gains = { stat = gain } }.
+function Training.SparFocusResult(profile, focusId, res, intensity, quality)
+	local f = TP.SparFocusById and TP.SparFocusById[focusId]
+	if not f or type(res) ~= "table" then
+		return nil
+	end
+	local met, value, need = TP.SparFocusCheck(focusId, res, intensity)
+	local need2, goal = TP.SparFocusGoal(focusId, intensity)
+	local out = { id = f.id, name = f.name, goal = goal, met = met == true, value = value or 0, need = need or need2, quality = finite(quality, 1), gains = {} }
+	if out.met then
+		out.quality = clamp(out.quality + TP.SPAR_FOCUS_BONUS, 0.4, 1.5)
+		local stats = type(profile) == "table" and profile.stats
+		for _, stat in ipairs(stats and f.stats or {}) do
+			local cur = finite(stats[stat], 10)
+			local dim = clamp(1 - (cur - 25) / 78, 0.05, 1.1)
+			local new = clamp(finite(cur + Config.GainScale * 0.2 * dim, cur), 1, Config.StatCap)
+			out.gains[stat] = new - cur
+			stats[stat] = new
+		end
+	end
+	return out
+end
+
+function Training.Recover(profile, act, quality)
+	quality = clamp(tonumber(quality) or 1, 0.5, 1.5)
+	local c = profile.condition
+	local r = act.recovery
+	local _, lv = Training.StationLevel(profile, act.station)
+	local mult = (lv and lv.mult or 1) * (0.8 + 0.2 * quality)
+	local result = { notes = {} }
+	if act.price and not (act.station == "massage" and Training.StationLevel(profile, "massage") >= 2) then
+		-- CanDo checked the price at the start, but food can be bought mid-session: never go below 0
+		if finite(profile.money, 0) < act.price then
+			table.insert(result.notes, "You couldn't pay the " .. Config.Money(act.price) .. " at the end, so the session didn't count.")
+			result.unpaid = true
+			result.fatigue = c.fatigue
+			unpaidSession[profile] = act.id
+			return result
+		end
+		profile.money -= act.price
+		table.insert(result.notes, "Paid " .. Config.Money(act.price) .. " for the session.")
+	end
+	c.fatigue = clamp(c.fatigue + (r.fatigue or 0) * ((r.fatigue or 0) < 0 and mult or 1), 0, 100)
+	c.energy = clamp(c.energy + (r.energy or 0) * ((r.energy or 0) > 0 and mult or 1), 0, 100)
+	if r.hydration then
+		c.hydration = clamp(c.hydration + r.hydration, 0, 100)
+	end
+	if r.water then
+		-- bounded per day: stacked sauna sessions cannot cut more than MAX_WATER_CUT before Sleep
+		local cur = finite(c.water, 0)
+		local w = r.water * mult
+		if w < 0 then
+			w = math.max(w, math.min(0, MAX_WATER_CUT - cur))
+		end
+		c.water = cur + w
+		if r.water < 0 and w > -0.05 then
+			table.insert(result.notes, "You can't sweat out any more today.")
+		else
+			table.insert(result.notes, string.format("Sweated out %.1f lbs of water weight. Rehydrate after the weigh-in.", -w))
+		end
+	end
+	if r.heal then
+		local healed = Training.Heal(profile, r.heal * mult)
+		for _, n in ipairs(healed) do
+			table.insert(result.notes, n)
+		end
+	end
+	if r.flexible then
+		c.flexible = true
+		table.insert(result.notes, "Loose and limber: lower injury risk for the rest of the day.")
+	end
+	-- recovery work flushes soreness in proportion to the fatigue it removes (ice bath ~40%, chamber 80%)
+	local relief = (r.fatigue or 0) < 0 and clamp(-r.fatigue / 60 * mult, 0, 0.8) or 0
+	-- the conditioning coach's recovery science and a mastered recovery routine flush a bit more
+	local soreBefore = type(c.sore) == "table" and table.clone(c.sore) or {}
+	local recLv = Training.Mastery(profile, act.id)
+	relief = clamp(relief * (1 + 0.05 * coachPerk(profile, "recovery") + (recLv >= 3 and 0.05 or 0)), 0, 0.85)
+	if relief > 0 and type(c.sore) == "table" then
+		local eased = false
+		for grp, v in pairs(c.sore) do
+			v = finite(v, 0) * (1 - relief)
+			c.sore[grp] = v >= 0.02 and v or nil
+			eased = eased or v > 0.1
+		end
+		if eased then
+			table.insert(result.notes, "Muscle soreness eased.")
+		end
+		result.sore = table.clone(c.sore)
+	end
+	result.fatigue = c.fatigue
+	-- mastery of the routine, the recovery goal, the report card (soreness before / after)
+	local okAfter, info = pcall(afterSession, profile, act, quality, nil)
+	if okAfter then
+		local okCard, card = pcall(reportCard, profile, act, quality, nil, info)
+		if okCard then
+			card.soreBefore = soreBefore
+			local eased = 0
+			for grp, v in pairs(soreBefore) do
+				eased = math.max(eased, finite(v, 0) - finite(type(c.sore) == "table" and c.sore[grp], 0))
+			end
+			if eased >= 0.05 then
+				table.insert(card.well, 1, string.format("Soreness down by up to %d points.", math.floor(eased * 100 + 0.5)))
+				while #card.well > 3 do
+					table.remove(card.well)
+				end
+			end
+			result.report = card
+		end
+	end
+	return result
+end
+
+function Training.Heal(profile, days)
+	local notes = {}
+	local mult = Training.Owned(profile, "Physio") and 1.5 or 1
+	for _, inj in ipairs(profile.condition.injuries) do
+		if inj.days > 0 then
+			inj.days -= days * mult
+			if inj.days <= 0 then
+				inj.days = 0
+				table.insert(notes, (Config.Injuries[inj.id] and Config.Injuries[inj.id].name or "Injury") .. " has healed.")
+			end
+		end
+	end
+	local keep = {}
+	for _, inj in ipairs(profile.condition.injuries) do
+		if inj.days > 0 then
+			table.insert(keep, inj)
+		end
+	end
+	profile.condition.injuries = keep
+	return notes
+end
+
+------------------------------------------------------------------------
+-- Session records: grade, personal best and session count per activity
+------------------------------------------------------------------------
+local MAX_STAT_KEYS = 8
+
+-- drill numbers reported by the client (punches, max power, reps, distance...). They are only
+-- shown back to the player as "best numbers" and never feed the gains: numbers only, finite,
+-- clamped, short identifier keys, at most 8 of them.
+function Training.SanitizeStats(stats)
+	if type(stats) ~= "table" then
+		return nil
+	end
+	local out, n, seen = {}, 0, 0
+	for k, v in pairs(stats) do
+		seen += 1
+		if seen > 32 or n >= MAX_STAT_KEYS then
+			break
+		end
+		if type(k) == "string" and #k <= 20 and string.match(k, "^%a[%w_]*$") and type(v) == "number"
+			and v == v and v > -math.huge and v < math.huge then
+			out[k] = r2(math.clamp(v, 0, 1000000))
+			n += 1
+		end
+	end
+	return n > 0 and out or nil
+end
+
+-- Records a finished session (quality = the server's final quality, 0.4..1.5) and returns what the
+-- result screen shows. noStore = the session doesn't count (e.g. finished impossibly fast).
+-- profile.records[actId] = { best, sessions, last, stats = { key = best number } }
+function Training.Record(profile, actId, quality, stats, noStore)
+	if unpaidSession[profile] ~= nil then
+		noStore = noStore or unpaidSession[profile] == actId
+		unpaidSession[profile] = nil
+	end
+	local q = tonumber(quality) or 0
+	if q ~= q then
+		q = 0
+	end
+	q = math.clamp(q, 0, 1.5)
+	if type(profile.records) ~= "table" then
+		profile.records = {}
+	end
+	local r = profile.records[actId]
+	if type(r) ~= "table" then
+		r = nil
+	end
+	local prevBest = r and tonumber(r.best) or 0
+	local prevSessions = r and tonumber(r.sessions) or 0
+	if noStore then
+		return {
+			grade = Config.GradeFor(q), best = prevBest, prevBest = prevBest, sessions = prevSessions,
+			newBest = false, first = false, uncounted = true, newStats = {},
+			bests = r and type(r.stats) == "table" and table.clone(r.stats) or nil,
+		}
+	end
+	if not r then
+		r = { best = 0, sessions = 0, last = 0 }
+		profile.records[actId] = r
+	end
+	local hadRecord = prevSessions > 0
+	r.sessions = prevSessions + 1
+	r.last = r2(q)
+	local improved = q > prevBest + 0.0001
+	if improved then
+		r.best = r2(q)
+	end
+	local newStats = {}
+	if type(stats) == "table" then
+		local bests = type(r.stats) == "table" and r.stats or {}
+		local count = 0
+		for _ in pairs(bests) do
+			count += 1
+		end
+		for k, v in pairs(stats) do
+			local old = tonumber(bests[k])
+			if old == nil and count >= MAX_STAT_KEYS then
+				continue
+			end
+			if old == nil then
+				count += 1
+				bests[k] = v
+			elseif v > old then
+				bests[k] = v
+				if hadRecord then
+					table.insert(newStats, k)
+				end
+			end
+		end
+		table.sort(newStats)
+		r.stats = bests
+	end
+	-- a personal best (the grade or one of the drill's numbers) counts for the "set a personal best" goal
+	local goals
+	if (improved and hadRecord) or #newStats > 0 then
+		r.prDay = math.floor(finite(profile.day, 1))
+		goals = goalEvent(profile, { kind = "record", act = actId })
+	end
+	return {
+		grade = Config.GradeFor(q), best = r.best, prevBest = prevBest, sessions = r.sessions,
+		newBest = improved and hadRecord, first = not hadRecord, newStats = newStats,
+		bests = type(r.stats) == "table" and table.clone(r.stats) or nil, goals = goals,
+	}
+end
+
+------------------------------------------------------------------------
+-- Food & sleep
+------------------------------------------------------------------------
+function Training.Eat(profile, mealId)
+	local meal = type(mealId) == "string" and Config.FindById(Config.Meals, mealId) or nil
+	if not meal then
+		return false, "Unknown item"
+	end
+	if meal.requires and not Training.Owned(profile, meal.requires) then
+		return false, "Hire a Nutritionist (Shop) to unlock this."
+	end
+	if profile.money < meal.price then
+		return false, "Not enough money."
+	end
+	local c = profile.condition
+	local boost = Training.Owned(profile, "Nutritionist") and 1.25 or 1
+	profile.money -= meal.price
+	local before = c.nutrition
+	c.nutrition = c.nutrition + meal.nutrition * boost
+	if c.nutrition > 100 then
+		-- overeating turns into body fat
+		profile.body.fat = clamp(profile.body.fat + (c.nutrition - 100) * 0.012, 7, 30)
+		c.nutrition = 100
+	end
+	c.hydration = clamp(c.hydration + meal.hydration * (meal.hydration > 0 and boost or 1), 0, 100)
+	c.energy = clamp(c.energy + meal.energy, 0, 100)
+	profile.body.fat = clamp(profile.body.fat + meal.fat, 7, 30)
+	if meal.gainsBuff then
+		c.buffs.gains = math.max(c.buffs.gains or 0, meal.gainsBuff)
+	end
+	if meal.muscleBuff then
+		c.buffs.muscle = math.max(c.buffs.muscle or 0, meal.muscleBuff)
+	end
+	local goals = goalEvent(profile, { kind = "meal", meal = meal.id })
+	return true, { nutrition = c.nutrition - before, hydration = c.hydration, energy = c.energy, goals = #goals > 0 and goals or nil }
+end
+
+function Training.SleepQuality(profile)
+	local c = profile.condition
+	local q = 0.62
+	for _, id in ipairs({ "Apartment", "House", "Mansion" }) do
+		if Training.Owned(profile, id) then
+			local item = Catalog.Find(Catalog.Shop, id)
+			q = math.max(q, 0.62 + (item and item.sleep or 0))
+		end
+	end
+	if c.hydration > 50 then
+		q += 0.05
+	elseif c.hydration < 20 then
+		q -= 0.08
+	end
+	if c.nutrition > 50 then
+		q += 0.05
+	elseif c.nutrition < 20 then
+		q -= 0.08
+	end
+	if c.fatigue > 70 then
+		q -= 0.1
+	end
+	if #Training.ActiveInjuries(profile) > 0 then
+		q -= 0.05
+	end
+	-- home recovery suite (Catalog.Shop RecoverySuite.sleepBonus)
+	if Training.Owned(profile, "RecoverySuite") then
+		local item = Catalog.Find(Catalog.Shop, "RecoverySuite")
+		q += item and tonumber(item.sleepBonus) or 0
+	end
+	return clamp(q, 0.4, 1)
+end
+
+------------------------------------------------------------------------
+-- Persistent face damage & head trauma (fight -> profile -> Builder / next fight)
+------------------------------------------------------------------------
+local FACE_FIELDS = FD.fields
+
+local function faceMax(k)
+	return (k == "cut" or k == "cut2") and 1.2 or 1
+end
+
+-- a clean dmg table (Config.FaceDamage shape) from anything: unknown keys / NaN / strings dropped,
+-- values x scale and clamped, below clearBelow removed. nil when nothing shows.
+local function cleanFace(f, scale)
+	if type(f) ~= "table" then
+		return nil
+	end
+	scale = scale or 1
+	local out, any = {}, false
+	for _, k in ipairs(FACE_FIELDS) do
+		local v = finite(f[k], 0) * scale
+		if v >= FD.clearBelow then
+			out[k] = clamp(v, 0, faceMax(k))
+			any = true
+		end
+	end
+	if f.nose == true then
+		out.nose = true
+		any = true
+	end
+	if not any then
+		return nil
+	end
+	if out.cut then
+		out.cutSide = finite(f.cutSide, 1) < 0 and -1 or 1
+	end
+	if out.cut2 then
+		out.cutSide2 = finite(f.cutSide2, -1) < 0 and -1 or 1
+	end
+	out.age = clamp(math.floor(finite(f.age, 0)), 0, 999)
+	return out
+end
+
+-- the persistent residual (condition.face) for Builder opts.damage / the next fight's seed; nil = clean.
+-- Values rounded to 0.01 so the look signature does not churn.
+function Training.FaceView(profile)
+	local c = type(profile) == "table" and profile.condition
+	local f = type(c) == "table" and cleanFace(c.face) or nil
+	if not f then
+		return nil
+	end
+	for _, k in ipairs(FACE_FIELDS) do
+		if f[k] then
+			f[k] = r2(f[k])
+		end
+	end
+	return f
+end
+
+-- Was the nose still broken (not yet set) when the fight that is being applied started?
+-- FightEngine seeds each fight's damage from the healing face (CONTRACTS 8.6), so its res.face /
+-- res.noseBroken carry an old, unset break over. Career.ApplyResult runs PassDays (which may set
+-- that old nose) before AddFaceDamage / AddTrauma, so PassDays snapshots the pre-fight state here
+-- for those two to read. Weak keys: per running profile, never saved.
+local preFightNose = setmetatable({}, { __mode = "k" })
+
+-- Merges a fight's (or spar's) face damage into the profile, field by field by max, times scale
+-- (Config.FaceDamage.postFightCarry / sparCarry). The residual's age restarts at 0 (fresh bruises)
+-- only when something actually got worse: a light spar must not restart the nose-setting clock.
+-- A broken nose that was already broken when the fight started is the old break carried over by
+-- the engine's seed, not a new one. Fields that got worse are flagged for the permanent-mark check
+-- on the next night (HealFace).
+function Training.AddFaceDamage(profile, face, scale)
+	local add = cleanFace(face, clamp(finite(scale, 1), 0, 2))
+	if not add then
+		return Training.FaceView(profile)
+	end
+	local c = profile.condition
+	local cur = cleanFace(c.face) or {}
+	local marks = type(c.faceMarks) == "table" and c.faceMarks or {}
+	local worse = false
+	for _, k in ipairs(FACE_FIELDS) do
+		local v = add[k]
+		if v and v > (cur[k] or 0) then
+			cur[k] = v
+			worse = true
+			if k == "cut" then
+				cur.cutSide = add.cutSide
+				marks.cut = true
+			elseif k == "cut2" then
+				cur.cutSide2 = add.cutSide2
+				marks.cut2 = true
+			elseif k == "earL" or k == "earR" then
+				marks[k] = true
+			end
+		end
+	end
+	if add.nose and not cur.nose and not preFightNose[profile] then
+		cur.nose = true
+		worse = true
+	end
+	if worse or cur.age == nil then
+		cur.age = 0
+	end
+	c.face = cleanFace(cur)
+	c.faceMarks = next(marks) ~= nil and marks or nil
+	return Training.FaceView(profile)
+end
+
+-- appearance.battle (server-only permanent wear), created if an odd save lacks it
+local function battleOf(profile)
+	local app = profile.appearance
+	if type(app) ~= "table" then
+		return { scars = {}, ears = 0, nose = 0 } -- nowhere to keep it; marks are simply lost
+	end
+	if type(app.battle) ~= "table" then
+		app.battle = { scars = {}, ears = 0, nose = 0 }
+	end
+	local b = app.battle
+	if type(b.scars) ~= "table" then
+		b.scars = {}
+	end
+	b.ears = clamp(finite(b.ears, 0), 0, 1)
+	b.nose = clamp(finite(b.nose, 0), 0, 1)
+	return b
+end
+
+-- a deep cut closes into a permanent scar; when all slots are taken a deeper cut replaces the faintest
+local function addScar(battle, kind, side, depth)
+	local size = r2(clamp(0.35 + (depth - FD.scarAt) / math.max(0.05, 1.2 - FD.scarAt) * 0.6, 0.3, 1))
+	local scar = { kind = kind, side = (side or 1) < 0 and -1 or 1, at = r2(rng:NextNumber(0.25, 0.75)), size = size }
+	local list = battle.scars
+	if #list < FD.maxScars then
+		table.insert(list, scar)
+		return true
+	end
+	local minI, minS
+	for i, sc in ipairs(list) do
+		local sz = type(sc) == "table" and finite(sc.size, 0.5) or 0
+		if not minS or sz < minS then
+			minI, minS = i, sz
+		end
+	end
+	if minI and size > minS then
+		list[minI] = scar
+		return true
+	end
+	return false
+end
+
+-- Heals the persistent face damage by `days` nights (dayTick calls it with 1): swelling shrinks by
+-- a factor, cuts and bruises close linearly (Config.FaceDamage.heal; x physioHeal with the Physio),
+-- bruises age (colour), and on the first night after a fight the worst injuries leave their
+-- permanent marks in appearance.battle (scars, cauliflower ear, bent nose). Returns notes.
+function Training.HealFace(profile, days)
+	local notes = {}
+	local c = profile.condition
+	local f = cleanFace(c.face)
+	if not f then
+		c.face, c.faceMarks = nil, nil
+		return notes
+	end
+	days = clamp(math.floor(finite(days, 1)), 0, 120)
+	local physio = Training.Owned(profile, "Physio") and FD.physioHeal or 1
+	local marks = type(c.faceMarks) == "table" and c.faceMarks or {}
+	local battle = battleOf(profile)
+	for _ = 1, days do
+		-- permanent marks are decided once per new injury, from its full depth
+		if marks.cut then
+			if (f.cut or 0) >= FD.scarAt and addScar(battle, "brow", f.cutSide, f.cut) then
+				table.insert(notes, "The cut over your eye closed into a scar. It's part of your story now.")
+			end
+			marks.cut = nil
+		end
+		if marks.cut2 then
+			if (f.cut2 or 0) >= FD.scarAt and addScar(battle, "cheek", f.cutSide2, f.cut2) then
+				table.insert(notes, "The cut on your cheek left a scar.")
+			end
+			marks.cut2 = nil
+		end
+		for _, ear in ipairs({ "earL", "earR" }) do
+			if marks[ear] then
+				local v = f[ear] or 0
+				-- a badly swollen ear hardens into cauliflower ear more often the worse it was
+				if v >= FD.cauliflowerAt and rng:NextNumber() < clamp(0.4 + (v - FD.cauliflowerAt) * 1.5, 0, 1) and battle.ears < 1 then
+					battle.ears = math.min(1, battle.ears + FD.cauliflowerStep)
+					table.insert(notes, "Your swollen ear hardened: a touch of cauliflower ear.")
+				end
+				marks[ear] = nil
+			end
+		end
+		-- heal
+		for _, k in ipairs(FACE_FIELDS) do
+			local v = f[k]
+			if v then
+				local rule = FD.heal[k] or { mul = 0.6 }
+				if rule.sub then
+					v -= rule.sub * physio
+				else
+					v *= (rule.mul or 0.6) ^ physio
+				end
+				f[k] = v >= FD.clearBelow and v or nil
+			end
+		end
+		f.age = (f.age or 0) + 1
+		-- a broken nose is set once the injury is over (or after 10 days when no injury was logged)
+		if f.nose and not activeInjury(profile, "nose") and f.age >= 10 then
+			f.nose = nil
+			if rng:NextNumber() < FD.noseBendChance and battle.nose < 1 then
+				battle.nose = math.min(1, battle.nose + FD.noseBendStep)
+				table.insert(notes, "Your nose healed with a slight bend.")
+			end
+		end
+	end
+	if not f.cut then
+		f.cutSide = nil
+	end
+	if not f.cut2 then
+		f.cutSide2 = nil
+	end
+	local before = c.face ~= nil
+	c.face = cleanFace(f)
+	c.faceMarks = c.face and next(marks) ~= nil and marks or nil
+	if before and not c.face then
+		table.insert(notes, "Your face has fully healed.")
+	end
+	return notes
+end
+
+-- After a fight (Career.ApplyResult, after PassDays): head trauma accumulates from head damage and
+-- knockdowns (it decays slowly and costs Chin in FightModifiers), a bad concussion or a broken nose
+-- becomes an injury. res = the fight result (concPeak, kdAgainst, noseBroken, headTaken | damageTaken,
+-- outcome, method, face). elapsed = days since fight night (the medical suspension PassDays just ran):
+-- the injuries date from the fight, so they have already healed that long. Returns notes.
+function Training.AddTrauma(profile, res, elapsed)
+	local notes = {}
+	if type(res) ~= "table" then
+		return notes
+	end
+	local CC = Config.Concussion
+	local c = profile.condition
+	local kd = math.max(0, math.floor(finite(res.kdAgainst, 0)))
+	-- head damage taken: D's res.headTaken when present, else most of damageTaken (body shots count half there)
+	local head = math.max(0, finite(res.headTaken, math.max(0, finite(res.damageTaken, 0)) * 0.8))
+	local before = clamp(finite(c.trauma, 0), 0, 100)
+	c.trauma = clamp(before + head * CC.traumaPerDamage + kd * CC.traumaPerKnockdown, 0, 100)
+	local peak = res.concPeak ~= nil and clamp(finite(res.concPeak, 0), 0, 1) or nil
+	local stopped = res.outcome == "loss" and (res.method == "KO" or res.method == "TKO")
+	local concussed
+	if peak then
+		concussed = peak >= CC.injuryAt and kd > 0
+	else
+		-- simulated fights have no concussion meter: being stopped after a knockdown is enough
+		concussed = stopped and kd > 0
+	end
+	if concussed then
+		local sev = peak and clamp((peak - CC.injuryAt) / math.max(0.05, 1 - CC.injuryAt), 0, 1) or 0.5
+		local name, _, left = addInjury(profile, "concussion", sev, elapsed)
+		if name and left > 0 then
+			table.insert(notes, string.format("DOCTOR: %s. No sparring or bag work for %d more days.", name, math.ceil(left)))
+		elseif name then
+			table.insert(notes, "DOCTOR: " .. name .. ". It cleared during the medical suspension.")
+		end
+	end
+	-- a new break only: D's explicit flag wins (the face table is the fallback for older results),
+	-- and a nose that was already broken when the fight started cannot break again (the engine
+	-- seeds it; FightEngine never re-breaks a flagged nose) - otherwise every fight before the nose
+	-- set re-created the injury and re-rolled the bend
+	local face = type(res.face) == "table" and res.face or nil
+	local seeded = preFightNose[profile] == true
+	preFightNose[profile] = nil
+	local broke = res.noseBroken == true or (res.noseBroken == nil and face ~= nil and face.nose == true)
+	if broke and not seeded then
+		local name, new, left = addInjury(profile, "nose", rng:NextNumber(), elapsed)
+		if name and new then
+			table.insert(notes, "DOCTOR: " .. name .. ". Keep the mitts and sparring away from it.")
+		elseif name and left <= 0 then
+			-- the break healed during the suspension: set the nose now (as HealFace does once the
+			-- injury is over) - AddFaceDamage just flagged it with a fresh age, which would otherwise
+			-- keep it broken (and seeded into the next fight) for another 10 days
+			table.insert(notes, "DOCTOR: " .. name .. ". It knitted during the medical suspension.")
+			local f = cleanFace(c.face)
+			if f and f.nose then
+				f.nose = nil
+				local battle = battleOf(profile)
+				if rng:NextNumber() < FD.noseBendChance and battle.nose < 1 then
+					battle.nose = math.min(1, battle.nose + FD.noseBendStep)
+					table.insert(notes, "Your nose healed with a slight bend.")
+				end
+				c.face = cleanFace(f)
+				if not c.face then
+					c.faceMarks = nil
+				end
+			end
+		end
+	end
+	if c.trauma >= 40 and before < 40 then
+		table.insert(notes, "The doctors warn about accumulated head trauma: your chin is not what it was. Time between fights helps.")
+	end
+	return notes
+end
+
+------------------------------------------------------------------------
+-- Days: growth, healing, detraining, aging, popularity
+------------------------------------------------------------------------
+-- Neglected muscle fades: a part not trained for detrainGraceDays loses
+-- value * detrainRate * min(3, (idle - grace) / 7) per day (x2 from detrainAgeFrom), never below the
+-- part's starting size (Training.MuscleBase) or detrainFloor. mul < 1 = active rest (fight suspension). Parts with no log entry start their clock now.
+-- detraining multiplier during a post-fight medical suspension (enforced rest, light work only)
+local SUSPENSION_DETRAIN = 0.1
+
+local function detrain(profile, mul)
+	local body, log = profile.body, muscleLog(profile)
+	local base = type(profile.muscleBase) == "table" and profile.muscleBase or Training.MuscleBase(profile)
+	local day = finite(profile.day, 1)
+	local age = type(profile.identity) == "table" and finite(profile.identity.age, 25) or 25
+	local ageMul = age >= MG.detrainAgeFrom and 2 or 1
+	for _, p in ipairs(Config.MuscleParts) do
+		local last = finite(log[p.id], nil)
+		if not last then
+			log[p.id] = day
+		else
+			local idle = day - last
+			if idle > MG.detrainGraceDays then
+				local v = finite(body[p.id], Config.PartValue(body, p.id))
+				-- never below the part's starting size (Training.MuscleBase): an untargeted muscle
+				-- fades back to where the career began, not to half of a beginner's
+				local floor = math.max(MG.detrainFloor, finite(base[p.id], MG.detrainFloor))
+				if v > floor then
+					local loss = v * MG.detrainRate * math.min(3, (idle - MG.detrainGraceDays) / 7) * ageMul * (mul or 1)
+					body[p.id] = math.max(floor, v - loss)
+				end
+			end
+		end
+	end
+	-- veins: fat hides them, and they fade when the arms are not worked
+	local vasc = clamp(finite(body.vasc, 0), 0, 100)
+	if vasc > 0 then
+		if finite(body.fat, 14) > MG.vascFatFade then
+			vasc -= 0.05
+		end
+		local armIdle = math.min(day - finite(log.forearms, day), day - finite(log.biceps, day))
+		if armIdle > MG.detrainGraceDays then
+			vasc -= 0.02 * (mul or 1)
+		end
+		body.vasc = math.max(0, vasc)
+	end
+end
+
+-- Fans forget a boxer who stops fighting: after 30 days without a fight, -0.15 popularity per day,
+-- never below tier * 3. Paused during a camp (the fight is announced) and the post-fight suspension.
+local POP_IDLE_DAYS, POP_DECAY = 30, 0.15
+local function popularityDecay(profile, notes)
+	if profile.camp then
+		return
+	end
+	local last = finite(profile.lastFightDay, nil)
+	if not last and type(profile.history) == "table" then
+		local h = profile.history[#profile.history]
+		last = type(h) == "table" and finite(h.day, nil) or nil
+	end
+	local idle = finite(profile.day, 1) - (last or 1)
+	local pop = finite(profile.popularity, 0)
+	local floor = finite(profile.tier, 1) * 3
+	if idle > POP_IDLE_DAYS and pop > floor then
+		profile.popularity = math.max(floor, pop - POP_DECAY)
+		if (idle - POP_IDLE_DAYS) % 10 == 1 then
+			table.insert(notes, "The fans are starting to forget you. Get back in the ring.")
+		end
+	end
+end
+
+-- Ring rust: a boxer who stays out of the gym (no training session, no fight) for more than STAT_GRACE
+-- days loses a little conditioning and sharpness every day (the part above 20; Ring IQ, Chin and the
+-- defensive craft stay). Not during a post-fight suspension.
+local function statDetrain(profile, notes)
+	local t = profile.train
+	if type(t) ~= "table" or type(profile.stats) ~= "table" then
+		return
+	end
+	local day = math.floor(finite(profile.day, 1))
+	local last = math.max(finite(t.lastTrain, day), finite(profile.lastFightDay, -1e9))
+	local idle = day - last
+	if idle <= STAT_GRACE then
+		return
+	end
+	local k = math.min(2, (idle - STAT_GRACE) / 7)
+	for stat, rate in pairs(STAT_DETRAIN) do
+		local v = finite(profile.stats[stat], 30)
+		if v > 20 then
+			profile.stats[stat] = math.max(20, v - (v - 20) * rate * k)
+		end
+	end
+	profile.overall = Config.Overall(profile.stats)
+	if (idle - STAT_GRACE) % 7 == 1 then
+		table.insert(notes, string.format("Ring rust: %d days without training. Your conditioning and timing are slipping.", idle))
+	end
+end
+Training.StatDetrain = statDetrain
+
+-- passes one day; returns notes. ctx (optional) = { detrainMul, suspension }
+local function dayTick(profile, ctx)
+	ctx = ctx or {}
+	local c = profile.condition
+	local notes = {}
+	profile.day = (profile.day or 1) + 1
+	profile.ageDays = (profile.ageDays or 0) + 1
+	-- hair & beard grow (the barber resets them)
+	local app = profile.appearance
+	if type(app) == "table" then
+		if type(app.hair) == "table" then
+			app.hair.growth = clamp(finite(app.hair.growth, 0) + Config.HairGrowthPerDay, 0, 1.5)
+		end
+		if type(app.beard) == "table" then
+			app.beard.growth = clamp(finite(app.beard.growth, 0) + Config.BeardGrowthPerDay, 0, 1)
+		end
+	end
+	for _, n in ipairs(Training.Heal(profile, 1)) do
+		table.insert(notes, n)
+	end
+	-- the face heals a little every night; head trauma fades very slowly
+	for _, n in ipairs(Training.HealFace(profile, 1)) do
+		table.insert(notes, n)
+	end
+	if c.trauma then
+		c.trauma = math.max(0, finite(c.trauma, 0) - Config.Concussion.traumaDecayPerDay)
+	end
+	detrain(profile, ctx.detrainMul)
+	if not ctx.suspension then
+		popularityDecay(profile, notes)
+		statDetrain(profile, notes)
+	end
+	-- aging: a birthday every 365 days
+	while profile.ageDays >= 365 do
+		profile.ageDays -= 365
+		profile.identity.age += 1
+		table.insert(notes, string.format("Happy birthday: you are %d today.", profile.identity.age))
+		if profile.identity.age >= 31 then
+			local loss = profile.identity.age >= 35 and 3 or 1.5
+			for _, k in ipairs({ "PunchSpeed", "Reflexes", "Footwork", "Stamina", "Recovery", "Chin" }) do
+				profile.stats[k] = math.max(10, profile.stats[k] - rng:NextNumber(0.5, loss))
+			end
+			profile.stats.RingIQ = math.min(Config.StatCap, profile.stats.RingIQ + 1)
+			table.insert(notes, "Father Time: your physical attributes declined slightly. Ring IQ improved.")
+		end
+	end
+	Config.SyncGroups(profile.body)
+	return notes
+end
+
+-- bedtime, before the day ends: the rest day, the camp's overtraining nights, the day's goals -> the
+-- streak. Returns { restHonored, notes }
+local function bedtime(profile)
+	local out = { notes = {} }
+	local ok, err = pcall(function()
+		local t = trainState(profile)
+		local c = profile.condition
+		local day = math.floor(finite(profile.day, 1))
+		local trained = false
+		for _, e in ipairs(t.log) do
+			if type(e) == "table" and e.d == day and TRAIN_ACT[e.a] then
+				trained = true
+			end
+		end
+		if not inCamp(profile) and TP.PlanFocus(t.plan, day) == "rest" and not trained then
+			out.restHonored = true
+			goalEvent(profile, { kind = "rest" })
+		end
+		local prep = campPrep(profile)
+		if prep and finite(c.fatigue, 0) >= 75 then
+			prep.over += 1
+			table.insert(out.notes, "Camp: you went to bed overtrained. That costs readiness on fight night.")
+		end
+		local G = ensureGoals(profile)
+		local n = 0
+		for _, g in ipairs(G.list) do
+			if g.done then
+				n += 1
+			end
+		end
+		if G.swept then
+			G.streak += 1
+			G.best = math.max(G.best, G.streak)
+			table.insert(out.notes, string.format("Daily goals %d/%d. Streak: %d day%s.", n, #G.list, G.streak, G.streak == 1 and "" or "s"))
+		else
+			if G.streak >= 2 then
+				table.insert(out.notes, string.format("Daily goals %d/%d: your %d-day streak ends.", n, #G.list, G.streak))
+			end
+			G.streak = 0
+		end
+	end)
+	if not ok then
+		warn("[Boxer] bedtime:", err)
+	end
+	return out
+end
+
+function Training.Sleep(profile)
+	local c = profile.condition
+	local q = Training.SleepQuality(profile)
+	local bed = bedtime(profile)
+	local notes = dayTick(profile)
+	for _, n in ipairs(bed.notes) do
+		table.insert(notes, n)
+	end
+	c.sleepQ = q
+	-- supercompensation: yesterday's training becomes muscle overnight, if you slept and ate well
+	local food = c.nutrition >= 40 and 1 or c.nutrition >= 20 and 0.6 or 0.35
+	local grew, total = applyPending(profile, (0.7 + 0.3 * q) * food)
+	if total >= 0.05 then
+		table.insert(notes, string.format("Overnight recovery: +%.1f muscle (%s).", total, topPartNames(grew, 3)))
+		if food < 1 then
+			table.insert(notes, "You went to bed hungry, so part of that growth was lost. Eat after training.")
+		end
+	end
+	-- eating well above your needs adds fat; running on empty burns fat and some muscle
+	if c.nutrition > 75 then
+		profile.body.fat = clamp(profile.body.fat + 0.06, 7, 30)
+	elseif c.nutrition < 30 then
+		profile.body.fat = clamp(profile.body.fat - 0.08, 7, 30)
+		for _, p in ipairs(Config.MuscleParts) do
+			profile.body[p.id] = math.max(3, finite(profile.body[p.id], Config.PartValue(profile.body, p.id)) - 0.15)
+		end
+		Config.SyncGroups(profile.body)
+	end
+	-- soreness fades with sleep (better sleep, faster)
+	if type(c.sore) == "table" then
+		-- recovery science: sleep quality, the evening's food and water, a protein shake, a real rest day
+		-- and the conditioning coach all decide how much soreness is still there in the morning
+		local science = (finite(c.nutrition, 70) >= 50 and 0.9 or (finite(c.nutrition, 70) < 25 and 1.15 or 1))
+			* (finite(c.hydration, 80) >= 50 and 0.95 or 1) * ((type(c.buffs) == "table" and finite(c.buffs.muscle, 0) > 0) and 0.92 or 1)
+			* (bed.restHonored and 0.8 or 1) * (1 - 0.05 * coachPerk(profile, "recovery"))
+		local keep = clamp((MG.soreSleepKeep - MG.soreSleepQ * q) * science, 0, 1)
+		for grp, v in pairs(c.sore) do
+			v = finite(v, 0) * keep
+			c.sore[grp] = v >= 0.02 and v or nil
+		end
+	end
+	c.energy = clamp(55 + 45 * q, 0, 100)
+	c.fatigue = clamp(c.fatigue - (12 + 30 * q), 0, 100)
+	c.nutrition = clamp(c.nutrition - 30, 0, 100)
+	c.hydration = clamp(c.hydration - 22, 0, 100)
+	c.water = 0
+	c.buffs = {}
+	c.flexible = false
+	if bed.restHonored then
+		c.buffs.gains = 0.06
+		table.insert(notes, "Rest day done right: fresh legs, +6% gains today.")
+	end
+	logMuscleHistory(profile) -- the new day's starting point (after tonight's growth)
+	local result = { quality = q, notes = notes, day = profile.day, grew = grew, growth = total }
+	if profile.camp then
+		profile.camp.daysLeft = math.max(0, profile.camp.daysLeft - 1)
+		result.daysLeft = profile.camp.daysLeft
+		if profile.camp.daysLeft == 0 then
+			table.insert(notes, "Camp is over. It is fight night.")
+		end
+	end
+	if profile.offersDay and profile.day - profile.offersDay >= 7 then
+		profile.offers = nil -- new week, new fight offers
+	end
+	-- the new day's goals (a camp day follows the camp's phase)
+	local okG, G = pcall(ensureGoals, profile)
+	if okG then
+		result.streak = G.streak
+	end
+	return result
+end
+
+-- time passing after a fight (medical suspension / recovery)
+function Training.PassDays(profile, days)
+	local notes = {}
+	days = math.max(0, math.floor(finite(days, 0)))
+	-- the fight that sends us here started on this face: remember whether its nose was still broken
+	local f0 = profile.condition and profile.condition.face
+	preFightNose[profile] = type(f0) == "table" and f0.nose == true
+	-- the camp's last sessions still turn into muscle (rest is all a fighter does now)
+	applyPending(profile, 0.9)
+	for _ = 1, days do
+		-- light work during the suspension: untrained muscle fades at a tenth of the rate (a 45-day
+		-- KO suspension costs ~3% of a part, close to the original per-group 0.02/day; at 0.35 every
+		-- loss cost ~11% and frequent fights kept the physique near beginner level)
+		for _, n in ipairs(dayTick(profile, { detrainMul = SUSPENSION_DETRAIN, suspension = true })) do
+			table.insert(notes, n)
+		end
+	end
+	local c = profile.condition
+	c.energy, c.fatigue, c.hydration, c.nutrition = 100, 0, 75, 70
+	c.water, c.buffs, c.flexible, c.sleepQ = 0, {}, false, 0.85
+	c.sore, c.pending = {}, {}
+	-- a month off softens the physique a little (muscle loss is the per-part detraining above)
+	if days >= 14 then
+		profile.body.fat = clamp(profile.body.fat + days * 0.02, 7, 30)
+	end
+	-- back in the gym: every part gets a short grace window before detraining resumes
+	local log = muscleLog(profile)
+	local resume = profile.day - math.floor(MG.detrainGraceDays / 2)
+	for _, p in ipairs(Config.MuscleParts) do
+		log[p.id] = math.max(finite(log[p.id], resume), resume)
+	end
+	-- the fight just happened: popularity decay counts from the end of the suspension
+	profile.lastFightDay = profile.day
+	-- and the ring-rust clock restarts with the return to the gym
+	trainState(profile).lastTrain = profile.day
+	Config.SyncGroups(profile.body)
+	logMuscleHistory(profile)
+	return notes
+end
+
+------------------------------------------------------------------------
+-- Weigh-in & fight modifiers
+------------------------------------------------------------------------
+function Training.WeighIn(profile)
+	local wc = Config.WeightClasses[profile.physical.weightClass]
+	local weight = Training.Weight(profile)
+	local over = math.max(0, weight - wc.limit)
+	local penalty = math.min(0.3, over * 0.025)
+	return { weight = weight, limit = wc.limit, over = over, penalty = penalty, fine = over > 2 and 0.2 or 0 }
+end
+
+-- What the build itself does in a fight (pure, nil-safe; works on group-only NPC builds through
+-- Config.PartValue). Core muscle absorbs body shots, a thick neck steadies the chin, calves add
+-- spring to the footwork, glutes + lats drive the hips and the rotation of a punch.
+-- -> { bodyArmor (body-damage multiplier), chinAdd, moveMul, powerMul, stats = { Chin = chinAdd } }
+-- (stats is for callers that add stat deltas; FightModifiers adds chinAdd itself)
+function Training.FightModifiersFromBuild(build)
+	build = type(build) == "table" and build or {}
+	local function v(id)
+		return clamp(finite(Config.PartValue(build, id), 8), 0, 130)
+	end
+	local chinAdd = v("neck") / 100 * 4
+	return {
+		bodyArmor = clamp(1 - v("core") / 100 * 0.15, 0.8, 1),
+		chinAdd = chinAdd,
+		moveMul = 1 + v("calves") / 100 * 0.03,
+		powerMul = 1 + (v("glutes") + v("lats")) / 200 * 0.03,
+		stats = { Chin = chinAdd },
+	}
+end
+
+-- the stats a sore group costs on fight night
+local SORE_FIGHT = { arms = { "PunchSpeed" }, shoulders = { "PunchSpeed", "Power" }, chest = { "Power" }, back = { "Power" }, legs = { "Footwork" }, core = { "Endurance" }, neck = { "Chin" } }
+
+-- modifiers the fight engine applies to the player's fighter
+function Training.FightModifiers(profile)
+	local c = profile.condition
+	local mods = { stats = {}, staminaMul = 1, notes = {} }
+	for _, inj in ipairs(Training.ActiveInjuries(profile)) do
+		local def = Config.Injuries[inj.id]
+		for stat, v in pairs(def and def.fight or {}) do
+			mods.stats[stat] = (mods.stats[stat] or 0) + v
+		end
+		table.insert(mods.notes, "Fighting through a " .. def.name)
+	end
+	-- condition on fight night
+	if c.hydration < 30 then
+		mods.staminaMul -= 0.08
+		table.insert(mods.notes, "Dehydrated")
+	end
+	if c.nutrition < 30 then
+		mods.staminaMul -= 0.05
+		table.insert(mods.notes, "Under-fueled")
+	end
+	if c.energy < 40 then
+		mods.staminaMul -= 0.06
+		table.insert(mods.notes, "Low energy")
+	end
+	local wi = Training.WeighIn(profile)
+	mods.staminaMul -= wi.penalty
+	mods.weighIn = wi
+	-- physique: muscle adds pop, excess fat costs gas
+	local upper = ((profile.body.chest or 0) + (profile.body.shoulders or 0) + (profile.body.arms or 0) + (profile.body.back or 0)) / 400
+	local fromBuild = Training.FightModifiersFromBuild(profile.body)
+	mods.powerMul = 1 + upper * 0.08 + (fromBuild.powerMul - 1)
+	mods.bodyArmor = fromBuild.bodyArmor
+	mods.stats.Chin = (mods.stats.Chin or 0) + fromBuild.chinAdd
+	if (profile.body.fat or 14) > 18 then
+		mods.staminaMul -= ((profile.body.fat or 14) - 18) * 0.015
+	end
+	-- career head trauma: every war leaves the chin a little weaker
+	local trauma = clamp(finite(c.trauma, 0), 0, 100)
+	mods.trauma = trauma
+	if trauma > 0 then
+		mods.stats.Chin -= trauma / Config.Concussion.traumaChinDiv
+		if trauma >= 15 then
+			table.insert(mods.notes, "Carrying head trauma")
+		end
+	end
+	-- heavy legs and arms from yesterday's lifting
+	local maxSore = 0
+	for _, v in pairs(type(c.sore) == "table" and c.sore or {}) do
+		maxSore = math.max(maxSore, finite(v, 0))
+	end
+	if maxSore >= 0.5 then
+		mods.staminaMul -= 0.03
+		table.insert(mods.notes, "Sore from training")
+	end
+	-- and the sore groups themselves: heavy arms are slow, heavy legs don't move (up to -3 a stat)
+	local soreHits = {}
+	for grp, v in pairs(type(c.sore) == "table" and c.sore or {}) do
+		v = clamp(finite(v, 0), 0, 1)
+		local hit = SORE_FIGHT[grp]
+		if hit and v >= 0.3 then
+			for _, stat in ipairs(hit) do
+				soreHits[stat] = math.min(3, (soreHits[stat] or 0) + v * 3)
+			end
+		end
+	end
+	for stat, v in pairs(soreHits) do
+		mods.stats[stat] = (mods.stats[stat] or 0) - math.floor(v * 10 + 0.5) / 10
+	end
+	-- the fight camp: peaked, sharp, flat, overcooked or drained (Shared.TrainingPlan readiness)
+	local ready = Training.Readiness(profile)
+	if ready then
+		local rm = TP.ReadinessMods(ready)
+		for stat, v in pairs(rm.stats) do
+			mods.stats[stat] = (mods.stats[stat] or 0) + v
+		end
+		mods.staminaMul += rm.stamina
+		for _, n in ipairs(rm.notes) do
+			table.insert(mods.notes, n)
+		end
+		mods.readiness = { score = ready.score, label = ready.tier.name, over = ready.over, drained = ready.drained }
+	end
+	-- gear
+	local gloves = Training.GearItem(profile, "gloves")
+	if gloves then
+		mods.powerMul *= 1 + (gloves.power or 0) * (Training.GearCondition(profile, "gloves") < 40 and 0.5 or 1)
+		mods.speedMul = 1 + (gloves.speed or 0)
+	end
+	local shoes = Training.GearItem(profile, "shoes")
+	mods.moveMul = (1 + (shoes and shoes.footwork or 0) - (Training.GearCondition(profile, "shoes") < 25 and 0.03 or 0)) * fromBuild.moveMul
+	local guard = Training.GearItem(profile, "mouthguard")
+	if guard and guard.chin and guard.chin > 0 then
+		mods.stats.Chin = (mods.stats.Chin or 0) + guard.chin
+	end
+	mods.staminaMul = clamp(mods.staminaMul, 0.5, 1.1)
+	return mods
+end
+
+------------------------------------------------------------------------
+-- Equipment, gear, coaches (purchases)
+------------------------------------------------------------------------
+function Training.UpgradeStation(profile, stationId)
+	local st = Catalog.Stations[stationId]
+	if not st then
+		return false, "Unknown station"
+	end
+	local cur = profile.gym.levels[stationId] or 1
+	local nxt = st.levels[cur + 1]
+	if not nxt then
+		return false, "Already at the top level."
+	end
+	if nxt.requiresTier and profile.tier < nxt.requiresTier then
+		return false, "Elite equipment unlocks when you become a World Champion."
+	end
+	if profile.money < nxt.cost then
+		return false, "Not enough money."
+	end
+	profile.money -= nxt.cost
+	profile.gym.levels[stationId] = cur + 1
+	profile.gym.cond[stationId] = 100
+	return true, nxt.name
+end
+
+function Training.RepairStation(profile, stationId)
+	local lv = profile.gym.levels[stationId]
+	if not lv then
+		return false, "Unknown station"
+	end
+	if (profile.gym.cond[stationId] or 100) >= 99 then
+		return false, "Already in perfect condition."
+	end
+	local cost = Catalog.RepairCost(stationId, lv)
+	if profile.money < cost then
+		return false, "Repair costs " .. Config.Money(cost) .. "."
+	end
+	profile.money -= cost
+	profile.gym.cond[stationId] = 100
+	return true, cost
+end
+
+function Training.BuyGear(profile, kind, id)
+	local list = Catalog.GearList(kind)
+	local item = list and Catalog.Find(list, id)
+	if not item then
+		return false, "Unknown item"
+	end
+	if profile.gear.owned[kind][id] then
+		-- replacing worn gear with a fresh one
+		if kind == "mouthguard" or kind == "robe" then
+			return false, "Already owned."
+		end
+	end
+	if item.requiresTier and profile.tier < item.requiresTier then
+		return false, "Unlocks when you become a World Champion."
+	end
+	if profile.money < item.price then
+		return false, "Not enough money."
+	end
+	profile.money -= item.price
+	profile.gear.owned[kind][id] = true
+	profile.gear.equipped[kind] = id
+	if kind ~= "mouthguard" and kind ~= "robe" then
+		profile.gear.cond[kind .. ":" .. id] = 100
+	end
+	if kind == "robe" and item.pop then
+		profile.popularity = clamp(profile.popularity + item.pop, 0, 100)
+	end
+	return true
+end
+
+function Training.Equip(profile, kind, id)
+	if not profile.gear.owned[kind] or not profile.gear.owned[kind][id] then
+		return false, "You don't own that."
+	end
+	profile.gear.equipped[kind] = id
+	return true
+end
+
+function Training.RepairGear(profile, kind)
+	local item, id = Training.GearItem(profile, kind)
+	if not item then
+		return false, "Nothing equipped"
+	end
+	local key = kind .. ":" .. id
+	if (profile.gear.cond[key] or 100) >= 99 then
+		return false, "Already in great shape."
+	end
+	local cost = Catalog.RepairGearCost(kind, item)
+	if profile.money < cost then
+		return false, "Repair costs " .. Config.Money(cost) .. "."
+	end
+	profile.money -= cost
+	profile.gear.cond[key] = 100
+	return true, cost
+end
+
+-- coach specialties by id only (Config.FindById also matches display names, and the first entry
+-- for a nil id): every key written to profile.coaches must be a CoachSpecialties id
+local function coachSpec(specId)
+	if type(specId) ~= "string" then
+		return nil
+	end
+	return Catalog.Find(Catalog.CoachSpecialties, specId)
+end
+
+function Training.HireCoach(profile, specId, tier)
+	tier = math.floor(finite(tier, 0))
+	local spec = coachSpec(specId)
+	local def = Catalog.CoachTiers[tier]
+	local names = spec and Catalog.CoachNames[spec.id]
+	local name = type(names) == "table" and names[tier] or nil
+	if not spec or not def or not name then
+		return false, "Unknown coach"
+	end
+	if (profile.coaches[spec.id] or 0) >= tier then
+		return false, "You already have a coach at that level."
+	end
+	if profile.money < def.cost then
+		return false, "Signing fee is " .. Config.Money(def.cost) .. "."
+	end
+	-- pay last: every lookup above has already succeeded
+	profile.money -= def.cost
+	profile.coaches[spec.id] = tier
+	return true, name
+end
+
+function Training.FireCoach(profile, specId)
+	local spec = coachSpec(specId)
+	if not spec or (profile.coaches[spec.id] or 0) == 0 then
+		return false, "No coach to release."
+	end
+	profile.coaches[spec.id] = 0
+	return true
+end
+
+function Training.TeamSalary(profile)
+	local total = 0
+	for specId, tier in pairs(profile.coaches) do
+		if tier > 0 then
+			total += Catalog.CoachTiers[tier].salary
+		end
+	end
+	return total
+end
+
+function Training.EliteCorner(profile)
+	return (profile.coaches.RingIQ or 0) >= 3 or (profile.coaches.Defense or 0) >= 3
+end
+
+function Training.CampDays(profile)
+	local d = Config.Tiers[profile.tier].campDays
+	if Training.Owned(profile, "MountainCamp") then
+		d += 1
+	end
+	if Training.Owned(profile, "EliteCamp") then
+		d += 2
+	end
+	return d
+end
+
+-- minigame difficulty/params for an activity
+function Training.MinigameParams(profile, act)
+	local lv = Training.StationLevel(profile, act.station)
+	local p = {
+		level = lv, smart = (act.station == "heavybag" and lv >= 5) or Training.Owned(profile, "SmartSystem"),
+		elite = Catalog.Stations[act.station] and Catalog.Stations[act.station].levels[lv] and Catalog.Stations[act.station].levels[lv].elite or false,
+	}
+	-- progressive overload (mastery): the drill draws tighter (Training.DrillPlan) and pays more when done well
+	if not act.recovery then
+		local _, _, ov = Training.Mastery(profile, act.id)
+		if ov > 0 then
+			p.overload = ov
+		end
+	end
+	-- the boxer's own sharpness (0 at an overall of 30, 1 at 80): the drill draws a little tighter for a
+	-- better boxer (DrillPlan's tightness, never past its floor)
+	local okO, overall = pcall(function()
+		return finite(profile.overall, nil) or Config.Overall(profile.stats)
+	end)
+	if okO and type(overall) == "number" then
+		p.skill = r2(clamp((overall - 30) / 50, 0, 1))
+	end
+	if act.minigame == "mitts" then
+		p.tier = lv
+	elseif act.minigame == "rope" then
+		p.doubleUnders = lv >= 3
+		p.footwork = lv >= 4
+	elseif act.minigame == "massage" then
+		-- the therapist works on what is really sore (the body map shows the same numbers)
+		local sore = {}
+		local cs = type(profile.condition) == "table" and type(profile.condition.sore) == "table" and profile.condition.sore or {}
+		for _, g in ipairs(Config.MuscleKeys) do
+			local v = finite(cs[g], 0)
+			if v > 0 then
+				sore[g] = r2(clamp(v, 0, 1))
+			end
+		end
+		p.sore = sore
+	elseif act.minigame == "stretch" then
+		-- four stretches in a row from the list, starting anywhere
+		local names, n = {}, #Config.StretchNames
+		local start = math.random(1, n)
+		for k = 1, 4 do
+			names[k] = Config.StretchNames[(start + k - 2) % n + 1]
+		end
+		p.stretchNames = names
+	end
+	return p
+end
+
+-- the tolerances an overload step tightens on the classic drills (time limits, hit windows, zone widths)
+local OVERLOAD_KEYS = { "limit", "window", "cw", "w", "width", "hitW", "goodW", "perfectW", "call", "beat", "band" }
+local CLASSIC_DRILLS = { combo = true, rhythm = true, reaction = true, mitts = true, shadow = true, reps = true, medball = true, pace = true, ladder = true, rope = true, hold = true }
+
+-- The drill as the server draws it (DrillScore judges it): every combination, zone, cue, beat and
+-- time limit, segment by segment. The client plays exactly this plan and the server replays the
+-- client's inputs against its own copy, so the session quality never comes from the client.
+-- (The numbers are the drills' own: Activities.lua draws nothing that changes a score.)
+-- Each segment's gap is the pacing the client plays it with (DrillScore.WAIT: the round banners, the
+-- rests, the beat after each combination or rep, a cue's lead-in): the replay starts no segment sooner.
+function Training.DrillPlan(act, lv, params)
+	local r = Random.new()
+	local function pick(list)
+		return list[r:NextInteger(1, #list)]
+	end
+	local function shuffled(list, n)
+		local copy = table.clone(list)
+		for i = #copy, 2, -1 do
+			local j = r:NextInteger(1, i)
+			copy[i], copy[j] = copy[j], copy[i]
+		end
+		local out = {}
+		for i = 1, math.min(n, #copy) do
+			out[i] = copy[i]
+		end
+		return out
+	end
+	local kind = act.minigame
+	local segs = {}
+	local plan = { kind = kind, segs = segs }
+	local W = DrillScore.WAIT
+	lv = math.max(1, math.floor(tonumber(lv) or 1))
+	params = type(params) == "table" and params or {}
+	local overload = clamp(math.floor(finite(params.overload, 0)), 0, TP.OVERLOAD_MAX)
+	-- how tight the drill draws, 0 (the first station and a raw boxer: the widest, friendliest windows)
+	-- .. 1 (the top station and a sharp boxer): the station level counts most, the boxer's own stats
+	-- (params.skill, Training.MinigameParams) the rest. Every window keeps a comfortable floor.
+	local skill = clamp(finite(params.skill, 0), 0, 1)
+	local tight = clamp(0.65 * DrillScore.Workouts.LevelFrac(lv) + 0.35 * skill, 0, 1)
+	-- a number between its friendliest (wide) and its tightest (narrow) draw
+	local function tw(wide, narrow)
+		return wide + (narrow - wide) * tight
+	end
+	plan.tight = math.floor(tight * 100 + 0.5) / 100
+	if kind == "combo" then
+		-- RHYTHM COMBOS: the punches in order, each on the beat of the one before (seg.beat) - the heavy
+		-- bag is cadence as much as order; then power shots on the needle and a speed burst
+		local pool = { { "jab", "cross" }, { "jab", "jab", "cross" }, { "jab", "cross", "leadhook" } }
+		if lv >= 2 then
+			table.insert(pool, { "jab", "cross", "leadhook", "cross" })
+			table.insert(pool, { "cross", "leadhook", "cross" })
+		end
+		if lv >= 3 then
+			table.insert(pool, { "jab", "uppercut", "leadhook" })
+			table.insert(pool, { "leadhook", "rearhook", "leadhook" })
+			table.insert(pool, { "jab", "cross", "leadhook*", "cross" })
+		end
+		if lv >= 4 then
+			table.insert(pool, { "jab", "cross", "leadhook", "rearhook", "uppercut" })
+			table.insert(pool, { "jab", "overhand", "leadhook*" })
+			table.insert(pool, { "leadhook*", "leadhook", "cross", "uppercut" })
+		end
+		local beat = tw(0.42, 0.3)
+		for k = 1, 4 do
+			local combo = pick(pool)
+			local ids, body = {}, {}
+			for i, c in ipairs(combo) do
+				ids[i] = (c:gsub("%*", ""))
+				body[i] = c:find("%*") ~= nil
+			end
+			-- the coach calls some combinations by their numbers (1 jab, 2 cross, 3 lead hook, 4 rear hook,
+			-- 5 uppercut, 6 overhand): from the second bag on the last two, from the fourth all of them
+			local byNumber = (lv >= 4) or (lv >= 2 and k >= 3)
+			-- (the time limit leaves room for a wrong press or two: a slip of the hand costs that punch, not the combo)
+			table.insert(segs, { j = "seq", ids = ids, body = body, call = byNumber and "numbers" or nil, beat = beat,
+				limit = 1.6 + #combo * tw(0.9, 0.78) + (byNumber and 0.4 or 0), gap = k == 1 and W.intro or W.combo })
+		end
+		local shots = lv >= 3 and 4 or 3
+		for s = 1, shots do
+			-- (the sweet spot is ~0.2 s of needle wide on the first bag, never under ~0.15 s)
+			table.insert(segs, { j = "needle", c = 0.66 + r:NextNumber() * 0.18, w = tw(0.11, 0.09), sweep = tw(0.75, 0.95) + s * 0.03, dur = 3.5,
+				gap = s == 1 and (W.combo + W.rest + W.round) or W.shot })
+		end
+		-- (the burst's full marks: 3.4 punches a second on the first bag, 4.2 at the top - a mash, not a sprint)
+		table.insert(segs, { j = "burst", dur = 4, target = tw(3.4, 4.2), gap = W.shot + W.rest + W.round })
+	elseif kind == "rhythm" then
+		-- ACCELERATING RHYTHM: a round starts on its tempo and picks up through the round (seg.accel, to a
+		-- cap): alternate hands and keep up with the bag; round two adds doubles (and triplets up top)
+		local baseBpm = math.floor(tw(96, 168))
+		local rounds = { { name = "ALTERNATING RHYTHM", bpm = baseBpm, pattern = "alt" },
+			{ name = lv >= 3 and "DOUBLES & TRIPLETS" or "DOUBLES", bpm = math.floor(baseBpm * 1.1 + 0.5), pattern = lv >= 3 and "mixed" or "doubles" } }
+		for ri, rd in ipairs(rounds) do
+			local interval = 60 / rd.bpm
+			local count = math.clamp(math.floor(9 / interval), 12, 30)
+			local lanes = {}
+			if rd.pattern == "alt" then
+				for i = 1, count do
+					local lane = (i % 2 == 1) and "L" or "R"
+					if lv >= 3 and i % 7 == 0 then
+						lane = lanes[i - 1] or lane -- a double now and then on the better bags
+					end
+					lanes[i] = lane
+				end
+			else
+				local hand = "L"
+				while #lanes < count do
+					local g = (rd.pattern == "mixed" and r:NextNumber() < 0.45) and 3 or 2
+					for _ = 1, g do
+						if #lanes < count then
+							table.insert(lanes, hand)
+						end
+					end
+					hand = hand == "L" and "R" or "L"
+				end
+			end
+			table.insert(segs, { j = "notes", name = rd.name, bpm = rd.bpm, lanes = lanes, interval = interval, accel = 0.985, minInterval = interval * tw(0.72, 0.6),
+				-- (the good window never closes under ~0.18 s either side: a human's beat error fits in it)
+				lead = 1.0, hitW = tw(0.3, 0.26), perfectW = tw(0.11, 0.08), goodW = tw(0.22, 0.18), gap = ri == 1 and W.intro or (W.rest + W.round) })
+		end
+	elseif kind == "reaction" then
+		-- (the answer window never closes under a second: a slow reaction is still an answer)
+		local window = tw(1.25, 1.05)
+		local options = { "punch", "punch", "slipL", "slipR" }
+		local defs = { "slipL", "slipR" }
+		if lv >= 2 then
+			table.insert(options, "roll")
+			table.insert(defs, "roll")
+		end
+		for k = 1, 5 do
+			local delay = 0.35 + r:NextNumber() * 0.6
+			table.insert(segs, { j = "cue", want = pick(options), window = window, delay = delay, gap = (k == 1 and W.intro or W.react) + delay })
+		end
+		for k = 1, 3 do
+			local delay = 0.4 + r:NextNumber() * 0.5
+			table.insert(segs, { j = "counter", want = pick(defs), window = window, cw = window * 0.9 + 0.25, delay = delay,
+				gap = (k == 1 and (W.react + W.rest + W.round) or W.counter) + delay })
+		end
+		-- REBOUNDS: punch the bag, then slip it as it comes back off the punch (the side it returns on
+		-- is shown; the timing is yours to read). Better bags come back faster, with a tighter window.
+		for k = 1, 4 do
+			local delay = 0.3 + r:NextNumber() * 0.4
+			table.insert(segs, { j = "rebound", want = r:NextNumber() < 0.5 and "slipL" or "slipR", window = 1.2, ret = tw(0.68, 0.45) + r:NextNumber() * 0.1,
+				w = tw(0.24, 0.19), delay = delay, gap = (k == 1 and (W.counter + W.rest + W.round) or W.rebound) + delay })
+		end
+	elseif kind == "mitts" then
+		-- CALL & RESPONSE: the coach calls the combination one move at a time (seg.call apart), each
+		-- answered inside its window; from the second coach up a FEINT is slipped into some calls (a mitt
+		-- flashed and pulled: don't bite). Round two calls faster.
+		local list = {}
+		for _, c in ipairs(Config.MittCombos) do
+			if c.tier <= lv then
+				-- favour combos near your coach's level
+				for _ = 1, (c.tier >= lv - 1) and 2 or 1 do
+					table.insert(list, c)
+				end
+			end
+		end
+		for rd = 1, 2 do
+			for k = 1, 4 do
+				local c = pick(list)
+				local ids = table.clone(c.keys)
+				-- (a feint in a third of the combinations on the second coach, half of them on the top one)
+				if lv >= 2 and r:NextNumber() < 0.2 + 0.06 * lv then
+					table.insert(ids, r:NextInteger(2, #ids + 1), "feint")
+				end
+				-- (each answer's window outlasts the next call: a slow answer still lands on its own call)
+				local call = tw(0.9, 0.7) * (rd == 2 and 0.9 or 1)
+				local gap = k > 1 and W.mitt or (rd == 1 and W.intro or (W.mitt + W.restLong + W.round))
+				table.insert(segs, { j = "call", g = rd, name = c.name, ids = ids, call = call, window = call * 0.9 + tw(0.5, 0.38), lead = 0.5, gap = gap })
+			end
+		end
+	elseif kind == "shadow" then
+		-- MIRROR THE COACH: single moves on cue, then the called patterns copied in order (the ladder
+		-- owns the stepped footwork)
+		local window = tw(1.35, 1.1)
+		local prompts = { "F", "B", "L", "R", "slipL", "slipR", "roll", "jab", "cross", "leadhook" }
+		for k = 1, 5 do
+			local delay = 0.15 + r:NextNumber() * 0.3
+			table.insert(segs, { j = "cue", want = pick(prompts), window = window, delay = delay, gap = (k == 1 and W.intro or W.move) + delay })
+		end
+		for fi, flow in ipairs(shuffled(Config.ShadowFlows, 3)) do
+			local len = lv <= 1 and 3 or (lv == 2 and (r:NextNumber() < 0.5 and 3 or 4) or 4)
+			local seq = {}
+			for k = 1, math.min(len, #flow) do
+				seq[k] = flow[k]
+			end
+			table.insert(segs, { j = "seq", ids = seq, limit = 1.4 + #seq * tw(0.8, 0.55), gap = fi == 1 and (W.move + W.rest + W.round) or W.flow })
+		end
+	elseif kind == "reps" then
+		for set = 1, 2 do
+			for rep = 1, 4 do
+				local width = math.max(0.1, (tw(0.26, 0.18) - rep * 0.008) * (set == 2 and 0.85 or 1))
+				local lo = math.clamp(0.58 + r:NextNumber() * 0.2, 0.5, 0.95 - width)
+				local gap = rep > 1 and (W.lower + W.rerack) or (set == 1 and W.intro or (W.lower + W.rerack + W.rest + W.round))
+				table.insert(segs, { j = "lift", mode = "rep", set = set, rep = rep, lo = lo, width = width, speed = (0.6 + rep * 0.03) * (set == 2 and 1.08 or 1), wait = 5, gap = gap })
+			end
+		end
+	elseif kind == "medball" then
+		-- SLAMS on the bar, then the PLANK ON THE BALL (core): hands on the ball, it wants to roll - LEFT /
+		-- RIGHT taps keep the balance in the green
+		local slams = 5 + math.floor(2 * tight + 0.5)
+		for rep = 1, slams do
+			-- (the zone stays a third of a second of the lift wide at the top: never a frame-perfect release)
+			local width = math.max(0.1, tw(0.32, 0.28) - rep * 0.005)
+			local lo = math.clamp(0.6 + r:NextNumber() * 0.12, 0.5, 0.97 - width)
+			table.insert(segs, { j = "lift", mode = "slam", rep = rep, lo = lo, width = width, speed = tw(0.75, 0.9) + rep * 0.02, wait = 5, gap = rep == 1 and W.intro or (W.slam + W.catch) })
+		end
+		local amp = tw(0.34, 0.5)
+		table.insert(segs, { j = "wobble", name = "PLANK ON THE BALL", duration = math.floor(tw(12, 15)), band = tw(0.22, 0.16), kick = 0.2,
+			drift = { amp, 0.9 + r:NextNumber() * 0.6, r:NextNumber() * 6.28, amp * 0.6, 2.1 + r:NextNumber() * 0.9, r:NextNumber() * 6.28 },
+			bias = (r:NextNumber() < 0.5 and -1 or 1) * tw(0.14, 0.22), gap = W.slam + W.catch + W.rest + W.round })
+	elseif kind == "pace" then
+		local shrink = 0.08 * tight
+		local phases = {}
+		for i, ph in ipairs({ { 0.28, 0.52, "WARM-UP" }, { 0.58, 0.84, "SPRINT!" }, { 0.33, 0.57, "RECOVER" }, { 0.64, 0.9, "ALL OUT!" } }) do
+			phases[i] = { ph[1] + shrink, ph[2] - shrink, ph[3] }
+		end
+		table.insert(segs, { j = "pace", duration = 24, phases = phases, v0 = 0.2, kick = 0.085, decay = 0.2, gap = W.intro })
+	elseif kind == "ladder" then
+		-- STEPPED PATTERNS: a named drill's steps slide to the foot line on a beat that quickens through
+		-- the drill (seg.accel) and from drill to drill; the smart ladder (top level) adds reaction lights
+		local available = {}
+		for _, d in ipairs(Config.LadderDrills) do
+			if d.lv <= lv then
+				table.insert(available, d)
+			end
+		end
+		local dirs = { "F", "L", "B", "R" }
+		local drills = lv >= 4 and 2 or 3
+		for p, d in ipairs(shuffled(available, drills)) do
+			local lanes = {}
+			for _ = 1, (#d.steps <= 7 and 2 or 1) do
+				for _, st in ipairs(d.steps) do
+					table.insert(lanes, st)
+				end
+			end
+			local bpm = tw(84, 120) + (p - 1) * 6
+			local interval = 60 / bpm
+			table.insert(segs, { j = "notes", name = d.name, bpm = math.floor(bpm), lanes = lanes, interval = interval, accel = 0.975, minInterval = interval * tw(0.7, 0.55), lead = 1.0,
+				hitW = tw(0.3, 0.22), perfectW = tw(0.12, 0.08), goodW = tw(0.22, 0.15), gap = p == 1 and W.intro or (W.ladder + (p == 2 and W.restShort or 0) + W.round) })
+		end
+		if lv >= 4 then
+			local rnd, delays = {}, {}
+			for i = 1, 10 do
+				rnd[i] = pick(dirs)
+				delays[i] = 0.12 + r:NextNumber() * 0.2
+			end
+			table.insert(segs, { j = "lights", name = "RANDOM REACTION", ids = rnd, delays = delays, limit = 12, first = 0.2, gap = W.ladder + W.rest + W.round })
+		end
+	elseif kind == "rope" then
+		local phases = { { name = "BASIC BOUNCE", mode = "jump" } }
+		if params.footwork then
+			table.insert(phases, { name = "BOXER SKIP", mode = "feet" })
+		end
+		if params.doubleUnders then
+			table.insert(phases, { name = "DOUBLE UNDERS", mode = "doubles" })
+		end
+		if #phases == 1 then
+			table.insert(phases, { name = "SPEED SKIP", mode = "speed" })
+		end
+		local perPhase = #phases >= 3 and { 8, 8, 8 } or { 10, 10 }
+		for i, ph in ipairs(phases) do
+			local jumps = perPhase[i] or 8
+			local cues = {}
+			local footNext = r:NextNumber() < 0.5 and "footL" or "footR"
+			for k = 1, jumps + 1 do
+				local cue = "jump"
+				if ph.mode == "doubles" and r:NextNumber() < 0.5 then
+					cue = "double"
+				elseif ph.mode == "feet" then
+					cue = footNext
+					if r:NextNumber() < 0.8 then
+						footNext = footNext == "footL" and "footR" or "footL"
+					end
+				end
+				cues[k] = cue
+			end
+			-- (hold and release: the jump's window and the double under's charge are widest on the first rope)
+			table.insert(segs, { j = "rope", name = ph.name, mode = ph.mode, jumps = jumps, omega = ph.mode == "speed" and 7.8 or 6.5, cues = cues,
+				early = tw(0.6, 0.55), late = tw(0.16, 0.13), perfW = tw(0.09, 0.07), charge = tw(0.16, 0.2), gap = i == 1 and W.intro or (W.restShort + W.round) })
+		end
+	elseif kind == "hold" then
+		table.insert(segs, { j = "breath", breaths = 4, inhale = 2.4, exhale = 2.4, gap = W.intro })
+	else
+		-- the exercise-specific workouts (DrillWorkouts: bench, deadlift, squat, pull-ups, curls, the
+		-- cardio machines and the recovery stations)
+		-- (these draw on a continuous level from the tightness: an overload step is half a level, up to the top one)
+		local more = DrillScore.Workouts.Plan(kind, math.min(5, 1 + 4 * tight + 0.5 * overload), params, r, W)
+		if not more then
+			return nil
+		end
+		for _, seg in ipairs(more) do
+			table.insert(segs, seg)
+		end
+	end
+	-- progressive overload on the classic drills: tighter windows and time limits, a higher burst target
+	-- (both sides judge this same plan, so the replay stays the server's)
+	if overload > 0 and kind ~= "spar" then
+		plan.overload = overload
+		if CLASSIC_DRILLS[kind] then
+			local m = 1 - 0.04 * overload
+			for _, seg in ipairs(segs) do
+				for _, key in ipairs(OVERLOAD_KEYS) do
+					if type(seg[key]) == "number" then
+						seg[key] *= m
+					end
+				end
+				if seg.j == "burst" and type(seg.target) == "number" then
+					seg.target *= 1 + 0.04 * overload
+				elseif seg.j == "rope" and type(seg.omega) == "number" then
+					seg.omega *= 1 + 0.03 * overload -- a faster rope
+				end
+			end
+		end
+	end
+	-- the quickest the drill can honestly be played (FinishActivity: a session well under it is too quick)
+	plan.minTime = math.floor(DrillScore.MinTime(plan) * 10) / 10
+	return plan
+end
+
+------------------------------------------------------------------------
+-- Save migration (DataManager.Load). Never bump Config.DataVersion: a mismatch wipes careers.
+------------------------------------------------------------------------
+local function numIn(t, k, lo, hi, default)
+	t[k] = clamp(finite(t[k], default), lo, hi)
+	return t[k]
+end
+
+local function tableIn(t, k, default)
+	if type(t[k]) ~= "table" then
+		t[k] = default or {}
+	end
+	return t[k]
+end
+
+-- An old save only knows the 7 groups. Each group with no parts yet is split across its parts by
+-- the player's own training history (profile.records sessions x each exercise's targeting), so a
+-- bench-heavy career migrates with fuller pecs and front delts. Each part gets a bias b in
+-- [-lim, lim] (lim <= 20%) and the share-weighted sum is re-balanced to exactly the old group value
+-- (part = gv * (1 + b - mean b)): weight, power and lift loads do not move. lim shrinks with the
+-- headroom to the frame cap, so no part ends above it (gv * (1 + 2 lim) <= cap) on veteran saves.
+local function seedPartsFromHistory(profile, body)
+	local records = type(profile.records) == "table" and profile.records or {}
+	local cap = Training.MuscleCap(profile)
+	local affinity = {}
+	for _, act in ipairs(Config.Activities) do
+		local r = records[act.id]
+		local n = type(r) == "table" and math.max(0, finite(r.sessions, 0)) or 0
+		if n > 0 and not act.recovery then
+			for id, w in pairs(Training.Targets(act)) do
+				affinity[id] = (affinity[id] or 0) + n * finite(w, 0)
+			end
+		end
+	end
+	for _, g in ipairs(Config.MuscleKeys) do
+		local parts = Config.MuscleGroupParts[g]
+		local missing = true
+		for _, p in ipairs(parts) do
+			if type(body[p.id]) == "number" then
+				missing = false
+			end
+		end
+		if missing then
+			local gv = body[g]
+			local lim = math.min(0.2, math.max(0, (cap / math.max(gv, 1e-6) - 1) / 2))
+			local mean = 0
+			for _, p in ipairs(parts) do
+				mean += p.share * (affinity[p.id] or 0)
+			end
+			local sum = 0
+			for _, p in ipairs(parts) do
+				local rel = mean > 0 and (affinity[p.id] or 0) / mean or 1
+				body[p.id] = gv * (1 + clamp((rel - 1) * 0.2, -lim, lim))
+				sum += p.share * body[p.id]
+			end
+			local delta = gv - sum
+			for _, p in ipairs(parts) do
+				body[p.id] = math.max(0, body[p.id] + delta)
+			end
+		end
+	end
+	return records
+end
+
+-- the training programme (profile.train, profile.camp.prep): an old save gets an empty programme whose
+-- ring-rust clock starts today; a corrupt one keeps what is valid (unknown drills, NaN, wrong types and
+-- out-of-range values dropped or clamped; broken goals are drawn again)
+local function migrateProgram(profile)
+	local day = math.floor(finite(profile.day, 1))
+	if type(profile.train) ~= "table" then
+		profile.train = nil
+	end
+	local t = trainState(profile)
+	for k in pairs(t) do
+		if not ({ log = true, mastery = true, plan = true, goals = true, lastTrain = true, seed = true })[k] then
+			t[k] = nil
+		end
+	end
+	t.seed = math.floor(clamp(finite(t.seed, 1), 1, 999999))
+	t.lastTrain = math.floor(clamp(finite(t.lastTrain, day), -1e7, day))
+	local log = {}
+	for _, e in ipairs(t.log) do
+		if type(e) == "table" and type(e.a) == "string" and Training.Activity(e.a) and finite(e.d, nil) then
+			table.insert(log, { d = math.floor(e.d), a = e.a, q = clamp(finite(e.q, 1), 0, 1.5) })
+		end
+	end
+	while #log > LOG_MAX do
+		table.remove(log, 1)
+	end
+	t.log = log
+	local mastery = {}
+	for id, e in pairs(t.mastery) do
+		if type(id) == "string" and Training.Activity(id) and type(e) == "table" then
+			mastery[id] = { xp = clamp(finite(e.xp, 0), 0, 1e6), ov = math.floor(clamp(finite(e.ov, 0), 0, TP.OVERLOAD_MAX)) }
+		end
+	end
+	t.mastery = mastery
+	t.plan = TP.CleanPlan(t.plan, day)
+	local G = t.goals
+	local okGoals = type(G.list) == "table"
+	for _, g in ipairs(okGoals and G.list or {}) do
+		okGoals = okGoals and type(g) == "table" and TP.GoalDefs[g.kind] ~= nil and finite(g.need, nil) ~= nil and finite(g.n, nil) ~= nil
+	end
+	local w = G.weekly
+	if w ~= nil and not (type(w) == "table" and TP.GoalDefs[w.kind] and finite(w.need, nil) and finite(w.n, nil)) then
+		G.weekly, G.week = nil, nil
+	end
+	if not okGoals then
+		G.list, G.day = nil, nil
+	end
+	G.streak = math.floor(clamp(finite(G.streak, 0), 0, 1e6))
+	G.best = math.floor(clamp(finite(G.best, 0), G.streak, 1e6))
+	if G.day ~= nil then
+		G.day = finite(G.day, nil) and math.floor(G.day) or nil
+	end
+	G.swept = G.swept == true
+	-- the camp's log: whole days 1..total (campPrep repairs it in place)
+	if type(profile.camp) == "table" then
+		if profile.camp.prep ~= nil and type(profile.camp.prep) ~= "table" then
+			profile.camp.prep = nil
+		end
+		campPrep(profile)
+	end
+end
+
+-- Brings any created save up to the current shape, in place. Idempotent (safe on every join),
+-- additive (fills what is missing) and defensive (NaN / wrong types / out-of-range values are
+-- repaired so one corrupt value can never crash Sleep, Summary or a fight). Returns the profile.
+function Training.Migrate(profile)
+	if type(profile) ~= "table" or not profile.created then
+		return profile
+	end
+	-- identity / numbers the math depends on
+	local identity = tableIn(profile, "identity")
+	identity.age = math.floor(clamp(finite(identity.age, 22), 16, 70))
+	-- the names Career.Summary formats (a non-string errored the join's push)
+	for _, k in ipairs({ "first", "last", "name", "nickname", "nationality" }) do
+		if type(identity[k]) ~= "string" then
+			identity[k] = nil
+		end
+	end
+	identity.first = identity.first or "Boxer"
+	identity.last = identity.last or ""
+	identity.name = identity.name or (identity.first .. " " .. identity.last)
+	identity.nickname = identity.nickname or ""
+	identity.nationality = identity.nationality or "USA"
+	local physical = tableIn(profile, "physical")
+	physical.weightClass = math.floor(clamp(finite(physical.weightClass, 5), 1, #Config.WeightClasses))
+	physical.baseWeight = finite(physical.baseWeight, Config.WeightClasses[physical.weightClass].limit)
+	local stats = tableIn(profile, "stats")
+	for _, k in ipairs(Config.StatKeys) do
+		numIn(stats, k, 1, Config.StatCap, 30)
+	end
+	-- derived from the (now finite) stats: a NaN overall saves as null and the client formats it
+	profile.overall = Config.Overall(stats)
+	local mental = tableIn(profile, "mental")
+	for k in pairs(mental) do
+		if not table.find(Config.MentalKeys, k) then
+			mental[k] = nil -- a stray entry (Career.Summary rounds every value)
+		end
+	end
+	for _, k in ipairs(Config.MentalKeys) do
+		numIn(mental, k, 0, 100, 50)
+	end
+	-- belts and regional titles: one boolean per org / level
+	local belts = tableIn(profile, "belts")
+	for k in pairs(belts) do
+		if not table.find(Config.Orgs, k) then
+			belts[k] = nil
+		end
+	end
+	for _, org in ipairs(Config.Orgs) do
+		belts[org] = belts[org] == true
+	end
+	local regional = tableIn(profile, "regional")
+	regional.regional = regional.regional == true
+	regional.national = regional.national == true
+	numIn(profile, "day", 1, 1e7, 1)
+	numIn(profile, "ageDays", 0, 365, 0)
+	numIn(profile, "popularity", 0, 100, 1)
+	numIn(profile, "money", -1e12, 1e12, 0)
+	profile.tier = math.floor(clamp(finite(profile.tier, 1), 1, #Config.Tiers))
+	tableIn(profile, "owned")
+	tableIn(profile, "history")
+
+	-- appearance: every v2 look field (face sliders, hairline, battle wear...) with neutral defaults
+	profile.appearance = Looks.Fill(profile.appearance)
+	local app = profile.appearance
+	if type(app.hair) == "table" then
+		app.hair.growth = clamp(finite(app.hair.growth, 0), 0, 1.5)
+	end
+	if type(app.beard) == "table" then
+		app.beard.growth = clamp(finite(app.beard.growth, 0), 0, 1)
+	end
+	battleOf(profile)
+
+	-- body: only finite numbers (Career.Summary rounds every value), groups -> parts, vascularity
+	local body = profile.body
+	if type(body) ~= "table" then
+		body = Training.NewBody(Training.Frame(profile).id)
+		profile.body = body
+	end
+	for k, v in pairs(body) do
+		if type(k) ~= "string" or finite(v, nil) == nil then
+			body[k] = nil
+		end
+	end
+	for _, g in ipairs(Config.MuscleKeys) do
+		numIn(body, g, 0, 130, 8)
+	end
+	numIn(body, "fat", Config.BodyFat.min, Config.BodyFat.max, Config.BodyFat.default)
+	local records = seedPartsFromHistory(profile, body)
+	Config.FillParts(body)
+	-- no part above the frame's cap (CONTRACTS 2: 0..100*potential): a corrupt value or a frame
+	-- changed to a smaller one is brought back under it; a cap clamp keeps this idempotent
+	local partCap = Training.MuscleCap(profile)
+	for _, p in ipairs(Config.MuscleParts) do
+		numIn(body, p.id, 0, partCap, 8)
+	end
+	if body.vasc == nil then
+		-- veterans of the dumbbell rack start with some veins
+		local r = records.Dumbbells
+		body.vasc = math.min(25, (type(r) == "table" and math.max(0, finite(r.sessions, 0)) or 0) * 0.5)
+	end
+	numIn(body, "vasc", 0, 100, 0)
+	Config.SyncGroups(body)
+
+	-- condition
+	local c = tableIn(profile, "condition", Training.NewCondition())
+	numIn(c, "energy", 0, 100, 100)
+	numIn(c, "hydration", 0, 100, 80)
+	numIn(c, "nutrition", 0, 100, 70)
+	numIn(c, "fatigue", 0, 100, 0)
+	numIn(c, "sleepQ", 0.4, 1, 0.8)
+	numIn(c, "water", -20, 20, 0)
+	numIn(c, "trauma", 0, 100, 0)
+	tableIn(c, "buffs")
+	local injuries = {}
+	for _, inj in ipairs(type(c.injuries) == "table" and c.injuries or {}) do
+		if type(inj) == "table" and Config.Injuries[inj.id] and finite(inj.days, 0) > 0 then
+			table.insert(injuries, { id = inj.id, days = clamp(finite(inj.days, 0), 0, 365) })
+		end
+	end
+	c.injuries = injuries
+	local sore = {}
+	for grp, v in pairs(type(c.sore) == "table" and c.sore or {}) do
+		v = finite(v, 0)
+		if Config.MuscleGroupParts[grp] and v > 0 then
+			sore[grp] = clamp(v, 0, 1)
+		end
+	end
+	c.sore = sore
+	local pending = {}
+	for id, v in pairs(type(c.pending) == "table" and c.pending or {}) do
+		v = finite(v, 0)
+		if PART_SHARE[id] and v > 0 then
+			pending[id] = clamp(v, 0, 20)
+		end
+	end
+	c.pending = pending
+	-- last classified physique (Training.PhysiqueInfo hysteresis); unknown ids are dropped
+	if type(c.physiqueId) ~= "string" or not Config.FindById(Config.Physiques, c.physiqueId) then
+		c.physiqueId = nil
+	end
+	c.face = cleanFace(c.face)
+	if not c.face or type(c.faceMarks) ~= "table" then
+		c.faceMarks = nil
+	end
+
+	-- detraining clock: unknown parts start counting from today
+	local log = muscleLog(profile)
+	for k, v in pairs(log) do
+		if not PART_SHARE[k] or finite(v, nil) == nil then
+			log[k] = nil
+		end
+	end
+	for _, p in ipairs(Config.MuscleParts) do
+		if log[p.id] == nil then
+			log[p.id] = profile.day
+		end
+	end
+	-- detraining floor per part (saves from before it: 6 * potential)
+	Training.MuscleBase(profile)
+
+	-- gym: every station (the medicine ball is new) with the level / condition a new career gets
+	local gym = tableIn(profile, "gym", Training.NewGym())
+	local levels, cond = tableIn(gym, "levels"), tableIn(gym, "cond")
+	for id in pairs(cond) do
+		if not Catalog.Stations[id] then
+			cond[id] = nil -- a stray entry (Career.Summary rounds every value)
+		end
+	end
+	for id, st in pairs(Catalog.Stations) do
+		if levels[id] == nil then
+			levels[id] = st.levels[1].cost > 0 and 0 or 1
+		end
+		levels[id] = math.floor(clamp(finite(levels[id], 1), 0, #st.levels))
+		if cond[id] == nil then
+			cond[id] = (id == "heavybag" or id == "speedbag" or id == "doubleend") and 60 or 80
+		end
+		numIn(cond, id, 0, 100, 80)
+	end
+
+	-- gear & coaches
+	local fresh = Training.NewGear()
+	local gear = tableIn(profile, "gear", fresh)
+	local owned, equipped = tableIn(gear, "owned"), tableIn(gear, "equipped")
+	tableIn(gear, "cond")
+	for kind, id in pairs(fresh.equipped) do
+		tableIn(owned, kind)
+		if equipped[kind] == nil then
+			owned[kind][id] = true
+			equipped[kind] = id
+		end
+	end
+	local coaches = tableIn(profile, "coaches")
+	-- only specialty ids: an old HireCoach bug saved display-name keys ('Ring IQ') that cost a
+	-- salary every fight (TeamSalary) and never gave a boost (CoachBoost)
+	for k in pairs(coaches) do
+		if type(k) ~= "string" or not Catalog.Find(Catalog.CoachSpecialties, k) then
+			coaches[k] = nil
+		end
+	end
+	for _, spec in ipairs(Catalog.CoachSpecialties) do
+		coaches[spec.id] = math.floor(clamp(finite(coaches[spec.id], 0), 0, #Catalog.CoachTiers))
+	end
+	-- career counters Career.Summary / legacyParts multiply (a wrong type there errored the join's
+	-- push, leaving the player on the loading screen): both records and every tally, whole and finite
+	for _, k in ipairs({ "record", "amateurRecord" }) do
+		local rec = tableIn(profile, k)
+		for _, f in ipairs({ "w", "l", "d", "ko" }) do
+			rec[f] = math.floor(numIn(rec, f, 0, 1e6, 0))
+		end
+	end
+	for _, k in ipairs({ "titlesWon", "defenses", "undisputedReigns", "qualityWins", "knockdownsScored", "sessions", "tierWins" }) do
+		profile[k] = math.floor(numIn(profile, k, 0, 1e6, 0))
+	end
+	-- gear condition values: Career.Summary floors each one; a non-finite entry is dropped (the gear
+	-- then reads as new), the rest clamped to 0..100
+	for key, v in pairs(gear.cond) do
+		if type(key) ~= "string" or finite(v, nil) == nil then
+			gear.cond[key] = nil
+		else
+			gear.cond[key] = clamp(v, 0, 100)
+		end
+	end
+	-- training XP and the muscle history (both created lazily; a corrupt history is dropped)
+	numIn(profile, "xp", 0, 1e9, 0)
+	if type(profile.muscleHist) ~= "table" then
+		profile.muscleHist = nil
+	end
+	logMuscleHistory(profile)
+	migrateProgram(profile)
+	return profile
+end
+
+return Training

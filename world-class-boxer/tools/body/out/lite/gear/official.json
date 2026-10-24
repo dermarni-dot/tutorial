@@ -1,0 +1,2278 @@
+{
+ "version": 1,
+ "slots": [
+  "shirt",
+  "shirtTrim",
+  "buttons",
+  "badge",
+  "bowtie",
+  "trousers",
+  "belt",
+  "buckle",
+  "dressShoes",
+  "dressSoles",
+  "dressLaces",
+  "towel"
+ ],
+ "pieces": {
+  "OffShirt": {
+   "part": "UpperTorso",
+   "slot": "shirt",
+   "group": "official",
+   "shared": false
+  },
+  "OffCollar": {
+   "part": "UpperTorso",
+   "slot": "shirt",
+   "group": "official",
+   "shared": false
+  },
+  "OffPlacket": {
+   "part": "UpperTorso",
+   "slot": "shirtTrim",
+   "group": "official",
+   "shared": false
+  },
+  "OffButtons": {
+   "part": "UpperTorso",
+   "slot": "buttons",
+   "group": "official",
+   "shared": false
+  },
+  "OffPolo": {
+   "part": "UpperTorso",
+   "slot": "shirtTrim",
+   "group": "official",
+   "shared": false
+  },
+  "OffPoloButtons": {
+   "part": "UpperTorso",
+   "slot": "buttons",
+   "group": "official",
+   "shared": false
+  },
+  "OffPocket": {
+   "part": "UpperTorso",
+   "slot": "shirtTrim",
+   "group": "official",
+   "shared": false
+  },
+  "OffBadge": {
+   "part": "UpperTorso",
+   "slot": "badge",
+   "group": "official",
+   "shared": false
+  },
+  "OffBowTie": {
+   "part": "UpperTorso",
+   "slot": "bowtie",
+   "group": "official",
+   "shared": false
+  },
+  "OffTowel": {
+   "part": "UpperTorso",
+   "slot": "towel",
+   "group": "official",
+   "shared": false
+  },
+  "OffSleeve_R": {
+   "part": "RightUpperArm",
+   "slot": "shirt",
+   "group": "official",
+   "shared": false
+  },
+  "OffSleeve_L": {
+   "part": "LeftUpperArm",
+   "slot": "shirt",
+   "group": "official",
+   "shared": false
+  },
+  "OffSleeveHem_R": {
+   "part": "RightUpperArm",
+   "slot": "shirtTrim",
+   "group": "official",
+   "shared": false
+  },
+  "OffSleeveHem_L": {
+   "part": "LeftUpperArm",
+   "slot": "shirtTrim",
+   "group": "official",
+   "shared": false
+  },
+  "OffWaist": {
+   "part": "LowerTorso",
+   "slot": "trousers",
+   "group": "official",
+   "shared": false,
+   "tierOf": [
+    "LowerTorso",
+    "UpperTorso",
+    "LeftUpperLeg",
+    "RightUpperLeg"
+   ]
+  },
+  "OffBelt": {
+   "part": "LowerTorso",
+   "slot": "belt",
+   "group": "official",
+   "shared": false,
+   "tierOf": [
+    "LowerTorso",
+    "UpperTorso",
+    "LeftUpperLeg",
+    "RightUpperLeg"
+   ]
+  },
+  "OffBuckle": {
+   "part": "LowerTorso",
+   "slot": "buckle",
+   "group": "official",
+   "shared": false,
+   "tierOf": [
+    "LowerTorso",
+    "UpperTorso",
+    "LeftUpperLeg",
+    "RightUpperLeg"
+   ]
+  },
+  "OffThigh_R": {
+   "part": "RightUpperLeg",
+   "slot": "trousers",
+   "group": "official",
+   "shared": false
+  },
+  "OffThigh_L": {
+   "part": "LeftUpperLeg",
+   "slot": "trousers",
+   "group": "official",
+   "shared": false
+  },
+  "OffShin_R": {
+   "part": "RightLowerLeg",
+   "slot": "trousers",
+   "group": "official",
+   "shared": false
+  },
+  "OffShin_L": {
+   "part": "LeftLowerLeg",
+   "slot": "trousers",
+   "group": "official",
+   "shared": false
+  },
+  "OffShoe_R": {
+   "part": "RightFoot",
+   "slot": "dressShoes",
+   "group": "official",
+   "shared": true
+  },
+  "OffShoe_L": {
+   "part": "LeftFoot",
+   "slot": "dressShoes",
+   "group": "official",
+   "shared": true
+  },
+  "OffSole_R": {
+   "part": "RightFoot",
+   "slot": "dressSoles",
+   "group": "official",
+   "shared": true
+  },
+  "OffSole_L": {
+   "part": "LeftFoot",
+   "slot": "dressSoles",
+   "group": "official",
+   "shared": true
+  },
+  "OffLaces_R": {
+   "part": "RightFoot",
+   "slot": "dressLaces",
+   "group": "official",
+   "shared": true
+  },
+  "OffLaces_L": {
+   "part": "LeftFoot",
+   "slot": "dressLaces",
+   "group": "official",
+   "shared": true
+  }
+ },
+ "sets": {
+  "official": {
+   "Referee": [
+    "OffShirt",
+    "OffCollar",
+    "OffSleeve",
+    "OffSleeveHem",
+    "OffWaist",
+    "OffThigh",
+    "OffShin",
+    "OffShoe",
+    "OffSole",
+    "OffLaces",
+    "OffPlacket",
+    "OffButtons",
+    "OffPocket",
+    "OffBadge",
+    "OffBowTie",
+    "OffBelt",
+    "OffBuckle"
+   ],
+   "Coach": [
+    "OffShirt",
+    "OffCollar",
+    "OffSleeve",
+    "OffSleeveHem",
+    "OffWaist",
+    "OffThigh",
+    "OffShin",
+    "OffShoe",
+    "OffSole",
+    "OffLaces",
+    "OffPolo",
+    "OffPoloButtons",
+    "OffTowel"
+   ]
+  }
+ },
+ "tiers": {
+  "1": {
+   "OffShirt": {
+    "file": "tier1/OffShirt.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     -0.007,
+     -0.0013
+    ],
+    "size": [
+     1.612,
+     2.155,
+     1.0491
+    ],
+    "nt": 1032
+   },
+   "OffCollar": {
+    "file": "tier1/OffCollar.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0001,
+     1.0409,
+     -0.0055
+    ],
+    "size": [
+     1.4442,
+     0.2771,
+     0.9363
+    ],
+    "nt": 632
+   },
+   "OffPlacket": {
+    "file": "tier1/OffPlacket.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.142,
+     -0.4245
+    ],
+    "size": [
+     0.0611,
+     1.8455,
+     0.121
+    ],
+    "nt": 120
+   },
+   "OffButtons": {
+    "file": "tier1/OffButtons.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.1395,
+     -0.4594
+    ],
+    "size": [
+     0.056,
+     1.2541,
+     0.0682
+    ],
+    "nt": 400
+   },
+   "OffPolo": {
+    "file": "tier1/OffPolo.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.8222,
+     -0.4245
+    ],
+    "size": [
+     0.061,
+     0.4852,
+     0.121
+    ],
+    "nt": 56
+   },
+   "OffPoloButtons": {
+    "file": "tier1/OffPoloButtons.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.7795,
+     -0.4573
+    ],
+    "size": [
+     0.056,
+     0.2141,
+     0.0495
+    ],
+    "nt": 160
+   },
+   "OffPocket": {
+    "file": "tier1/OffPocket.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     -0.2549,
+     0.3087,
+     -0.5117
+    ],
+    "size": [
+     0.1847,
+     0.3008,
+     0.0458
+    ],
+    "nt": 96
+   },
+   "OffBadge": {
+    "file": "tier1/OffBadge.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.2677,
+     0.3295,
+     -0.5241
+    ],
+    "size": [
+     0.1488,
+     0.164,
+     0.0823
+    ],
+    "nt": 256
+   },
+   "OffBowTie": {
+    "file": "tier1/OffBowTie.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     1.0295,
+     -0.4445
+    ],
+    "size": [
+     0.4452,
+     0.1179,
+     0.076
+    ],
+    "nt": 360
+   },
+   "OffTowel": {
+    "file": "tier1/OffTowel.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.486,
+     0.739,
+     -0.0028
+    ],
+    "size": [
+     0.352,
+     1.0157,
+     1.1148
+    ],
+    "nt": 608
+   },
+   "OffWaist": {
+    "file": "tier1/OffWaist.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     -0.0104,
+     -0.0008
+    ],
+    "size": [
+     1.5084,
+     1.0988,
+     1.5074
+    ],
+    "nt": 696
+   },
+   "OffBelt": {
+    "file": "tier1/OffBelt.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     0.4002,
+     0.0231
+    ],
+    "size": [
+     1.3735,
+     0.1832,
+     1.3724
+    ],
+    "nt": 384
+   },
+   "OffBuckle": {
+    "file": "tier1/OffBuckle.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     0.4002,
+     -0.6871
+    ],
+    "size": [
+     0.2412,
+     0.2012,
+     0.0265
+    ],
+    "nt": 368
+   },
+   "OffSleeve_R": {
+    "file": "tier1/OffSleeve_R.mesh",
+    "part": "RightUpperArm",
+    "offset": [
+     0.0252,
+     0.3338,
+     0.0
+    ],
+    "size": [
+     0.7281,
+     0.9383,
+     0.7281
+    ],
+    "nt": 400
+   },
+   "OffSleeve_L": {
+    "file": "tier1/OffSleeve_L.mesh",
+    "part": "LeftUpperArm",
+    "offset": [
+     -0.0252,
+     0.3338,
+     0.0
+    ],
+    "size": [
+     0.7281,
+     0.9383,
+     0.7281
+    ],
+    "nt": 400
+   },
+   "OffSleeveHem_R": {
+    "file": "tier1/OffSleeveHem_R.mesh",
+    "part": "RightUpperArm",
+    "offset": [
+     0.0323,
+     -0.0898,
+     -0.0011
+    ],
+    "size": [
+     0.6831,
+     0.0977,
+     0.68
+    ],
+    "nt": 128
+   },
+   "OffSleeveHem_L": {
+    "file": "tier1/OffSleeveHem_L.mesh",
+    "part": "LeftUpperArm",
+    "offset": [
+     -0.0323,
+     -0.0898,
+     -0.0011
+    ],
+    "size": [
+     0.6831,
+     0.0977,
+     0.68
+    ],
+    "nt": 128
+   },
+   "OffThigh_R": {
+    "file": "tier1/OffThigh_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0168,
+     -0.0751,
+     -0.0067
+    ],
+    "size": [
+     0.8274,
+     1.8138,
+     0.8298
+    ],
+    "nt": 576
+   },
+   "OffThigh_L": {
+    "file": "tier1/OffThigh_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0168,
+     -0.0751,
+     -0.0067
+    ],
+    "size": [
+     0.8274,
+     1.8138,
+     0.8298
+    ],
+    "nt": 576
+   },
+   "OffShin_R": {
+    "file": "tier1/OffShin_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.0124,
+     0.127,
+     -0.0063
+    ],
+    "size": [
+     0.7751,
+     1.5017,
+     0.7873
+    ],
+    "nt": 464
+   },
+   "OffShin_L": {
+    "file": "tier1/OffShin_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     -0.0124,
+     0.127,
+     -0.0063
+    ],
+    "size": [
+     0.7751,
+     1.5017,
+     0.7873
+    ],
+    "nt": 464
+   },
+   "OffShoe_R": {
+    "file": "shared/OffShoe_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.0375,
+     -0.0125
+    ],
+    "size": [
+     0.4495,
+     0.4538,
+     0.9006
+    ],
+    "nt": 192
+   },
+   "OffShoe_L": {
+    "file": "shared/OffShoe_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     -0.0,
+     0.0375,
+     -0.0125
+    ],
+    "size": [
+     0.4495,
+     0.4538,
+     0.9006
+    ],
+    "nt": 192
+   },
+   "OffSole_R": {
+    "file": "shared/OffSole_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     -0.0004,
+     -0.1899,
+     -0.0131
+    ],
+    "size": [
+     0.7518,
+     0.089,
+     0.8931
+    ],
+    "nt": 320
+   },
+   "OffSole_L": {
+    "file": "shared/OffSole_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     0.0004,
+     -0.1899,
+     -0.0131
+    ],
+    "size": [
+     0.7518,
+     0.089,
+     0.8931
+    ],
+    "nt": 320
+   },
+   "OffLaces_R": {
+    "file": "shared/OffLaces_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.1298,
+     -0.1129
+    ],
+    "size": [
+     0.146,
+     0.0915,
+     0.1435
+    ],
+    "nt": 60
+   },
+   "OffLaces_L": {
+    "file": "shared/OffLaces_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     -0.0,
+     0.1298,
+     -0.1129
+    ],
+    "size": [
+     0.146,
+     0.0915,
+     0.1435
+    ],
+    "nt": 60
+   }
+  },
+  "2": {
+   "OffShirt": {
+    "file": "tier2/OffShirt.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     -0.0181,
+     -0.0005
+    ],
+    "size": [
+     1.6342,
+     2.155,
+     1.0873
+    ],
+    "nt": 1032
+   },
+   "OffCollar": {
+    "file": "tier2/OffCollar.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0003,
+     1.0296,
+     -0.0005
+    ],
+    "size": [
+     1.4621,
+     0.2774,
+     0.9519
+    ],
+    "nt": 632
+   },
+   "OffPlacket": {
+    "file": "tier2/OffPlacket.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.131,
+     -0.4376
+    ],
+    "size": [
+     0.0643,
+     1.8456,
+     0.1439
+    ],
+    "nt": 120
+   },
+   "OffButtons": {
+    "file": "tier2/OffButtons.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.1284,
+     -0.4701
+    ],
+    "size": [
+     0.056,
+     1.2541,
+     0.094
+    ],
+    "nt": 400
+   },
+   "OffPolo": {
+    "file": "tier2/OffPolo.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.8112,
+     -0.4376
+    ],
+    "size": [
+     0.0643,
+     0.4852,
+     0.1439
+    ],
+    "nt": 56
+   },
+   "OffPoloButtons": {
+    "file": "tier2/OffPoloButtons.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.7684,
+     -0.4721
+    ],
+    "size": [
+     0.056,
+     0.2141,
+     0.064
+    ],
+    "nt": 160
+   },
+   "OffPocket": {
+    "file": "tier2/OffPocket.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     -0.263,
+     0.2972,
+     -0.5262
+    ],
+    "size": [
+     0.1929,
+     0.3012,
+     0.0577
+    ],
+    "nt": 96
+   },
+   "OffBadge": {
+    "file": "tier2/OffBadge.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.2764,
+     0.3184,
+     -0.5412
+    ],
+    "size": [
+     0.1488,
+     0.164,
+     0.0823
+    ],
+    "nt": 256
+   },
+   "OffBowTie": {
+    "file": "tier2/OffBowTie.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     1.0184,
+     -0.4465
+    ],
+    "size": [
+     0.4452,
+     0.1179,
+     0.076
+    ],
+    "nt": 360
+   },
+   "OffTowel": {
+    "file": "tier2/OffTowel.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.486,
+     0.7332,
+     -0.0016
+    ],
+    "size": [
+     0.352,
+     1.0263,
+     1.1441
+    ],
+    "nt": 608
+   },
+   "OffWaist": {
+    "file": "tier2/OffWaist.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     -0.0104,
+     -0.0009
+    ],
+    "size": [
+     1.5163,
+     1.0988,
+     1.5152
+    ],
+    "nt": 696
+   },
+   "OffBelt": {
+    "file": "tier2/OffBelt.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     0.4002,
+     0.0168
+    ],
+    "size": [
+     1.3681,
+     0.1832,
+     1.368
+    ],
+    "nt": 384
+   },
+   "OffBuckle": {
+    "file": "tier2/OffBuckle.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     0.4002,
+     -0.6912
+    ],
+    "size": [
+     0.2412,
+     0.2012,
+     0.0265
+    ],
+    "nt": 368
+   },
+   "OffSleeve_R": {
+    "file": "tier2/OffSleeve_R.mesh",
+    "part": "RightUpperArm",
+    "offset": [
+     0.0255,
+     0.3396,
+     0.0006
+    ],
+    "size": [
+     0.7558,
+     0.9521,
+     0.7558
+    ],
+    "nt": 400
+   },
+   "OffSleeve_L": {
+    "file": "tier2/OffSleeve_L.mesh",
+    "part": "LeftUpperArm",
+    "offset": [
+     -0.0255,
+     0.3396,
+     0.0006
+    ],
+    "size": [
+     0.7558,
+     0.9521,
+     0.7558
+    ],
+    "nt": 400
+   },
+   "OffSleeveHem_R": {
+    "file": "tier2/OffSleeveHem_R.mesh",
+    "part": "RightUpperArm",
+    "offset": [
+     0.0253,
+     -0.091,
+     -0.0019
+    ],
+    "size": [
+     0.7222,
+     0.0976,
+     0.7215
+    ],
+    "nt": 128
+   },
+   "OffSleeveHem_L": {
+    "file": "tier2/OffSleeveHem_L.mesh",
+    "part": "LeftUpperArm",
+    "offset": [
+     -0.0253,
+     -0.091,
+     -0.0019
+    ],
+    "size": [
+     0.7222,
+     0.0976,
+     0.7215
+    ],
+    "nt": 128
+   },
+   "OffThigh_R": {
+    "file": "tier2/OffThigh_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.027,
+     -0.075,
+     0.0063
+    ],
+    "size": [
+     0.8315,
+     1.8138,
+     0.8485
+    ],
+    "nt": 576
+   },
+   "OffThigh_L": {
+    "file": "tier2/OffThigh_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.027,
+     -0.075,
+     0.0063
+    ],
+    "size": [
+     0.8315,
+     1.8138,
+     0.8485
+    ],
+    "nt": 576
+   },
+   "OffShin_R": {
+    "file": "tier2/OffShin_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.0127,
+     0.1273,
+     -0.0113
+    ],
+    "size": [
+     0.7751,
+     1.5017,
+     0.7873
+    ],
+    "nt": 464
+   },
+   "OffShin_L": {
+    "file": "tier2/OffShin_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     -0.0127,
+     0.1273,
+     -0.0113
+    ],
+    "size": [
+     0.7751,
+     1.5017,
+     0.7873
+    ],
+    "nt": 464
+   },
+   "OffShoe_R": {
+    "file": "shared/OffShoe_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.0375,
+     -0.0125
+    ],
+    "size": [
+     0.4495,
+     0.4538,
+     0.9006
+    ],
+    "nt": 192
+   },
+   "OffShoe_L": {
+    "file": "shared/OffShoe_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     -0.0,
+     0.0375,
+     -0.0125
+    ],
+    "size": [
+     0.4495,
+     0.4538,
+     0.9006
+    ],
+    "nt": 192
+   },
+   "OffSole_R": {
+    "file": "shared/OffSole_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     -0.0004,
+     -0.1899,
+     -0.0131
+    ],
+    "size": [
+     0.7518,
+     0.089,
+     0.8931
+    ],
+    "nt": 320
+   },
+   "OffSole_L": {
+    "file": "shared/OffSole_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     0.0004,
+     -0.1899,
+     -0.0131
+    ],
+    "size": [
+     0.7518,
+     0.089,
+     0.8931
+    ],
+    "nt": 320
+   },
+   "OffLaces_R": {
+    "file": "shared/OffLaces_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.1298,
+     -0.1129
+    ],
+    "size": [
+     0.146,
+     0.0915,
+     0.1435
+    ],
+    "nt": 60
+   },
+   "OffLaces_L": {
+    "file": "shared/OffLaces_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     -0.0,
+     0.1298,
+     -0.1129
+    ],
+    "size": [
+     0.146,
+     0.0915,
+     0.1435
+    ],
+    "nt": 60
+   }
+  },
+  "3": {
+   "OffShirt": {
+    "file": "tier3/OffShirt.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     -0.0291,
+     0.0008
+    ],
+    "size": [
+     1.6555,
+     2.155,
+     1.1226
+    ],
+    "nt": 1032
+   },
+   "OffCollar": {
+    "file": "tier3/OffCollar.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     1.0185,
+     0.004
+    ],
+    "size": [
+     1.4823,
+     0.2776,
+     0.9657
+    ],
+    "nt": 632
+   },
+   "OffPlacket": {
+    "file": "tier3/OffPlacket.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.1199,
+     -0.4505
+    ],
+    "size": [
+     0.0675,
+     1.8457,
+     0.1668
+    ],
+    "nt": 120
+   },
+   "OffButtons": {
+    "file": "tier3/OffButtons.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.1174,
+     -0.4811
+    ],
+    "size": [
+     0.056,
+     1.2541,
+     0.12
+    ],
+    "nt": 400
+   },
+   "OffPolo": {
+    "file": "tier3/OffPolo.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.8002,
+     -0.4505
+    ],
+    "size": [
+     0.0675,
+     0.4852,
+     0.1668
+    ],
+    "nt": 56
+   },
+   "OffPoloButtons": {
+    "file": "tier3/OffPoloButtons.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.7574,
+     -0.4875
+    ],
+    "size": [
+     0.056,
+     0.2141,
+     0.0774
+    ],
+    "nt": 160
+   },
+   "OffPocket": {
+    "file": "tier3/OffPocket.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     -0.2705,
+     0.2859,
+     -0.5385
+    ],
+    "size": [
+     0.1998,
+     0.3015,
+     0.0726
+    ],
+    "nt": 96
+   },
+   "OffBadge": {
+    "file": "tier3/OffBadge.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.2845,
+     0.3074,
+     -0.557
+    ],
+    "size": [
+     0.1488,
+     0.164,
+     0.0823
+    ],
+    "nt": 256
+   },
+   "OffBowTie": {
+    "file": "tier3/OffBowTie.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     1.0074,
+     -0.4482
+    ],
+    "size": [
+     0.4452,
+     0.1179,
+     0.076
+    ],
+    "nt": 360
+   },
+   "OffTowel": {
+    "file": "tier3/OffTowel.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.486,
+     0.7276,
+     0.0002
+    ],
+    "size": [
+     0.3519,
+     1.0371,
+     1.1738
+    ],
+    "nt": 608
+   },
+   "OffWaist": {
+    "file": "tier3/OffWaist.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     -0.0104,
+     -0.0009
+    ],
+    "size": [
+     1.5217,
+     1.0988,
+     1.5206
+    ],
+    "nt": 696
+   },
+   "OffBelt": {
+    "file": "tier3/OffBelt.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     0.4002,
+     0.0114
+    ],
+    "size": [
+     1.3697,
+     0.1832,
+     1.3694
+    ],
+    "nt": 384
+   },
+   "OffBuckle": {
+    "file": "tier3/OffBuckle.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     0.4002,
+     -0.6974
+    ],
+    "size": [
+     0.2412,
+     0.2012,
+     0.0265
+    ],
+    "nt": 368
+   },
+   "OffSleeve_R": {
+    "file": "tier3/OffSleeve_R.mesh",
+    "part": "RightUpperArm",
+    "offset": [
+     0.0261,
+     0.3461,
+     0.0008
+    ],
+    "size": [
+     0.7871,
+     0.9678,
+     0.7871
+    ],
+    "nt": 400
+   },
+   "OffSleeve_L": {
+    "file": "tier3/OffSleeve_L.mesh",
+    "part": "LeftUpperArm",
+    "offset": [
+     -0.0261,
+     0.3461,
+     0.0008
+    ],
+    "size": [
+     0.7871,
+     0.9678,
+     0.7871
+    ],
+    "nt": 400
+   },
+   "OffSleeveHem_R": {
+    "file": "tier3/OffSleeveHem_R.mesh",
+    "part": "RightUpperArm",
+    "offset": [
+     0.0373,
+     -0.0922,
+     -0.0031
+    ],
+    "size": [
+     0.7617,
+     0.0979,
+     0.7603
+    ],
+    "nt": 128
+   },
+   "OffSleeveHem_L": {
+    "file": "tier3/OffSleeveHem_L.mesh",
+    "part": "LeftUpperArm",
+    "offset": [
+     -0.0373,
+     -0.0922,
+     -0.0031
+    ],
+    "size": [
+     0.7617,
+     0.0979,
+     0.7603
+    ],
+    "nt": 128
+   },
+   "OffThigh_R": {
+    "file": "tier3/OffThigh_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0205,
+     -0.0748,
+     0.0082
+    ],
+    "size": [
+     0.8674,
+     1.8138,
+     0.8607
+    ],
+    "nt": 576
+   },
+   "OffThigh_L": {
+    "file": "tier3/OffThigh_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0205,
+     -0.0748,
+     0.0082
+    ],
+    "size": [
+     0.8674,
+     1.8138,
+     0.8607
+    ],
+    "nt": 576
+   },
+   "OffShin_R": {
+    "file": "tier3/OffShin_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.013,
+     0.1276,
+     -0.0168
+    ],
+    "size": [
+     0.7751,
+     1.5017,
+     0.7873
+    ],
+    "nt": 464
+   },
+   "OffShin_L": {
+    "file": "tier3/OffShin_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     -0.013,
+     0.1276,
+     -0.0168
+    ],
+    "size": [
+     0.7751,
+     1.5017,
+     0.7873
+    ],
+    "nt": 464
+   },
+   "OffShoe_R": {
+    "file": "shared/OffShoe_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.0375,
+     -0.0125
+    ],
+    "size": [
+     0.4495,
+     0.4538,
+     0.9006
+    ],
+    "nt": 192
+   },
+   "OffShoe_L": {
+    "file": "shared/OffShoe_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     -0.0,
+     0.0375,
+     -0.0125
+    ],
+    "size": [
+     0.4495,
+     0.4538,
+     0.9006
+    ],
+    "nt": 192
+   },
+   "OffSole_R": {
+    "file": "shared/OffSole_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     -0.0004,
+     -0.1899,
+     -0.0131
+    ],
+    "size": [
+     0.7518,
+     0.089,
+     0.8931
+    ],
+    "nt": 320
+   },
+   "OffSole_L": {
+    "file": "shared/OffSole_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     0.0004,
+     -0.1899,
+     -0.0131
+    ],
+    "size": [
+     0.7518,
+     0.089,
+     0.8931
+    ],
+    "nt": 320
+   },
+   "OffLaces_R": {
+    "file": "shared/OffLaces_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.1298,
+     -0.1129
+    ],
+    "size": [
+     0.146,
+     0.0915,
+     0.1435
+    ],
+    "nt": 60
+   },
+   "OffLaces_L": {
+    "file": "shared/OffLaces_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     -0.0,
+     0.1298,
+     -0.1129
+    ],
+    "size": [
+     0.146,
+     0.0915,
+     0.1435
+    ],
+    "nt": 60
+   }
+  },
+  "4": {
+   "OffShirt": {
+    "file": "tier4/OffShirt.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     -0.0,
+     -0.0402,
+     0.0016
+    ],
+    "size": [
+     1.6767,
+     2.155,
+     1.154
+    ],
+    "nt": 1032
+   },
+   "OffCollar": {
+    "file": "tier4/OffCollar.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     1.0073,
+     0.0068
+    ],
+    "size": [
+     1.5054,
+     0.2779,
+     0.9785
+    ],
+    "nt": 632
+   },
+   "OffPlacket": {
+    "file": "tier4/OffPlacket.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.1089,
+     -0.4637
+    ],
+    "size": [
+     0.0706,
+     1.8457,
+     0.1878
+    ],
+    "nt": 120
+   },
+   "OffButtons": {
+    "file": "tier4/OffButtons.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.1063,
+     -0.4916
+    ],
+    "size": [
+     0.056,
+     1.2541,
+     0.1456
+    ],
+    "nt": 400
+   },
+   "OffPolo": {
+    "file": "tier4/OffPolo.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.7891,
+     -0.4637
+    ],
+    "size": [
+     0.0706,
+     0.4852,
+     0.1878
+    ],
+    "nt": 56
+   },
+   "OffPoloButtons": {
+    "file": "tier4/OffPoloButtons.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.7463,
+     -0.5037
+    ],
+    "size": [
+     0.056,
+     0.2141,
+     0.0894
+    ],
+    "nt": 160
+   },
+   "OffPocket": {
+    "file": "tier4/OffPocket.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     -0.2774,
+     0.2745,
+     -0.5508
+    ],
+    "size": [
+     0.206,
+     0.3018,
+     0.0877
+    ],
+    "nt": 96
+   },
+   "OffBadge": {
+    "file": "tier4/OffBadge.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.2921,
+     0.2963,
+     -0.572
+    ],
+    "size": [
+     0.1488,
+     0.164,
+     0.0823
+    ],
+    "nt": 256
+   },
+   "OffBowTie": {
+    "file": "tier4/OffBowTie.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.9963,
+     -0.4511
+    ],
+    "size": [
+     0.4452,
+     0.1179,
+     0.076
+    ],
+    "nt": 360
+   },
+   "OffTowel": {
+    "file": "tier4/OffTowel.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.486,
+     0.7223,
+     0.0018
+    ],
+    "size": [
+     0.3519,
+     1.0487,
+     1.2027
+    ],
+    "nt": 608
+   },
+   "OffWaist": {
+    "file": "tier4/OffWaist.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     -0.0104,
+     -0.0009
+    ],
+    "size": [
+     1.5271,
+     1.0988,
+     1.526
+    ],
+    "nt": 696
+   },
+   "OffBelt": {
+    "file": "tier4/OffBelt.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     0.4002,
+     0.0058
+    ],
+    "size": [
+     1.3714,
+     0.1832,
+     1.3709
+    ],
+    "nt": 384
+   },
+   "OffBuckle": {
+    "file": "tier4/OffBuckle.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     0.4002,
+     -0.7037
+    ],
+    "size": [
+     0.2412,
+     0.2012,
+     0.0265
+    ],
+    "nt": 368
+   },
+   "OffSleeve_R": {
+    "file": "tier4/OffSleeve_R.mesh",
+    "part": "RightUpperArm",
+    "offset": [
+     0.0261,
+     0.3583,
+     0.0005
+    ],
+    "size": [
+     0.842,
+     0.9952,
+     0.842
+    ],
+    "nt": 400
+   },
+   "OffSleeve_L": {
+    "file": "tier4/OffSleeve_L.mesh",
+    "part": "LeftUpperArm",
+    "offset": [
+     -0.0261,
+     0.3583,
+     0.0005
+    ],
+    "size": [
+     0.842,
+     0.9952,
+     0.842
+    ],
+    "nt": 400
+   },
+   "OffSleeveHem_R": {
+    "file": "tier4/OffSleeveHem_R.mesh",
+    "part": "RightUpperArm",
+    "offset": [
+     0.0417,
+     -0.0937,
+     -0.0056
+    ],
+    "size": [
+     0.8054,
+     0.0979,
+     0.8014
+    ],
+    "nt": 128
+   },
+   "OffSleeveHem_L": {
+    "file": "tier4/OffSleeveHem_L.mesh",
+    "part": "LeftUpperArm",
+    "offset": [
+     -0.0417,
+     -0.0937,
+     -0.0056
+    ],
+    "size": [
+     0.8054,
+     0.0979,
+     0.8014
+    ],
+    "nt": 128
+   },
+   "OffThigh_R": {
+    "file": "tier4/OffThigh_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0302,
+     -0.0747,
+     0.0107
+    ],
+    "size": [
+     0.8882,
+     1.8138,
+     0.8728
+    ],
+    "nt": 576
+   },
+   "OffThigh_L": {
+    "file": "tier4/OffThigh_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0302,
+     -0.0747,
+     0.0107
+    ],
+    "size": [
+     0.8882,
+     1.8138,
+     0.8728
+    ],
+    "nt": 576
+   },
+   "OffShin_R": {
+    "file": "tier4/OffShin_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.0133,
+     0.1279,
+     -0.0213
+    ],
+    "size": [
+     0.7751,
+     1.5017,
+     0.7873
+    ],
+    "nt": 464
+   },
+   "OffShin_L": {
+    "file": "tier4/OffShin_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     -0.0133,
+     0.1279,
+     -0.0213
+    ],
+    "size": [
+     0.7751,
+     1.5017,
+     0.7873
+    ],
+    "nt": 464
+   },
+   "OffShoe_R": {
+    "file": "shared/OffShoe_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.0375,
+     -0.0125
+    ],
+    "size": [
+     0.4495,
+     0.4538,
+     0.9006
+    ],
+    "nt": 192
+   },
+   "OffShoe_L": {
+    "file": "shared/OffShoe_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     -0.0,
+     0.0375,
+     -0.0125
+    ],
+    "size": [
+     0.4495,
+     0.4538,
+     0.9006
+    ],
+    "nt": 192
+   },
+   "OffSole_R": {
+    "file": "shared/OffSole_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     -0.0004,
+     -0.1899,
+     -0.0131
+    ],
+    "size": [
+     0.7518,
+     0.089,
+     0.8931
+    ],
+    "nt": 320
+   },
+   "OffSole_L": {
+    "file": "shared/OffSole_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     0.0004,
+     -0.1899,
+     -0.0131
+    ],
+    "size": [
+     0.7518,
+     0.089,
+     0.8931
+    ],
+    "nt": 320
+   },
+   "OffLaces_R": {
+    "file": "shared/OffLaces_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.1298,
+     -0.1129
+    ],
+    "size": [
+     0.146,
+     0.0915,
+     0.1435
+    ],
+    "nt": 60
+   },
+   "OffLaces_L": {
+    "file": "shared/OffLaces_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     -0.0,
+     0.1298,
+     -0.1129
+    ],
+    "size": [
+     0.146,
+     0.0915,
+     0.1435
+    ],
+    "nt": 60
+   }
+  },
+  "5": {
+   "OffShirt": {
+    "file": "tier5/OffShirt.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     -0.0,
+     -0.0513,
+     -0.0006
+    ],
+    "size": [
+     1.6964,
+     2.155,
+     1.1887
+    ],
+    "nt": 1032
+   },
+   "OffCollar": {
+    "file": "tier5/OffCollar.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0001,
+     0.9961,
+     0.0093
+    ],
+    "size": [
+     1.5292,
+     0.2781,
+     0.9907
+    ],
+    "nt": 632
+   },
+   "OffPlacket": {
+    "file": "tier5/OffPlacket.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.0979,
+     -0.4765
+    ],
+    "size": [
+     0.0737,
+     1.8456,
+     0.208
+    ],
+    "nt": 120
+   },
+   "OffButtons": {
+    "file": "tier5/OffButtons.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.0952,
+     -0.5014
+    ],
+    "size": [
+     0.056,
+     1.2541,
+     0.1708
+    ],
+    "nt": 400
+   },
+   "OffPolo": {
+    "file": "tier5/OffPolo.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.7781,
+     -0.4765
+    ],
+    "size": [
+     0.0737,
+     0.4853,
+     0.208
+    ],
+    "nt": 56
+   },
+   "OffPoloButtons": {
+    "file": "tier5/OffPoloButtons.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.7352,
+     -0.52
+    ],
+    "size": [
+     0.056,
+     0.2141,
+     0.1004
+    ],
+    "nt": 160
+   },
+   "OffPocket": {
+    "file": "tier5/OffPocket.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     -0.2838,
+     0.2631,
+     -0.5635
+    ],
+    "size": [
+     0.2113,
+     0.3022,
+     0.1038
+    ],
+    "nt": 96
+   },
+   "OffBadge": {
+    "file": "tier5/OffBadge.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.2992,
+     0.2852,
+     -0.5859
+    ],
+    "size": [
+     0.1488,
+     0.164,
+     0.0823
+    ],
+    "nt": 256
+   },
+   "OffBowTie": {
+    "file": "tier5/OffBowTie.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.0,
+     0.9852,
+     -0.454
+    ],
+    "size": [
+     0.4452,
+     0.1179,
+     0.076
+    ],
+    "nt": 360
+   },
+   "OffTowel": {
+    "file": "tier5/OffTowel.mesh",
+    "part": "UpperTorso",
+    "offset": [
+     0.486,
+     0.7173,
+     0.0038
+    ],
+    "size": [
+     0.3519,
+     1.0609,
+     1.231
+    ],
+    "nt": 608
+   },
+   "OffWaist": {
+    "file": "tier5/OffWaist.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     -0.0104,
+     -0.0009
+    ],
+    "size": [
+     1.5326,
+     1.0988,
+     1.5315
+    ],
+    "nt": 696
+   },
+   "OffBelt": {
+    "file": "tier5/OffBelt.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     -0.0,
+     0.4002,
+     -0.0007
+    ],
+    "size": [
+     1.3752,
+     0.1832,
+     1.3743
+    ],
+    "nt": 384
+   },
+   "OffBuckle": {
+    "file": "tier5/OffBuckle.mesh",
+    "part": "LowerTorso",
+    "offset": [
+     0.0,
+     0.4002,
+     -0.7118
+    ],
+    "size": [
+     0.2412,
+     0.2012,
+     0.0265
+    ],
+    "nt": 368
+   },
+   "OffSleeve_R": {
+    "file": "tier5/OffSleeve_R.mesh",
+    "part": "RightUpperArm",
+    "offset": [
+     0.0261,
+     0.3654,
+     0.0001
+    ],
+    "size": [
+     0.877,
+     1.0127,
+     0.877
+    ],
+    "nt": 400
+   },
+   "OffSleeve_L": {
+    "file": "tier5/OffSleeve_L.mesh",
+    "part": "LeftUpperArm",
+    "offset": [
+     -0.0261,
+     0.3654,
+     0.0001
+    ],
+    "size": [
+     0.877,
+     1.0127,
+     0.877
+    ],
+    "nt": 400
+   },
+   "OffSleeveHem_R": {
+    "file": "tier5/OffSleeveHem_R.mesh",
+    "part": "RightUpperArm",
+    "offset": [
+     0.0389,
+     -0.0953,
+     -0.0068
+    ],
+    "size": [
+     0.8477,
+     0.0978,
+     0.8372
+    ],
+    "nt": 128
+   },
+   "OffSleeveHem_L": {
+    "file": "tier5/OffSleeveHem_L.mesh",
+    "part": "LeftUpperArm",
+    "offset": [
+     -0.0389,
+     -0.0953,
+     -0.0068
+    ],
+    "size": [
+     0.8477,
+     0.0978,
+     0.8372
+    ],
+    "nt": 128
+   },
+   "OffThigh_R": {
+    "file": "tier5/OffThigh_R.mesh",
+    "part": "RightUpperLeg",
+    "offset": [
+     0.0289,
+     -0.0746,
+     0.0098
+    ],
+    "size": [
+     0.8899,
+     1.8138,
+     0.8946
+    ],
+    "nt": 576
+   },
+   "OffThigh_L": {
+    "file": "tier5/OffThigh_L.mesh",
+    "part": "LeftUpperLeg",
+    "offset": [
+     -0.0289,
+     -0.0746,
+     0.0098
+    ],
+    "size": [
+     0.8899,
+     1.8138,
+     0.8946
+    ],
+    "nt": 576
+   },
+   "OffShin_R": {
+    "file": "tier5/OffShin_R.mesh",
+    "part": "RightLowerLeg",
+    "offset": [
+     0.0136,
+     0.1282,
+     -0.0245
+    ],
+    "size": [
+     0.7751,
+     1.5017,
+     0.7873
+    ],
+    "nt": 464
+   },
+   "OffShin_L": {
+    "file": "tier5/OffShin_L.mesh",
+    "part": "LeftLowerLeg",
+    "offset": [
+     -0.0136,
+     0.1282,
+     -0.0245
+    ],
+    "size": [
+     0.7751,
+     1.5017,
+     0.7873
+    ],
+    "nt": 464
+   },
+   "OffShoe_R": {
+    "file": "shared/OffShoe_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.0375,
+     -0.0125
+    ],
+    "size": [
+     0.4495,
+     0.4538,
+     0.9006
+    ],
+    "nt": 192
+   },
+   "OffShoe_L": {
+    "file": "shared/OffShoe_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     -0.0,
+     0.0375,
+     -0.0125
+    ],
+    "size": [
+     0.4495,
+     0.4538,
+     0.9006
+    ],
+    "nt": 192
+   },
+   "OffSole_R": {
+    "file": "shared/OffSole_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     -0.0004,
+     -0.1899,
+     -0.0131
+    ],
+    "size": [
+     0.7518,
+     0.089,
+     0.8931
+    ],
+    "nt": 320
+   },
+   "OffSole_L": {
+    "file": "shared/OffSole_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     0.0004,
+     -0.1899,
+     -0.0131
+    ],
+    "size": [
+     0.7518,
+     0.089,
+     0.8931
+    ],
+    "nt": 320
+   },
+   "OffLaces_R": {
+    "file": "shared/OffLaces_R.mesh",
+    "part": "RightFoot",
+    "offset": [
+     0.0,
+     0.1298,
+     -0.1129
+    ],
+    "size": [
+     0.146,
+     0.0915,
+     0.1435
+    ],
+    "nt": 60
+   },
+   "OffLaces_L": {
+    "file": "shared/OffLaces_L.mesh",
+    "part": "LeftFoot",
+    "offset": [
+     -0.0,
+     0.1298,
+     -0.1129
+    ],
+    "size": [
+     0.146,
+     0.0915,
+     0.1435
+    ],
+    "nt": 60
+   }
+  }
+ },
+ "worn_tris_tier5": {
+  "Referee": 8624,
+  "Coach": 7464
+ }
+}

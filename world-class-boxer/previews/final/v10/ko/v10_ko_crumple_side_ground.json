@@ -1,0 +1,48 @@
+{
+ "id": "ko_crumple_side",
+ "kdAt": 0.56,
+ "frames": [
+  {
+   "dt": 0.0,
+   "t": 0.5333,
+   "lowest": 0.039,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.565,
+   "headY": 5.452
+  },
+  {
+   "dt": 0.2,
+   "t": 0.7333,
+   "lowest": 0.04,
+   "lowestPart": "RightFoot",
+   "pelvisY": 2.36,
+   "headY": 4.973
+  },
+  {
+   "dt": 0.5,
+   "t": 1.0667,
+   "lowest": 0.074,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.361,
+   "headY": 4.564
+  },
+  {
+   "dt": 1.0,
+   "t": 1.5333,
+   "lowest": 0.133,
+   "lowestPart": "LeftFoot",
+   "pelvisY": 2.332,
+   "headY": 4.915
+  },
+  {
+   "dt": 2.0,
+   "t": 2.5333,
+   "lowest": 0.008,
+   "lowestPart": "LeftUpperArm",
+   "pelvisY": 1.271,
+   "headY": 1.437
+  }
+ ],
+ "slideAfter": 0.009,
+ "slideMaxStep": 0.003
+}

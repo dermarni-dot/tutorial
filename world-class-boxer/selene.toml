@@ -1,0 +1,6 @@
+std = "roblox_lite"
+
+[lints]
+unused_variable = "allow"
+shadowing = "allow"
+empty_if = "allow"
