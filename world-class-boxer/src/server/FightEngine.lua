@@ -102,10 +102,11 @@ FightEngine.Active = {} -- player -> fight
 local Fight = {}
 Fight.__index = Fight
 
--- how hard head shots land overall (lower = longer fights). 0.55 before the per-punch head
--- multipliers (Config.Punches[p].head, jab 0.65 .. uppercut 1.55) existed; 0.48 keeps the average
--- head damage per round about where it was while hooks and uppercuts now hurt far more than jabs.
-local HEAD_SCALE = 0.48
+-- how hard punches land overall (Config.Damage: lower = longer fights). The head scale was 0.48 while the AI
+-- threw ~30 punches a minute; a busy AI (40-50 a minute, more of them landing at the visible reach) needs less
+-- per punch, or equal men stop each other in a round. Read at the punch (the balance sims sweep it)
+local DAMAGE = Config.Damage
+local HEAD_SCALE = DAMAGE.head
 FightEngine.HEAD_SCALE = HEAD_SCALE
 
 -- Head HP model: part of every head shot is "stun" that clears when the fighter gets a breather (a few
@@ -2168,15 +2169,17 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		self:TraitFired(F, "CounterSpecialist")
 	end
 	-- reference head damage for "how big was that": a solid cross at full strength is about 1
-	local hdRef = 6 * HEAD_SCALE * self.damageScale
+	local hdRef = 6 * DAMAGE.head * self.damageScale
+	-- (the body's reference: a solid body shot - the thresholds of the body knockdown, the liver, a heavy one)
+	local bdRef = 5 * DAMAGE.body * self.damageScale
 
 	-- block (the overhand comes over the top of the guard)
 	if O.blocking and not body then
 		local through = sp.overGuard or P.overGuard or 0
 		local arms = 1.3 - 0.3 * math.clamp(O.stamina / O.maxStam, 0, 1)
 		-- tired arms and a dazed, loose guard let more through
-		local chip = dmg * math.clamp(0.28 - os_.Blocking / 400, 0.04, 0.25) * arms * (1 + 0.35 * O.tier)
-		local hd = chip + dmg * through * HEAD_SCALE * 0.6 * (P.head or 1)
+		local chip = dmg * math.clamp(0.28 - os_.Blocking / 400, 0.04, 0.25) * arms * (1 + 0.35 * O.tier) * DAMAGE.chip
+		local hd = chip + dmg * through * DAMAGE.head * 0.6 * (P.head or 1)
 		self:HeadDamage(O, hd)
 		O.stamina = math.max(0, O.stamina - (1.5 + dmg * 0.25))
 		O.counterUntil = now + 0.55 * (os_.Countering / 70)
@@ -2218,14 +2221,14 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		-- Body Armor (the ring trait): body shots barely bother him, and drain less of his gas
 		local ba = self:Trait(O, "BodyArmor")
 		local baCut = Traits.Effect("BodyArmor", "dmg", ba)
-		local bd = dmg * 0.8 * (1.2 - os_.Endurance / 200) * (P.body or 1) * armor * (1 - baCut)
+		local bd = dmg * 0.8 * (1.2 - os_.Endurance / 200) * (P.body or 1) * armor * (1 - baCut) * DAMAGE.body
 		bd /= O.frame.bodyAbsorb -- [FrameTraits] what his frame soaks up (a Lean body feels it more)
 		if ba > 0 then
 			self:TraitFired(O, "BodyArmor")
 		end
 		O.body = math.max(0, O.body - bd)
-		O.stamina = math.max(0, O.stamina - dmg * 0.6 * (P.body or 1) * (1 - Traits.Effect("BodyArmor", "drain", ba)) / O.frame.bodyAbsorb) -- [FrameTraits]
-		O.health = math.max(0, O.health - dmg * 0.15)
+		O.stamina = math.max(0, O.stamina - dmg * 0.6 * DAMAGE.bodyDrain * (P.body or 1) * (1 - Traits.Effect("BodyArmor", "drain", ba)) / O.frame.bodyAbsorb) -- [FrameTraits]
+		O.health = math.max(0, O.health - dmg * 0.15 * DAMAGE.body)
 		O.lastBodyHitAt = now
 		-- rib bruising on the side that was hit (a left hand lands on the right flank)
 		local rib = F.hand == "L" and "ribsR" or "ribsL"
@@ -2237,10 +2240,10 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		O.balance -= (P.stun or 10) * 0.35 * math.clamp(rel, 0.3, 2)
 		dmg = bd
 		self:CheckTier(O)
-		if O.body <= 0 or (O.body < 25 and bd >= 5 * self.damageScale and self.rng:NextNumber() < 0.22) then
+		if O.body <= 0 or (O.body < 25 and bd >= bdRef and self.rng:NextNumber() < 0.22 * DAMAGE.bodyKd) then
 			kd, severity = true, "normal"
 		elseif ptype == "leadhook" and F.hand == "L" and O.body < (sp.liver and 85 or 60) and self.allowKD
-			and self.rng:NextNumber() < (sp.liver and 0.4 or 0.12) * (1.2 - os_.Endurance / 100) * math.clamp(bd / (5 * self.damageScale), 0.5, 1.5) * (1 - baCut) then
+			and self.rng:NextNumber() < (sp.liver and 0.4 or 0.12) * (1.2 - os_.Endurance / 100) * math.clamp(bd / bdRef, 0.5, 1.5) * (1 - baCut) * DAMAGE.bodyKd then
 			-- the liver sits under the right ribs: a left hook there drops people a beat AFTER it lands (the
 			-- liver-shot special is aimed at it and folds a man who is nowhere near done)
 			liver = true
@@ -2248,7 +2251,8 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 		fall = "knee"
 	else
 		local chinMul = 1.35 - os_.Chin / 100 * 0.7
-		local hd = dmg * HEAD_SCALE * chinMul * (P.head or 1) * (O.dmg.cut > 0.5 and 1.08 or 1) * (1 + KO.tierDamage * O.tier)
+		-- (and the damage he has taken builds: a concussed head takes every shot worse - the late rounds' danger)
+		local hd = dmg * DAMAGE.head * chinMul * (P.head or 1) * (O.dmg.cut > 0.5 and 1.08 or 1) * (1 + KO.tierDamage * O.tier) * (1 + CONC.damage * O.conc)
 		hd /= O.frame.chin -- [FrameTraits] the frame's chin
 		-- Iron Chin (the ring trait): power shots to the head do less, and drop him less; it cracks as his body
 		-- and his gas go (the counter is the body work)
@@ -2277,12 +2281,20 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 			-- a fresh fighter only goes down to a true flash: a very clean power counter that catches
 			-- him walking onto it (while punching, or as he slips / rolls into it)
 			local flashy = counter and ptype ~= "jab" and clean >= 0.7 and (O.state == "punching" or slipping or rolling)
+			-- ... or the clean power shot at the end of a combination that is landing (the third or later punch of a
+			-- chain whose earlier punches landed): the shot he never saw coming (KO.comboFlash of a counter's odds)
+			local comboFlash = not flashy and item ~= nil and sp.chainRef ~= nil and ptype ~= "jab" and clean >= KO.comboClean
+				and (sp.chainRef.landed or 0) >= 2
 			local p, flash = Config.KOChance({
-				tier = O.tier, punch = ptype, hd = hd, hdRef = hdRef, counter = (O.tier > 0 and counter) or flashy,
+				tier = O.tier, punch = ptype, hd = hd, hdRef = hdRef, counter = (O.tier > 0 and counter) or flashy or comboFlash,
+				health = O.health,
 				chin = os_.Chin, endurance = os_.Endurance, stamina = os_.Stamina, stamPct = O.stamina / O.maxStam,
 				power = s.Power, clean = clean, kdTotal = O.kdTotal, conc = O.conc, healthCap = O.healthCap,
 				trauma = O.data.trauma, composure = O.data.mental.Composure,
 			})
+			if comboFlash and O.tier == 0 then
+				p *= KO.comboFlash
+			end
 			p *= sp.kd or 1
 			p *= F.frame.kdPower / O.frame.kdResist -- [FrameTraits] his one-punch power against the other man's frame
 			if self.tutorial and Tutorial and not O.isPlayer then
@@ -2313,7 +2325,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 			fall = fallFor(ptype, false, severity)
 		end
 	end
-	local heavy = (body and dmg >= 7 * self.damageScale) or (not body and (rel >= 2 or (counter and rel >= 1.75)))
+	local heavy = (body and dmg >= bdRef * 1.4) or (not body and (rel >= 2 or (counter and rel >= 1.75)))
 	if heavy then
 		O.hurtUntil = now + 1.4 + rel * 0.6
 	end
@@ -2747,7 +2759,7 @@ function Fight:ClinchWork(F, ptype)
 	if self.tutorial and Tutorial then
 		dmg *= Tutorial.DamageMul(self.tutorial, O.isPlayer)
 	end
-	local bd = dmg * (1.2 - os_.Endurance / 200)
+	local bd = dmg * (1.2 - os_.Endurance / 200) * DAMAGE.body
 	O.body = math.max(1, O.body - bd)
 	O.stamina = math.max(0, O.stamina - dmg * 0.5)
 	O.lastBodyHitAt = now

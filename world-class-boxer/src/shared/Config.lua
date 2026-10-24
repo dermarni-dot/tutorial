@@ -495,10 +495,17 @@ end
 --   previous      1 + kdTotal*kdK + conc*concK + (100 - healthCap)/capDiv + trauma/traumaDiv
 -- plus the punch's ko multiplier, a damage term clamp((hd/hdRef)^hdExp, hdMin, hdMax)
 -- (hdRef = 6 * HEAD_SCALE * damageScale) and x counterMul on counters.
+-- The flash (tier 0) is x (flashFresh + (1 - flashFresh) x the share of his head HP gone): a fresh man is hard to
+-- drop, a worn one goes down to the same shot. The clean power shot that finishes a combination that is landing
+-- (FightEngine.Resolve: the third or later punch of a chain, clean >= comboClean) can flash too, at comboFlash of a
+-- counter's odds.
 Config.KO = {
-	base = { 0, 0.06, 0.22, 0.6 }, -- by head tier 0..3 (index tier + 1)
+	-- (by head tier; was 0.06 / 0.22 / 0.6 with ~30 punches a minute: a busier fight gives a hurt man more
+	-- punches to survive, so each one is a little less likely to drop him)
+	base = { 0, 0.045, 0.17, 0.5 }, -- by head tier 0..3 (index tier + 1)
 	flash = 0.035, -- tier 0: only a clean COUNTER can drop a fighter (a flash knockdown)
 	flashMinHd = 1.0, -- ... and only when hd/hdRef is at least this
+	flashFresh = 0.35, comboFlash = 0.6, comboClean = 0.75,
 	hdExp = 1.2, hdMin = 0.2, hdMax = 2.5,
 	counterMul = 1.6,
 	chinBase = 1.45, condBase = 1.15, stamBase = 1.25, stamK = 0.45, powerBase = 0.85, accBase = 0.7, accK = 0.6,
@@ -510,7 +517,7 @@ Config.KO = {
 	falls = { "back", "side", "knee", "sit", "face" }, -- DownPose attribute values
 }
 
--- a = { tier, punch (Config.Punches id), hd, hdRef, counter, chin, endurance, stamina, stamPct,
+-- a = { tier, punch (Config.Punches id), hd, hdRef, counter, health (head HP), chin, endurance, stamina, stamPct,
 --       power, clean, kdTotal, conc, healthCap, trauma, composure }  -> probability 0..cap, flash (bool)
 function Config.KOChance(a)
 	local K = Config.KO
@@ -524,6 +531,8 @@ function Config.KOChance(a)
 			return 0, false
 		end
 		base, flash = K.flash, true
+		local gone = math.clamp(1 - (tonumber(a.health) or 100) / 100, 0, 1)
+		base *= K.flashFresh + (1 - K.flashFresh) * gone
 	end
 	local dmgTerm = math.clamp(rel ^ K.hdExp, K.hdMin, K.hdMax)
 	local chin = K.chinBase - (a.chin or 50) / 100
@@ -537,14 +546,26 @@ function Config.KOChance(a)
 	return math.clamp(p, 0, K.cap), flash
 end
 
+-- How hard punches land (FightEngine.Resolve, read at the punch): head = head HP per point of a punch's damage
+-- (before the punch's head multiplier and the chin; the "how big was that" reference hdRef is 6 x head, so the
+-- knockdown and hurt thresholds stay relative to it); body = the same for body HP (and the body reference 5 x body);
+-- bodyDrain = the stamina a body shot takes; chip = what comes through a guard; bodyKd = the body knockdown and the
+-- liver's odds. (head was 0.48 and the body 1 while the AI threw ~30 punches a minute; at 40-50 with more landing
+-- at the visible reach, equal men stopped each other in a round or two - tools/sim/test_fightai's bands)
+Config.Damage = { head = 0.33, body = 0.72, bodyDrain = 0.8, chip = 0.7, bodyKd = 0.85 }
+
 -- Concussion: F.conc 0..1 inside a fight; career-long condition.trauma 0..100 feeds the start value.
 Config.Concussion = {
 	startFromTrauma = 1 / 250, -- F.conc starts at trauma * this (+ activeInjury if a concussion injury is active)
 	activeInjury = 0.15,
-	perHeadDamage = 1 / 80, -- conc += hd * this * punch.ko * (1.3 - Chin/150)
+	-- (it builds over the fight: it cleared in under a minute - 0.006 + Recovery x 0.00012 a second and 0.12 a rest -
+	-- so the damage of the early rounds was forgotten by the late ones; now the man who has taken the punishment
+	-- carries it, slower, less accurate, easier to hurt and to drop, and the championship rounds are dangerous)
+	perHeadDamage = 1 / 60, -- conc += hd * this * punch.ko * (1.3 - Chin/150)
 	perKnockdown = 0.25, perFlashKnockdown = 0.1,
-	decay = 0.006, decayPerRecovery = 0.00012, -- per second: decay + Recovery * decayPerRecovery
-	restHeal = 0.12, restHealElite = 0.18, -- between rounds
+	decay = 0.0008, decayPerRecovery = 0.00001, -- per second: decay + Recovery * decayPerRecovery
+	restHeal = 0.05, restHealElite = 0.08, -- between rounds
+	damage = 0.5, -- incoming head damage x (1 + damage * conc)
 	-- effect magnitudes at conc = 1 (scale linearly)
 	windup = 0.35, -- punch windup x (1 + windup * conc)
 	hitChance = 0.25, -- own hit chance x (1 - hitChance * conc)
