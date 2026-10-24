@@ -1,7 +1,7 @@
 --!nocheck
 -- tools/sim/balance.luau: the fight balance tables (tools/sim/fightsim: the real engine and FightAI, headless).
 --   lune run tools/sim/balance.luau [n]          n fights a cell (default 40)
---   lune run tools/sim/balance.luau 40 styles    only one table: styles | levels | bots | traits | adapt
+--   lune run tools/sim/balance.luau 40 styles    only one table: pace | styles | levels | bots | traits | adapt
 --   lune run tools/sim/balance.luau 40 styles --root /tmp/before   the same on an export of an older commit
 -- Prints, for each table, the red corner's win rate, the knockout share and the average fight length.
 local process = require("@lune/process")
@@ -51,6 +51,31 @@ local function cell(st)
 end
 S.results = {}
 
+if not ONLY or ONLY == "pace" then
+	-- the fight's pace at equal level (mixed styles, traits on, 6 rounds: the bands of tools/sim/test_fightai): punches a
+	-- minute a man, the landed share, the rounds, the stoppages (and those in rounds 1-2), knockdowns a fight, damage
+	-- a landed punch (head + half the body)
+	print(string.format("\n== the pace at equal level (AI vs AI, mixed styles, traits on, 6 rounds), %d a cell", N))
+	for _, lvl in ipairs({ 40, 60, 80 }) do
+		local th, la, secs, rounds, ko, early, kd, dmg = 0, 0, 0, 0, 0, 0, 0, 0
+		for i = 1, N do
+			local r = S.Fight({ red = { style = STYLES[(i % 5) + 1], level = lvl }, blue = { style = STYLES[((i + 2) % 5) + 1], level = lvl }, rounds = 6, seed = i * 7919 + 13 })
+			th += r.thrown.red + r.thrown.blue
+			la += r.landed.red + r.landed.blue
+			secs += r.seconds
+			rounds += r.round
+			if r.method == "KO" or r.method == "TKO" or r.method == "RTD" then
+				ko += 1
+				early += r.round <= 2 and 1 or 0
+			end
+			kd += (r.kd.red or 0) + (r.kd.blue or 0)
+			dmg += r.P.damageTaken + r.O.damageTaken
+		end
+		print(string.format("level %d: %4.1f a minute, %s landed, %.2f rounds, stoppages %s (rounds 1-2 %s), %.2f knockdowns, %.2f damage a landed punch",
+			lvl, th / math.max(1, secs) * 30, pct(la / math.max(1, th)), rounds / N, pct(ko / N), pct(early / N), kd / N, dmg / math.max(1, la)))
+	end
+end
+
 if not ONLY or ONLY == "styles" then
 	print(string.format("\n== AI vs AI by style (level 60, no traits, 6 rounds; red win %% | stoppages | rounds), %d a cell", N))
 	local head = "red \\ blue  "
@@ -82,7 +107,7 @@ end
 
 if not ONLY or ONLY == "bots" then
 	print(string.format("\n== scripted players vs the AI (same level, the AI's own traits from its seed, 6 rounds), %d a cell", N))
-	for _, lvl in ipairs({ 40, 60, 80 }) do
+	for _, lvl in ipairs({ 20, 40, 60, 80 }) do
 		local line = string.format("level %2d  ", lvl)
 		for _, bot in ipairs({ "novice", "spam", "headhunter", "body", "volume", "power", "counter", "pressure", "smart" }) do
 			local st = run(N, function(i)

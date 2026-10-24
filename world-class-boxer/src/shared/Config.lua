@@ -561,7 +561,7 @@ end
 -- liver's odds. (head was 0.48 and the body 1 while the AI threw ~30 punches a minute; at 40-50 with more landing
 -- at the visible reach, equal men stopped each other in a round or two - tools/sim/test_fightai's bands)
 -- whiff = the share of a missed hook / uppercut / overhand's stamina it costs again (FightEngine.Miss).
-Config.Damage = { head = 0.27, body = 0.72, bodyDrain = 0.8, chip = 0.7, bodyKd = 0.6, whiff = 0.5 }
+Config.Damage = { head = 0.26, body = 0.72, bodyDrain = 0.8, chip = 0.7, bodyKd = 0.6, whiff = 0.5 }
 
 -- Concussion: F.conc 0..1 inside a fight; career-long condition.trauma 0..100 feeds the start value.
 Config.Concussion = {
@@ -652,11 +652,11 @@ Config.FightAI = {
 	-- AI at the base rate stood and watched a busy beginner outwork it)
 	tiers = {
 		{ level = 0, name = "Debut", react = 1.6, read = 0.35, work = 0.95, floor = 17, mistake = 1.8, aim = 0.82 },
-		{ level = 30, name = "Prospect", react = 1.05, read = 0.85, work = 1.12, floor = 21, mistake = 0.95, aim = 0.93 },
-		{ level = 50, name = "Regional", react = 0.9, read = 1.1, work = 1.08, floor = 24, mistake = 0.7, aim = 1 },
-		{ level = 70, name = "National", react = 0.8, read = 1.3, work = 1.02, floor = 28, mistake = 0.45, aim = 1 },
-		{ level = 85, name = "World", react = 0.72, read = 1.45, work = 1.08, floor = 33, mistake = 0.2, aim = 1 },
-		{ level = 99, name = "Elite", react = 0.66, read = 1.6, work = 1.12, floor = 37, mistake = 0.08, aim = 1 },
+		{ level = 30, name = "Prospect", react = 1.05, read = 0.85, work = 1.12, floor = 21, mistake = 0.95, aim = 0.9 },
+		{ level = 50, name = "Regional", react = 0.9, read = 1.1, work = 1.04, floor = 24, mistake = 0.7, aim = 1 },
+		{ level = 70, name = "National", react = 0.77, read = 1.36, work = 1.02, floor = 28, mistake = 0.45, aim = 1 },
+		{ level = 85, name = "World", react = 0.68, read = 1.52, work = 1.08, floor = 33, mistake = 0.15, aim = 1 },
+		{ level = 99, name = "Elite", react = 0.62, read = 1.65, work = 1.12, floor = 37, mistake = 0.08, aim = 1 },
 	},
 }
 -- the AI difficulty at an overall level: the row's numbers, interpolated between the tiers

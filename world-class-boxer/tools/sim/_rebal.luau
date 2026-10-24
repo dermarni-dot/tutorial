@@ -15,6 +15,10 @@ do
 		for kv in args[at + 1]:gmatch("[^,]+") do
 			local path, v = kv:match("^(.-)=(.*)$")
 			local t, keys = S.Config, {}
+			if path:sub(1, 3) == "FT." then
+				t = S.H.require("FrameTraits").Data
+				path = path:sub(4)
+			end
 			for k in path:gmatch("[^%.]+") do table.insert(keys, tonumber(k) or k) end
 			for i = 1, #keys - 1 do t = t[keys[i]] end
 			t[keys[#keys]] = tonumber(v)
@@ -160,4 +164,33 @@ if MODE == "count" then
 		S.Fight({ red = { style = STYLES[(i % 5) + 1], level = 60 }, blue = { style = STYLES[((i + 2) % 5) + 1], level = 60 }, rounds = 6, seed = i * 7919 + 13 })
 	end
 	for i = 1, math.min(40, #rows) do print(rows[i]) end
+end
+if MODE == "frame" then
+	local A, B = args[3] or "Heavyweight Build", args[4] or "Lean"
+	local w, koA, koB, decA, decB, stop = 0, 0, 0, 0, 0, 0
+	for i = 1, N do
+		local flip = i % 2 == 0
+		local ra, rb = flip and B or A, flip and A or B
+		local r = S.Fight({ red = { style = "BoxerPuncher", level = 60, noTraits = true, frame = ra }, blue = { style = "BoxerPuncher", level = 60, noTraits = true, frame = rb }, rounds = 6, seed = SEED0 + i * 7919 + 13 })
+		local aWon = (r.winner == "red") ~= flip
+		local ko = r.method == "KO" or r.method == "TKO" or r.method == "RTD"
+		if ko then stop += 1 end
+		if r.winner == "draw" then w += 0.5
+		elseif aWon then w += 1; if ko then koA += 1 else decA += 1 end
+		else if ko then koB += 1 else decB += 1 end end
+	end
+	print(string.format("%s vs %s: %s wins %.0f%% (KO %d, pts %d) - %s KO %d pts %d; stoppages %.0f%%", A, B, A, w / N * 100, koA, decA, B, koB, decB, stop / N * 100))
+end
+if MODE == "edge" then
+	local bot, trait = args[3], args[4]
+	local function edge(withT)
+		local d, t = 0, 0
+		for i = 1, N do
+			local r = S.Fight({ red = { bot = bot, style = "BoxerPuncher", level = 60 }, blue = { style = STYLES[(i % 5) + 1], level = 60, traits = withT and { { id = trait, s = 1 } } or nil, noTraits = not withT or nil }, rounds = 6, seed = SEED0 + i * 7919 + 13 })
+			d += r.P.damageDealt; t += r.P.damageTaken
+		end
+		return d / math.max(1e-6, t)
+	end
+	local wo, wi = edge(false), edge(true)
+	print(string.format("edge %s/%s: without %.2f with %.2f ratio %.2f", bot, trait, wo, wi, wi / wo))
 end
