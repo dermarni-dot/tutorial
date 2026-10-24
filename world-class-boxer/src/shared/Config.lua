@@ -607,18 +607,21 @@ Config.FightAI = {
 	-- the work rate (FightAI.Think): think = the decision interval, raw .. elite (s); work = the base multiplier on
 	-- its chance to attack each think; stepIn = how far outside its reach it steps in to punch rather than wait
 	-- (studs); openWork = the extra work when the man in front of it is open (idle in range, hands down, on the
-	-- ropes, just missed); floorMin = the fewest punches a minute even the most forgiving bout's AI throws
+	-- ropes, just missed); floorMin = the fewest punches a minute even the most forgiving bout's AI throws. (work is
+	-- held where equal AIs throw ~35 a minute: the engine's health, damage and knockdown rules were balanced on ~30,
+	-- and an AI at 50 ended equal fights in a round - tools/sim/test_fightai's bands)
 	think = { 0.24, 0.13 }, work = 0.55, stepIn = 1.0, openWork = 1.15, floorMin = 7,
 	-- the difficulty by level (Config.FightAI.Tier(level): the career's tiers, interpolated between the rows).
 	-- react = the perception and motor delays x this; read = how much it leans on its read of him (prediction,
 	-- adaptation, the rhythm counter); work = its punch rate x this; floor = the fewest punches a minute it throws
 	-- while it can reach him (the work-rate floor: a debut opponent is easier, never passive); mistake = its wrong
-	-- defences x this
+	-- defences x this. (The low rows carry more work: FightAI's work also scales with the boxer's own skill, and a raw
+	-- AI at the base rate stood and watched a busy beginner outwork it)
 	tiers = {
-		{ level = 0, name = "Debut", react = 1.15, read = 0.7, work = 0.78, floor = 14, mistake = 1.1 },
-		{ level = 30, name = "Prospect", react = 1.0, read = 0.9, work = 0.82, floor = 18, mistake = 0.9 },
-		{ level = 50, name = "Regional", react = 0.9, read = 1.1, work = 0.86, floor = 22, mistake = 0.7 },
-		{ level = 70, name = "National", react = 0.8, read = 1.3, work = 0.9, floor = 26, mistake = 0.45 },
+		{ level = 0, name = "Debut", react = 1.15, read = 0.7, work = 1.25, floor = 18, mistake = 1.1 },
+		{ level = 30, name = "Prospect", react = 1.0, read = 0.9, work = 1.12, floor = 21, mistake = 0.9 },
+		{ level = 50, name = "Regional", react = 0.9, read = 1.1, work = 1.0, floor = 23, mistake = 0.7 },
+		{ level = 70, name = "National", react = 0.8, read = 1.3, work = 0.95, floor = 26, mistake = 0.45 },
 		{ level = 85, name = "World", react = 0.72, read = 1.45, work = 0.95, floor = 30, mistake = 0.2 },
 		{ level = 99, name = "Elite", react = 0.66, read = 1.6, work = 1.0, floor = 34, mistake = 0.08 },
 	},

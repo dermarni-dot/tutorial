@@ -99,11 +99,39 @@ about the pivots) and the elbow / wrist / hip / knee / ankle heights are unchang
   the upper traps' onsets are staggered (no fold across the upper back).
 * THE SURFACE: the lofts are 52 x 56 (UpperTorso), 14 x 40, 24 x 40 (upper arm, an 8-ring shoulder cap: a round delt), 16 x 28, 22 x 32 (thigh), 18 x 28,
   12 x 22 (foot), 8 x 20 (hand) rings x segments (every vertex still a sample of the 4x refined loft that carries the
-  muscles and the normals): 24,432 triangles per body in the full set (UpperTorso 6,272, UpperArm 2,720; the 10k per-mesh limit and
+  muscles and the normals): 24,432 triangles per body in the full set (v14: 29,744, see Muscle definition) (UpperTorso 6,272, UpperArm 2,720; the 10k per-mesh limit and
   the ~40k body budget hold), the hem row blend 2.45..2.90 so the band row is no crease; the lite set stays the v9 one.
   Sheets: `bare_t<N>_<view>.png`, `arms_t<N>.png` (two strips: straight in a front 3/4, bent 110 from the side),
   `heads_necks.png` (close-up strips of every frame's head on its neck, front and side, tiers 1 and 5;
   `build_body.py --sheets closeups` renders only these two), `height_lineup_6ft.png` (the five frames at 72 in with the crown line: `render_frames.py --headline`).
+
+### Muscle definition (v14)
+
+* Geometry only (the body MeshParts carry no SurfaceAppearance): the definition is the lobe field of each loft, sampled
+  by the low-res vertices and their refined normals. Two rules the lobes keep: a groove's half-width is at least ~1.2x
+  the loft's segment spacing (UpperTorso 76 segments ~ 4.7 deg: grooves >= 6 deg; the limbs 36..40 ~ 9..10 deg:
+  grooves 11 deg), or only one vertex dips and it shades flat; and a diagonal (drifted) lobe is never narrow (>= 10
+  deg), or it aliases into a dashed staircase across the columns. Azimuth is not width: the torso's front is flat, so
+  phi lands at x = af tan(phi) (the rectus spans ~+-42 deg, the pecs ~0..65).
+* The forms, every separation a tier-grown groove (the m / d terms: none at tier 1, the frame's `defin` gain on the d
+  term: Lean 1.35, Muscular 1.25, Athletic 1, Power 0.75, Heavyweight 0.35): the pec plate with a steep lower edge,
+  the pec line and its outer edge rising to the armpit, the clavicular head, the sternum split, the deltopectoral
+  line; the rectus as one plate cut into a six-pack by the linea alba, three tendinous inscriptions and the
+  semilunaris, the V-lines into the trunks (grooves only under the band), serratus slips, the oblique and the flank
+  edge; on the back the lat mass, sweep and edge (the V), erector columns either side of the spine groove, the traps'
+  diamond (three stacked lobes narrowing down the spine), infraspinatus / teres and their line; the deltoid's three
+  heads rising to the top ring (no corner under the shoulder dome) with grooves between them, the insertion V and its
+  tuck under the pec; the biceps peak and the biceps / brachialis groove, the triceps' long / lateral heads with the
+  horseshoe round the tendon plate; the brachioradialis ridge and the flexor / extensor lines; the forearm's top 3 %
+  inside the upper arm's lower end (FORE_TAPER: no step at a straight elbow); the VMO teardrop and its edge, the ITB
+  line, the hamstrings' split, the back of the knee; the calf's two gastrocnemius heads with crisp lower edges over
+  the soleus flare, the Achilles' hollows, the tibialis / shin line.
+* Resolution where the definition needs it: UpperTorso 56 x 76 (9,120 tris), LowerArm 18 x 36, UpperLeg 22 x 40,
+  LowerLeg 18 x 36: 29,744 triangles per body (the 10k per-mesh limit holds). Gear: the trunks / boots are not
+  refitted; nothing rises under the band, and the calf's added mass stays inside the boot shaft's 0.04 clearance.
+* Close-ups: `build_body.py --sheets muscles --tiers 1,3,5 --frames lean,muscular,power --muscle-tag before|after`
+  (`MUSCLE_SHEETS`: chest + delts front, back, the right arm side / back, the legs front / back), `compose_muscles()`
+  -> `previews/final/v10/bodies/muscles/compare_<sheet>_t5.png` (before over after) and `tiers_<sheet>.png`.
 
 ## BodyAssetData.lua (generated)
 

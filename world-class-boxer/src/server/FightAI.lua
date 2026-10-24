@@ -1333,7 +1333,9 @@ function FightAI:HandsUp(now, dist)
 	if F.body >= 50 and ((mover and dist < self:Range() * 0.95) or (self.style.id == "OutBoxer" and not F.onRopes)) then
 		return false
 	end
-	local k = (0.6 + 0.4 * self.skill) * (0.8 + self.arch.block) * (0.85 + 0.15 * self.tier.read) * (engine.aiDefense or 1)
+	-- (light: the guard slows the feet and the breath - the engine's - so a boxer keeps it up between his punches
+	-- now and then, a raw one hardly at all; a man shelled up for every think lost the work rate and the fight)
+	local k = (0.1 + 0.3 * self.skill) * (0.75 + self.arch.block) * (0.85 + 0.15 * self.tier.read) * (engine.aiDefense or 1)
 	if self.rng:NextNumber() < k then
 		engine:SetBlock(F, true)
 		self.blockUntil = math.max(self.blockUntil, now + 0.45 + 0.25 * self.skill)

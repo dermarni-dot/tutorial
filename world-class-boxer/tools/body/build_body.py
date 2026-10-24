@@ -43,7 +43,7 @@ landmarks (knuckles, ankle bones, kneecap) stay small local bumps (bell).
 The height (v13): the frame changes the build, not the height. Each frame's unit (frames[id].unit: neckHeight, head,
 standingHeight) lets Builder.Scales normalise the HeightScale so every frame stands the chosen inches; the skeletons
 are solved so the HipHeight matches too (FRAMES skel). The neck column ends inside the frame's own head (FRAMES head,
-neck, neck_s; NECK_TOP), the lofts are finer (24,432 tris per body) and the sheets (Stage.figure) show the frames as
+neck, neck_s; NECK_TOP), the lofts are finer (v14: 29,744 tris per body) and the sheets (Stage.figure) show the frames as
 the game builds them, normalised: height_norm.
 
 Frames: the FRAMES table. The silhouette lives in the base profiles (the ribcage's width and depth, the shoulder
@@ -186,7 +186,7 @@ FRAMES = {
         neck=([0.80, 0.49, 0.44], [0.34, 0.32, 0.315], [0.38, 0.39, 0.385]), p=-0.2,
         arm=[1.0, 1.03, 1.05, 1.05, 1.04], fore=[1.0, 1.01, 1.03, 1.04, 1.04], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
         calf=[1.0, 1.02, 1.07, 1.09, 1.05, 1.0], calf_pk=0.74,
-        gain=dict(pec=1.3, delt=1.4, lat=1.4, trap=1.3, arm=1.35, fore=1.15, calf=1.15, abs=1.0, leg=1.0, defin=1.0),
+        gain=dict(pec=1.3, delt=1.4, lat=1.4, trap=1.3, arm=1.35, fore=1.15, calf=1.15, abs=1.0, leg=1.0, defin=1.25),
         soft=0.0, fat=0.0, ribs=0.0, knobs=0.0, built=1.0),
     "Power Build": dict(
         key="power", head=0.85, neck_s=[3.58, 3.70, 3.77, 3.86],
@@ -986,7 +986,8 @@ def torso_sec(fr):
 
 
 ARM_TAPER = [1.02, 1.04, 1.07, 1.03, 0.98]     # elbow .. shoulder: the biceps / triceps belly, thinner into the delt
-FORE_TAPER = [1.0, 0.95, 1.00, 1.08, 1.02]    # wrist .. elbow: a narrow wrist, the flexor mass under the elbow
+FORE_TAPER = [1.0, 0.94, 1.00, 1.08, 0.97]    # wrist .. elbow: a narrow wrist, the flexor mass under the elbow,
+# the top a little inside the upper arm's lower end (v14: the straight elbow shows no step)
 
 
 def arm_section(fr):
@@ -1091,51 +1092,69 @@ VERT = lambda x: ((x, 0, 0), (0, 1, 0), (1, 0, 0), (0, 0, 1))  # noqa: E731
 def upper_torso(tr, fr):
     g = lambda *a, **k: A(tr, fr, *a, **k)  # noqa: E731
     L = [
-        # ---- front: the pec plate (steep lower edge, soft above), its tie-in to the front delt, the sternum
-        Lb(27, 40, 2.98, 3.22, 3.50, g("pec", 0.014, 0.085, 0.008), k=1.2),
+        # ---- (v14 definition pass) front: the pec plate with a steep lower edge and a crisp lower / outer line that
+        # sweeps up into the armpit, the clavicular head on top, the fibres fanning toward the armpit, the sternum split
+        Lb(27, 40, 2.94, 3.10, 3.50, g("pec", 0.014, 0.085, 0.010), k=1.2),
+        Lb(48, 22, 3.02, 3.20, 3.40, g("pec", 0.004, 0.030, 0.008)),             # the outer pec, toward the armpit
         Lb(60, 24, 3.26, 3.40, 3.54, g("pec", 0.008, 0.045, 0.004)),            # pec -> delt tie-in
-        Lb(0, 7, 2.98, 3.20, 3.44, g("pec", 0, -0.010, -0.014)),                # sternum line
-        Lb(26, 30, 2.88, 2.95, 3.01, g("pec", 0, -0.007, -0.012)),              # the pec's lower edge (the pec line)
-        Lb(62, 7, 3.28, 3.40, 3.52, g("pec", 0, -0.004, -0.006)),               # deltopectoral line
-        # ---- abs: two columns, three rows, the linea alba, the tendinous lines, the semilunaris
-        Lb(10, 13, 2.79, 2.90, 3.01, g("abs", 0.004, 0.012, 0.022)),
-        Lb(10, 13, 2.58, 2.69, 2.80, g("abs", 0.004, 0.012, 0.022)),
-        Lb(10, 12, 2.40, 2.48, 2.58, g("abs", 0.003, 0.010, 0.018)),
-        Lb(0, 4, 2.38, 2.70, 3.02, g("abs", 0, -0.004, -0.011)),                # linea alba
-        Lb(10, 18, 2.77, 2.795, 2.82, g("abs", 0, -0.002, -0.008)),             # ab row lines
-        Lb(10, 18, 2.56, 2.585, 2.61, g("abs", 0, -0.002, -0.007)),
-        Lb(20, 4, 2.42, 2.70, 3.00, g("abs", 0, -0.003, -0.008), drift=-6),     # linea semilunaris
-        # ---- side: serratus fingers (diagonal), obliques and the flank roll (the hem row 2.45 stays on the legacy hull)
-        Lb(56, 9, 3.00, 3.04, 3.08, g("abs", 0.003, 0.009, 0.012)),
-        Lb(58, 9, 2.91, 2.95, 2.99, g("abs", 0.003, 0.009, 0.012)),
-        Lb(60, 9, 2.82, 2.86, 2.90, g("abs", 0.003, 0.008, 0.011)),
-        Lb(62, 8, 2.73, 2.77, 2.81, g("abs", 0.002, 0.007, 0.009)),
+        Lb(20, 24, 3.32, 3.43, 3.54, g("pec", 0.002, 0.020, 0.006)),            # the clavicular (upper) pec
+        Lb(0, 5, 2.96, 3.20, 3.46, g("pec", 0, -0.012, -0.020), k=1.5),         # the sternum split
+        Lb(24, 28, 2.90, 2.945, 2.99, g("pec", 0, -0.008, -0.016), k=1.3),      # the pec's lower edge (the pec line)
+        Lb(50, 12, 2.98, 3.12, 3.30, g("pec", 0, -0.004, -0.009), drift=90),   # its outer edge, up to the armpit
+        Lb(61, 8, 3.26, 3.42, 3.56, g("pec", 0, -0.005, -0.010), drift=-50, k=1.2),  # deltopectoral line
+        # ---- abs: the rectus as one plate cut into a six-pack by grooves (the linea alba, three tendinous
+        # inscriptions, the semilunaris at its outer edge), the pads a little domed; the V-lines run into the trunks
+        # (the front is flat: an azimuth phi lands at x = af tan(phi), so the rectus spans ~+-42 deg)
+        Lb(0, 46, 2.42, 2.72, 3.00, g("abs", 0.004, 0.014, 0.006)),             # the rectus plate
+        Lb(20, 17, 2.81, 2.89, 2.97, g("abs", 0.002, 0.008, 0.012)),            # the pads (three rows)
+        Lb(20, 17, 2.64, 2.715, 2.79, g("abs", 0.002, 0.008, 0.012)),
+        Lb(20, 17, 2.47, 2.545, 2.62, g("abs", 0.002, 0.006, 0.010)),
+        Lb(0, 6, 2.44, 2.74, 3.02, g("abs", 0, -0.005, -0.018), k=1.5),        # linea alba
+        Lb(20, 24, 2.76, 2.80, 2.84, g("abs", 0, -0.004, -0.014), k=1.3),       # tendinous inscriptions
+        Lb(20, 24, 2.59, 2.63, 2.67, g("abs", 0, -0.004, -0.013), k=1.3),
+        Lb(20, 22, 2.94, 2.975, 3.01, g("abs", 0, -0.003, -0.010), k=1.3),
+        Lb(41, 6, 2.44, 2.72, 3.00, g("abs", 0, -0.004, -0.012), drift=-8, k=1.3),     # linea semilunaris
+        Lb(44, 10, 2.43, 2.50, 2.60, g("abs", 0, -0.003, -0.008), drift=150),           # the V-lines (inguinal)
+        # ---- side: serratus fingers (diagonal slips along the ribs, under the lat), the external oblique and its
+        # flank edge, the flank roll (the hem row 2.45 stays on the legacy hull)
+        Lb(68, 10, 3.02, 3.08, 3.14, g("abs", 0.002, 0.005, 0.008), drift=60),
+        Lb(66, 10, 2.93, 2.99, 3.05, g("abs", 0.002, 0.005, 0.008), drift=60),
+        Lb(64, 10, 2.84, 2.90, 2.96, g("abs", 0.002, 0.005, 0.007), drift=60),
+        Lb(62, 10, 2.75, 2.81, 2.87, g("abs", 0.001, 0.004, 0.006), drift=60),
         Lb(72, 22, 2.46, 2.56, 2.72, g("abs", 0.006, 0.026, 0.004)),            # external oblique
         Lb(86, 16, 2.50, 2.60, 2.74, g("abs", 0.003, 0.016, 0.006)),            # the flank roll
-        # ---- back: the lats' V, the erectors, the spine groove, the traps' diamond and slope, infraspinatus / teres
+        Lb(98, 5, 2.50, 2.66, 2.88, g("abs", 0, -0.002, -0.008)),               # the flank's edge (oblique / lat)
+        # ---- back: the lats' V (their mass, the outer sweep, the edge groove running from the armpit to the
+        # waist), the erector columns either side of a deep spine groove, the lower traps / rhomboids' diamond,
+        # infraspinatus / teres round the shoulder blade
         Lb(135, 40, 2.55, 3.05, 3.38, g("lat", 0.012, 0.085, 0.0), k=1.1),
-        Lb(106, 20, 3.00, 3.22, 3.42, g("lat", 0.008, 0.05, 0.004)),            # the lat's outer sweep under the armpit
-        Lb(168, 14, 2.34, 2.72, 3.12, g("lat", 0.005, 0.025, 0.004)),           # erector columns
-        Lb(180, 5, 2.34, 2.90, 3.42, g("lat", -0.008, -0.013, -0.018)),         # spine groove (ends under the traps)
-        Lb(148, 11, 3.12, 3.30, 3.50, g("lat", 0.003, 0.008, 0.008), drift=45),  # the scapula's inner edge (wider low)
-        Lb(130, 14, 3.38, 3.47, 3.56, g("lat", 0.003, 0.007, 0.005), drift=-220),  # its spine, rising out to the shoulder
-        Lb(180, 56, 3.16, 3.46, 3.74, g("trap", 0.010, 0.046, 0.0)),            # the traps' diamond, into the slope
-        Lb(180, 48, 3.38, 3.56, 3.74, g("trap", 0.010, 0.035, 0.0)),            # the upper traps between the blades
-        Lb(180, 14, 2.94, 3.14, 3.34, g("trap", 0.003, 0.012, 0.004)),          # its tail
-        Lb(150, 22, 3.18, 3.34, 3.50, g("lat", 0.004, 0.028, 0.006)),           # infraspinatus
-        Lb(118, 16, 3.14, 3.26, 3.40, g("lat", 0.003, 0.02, 0.005)),            # teres major
+        Lb(106, 20, 3.00, 3.22, 3.42, g("lat", 0.008, 0.065, 0.006)),           # the lat's outer sweep under the armpit
+        Lb(122, 12, 2.55, 2.95, 3.32, g("lat", 0, -0.003, -0.008), drift=-67),  # the lat's edge (the V)
+        Lb(168, 14, 2.34, 2.72, 3.12, g("lat", 0.005, 0.036, 0.006)),           # erector columns
+        Lb(180, 7, 2.34, 2.85, 3.42, g("lat", -0.008, -0.016, -0.022), k=1.4),  # spine groove (ends under the traps)
+        Lb(157, 7, 2.36, 2.62, 2.92, g("lat", 0, -0.003, -0.009)),              # the erectors' outer edge
+        Lb(148, 13, 3.12, 3.30, 3.50, g("lat", 0.003, 0.008, 0.006), drift=45),  # the scapula's inner edge (wider low)
+        Lb(130, 16, 3.38, 3.47, 3.56, g("lat", 0.003, 0.007, 0.004), drift=-120),  # its spine, rising out to the shoulder
+        # the traps' diamond: wide between the shoulder blades, narrowing down the spine to a point (three stacked
+        # lobes, each narrower and lower: no terrace)
+        Lb(180, 52, 3.28, 3.54, 3.80, g("trap", 0.012, 0.062, 0.0)),
+        Lb(180, 32, 3.02, 3.24, 3.46, g("trap", 0.006, 0.030, 0.004)),
+        Lb(180, 16, 2.80, 2.98, 3.18, g("trap", 0.002, 0.012, 0.004)),
+        Lb(150, 22, 3.18, 3.34, 3.50, g("lat", 0.004, 0.032, 0.008)),           # infraspinatus
+        Lb(118, 16, 3.14, 3.26, 3.40, g("lat", 0.003, 0.024, 0.006)),           # teres major
+        Lb(134, 10, 3.18, 3.27, 3.36, g("lat", 0, -0.002, -0.006), drift=-120),  # their separation
         Lb(112, 16, 3.38, 3.47, 3.58, g("delt", 0.006, 0.026, 0.0)),            # the rear delt's root on the back
         # ---- shoulders and neck: the girdle's rounding under the delt, the clavicles, the traps rising into the neck
         Lb(90, 46, 3.36, 3.56, 3.74, g("delt", 0.045, 0.04, 0.0)),
-        Lb(26, 16, 3.545, 3.585, 3.625, g("pec", 0.006, 0.0, 0.006), drift=300),  # the collarbones (rising outward)
+        Lb(34, 22, 3.545, 3.585, 3.625, g("pec", 0.004, 0.0, 0.003), drift=120),  # the collarbones (rising outward)
         Lb(0, 10, 3.565, 3.61, 3.66, -0.007 * tr["f"] - 0.003 * tr["d"]),       # the sternum notch at the throat
         Lb(180, 78, 3.36, 3.58, 3.80, g("trap", 0.016, 0.045, 0.0), k=0.8),     # upper traps into the neck (the slope)
         # (v13) a real neck: the two sternocleidomastoid cords from the collarbones up behind the jaw, the throat's
         # hollow between them (the larynx a small bump in it), the nape's groove between the traps' insertions
-        Lb(34, 11, 3.60, 3.72, 3.88, 0.006 + 0.004 * tr["m"] + 0.003 * tr["d"], drift=260),  # sternocleidomastoid
+        Lb(36, 14, 3.62, 3.74, 3.88, 0.005 + 0.003 * tr["m"] + 0.002 * tr["d"], drift=220),  # sternocleidomastoid
         Lb(0, 10, 3.62, 3.72, 3.84, -0.004 - 0.002 * tr["d"]),                  # the throat between the cords
         Lb(0, 5, 3.68, 3.725, 3.77, 0.003 * tr["f"]),                          # the larynx
-        Lb(180, 7, 3.70, 3.80, 3.90, g("trap", -0.003, -0.003, -0.004)),        # the nape's groove
+        Lb(180, 7, 3.70, 3.80, 3.90, g("trap", -0.001, -0.001, -0.002)),        # the nape's groove
     ]
     built = fr.get("built", 0.0) * tr["f"]  # the naturally built frames carry a chest / lats / delt roots at tier 1
     L += [
@@ -1156,7 +1175,7 @@ def upper_torso(tr, fr):
     ]
     sd = ([YW, 2.32, 2.36, 3.36, 3.42, 3.54, 3.57, NECK_TOP], [0.6, 0.6, 1.3, 1.3, 0.9, 0.9, 1.7, 1.7])
     # (v13) 52 x 56: the rings are ~0.03 prototype apart over the chest (no banding on the super-elliptic sections)
-    return loft(torso_sec(fr), tr["m"], YW, NECK_TOP, (0.22, 1.0, 2, 0.88), (0.03, 1.0, 2), nb=52, nseg=56, bias=0.5,
+    return loft(torso_sec(fr), tr["m"], YW, NECK_TOP, (0.22, 1.0, 2, 0.88), (0.03, 1.0, 2), nb=56, nseg=76, bias=0.5,
                 sdens=sd, lobes=L)
 
 
@@ -1182,27 +1201,35 @@ def upper_arm(tr, fr):
     X = arm_x(tr, fr)
     # (right arm: 0 front, +90 outer, -90 inner against the torso, 180 back)
     L = [
-        # the deltoid: one cap wrapping front, side and back (not the inner face), its three heads as crests, the
-        # grooves between them and the insertion V over the biceps / brachialis
-        Lb(55, 150, 3.18, 3.44, 3.64, g("delt", 0.03, 0.05, 0.0), sym=False),
-        Lb(-32, 30, 3.26, 3.42, 3.56, g("delt", 0.006, 0.028, 0.004), sym=False),
-        Lb(88, 32, 3.26, 3.44, 3.58, g("delt", 0.008, 0.034, 0.004), sym=False),
-        Lb(150, 30, 3.24, 3.40, 3.56, g("delt", 0.004, 0.02, 0.003), sym=False),
-        Lb(26, 6, 3.28, 3.40, 3.52, g("delt", 0, -0.002, -0.006), sym=False),
-        Lb(122, 6, 3.28, 3.40, 3.52, g("delt", 0, -0.002, -0.005), sym=False),
-        Lb(80, 24, 3.12, 3.19, 3.27, g("delt", 0, -0.005, -0.008), sym=False),       # the insertion V
-        # the biceps (front, a little inward), its peak, the brachialis under its outer edge
+        # the deltoid: one cap wrapping front, side and back (not the inner face), its three heads as crests that
+        # keep rising to the top ring (so the cap rolls into the shoulder dome: no corner), the grooves between them and
+        # the insertion V tucking between the biceps and the triceps (v14)
+        Lb(55, 150, 3.18, 3.50, 3.70, g("delt", 0.03, 0.05, 0.0), sym=False),
+        Lb(-32, 30, 3.24, 3.46, 3.66, g("delt", 0.006, 0.030, 0.006), sym=False),    # front head
+        Lb(88, 34, 3.22, 3.50, 3.70, g("delt", 0.008, 0.034, 0.006), sym=False),     # side head
+        Lb(150, 30, 3.22, 3.44, 3.64, g("delt", 0.004, 0.024, 0.005), sym=False),    # rear head
+        Lb(30, 11, 3.22, 3.40, 3.56, g("delt", 0.0, -0.0098, -0.0252), sym=False, k=1.3),  # front / side
+        Lb(124, 11, 3.22, 3.40, 3.56, g("delt", 0.0, -0.0084, -0.021), sym=False, k=1.3),  # side / rear
+        Lb(80, 26, 3.11, 3.18, 3.26, g("delt", 0, -0.006, -0.012), sym=False, k=1.3),  # the insertion V
+        Lb(-60, 11, 3.20, 3.34, 3.48, g("delt", 0.0, -0.0042, -0.0112), sym=False),       # where the delt tucks under the pec
+        # the biceps (front, a little inward), its peak, the brachialis under its outer edge and the groove between
         Lb(-18, 50, 2.92, 3.10, 3.34, g("arm", 0.010, 0.07, 0.008), sym=False, k=1.15),
-        Lb(-24, 22, 3.02, 3.10, 3.20, g("arm", 0.002, 0.022, 0.012), sym=False),
-        Lb(56, 20, 2.94, 3.04, 3.18, g("arm", 0.003, 0.024, 0.006), sym=False),
-        Lb(-14, 4, 3.00, 3.14, 3.28, g("arm", 0, 0, -0.004), sym=False),             # the biceps' mid line
-        # the triceps: long head (back, inward), lateral head (back, outward), the flat tendon above the elbow
-        Lb(-150, 32, 3.00, 3.20, 3.44, g("arm", 0.008, 0.06, 0.006), sym=False),
-        Lb(150, 32, 2.98, 3.20, 3.40, g("arm", 0.008, 0.058, 0.006), sym=False),
-        Lb(180, 16, 2.90, 2.99, 3.08, g("arm", 0, -0.004, -0.010), sym=False),
+        Lb(-24, 22, 3.00, 3.09, 3.20, g("arm", 0.002, 0.026, 0.020), sym=False),     # the peak
+        Lb(56, 20, 2.94, 3.04, 3.18, g("arm", 0.003, 0.028, 0.008), sym=False),      # brachialis
+        Lb(32, 11, 2.94, 3.06, 3.22, g("arm", 0.0, -0.0056, -0.0154), sym=False, k=1.3),  # biceps / brachialis groove
+        Lb(-14, 11, 3.00, 3.14, 3.28, g("arm", 0.0, 0.0, -0.007), sym=False),             # the biceps' mid line
+        # the triceps' horseshoe: long head (back, inward), lateral head (back, outward), the line between them, the
+        # flat tendon plate above the elbow and the U of grooves round it
+        Lb(-150, 32, 3.00, 3.20, 3.44, g("arm", 0.008, 0.06, 0.008), sym=False),
+        Lb(150, 32, 2.98, 3.20, 3.40, g("arm", 0.008, 0.058, 0.008), sym=False),
+        Lb(180, 11, 3.10, 3.26, 3.42, g("arm", 0.0, -0.0028, -0.0126), sym=False, k=1.3),  # long / lateral
+        Lb(180, 16, 2.90, 2.99, 3.08, g("arm", 0, -0.004, -0.010), sym=False),        # the tendon plate
+        Lb(180, 26, 3.05, 3.09, 3.13, g("arm", 0, -0.002, -0.009), sym=False, k=1.3),  # the horseshoe's top
+        Lb(164, 11, 2.92, 3.02, 3.12, g("arm", 0.0, -0.0028, -0.0112), sym=False),         # its sides
+        Lb(-164, 11, 2.92, 3.02, 3.12, g("arm", 0.0, -0.0028, -0.0112), sym=False),
         # the separations between the biceps and the triceps (outer and inner)
-        Lb(100, 7, 2.94, 3.12, 3.32, g("arm", 0, -0.004, -0.008), sym=False),
-        Lb(-104, 7, 2.96, 3.12, 3.30, g("arm", 0, -0.003, -0.006), sym=False),
+        Lb(100, 11, 2.94, 3.12, 3.32, g("arm", 0.0, -0.007, -0.0154), sym=False, k=1.3),
+        Lb(-104, 11, 2.96, 3.12, 3.30, g("arm", 0.0, -0.0056, -0.0112), sym=False),
     ]
     m = tr["m"]
     return loft(sec, m, YE, YS_PIVOT, (dome_r("UpperArm", sec, YE, m), 1.0, 2, 0.97),
@@ -1214,19 +1241,23 @@ def lower_arm(tr, fr):
     sec = fore_section(fr)
     X = arm_x(tr, fr)
     L = [
-        Lb(36, 46, 2.42, 2.66, 2.85, g("fore", 0.008, 0.055, 0.0), sym=False, k=1.1),   # brachioradialis (toward the elbow)
-        Lb(-56, 46, 2.34, 2.60, 2.80, g("fore", 0.006, 0.045, 0.0), sym=False),         # the flexor mass
-        Lb(-70, 22, 2.50, 2.64, 2.76, g("fore", 0.002, 0.022, 0.008), sym=False),       # flexor belly
-        Lb(126, 36, 2.40, 2.60, 2.80, g("fore", 0.004, 0.036, 0.006), sym=False),       # extensors
-        Lb(82, 6, 2.36, 2.56, 2.76, g("fore", 0, -0.003, -0.006), sym=False),           # brachioradialis / extensor line
-        Lb(-20, 5, 2.20, 2.30, 2.40, g("fore", 0.003, 0.0, 0.004), sym=False),          # the wrist's tendons
+        # (v14) the lobes end under the elbow ring (the forearm's top tucks inside the upper arm: no seam step)
+        Lb(36, 46, 2.42, 2.64, 2.80, g("fore", 0.008, 0.055, 0.004), sym=False, k=1.1),  # brachioradialis (toward the elbow)
+        Lb(40, 14, 2.46, 2.62, 2.78, g("fore", 0.002, 0.010, 0.010), sym=False),        # its ridge
+        Lb(-56, 46, 2.34, 2.60, 2.78, g("fore", 0.006, 0.045, 0.002), sym=False),       # the flexor mass
+        Lb(-70, 22, 2.50, 2.64, 2.76, g("fore", 0.002, 0.022, 0.010), sym=False),       # flexor belly
+        Lb(126, 36, 2.40, 2.60, 2.78, g("fore", 0.004, 0.036, 0.008), sym=False),       # extensors
+        Lb(82, 11, 2.36, 2.56, 2.76, g("fore", 0.0, -0.0056, -0.014), sym=False, k=1.3),    # brachioradialis / extensor line
+        Lb(2, 11, 2.38, 2.56, 2.74, g("fore", 0.0, -0.0042, -0.0126), sym=False, k=1.3),     # brachioradialis / flexor line
+        Lb(178, 11, 2.30, 2.52, 2.76, g("fore", 0.0, -0.0042, -0.0112), sym=False),          # the ulna's line (flexor / extensor)
+        Lb(-20, 5, 2.20, 2.30, 2.40, g("fore", 0.003, 0.0, 0.006), sym=False),          # the wrist's tendons
     ]
     kn = fr.get("knobs", 0.0) * tr["f"]
     b = [Bp((X + 0.11, 2.21, 0.10), (0.05, 0.05, 0.05, 0.05, 0.08, 0.08), 0.006 * tr["f"] + 0.012 * kn),  # ulna's knob
          Bp((X + 0.0, YE - 0.02, 0.22), (0.10, 0.10, 0.07, 0.07, 0.08, 0.08), 0.014 * kn)]   # the elbow's point (olecranon)
     m = tr["m"]
     return loft(sec, m, YWR, YE, (dome_r("LowerArm", sec, YWR, m), 1.0, 2, 0.9),
-                (dome_r("LowerArm", sec, YE, m), 1.0, 2), nb=16, nseg=28, frame=VERT(X), shrink=[(YE, 0.10, 0.0)],
+                (dome_r("LowerArm", sec, YE, m), 1.0, 2), nb=18, nseg=36, frame=VERT(X), shrink=[(YE, 0.10, 0.0)],
                 bumps=b, lobes=L)
 
 
@@ -1274,23 +1305,26 @@ def upper_leg(tr, fr):
     L = [
         Lb(-4, 30, 1.14, 1.42, 1.72, g("leg", 0.008, 0.045, 0.006), sym=False),       # rectus femoris
         Lb(58, 32, 1.10, 1.32, 1.64, g("leg", 0.006, 0.040, 0.004), sym=False),       # vastus lateralis (the sweep)
-        Lb(-44, 28, 1.02, 1.12, 1.24, g("leg", 0.005, 0.03, 0.012), sym=False),       # the VMO teardrop
-        Lb(22, 5, 1.10, 1.36, 1.62, g("leg", 0, -0.002, -0.006), sym=False),          # RF / VL line
-        Lb(-26, 5, 1.12, 1.38, 1.60, g("leg", 0, -0.002, -0.005), sym=False),         # RF / VM line
-        Lb(-60, 5, 1.20, 1.45, 1.70, g("leg", 0, -0.001, -0.004), sym=False, drift=40),  # sartorius
+        Lb(-44, 28, 1.02, 1.12, 1.24, g("leg", 0.005, 0.034, 0.018), sym=False),      # the VMO teardrop
+        Lb(-28, 10, 1.06, 1.18, 1.30, g("leg", 0, -0.003, -0.008), sym=False, drift=-60),  # its edge
+        Lb(70, 11, 1.04, 1.16, 1.28, g("leg", 0.0, -0.0042, -0.0112), sym=False),         # the outer sweep's edge (ITB)
+        Lb(180, 30, 0.98, 1.03, 1.09, g("leg", -0.004, -0.004, -0.004), sym=False),  # the back of the knee
+        Lb(22, 11, 1.10, 1.36, 1.62, g("leg", 0.0, -0.0028, -0.0084), sym=False),          # RF / VL line
+        Lb(-26, 11, 1.12, 1.38, 1.60, g("leg", 0.0, -0.0028, -0.007), sym=False),         # RF / VM line
+        Lb(-60, 11, 1.20, 1.45, 1.70, g("leg", 0.0, -0.0014, -0.0056), sym=False, drift=40),  # sartorius
         Lb(-100, 28, 1.26, 1.50, 1.72, g("leg", 0.003, 0.02, 0.0), sym=False),        # adductors
-        Lb(160, 30, 1.10, 1.34, 1.62, g("leg", 0.006, 0.03, 0.004), sym=False),       # biceps femoris
-        Lb(-156, 30, 1.08, 1.32, 1.60, g("leg", 0.006, 0.03, 0.004), sym=False),      # semitendinosus
-        Lb(180, 5, 1.08, 1.30, 1.56, g("leg", 0, -0.001, -0.005), sym=False),         # their line
+        Lb(150, 32, 1.08, 1.30, 1.60, g("leg", 0.006, 0.042, 0.008), sym=False, k=1.25),   # biceps femoris
+        Lb(-150, 32, 1.06, 1.28, 1.58, g("leg", 0.006, 0.042, 0.008), sym=False, k=1.25),  # semitendinosus
+        Lb(180, 11, 1.06, 1.28, 1.56, g("leg", 0.0, -0.0112, -0.0252), sym=False, k=1.3),   # their line (the split)
         Lb(176, 34, 1.60, 1.72, 1.80, g("leg", 0.010, 0.03, 0.0), sym=False),         # the glute fold (under the hem)
     ]
     kn = fr.get("knobs", 0.0) * tr["f"]
-    b = [Bp((X - 0.02, 1.00, -0.30), (0.09, 0.09, 0.08, 0.08, 0.08, 0.08), 0.016 * tr["f"] + 0.012 * kn),  # kneecap
-         Bp((X + 0.16, 1.00, 0.0), (0.06, 0.06, 0.07, 0.07, 0.12, 0.12), 0.010 * kn),   # the knee's outer condyle
-         Bp((X - 0.16, 1.00, 0.0), (0.06, 0.06, 0.07, 0.07, 0.12, 0.12), 0.010 * kn)]   # inner condyle
+    b = [Bp((X - 0.02, 1.035, -0.30), (0.09, 0.09, 0.05, 0.08, 0.08, 0.08), 0.016 * tr["f"] + 0.012 * kn),  # kneecap
+         Bp((X + 0.16, 1.00, 0.0), (0.06, 0.06, 0.07, 0.07, 0.12, 0.12), 0.005 * kn),   # the knee's outer condyle
+         Bp((X - 0.16, 1.00, 0.0), (0.06, 0.06, 0.07, 0.07, 0.12, 0.12), 0.005 * kn)]   # inner condyle
     m = tr["m"]
     return loft(sec, m, YK, YH, (dome_r("UpperLeg", sec, YK, m), 1.0, 2, 0.88),
-                (dome_r("UpperLeg", sec, YH, m), 1.0, 3), nb=22, nseg=32, frame=VERT(X), shrink=[(YH, 0.16, 0.06)],
+                (dome_r("UpperLeg", sec, YH, m), 1.0, 3), nb=22, nseg=40, frame=VERT(X), shrink=[(YH, 0.16, 0.06)],
                 bumps=b, lobes=L)
 
 
@@ -1300,18 +1334,27 @@ def lower_leg(tr, fr):
     X = LEG_X
     pk = fr["calf_pk"]  # where the calf's belly sits (high and small on the lean frame, low and full on the heavy)
     L = [
-        Lb(-148, 44, 0.52, pk, 0.93, g("calf", 0.010, 0.065, 0.0), sym=False, k=1.1),  # gastrocnemius, medial head
-        Lb(148, 40, 0.54, pk + 0.02, 0.93, g("calf", 0.007, 0.052, 0.0), sym=False),   # lateral head
-        Lb(180, 6, 0.60, pk + 0.02, 0.90, g("calf", 0, -0.003, -0.007), sym=False),    # between the heads
+        # (v14) the calf's diamond: two gastrocnemius heads (the medial lower and fuller), the line between them,
+        # their crisp lower edges over the soleus, the soleus flaring out at the sides, the Achilles with its hollows
+        Lb(-146, 44, 0.52, pk, 0.93, g("calf", 0.010, 0.080, 0.010), sym=False, k=1.3),  # gastrocnemius, medial head
+        Lb(146, 40, 0.56, pk + 0.02, 0.93, g("calf", 0.007, 0.064, 0.010), sym=False, k=1.3),  # lateral head
+        Lb(180, 11, 0.58, pk + 0.02, 0.90, g("calf", 0.0, -0.0084, -0.0224), sym=False, k=1.4),  # between the heads
+        Lb(-148, 28, 0.50, 0.535, 0.57, g("calf", 0, -0.005, -0.014), sym=False, k=1.3),    # the medial head's lower edge
+        Lb(148, 26, 0.54, 0.575, 0.61, g("calf", 0, -0.005, -0.013), sym=False, k=1.3),     # the lateral head's
+        Lb(-118, 16, 0.42, 0.56, 0.70, g("calf", 0.002, 0.014, 0.004), sym=False),          # soleus flare, inner
+        Lb(118, 16, 0.44, 0.58, 0.72, g("calf", 0.002, 0.012, 0.004), sym=False),           # outer
+        Lb(152, 10, 0.30, 0.38, 0.47, g("calf", -0.004, -0.002, -0.006), sym=False),        # the Achilles' hollows
+        Lb(-152, 10, 0.30, 0.38, 0.47, g("calf", -0.004, -0.002, -0.006), sym=False),
+        Lb(14, 11, 0.46, 0.66, 0.88, g("calf", 0.0, -0.0042, -0.0112), sym=False),               # tibialis / shin bone
         Lb(170, 64, 0.40, 0.52, 0.66, g("calf", 0.004, 0.028, 0.004), sym=False),      # soleus
-        Lb(38, 30, 0.48, 0.68, 0.88, g("calf", 0.003, 0.024, 0.0), sym=False),         # tibialis anterior
+        Lb(38, 30, 0.48, 0.68, 0.88, g("calf", 0.003, 0.026, 0.008), sym=False),       # tibialis anterior
         Lb(-6, 8, 0.44, 0.66, 0.92, g("calf", 0.004, 0.0, 0.004), sym=False),          # the shin's edge
         Lb(180, 14, 0.29, 0.37, 0.46, g("calf", 0.006, 0.0, 0.002), sym=False),        # Achilles
     ]
     b = [Bp((X - 0.17, 0.385, -0.01), (0.05, 0.05, 0.05, 0.045, 0.06, 0.06), 0.022 * tr["f"]),  # inner ankle bone
          Bp((X + 0.175, 0.36, 0.03), (0.05, 0.05, 0.045, 0.045, 0.06, 0.06), 0.02 * tr["f"])]   # outer ankle bone
     m = tr["m"]
-    return loft(sec, m, YA, YK, (0.18, 1.0, 3), (dome_r("LowerLeg", sec, YK, m), 1.0, 2), nb=18, nseg=28,
+    return loft(sec, m, YA, YK, (0.18, 1.0, 3), (dome_r("LowerLeg", sec, YK, m), 1.0, 2), nb=18, nseg=36,
                 frame=VERT(X), shrink=[(YK, 0.10, 0.06)], bumps=b, lobes=L)
 
 
@@ -1966,6 +2009,68 @@ def render_heads_necks(bpy, built, tiers, samples):
     return [p]
 
 
+MUSCLE_SHEETS = (
+    # name, title, [(view label, yaw, parts, centre y, height)], pitch
+    ("chest", "chest and delts, front", [("front", 0.0, ("UpperTorso", "RightUpperArm", "LeftUpperArm", "RightLowerArm",
+                                                          "LeftLowerArm"), 4.55, 2.3)], 3.5),
+    ("back", "back", [("back", 180.0, ("UpperTorso", "LowerTorso", "RightUpperArm", "LeftUpperArm"), 4.1, 2.9)], 3.5),
+    ("arms", "right arm, outer side and back", [("side", 90.0, ("UpperTorso", "RightUpperArm", "RightLowerArm", "RightHand"),
+                                                 3.9, 2.9),
+                                                ("back", 180.0, ("UpperTorso", "RightUpperArm", "RightLowerArm", "RightHand"),
+                                                 3.9, 2.9)], 3.5),
+    ("legs", "legs, front and back", [("front", 0.0, ("LowerTorso", "RightUpperLeg", "LeftUpperLeg", "RightLowerLeg",
+                                                      "LeftLowerLeg", "RightFoot", "LeftFoot"), 1.35, 2.8),
+                                      ("back", 180.0, ("LowerTorso", "RightUpperLeg", "LeftUpperLeg", "RightLowerLeg",
+                                                       "LeftLowerLeg", "RightFoot", "LeftFoot"), 1.35, 2.8)], 2.4),
+)
+MUSCLE_FRAMES = ("Lean", "Muscular", "Power Build")
+
+
+def render_muscle_sheets(bpy, built, n, samples, tag):
+    """<scratch>/muscles/<tag>/<sheet>_<view>_t<n>.png: close-up strips of Lean, Muscular and Power Build (height
+    normalised, bare), one per MUSCLE_SHEETS view; compose_muscles() stacks a "before" over an "after" set"""
+    out = os.path.join(SCRATCH, "muscles", tag)
+    os.makedirs(out, exist_ok=True)
+    paths = []
+    fs = [f for f in MUSCLE_FRAMES if (f, n) in built]
+    for name, title, views, sp in MUSCLE_SHEETS:
+        for view, yaw, only, cy, hgt in views:
+            W = 1800
+            width = len(fs) * sp
+            st = Stage(bpy, (W, int(round(W * hgt / width))), samples)
+            labels = []
+            for i, f in enumerate(fs):
+                parts = built[(f, n)]
+                place = M4(roty(yaw), (-(i - (len(fs) - 1) / 2) * sp, 0, 0))
+                _, S = height_norm(parts)
+                pm = pose_mats(parts["_J"], sh=8.0, el=7.0)
+                for pn in only:
+                    st.add("M%s_%s_%d_%s" % (name, view, i, pn), parts[pn], place @ S @ pm[pn], st.skin)
+                labels.append("%s T%d %s (%s)" % (f.split(" ")[0], n, view, tag))
+            q = st.shoot(os.path.join(out, "%s_%s_t%d.png" % (name, view, n)), 0, cy, width, elev=4)
+            label(q, labels, strip=34)
+            paths.append(q)
+    return paths
+
+
+def compose_muscles(dest, n=5, tags=("before", "after")):
+    """dest/compare_<sheet>_t<n>.png: for each MUSCLE_SHEETS sheet, every view's strip of each tag stacked (before
+    over after)"""
+    os.makedirs(dest, exist_ok=True)
+    outs = []
+    for name, title, views, sp in MUSCLE_SHEETS:
+        strips = []
+        for view, *_ in views:
+            for t in tags:
+                q = os.path.join(SCRATCH, "muscles", t, "%s_%s_t%d.png" % (name, view, n))
+                if os.path.exists(q):
+                    strips.append(q)
+        if strips:
+            outs.append(stack_strips(strips, os.path.join(dest, "compare_%s_t%d.png" % (name, n)),
+                                     "Muscle definition, tier %d: %s (%s)" % (n, title, " / ".join(tags))))
+    return outs
+
+
 def render_sheets(bpy, tiers, which, samples):
     paths = []
     if 1 in which:
@@ -2048,6 +2153,7 @@ def main():
     ap.add_argument("--frame-sheet-tiers", default="1,5")
     ap.add_argument("--no-blend", action="store_true")
     ap.add_argument("--no-export", action="store_true", help="render only: leave tools/body/out alone")
+    ap.add_argument("--muscle-tag", default="after", help="the muscles sheet's set name (before / after)")
     a = ap.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:])
     import bpy
     os.makedirs(SCRATCH, exist_ok=True)
@@ -2107,6 +2213,10 @@ def main():
                 print("sheet", p)
             for p in render_heads_necks(bpy, built, fst, a.samples):
                 print("sheet", p)
+        if "muscles" in sheets:  # the muscle-definition close-ups (Lean, Muscular, Power Build) at every --tiers tier
+            for n in want_tiers:
+                for p in render_muscle_sheets(bpy, built, n, a.samples, a.muscle_tag):
+                    print("sheet", p)
         num = [int(x) for x in sheets if x.isdigit()]
         ath_tiers = {n: built[(DEFAULT_FRAME, n)] for n in want_tiers if (DEFAULT_FRAME, n) in built}
         if num and all(n in ath_tiers for n in (1, 2, 3, 4, 5)):
