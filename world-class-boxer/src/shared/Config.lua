@@ -655,8 +655,8 @@ Config.FightAI = {
 		{ level = 30, name = "Prospect", react = 1.05, read = 0.85, work = 1.12, floor = 21, mistake = 0.95, aim = 0.9 },
 		{ level = 50, name = "Regional", react = 0.9, read = 1.1, work = 1.04, floor = 24, mistake = 0.7, aim = 1 },
 		{ level = 70, name = "National", react = 0.77, read = 1.36, work = 1.02, floor = 28, mistake = 0.45, aim = 1 },
-		{ level = 85, name = "World", react = 0.68, read = 1.52, work = 1.08, floor = 33, mistake = 0.15, aim = 1 },
-		{ level = 99, name = "Elite", react = 0.62, read = 1.65, work = 1.12, floor = 37, mistake = 0.08, aim = 1 },
+		{ level = 85, name = "World", react = 0.72, read = 1.45, work = 1.08, floor = 33, mistake = 0.2, aim = 1 },
+		{ level = 99, name = "Elite", react = 0.66, read = 1.6, work = 1.12, floor = 37, mistake = 0.08, aim = 1 },
 	},
 }
 -- the AI difficulty at an overall level: the row's numbers, interpolated between the tiers
