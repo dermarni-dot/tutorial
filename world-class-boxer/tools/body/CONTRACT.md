@@ -133,6 +133,24 @@ about the pivots) and the elbow / wrist / hip / knee / ankle heights are unchang
   (`MUSCLE_SHEETS`: chest + delts front, back, the right arm side / back, the legs front / back), `compose_muscles()`
   -> `previews/final/v10/bodies/muscles/compare_<sheet>_t5.png` (before over after) and `tiers_<sheet>.png`.
 
+### Smoothing: no muscle pokes out (v15)
+
+* Every loft's lobe field is shaped before it is added to the base section (`shape_lobes`, in `_grid`): each lobe is
+  at least one low-res segment wide (half-width) and 1.5 rings long each side (`_widen`); the field gets TAUBIN = 2
+  lambda / mu Laplacian passes on the refined grid (periodic round the ring); the raised part saturates softly,
+  d' = dmax tanh(d / dmax) with dmax = SAT_POS (0.13) x the local base radius, the cut part at SAT_NEG (0.07); and
+  VOL_BACK (0.6) of what the saturation took off a ring goes back to that whole ring (the girth stays, the lump goes).
+  The base silhouette (the frames' sections) is untouched, so frames, joints and heights are unchanged.
+* Definition is mostly grooves into a smooth base: the abs are low domes flush with the rib line (the rectus plate
+  and pads cut back, soft inscriptions), the pec's underside is a long roll (no shelf), the biceps peak and the calf
+  heads are unsharpened bellies, the shoulder girdle lobe starts low, the forearm under the elbow has no bulge-and-pinch
+  (FORE_TAPER 1.0 / 0.95 / 1.01 / 1.04 / 0.98), the bony landmarks (kneecap, ankle bones) are broader and lower.
+* `build_body.py --check-shape`: builds every frame at tiers 1 / 3 / 5 and reports per part the largest silhouette
+  kink (the change of slope, degrees, between neighbouring rings of the four outlines: +-x from the front, +-z from
+  the side, over the part's body rings; the caps, the waist-joint taper and the neck left out) and the largest raised
+  lobe share of the radius; exit 1 over KINK_MAX (22 deg) / PROTRUDE_MAX (0.14). v14: up to 45 deg / 0.54; v15: 20.8 /
+  0.13. Tris unchanged (29,744 per body).
+
 ## BodyAssetData.lua (generated)
 
 ```lua

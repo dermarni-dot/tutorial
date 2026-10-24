@@ -167,7 +167,7 @@ FRAMES = {
         tx=[0.95, 0.90, 0.92, 0.93, 0.92, 0.90], tf=[0.95, 0.90, 0.93, 0.95, 0.96, 0.98], tb=[0.95, 0.92, 0.95, 0.96, 0.97, 0.98],
         neck=([0.54, 0.40, 0.377], [0.27, 0.26, 0.27], [0.30, 0.31, 0.325]), p=-0.45,
         arm=[1.0, 0.98, 0.97, 0.97, 0.97], fore=[1.0, 0.99, 0.97, 0.96, 0.97], thigh=[1.0, 1.0, 1.0, 1.0, 1.0],
-        calf=[1.0, 0.98, 0.95, 0.95, 0.97, 1.0], calf_pk=0.82,
+        calf=[1.0, 0.98, 0.95, 0.95, 0.97, 1.0], calf_pk=0.79,
         gain=dict(pec=0.7, delt=0.8, lat=0.85, trap=0.5, arm=0.8, fore=0.9, calf=0.85, abs=1.2, leg=1.0, defin=1.35),
         soft=0.0, fat=0.0, ribs=1.0, knobs=1.0),
     "Athletic": dict(
@@ -477,6 +477,70 @@ def lobe_field(S, ANG, lobes):
     return D
 
 
+# (v15 smoothing pass) the lobe field is shaped before it is added to the base section:
+#  * every lobe is at least LOBE_MIN_SEG low-res segments wide (half-width) and LOBE_MIN_RING rings long each side;
+#  * the field is Taubin-smoothed (TAUBIN passes of lambda / mu over the refined grid, periodic round the ring), so no
+#    crest or groove is sharper than the low-res mesh can carry;
+#  * the raised part saturates softly: d' = dmax tanh(d / dmax), dmax = SAT_POS x the local base radius, so no muscle
+#    stands proud of the silhouette by more than that fraction; the cut part likewise at SAT_NEG (a groove, not a gash);
+#  * VOL_BACK of what the saturation took off a ring goes back to that ring uniformly (the girth stays, the lump goes).
+SAT_POS = 0.13
+SAT_NEG = 0.07
+VOL_BACK = 0.6
+TAUBIN = 2
+LOBE_MIN_SEG = 1.0
+LOBE_MIN_RING = 1.5
+LOBE_STATS = {}   # (v15) per loft call: the largest raised displacement over the base radius (shape_check reads it)
+_GRID_CTX = {}    # set by loft(): the low-res segment angle / ring spacing and the part name for the stats
+
+
+def _widen(lobes):
+    """lobes no narrower than the low-res mesh can carry (LOBE_MIN_SEG segments, LOBE_MIN_RING rings each side)"""
+    seg = _GRID_CTX.get("seg_deg", 0.0) * LOBE_MIN_SEG
+    ds = _GRID_CTX.get("ring_ds", 0.0) * LOBE_MIN_RING
+    out = []
+    for L in lobes:
+        L = dict(L)
+        L["w"] = max(L["w"], seg)
+        L["s_lo"] = min(L["s_lo"], L["s_pk"] - ds)
+        L["s_hi"] = max(L["s_hi"], L["s_pk"] + ds)
+        out.append(L)
+    return out
+
+
+def _taubin(D, n, lam=0.5, mu=-0.53):
+    """n lambda / mu pairs of Laplacian smoothing on a (rings, segments) field, periodic in the segment axis, the end
+    rings held"""
+    D = D.copy()
+    for _ in range(n):
+        for f in (lam, mu):
+            Lp = np.zeros_like(D)
+            Lp[1:-1] = 0.25 * (D[:-2] + D[2:] + np.roll(D[1:-1], 1, axis=1) + np.roll(D[1:-1], -1, axis=1)) - D[1:-1]
+            D = D + f * Lp
+    return D
+
+
+def shape_lobes(R, D):
+    """the v15 shaping of a lobe field D over base radii R (both (rings, segments)): smoothing, the soft caps and the
+    per-ring volume give-back; returns the displacement to add and the largest raised share of the radius"""
+    if TAUBIN:
+        D = _taubin(D, TAUBIN)
+    pos, neg = np.maximum(D, 0.0), np.minimum(D, 0.0)
+    if SAT_POS:
+        dm = SAT_POS * np.maximum(R, 1e-6)
+        pos_s = dm * np.tanh(pos / dm)
+    else:
+        pos_s = pos
+    if SAT_NEG:
+        dn = SAT_NEG * np.maximum(R, 1e-6)
+        neg_s = -dn * np.tanh(-neg / dn)
+    else:
+        neg_s = neg
+    give = VOL_BACK * np.mean(pos - pos_s, axis=1, keepdims=True) if SAT_POS else 0.0
+    out = pos_s + neg_s + give
+    return out, float(np.max(np.maximum(out - give, 0.0) / np.maximum(R, 1e-6)))
+
+
 def _grid(prof, m, rings, phis, frame, shrink, lobes=()):
     O, A, X, Z = [np.asarray(v, float) for v in frame]
     S = np.array([r[0] for r in rings])
@@ -492,7 +556,10 @@ def _grid(prof, m, rings, phis, frame, shrink, lobes=()):
         x = R * np.sin(phis)[None, :]
         z = -R * np.cos(phis)[None, :]
         ANG = np.degrees(np.arctan2(x, -z))
-        R = np.maximum(R + lobe_field(S, ANG, lobes), 0.02)
+        D, prot = shape_lobes(R, lobe_field(S, ANG, _widen(lobes)))
+        R = np.maximum(R + D, 0.02)
+        if _GRID_CTX.get("name"):
+            LOBE_STATS[_GRID_CTX["name"]] = max(LOBE_STATS.get(_GRID_CTX["name"], 0.0), prot)
     R = R * SC[:, None] * sh[:, None]
     P = np.empty((len(rings), nseg, 3))
     C = np.empty((len(rings), 3))
@@ -553,6 +620,8 @@ def loft(prof, m, s_lo, s_hi, cap_lo, cap_hi, nb, nseg, frame=None, bias=0.0, sd
     key = {(round(r[0], 9), round(r[1], 9)): i for i, r in enumerate(rd)}
     ridx = [key[(round(r[0], 9), round(r[1], 9))] for r in rl]
     phd = _phis(nseg * k, bias)
+    _GRID_CTX["seg_deg"] = 360.0 / nseg
+    _GRID_CTX["ring_ds"] = (s_hi - s_lo) / max(nb, 1)
     Pd, Cd, Sd = _grid(prof, m, rd, phd, frame, shrink, lobes)
     O, A, X, Z = [np.asarray(v, float) for v in frame]
     pr0, pr1 = prof(np.array([s_lo, s_hi]), m)["cx"], prof(np.array([s_lo, s_hi]), m)["cz"]
@@ -609,7 +678,7 @@ def loft(prof, m, s_lo, s_hi, cap_lo, cap_hi, nb, nseg, frame=None, bias=0.0, sd
     g = np.cross(P[Tl[:, 1]] - P[Tl[:, 0]], P[Tl[:, 2]] - P[Tl[:, 0]])
     flip = np.einsum("ij,ij->i", g, Nn[Tl].sum(axis=1)) < 0
     Tl[flip] = Tl[flip][:, ::-1]
-    return {"P": P, "N": Nn, "U": U, "T": Tl}
+    return {"P": P, "N": Nn, "U": U, "T": Tl, "grid": (RL, nL, S, s_lo, s_hi)}
 
 
 def tube(pts, radii, nside=6, kcap=2, uvbox=(0, 0, 1, 1)):
@@ -986,7 +1055,7 @@ def torso_sec(fr):
 
 
 ARM_TAPER = [1.02, 1.04, 1.07, 1.03, 0.98]     # elbow .. shoulder: the biceps / triceps belly, thinner into the delt
-FORE_TAPER = [1.0, 0.94, 1.00, 1.08, 0.97]    # wrist .. elbow: a narrow wrist, the flexor mass under the elbow,
+FORE_TAPER = [1.0, 0.95, 1.01, 1.04, 0.98]    # wrist .. elbow: a narrow wrist, the flexor mass under the elbow,
 # the top a little inside the upper arm's lower end (v14: the straight elbow shows no step)
 
 
@@ -1094,26 +1163,26 @@ def upper_torso(tr, fr):
     L = [
         # ---- (v14 definition pass) front: the pec plate with a steep lower edge and a crisp lower / outer line that
         # sweeps up into the armpit, the clavicular head on top, the fibres fanning toward the armpit, the sternum split
-        Lb(27, 40, 2.94, 3.10, 3.50, g("pec", 0.014, 0.085, 0.010), k=1.2),
+        Lb(27, 40, 2.78, 3.14, 3.52, g("pec", 0.014, 0.085, 0.010)),
         Lb(48, 22, 3.02, 3.20, 3.40, g("pec", 0.004, 0.030, 0.008)),             # the outer pec, toward the armpit
         Lb(60, 24, 3.26, 3.40, 3.54, g("pec", 0.008, 0.045, 0.004)),            # pec -> delt tie-in
         Lb(20, 24, 3.32, 3.43, 3.54, g("pec", 0.002, 0.020, 0.006)),            # the clavicular (upper) pec
         Lb(0, 5, 2.96, 3.20, 3.46, g("pec", 0, -0.012, -0.020), k=1.5),         # the sternum split
-        Lb(24, 28, 2.90, 2.945, 2.99, g("pec", 0, -0.008, -0.016), k=1.3),      # the pec's lower edge (the pec line)
+        Lb(24, 28, 2.89, 2.945, 3.00, g("pec", 0, -0.008, -0.015)),             # the pec's lower edge (the pec line)
         Lb(50, 12, 2.98, 3.12, 3.30, g("pec", 0, -0.004, -0.009), drift=90),   # its outer edge, up to the armpit
         Lb(61, 8, 3.26, 3.42, 3.56, g("pec", 0, -0.005, -0.010), drift=-50, k=1.2),  # deltopectoral line
         # ---- abs: the rectus as one plate cut into a six-pack by grooves (the linea alba, three tendinous
         # inscriptions, the semilunaris at its outer edge), the pads a little domed; the V-lines run into the trunks
         # (the front is flat: an azimuth phi lands at x = af tan(phi), so the rectus spans ~+-42 deg)
-        Lb(0, 46, 2.42, 2.72, 3.00, g("abs", 0.004, 0.014, 0.006)),             # the rectus plate
-        Lb(20, 17, 2.81, 2.89, 2.97, g("abs", 0.002, 0.008, 0.012)),            # the pads (three rows)
-        Lb(20, 17, 2.64, 2.715, 2.79, g("abs", 0.002, 0.008, 0.012)),
-        Lb(20, 17, 2.47, 2.545, 2.62, g("abs", 0.002, 0.006, 0.010)),
-        Lb(0, 6, 2.44, 2.74, 3.02, g("abs", 0, -0.005, -0.018), k=1.5),        # linea alba
-        Lb(20, 24, 2.76, 2.80, 2.84, g("abs", 0, -0.004, -0.014), k=1.3),       # tendinous inscriptions
-        Lb(20, 24, 2.59, 2.63, 2.67, g("abs", 0, -0.004, -0.013), k=1.3),
-        Lb(20, 22, 2.94, 2.975, 3.01, g("abs", 0, -0.003, -0.010), k=1.3),
-        Lb(41, 6, 2.44, 2.72, 3.00, g("abs", 0, -0.004, -0.012), drift=-8, k=1.3),     # linea semilunaris
+        Lb(0, 46, 2.42, 2.72, 3.00, g("abs", 0.002, 0.005, 0.002)),             # the rectus plate (flush with the ribs)
+        Lb(20, 17, 2.80, 2.89, 2.98, g("abs", 0.001, 0.003, 0.004)),            # the pads (three rows): gentle domes
+        Lb(20, 17, 2.63, 2.715, 2.80, g("abs", 0.001, 0.003, 0.004)),
+        Lb(20, 17, 2.46, 2.545, 2.63, g("abs", 0.001, 0.003, 0.004)),
+        Lb(0, 6, 2.44, 2.74, 3.02, g("abs", 0, -0.004, -0.013), k=1.3),        # linea alba
+        Lb(20, 24, 2.75, 2.80, 2.85, g("abs", 0, -0.002, -0.007)),              # tendinous inscriptions (soft:
+        Lb(20, 24, 2.58, 2.63, 2.68, g("abs", 0, -0.002, -0.006)),              # the pads read as domes, not tiles)
+        Lb(20, 22, 2.93, 2.975, 3.02, g("abs", 0, -0.002, -0.007)),
+        Lb(41, 7, 2.44, 2.72, 3.00, g("abs", 0, -0.003, -0.010), drift=-8),            # linea semilunaris
         Lb(44, 10, 2.43, 2.50, 2.60, g("abs", 0, -0.003, -0.008), drift=150),           # the V-lines (inguinal)
         # ---- side: serratus fingers (diagonal slips along the ribs, under the lat), the external oblique and its
         # flank edge, the flank roll (the hem row 2.45 stays on the legacy hull)
@@ -1145,7 +1214,7 @@ def upper_torso(tr, fr):
         Lb(134, 10, 3.18, 3.27, 3.36, g("lat", 0, -0.002, -0.006), drift=-120),  # their separation
         Lb(112, 16, 3.38, 3.47, 3.58, g("delt", 0.006, 0.026, 0.0)),            # the rear delt's root on the back
         # ---- shoulders and neck: the girdle's rounding under the delt, the clavicles, the traps rising into the neck
-        Lb(90, 46, 3.36, 3.56, 3.74, g("delt", 0.045, 0.04, 0.0)),
+        Lb(90, 46, 3.20, 3.52, 3.74, g("delt", 0.045, 0.04, 0.0)),
         Lb(34, 22, 3.545, 3.585, 3.625, g("pec", 0.004, 0.0, 0.003), drift=120),  # the collarbones (rising outward)
         Lb(0, 10, 3.565, 3.61, 3.66, -0.007 * tr["f"] - 0.003 * tr["d"]),       # the sternum notch at the throat
         Lb(180, 78, 3.36, 3.58, 3.80, g("trap", 0.016, 0.045, 0.0), k=0.8),     # upper traps into the neck (the slope)
@@ -1182,7 +1251,7 @@ def upper_torso(tr, fr):
 def lower_torso(tr, fr):
     g = lambda *a, **k: A(tr, fr, *a, **k)  # noqa: E731
     L = [
-        Lb(148, 46, 1.84, 1.99, 2.17, g("leg", 0.03, 0.06, 0.0)),               # glutes
+        Lb(148, 46, 1.76, 1.99, 2.20, g("leg", 0.03, 0.06, 0.0)),               # glutes
         Lb(180, 5, 1.84, 1.98, 2.14, g("leg", -0.010, -0.007, 0.0)),            # the cleft
         Lb(0, 32, 1.98, 2.10, 2.24, g("abs", 0.0, 0.012, 0.010)),               # lower abs
         Lb(150, 36, 2.06, 2.13, 2.22, g("leg", 0.006, 0.02, 0.004)),            # glute medius shelf
@@ -1213,8 +1282,8 @@ def upper_arm(tr, fr):
         Lb(80, 26, 3.11, 3.18, 3.26, g("delt", 0, -0.006, -0.012), sym=False, k=1.3),  # the insertion V
         Lb(-60, 11, 3.20, 3.34, 3.48, g("delt", 0.0, -0.0042, -0.0112), sym=False),       # where the delt tucks under the pec
         # the biceps (front, a little inward), its peak, the brachialis under its outer edge and the groove between
-        Lb(-18, 50, 2.92, 3.10, 3.34, g("arm", 0.010, 0.07, 0.008), sym=False, k=1.15),
-        Lb(-24, 22, 3.00, 3.09, 3.20, g("arm", 0.002, 0.026, 0.020), sym=False),     # the peak
+        Lb(-18, 50, 2.90, 3.10, 3.36, g("arm", 0.010, 0.07, 0.008), sym=False),
+        Lb(-24, 26, 2.98, 3.09, 3.22, g("arm", 0.002, 0.018, 0.010), sym=False),     # the peak
         Lb(56, 20, 2.94, 3.04, 3.18, g("arm", 0.003, 0.028, 0.008), sym=False),      # brachialis
         Lb(32, 11, 2.94, 3.06, 3.22, g("arm", 0.0, -0.0056, -0.0154), sym=False, k=1.3),  # biceps / brachialis groove
         Lb(-14, 11, 3.00, 3.14, 3.28, g("arm", 0.0, 0.0, -0.007), sym=False),             # the biceps' mid line
@@ -1242,7 +1311,7 @@ def lower_arm(tr, fr):
     X = arm_x(tr, fr)
     L = [
         # (v14) the lobes end under the elbow ring (the forearm's top tucks inside the upper arm: no seam step)
-        Lb(36, 46, 2.42, 2.64, 2.80, g("fore", 0.008, 0.055, 0.004), sym=False, k=1.1),  # brachioradialis (toward the elbow)
+        Lb(36, 46, 2.36, 2.58, 2.82, g("fore", 0.008, 0.055, 0.004), sym=False),  # brachioradialis (toward the elbow)
         Lb(40, 14, 2.46, 2.62, 2.78, g("fore", 0.002, 0.010, 0.010), sym=False),        # its ridge
         Lb(-56, 46, 2.34, 2.60, 2.78, g("fore", 0.006, 0.045, 0.002), sym=False),       # the flexor mass
         Lb(-70, 22, 2.50, 2.64, 2.76, g("fore", 0.002, 0.022, 0.010), sym=False),       # flexor belly
@@ -1316,10 +1385,10 @@ def upper_leg(tr, fr):
         Lb(150, 32, 1.08, 1.30, 1.60, g("leg", 0.006, 0.042, 0.008), sym=False, k=1.25),   # biceps femoris
         Lb(-150, 32, 1.06, 1.28, 1.58, g("leg", 0.006, 0.042, 0.008), sym=False, k=1.25),  # semitendinosus
         Lb(180, 11, 1.06, 1.28, 1.56, g("leg", 0.0, -0.0112, -0.0252), sym=False, k=1.3),   # their line (the split)
-        Lb(176, 34, 1.60, 1.72, 1.80, g("leg", 0.010, 0.03, 0.0), sym=False),         # the glute fold (under the hem)
+        Lb(176, 34, 1.48, 1.68, 1.80, g("leg", 0.010, 0.03, 0.0), sym=False),         # the glute fold (under the hem)
     ]
     kn = fr.get("knobs", 0.0) * tr["f"]
-    b = [Bp((X - 0.02, 1.035, -0.30), (0.09, 0.09, 0.05, 0.08, 0.08, 0.08), 0.016 * tr["f"] + 0.012 * kn),  # kneecap
+    b = [Bp((X - 0.02, 1.035, -0.30), (0.10, 0.10, 0.06, 0.09, 0.09, 0.09), 0.014 * tr["f"] + 0.006 * kn),  # kneecap
          Bp((X + 0.16, 1.00, 0.0), (0.06, 0.06, 0.07, 0.07, 0.12, 0.12), 0.005 * kn),   # the knee's outer condyle
          Bp((X - 0.16, 1.00, 0.0), (0.06, 0.06, 0.07, 0.07, 0.12, 0.12), 0.005 * kn)]   # inner condyle
     m = tr["m"]
@@ -1336,8 +1405,8 @@ def lower_leg(tr, fr):
     L = [
         # (v14) the calf's diamond: two gastrocnemius heads (the medial lower and fuller), the line between them,
         # their crisp lower edges over the soleus, the soleus flaring out at the sides, the Achilles with its hollows
-        Lb(-146, 44, 0.52, pk, 0.93, g("calf", 0.010, 0.080, 0.010), sym=False, k=1.3),  # gastrocnemius, medial head
-        Lb(146, 40, 0.56, pk + 0.02, 0.93, g("calf", 0.007, 0.064, 0.010), sym=False, k=1.3),  # lateral head
+        Lb(-146, 44, 0.52, pk, max(0.93, pk + 0.14), g("calf", 0.010, 0.080, 0.010), sym=False),  # gastrocnemius, medial
+        Lb(146, 40, 0.56, pk + 0.02, max(0.93, pk + 0.15), g("calf", 0.007, 0.064, 0.010), sym=False),  # lateral head
         Lb(180, 11, 0.58, pk + 0.02, 0.90, g("calf", 0.0, -0.0084, -0.0224), sym=False, k=1.4),  # between the heads
         Lb(-148, 28, 0.50, 0.535, 0.57, g("calf", 0, -0.005, -0.014), sym=False, k=1.3),    # the medial head's lower edge
         Lb(148, 26, 0.54, 0.575, 0.61, g("calf", 0, -0.005, -0.013), sym=False, k=1.3),     # the lateral head's
@@ -1351,8 +1420,8 @@ def lower_leg(tr, fr):
         Lb(-6, 8, 0.44, 0.66, 0.92, g("calf", 0.004, 0.0, 0.004), sym=False),          # the shin's edge
         Lb(180, 14, 0.29, 0.37, 0.46, g("calf", 0.006, 0.0, 0.002), sym=False),        # Achilles
     ]
-    b = [Bp((X - 0.17, 0.385, -0.01), (0.05, 0.05, 0.05, 0.045, 0.06, 0.06), 0.022 * tr["f"]),  # inner ankle bone
-         Bp((X + 0.175, 0.36, 0.03), (0.05, 0.05, 0.045, 0.045, 0.06, 0.06), 0.02 * tr["f"])]   # outer ankle bone
+    b = [Bp((X - 0.17, 0.385, -0.01), (0.065, 0.065, 0.07, 0.065, 0.075, 0.075), 0.013 * tr["f"]),  # inner ankle bone
+         Bp((X + 0.175, 0.36, 0.03), (0.065, 0.065, 0.065, 0.065, 0.075, 0.075), 0.012 * tr["f"])]   # outer ankle bone
     m = tr["m"]
     return loft(sec, m, YA, YK, (0.18, 1.0, 3), (dome_r("LowerLeg", sec, YK, m), 1.0, 2), nb=18, nseg=36,
                 frame=VERT(X), shrink=[(YK, 0.10, 0.06)], bumps=b, lobes=L)
@@ -1458,6 +1527,53 @@ def side_joint(part, side):
             for j in PART_JOINTS[part]]
 
 
+SHAPE_STATS = {}  # "<frame key>/T<n>/<part>" -> (largest silhouette kink in degrees, largest raised lobe / radius)
+KINK_MAX = 22.0   # shape_check: degrees of slope change between neighbouring rings on any of the four outlines
+PROTRUDE_MAX = 0.14  # shape_check: a lobe's raised displacement over the local base radius (SAT_POS + rounding)
+
+
+def silhouette_kinks(lp, base):
+    """the largest change of slope (degrees) between neighbouring rings of the part's outlines seen from the front
+    (its +-x extremes) and the side (+-z), over its body rings (the caps, the joint ends and, on the UpperTorso, the
+    neck above the shoulder row left out: they turn by design)"""
+    RL, nL, S, lo, hi = lp["grid"]
+    P = np.asarray(lp["P"])[: RL * nL].reshape(RL, nL, 3)
+    S = np.asarray(S)
+    m = 0.04 * (hi - lo)  # the body rings only: the joint domes / caps beyond s_lo / s_hi turn by design
+    keep = (S > lo + m) & (S < hi - m)
+    if base == "UpperTorso":
+        keep &= S < 3.50
+    if base == "LowerTorso":  # its top tapers into the waist joint under the UpperTorso (shrink): unseen
+        keep &= S < YW - 0.12
+    if base in ("Hand", "Foot") or keep.sum() < 4:
+        return 0.0
+    worst = 0.0
+    for e in (P[:, :, 0].max(1), -P[:, :, 0].min(1), P[:, :, 2].max(1), -P[:, :, 2].min(1)):
+        e, y = e[keep], S[keep]
+        o = np.argsort(y)
+        e, y = e[o], y[o]
+        a = np.degrees(np.arctan2(np.diff(e), np.maximum(np.diff(y), 1e-6)))
+        if len(a) > 1:
+            worst = max(worst, float(np.max(np.abs(np.diff(a)))))
+    return worst
+
+
+def shape_check(frames=None, tiers=(1, 3, 5), verbose=True):
+    """(v15) builds every frame x tier and reports per part the largest silhouette kink and the largest raised lobe
+    share; returns the list of (key, kink, protrusion) over KINK_MAX / PROTRUDE_MAX"""
+    bad = []
+    for f in frames or FRAME_ORDER:
+        for n in tiers:
+            build_tier(None, n, frame=f)
+    for k, (kink, prot) in sorted(SHAPE_STATS.items()):
+        flag = kink > KINK_MAX or prot > PROTRUDE_MAX
+        if flag:
+            bad.append((k, kink, prot))
+        if verbose:
+            print("%-28s kink %5.1f deg  protrude %5.3f%s" % (k, kink, prot, "  <-- over" if flag else ""))
+    return bad
+
+
 def build_tier(bpy, n, proto=False, frame=DEFAULT_FRAME):
     """the (frame, tier)'s 14 parts in game rest space (feet on Y = 0) + "_J" (game joints) / "_J0" (prototype
     joints) / "_frame". proto=True keeps the prototype's Classic block proportions (comparison renders only)"""
@@ -1468,7 +1584,13 @@ def build_tier(bpy, n, proto=False, frame=DEFAULT_FRAME):
         G = Jo
     parts = {}
     for base, fn in BUILDERS.items():
+        _GRID_CTX["name"] = "%s/T%d/%s" % (fr["key"], n, base)
+        LOBE_STATS.pop(_GRID_CTX["name"], None)
         lp = fn(tr, fr)
+        _GRID_CTX["name"] = None
+        if "grid" in lp:
+            SHAPE_STATS["%s/T%d/%s" % (fr["key"], n, base)] = (silhouette_kinks(lp, base),
+                                                               LOBE_STATS.get("%s/T%d/%s" % (fr["key"], n, base), 0.0))
         if base in ("UpperTorso", "LowerTorso"):
             parts[base] = lp if proto else to_game(lp, base, ANCHOR[base], Jo, G, fr)
         else:
@@ -2154,7 +2276,14 @@ def main():
     ap.add_argument("--no-blend", action="store_true")
     ap.add_argument("--no-export", action="store_true", help="render only: leave tools/body/out alone")
     ap.add_argument("--muscle-tag", default="after", help="the muscles sheet's set name (before / after)")
+    ap.add_argument("--check-shape", action="store_true",
+                    help="(v15) build every frame at tiers 1/3/5, print each part's silhouette kink and lobe protrusion, "
+                         "exit 1 if any is over KINK_MAX / PROTRUDE_MAX; nothing exported or rendered")
     a = ap.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:])
+    if a.check_shape:
+        bad = shape_check()
+        print("shape check: %d over (kink > %.0f deg or protrusion > %.2f)" % (len(bad), KINK_MAX, PROTRUDE_MAX))
+        sys.exit(1 if bad else 0)
     import bpy
     os.makedirs(SCRATCH, exist_ok=True)
     bpy.ops.wm.read_factory_settings(use_empty=True)
