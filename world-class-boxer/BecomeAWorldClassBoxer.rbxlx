@@ -16519,6 +16519,7 @@ local Body = require(script.Parent:WaitForChild("BuilderBody"))
 local LookData = require(script.Parent:WaitForChild("LookData"))
 local BodyTiers = require(script.Parent:WaitForChild("BodyTiers"))
 local BuilderTiers = require(script.Parent:WaitForChild("BuilderTiers"))
+local BuilderGear = require(script.Parent:WaitForChild("BuilderGear"))
 local AvatarLook = require(script.Parent:WaitForChild("AvatarLook"))
 
 local Builder = {}
@@ -16643,7 +16644,8 @@ function Builder.Description(app, build, opts)
 	-- avatar is copied: the body stays the muscle-tier body
 	local av = opts and opts.avatar
 	if type(av) == "table" then
-		if av.useHair then
+		-- (Config.BaldMode: never the avatar's hair accessories)
+		if av.useHair and not Config.BaldMode then
 			desc.HairAccessory = av.hair or ""
 		end
 		desc.Face = av.face or 0
@@ -17194,6 +17196,7 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 		if (opts.only.Face or colors) and type(opts.damage) == "table" then
 			Builder.SetDamage(model, app, opts.damage)
 		end
+		step("Bald", Hair.StripBald, model)
 		-- (the headgear follows the head: a head swap or a colour change in the Creator rebuilds it)
 		step("Headgear", headgearLook, model, app, opts, colors and csp.detail or opts.detail)
 		step("Hat", capLook, model, opts, colors and csp.detail or opts.detail)
@@ -17225,6 +17228,9 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	faceStep(model, app, build, opts)
 	headStep(model, app, build, opts, "Hair")
 	headStep(model, app, build, opts, "Beard")
+	-- Config.BaldMode: no hair accessory or old hair / beard part survives on anyone (uncached: cheap, and an
+	-- accessory can arrive with any ApplyDescription)
+	step("Bald", Hair.StripBald, model)
 	-- the headgear every boxer wears (on the final head; its own cache)
 	step("Headgear", headgearLook, model, app, opts, sp.detail)
 	-- the officials' caps (the referee's, the coach's) when they wear no headgear
@@ -17261,7 +17267,66 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	-- last: the rig is final (head swap, rescale) and every attribute above is set
 	step("LookData", publishLook, model, app, build, opts, sp, gear)
 	buildRecord(model)
+	Builder.NoteForRetry(model, app, build, gear, opts)
 end
+
+------------------------------------------------------------------------
+-- A mesh that failed loads later: the boxers built meanwhile are rebuilt on it
+------------------------------------------------------------------------
+-- A body part or gear mesh that did not load leaves the default part / the part-built gear (never a box). BuilderTiers
+-- and BuilderGear retry it on a backoff (Kit.ASSET_BACKOFF, a few minutes); when it loads (Kit.AssetReady) every boxer
+-- whose last full Cosmetics ran while a load was failing is built again from that same call (the layers whose inputs
+-- did not change stay cached; the one that fell back now resolves to the mesh). A boxer whose look changed since
+-- (LookSig moved: a newer build or preview) or who left the DataModel is skipped and forgotten.
+Builder.RETRY_SETTLE = 0.5 -- seconds: several meshes arriving together rebuild a boxer once
+local retryArgs = setmetatable({}, { __mode = "k" }) -- model -> { app, build, gear, opts, sig }
+local retryQueued = setmetatable({}, { __mode = "k" })
+function Builder.NoteForRetry(model, app, build, gear, opts)
+	if BuilderTiers.Failing() or BuilderGear.Failing() then
+		retryArgs[model] = { app = app, build = build, gear = gear, opts = opts, sig = model:GetAttribute("LookSig") }
+	else
+		retryArgs[model] = nil
+	end
+end
+function Builder.PendingRetries()
+	local n = 0
+	for _ in pairs(retryArgs) do
+		n += 1
+	end
+	return n
+end
+function Builder.RetryBuilds()
+	local n = 0
+	for model, a in pairs(retryArgs) do
+		local inGame = false
+		pcall(function()
+			inGame = model:IsDescendantOf(game) or model:FindFirstAncestorWhichIsA("Workspace") ~= nil
+		end)
+		if not inGame or model:GetAttribute("LookSig") ~= a.sig then
+			retryArgs[model] = nil
+		elseif not retryQueued[model] then
+			retryQueued[model] = true
+			n += 1
+			task.delay(Builder.RETRY_SETTLE, function()
+				retryQueued[model] = nil
+				local cur = retryArgs[model]
+				if cur ~= a or not model.Parent then
+					return
+				end
+				retryArgs[model] = nil
+				local ok, err = pcall(Builder.Cosmetics, model, a.app, a.build, a.gear, a.opts)
+				if not ok then
+					warn("[Boxer] rebuild after a mesh loaded failed on " .. tostring(model.Name) .. ":", err)
+				end
+				pcall(Builder.OnPlaced, model)
+			end)
+		end
+	end
+	return n
+end
+Kit.OnAssetReady(function()
+	Builder.RetryBuilds()
+end)
 
 -- Apply to a live player character (yields). Re-scales only when the body changed.
 function Builder.Apply(character, app, build, gear, opts)
@@ -17297,8 +17362,13 @@ function Builder.Apply(character, app, build, gear, opts)
 		local avKey = AvatarLook.Key(av)
 		character:SetAttribute("AvatarLook", avKey ~= "" and avKey or nil)
 	end
+	-- [Studio] the Avatar Joint Upgrade's AnimationConstraint joints -> Motor6Ds before the layers are fitted (RigJoints)
+	pcall(function()
+		require(script.Parent:WaitForChild("RigJoints")).WatchMotors(character)
+	end)
 	if character.Parent then
-		Builder.Cosmetics(character, app, build, gear, opts)
+		-- a player's own boxer: his meshes load before any background / NPC load (Kit.Priority)
+		Kit.Priority(Builder.Cosmetics, character, app, build, gear, opts)
 		-- the engine's deferred passes after the description (scaling, the head conversion) run after this returns
 		Builder.OnPlaced(character)
 	end
@@ -17353,6 +17423,10 @@ function Builder.CreateNPC(app, build, gear, displayName, opts)
 		return nil
 	end
 	model.Name = displayName or "Boxer"
+	-- [Studio] the Avatar Joint Upgrade's AnimationConstraint joints -> Motor6Ds before anything is built on it (RigJoints)
+	pcall(function()
+		require(script.Parent:WaitForChild("RigJoints")).WatchMotors(model)
+	end)
 	local animate = model:FindFirstChild("Animate")
 	if animate then
 		animate:Destroy()
@@ -19308,9 +19382,13 @@ local BuilderGear = {}
 local Shared = script.Parent
 local BuilderTiers = require(Shared:WaitForChild("BuilderTiers"))
 local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
+local Kit = require(Shared:WaitForChild("BuilderKit"))
 
 local V3 = Vector3.new
-BuilderGear.RETRY = 120
+BuilderGear.RETRY = 120 -- seconds between on-demand retries once the backoff schedule (Kit.ASSET_BACKOFF) is spent
+-- every built gear piece carries this CollectionService tag: the clients watch its mesh arrive (BoxerClient.MeshGuard)
+-- and show a rounded stand-in instead of the engine's box while it cannot be drawn
+BuilderGear.TAG = "WCBGearMesh"
 BuilderGear.BBOX_TOL = 0.02 -- the uploaded mesh's box may differ from the manifest's size by this fraction before a warning
 BuilderGear.Services = {}
 
@@ -19427,8 +19505,8 @@ local function contentOf(uri)
 end
 
 -- the template MeshPart for a mesh id (unscaled: Size = the mesh bbox), or nil + reason. Yields on the first call
--- for an id (CreateMeshPartAsync); later calls are free
-function BuilderGear.Template(id, size)
+-- for an id (CreateMeshPartAsync); later calls are free. force: retry a failed id now (the background retry)
+function BuilderGear.Template(id, size, force)
 	if not idOf(id) then
 		return nil, "not uploaded"
 	end
@@ -19439,16 +19517,29 @@ function BuilderGear.Template(id, size)
 	end
 	if c and c.part then
 		return c.part
-	elseif c and c.failed and os.clock() - c.failed < BuilderGear.RETRY then
+	elseif c and c.failed and not force and os.clock() < (c.retryAt or c.failed + BuilderGear.RETRY) then
 		return nil, "failed"
 	end
+	local prev = c
 	cache[id] = { loading = true }
 	stats.loads += 1
-	local ok, mp = pcall(function()
-		return assetService():CreateMeshPartAsync(contentOf("rbxassetid://" .. id), {
-			CollisionFidelity = Enum.CollisionFidelity.Box, RenderFidelity = Enum.RenderFidelity.Automatic,
-		})
+	local ok, mp = Kit.Load(function()
+		return pcall(function()
+			return assetService():CreateMeshPartAsync(contentOf("rbxassetid://" .. id), {
+				CollisionFidelity = Enum.CollisionFidelity.Box, RenderFidelity = Enum.RenderFidelity.Automatic,
+			})
+		end)
 	end)
+	if ok and mp then
+		-- a part without geometry (an empty MeshId, a zero MeshSize) is drawn as its box: never a template
+		local good, why = Kit.MeshLoaded(mp)
+		if not good then
+			pcall(function()
+				mp:Destroy()
+			end)
+			ok, mp = false, why
+		end
+	end
 	if ok and mp then
 		ok = pcall(function()
 			-- the engine's own Size for the loaded mesh = its bounding box: the manifest's `size` must be the same
@@ -19481,27 +19572,90 @@ function BuilderGear.Template(id, size)
 	end
 	if not (ok and mp) then
 		stats.failed += 1
-		cache[id] = { failed = os.clock() }
-		warn(string.format("[Gear] mesh %d did not load (%s); the part-built gear stays", id, tostring(mp)))
+		-- retried in the background on a backoff (Kit.ASSET_BACKOFF: a fresh upload whose content is still being
+		-- generated loads a few minutes later), then on demand every RETRY seconds
+		local tries = (prev and prev.tries or 0) + 1
+		local delay = Kit.RetryDelay(tries)
+		local now = os.clock()
+		cache[id] = { failed = now, tries = tries, retryAt = now + (delay or BuilderGear.RETRY), err = tostring(mp) }
+		if tries == 1 or not delay then
+			warn(string.format("[Gear] mesh %d did not load (%s); the part-built gear stays%s", id, tostring(mp),
+				delay and string.format(" (retrying in %ds, then on a backoff for a few minutes)", delay) or ""))
+		end
+		if delay then
+			Kit.Schedule(delay, function()
+				local e = cache[id]
+				if e and e.failed and e.tries == tries then
+					BuilderGear.Template(id, size, true)
+				end
+			end)
+		end
 		return nil, "failed"
 	end
 	cache[id] = { part = mp }
+	if prev and prev.failed then
+		print(string.format("[Gear] mesh %d loaded after %d failed attempt(s); the boxers built without it are refitted", id, prev.tries or 1))
+		Kit.AssetReady("gear", id)
+	end
 	return mp
 end
 
--- load every uploaded gear mesh in the background (server start)
-function BuilderGear.Preload()
+-- true while any gear mesh is in its failed state (Builder keeps the boxers built meanwhile for a rebuild)
+function BuilderGear.Failing()
+	for _, e in pairs(cache) do
+		if e.failed then
+			return true
+		end
+	end
+	return false
+end
+
+-- load every uploaded gear mesh in the background (server start). ~520 meshes: fired back to back at boot they held
+-- the asset pipeline for the first minute (in Studio the client's too) while the player's own body and gear, the
+-- menu's boxer and the gym's NPCs waited behind them. Now: nothing for PRELOAD_DEFER seconds (the first player's
+-- build and the gym's NPCs ask for their own pieces on demand), then one load every PRELOAD_GAP seconds, the pieces
+-- worn most first (gloves, wraps, shoes, trunks; the default tier before the others; the full set before the lite
+-- one), each yielding to the player's own loads (Kit.Load). opts = { gap, defer } (tests / tools)
+BuilderGear.PRELOAD_GAP = 0.1
+BuilderGear.PRELOAD_DEFER = 8
+local GROUP_ORDER = { gloves = 1, wraps = 2, shoes = 3, trunks = 4, top = 5, official = 6 }
+function BuilderGear.PreloadList()
+	local d = load()
+	local seen, list = {}, {}
+	for _, lite in ipairs({ false, true }) do
+		for tier, t in pairs(type(d.tiers) == "table" and d.tiers or {}) do
+			for name in pairs(type(t) == "table" and t or {}) do
+				local e = BuilderGear.Entry(tier, name, d, lite)
+				if e and not seen[e.id] then
+					seen[e.id] = true
+					local tn = tonumber(tier) or 9
+					table.insert(list, { id = e.id, size = e.size, name = name, lite = lite,
+						rank = (lite and 1000 or 0) + (GROUP_ORDER[e.group or ""] or 9) * 10 + (tn == 1 and 0 or tn) })
+				end
+			end
+		end
+	end
+	table.sort(list, function(a, b)
+		if a.rank ~= b.rank then
+			return a.rank < b.rank
+		end
+		return a.id < b.id
+	end)
+	return list
+end
+function BuilderGear.Preload(opts)
+	opts = type(opts) == "table" and opts or {}
+	local gap = tonumber(opts.gap) or BuilderGear.PRELOAD_GAP
+	local defer = tonumber(opts.defer) or BuilderGear.PRELOAD_DEFER
 	task.spawn(function()
-		local d = load()
-		local seen = {}
-		for _, lite in ipairs({ false, true }) do
-			for tier, t in pairs(type(d.tiers) == "table" and d.tiers or {}) do
-				for name in pairs(type(t) == "table" and t or {}) do
-					local e = BuilderGear.Entry(tier, name, d, lite)
-					if e and not seen[e.id] then
-						seen[e.id] = true
-						BuilderGear.Template(e.id, e.size)
-					end
+		if defer > 0 then
+			task.wait(defer)
+		end
+		for _, q in ipairs(BuilderGear.PreloadList()) do
+			if not cache[q.id] then
+				BuilderGear.Template(q.id, q.size)
+				if gap > 0 then
+					task.wait(gap)
 				end
 			end
 		end
@@ -19626,6 +19780,9 @@ function BuilderGear.Build(folder, pieces, paint, rename)
 		p.Reflectance = refl or 0
 		p:SetAttribute("GearPiece", r.name)
 		p:SetAttribute("GearSlot", e.slot)
+		pcall(function()
+			p:AddTag(BuilderGear.TAG)
+		end)
 		local w = Instance.new("Weld")
 		w.Name = "GearWeld"
 		w.Part0 = body
@@ -19702,7 +19859,7 @@ function BuilderGear.Available(model, group, style)
 			return false
 		end
 		local c = cache[e.id]
-		if c and c.failed and os.clock() - c.failed < BuilderGear.RETRY then
+		if c and c.failed and os.clock() < (c.retryAt or c.failed + BuilderGear.RETRY) then
 			return false
 		end
 	end
@@ -20806,6 +20963,32 @@ local function hairAccessories(model)
 end
 Hair.HairAccessories = hairAccessories
 
+-- Config.BaldMode: nothing hair-like stays on the model whatever put it there - the avatar hair accessories an
+-- ApplyDescription attached (a player who joined with them, a description from before the switch) and any built
+-- Hair / Beard folder left from an earlier build (the hair and beard steps build nothing in BaldMode). Builder runs
+-- it on every Cosmetics, uncached (an accessory can arrive with any ApplyDescription). Returns how many went
+function Hair.StripBald(model)
+	if not Config.BaldMode then
+		return 0
+	end
+	local n = 0
+	for _, acc in ipairs(hairAccessories(model)) do
+		acc:Destroy()
+		n += 1
+	end
+	local look = model:FindFirstChild("BoxerLook")
+	for _, fname in ipairs({ "Hair", "Beard" }) do
+		local f = look and look:FindFirstChild(fname)
+		if f then
+			for _, d in ipairs(f:GetChildren()) do
+				d:Destroy()
+				n += 1
+			end
+		end
+	end
+	return n
+end
+
 -- hides / restores one part (HGHidden, HGBaseT: the transparency to restore)
 local function hidePart(d, hide)
 	if hide then
@@ -21478,7 +21661,8 @@ end
 -- the beard style beardBuild draws for this app (nil = none), whether it is a mere shadow, its growth and
 -- whether the style comes from growth alone (no style chosen); shared with the face (lips through a beard)
 local function beardStyle(app)
-	if app.gender == 2 then
+	-- Config.BaldMode: no hair on anyone, facial hair included (clean-shaven; the face keeps its own lips)
+	if app.gender == 2 or Config.BaldMode then
 		return nil
 	end
 	local beard = type(app.beard) == "table" and app.beard or {}
@@ -23884,6 +24068,251 @@ Kit.intact = intact
 Kit.cached = cached
 Kit.seal = seal
 
+------------------------------------------------------------------------
+-- Mesh templates (BuilderTiers' body parts, BuilderGear's gear): what a load must show before it is used, the
+-- retry schedule of a failed load, the "a mesh that failed is ready now" notice, and the player's own loads first
+------------------------------------------------------------------------
+-- A MeshPart whose mesh never arrived is drawn by the engine as its plain box (a CreateMeshPartAsync that returned a
+-- part without geometry, an id whose "content representation is being generated" for minutes after the upload): it
+-- must never be cloned onto a boxer. A real load names its content (MeshId, or a MeshContent with a source) and has a
+-- finite MeshSize above zero. A property the part does not have (a simulator stub) is no evidence either way.
+-- Returns ok, why
+function Kit.MeshLoaded(mp)
+	if mp == nil then
+		return false, "no part"
+	end
+	local okId, id = pcall(function()
+		return mp.MeshId
+	end)
+	local named = nil
+	if okId and type(id) == "string" then
+		named = id ~= ""
+	end
+	if named == false then
+		local okC, c = pcall(function()
+			return mp.MeshContent
+		end)
+		if okC and c ~= nil then
+			local okU, uri = pcall(function()
+				return c.Uri
+			end)
+			local okO, obj = pcall(function()
+				return c.Object
+			end)
+			named = (okU and type(uri) == "string" and uri ~= "") or (okO and obj ~= nil)
+		end
+	end
+	if named == false then
+		return false, "no mesh content (MeshId is empty)"
+	end
+	local okS, ms = pcall(function()
+		return mp.MeshSize
+	end)
+	if okS and typeof(ms) == "Vector3" then
+		for _, v in ipairs({ ms.X, ms.Y, ms.Z }) do
+			if v ~= v or v == math.huge or v <= 1e-4 then
+				return false, "no geometry (MeshSize " .. tostring(ms) .. ")"
+			end
+		end
+	end
+	return true
+end
+
+-- seconds before the n-th retry of a failed load (n = 1 after the first failure); nil past the schedule (the caller's
+-- own RETRY then applies, on demand). The schedule spans ~4.5 minutes: a freshly uploaded mesh answers "Asset content
+-- representation is being generated" for a while and then loads
+Kit.ASSET_BACKOFF = { 5, 10, 20, 40, 60, 60, 60 }
+function Kit.RetryDelay(n)
+	return Kit.ASSET_BACKOFF[n]
+end
+-- an error worth retrying soon (the asset exists but is not ready / the request did not go through)
+function Kit.Transient(err)
+	local s = string.lower(tostring(err or ""))
+	for _, k in ipairs({ "being generated", "representation", "timeout", "timed out", "throttl", "http", "503", "502", "429", "try again" }) do
+		if string.find(s, k, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+-- the background retry: fn() after `delay` seconds on a running server only (a simulator or an edit-mode require has
+-- no one to retry for, and a pending timer would keep it alive). Kit.Services.schedule(delay, fn) replaces it (tests)
+Kit.Services = Kit.Services or {}
+local function running()
+	local ok, r = pcall(function()
+		return game:GetService("RunService"):IsRunning()
+	end)
+	return ok and r == true
+end
+function Kit.Schedule(delay, fn)
+	local s = Kit.Services.schedule
+	if s then
+		return s(delay, fn)
+	end
+	if not running() then
+		return false
+	end
+	task.delay(delay, fn)
+	return true
+end
+
+-- "a template that had failed has loaded": Builder rebuilds the boxers that were built without it (their cached
+-- layers keep everything else; the layer that fell back now resolves to the mesh and rebuilds)
+local readyListeners = {}
+function Kit.OnAssetReady(fn)
+	table.insert(readyListeners, fn)
+	return fn
+end
+function Kit.AssetReady(kind, id)
+	for _, fn in ipairs(readyListeners) do
+		task.spawn(function()
+			local ok, err = pcall(fn, kind, id)
+			if not ok then
+				warn("[Boxer] asset-ready listener failed:", err)
+			end
+		end)
+	end
+end
+
+-- The player's own loads first: a build that runs Kit.Priority(fn) (Builder.Apply on a player's character) marks its
+-- thread; while such a load is in flight, every other template load (the background preloaders, the gym's NPC
+-- builds) waits for it, at most PRIORITY_WAIT seconds, so the boxer the menu shows is never queued behind a few
+-- hundred background meshes (in Studio the server and the client share one asset pipeline)
+Kit.PRIORITY_WAIT = 3
+local priorityThreads = setmetatable({}, { __mode = "k" })
+local priorityLoads = 0
+function Kit.Priority(fn, ...)
+	local co = coroutine.running()
+	local was = priorityThreads[co]
+	priorityThreads[co] = true
+	local res = table.pack(pcall(fn, ...))
+	priorityThreads[co] = was
+	if not res[1] then
+		error(res[2], 0)
+	end
+	return table.unpack(res, 2, res.n)
+end
+function Kit.IsPriority()
+	return priorityThreads[coroutine.running()] == true
+end
+-- wrap one template load: a priority thread's load is counted; any other thread first waits out the priority loads
+function Kit.Load(fn)
+	if Kit.IsPriority() then
+		priorityLoads += 1
+		local res = table.pack(pcall(fn))
+		priorityLoads -= 1
+		if not res[1] then
+			error(res[2], 0)
+		end
+		return table.unpack(res, 2, res.n)
+	end
+	local t0 = os.clock()
+	while priorityLoads > 0 and os.clock() - t0 < Kit.PRIORITY_WAIT do
+		task.wait()
+	end
+	return fn()
+end
+function Kit.PriorityLoads()
+	return priorityLoads
+end
+
+------------------------------------------------------------------------
+-- Fit audit: every built piece on a model is welded to a live part of it and sits on that part
+------------------------------------------------------------------------
+-- For every BasePart under BoxerLook (and every accessory handle): its joint (Weld / WeldConstraint / Motor6D) must
+-- hold a part of the model that is still in it; a Weld / Motor6D must put the piece where it is (Part0.CFrame * C0 =
+-- Part1.CFrame * C1: a C0 computed for another size or another part shows here); and the piece must touch its anchor:
+-- the distance from the piece's centre to the anchor's box (in the anchor's space) at most the piece's half extent +
+-- slack (0.15 studs: a buckle on a belt over the trousers, a logo patch on the glove's face anchored to the hand). A
+-- piece welded to another built piece is followed to the body part at the end of the chain. The head-worn folders
+-- (Headgear, Hat) must also be fitted to the live head: their HeadSize record equal to the head's Size (gear sized for
+-- another head sits off it although welded).
+-- Returns { problems = { "Folder/Piece: why" ... }, pieces = n }
+local function jointOf(p)
+	for _, c in ipairs(p:GetChildren()) do
+		if c:IsA("Weld") or c:IsA("WeldConstraint") or c:IsA("Motor6D") then
+			return c
+		end
+	end
+	return nil
+end
+local function boxDistance(rel, half)
+	local dx = math.max(math.abs(rel.X) - half.X, 0)
+	local dy = math.max(math.abs(rel.Y) - half.Y, 0)
+	local dz = math.max(math.abs(rel.Z) - half.Z, 0)
+	return math.sqrt(dx * dx + dy * dy + dz * dz)
+end
+function Kit.FitAudit(model, opts)
+	opts = opts or {}
+	local slack = opts.slack or 0.15
+	local out = { problems = {}, pieces = 0 }
+	local look = model:FindFirstChild("BoxerLook")
+	local list = {}
+	if look then
+		for _, d in ipairs(look:GetDescendants()) do
+			if d:IsA("BasePart") then
+				table.insert(list, d)
+			end
+		end
+	end
+	for _, acc in ipairs(model:GetChildren()) do
+		local h = acc:IsA("Accessory") and acc:FindFirstChild("Handle")
+		if h and h:IsA("BasePart") then
+			table.insert(list, h)
+		end
+	end
+	local function note(p, why)
+		local f = p.Parent and p.Parent.Name or "?"
+		table.insert(out.problems, f .. "/" .. p.Name .. ": " .. why)
+	end
+	local head = model:FindFirstChild("Head")
+	for _, fname in ipairs({ "Headgear", "Hat" }) do
+		local f = look and look:FindFirstChild(fname)
+		local fit = f and f:GetAttribute("HeadSize")
+		if f and #f:GetChildren() > 0 and head and head:IsA("BasePart") and typeof(fit) == "Vector3" and (fit - head.Size).Magnitude > 1e-3 then
+			table.insert(out.problems, string.format("%s: fitted to a %s head, the head is %s", fname, tostring(fit), tostring(head.Size)))
+		end
+	end
+	for _, p in ipairs(list) do
+		out.pieces += 1
+		local j = jointOf(p)
+		local other = j and ((j.Part0 == p and j.Part1) or j.Part0)
+		if not j then
+			note(p, "not welded")
+		elseif not (other and other:IsA("BasePart") and other:IsDescendantOf(model)) then
+			note(p, "welded to " .. (other and other:GetFullName() or "nothing") .. " (not a part of this model)")
+		else
+			if j:IsA("Weld") or j:IsA("Motor6D") then
+				local p0, p1 = j.Part0, j.Part1
+				if p0 and p1 then
+					local want = p0.CFrame * j.C0
+					local have = p1.CFrame * j.C1
+					local d = (want.Position - have.Position).Magnitude
+					if d > 1e-3 + 0.01 * math.max(p.Size.X, p.Size.Y, p.Size.Z) then
+						note(p, string.format("the weld puts it %.3f studs from where it is (C0 for another size or part)", d))
+					end
+				end
+			end
+			-- the body part at the end of the chain (a piece welded to a built piece: that piece's anchor)
+			local anchor, hops = other, 0
+			while anchor and hops < 4 and look and anchor:IsDescendantOf(look) do
+				local j2 = jointOf(anchor)
+				local o2 = j2 and ((j2.Part0 == anchor and j2.Part1) or j2.Part0)
+				anchor, hops = o2, hops + 1
+			end
+			local target = (anchor and anchor:IsA("BasePart") and not (look and anchor:IsDescendantOf(look))) and anchor or other
+			local rel = target.CFrame:PointToObjectSpace(p.Position)
+			local reach = 0.5 * math.max(p.Size.X, p.Size.Y, p.Size.Z) + slack
+			local gap = boxDistance(rel, target.Size * 0.5)
+			if gap > reach then
+				note(p, string.format("%.2f studs off %s (its own half extent %.2f)", gap - reach + slack, target.Name, reach - slack))
+			end
+		end
+	end
+	return out
+end
+
 return Kit
 ]]></string>
         </Properties>
@@ -23921,10 +24350,12 @@ local BuilderTiers = {}
 local Shared = script.Parent
 local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
 local BodySurfaces = require(Shared:WaitForChild("BodySurfaces"))
+local Kit = require(Shared:WaitForChild("BuilderKit"))
 
 local V3 = Vector3.new
-BuilderTiers.RETRY = 120 -- seconds before a failed mesh id is tried again
+BuilderTiers.RETRY = 120 -- seconds between on-demand retries of a failed mesh id once the backoff (Kit.ASSET_BACKOFF) is spent
 BuilderTiers.Services = {} -- overrides (tests): AssetService, Content
+BuilderTiers.TAG = "WCBBodyMesh"
 
 local cache = {} -- "tier:part" -> { part = template } | { loading = true } | { failed = os.clock() }
 local stats = { loads = 0, failed = 0, swaps = 0 }
@@ -24000,6 +24431,11 @@ local function prepare(mp, e)
 	mp:SetAttribute("BodyMesh", e.id)
 	mp:SetAttribute("BodyLite", e.lite == true or nil)
 	mp:SetAttribute("BodyFrame", e.frame)
+	-- the clients watch the mesh arrive (BoxerClient.MeshGuard: a rounded stand-in instead of the engine's box while it
+	-- cannot be drawn); a clone keeps the tag
+	pcall(function()
+		mp:AddTag(BuilderTiers.TAG)
+	end)
 	-- (v17) the body's own box over the mesh box (the UpperTorso's shoulder caps widen the latter): BodyCoreSize
 	local c = e.core or e.size
 	if c[1] ~= e.size[1] or c[2] ~= e.size[2] or c[3] ~= e.size[3] then
@@ -24010,8 +24446,8 @@ end
 
 -- the template for (tier, part name) of a frame's family (frame nil = the default family), or nil + reason (not
 -- uploaded / failed: the caller keeps its part). Yields on the first call for a key (CreateMeshPartAsync); later calls
--- are free
-function BuilderTiers.Template(tier, name, lite, frame)
+-- are free. force: retry a failed key now (the background retry)
+function BuilderTiers.Template(tier, name, lite, frame, force)
 	local e = BodyTiers.PartEntry(tier, name, nil, lite, frame)
 	if not e then
 		return nil, "not uploaded"
@@ -24024,28 +24460,69 @@ function BuilderTiers.Template(tier, name, lite, frame)
 	end
 	if c and c.part then
 		return c.part
-	elseif c and c.failed and os.clock() - c.failed < BuilderTiers.RETRY then
+	elseif c and c.failed and not force and os.clock() < (c.retryAt or c.failed + BuilderTiers.RETRY) then
 		return nil, "failed"
 	end
+	local prev = c
 	cache[key] = { loading = true }
 	stats.loads += 1
-	local ok, mp = pcall(function()
-		return assetService():CreateMeshPartAsync(contentOf("rbxassetid://" .. e.id), {
-			CollisionFidelity = Enum.CollisionFidelity.Box, RenderFidelity = Enum.RenderFidelity.Automatic,
-		})
+	local ok, mp = Kit.Load(function()
+		return pcall(function()
+			return assetService():CreateMeshPartAsync(contentOf("rbxassetid://" .. e.id), {
+				CollisionFidelity = Enum.CollisionFidelity.Box, RenderFidelity = Enum.RenderFidelity.Automatic,
+			})
+		end)
 	end)
+	if ok and mp then
+		-- a part without geometry is drawn as a box: never swapped onto a boxer (the default part stays)
+		local good, why = Kit.MeshLoaded(mp)
+		if not good then
+			pcall(function()
+				mp:Destroy()
+			end)
+			ok, mp = false, why
+		end
+	end
 	if ok and mp then
 		ok = pcall(prepare, mp, e)
 	end
 	if not (ok and mp) then
 		stats.failed += 1
-		cache[key] = { failed = os.clock() }
-		warn(string.format("[BodyTiers] mesh %d (tier %d %s) did not load (%s); the default part stays", e.id, tier, name,
-			tostring(mp)))
+		local tries = (prev and prev.tries or 0) + 1
+		local delay = Kit.RetryDelay(tries)
+		local now = os.clock()
+		cache[key] = { failed = now, tries = tries, retryAt = now + (delay or BuilderTiers.RETRY), err = tostring(mp) }
+		if tries == 1 or not delay then
+			warn(string.format("[BodyTiers] mesh %d (tier %d %s) did not load (%s); the default part stays%s", e.id, tier, name,
+				tostring(mp), delay and string.format(" (retrying in %ds, then on a backoff for a few minutes)", delay) or ""))
+		end
+		if delay then
+			Kit.Schedule(delay, function()
+				local f = cache[key]
+				if f and f.failed and f.tries == tries then
+					BuilderTiers.Template(tier, name, lite, frame, true)
+				end
+			end)
+		end
 		return nil, "failed"
 	end
 	cache[key] = { part = mp }
+	if prev and prev.failed then
+		print(string.format("[BodyTiers] mesh %d (tier %d %s) loaded after %d failed attempt(s); the boxers built without it are refitted",
+			e.id, tier, name, prev.tries or 1))
+		Kit.AssetReady("tier", e.id)
+	end
 	return mp
+end
+
+-- true while any body mesh is in its failed state (Builder keeps the boxers built meanwhile for a rebuild)
+function BuilderTiers.Failing()
+	for _, f in pairs(cache) do
+		if f.failed then
+			return true
+		end
+	end
+	return false
 end
 
 -- Preload: the templates a server is about to need, loaded in the background so the first boxers do not wait on
@@ -27582,12 +28059,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
 local BuilderTiers = require(Shared:WaitForChild("BuilderTiers"))
--- [Studio] the joints may be Motor6Ds or AnimationConstraints (Workspace.AvatarJointUpgrade): one lookup for both
+-- [Studio] the joints may be Motor6Ds or AnimationConstraints (StarterPlayer.AvatarJointUpgrade): one lookup for both
 local RigJoints = require(Shared:WaitForChild("RigJoints"))
 
 local Diag = {}
 Diag.PREFIX = "[WCBDIAG] "
-Diag.VERSION = 1
+Diag.VERSION = 2 -- (2: the sample reports written vs shown joint angles and the Animator's mode)
 
 local PARTS = { "HumanoidRootPart", "LowerTorso", "UpperTorso", "Head", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm",
 	"RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot" }
@@ -28255,16 +28732,33 @@ end
 
 ------------------------------------------------------------------------
 -- Motion sample (the caller feeds frames; pure here): per tick the root's velocity and height, each foot's world Y
--- and horizontal travel while it is down, the hip / knee / elbow bend from the live Transforms, and whether any
--- Animate track was playing. Diag.NewSample() -> S; Diag.SampleTick(S, model, t); Diag.SampleLines(S) -> { lines, verdicts }
+-- and horizontal travel while it is down, the hip / knee / elbow bend the limbs really show (measured from the parts)
+-- next to the bend the Animator wrote (RigJoints.Written, client), and whether any Animate track was playing.
+-- [Studio] the bend used to be read from the joint's Transform - the value written - so "knees never bent" could not
+-- tell "never written" from "written and ignored by the engine"; written vs actual can.
+-- Diag.NewSample() -> S; Diag.SampleTick(S, model, t); Diag.SampleLines(S) -> { lines, verdicts }
 ------------------------------------------------------------------------
+-- the joint's bend (deg, about X) as the limb shows it, and as the Animator wrote it (nil when it writes nothing)
 local function bend(model, _, mname)
 	local m = RigJoints.Find(model, mname)
 	if not m then
 		return nil
 	end
-	local x = m.Transform:ToEulerAnglesXYZ()
-	return math.deg(x)
+	local a = RigJoints.Measure(m)
+	local actual = a and math.deg((a:ToEulerAnglesXYZ())) or nil
+	local written
+	local wf = RigJoints.Written
+	if wf then
+		local ok, w = pcall(wf, model, mname)
+		if ok and typeof(w) == "CFrame" then
+			written = math.deg((w:ToEulerAnglesXYZ()))
+			-- (the whole rotation's gap too: a write that shows on another axis is still a write that shows)
+			if a then
+				return actual, written, RigJoints.Angle(w:Inverse() * a)
+			end
+		end
+	end
+	return actual, written, nil
 end
 
 function Diag.NewSample()
@@ -28302,11 +28796,23 @@ function Diag.SampleTick(S, model, t)
 		local _, _, rz = rcf:ToOrientation()
 		roll = math.deg(rz)
 	end
+	local hip, hipW, hipG = bend(model, "RightUpperLeg", "RightHip")
+	local knee, kneeW, kneeG = bend(model, "RightLowerLeg", "RightKnee")
+	local elbow, elbowW, elbowG = bend(model, "RightLowerArm", "RightElbow")
 	local tick = {
 		t = t, vx = Vector3.new(vel.X, 0, vel.Z).Magnitude, rootY = root.Position.Y, lY = lf.Position.Y, rY = rf.Position.Y,
-		lP = lf.Position, rP = rf.Position, hip = bend(model, "RightUpperLeg", "RightHip"), knee = bend(model, "RightLowerLeg", "RightKnee"),
-		elbow = bend(model, "RightLowerArm", "RightElbow"), playing = playing, pos = rcf.Position, lat = lat, roll = roll,
+		lP = lf.Position, rP = rf.Position, hip = hip, knee = knee, elbow = elbow, hipW = hipW, kneeW = kneeW, elbowW = elbowW,
+		gap = math.max(hipG or 0, kneeG or 0, elbowG or 0), gapN = (hipG and 1 or 0) + (kneeG and 1 or 0) + (elbowG and 1 or 0),
+		playing = playing, pos = rcf.Position, lat = lat, roll = roll,
 	}
+	if S.status == nil and RigJoints.Status then
+		local ok, st = pcall(RigJoints.Status, model)
+		S.status = ok and st or nil
+	end
+	if S.kind == nil then
+		local kind, nm, na = RigJoints.Kind(model)
+		S.kind = string.format("%s (Motor6D %d / AnimationConstraint %d)", kind, nm, na)
+	end
 	table.insert(S.ticks, tick)
 	-- a foot is "down" when it is within 0.12 of the lowest foot height seen so far; its travel then is slide
 	local n = #S.ticks
@@ -28342,15 +28848,43 @@ function Diag.SampleLines(S)
 		rootMin, rootMax = math.min(rootMin, k.rootY), math.max(rootMax, k.rootY)
 		lo = math.min(lo, k.lY, k.rY)
 	end
-	table.insert(lines, string.format("sample %d ticks over %.1fs: vmax=%.2f rootY %.2f..%.2f (bob %.2f) lowestFootY=%.2f animateTicks=%d slideL=%.2f/%d slideR=%.2f/%d",
-		n, S.ticks[n].t - S.ticks[1].t, vmax, rootMin, rootMax, rootMax - rootMin, lo, S.tracks, S.slideL, S.downL, S.slideR, S.downR))
+	-- (one header line, one line per tick: the joints' class and the Animator's mode ride on the header; hip / knee / elbow
+	-- below are the bend the limb SHOWS, then (wN) the bend the Animator WROTE, gap = the largest written-vs-shown difference)
+	table.insert(lines, string.format("sample %d ticks over %.1fs: vmax=%.2f rootY %.2f..%.2f (bob %.2f) lowestFootY=%.2f animateTicks=%d slideL=%.2f/%d slideR=%.2f/%d"
+		.. " | joints: %s; Animator: %s | bends: shown(wWritten)",
+		n, S.ticks[n].t - S.ticks[1].t, vmax, rootMin, rootMax, rootMax - rootMin, lo, S.tracks, S.slideL, S.downL, S.slideR, S.downR,
+		tostring(S.kind or "?"), tostring(S.status or "no report (server view, or the Animator is not running)")))
 	local latMax, rollMax = 0, 0
+	local gapMax, gapTicks, wroteKnee = 0, 0, false
+	local function ab(a, w)
+		local sa = a and string.format("%d", math.round(a)) or "-"
+		if w then
+			return sa .. string.format("(w%d)", math.round(w))
+		end
+		return sa
+	end
 	for _, k in ipairs(S.ticks) do
 		latMax = math.max(latMax, math.abs(k.lat or 0))
 		rollMax = math.max(rollMax, math.abs(k.roll or 0))
-		table.insert(lines, string.format("  t=%.1f v=%.2f rootY=%.2f footL=%.2f footR=%.2f hip=%s knee=%s elbow=%s lat=%+.3f roll=%+.1f%s", k.t, k.vx, k.rootY, k.lY, k.rY,
-			k.hip and string.format("%d", k.hip) or "-", k.knee and string.format("%d", k.knee) or "-", k.elbow and string.format("%d", k.elbow) or "-",
+		if (k.gapN or 0) > 0 then
+			gapTicks += 1
+			gapMax = math.max(gapMax, k.gap or 0)
+		end
+		if k.kneeW and math.abs(k.kneeW) > 8 then
+			wroteKnee = true
+		end
+		table.insert(lines, string.format("  t=%.1f v=%.2f rootY=%.2f footL=%.2f footR=%.2f hip=%s knee=%s elbow=%s gap=%s lat=%+.3f roll=%+.1f%s", k.t, k.vx, k.rootY, k.lY, k.rY,
+			ab(k.hip, k.hipW), ab(k.knee, k.kneeW), ab(k.elbow, k.elbowW), (k.gapN or 0) > 0 and string.format("%d", math.round(k.gap)) or "-",
 			k.lat or 0, k.roll or 0, k.playing and " ANIMATE" or ""))
+	end
+	-- do the Animator's writes take effect? (client only: the server sees no writes)
+	if gapTicks > 0 then
+		if gapMax > 10 then
+			table.insert(verdicts, string.format("BAD  joint writes are NOT taking effect: the limbs show up to %.0f deg away from the pose the Animator wrote (%s). "
+				.. "The Animator switches such a rig to Roblox's animation by itself; in your own place set StarterPlayer > AvatarJointUpgrade = Disabled", gapMax, tostring(S.kind)))
+		else
+			table.insert(verdicts, string.format("OK   joint writes take effect (written vs shown within %.1f deg over %d ticks)", gapMax, gapTicks))
+		end
 	end
 	-- the root itself (not the joints): a sideways travel per tick past 0.1 studs or a roll past 5 degrees is the
 	-- Humanoid / physics rocking the character - a collider, a mass off the axis, a mover on the root
@@ -28384,7 +28918,11 @@ function Diag.SampleLines(S)
 			end
 		end
 		if not bentKnee then
-			table.insert(verdicts, "BAD  the knees never bent while moving: the Animator is not writing this rig's legs (or its writes are overwritten)")
+			if wroteKnee then
+				table.insert(verdicts, "BAD  the knees never bent while moving although the Animator wrote a bend: its writes do not reach the limbs")
+			else
+				table.insert(verdicts, "BAD  the knees never bent while moving: the Animator is not writing this rig's legs (or its writes are overwritten)")
+			end
 		end
 	end
 	if S.tracks > 0 then
@@ -46998,15 +47536,21 @@ return Officials
         <Properties>
           <string name="Name">RigJoints</string>
           <string name="Source"><![CDATA[-- RigJoints: one way to find and read an R15 rig's joints whatever class the engine gave them.
--- [Studio] Workspace.AvatarJointUpgrade (the Avatar Joint Upgrade rollout) builds player characters, NPCs made by
--- CreateHumanoidModelFromDescription and ApplyDescription'd rigs with an AnimationConstraint per joint instead of a
--- Motor6D: the constraint sits under the CHILD part (Head.Neck, LeftUpperLeg.LeftHip...), has no Part0 / Part1 / C0 / C1
--- but Attachment0 (in the parent part) / Attachment1 (in the child part) - the two RigAttachments - and a Transform
--- written exactly as a Motor6D's: child = parent * A0.CFrame * Transform * A1.CFrame^-1 (a Motor6D's
--- Part1 = Part0 * C0 * Transform * C1^-1 with C0 = A0.CFrame, C1 = A1.CFrame), so a pose written to either reads the
--- same. Reading .Part1 on an AnimationConstraint throws, and did: the Animator's rig measurement failed on every
--- upgraded rig in Studio (in setup, outside its per-frame pcall) and those rigs were never driven - feet sliding,
--- knees straight. Everything that touches a joint (the Animator, AnimRig, the client Ragdoll, Diag) goes through here.
+-- [Studio] StarterPlayer.AvatarJointUpgrade (the Avatar Joint Upgrade rollout; NOT a Workspace property, and
+-- RobloxScriptSecurity: no game script can read or set it - only the place file / Studio's Properties panel can) builds
+-- player characters, NPCs made by CreateHumanoidModelFromDescription and ApplyDescription'd rigs with an
+-- AnimationConstraint per joint instead of a Motor6D: the constraint sits under the CHILD part (Head.Neck,
+-- LeftUpperLeg.LeftHip...), its Part0 / Part1 / C0 / C1 are read-only deprecated aliases, Attachment0 (in the parent
+-- part) / Attachment1 (in the child part) are the two RigAttachments, and Transform reads as a Motor6D's:
+-- child = parent * A0.CFrame * Transform * A1.CFrame^-1 (a Motor6D's Part1 = Part0 * C0 * Transform * C1^-1 with
+-- C0 = A0.CFrame, C1 = A1.CFrame), so a pose written to either reads the same.
+-- [Studio] but writing it does not move the limbs in the user's place (their video: the character walks in the bind pose,
+-- no error), while the Motor6D path is the one Roblox documents and every build before the upgrade animated with
+-- (Motor6D.Transform is NotReplicated and local to the client that writes it; AnimationConstraint.Transform is a
+-- saved, replicated property of a Constraint). So EnsureMotors rebuilds an upgraded rig's joints as the Motor6Ds the
+-- upgrade replaced (same parts, C0 / C1 = the attachments' CFrames: the pose is unchanged): the server does it for
+-- every character and NPC (Main, Builder), the client Animator for any rig still carrying them. Everything that touches
+-- a joint (the Animator, AnimRig, the client Ragdoll, Diag) goes through here, and still reads either class.
 local RigJoints = {}
 
 -- the part each R15 joint drives (where the Motor6D / AnimationConstraint lives) and the part it hangs from
@@ -47120,6 +47664,208 @@ function RigJoints.All(model)
 		out[name] = RigJoints.Find(model, name)
 	end
 	return out
+end
+
+------------------------------------------------------------------------
+-- EnsureMotors: an upgraded rig back on Motor6Ds
+------------------------------------------------------------------------
+-- the joint's rig attachment in a part ("LeftKnee" -> "LeftKneeRigAttachment"), when it is one
+local function rigAttachment(part, name)
+	local a = part and part:FindFirstChild(name .. "RigAttachment")
+	return (a and a:IsA("Attachment")) and a or nil
+end
+
+-- does this Motor6D join p0 -> p1?
+local function joins(m, p0, p1)
+	return m:IsA("Motor6D") and m.Part0 == p0 and m.Part1 == p1
+end
+
+-- RigJoints.EnsureMotors(model, opts) -> converted, kept: every R15 joint of the model that is an AnimationConstraint
+-- is replaced by a Motor6D of the same name under the same (child) part, Part0 / Part1 = the attachments' parts,
+-- C0 / C1 = the attachments' CFrames, so the limbs stay exactly where they are. The new Motor6D is made and parented
+-- BEFORE the constraint is destroyed (a Humanoid with RequiresNeck never sees the rig without a Neck). A joint that
+-- already has a Motor6D joining the same two parts just loses the constraint (two rigid joints in a loop: one of them
+-- would be ignored by the solver - maybe the one written). opts.localOnly (a client converting a replicated rig): the
+-- Motor6D carries the attribute RigJointsLocal, and when the server's own Motor6D for the joint replicates in later
+-- the local one is dropped (Dedupe). Safe to call any number of times; never throws for a half-built rig.
+function RigJoints.EnsureMotors(model, opts)
+	if not model then
+		return 0, 0
+	end
+	local converted, kept = 0, 0
+	for _, name in ipairs(RigJoints.NAMES) do
+		local ok = pcall(function()
+			local childName, parentName = RigJoints.CHILD[name], RigJoints.PARENT[name]
+			local child, parent = model:FindFirstChild(childName), model:FindFirstChild(parentName)
+			if not (child and parent and child:IsA("BasePart") and parent:IsA("BasePart")) then
+				return
+			end
+			-- every AnimationConstraint of this joint (under the child part, the usual place, or the parent part)
+			local acs, motor = {}, nil
+			for _, holder in ipairs({ child, parent }) do
+				for _, c in ipairs(holder:GetChildren()) do
+					if c.Name == name and c:IsA("AnimationConstraint") then
+						table.insert(acs, c)
+					elseif c.Name == name and joins(c, parent, child) and not motor then
+						motor = c
+					end
+				end
+			end
+			if #acs == 0 then
+				if motor then
+					kept += 1
+				end
+				return
+			end
+			if not motor then
+				local ac = acs[1]
+				local a0, a1 = ac.Attachment0, ac.Attachment1
+				if not (a0 and a0.Parent == parent) then
+					a0 = rigAttachment(parent, name)
+				end
+				if not (a1 and a1.Parent == child) then
+					a1 = rigAttachment(child, name)
+				end
+				if not (a0 and a1) then
+					return -- nothing to build the joint from: the constraint stays (better than a limb that falls off)
+				end
+				local m = Instance.new("Motor6D")
+				m.Name = name
+				m.Part0 = parent
+				m.Part1 = child
+				m.C0 = a0.CFrame
+				m.C1 = a1.CFrame
+				if opts and opts.localOnly then
+					m:SetAttribute("RigJointsLocal", true)
+				end
+				m.Parent = child
+			end
+			for _, ac in ipairs(acs) do
+				ac:Destroy()
+			end
+			converted += 1
+		end)
+		if not ok then
+			-- (a part mid-replacement: the next call - the watcher's, the Animator's - finishes it)
+			continue
+		end
+	end
+	RigJoints.Dedupe(model)
+	return converted, kept
+end
+
+-- two Motor6Ds for one joint (a client's local conversion, then the server's replicated one): the local one goes
+function RigJoints.Dedupe(model)
+	for _, name in ipairs(RigJoints.NAMES) do
+		local child = model:FindFirstChild(RigJoints.CHILD[name])
+		if child then
+			local motors = {}
+			for _, c in ipairs(child:GetChildren()) do
+				if c.Name == name and c:IsA("Motor6D") then
+					table.insert(motors, c)
+				end
+			end
+			if #motors > 1 then
+				local keep
+				for _, m in ipairs(motors) do
+					if m:GetAttribute("RigJointsLocal") ~= true then
+						keep = m
+						break
+					end
+				end
+				keep = keep or motors[1]
+				for _, m in ipairs(motors) do
+					if m ~= keep and m:GetAttribute("RigJointsLocal") == true then
+						m:Destroy()
+					end
+				end
+			end
+		end
+	end
+end
+
+-- how many of the model's R15 joints are Motor6Ds / AnimationConstraints right now
+function RigJoints.Count(model)
+	local nm, na = 0, 0
+	for _, name in ipairs(RigJoints.NAMES) do
+		local j = RigJoints.Find(model, name)
+		if j then
+			if j:IsA("Motor6D") then
+				nm += 1
+			else
+				na += 1
+			end
+		end
+	end
+	return nm, na
+end
+
+-- "Motor6D" / "AnimationConstraint" / "mixed" / "none": the rig's joint class, for Output lines
+function RigJoints.Kind(model)
+	local nm, na = RigJoints.Count(model)
+	if nm > 0 and na > 0 then
+		return "mixed", nm, na
+	elseif na > 0 then
+		return "AnimationConstraint", nm, na
+	elseif nm > 0 then
+		return "Motor6D", nm, na
+	end
+	return "none", nm, na
+end
+
+-- RigJoints.WatchMotors(model, opts): EnsureMotors now and again (deferred, coalesced) whenever an AnimationConstraint
+-- named as an R15 joint arrives in the model later (ApplyDescription, ReplaceBodyPartR15 on a tier / head swap, a
+-- respawn's parts). Once per model; the connection dies with the model.
+local watched = setmetatable({}, { __mode = "k" })
+RigJoints.MAX_ROUNDS = 40
+function RigJoints.WatchMotors(model, opts)
+	if not model or watched[model] then
+		if model then
+			RigJoints.EnsureMotors(model, opts)
+		end
+		return
+	end
+	watched[model] = true
+	RigJoints.EnsureMotors(model, opts)
+	local pending = false
+	-- (an engine that put a constraint back every time one went would make this churn: past MAX_ROUNDS conversions in a
+	-- model the watcher stops and says so - the client Animator's self-check still guards the animation)
+	local rounds = 0
+	local conn
+	conn = model.DescendantAdded:Connect(function(d)
+		-- (by class only: a constraint is often parented before it is named - EnsureMotors checks the names)
+		if pending or not d:IsA("AnimationConstraint") then
+			return
+		end
+		pending = true
+		task.defer(function()
+			pending = false
+			local conv = RigJoints.EnsureMotors(model, opts)
+			if conv > 0 then
+				rounds += 1
+				if rounds >= RigJoints.MAX_ROUNDS then
+					conn:Disconnect()
+					warn(string.format("[RigJoints] %s: the engine keeps re-creating AnimationConstraint joints (%d rounds); no longer rebuilding them as Motor6Ds. "
+						.. "Set StarterPlayer > AvatarJointUpgrade = Disabled in the place's Properties", model.Name, rounds))
+				end
+			end
+		end)
+	end)
+end
+
+-- the Animator's side for the diagnostic (client): Written(model, jointName) -> the Transform it last wrote, or nil;
+-- Status(model) -> how it drives the rig ("procedural", "fallback: ..."). Set by Animator.client.lua; nil elsewhere
+RigJoints.Written = nil
+RigJoints.Status = nil
+
+-- the angle (degrees) of a rotation
+function RigJoints.Angle(cf)
+	local _, ang = cf:ToAxisAngle()
+	local a = math.abs(ang) % (2 * math.pi)
+	if a > math.pi then
+		a = 2 * math.pi - a
+	end
+	return math.deg(a)
 end
 
 return RigJoints
@@ -60367,6 +61113,15 @@ local function prepare(data)
 	return data
 end
 
+-- an error that says this place may not use DataStores at all (Studio with "Enable Studio Access to API Services"
+-- off, an unpublished place): retrying is pointless
+function DataManager.ApiDisabled(err)
+	local s = string.lower(tostring(err or ""))
+	return string.find(s, "403", 1, true) ~= nil or string.find(s, "not allowed", 1, true) ~= nil
+		or string.find(s, "studioaccesstoapis", 1, true) ~= nil or string.find(s, "publish", 1, true) ~= nil
+		or string.find(s, "api services", 1, true) ~= nil
+end
+
 -- one read that takes the session lock in the same UpdateAsync: returns ok, stored value, locked.
 -- Another server's fresh lock leaves the value untouched (locked = true) unless `steal` is set; nothing
 -- stored yet is left as nothing (the first save creates the record, lock included).
@@ -60393,6 +61148,11 @@ local function read(player, tries, steal)
 		end)
 		if ok then
 			return true, raw, held
+		end
+		-- Studio: a failed read is API access being off (403 "Studio access to APIs is not allowed"), and no retry
+		-- will change that - the caller plays session-only at once instead of waiting through the retries
+		if RunService:IsStudio() or DataManager.ApiDisabled(err) then
+			break
 		end
 		if attempt < tries then
 			task.wait(attempt)
@@ -60517,14 +61277,20 @@ function DataManager.Load(player)
 	if ok then
 		return install(player, result)
 	end
-	warn("[Boxer] Load failed:", result)
 	if RunService:IsStudio() then
-		-- Studio with API access off fails every read: play session-only, nothing is ever written
-		DataManager.StoreAvailable = false
+		-- Studio with API access off fails every read: play session-only at once (no retries), nothing is written for
+		-- this player; with API access off the next players of this session skip the store entirely
+		warn("[Boxer] DataStore unavailable in Studio (" .. tostring(result) .. "): a fresh session-only profile, nothing is saved. "
+			.. "Turn on Game Settings > Security > Enable Studio Access to API Services to test saves.")
+		if DataManager.ApiDisabled(result) then
+			DataManager.StoreAvailable = false
+			store = nil
+		end
 		local data = prepare(nil)
 		DataManager.Profiles[player] = data
 		return data
 	end
+	warn("[Boxer] Load failed:", result)
 	-- never hand out a blank placeholder: a later save of it would wipe the real career
 	loadFailed[player] = true
 	task.spawn(retryLoad, player)
@@ -78711,7 +79477,8 @@ local function figure(parent, name, cf, rng, o)
 		parts += 1
 	end
 	-- the roll is always drawn so the venue's random stream does not depend on the part budget
-	local wantsHair = o.hair ~= false and rng:NextNumber() < 0.8
+	-- (Config.BaldMode: nobody has hair, the venue's officials and crew included; the roll above still happens)
+	local wantsHair = o.hair ~= false and rng:NextNumber() < 0.8 and not Config.BaldMode
 	if wantsHair and parts < 6 then
 		blob(m, "Hair", V3(1.08, 0.62, 1.12), head.CFrame * CF(0, 0.33, 0.06), o.hairColor or hairColor(rng), M.Fabric, { CastShadow = false })
 	end
@@ -81015,14 +81782,13 @@ local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 local CollectionService = game:GetService("CollectionService")
 
--- [Studio] Roblox's Avatar Joint Upgrade rigs R15 characters with AnimationConstraints instead of Motor6Ds; the
--- procedural Animator, the head / headgear welds and /wcbdiag all drive Motor6Ds (a /wcbdiag from Studio showed
--- every joint "missing" and the player's character dead). tools/build_place.py pins the place setting; this is
--- the runtime fallback (before any character is built). MeshPartHeadsAndAccessories: the classic head must stay
--- a Part + SpecialMesh (default.project.json sets it too).
-pcall(function()
-	workspace.AvatarJointUpgrade = Enum.RolloutState.Disabled
-end)
+-- [Studio] Roblox's Avatar Joint Upgrade rigs R15 characters with AnimationConstraints instead of Motor6Ds. Its switch is
+-- StarterPlayer.AvatarJointUpgrade (RobloxScriptSecurity: a game script can neither read nor set it - the old
+-- "workspace.AvatarJointUpgrade = Disabled" here never did anything), so the place file carries it
+-- (tools/build_place.py; in a place of your own: StarterPlayer > Properties > AvatarJointUpgrade = Disabled) and the
+-- server rebuilds any upgraded rig's joints as Motor6Ds at runtime (Shared.RigJoints.EnsureMotors: onCharacter, the
+-- Workspace watcher below, Builder). MeshPartHeadsAndAccessories: the classic head must stay a Part + SpecialMesh
+-- (default.project.json sets it; the property is NotScriptable, so this pcall is only a harmless attempt).
 pcall(function()
 	workspace.MeshPartHeadsAndAccessories = Enum.MeshPartHeadsAndAccessories.Disabled
 end)
@@ -83596,9 +84362,67 @@ end)
 ------------------------------------------------------------------------
 -- Players
 ------------------------------------------------------------------------
+-- [Studio] the Avatar Joint Upgrade's AnimationConstraint joints back to Motor6Ds on every humanoid rig in Workspace
+-- (player characters, the gym members, opponents, referees, the crowd): whenever a constraint named as an R15 joint
+-- appears under a model with a Humanoid, that model is converted (deferred: the engine finishes building it first) and
+-- watched for later ones (ApplyDescription and ReplaceBodyPartR15 make new ones). Shared.RigJoints says why.
+local RigJoints = require(Shared:WaitForChild("RigJoints"))
+local function rigModelOf(inst)
+	local m = inst:FindFirstAncestorOfClass("Model")
+	while m do
+		if m:FindFirstChildOfClass("Humanoid") then
+			return m
+		end
+		m = m:FindFirstAncestorOfClass("Model")
+	end
+	return nil
+end
+local jointsQueued = setmetatable({}, { __mode = "k" })
+local function queueMotors(inst)
+	-- (by class only: a constraint may be named after it is parented; EnsureMotors picks the R15 joints by name)
+	if not inst:IsA("AnimationConstraint") then
+		return
+	end
+	local m = rigModelOf(inst)
+	if not m or jointsQueued[m] then
+		return
+	end
+	jointsQueued[m] = true
+	task.defer(function()
+		jointsQueued[m] = nil
+		if m.Parent then
+			local okM, errM = pcall(RigJoints.WatchMotors, m)
+			if not okM then
+				warn("[Boxer] could not rebuild the joints of " .. m.Name .. " as Motor6Ds: " .. tostring(errM))
+			end
+		end
+	end)
+end
+workspace.DescendantAdded:Connect(queueMotors)
+for _, d in ipairs(workspace:GetDescendants()) do
+	queueMotors(d)
+end
+local motorsReported = false
+
 local function onCharacter(player, char)
 	endSession(player, true)
 	local hum = char:WaitForChild("Humanoid", 10)
+	-- the upgrade's AnimationConstraints -> Motor6Ds before anything animates or dresses the rig (and again whenever
+	-- the engine makes new ones); one Output line the first time, so the user can see it happened
+	do
+		local kind0 = RigJoints.Kind(char)
+		local okM, errM = pcall(RigJoints.WatchMotors, char)
+		if not okM then
+			warn("[Boxer] could not rebuild " .. char.Name .. "'s joints as Motor6Ds: " .. tostring(errM))
+		elseif kind0 == "AnimationConstraint" or kind0 == "mixed" then
+			if not motorsReported then
+				motorsReported = true
+				local nm, na = RigJoints.Count(char)
+				print(string.format("[Boxer] %s spawned with Avatar Joint Upgrade joints (AnimationConstraints): rebuilt as Motor6Ds (%d Motor6D / %d left). "
+					.. "To stop this at the source set StarterPlayer > AvatarJointUpgrade = Disabled in this place's Properties.", char.Name, nm, na))
+			end
+		end
+	end
 	if hum then
 		-- the town pace is a walk (StarterPlayer's CharacterWalkSpeed says so too); Shift runs (FightClient)
 		hum.WalkSpeed = Config.TownWalkSpeed
@@ -83788,6 +84612,7 @@ print("[Boxer] " .. Config.GameName .. " server ready")
   </Item>
   <Item class="StarterPlayer" referent="113">
     <Properties>
+			<token name="AvatarJointUpgrade_SerializedRollout">1</token>
       <string name="Name">StarterPlayer</string>
       <float name="CharacterWalkSpeed">6.5</float>
       <bool name="EnableMouseLockOption">false</bool>
@@ -83819,12 +84644,22 @@ print("[Boxer] " .. Config.GameName .. " server ready")
 -- AutoAct / AutoActId so the gym's bags react (CONTRACTS section 7).
 -- Faces (blinks, gaze, expressions), muscles (contraction, pump, jiggle, veins) and hair (spring
 -- physics) live in BoxerClient.FaceFX / HairFX; this script drives them every frame.
+-- [Studio] It checks that its writes take effect (selfCheck: the limbs' real pose against the pose written) and falls back
+-- to Roblox's own animation for a rig whose joints ignore them; Output says so ("[Animator] running: ...",
+-- "[Animator] joint writes are not taking effect on ...").
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 
 local player = Players.LocalPlayer
-local Modules = script.Parent:WaitForChild("BoxerClient")
+-- [Studio] the modules folder: a place the code was pasted into may not have it under this name - said in Output, never a
+-- silent hang (the Animator would drive nothing and the bodies would walk in the bind pose)
+local Modules = script.Parent:WaitForChild("BoxerClient", 10)
+if not Modules then
+	warn("[Animator] NOT running yet: " .. script.Parent:GetFullName() .. ".BoxerClient (the client modules folder, src/client/modules) is missing; "
+		.. "waiting for it. Sync with Rojo (default.project.json) or name the folder BoxerClient")
+	Modules = script.Parent:WaitForChild("BoxerClient")
+end
 local K = require(Modules:WaitForChild("AnimKit"))
 local R = require(Modules:WaitForChild("AnimRig"))
 local Loco = require(Modules:WaitForChild("AnimLoco"))
@@ -83926,6 +84761,8 @@ local function isPlayerChar(model)
 end
 
 local onAct -- forward declaration (acts section)
+local heartbeat, stopFallback, localMotors -- forward declarations (self-check section)
+local RigJoints = R.RigJoints
 
 local function readTags(rig)
 	local m = rig.model
@@ -84027,6 +84864,12 @@ end
 -- client scripts (State.SetAnimate, FightClient) leave it that way. Both come back while the rig is released
 -- (climbing, swimming, dead: the default animation shows) and when the rig is torn down.
 ------------------------------------------------------------------------
+-- is this rig's body ours this frame? (released: climbing / swimming / dead; fallback: our writes do not take effect
+-- on it and Roblox's own animation plays instead - selfCheck)
+local function drives(rig)
+	return not rig.released and not rig.fallback
+end
+
 local function stopTracks(rig)
 	local an = rig.animator
 	if an and an.Parent then
@@ -84040,7 +84883,7 @@ local function stopTracks(rig)
 end
 
 local function applyAnimate(rig)
-	local drive = not rig.released
+	local drive = drives(rig)
 	local s = rig.animateScript
 	if rig.isPlayer and s and s.Parent and s.Disabled ~= drive then
 		s.Disabled = drive
@@ -84088,7 +84931,7 @@ local function hookAnimate(rig)
 		end
 		rig.animator = an
 		rig.animConn = an and an.AnimationPlayed:Connect(function(track)
-			if not rig.released then
+			if drives(rig) then
 				pcall(track.Stop, track, 0)
 			end
 		end) or nil
@@ -84108,7 +84951,7 @@ local function hookAnimate(rig)
 		rig.animateScript = s
 		-- (re-enabled by someone else while we drive: off again, on the next step)
 		rig.animateConn = s and s:GetPropertyChangedSignal("Disabled"):Connect(function()
-			if not rig.released and s.Disabled == false and rigs[rig.model] == rig then
+			if drives(rig) and s.Disabled == false and rigs[rig.model] == rig then
 				task.defer(applyAnimate, rig)
 			end
 		end) or nil
@@ -84120,7 +84963,7 @@ end
 -- POLL_TRACKS s, stopped, and reported once per rig so a /wcbdiag sample with ANIMATE ticks has a matching Output line
 local POLL_TRACKS = 0.5
 local function pollTracks(rig, t)
-	if rig.released or t < (rig.nextTrackPoll or 0) then
+	if not drives(rig) or t < (rig.nextTrackPoll or 0) then
 		return
 	end
 	rig.nextTrackPoll = t + POLL_TRACKS
@@ -84218,6 +85061,15 @@ local function setup(model)
 		if R.IsJoint(d) or (d:IsA("BasePart") and d.Parent == model) then
 			rig.resolveNow = true
 			rig.geoNow = true
+			-- (new joints: whether our writes take effect is asked again; an upgrade constraint is noted so this client
+			-- rebuilds it as a Motor6D should the server not have done it - updateRig)
+			rig.writesOk = nil
+			if rig.check then
+				rig.check.bad, rig.check.good = 0, 0
+			end
+			if d:IsA("AnimationConstraint") and not rig.acSeen then
+				rig.acSeen = rig.clock
+			end
 		end
 	end)
 	rig.childConn = model.ChildAdded:Connect(function(c)
@@ -84241,6 +85093,12 @@ local function setup(model)
 		watchAnatomy(rig, af)
 	end
 	R.resolveJoints(rig)
+	do
+		local _, na = RigJoints.Count(model)
+		if na > 0 then
+			rig.acSeen = 0
+		end
+	end
 	-- [Studio] a measurement that throws (a joint class with other members, a part mid-replacement) must never leave the
 	-- rig unregistered - that is how every upgraded rig in Studio went undriven: the rig registers regardless, is measured
 	-- again on its first frames (geo.ok false -> retried every 0.4 s) and the failure is reported once
@@ -84255,6 +85113,9 @@ local function setup(model)
 	nextSlot += 1
 	rig.slot = nextSlot
 	rigs[model] = rig
+	if rig.isLocal then
+		heartbeat(model)
+	end
 end
 
 local function teardown(model)
@@ -84274,6 +85135,7 @@ local function teardown(model)
 	-- Roblox's animation back on the character
 	rig.released = true
 	applyAnimate(rig)
+	stopFallback(rig)
 	if rig.rope then
 		rig.rope.beam:Destroy()
 		rig.rope.a0:Destroy()
@@ -84761,6 +85623,12 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 		rig.head = model:FindFirstChild("Head")
 		-- (a late Animator / Animate script, a replaced Humanoid - on every rig, NPCs too)
 		hookAnimate(rig)
+		-- [Studio] Avatar Joint Upgrade constraints still on the rig 1.5 s after they appeared: the server did not rebuild
+		-- them as Motor6Ds (a client-local rig, an older server): this client does (RigJoints.EnsureMotors)
+		if rig.acSeen and t - rig.acSeen >= (R.CONVERT_AFTER or 1.5) then
+			rig.acSeen = nil
+			localMotors(rig, nil)
+		end
 	end
 	pollTracks(rig, t)
 	if (t >= rig.nextGeo and lod >= 2) or rig.geoNow then
@@ -85161,6 +86029,286 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 end
 
 ------------------------------------------------------------------------
+-- [Studio] Do our joint writes take effect? The user's Studio video showed the character walking in the bind pose -
+-- arms dead straight, knees never bending - with no error and Roblox's own walk off: the writes went to joints that did
+-- not move the limbs (the Avatar Joint Upgrade's AnimationConstraints, in a place of their own where the upgrade is on).
+-- So every rig, once it has been moving for CHECK_AFTER s, compares the pose its limbs really show (measured from the
+-- parts: RigJoints.Measure) with the pose written to them on the frame before. Writes that do not show for CHECK_BAD s:
+--   1. an AnimationConstraint rig is rebuilt on Motor6Ds on this client (RigJoints.EnsureMotors) and checked again;
+--   2. still nothing (or a Motor6D rig): the rig goes to Roblox's own animation - a player's default Animate script
+--      back on, an NPC Roblox's stock R15 idle / walk / run played on its Humanoid's Animator - so nobody ever walks
+--      frozen. Each step is one Output warning naming the rig, its joint class and the numbers.
+-- A rig whose writes show for CHECK_OK s is trusted (asked again whenever its joints change).
+------------------------------------------------------------------------
+local CHECK_KEYS = { "LK", "RK", "LE", "RE", "LH", "RH", "LS", "RS", "W", "Neck" }
+local NAME_OF, KEY_OF = {}, {}
+for k, def in pairs(R.JOINTS) do
+	NAME_OF[k] = def[2]
+	KEY_OF[def[2]] = k
+end
+local CHECK_AFTER = 2 -- s of moving before a rig is checked
+local CHECK_BAD = 1 -- s of writes not showing before a rig is switched
+local CHECK_OK = 1.5 -- s of writes showing: trusted
+local CHECK_MIN = 8 -- deg: a joint written at least this far off its rest pose tells (a rest pose reads the same either way)
+local CHECK_TOL = 6 -- deg: the mean gap between written and shown past which the writes do not take effect
+-- Roblox's stock R15 animations (the default Animate script's idle / walk / run): an NPC's fallback
+local FALLBACK_ANIMS = { idle = "rbxassetid://507766666", walk = "rbxassetid://507777826", run = "rbxassetid://507767714" }
+R.selfCheck = { CHECK_AFTER = CHECK_AFTER, CHECK_BAD = CHECK_BAD, CHECK_OK = CHECK_OK } -- (tests)
+
+-- written vs shown over the joints that tell: mean gap, worst gap, its joint, how many compared (nil: none tells)
+local function writeGap(rig)
+	local out = rig.outT
+	if not out then
+		return nil
+	end
+	local n, sum, worst, worstK = 0, 0, 0, nil
+	for _, k in ipairs(CHECK_KEYS) do
+		local j = rig.joints[k]
+		local w = out[k]
+		if j and w and j.motor.Parent and RigJoints.Angle(w) >= CHECK_MIN then
+			local a = RigJoints.Measure(j.motor)
+			if a then
+				local gap = RigJoints.Angle(w:Inverse() * a)
+				n += 1
+				sum += gap
+				if gap > worst then
+					worst, worstK = gap, k
+				end
+			end
+		end
+	end
+	if n == 0 then
+		return nil
+	end
+	return sum / n, worst, worstK, n
+end
+R.writeGap = writeGap
+
+-- this client rebuilds the rig's upgrade constraints as Motor6Ds (why: the Output line's reason); the converted count
+localMotors = function(rig, why)
+	local kind, _, na = RigJoints.Kind(rig.model)
+	if na == 0 then
+		return 0
+	end
+	local ok, conv = pcall(RigJoints.EnsureMotors, rig.model, { localOnly = true })
+	conv = ok and conv or 0
+	if conv > 0 then
+		rig.localMotors = true
+		rig.resolveNow = true
+		rig.geoNow = true
+		local nm, left = RigJoints.Count(rig.model)
+		if why then
+			warn(string.format("[Animator] joint writes are not taking effect on %s (%s rig): %s. Rebuilt its joints as Motor6Ds on this client (%d Motor6D / %d AnimationConstraint) and checking again",
+				rig.model.Name, kind, why, nm, left))
+		else
+			print(string.format("[Animator] %s still had %d Avatar Joint Upgrade joints (AnimationConstraint) the server had not rebuilt: rebuilt as Motor6Ds on this client",
+				rig.model.Name, conv))
+		end
+	elseif not ok then
+		warn("[Animator] could not rebuild " .. rig.model.Name .. "'s joints as Motor6Ds: " .. tostring(conv))
+	end
+	return conv
+end
+
+stopFallback = function(rig)
+	local fb = rig.fb
+	rig.fb = nil
+	if fb then
+		for _, tr in pairs(fb.tracks) do
+			pcall(tr.Stop, tr, 0.2)
+		end
+	end
+end
+
+-- Roblox's own animation for a rig our writes cannot move
+local function enterFallback(rig, kind, why)
+	rig.fallback = true
+	rig.check = nil
+	-- (our last pose off the joints: whatever does move them starts from the rest pose)
+	for _, j in pairs(rig.joints) do
+		if j.motor.Parent then
+			pcall(function()
+				j.motor.Transform = I
+			end)
+		end
+	end
+	local s = rig.animateScript
+	local how
+	if rig.isLocal and s and s.Parent then
+		rig.fbMode = "Animate"
+		how = "Switched it to Roblox's default animation (the Animate script is enabled again for it)"
+	else
+		rig.fbMode = "keyframe"
+		how = "Switched it to Roblox's stock R15 idle / walk / run animations on its Humanoid's Animator"
+	end
+	applyAnimate(rig)
+	local hint = (kind == "AnimationConstraint" or kind == "mixed" or rig.localMotors)
+			and " In your own place set StarterPlayer > Properties > AvatarJointUpgrade = Disabled (README: Using your own place)."
+		or " Something else holds its limbs (a weld from a limb to another part, a script writing the joints)."
+	warn(string.format("[Animator] joint writes are not taking effect on %s (%s rig): %s. %s.%s", rig.model.Name, kind, why, how, hint))
+end
+
+-- every frame of a fallback rig in keyframe mode: the stock tracks, weighted by the root's speed
+local function fallbackStep(rig)
+	if rig.fbMode ~= "keyframe" then
+		return
+	end
+	local hum = rig.hum
+	if not (hum and hum.Parent) then
+		return
+	end
+	local an = hum:FindFirstChildOfClass("Animator")
+	if not an then
+		-- (a client-local rig without one; a server NPC has its own)
+		an = Instance.new("Animator")
+		an.Parent = hum
+	end
+	local fb = rig.fb
+	if not fb or fb.animator ~= an then
+		stopFallback(rig)
+		fb = { animator = an, tracks = {} }
+		rig.fb = fb
+		for name, id in pairs(FALLBACK_ANIMS) do
+			local ok, tr = pcall(function()
+				local anim = Instance.new("Animation")
+				anim.AnimationId = id
+				local track = an:LoadAnimation(anim)
+				track.Looped = true
+				track.Priority = name == "idle" and Enum.AnimationPriority.Idle or Enum.AnimationPriority.Movement
+				track:Play(0.2, name == "idle" and 1 or 0.001, 1)
+				return track
+			end)
+			if ok and tr then
+				fb.tracks[name] = tr
+			end
+		end
+	end
+	local v = rig.root.AssemblyLinearVelocity
+	local speed = Vector3.new(v.X, 0, v.Z).Magnitude
+	local move = clamp(speed / 1.5, 0, 1)
+	local run = clamp((speed - 11) / 4, 0, 1)
+	local tr = fb.tracks
+	pcall(function()
+		if tr.idle then
+			tr.idle:AdjustWeight(max(1 - move, 0.001), 0.2)
+		end
+		if tr.walk then
+			tr.walk:AdjustWeight(max(move * (1 - run), 0.001), 0.2)
+			tr.walk:AdjustSpeed(clamp(speed / 8, 0.5, 2))
+		end
+		if tr.run then
+			tr.run:AdjustWeight(max(move * run, 0.001), 0.2)
+			tr.run:AdjustSpeed(clamp(speed / 16, 0.6, 1.6))
+		end
+	end)
+end
+
+-- once per updated frame of a driven rig, before this frame's writes (the parts show the last frame's)
+local function selfCheck(rig, dt)
+	if rig.writesOk or not drives(rig) or rig.ragdoll or rig.down then
+		return
+	end
+	local c = rig.check
+	if not c then
+		c = { moving = 0, bad = 0, good = 0 }
+		rig.check = c
+	end
+	local lo = rig.loco
+	if not (lo and (lo.speed or 0) > 1) then
+		return
+	end
+	c.moving += dt
+	if c.moving < CHECK_AFTER then
+		return
+	end
+	local mean, worst, wk, n = writeGap(rig)
+	if not mean or n < 2 then
+		return
+	end
+	if mean > CHECK_TOL then
+		c.bad += dt
+		c.good = 0
+		c.last = string.format("written vs actual pose off by %.0f deg on average over %d joints (%s %.0f deg) for %.1f s", mean, n,
+			NAME_OF[wk] or tostring(wk), worst, c.bad)
+	else
+		c.good += dt
+		c.bad = 0
+	end
+	if c.good >= CHECK_OK then
+		rig.writesOk = true
+		rig.check = nil
+		return
+	end
+	if c.bad < CHECK_BAD then
+		return
+	end
+	local kind = RigJoints.Kind(rig.model)
+	c.bad, c.good = 0, 0
+	if (kind == "AnimationConstraint" or kind == "mixed") and not rig.triedMotors then
+		rig.triedMotors = true
+		if localMotors(rig, c.last) > 0 then
+			return
+		end
+	end
+	enterFallback(rig, kind, c.last)
+end
+R.fallbackOf = function(model) -- (tests / diag) the rig's fallback mode or nil
+	local rig = rigs[model]
+	return rig and rig.fallback and rig.fbMode or nil
+end
+
+-- the diagnostic's view (Diag.SampleTick): what was written to a joint, and how the rig is driven
+RigJoints.Written = function(model, jointName)
+	local rig = rigs[model]
+	local k = KEY_OF[jointName]
+	if not (rig and k and rig.outT and rig.joints[k] and drives(rig)) then
+		return nil
+	end
+	return rig.outT[k]
+end
+RigJoints.Status = function(model)
+	local rig = rigs[model]
+	if not rig then
+		return "not driven by the Animator"
+	end
+	local kind, nm, na = RigJoints.Kind(model)
+	local how = rig.fallback and ("FALLBACK (" .. tostring(rig.fbMode) .. ")") or (rig.released and "released (Roblox animation)" or "procedural")
+	return string.format("%s, joints %s (Motor6D %d / AnimationConstraint %d)%s%s", how, kind, nm, na, rig.localMotors and ", rebuilt on this client" or "",
+		rig.writesOk and ", writes verified" or "")
+end
+
+-- the startup line: the Animator is alive and what it drives (on the local character's arrival, every spawn)
+local beatT = 0
+heartbeat = function(model)
+	beatT += 1
+	local my = beatT
+	task.delay(1, function()
+		if my ~= beatT then
+			return
+		end
+		local n, nm, na = 0, 0, 0
+		for m in pairs(rigs) do
+			if m.Parent then
+				n += 1
+				local _, a = RigJoints.Count(m)
+				if a > 0 then
+					na += 1
+				else
+					nm += 1
+				end
+			end
+		end
+		local kind = model and model.Parent and RigJoints.Kind(model) or "none"
+		print(string.format("[Animator] running: driving %d rigs (Motor6D %d / AnimationConstraint %d); your character's joints: %s", n, nm, na, kind))
+	end)
+end
+task.delay(6, function()
+	if beatT == 0 then
+		heartbeat(nil)
+	end
+end)
+
+------------------------------------------------------------------------
 -- Registration & main loop
 ------------------------------------------------------------------------
 for _, tag in ipairs(TAGS) do
@@ -85238,6 +86386,15 @@ RunService.PreSimulation:Connect(function(rawDt)
 			rig.nextGeo = 0
 		end
 		rig.isLocal = model == localChar
+		if rig.fallback then
+			-- (Roblox's animation moves this rig: selfCheck)
+			local okF, errF = pcall(fallbackStep, rig)
+			if not okF and not rig.fbWarned then
+				rig.fbWarned = true
+				warn("[Animator] " .. model.Name .. ": fallback animation failed: " .. tostring(errF))
+			end
+			continue
+		end
 		-- the rig's own frame time: the engine's dt summed over the frames since its last update (a culled, skipped
 		-- or slowed rig catches up on the whole span). The wall clock (os.clock between two PreSimulations) is NOT
 		-- the time the simulation advanced: it wanders with where in the frame the Lua step lands, and read as the
@@ -85289,7 +86446,7 @@ RunService.PreSimulation:Connect(function(rawDt)
 		if skip then
 			-- (a player character's own Animate tracks write the joints every frame: a skipped frame holds
 			-- our last pose instead of flashing Roblox's walk between ours)
-			if rig.isPlayer and rig.outT and not rig.released then
+			if rig.isPlayer and rig.outT and drives(rig) then
 				local out = rig.outT
 				for k, j in pairs(rig.joints) do
 					local v = out[k]
@@ -85313,11 +86470,21 @@ RunService.PreSimulation:Connect(function(rawDt)
 		rig.clock += sdt
 		local lod = (dist < b.near and onScreen) and 3 or (dist < b.mid and 2 or 1)
 		updated += 1
+		if not rig.writesOk then
+			local okC, errC = pcall(selfCheck, rig, rdt)
+			if not okC and not rig.checkWarned then
+				rig.checkWarned = true
+				warn("[Animator] " .. model.Name .. ": self-check failed: " .. tostring(errC))
+			end
+			if rig.fallback then
+				continue
+			end
+		end
 		local ok, err = pcall(updateRig, rig, model, rig.clock, sdt, lod, rdt)
 		if not ok then
 			-- the last good pose stays on the joints (never a frame of Roblox's own animation, or of the bind
 			-- pose, between two of ours)
-			if rig.outT and not rig.released then
+			if rig.outT and drives(rig) then
 				local out = rig.outT
 				for k, j in pairs(rig.joints) do
 					local v = out[k]
@@ -107007,7 +108174,7 @@ return AnimLoco
 -- Everything works on the rig table the Animator keeps per character; nothing here allocates
 -- tables per frame.
 local K = require(script.Parent:WaitForChild("AnimKit"))
--- [Studio] the joints may be Motor6Ds or (Workspace.AvatarJointUpgrade) AnimationConstraints: every joint lookup, rest
+-- [Studio] the joints may be Motor6Ds or (StarterPlayer.AvatarJointUpgrade) AnimationConstraints: every joint lookup, rest
 -- pose (C0 / C1 vs Attachment0 / Attachment1) and part read goes through Shared.RigJoints (see there)
 local RigJoints = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("RigJoints"))
 
@@ -137747,6 +138914,353 @@ return MenuStage
         </Item>
         <Item class="ModuleScript" referent="162">
           <Properties>
+            <string name="Name">MeshGuard</string>
+            <string name="Source"><![CDATA[-- MeshGuard (client): a boxer's mesh this client cannot draw never shows as the engine's plain box.
+-- The server builds the gear (BuilderGear) and the muscle-tier body (BuilderTiers) from uploaded meshes and tags every
+-- such MeshPart (WCBGearMesh / WCBBodyMesh). The server having loaded a mesh (CreateMeshPartAsync) does not mean this
+-- client can fetch it: a mesh uploaded minutes ago answers "Asset content representation is being generated" for a
+-- while, a moderation or permission hiccup fails it, and a MeshPart whose mesh did not arrive is drawn as its box (the
+-- gym's gloves as red blocks several times the hand's size). For every tagged part:
+-- * its MeshId's fetch status (ContentProvider:GetAssetFetchStatus, and its changed signal; a PreloadAsync asks for it)
+-- * Failure / TimedOut (or an empty MeshId): the part is hidden on this client (Transparency 1, the old value kept)
+--   and a stand-in drawn in its place: a rounded shape the size of the part (an ellipsoid: the Sphere mesh is built
+--   in, it cannot fail), in the part's colour and material, welded to it so it follows every pose; thin detail pieces
+--   (laces, stripes, hems, straps, buttons, badges...) are hidden without one
+-- * retried on a backoff (BACKOFF, a few minutes: PreloadAsync again); when the status turns Success the stand-in goes
+--   and the part shows again
+-- Local only: nothing here replicates; the server's rebuild of a folder takes the stand-ins with it (they are children
+-- of the parts). MeshGuard.Stats() for the diagnostic / tests.
+-- Tests: MeshGuard.Services = { ContentProvider, CollectionService, schedule = function(delay, fn) }.
+local MeshGuard = {}
+
+MeshGuard.TAGS = { "WCBGearMesh", "WCBBodyMesh" }
+MeshGuard.BACKOFF = { 5, 10, 20, 40, 60, 60, 60 }
+MeshGuard.Services = {}
+
+-- piece names drawn without a stand-in (too thin for a rounded shape to read as anything but a blob)
+local HIDE_ONLY = { "Laces", "Stripe", "Hem", "Strap", "Band", "band", "Buttons", "Badge", "Placket", "Pocket", "BowTie", "Buckle",
+	"Collar", "Belt", "Towel", "Polo", "Sole", "WrapWrist" }
+
+local function svc(name)
+	return MeshGuard.Services[name] or game:GetService(name)
+end
+
+local function schedule(delay, fn)
+	local s = MeshGuard.Services.schedule
+	if s then
+		return s(delay, fn)
+	end
+	task.delay(delay, fn)
+	return true
+end
+
+local function statusName(st)
+	if st == nil then
+		return "None"
+	end
+	local s = tostring(st)
+	return s:match("([%w]+)$") or s
+end
+
+local pieces = {} -- part -> rec { part, id, fallback, origT, conns }
+local ids = {} -- MeshId -> { parts = { [part] = true }, state = "ok" | "wait" | "failed", tries, conn }
+local stats = { tracked = 0, fallbacks = 0, restored = 0, retries = 0 }
+local conns = {}
+local started = false
+
+local function pieceName(p)
+	local n = p:GetAttribute("GearPiece")
+	return type(n) == "string" and n or p.Name
+end
+
+local function hideOnly(p)
+	if p:GetAttribute("BodyTier") ~= nil then
+		return false -- a body part always gets its stand-in
+	end
+	local n = pieceName(p)
+	for _, k in ipairs(HIDE_ONLY) do
+		if string.find(n, k, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+local function applyFallback(rec)
+	local p = rec.part
+	if rec.fallback or rec.hidden or not p.Parent then
+		return
+	end
+	rec.origT = p.Transparency
+	rec.hidden = true
+	p.Transparency = 1
+	stats.fallbacks += 1
+	if hideOnly(p) then
+		return
+	end
+	local f = Instance.new("Part")
+	f.Name = "MeshFallback"
+	f.Size = p.Size
+	f.CFrame = p.CFrame
+	f.Color = p.Color
+	f.Material = p.Material
+	f.Reflectance = p.Reflectance
+	f.Transparency = rec.origT or 0
+	f.CanCollide = false
+	f.CanQuery = false
+	f.CanTouch = false
+	f.Massless = true
+	f.Anchored = false
+	f.CastShadow = false
+	local m = Instance.new("SpecialMesh")
+	m.MeshType = Enum.MeshType.Sphere
+	m.Parent = f
+	local w = Instance.new("Weld")
+	w.Name = "MeshFallbackWeld"
+	w.Part0 = p
+	w.Part1 = f
+	w.C0 = CFrame.new()
+	w.C1 = CFrame.new()
+	w.Parent = f
+	f.Parent = p
+	rec.fallback = f
+end
+
+local function restore(rec)
+	if not rec.hidden then
+		return
+	end
+	rec.hidden = false
+	if rec.fallback then
+		rec.fallback:Destroy()
+		rec.fallback = nil
+	end
+	if rec.part.Parent then
+		rec.part.Transparency = rec.origT or 0
+	end
+	stats.restored += 1
+end
+
+local evaluate -- (id, status)
+
+local function preload(id)
+	task.spawn(function()
+		local cp = svc("ContentProvider")
+		local got
+		pcall(function()
+			cp:PreloadAsync({ id }, function(_, status)
+				got = status
+			end)
+		end)
+		if got ~= nil then
+			evaluate(id, got)
+		else
+			local ok, st = pcall(function()
+				return cp:GetAssetFetchStatus(id)
+			end)
+			evaluate(id, ok and st or nil)
+		end
+	end)
+end
+
+local function retryLater(id, rec)
+	local delay = MeshGuard.BACKOFF[rec.tries]
+	if not delay then
+		return -- past the schedule: the stand-in stays until a rebuild brings a new part
+	end
+	schedule(delay, function()
+		local cur = ids[id]
+		if cur ~= rec or rec.state ~= "failed" or next(rec.parts) == nil then
+			return
+		end
+		stats.retries += 1
+		rec.retryPending = true
+		preload(id)
+	end)
+end
+
+function evaluate(id, status)
+	local rec = ids[id]
+	if not rec then
+		return
+	end
+	local s = statusName(status)
+	if s == "Success" then
+		rec.retryPending = nil
+		rec.state = "ok"
+		for p in pairs(rec.parts) do
+			local r = pieces[p]
+			if r then
+				restore(r)
+			end
+		end
+	elseif s == "Failure" or s == "TimedOut" or id == "" then
+		local was = rec.state
+		rec.state = "failed"
+		for p in pairs(rec.parts) do
+			local r = pieces[p]
+			if r then
+				applyFallback(r)
+			end
+		end
+		if was ~= "failed" or rec.retryPending then
+			rec.retryPending = nil
+			rec.tries = (rec.tries or 0) + 1
+			retryLater(id, rec)
+		end
+	else
+		-- None / Loading: a part still loading draws nothing (no box); the changed signal or the preload answers
+		if rec.state ~= "failed" then
+			rec.state = "wait"
+		end
+	end
+end
+
+local function untrack(p)
+	local rec = pieces[p]
+	if not rec then
+		return
+	end
+	pieces[p] = nil
+	for _, c in ipairs(rec.conns) do
+		c:Disconnect()
+	end
+	if rec.fallback and rec.fallback.Parent then
+		rec.fallback:Destroy()
+	end
+	local ir = ids[rec.id]
+	if ir then
+		ir.parts[p] = nil
+		if next(ir.parts) == nil then
+			if ir.conn then
+				ir.conn:Disconnect()
+			end
+			ids[rec.id] = nil
+		end
+	end
+end
+
+local function track(p)
+	if pieces[p] or not p:IsA("MeshPart") then
+		return
+	end
+	local okId, id = pcall(function()
+		return p.MeshId
+	end)
+	id = (okId and type(id) == "string") and id or ""
+	local rec = { part = p, id = id, conns = {} }
+	pieces[p] = rec
+	stats.tracked += 1
+	table.insert(rec.conns, p.AncestryChanged:Connect(function(_, parent)
+		if parent == nil then
+			untrack(p)
+		end
+	end))
+	local ir = ids[id]
+	if not ir then
+		ir = { parts = {}, state = "wait", tries = 0 }
+		ids[id] = ir
+		if id ~= "" then
+			pcall(function()
+				ir.conn = svc("ContentProvider"):GetAssetFetchStatusChangedSignal(id):Connect(function(st)
+					evaluate(id, st)
+				end)
+			end)
+		end
+	end
+	ir.parts[p] = true
+	if id == "" then
+		evaluate(id, nil)
+		return
+	end
+	if ir.state == "failed" then
+		applyFallback(rec)
+		return
+	end
+	local ok, st = pcall(function()
+		return svc("ContentProvider"):GetAssetFetchStatus(id)
+	end)
+	local s = ok and statusName(st) or "None"
+	if s == "Success" or s == "Failure" or s == "TimedOut" then
+		evaluate(id, st)
+	elseif not ir.asked then
+		ir.asked = true
+		preload(id)
+	end
+end
+MeshGuard.Track = track
+
+function MeshGuard.Start()
+	if started then
+		return
+	end
+	started = true
+	local CS = svc("CollectionService")
+	for _, tag in ipairs(MeshGuard.TAGS) do
+		table.insert(conns, CS:GetInstanceAddedSignal(tag):Connect(function(p)
+			track(p)
+		end))
+		table.insert(conns, CS:GetInstanceRemovedSignal(tag):Connect(function(p)
+			untrack(p)
+		end))
+		for _, p in ipairs(CS:GetTagged(tag)) do
+			track(p)
+		end
+	end
+end
+
+function MeshGuard.Stop()
+	for _, c in ipairs(conns) do
+		c:Disconnect()
+	end
+	table.clear(conns)
+	local list = {}
+	for p in pairs(pieces) do
+		table.insert(list, p)
+	end
+	for _, p in ipairs(list) do
+		local rec = pieces[p]
+		if rec then
+			restore(rec)
+		end
+		untrack(p)
+	end
+	started = false
+end
+
+function MeshGuard.Stats()
+	local out = table.clone(stats)
+	local failing, showing = {}, 0
+	for id, ir in pairs(ids) do
+		if ir.state == "failed" then
+			table.insert(failing, id)
+		end
+	end
+	for _, rec in pairs(pieces) do
+		if rec.fallback then
+			showing += 1
+		end
+	end
+	table.sort(failing)
+	out.failing = failing
+	out.standIns = showing
+	return out
+end
+
+-- (tests) forget everything without touching the parts
+function MeshGuard.Reset()
+	MeshGuard.Stop()
+	table.clear(pieces)
+	table.clear(ids)
+	stats.tracked, stats.fallbacks, stats.restored, stats.retries = 0, 0, 0, 0
+end
+
+return MeshGuard
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="163">
+          <Properties>
             <string name="Name">MuscleScreen</string>
             <string name="Source"><![CDATA[-- MuscleScreen: the Muscle Progression screen (Hub Body tab "3D MUSCLE VIEW", training result "MUSCLES").
 -- A rotating 3D figure (a ViewportFrame holding a frozen copy of the player's character, meshes and
@@ -138782,7 +140296,7 @@ return MuscleScreen
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="163">
+        <Item class="ModuleScript" referent="164">
           <Properties>
             <string name="Name">Perf</string>
             <string name="Source"><![CDATA[-- Perf: the one performance level every client system reads (optimization pass).
@@ -139110,7 +140624,7 @@ return Perf
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="164">
+        <Item class="ModuleScript" referent="165">
           <Properties>
             <string name="Name">PostFightUI</string>
             <string name="Source"><![CDATA[-- PostFightUI: the results screen after every fight (the "result" message: FightClient's handler calls
@@ -139522,7 +141036,7 @@ return PostFightUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="165">
+        <Item class="ModuleScript" referent="166">
           <Properties>
             <string name="Name">PvP</string>
             <string name="Source"><![CDATA[-- PvP (client): challenge other players, answer challenges, Find Match, the PvP record.
@@ -140288,7 +141802,7 @@ return PvP
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="166">
+        <Item class="ModuleScript" referent="167">
           <Properties>
             <string name="Name">Ragdoll</string>
             <string name="Source"><![CDATA[-- Ragdoll (client): the Animator's side of a knockout's physics ragdoll (server Ragdoll: the limbs' Motor6Ds
@@ -140383,7 +141897,7 @@ return Ragdoll
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="167">
+        <Item class="ModuleScript" referent="168">
           <Properties>
             <string name="Name">Scorecards</string>
             <string name="Source"><![CDATA[-- Scorecards: the judges' cards and the punch statistics on the player's screen (the WCB gold-glove UI kit).
@@ -140765,7 +142279,7 @@ return Scorecards
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="168">
+        <Item class="ModuleScript" referent="169">
           <Properties>
             <string name="Name">Services</string>
             <string name="Source"><![CDATA[-- Services: the gym's service windows.
@@ -141591,7 +143105,7 @@ return Services
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="169">
+        <Item class="ModuleScript" referent="170">
           <Properties>
             <string name="Name">Settings</string>
             <string name="Source"><![CDATA[-- Settings: the player's options, applied on this client straight away.
@@ -141882,7 +143396,7 @@ return Settings
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="170">
+        <Item class="ModuleScript" referent="171">
           <Properties>
             <string name="Name">SparExit</string>
             <string name="Source"><![CDATA[-- SparExit: the way out of a sparring session, at any time. A LEAVE SPARRING button on the spar HUD (and an entry
@@ -142029,7 +143543,7 @@ return SparExit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="171">
+        <Item class="ModuleScript" referent="172">
           <Properties>
             <string name="Name">State</string>
             <string name="Source"><![CDATA[-- State: shared client state and helpers (latest profile, server requests, toasts,
@@ -142196,7 +143710,7 @@ return State
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="172">
+        <Item class="ModuleScript" referent="173">
           <Properties>
             <string name="Name">TourneyUI</string>
             <string name="Source"><![CDATA[-- TourneyUI: the Career Hub's Tournaments tab (Hub's R.Tournaments) and the belt badge the FighterCard, the Hub and
@@ -142632,7 +144146,7 @@ return TourneyUI
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="173">
+        <Item class="ModuleScript" referent="174">
           <Properties>
             <string name="Name">Tutorial</string>
             <string name="Source"><![CDATA[-- Tutorial (client): the guided fights around the real fight HUD (FightClient).
@@ -143315,7 +144829,7 @@ return Tutorial
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="174">
+        <Item class="ModuleScript" referent="175">
           <Properties>
             <string name="Name">VenueDetail</string>
             <string name="Source"><![CDATA[-- VenueDetail: the fight venues' extra detail layer, built by VenueFX.Start on the fighting client only (inside
@@ -143892,7 +145406,7 @@ return VenueDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="175">
+        <Item class="ModuleScript" referent="176">
           <Properties>
             <string name="Name">VenueFX</string>
             <string name="Source"><![CDATA[-- VenueFX: client-only fight-night presentation for the player's own venue (stream G).
@@ -146349,7 +147863,7 @@ return VenueFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="176">
+        <Item class="ModuleScript" referent="177">
           <Properties>
             <string name="Name">WorldDetail</string>
             <string name="Source"><![CDATA[-- WorldDetail: the client-side detail layer of the gym and the city (GymDetail, CityDetail on DetailKit's
@@ -146537,7 +148051,7 @@ return WorldDetail
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="177">
+        <Item class="ModuleScript" referent="178">
           <Properties>
             <string name="Name">WorldLOD</string>
             <string name="Source"><![CDATA[-- WorldLOD: the Graphics level (Perf) applied to the world's own lights, signs, particles and shadow
@@ -147145,7 +148659,7 @@ return WorldLOD
           </Properties>
         </Item>
       </Item>
-      <Item class="LocalScript" referent="178">
+      <Item class="LocalScript" referent="179">
         <Properties>
           <string name="Name">ClientMain</string>
           <string name="Source"><![CDATA[-- ClientMain: wires the client together - main menu at join, the gym HUD (player plate, condition
@@ -147277,6 +148791,15 @@ task.spawn(function()
 	end)
 	if not ok then
 		warn("[ClientMain] Entrance unavailable:", err)
+	end
+end)
+-- a boxer's mesh (gear, body) this client cannot fetch shows a rounded stand-in, never the engine's box: optional
+task.spawn(function()
+	local ok, err = pcall(function()
+		require(Modules:WaitForChild("MeshGuard", 10)).Start()
+	end)
+	if not ok then
+		warn("[ClientMain] MeshGuard unavailable:", err)
 	end
 end)
 local gui = State.gui
@@ -148099,7 +149622,7 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="LocalScript" referent="179">
+      <Item class="LocalScript" referent="180">
         <Properties>
           <string name="Name">FightClient</string>
           <string name="Source"><![CDATA[-- FightClient: fight-night presentation and controls (also used for gym sparring).
@@ -153916,9 +155439,8 @@ end)
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="180">
+  <Item class="Workspace" referent="181">
     <Properties>
-			<token name="AvatarJointUpgrade">1</token>
       <string name="Name">Workspace</string>
       <token name="MeshPartHeadsAndAccessories">1</token>
       <bool name="NeedsPivotMigration">false</bool>
