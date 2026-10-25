@@ -148,6 +148,15 @@ local function prepare(data)
 	return data
 end
 
+-- an error that says this place may not use DataStores at all (Studio with "Enable Studio Access to API Services"
+-- off, an unpublished place): retrying is pointless
+function DataManager.ApiDisabled(err)
+	local s = string.lower(tostring(err or ""))
+	return string.find(s, "403", 1, true) ~= nil or string.find(s, "not allowed", 1, true) ~= nil
+		or string.find(s, "studioaccesstoapis", 1, true) ~= nil or string.find(s, "publish", 1, true) ~= nil
+		or string.find(s, "api services", 1, true) ~= nil
+end
+
 -- one read that takes the session lock in the same UpdateAsync: returns ok, stored value, locked.
 -- Another server's fresh lock leaves the value untouched (locked = true) unless `steal` is set; nothing
 -- stored yet is left as nothing (the first save creates the record, lock included).
@@ -174,6 +183,11 @@ local function read(player, tries, steal)
 		end)
 		if ok then
 			return true, raw, held
+		end
+		-- Studio: a failed read is API access being off (403 "Studio access to APIs is not allowed"), and no retry
+		-- will change that - the caller plays session-only at once instead of waiting through the retries
+		if RunService:IsStudio() or DataManager.ApiDisabled(err) then
+			break
 		end
 		if attempt < tries then
 			task.wait(attempt)
@@ -298,14 +312,20 @@ function DataManager.Load(player)
 	if ok then
 		return install(player, result)
 	end
-	warn("[Boxer] Load failed:", result)
 	if RunService:IsStudio() then
-		-- Studio with API access off fails every read: play session-only, nothing is ever written
-		DataManager.StoreAvailable = false
+		-- Studio with API access off fails every read: play session-only at once (no retries), nothing is written for
+		-- this player; with API access off the next players of this session skip the store entirely
+		warn("[Boxer] DataStore unavailable in Studio (" .. tostring(result) .. "): a fresh session-only profile, nothing is saved. "
+			.. "Turn on Game Settings > Security > Enable Studio Access to API Services to test saves.")
+		if DataManager.ApiDisabled(result) then
+			DataManager.StoreAvailable = false
+			store = nil
+		end
 		local data = prepare(nil)
 		DataManager.Profiles[player] = data
 		return data
 	end
+	warn("[Boxer] Load failed:", result)
 	-- never hand out a blank placeholder: a later save of it would wipe the real career
 	loadFailed[player] = true
 	task.spawn(retryLoad, player)

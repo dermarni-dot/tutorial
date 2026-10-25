@@ -129,6 +129,15 @@ task.spawn(function()
 		warn("[ClientMain] Entrance unavailable:", err)
 	end
 end)
+-- a boxer's mesh (gear, body) this client cannot fetch shows a rounded stand-in, never the engine's box: optional
+task.spawn(function()
+	local ok, err = pcall(function()
+		require(Modules:WaitForChild("MeshGuard", 10)).Start()
+	end)
+	if not ok then
+		warn("[ClientMain] MeshGuard unavailable:", err)
+	end
+end)
 local gui = State.gui
 local rec = State.rec
 

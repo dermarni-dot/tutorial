@@ -25,9 +25,13 @@ local BuilderGear = {}
 local Shared = script.Parent
 local BuilderTiers = require(Shared:WaitForChild("BuilderTiers"))
 local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
+local Kit = require(Shared:WaitForChild("BuilderKit"))
 
 local V3 = Vector3.new
-BuilderGear.RETRY = 120
+BuilderGear.RETRY = 120 -- seconds between on-demand retries once the backoff schedule (Kit.ASSET_BACKOFF) is spent
+-- every built gear piece carries this CollectionService tag: the clients watch its mesh arrive (BoxerClient.MeshGuard)
+-- and show a rounded stand-in instead of the engine's box while it cannot be drawn
+BuilderGear.TAG = "WCBGearMesh"
 BuilderGear.BBOX_TOL = 0.02 -- the uploaded mesh's box may differ from the manifest's size by this fraction before a warning
 BuilderGear.Services = {}
 
@@ -144,8 +148,8 @@ local function contentOf(uri)
 end
 
 -- the template MeshPart for a mesh id (unscaled: Size = the mesh bbox), or nil + reason. Yields on the first call
--- for an id (CreateMeshPartAsync); later calls are free
-function BuilderGear.Template(id, size)
+-- for an id (CreateMeshPartAsync); later calls are free. force: retry a failed id now (the background retry)
+function BuilderGear.Template(id, size, force)
 	if not idOf(id) then
 		return nil, "not uploaded"
 	end
@@ -156,16 +160,29 @@ function BuilderGear.Template(id, size)
 	end
 	if c and c.part then
 		return c.part
-	elseif c and c.failed and os.clock() - c.failed < BuilderGear.RETRY then
+	elseif c and c.failed and not force and os.clock() < (c.retryAt or c.failed + BuilderGear.RETRY) then
 		return nil, "failed"
 	end
+	local prev = c
 	cache[id] = { loading = true }
 	stats.loads += 1
-	local ok, mp = pcall(function()
-		return assetService():CreateMeshPartAsync(contentOf("rbxassetid://" .. id), {
-			CollisionFidelity = Enum.CollisionFidelity.Box, RenderFidelity = Enum.RenderFidelity.Automatic,
-		})
+	local ok, mp = Kit.Load(function()
+		return pcall(function()
+			return assetService():CreateMeshPartAsync(contentOf("rbxassetid://" .. id), {
+				CollisionFidelity = Enum.CollisionFidelity.Box, RenderFidelity = Enum.RenderFidelity.Automatic,
+			})
+		end)
 	end)
+	if ok and mp then
+		-- a part without geometry (an empty MeshId, a zero MeshSize) is drawn as its box: never a template
+		local good, why = Kit.MeshLoaded(mp)
+		if not good then
+			pcall(function()
+				mp:Destroy()
+			end)
+			ok, mp = false, why
+		end
+	end
 	if ok and mp then
 		ok = pcall(function()
 			-- the engine's own Size for the loaded mesh = its bounding box: the manifest's `size` must be the same
@@ -198,27 +215,90 @@ function BuilderGear.Template(id, size)
 	end
 	if not (ok and mp) then
 		stats.failed += 1
-		cache[id] = { failed = os.clock() }
-		warn(string.format("[Gear] mesh %d did not load (%s); the part-built gear stays", id, tostring(mp)))
+		-- retried in the background on a backoff (Kit.ASSET_BACKOFF: a fresh upload whose content is still being
+		-- generated loads a few minutes later), then on demand every RETRY seconds
+		local tries = (prev and prev.tries or 0) + 1
+		local delay = Kit.RetryDelay(tries)
+		local now = os.clock()
+		cache[id] = { failed = now, tries = tries, retryAt = now + (delay or BuilderGear.RETRY), err = tostring(mp) }
+		if tries == 1 or not delay then
+			warn(string.format("[Gear] mesh %d did not load (%s); the part-built gear stays%s", id, tostring(mp),
+				delay and string.format(" (retrying in %ds, then on a backoff for a few minutes)", delay) or ""))
+		end
+		if delay then
+			Kit.Schedule(delay, function()
+				local e = cache[id]
+				if e and e.failed and e.tries == tries then
+					BuilderGear.Template(id, size, true)
+				end
+			end)
+		end
 		return nil, "failed"
 	end
 	cache[id] = { part = mp }
+	if prev and prev.failed then
+		print(string.format("[Gear] mesh %d loaded after %d failed attempt(s); the boxers built without it are refitted", id, prev.tries or 1))
+		Kit.AssetReady("gear", id)
+	end
 	return mp
 end
 
--- load every uploaded gear mesh in the background (server start)
-function BuilderGear.Preload()
+-- true while any gear mesh is in its failed state (Builder keeps the boxers built meanwhile for a rebuild)
+function BuilderGear.Failing()
+	for _, e in pairs(cache) do
+		if e.failed then
+			return true
+		end
+	end
+	return false
+end
+
+-- load every uploaded gear mesh in the background (server start). ~520 meshes: fired back to back at boot they held
+-- the asset pipeline for the first minute (in Studio the client's too) while the player's own body and gear, the
+-- menu's boxer and the gym's NPCs waited behind them. Now: nothing for PRELOAD_DEFER seconds (the first player's
+-- build and the gym's NPCs ask for their own pieces on demand), then one load every PRELOAD_GAP seconds, the pieces
+-- worn most first (gloves, wraps, shoes, trunks; the default tier before the others; the full set before the lite
+-- one), each yielding to the player's own loads (Kit.Load). opts = { gap, defer } (tests / tools)
+BuilderGear.PRELOAD_GAP = 0.1
+BuilderGear.PRELOAD_DEFER = 8
+local GROUP_ORDER = { gloves = 1, wraps = 2, shoes = 3, trunks = 4, top = 5, official = 6 }
+function BuilderGear.PreloadList()
+	local d = load()
+	local seen, list = {}, {}
+	for _, lite in ipairs({ false, true }) do
+		for tier, t in pairs(type(d.tiers) == "table" and d.tiers or {}) do
+			for name in pairs(type(t) == "table" and t or {}) do
+				local e = BuilderGear.Entry(tier, name, d, lite)
+				if e and not seen[e.id] then
+					seen[e.id] = true
+					local tn = tonumber(tier) or 9
+					table.insert(list, { id = e.id, size = e.size, name = name, lite = lite,
+						rank = (lite and 1000 or 0) + (GROUP_ORDER[e.group or ""] or 9) * 10 + (tn == 1 and 0 or tn) })
+				end
+			end
+		end
+	end
+	table.sort(list, function(a, b)
+		if a.rank ~= b.rank then
+			return a.rank < b.rank
+		end
+		return a.id < b.id
+	end)
+	return list
+end
+function BuilderGear.Preload(opts)
+	opts = type(opts) == "table" and opts or {}
+	local gap = tonumber(opts.gap) or BuilderGear.PRELOAD_GAP
+	local defer = tonumber(opts.defer) or BuilderGear.PRELOAD_DEFER
 	task.spawn(function()
-		local d = load()
-		local seen = {}
-		for _, lite in ipairs({ false, true }) do
-			for tier, t in pairs(type(d.tiers) == "table" and d.tiers or {}) do
-				for name in pairs(type(t) == "table" and t or {}) do
-					local e = BuilderGear.Entry(tier, name, d, lite)
-					if e and not seen[e.id] then
-						seen[e.id] = true
-						BuilderGear.Template(e.id, e.size)
-					end
+		if defer > 0 then
+			task.wait(defer)
+		end
+		for _, q in ipairs(BuilderGear.PreloadList()) do
+			if not cache[q.id] then
+				BuilderGear.Template(q.id, q.size)
+				if gap > 0 then
+					task.wait(gap)
 				end
 			end
 		end
@@ -343,6 +423,9 @@ function BuilderGear.Build(folder, pieces, paint, rename)
 		p.Reflectance = refl or 0
 		p:SetAttribute("GearPiece", r.name)
 		p:SetAttribute("GearSlot", e.slot)
+		pcall(function()
+			p:AddTag(BuilderGear.TAG)
+		end)
 		local w = Instance.new("Weld")
 		w.Name = "GearWeld"
 		w.Part0 = body
@@ -419,7 +502,7 @@ function BuilderGear.Available(model, group, style)
 			return false
 		end
 		local c = cache[e.id]
-		if c and c.failed and os.clock() - c.failed < BuilderGear.RETRY then
+		if c and c.failed and os.clock() < (c.retryAt or c.failed + BuilderGear.RETRY) then
 			return false
 		end
 	end

@@ -353,7 +353,8 @@ local function figure(parent, name, cf, rng, o)
 		parts += 1
 	end
 	-- the roll is always drawn so the venue's random stream does not depend on the part budget
-	local wantsHair = o.hair ~= false and rng:NextNumber() < 0.8
+	-- (Config.BaldMode: nobody has hair, the venue's officials and crew included; the roll above still happens)
+	local wantsHair = o.hair ~= false and rng:NextNumber() < 0.8 and not Config.BaldMode
 	if wantsHair and parts < 6 then
 		blob(m, "Hair", V3(1.08, 0.62, 1.12), head.CFrame * CF(0, 0.33, 0.06), o.hairColor or hairColor(rng), M.Fabric, { CastShadow = false })
 	end

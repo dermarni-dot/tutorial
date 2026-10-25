@@ -28,10 +28,12 @@ local BuilderTiers = {}
 local Shared = script.Parent
 local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
 local BodySurfaces = require(Shared:WaitForChild("BodySurfaces"))
+local Kit = require(Shared:WaitForChild("BuilderKit"))
 
 local V3 = Vector3.new
-BuilderTiers.RETRY = 120 -- seconds before a failed mesh id is tried again
+BuilderTiers.RETRY = 120 -- seconds between on-demand retries of a failed mesh id once the backoff (Kit.ASSET_BACKOFF) is spent
 BuilderTiers.Services = {} -- overrides (tests): AssetService, Content
+BuilderTiers.TAG = "WCBBodyMesh"
 
 local cache = {} -- "tier:part" -> { part = template } | { loading = true } | { failed = os.clock() }
 local stats = { loads = 0, failed = 0, swaps = 0 }
@@ -107,6 +109,11 @@ local function prepare(mp, e)
 	mp:SetAttribute("BodyMesh", e.id)
 	mp:SetAttribute("BodyLite", e.lite == true or nil)
 	mp:SetAttribute("BodyFrame", e.frame)
+	-- the clients watch the mesh arrive (BoxerClient.MeshGuard: a rounded stand-in instead of the engine's box while it
+	-- cannot be drawn); a clone keeps the tag
+	pcall(function()
+		mp:AddTag(BuilderTiers.TAG)
+	end)
 	-- (v17) the body's own box over the mesh box (the UpperTorso's shoulder caps widen the latter): BodyCoreSize
 	local c = e.core or e.size
 	if c[1] ~= e.size[1] or c[2] ~= e.size[2] or c[3] ~= e.size[3] then
@@ -117,8 +124,8 @@ end
 
 -- the template for (tier, part name) of a frame's family (frame nil = the default family), or nil + reason (not
 -- uploaded / failed: the caller keeps its part). Yields on the first call for a key (CreateMeshPartAsync); later calls
--- are free
-function BuilderTiers.Template(tier, name, lite, frame)
+-- are free. force: retry a failed key now (the background retry)
+function BuilderTiers.Template(tier, name, lite, frame, force)
 	local e = BodyTiers.PartEntry(tier, name, nil, lite, frame)
 	if not e then
 		return nil, "not uploaded"
@@ -131,28 +138,69 @@ function BuilderTiers.Template(tier, name, lite, frame)
 	end
 	if c and c.part then
 		return c.part
-	elseif c and c.failed and os.clock() - c.failed < BuilderTiers.RETRY then
+	elseif c and c.failed and not force and os.clock() < (c.retryAt or c.failed + BuilderTiers.RETRY) then
 		return nil, "failed"
 	end
+	local prev = c
 	cache[key] = { loading = true }
 	stats.loads += 1
-	local ok, mp = pcall(function()
-		return assetService():CreateMeshPartAsync(contentOf("rbxassetid://" .. e.id), {
-			CollisionFidelity = Enum.CollisionFidelity.Box, RenderFidelity = Enum.RenderFidelity.Automatic,
-		})
+	local ok, mp = Kit.Load(function()
+		return pcall(function()
+			return assetService():CreateMeshPartAsync(contentOf("rbxassetid://" .. e.id), {
+				CollisionFidelity = Enum.CollisionFidelity.Box, RenderFidelity = Enum.RenderFidelity.Automatic,
+			})
+		end)
 	end)
+	if ok and mp then
+		-- a part without geometry is drawn as a box: never swapped onto a boxer (the default part stays)
+		local good, why = Kit.MeshLoaded(mp)
+		if not good then
+			pcall(function()
+				mp:Destroy()
+			end)
+			ok, mp = false, why
+		end
+	end
 	if ok and mp then
 		ok = pcall(prepare, mp, e)
 	end
 	if not (ok and mp) then
 		stats.failed += 1
-		cache[key] = { failed = os.clock() }
-		warn(string.format("[BodyTiers] mesh %d (tier %d %s) did not load (%s); the default part stays", e.id, tier, name,
-			tostring(mp)))
+		local tries = (prev and prev.tries or 0) + 1
+		local delay = Kit.RetryDelay(tries)
+		local now = os.clock()
+		cache[key] = { failed = now, tries = tries, retryAt = now + (delay or BuilderTiers.RETRY), err = tostring(mp) }
+		if tries == 1 or not delay then
+			warn(string.format("[BodyTiers] mesh %d (tier %d %s) did not load (%s); the default part stays%s", e.id, tier, name,
+				tostring(mp), delay and string.format(" (retrying in %ds, then on a backoff for a few minutes)", delay) or ""))
+		end
+		if delay then
+			Kit.Schedule(delay, function()
+				local f = cache[key]
+				if f and f.failed and f.tries == tries then
+					BuilderTiers.Template(tier, name, lite, frame, true)
+				end
+			end)
+		end
 		return nil, "failed"
 	end
 	cache[key] = { part = mp }
+	if prev and prev.failed then
+		print(string.format("[BodyTiers] mesh %d (tier %d %s) loaded after %d failed attempt(s); the boxers built without it are refitted",
+			e.id, tier, name, prev.tries or 1))
+		Kit.AssetReady("tier", e.id)
+	end
 	return mp
+end
+
+-- true while any body mesh is in its failed state (Builder keeps the boxers built meanwhile for a rebuild)
+function BuilderTiers.Failing()
+	for _, f in pairs(cache) do
+		if f.failed then
+			return true
+		end
+	end
+	return false
 end
 
 -- Preload: the templates a server is about to need, loaded in the background so the first boxers do not wait on

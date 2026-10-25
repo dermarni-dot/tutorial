@@ -486,7 +486,8 @@ end
 -- the beard style beardBuild draws for this app (nil = none), whether it is a mere shadow, its growth and
 -- whether the style comes from growth alone (no style chosen); shared with the face (lips through a beard)
 local function beardStyle(app)
-	if app.gender == 2 then
+	-- Config.BaldMode: no hair on anyone, facial hair included (clean-shaven; the face keeps its own lips)
+	if app.gender == 2 or Config.BaldMode then
 		return nil
 	end
 	local beard = type(app.beard) == "table" and app.beard or {}

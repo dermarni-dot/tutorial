@@ -1088,6 +1088,32 @@ local function hairAccessories(model)
 end
 Hair.HairAccessories = hairAccessories
 
+-- Config.BaldMode: nothing hair-like stays on the model whatever put it there - the avatar hair accessories an
+-- ApplyDescription attached (a player who joined with them, a description from before the switch) and any built
+-- Hair / Beard folder left from an earlier build (the hair and beard steps build nothing in BaldMode). Builder runs
+-- it on every Cosmetics, uncached (an accessory can arrive with any ApplyDescription). Returns how many went
+function Hair.StripBald(model)
+	if not Config.BaldMode then
+		return 0
+	end
+	local n = 0
+	for _, acc in ipairs(hairAccessories(model)) do
+		acc:Destroy()
+		n += 1
+	end
+	local look = model:FindFirstChild("BoxerLook")
+	for _, fname in ipairs({ "Hair", "Beard" }) do
+		local f = look and look:FindFirstChild(fname)
+		if f then
+			for _, d in ipairs(f:GetChildren()) do
+				d:Destroy()
+				n += 1
+			end
+		end
+	end
+	return n
+end
+
 -- hides / restores one part (HGHidden, HGBaseT: the transparency to restore)
 local function hidePart(d, hide)
 	if hide then

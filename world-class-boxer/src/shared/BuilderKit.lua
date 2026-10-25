@@ -322,4 +322,238 @@ Kit.intact = intact
 Kit.cached = cached
 Kit.seal = seal
 
+------------------------------------------------------------------------
+-- Mesh templates (BuilderTiers' body parts, BuilderGear's gear): what a load must show before it is used, the
+-- retry schedule of a failed load, the "a mesh that failed is ready now" notice, and the player's own loads first
+------------------------------------------------------------------------
+-- A MeshPart whose mesh never arrived is drawn by the engine as its plain box (a CreateMeshPartAsync that returned a
+-- part without geometry, an id whose "content representation is being generated" for minutes after the upload): it
+-- must never be cloned onto a boxer. A real load names its content (MeshId, or a MeshContent with a source) and has a
+-- finite MeshSize above zero. A property the part does not have (a simulator stub) is no evidence either way.
+-- Returns ok, why
+function Kit.MeshLoaded(mp)
+	if mp == nil then
+		return false, "no part"
+	end
+	local okId, id = pcall(function()
+		return mp.MeshId
+	end)
+	local named = nil
+	if okId and type(id) == "string" then
+		named = id ~= ""
+	end
+	if named == false then
+		local okC, c = pcall(function()
+			return mp.MeshContent
+		end)
+		if okC and c ~= nil then
+			local okU, uri = pcall(function()
+				return c.Uri
+			end)
+			local okO, obj = pcall(function()
+				return c.Object
+			end)
+			named = (okU and type(uri) == "string" and uri ~= "") or (okO and obj ~= nil)
+		end
+	end
+	if named == false then
+		return false, "no mesh content (MeshId is empty)"
+	end
+	local okS, ms = pcall(function()
+		return mp.MeshSize
+	end)
+	if okS and typeof(ms) == "Vector3" then
+		for _, v in ipairs({ ms.X, ms.Y, ms.Z }) do
+			if v ~= v or v == math.huge or v <= 1e-4 then
+				return false, "no geometry (MeshSize " .. tostring(ms) .. ")"
+			end
+		end
+	end
+	return true
+end
+
+-- seconds before the n-th retry of a failed load (n = 1 after the first failure); nil past the schedule (the caller's
+-- own RETRY then applies, on demand). The schedule spans ~4.5 minutes: a freshly uploaded mesh answers "Asset content
+-- representation is being generated" for a while and then loads
+Kit.ASSET_BACKOFF = { 5, 10, 20, 40, 60, 60, 60 }
+function Kit.RetryDelay(n)
+	return Kit.ASSET_BACKOFF[n]
+end
+-- an error worth retrying soon (the asset exists but is not ready / the request did not go through)
+function Kit.Transient(err)
+	local s = string.lower(tostring(err or ""))
+	for _, k in ipairs({ "being generated", "representation", "timeout", "timed out", "throttl", "http", "503", "502", "429", "try again" }) do
+		if string.find(s, k, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+-- the background retry: fn() after `delay` seconds on a running server only (a simulator or an edit-mode require has
+-- no one to retry for, and a pending timer would keep it alive). Kit.Services.schedule(delay, fn) replaces it (tests)
+Kit.Services = Kit.Services or {}
+local function running()
+	local ok, r = pcall(function()
+		return game:GetService("RunService"):IsRunning()
+	end)
+	return ok and r == true
+end
+function Kit.Schedule(delay, fn)
+	local s = Kit.Services.schedule
+	if s then
+		return s(delay, fn)
+	end
+	if not running() then
+		return false
+	end
+	task.delay(delay, fn)
+	return true
+end
+
+-- "a template that had failed has loaded": Builder rebuilds the boxers that were built without it (their cached
+-- layers keep everything else; the layer that fell back now resolves to the mesh and rebuilds)
+local readyListeners = {}
+function Kit.OnAssetReady(fn)
+	table.insert(readyListeners, fn)
+	return fn
+end
+function Kit.AssetReady(kind, id)
+	for _, fn in ipairs(readyListeners) do
+		task.spawn(function()
+			local ok, err = pcall(fn, kind, id)
+			if not ok then
+				warn("[Boxer] asset-ready listener failed:", err)
+			end
+		end)
+	end
+end
+
+-- The player's own loads first: a build that runs Kit.Priority(fn) (Builder.Apply on a player's character) marks its
+-- thread; while such a load is in flight, every other template load (the background preloaders, the gym's NPC
+-- builds) waits for it, at most PRIORITY_WAIT seconds, so the boxer the menu shows is never queued behind a few
+-- hundred background meshes (in Studio the server and the client share one asset pipeline)
+Kit.PRIORITY_WAIT = 3
+local priorityThreads = setmetatable({}, { __mode = "k" })
+local priorityLoads = 0
+function Kit.Priority(fn, ...)
+	local co = coroutine.running()
+	local was = priorityThreads[co]
+	priorityThreads[co] = true
+	local res = table.pack(pcall(fn, ...))
+	priorityThreads[co] = was
+	if not res[1] then
+		error(res[2], 0)
+	end
+	return table.unpack(res, 2, res.n)
+end
+function Kit.IsPriority()
+	return priorityThreads[coroutine.running()] == true
+end
+-- wrap one template load: a priority thread's load is counted; any other thread first waits out the priority loads
+function Kit.Load(fn)
+	if Kit.IsPriority() then
+		priorityLoads += 1
+		local res = table.pack(pcall(fn))
+		priorityLoads -= 1
+		if not res[1] then
+			error(res[2], 0)
+		end
+		return table.unpack(res, 2, res.n)
+	end
+	local t0 = os.clock()
+	while priorityLoads > 0 and os.clock() - t0 < Kit.PRIORITY_WAIT do
+		task.wait()
+	end
+	return fn()
+end
+function Kit.PriorityLoads()
+	return priorityLoads
+end
+
+------------------------------------------------------------------------
+-- Fit audit: every built piece on a model is welded to a live part of it and sits on that part
+------------------------------------------------------------------------
+-- For every BasePart under BoxerLook (and every accessory handle): its joint (Weld / WeldConstraint / Motor6D) must
+-- hold a part of the model that is still in it; a Weld / Motor6D must put the piece where it is (Part0.CFrame * C0 =
+-- Part1.CFrame * C1: a C0 computed for another size or another part shows here); and the piece must touch its anchor:
+-- the distance from the piece's centre to the anchor's box (in the anchor's space) at most the piece's half extent +
+-- slack. A piece welded to another built piece is followed to the body part at the end of the chain.
+-- Returns { problems = { "Folder/Piece: why" ... }, pieces = n }
+local function jointOf(p)
+	for _, c in ipairs(p:GetChildren()) do
+		if c:IsA("Weld") or c:IsA("WeldConstraint") or c:IsA("Motor6D") then
+			return c
+		end
+	end
+	return nil
+end
+local function boxDistance(rel, half)
+	local dx = math.max(math.abs(rel.X) - half.X, 0)
+	local dy = math.max(math.abs(rel.Y) - half.Y, 0)
+	local dz = math.max(math.abs(rel.Z) - half.Z, 0)
+	return math.sqrt(dx * dx + dy * dy + dz * dz)
+end
+function Kit.FitAudit(model, opts)
+	opts = opts or {}
+	local slack = opts.slack or 0.05
+	local out = { problems = {}, pieces = 0 }
+	local look = model:FindFirstChild("BoxerLook")
+	local list = {}
+	if look then
+		for _, d in ipairs(look:GetDescendants()) do
+			if d:IsA("BasePart") then
+				table.insert(list, d)
+			end
+		end
+	end
+	for _, acc in ipairs(model:GetChildren()) do
+		local h = acc:IsA("Accessory") and acc:FindFirstChild("Handle")
+		if h and h:IsA("BasePart") then
+			table.insert(list, h)
+		end
+	end
+	local function note(p, why)
+		local f = p.Parent and p.Parent.Name or "?"
+		table.insert(out.problems, f .. "/" .. p.Name .. ": " .. why)
+	end
+	for _, p in ipairs(list) do
+		out.pieces += 1
+		local j = jointOf(p)
+		local other = j and ((j.Part0 == p and j.Part1) or j.Part0)
+		if not j then
+			note(p, "not welded")
+		elseif not (other and other:IsA("BasePart") and other:IsDescendantOf(model)) then
+			note(p, "welded to " .. (other and other:GetFullName() or "nothing") .. " (not a part of this model)")
+		else
+			if j:IsA("Weld") or j:IsA("Motor6D") then
+				local p0, p1 = j.Part0, j.Part1
+				if p0 and p1 then
+					local want = p0.CFrame * j.C0
+					local have = p1.CFrame * j.C1
+					local d = (want.Position - have.Position).Magnitude
+					if d > 1e-3 + 0.01 * math.max(p.Size.X, p.Size.Y, p.Size.Z) then
+						note(p, string.format("the weld puts it %.3f studs from where it is (C0 for another size or part)", d))
+					end
+				end
+			end
+			-- the body part at the end of the chain (a piece welded to a built piece: that piece's anchor)
+			local anchor, hops = other, 0
+			while anchor and hops < 4 and look and anchor:IsDescendantOf(look) do
+				local j2 = jointOf(anchor)
+				local o2 = j2 and ((j2.Part0 == anchor and j2.Part1) or j2.Part0)
+				anchor, hops = o2, hops + 1
+			end
+			local target = (anchor and anchor:IsA("BasePart") and not (look and anchor:IsDescendantOf(look))) and anchor or other
+			local rel = target.CFrame:PointToObjectSpace(p.Position)
+			local reach = 0.5 * math.max(p.Size.X, p.Size.Y, p.Size.Z) + slack
+			local gap = boxDistance(rel, target.Size * 0.5)
+			if gap > reach then
+				note(p, string.format("%.2f studs off %s (its own half extent %.2f)", gap - reach + slack, target.Name, reach - slack))
+			end
+		end
+	end
+	return out
+end
+
 return Kit
