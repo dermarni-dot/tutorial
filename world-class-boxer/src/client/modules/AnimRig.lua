@@ -10,7 +10,7 @@
 -- Everything works on the rig table the Animator keeps per character; nothing here allocates
 -- tables per frame.
 local K = require(script.Parent:WaitForChild("AnimKit"))
--- [Studio] the joints may be Motor6Ds or (Workspace.AvatarJointUpgrade) AnimationConstraints: every joint lookup, rest
+-- [Studio] the joints may be Motor6Ds or (StarterPlayer.AvatarJointUpgrade) AnimationConstraints: every joint lookup, rest
 -- pose (C0 / C1 vs Attachment0 / Attachment1) and part read goes through Shared.RigJoints (see there)
 local RigJoints = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("RigJoints"))
 

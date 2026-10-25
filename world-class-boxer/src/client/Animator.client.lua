@@ -18,12 +18,22 @@
 -- AutoAct / AutoActId so the gym's bags react (CONTRACTS section 7).
 -- Faces (blinks, gaze, expressions), muscles (contraction, pump, jiggle, veins) and hair (spring
 -- physics) live in BoxerClient.FaceFX / HairFX; this script drives them every frame.
+-- [Studio] It checks that its writes take effect (selfCheck: the limbs' real pose against the pose written) and falls back
+-- to Roblox's own animation for a rig whose joints ignore them; Output says so ("[Animator] running: ...",
+-- "[Animator] joint writes are not taking effect on ...").
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 
 local player = Players.LocalPlayer
-local Modules = script.Parent:WaitForChild("BoxerClient")
+-- [Studio] the modules folder: a place the code was pasted into may not have it under this name - said in Output, never a
+-- silent hang (the Animator would drive nothing and the bodies would walk in the bind pose)
+local Modules = script.Parent:WaitForChild("BoxerClient", 10)
+if not Modules then
+	warn("[Animator] NOT running yet: " .. script.Parent:GetFullName() .. ".BoxerClient (the client modules folder, src/client/modules) is missing; "
+		.. "waiting for it. Sync with Rojo (default.project.json) or name the folder BoxerClient")
+	Modules = script.Parent:WaitForChild("BoxerClient")
+end
 local K = require(Modules:WaitForChild("AnimKit"))
 local R = require(Modules:WaitForChild("AnimRig"))
 local Loco = require(Modules:WaitForChild("AnimLoco"))
@@ -125,6 +135,8 @@ local function isPlayerChar(model)
 end
 
 local onAct -- forward declaration (acts section)
+local heartbeat, stopFallback, localMotors -- forward declarations (self-check section)
+local RigJoints = R.RigJoints
 
 local function readTags(rig)
 	local m = rig.model
@@ -226,6 +238,12 @@ end
 -- client scripts (State.SetAnimate, FightClient) leave it that way. Both come back while the rig is released
 -- (climbing, swimming, dead: the default animation shows) and when the rig is torn down.
 ------------------------------------------------------------------------
+-- is this rig's body ours this frame? (released: climbing / swimming / dead; fallback: our writes do not take effect
+-- on it and Roblox's own animation plays instead - selfCheck)
+local function drives(rig)
+	return not rig.released and not rig.fallback
+end
+
 local function stopTracks(rig)
 	local an = rig.animator
 	if an and an.Parent then
@@ -239,7 +257,7 @@ local function stopTracks(rig)
 end
 
 local function applyAnimate(rig)
-	local drive = not rig.released
+	local drive = drives(rig)
 	local s = rig.animateScript
 	if rig.isPlayer and s and s.Parent and s.Disabled ~= drive then
 		s.Disabled = drive
@@ -287,7 +305,7 @@ local function hookAnimate(rig)
 		end
 		rig.animator = an
 		rig.animConn = an and an.AnimationPlayed:Connect(function(track)
-			if not rig.released then
+			if drives(rig) then
 				pcall(track.Stop, track, 0)
 			end
 		end) or nil
@@ -307,7 +325,7 @@ local function hookAnimate(rig)
 		rig.animateScript = s
 		-- (re-enabled by someone else while we drive: off again, on the next step)
 		rig.animateConn = s and s:GetPropertyChangedSignal("Disabled"):Connect(function()
-			if not rig.released and s.Disabled == false and rigs[rig.model] == rig then
+			if drives(rig) and s.Disabled == false and rigs[rig.model] == rig then
 				task.defer(applyAnimate, rig)
 			end
 		end) or nil
@@ -319,7 +337,7 @@ end
 -- POLL_TRACKS s, stopped, and reported once per rig so a /wcbdiag sample with ANIMATE ticks has a matching Output line
 local POLL_TRACKS = 0.5
 local function pollTracks(rig, t)
-	if rig.released or t < (rig.nextTrackPoll or 0) then
+	if not drives(rig) or t < (rig.nextTrackPoll or 0) then
 		return
 	end
 	rig.nextTrackPoll = t + POLL_TRACKS
@@ -417,6 +435,15 @@ local function setup(model)
 		if R.IsJoint(d) or (d:IsA("BasePart") and d.Parent == model) then
 			rig.resolveNow = true
 			rig.geoNow = true
+			-- (new joints: whether our writes take effect is asked again; an upgrade constraint is noted so this client
+			-- rebuilds it as a Motor6D should the server not have done it - updateRig)
+			rig.writesOk = nil
+			if rig.check then
+				rig.check.bad, rig.check.good = 0, 0
+			end
+			if d:IsA("AnimationConstraint") and not rig.acSeen then
+				rig.acSeen = rig.clock
+			end
 		end
 	end)
 	rig.childConn = model.ChildAdded:Connect(function(c)
@@ -440,6 +467,12 @@ local function setup(model)
 		watchAnatomy(rig, af)
 	end
 	R.resolveJoints(rig)
+	do
+		local _, na = RigJoints.Count(model)
+		if na > 0 then
+			rig.acSeen = 0
+		end
+	end
 	-- [Studio] a measurement that throws (a joint class with other members, a part mid-replacement) must never leave the
 	-- rig unregistered - that is how every upgraded rig in Studio went undriven: the rig registers regardless, is measured
 	-- again on its first frames (geo.ok false -> retried every 0.4 s) and the failure is reported once
@@ -454,6 +487,9 @@ local function setup(model)
 	nextSlot += 1
 	rig.slot = nextSlot
 	rigs[model] = rig
+	if rig.isLocal then
+		heartbeat(model)
+	end
 end
 
 local function teardown(model)
@@ -473,6 +509,7 @@ local function teardown(model)
 	-- Roblox's animation back on the character
 	rig.released = true
 	applyAnimate(rig)
+	stopFallback(rig)
 	if rig.rope then
 		rig.rope.beam:Destroy()
 		rig.rope.a0:Destroy()
@@ -960,6 +997,12 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 		rig.head = model:FindFirstChild("Head")
 		-- (a late Animator / Animate script, a replaced Humanoid - on every rig, NPCs too)
 		hookAnimate(rig)
+		-- [Studio] Avatar Joint Upgrade constraints still on the rig 1.5 s after they appeared: the server did not rebuild
+		-- them as Motor6Ds (a client-local rig, an older server): this client does (RigJoints.EnsureMotors)
+		if rig.acSeen and t - rig.acSeen >= (R.CONVERT_AFTER or 1.5) then
+			rig.acSeen = nil
+			localMotors(rig, nil)
+		end
 	end
 	pollTracks(rig, t)
 	if (t >= rig.nextGeo and lod >= 2) or rig.geoNow then
@@ -1360,6 +1403,286 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 end
 
 ------------------------------------------------------------------------
+-- [Studio] Do our joint writes take effect? The user's Studio video showed the character walking in the bind pose -
+-- arms dead straight, knees never bending - with no error and Roblox's own walk off: the writes went to joints that did
+-- not move the limbs (the Avatar Joint Upgrade's AnimationConstraints, in a place of their own where the upgrade is on).
+-- So every rig, once it has been moving for CHECK_AFTER s, compares the pose its limbs really show (measured from the
+-- parts: RigJoints.Measure) with the pose written to them on the frame before. Writes that do not show for CHECK_BAD s:
+--   1. an AnimationConstraint rig is rebuilt on Motor6Ds on this client (RigJoints.EnsureMotors) and checked again;
+--   2. still nothing (or a Motor6D rig): the rig goes to Roblox's own animation - a player's default Animate script
+--      back on, an NPC Roblox's stock R15 idle / walk / run played on its Humanoid's Animator - so nobody ever walks
+--      frozen. Each step is one Output warning naming the rig, its joint class and the numbers.
+-- A rig whose writes show for CHECK_OK s is trusted (asked again whenever its joints change).
+------------------------------------------------------------------------
+local CHECK_KEYS = { "LK", "RK", "LE", "RE", "LH", "RH", "LS", "RS", "W", "Neck" }
+local NAME_OF, KEY_OF = {}, {}
+for k, def in pairs(R.JOINTS) do
+	NAME_OF[k] = def[2]
+	KEY_OF[def[2]] = k
+end
+local CHECK_AFTER = 2 -- s of moving before a rig is checked
+local CHECK_BAD = 1 -- s of writes not showing before a rig is switched
+local CHECK_OK = 1.5 -- s of writes showing: trusted
+local CHECK_MIN = 8 -- deg: a joint written at least this far off its rest pose tells (a rest pose reads the same either way)
+local CHECK_TOL = 6 -- deg: the mean gap between written and shown past which the writes do not take effect
+-- Roblox's stock R15 animations (the default Animate script's idle / walk / run): an NPC's fallback
+local FALLBACK_ANIMS = { idle = "rbxassetid://507766666", walk = "rbxassetid://507777826", run = "rbxassetid://507767714" }
+R.selfCheck = { CHECK_AFTER = CHECK_AFTER, CHECK_BAD = CHECK_BAD, CHECK_OK = CHECK_OK } -- (tests)
+
+-- written vs shown over the joints that tell: mean gap, worst gap, its joint, how many compared (nil: none tells)
+local function writeGap(rig)
+	local out = rig.outT
+	if not out then
+		return nil
+	end
+	local n, sum, worst, worstK = 0, 0, 0, nil
+	for _, k in ipairs(CHECK_KEYS) do
+		local j = rig.joints[k]
+		local w = out[k]
+		if j and w and j.motor.Parent and RigJoints.Angle(w) >= CHECK_MIN then
+			local a = RigJoints.Measure(j.motor)
+			if a then
+				local gap = RigJoints.Angle(w:Inverse() * a)
+				n += 1
+				sum += gap
+				if gap > worst then
+					worst, worstK = gap, k
+				end
+			end
+		end
+	end
+	if n == 0 then
+		return nil
+	end
+	return sum / n, worst, worstK, n
+end
+R.writeGap = writeGap
+
+-- this client rebuilds the rig's upgrade constraints as Motor6Ds (why: the Output line's reason); the converted count
+localMotors = function(rig, why)
+	local kind, _, na = RigJoints.Kind(rig.model)
+	if na == 0 then
+		return 0
+	end
+	local ok, conv = pcall(RigJoints.EnsureMotors, rig.model, { localOnly = true })
+	conv = ok and conv or 0
+	if conv > 0 then
+		rig.localMotors = true
+		rig.resolveNow = true
+		rig.geoNow = true
+		local nm, left = RigJoints.Count(rig.model)
+		if why then
+			warn(string.format("[Animator] joint writes are not taking effect on %s (%s rig): %s. Rebuilt its joints as Motor6Ds on this client (%d Motor6D / %d AnimationConstraint) and checking again",
+				rig.model.Name, kind, why, nm, left))
+		else
+			print(string.format("[Animator] %s still had %d Avatar Joint Upgrade joints (AnimationConstraint) the server had not rebuilt: rebuilt as Motor6Ds on this client",
+				rig.model.Name, conv))
+		end
+	elseif not ok then
+		warn("[Animator] could not rebuild " .. rig.model.Name .. "'s joints as Motor6Ds: " .. tostring(conv))
+	end
+	return conv
+end
+
+stopFallback = function(rig)
+	local fb = rig.fb
+	rig.fb = nil
+	if fb then
+		for _, tr in pairs(fb.tracks) do
+			pcall(tr.Stop, tr, 0.2)
+		end
+	end
+end
+
+-- Roblox's own animation for a rig our writes cannot move
+local function enterFallback(rig, kind, why)
+	rig.fallback = true
+	rig.check = nil
+	-- (our last pose off the joints: whatever does move them starts from the rest pose)
+	for _, j in pairs(rig.joints) do
+		if j.motor.Parent then
+			pcall(function()
+				j.motor.Transform = I
+			end)
+		end
+	end
+	local s = rig.animateScript
+	local how
+	if rig.isLocal and s and s.Parent then
+		rig.fbMode = "Animate"
+		how = "Switched it to Roblox's default animation (the Animate script is enabled again for it)"
+	else
+		rig.fbMode = "keyframe"
+		how = "Switched it to Roblox's stock R15 idle / walk / run animations on its Humanoid's Animator"
+	end
+	applyAnimate(rig)
+	local hint = (kind == "AnimationConstraint" or kind == "mixed" or rig.localMotors)
+			and " In your own place set StarterPlayer > Properties > AvatarJointUpgrade = Disabled (README: Using your own place)."
+		or " Something else holds its limbs (a weld from a limb to another part, a script writing the joints)."
+	warn(string.format("[Animator] joint writes are not taking effect on %s (%s rig): %s. %s.%s", rig.model.Name, kind, why, how, hint))
+end
+
+-- every frame of a fallback rig in keyframe mode: the stock tracks, weighted by the root's speed
+local function fallbackStep(rig)
+	if rig.fbMode ~= "keyframe" then
+		return
+	end
+	local hum = rig.hum
+	if not (hum and hum.Parent) then
+		return
+	end
+	local an = hum:FindFirstChildOfClass("Animator")
+	if not an then
+		-- (a client-local rig without one; a server NPC has its own)
+		an = Instance.new("Animator")
+		an.Parent = hum
+	end
+	local fb = rig.fb
+	if not fb or fb.animator ~= an then
+		stopFallback(rig)
+		fb = { animator = an, tracks = {} }
+		rig.fb = fb
+		for name, id in pairs(FALLBACK_ANIMS) do
+			local ok, tr = pcall(function()
+				local anim = Instance.new("Animation")
+				anim.AnimationId = id
+				local track = an:LoadAnimation(anim)
+				track.Looped = true
+				track.Priority = name == "idle" and Enum.AnimationPriority.Idle or Enum.AnimationPriority.Movement
+				track:Play(0.2, name == "idle" and 1 or 0.001, 1)
+				return track
+			end)
+			if ok and tr then
+				fb.tracks[name] = tr
+			end
+		end
+	end
+	local v = rig.root.AssemblyLinearVelocity
+	local speed = Vector3.new(v.X, 0, v.Z).Magnitude
+	local move = clamp(speed / 1.5, 0, 1)
+	local run = clamp((speed - 11) / 4, 0, 1)
+	local tr = fb.tracks
+	pcall(function()
+		if tr.idle then
+			tr.idle:AdjustWeight(max(1 - move, 0.001), 0.2)
+		end
+		if tr.walk then
+			tr.walk:AdjustWeight(max(move * (1 - run), 0.001), 0.2)
+			tr.walk:AdjustSpeed(clamp(speed / 8, 0.5, 2))
+		end
+		if tr.run then
+			tr.run:AdjustWeight(max(move * run, 0.001), 0.2)
+			tr.run:AdjustSpeed(clamp(speed / 16, 0.6, 1.6))
+		end
+	end)
+end
+
+-- once per updated frame of a driven rig, before this frame's writes (the parts show the last frame's)
+local function selfCheck(rig, dt)
+	if rig.writesOk or not drives(rig) or rig.ragdoll or rig.down then
+		return
+	end
+	local c = rig.check
+	if not c then
+		c = { moving = 0, bad = 0, good = 0 }
+		rig.check = c
+	end
+	local lo = rig.loco
+	if not (lo and (lo.speed or 0) > 1) then
+		return
+	end
+	c.moving += dt
+	if c.moving < CHECK_AFTER then
+		return
+	end
+	local mean, worst, wk, n = writeGap(rig)
+	if not mean or n < 2 then
+		return
+	end
+	if mean > CHECK_TOL then
+		c.bad += dt
+		c.good = 0
+		c.last = string.format("written vs actual pose off by %.0f deg on average over %d joints (%s %.0f deg) for %.1f s", mean, n,
+			NAME_OF[wk] or tostring(wk), worst, c.bad)
+	else
+		c.good += dt
+		c.bad = 0
+	end
+	if c.good >= CHECK_OK then
+		rig.writesOk = true
+		rig.check = nil
+		return
+	end
+	if c.bad < CHECK_BAD then
+		return
+	end
+	local kind = RigJoints.Kind(rig.model)
+	c.bad, c.good = 0, 0
+	if (kind == "AnimationConstraint" or kind == "mixed") and not rig.triedMotors then
+		rig.triedMotors = true
+		if localMotors(rig, c.last) > 0 then
+			return
+		end
+	end
+	enterFallback(rig, kind, c.last)
+end
+R.fallbackOf = function(model) -- (tests / diag) the rig's fallback mode or nil
+	local rig = rigs[model]
+	return rig and rig.fallback and rig.fbMode or nil
+end
+
+-- the diagnostic's view (Diag.SampleTick): what was written to a joint, and how the rig is driven
+RigJoints.Written = function(model, jointName)
+	local rig = rigs[model]
+	local k = KEY_OF[jointName]
+	if not (rig and k and rig.outT and rig.joints[k] and drives(rig)) then
+		return nil
+	end
+	return rig.outT[k]
+end
+RigJoints.Status = function(model)
+	local rig = rigs[model]
+	if not rig then
+		return "not driven by the Animator"
+	end
+	local kind, nm, na = RigJoints.Kind(model)
+	local how = rig.fallback and ("FALLBACK (" .. tostring(rig.fbMode) .. ")") or (rig.released and "released (Roblox animation)" or "procedural")
+	return string.format("%s, joints %s (Motor6D %d / AnimationConstraint %d)%s%s", how, kind, nm, na, rig.localMotors and ", rebuilt on this client" or "",
+		rig.writesOk and ", writes verified" or "")
+end
+
+-- the startup line: the Animator is alive and what it drives (on the local character's arrival, every spawn)
+local beatT = 0
+heartbeat = function(model)
+	beatT += 1
+	local my = beatT
+	task.delay(1, function()
+		if my ~= beatT then
+			return
+		end
+		local n, nm, na = 0, 0, 0
+		for m in pairs(rigs) do
+			if m.Parent then
+				n += 1
+				local _, a = RigJoints.Count(m)
+				if a > 0 then
+					na += 1
+				else
+					nm += 1
+				end
+			end
+		end
+		local kind = model and model.Parent and RigJoints.Kind(model) or "none"
+		print(string.format("[Animator] running: driving %d rigs (Motor6D %d / AnimationConstraint %d); your character's joints: %s", n, nm, na, kind))
+	end)
+end
+task.delay(6, function()
+	if beatT == 0 then
+		heartbeat(nil)
+	end
+end)
+
+------------------------------------------------------------------------
 -- Registration & main loop
 ------------------------------------------------------------------------
 for _, tag in ipairs(TAGS) do
@@ -1437,6 +1760,15 @@ RunService.PreSimulation:Connect(function(rawDt)
 			rig.nextGeo = 0
 		end
 		rig.isLocal = model == localChar
+		if rig.fallback then
+			-- (Roblox's animation moves this rig: selfCheck)
+			local okF, errF = pcall(fallbackStep, rig)
+			if not okF and not rig.fbWarned then
+				rig.fbWarned = true
+				warn("[Animator] " .. model.Name .. ": fallback animation failed: " .. tostring(errF))
+			end
+			continue
+		end
 		-- the rig's own frame time: the engine's dt summed over the frames since its last update (a culled, skipped
 		-- or slowed rig catches up on the whole span). The wall clock (os.clock between two PreSimulations) is NOT
 		-- the time the simulation advanced: it wanders with where in the frame the Lua step lands, and read as the
@@ -1488,7 +1820,7 @@ RunService.PreSimulation:Connect(function(rawDt)
 		if skip then
 			-- (a player character's own Animate tracks write the joints every frame: a skipped frame holds
 			-- our last pose instead of flashing Roblox's walk between ours)
-			if rig.isPlayer and rig.outT and not rig.released then
+			if rig.isPlayer and rig.outT and drives(rig) then
 				local out = rig.outT
 				for k, j in pairs(rig.joints) do
 					local v = out[k]
@@ -1512,11 +1844,21 @@ RunService.PreSimulation:Connect(function(rawDt)
 		rig.clock += sdt
 		local lod = (dist < b.near and onScreen) and 3 or (dist < b.mid and 2 or 1)
 		updated += 1
+		if not rig.writesOk then
+			local okC, errC = pcall(selfCheck, rig, rdt)
+			if not okC and not rig.checkWarned then
+				rig.checkWarned = true
+				warn("[Animator] " .. model.Name .. ": self-check failed: " .. tostring(errC))
+			end
+			if rig.fallback then
+				continue
+			end
+		end
 		local ok, err = pcall(updateRig, rig, model, rig.clock, sdt, lod, rdt)
 		if not ok then
 			-- the last good pose stays on the joints (never a frame of Roblox's own animation, or of the bind
 			-- pose, between two of ours)
-			if rig.outT and not rig.released then
+			if rig.outT and drives(rig) then
 				local out = rig.outT
 				for k, j in pairs(rig.joints) do
 					local v = out[k]

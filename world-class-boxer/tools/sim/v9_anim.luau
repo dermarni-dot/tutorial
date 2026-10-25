@@ -79,6 +79,15 @@ local FTAG = FRAME and ("_" .. FRAME:lower():gsub("[^%w]", "")) or ""
 -- Studio builds for players and CreateHumanoidModelFromDescription), else Motor6Ds; the clip ids carry "_ac"
 local JOINTS_AC = args.joints == "ac"
 local JTAG = JOINTS_AC and "_ac" or ""
+-- --ignore-writes ac | all: the engine does not apply the Transform written to AnimationConstraints (ac) or to any joint
+-- (all) - the limbs stay in the rest pose whatever is written, as in the user's Studio place. The Animator's self-check
+-- must notice: ac -> the rig rebuilt on Motor6Ds (then it walks), all -> Roblox's animation (Animate / keyframe tracks)
+local IGNORE = args["ignore-writes"]
+local IGNORE_AC = IGNORE == "ac" or IGNORE == "all"
+local IGNORE_ALL = IGNORE == "all"
+if IGNORE then
+	JTAG = JTAG .. "_ign" .. IGNORE
+end
 local NTAG = args.npc ~= nil and "_npc" or ""
 HTAG = HTAG .. FTAG .. JTAG .. NTAG
 
@@ -231,6 +240,8 @@ end
 -- the engine's joint solve from the HumanoidRootPart out (Motor6D: Part1 = Part0 * C0 * Transform * C1^-1)
 local weldOffsets = setmetatable({}, { __mode = "k" })
 local jointCache = setmetatable({}, { __mode = "k" })
+local jointDirty = setmetatable({}, { __mode = "k" })
+local jointHooked = setmetatable({}, { __mode = "k" })
 local function solve(model, keepRoot)
 	local hrp = model:FindFirstChild("HumanoidRootPart")
 	local hum = model:FindFirstChildOfClass("Humanoid")
@@ -238,7 +249,28 @@ local function solve(model, keepRoot)
 		hrp.CFrame = CFrame.new(0, hum.HipHeight + hrp.Size.Y / 2, 0)
 	end
 	local joints = jointCache[model]
+	-- (a joint replaced since the list was made - EnsureMotors' Motor6D for an AnimationConstraint: the list again)
+	if joints and jointDirty[model] then
+		joints = nil
+	end
+	if joints then
+		for _, j in ipairs(joints) do
+			if j.Parent == nil then
+				joints = nil
+				break
+			end
+		end
+	end
 	if not joints or not keepRoot then
+		jointDirty[model] = nil
+		if not jointHooked[model] then
+			jointHooked[model] = true
+			model.DescendantAdded:Connect(function(d)
+				if d.ClassName == "Motor6D" or d.ClassName == "AnimationConstraint" or d.ClassName == "Weld" then
+					jointDirty[model] = true
+				end
+			end)
+		end
 		joints = {}
 		for _, d in ipairs(model:GetDescendants()) do
 			if d.ClassName == "Motor6D" or d.ClassName == "AnimationConstraint" or d.ClassName == "Weld" or (d.ClassName == "WeldConstraint" and weldOffsets[d]) then
@@ -262,9 +294,9 @@ local function solve(model, keepRoot)
 					p1.CFrame = p0.CFrame * weldOffsets[j]
 				elseif ac then
 					-- (child = parent * Attachment0.CFrame * Transform * Attachment1.CFrame^-1: the Motor6D's convention)
-					p1.CFrame = p0.CFrame * j.Attachment0.CFrame * (j.Transform or CFrame.new()) * j.Attachment1.CFrame:Inverse()
+					p1.CFrame = p0.CFrame * j.Attachment0.CFrame * ((not IGNORE_AC and j.Transform) or CFrame.new()) * j.Attachment1.CFrame:Inverse()
 				else
-					local t = j.ClassName == "Motor6D" and j.Transform or nil
+					local t = j.ClassName == "Motor6D" and not IGNORE_ALL and j.Transform or nil
 					p1.CFrame = p0.CFrame * j.C0 * (t or CFrame.new()) * j.C1:Inverse()
 				end
 				done[p1] = true
@@ -666,12 +698,29 @@ playersProps.GetPlayerFromCharacter = function(_, m)
 end
 player.CharacterAdded = FE.Signal()
 local PreSim = FE.Signal()
+local ANIM_LOG = {}
 H.Service("RunService")._props.PreSimulation = PreSim
 do
 	local file = srcDir .. "/client/Animator.client.lua"
 	local env = table.clone(H.globals)
 	local SPS = H.client.Parent
 	env.script = { Parent = SPS, Name = "Animator" }
+	-- (its Output lines, for the self-check's metrics: the heartbeat, the "writes are not taking effect" warnings)
+	local function capture(kind, real)
+		return function(...)
+			local parts = {}
+			for i = 1, select("#", ...) do
+				parts[i] = tostring((select(i, ...)))
+			end
+			local msg = table.concat(parts, " ")
+			if msg:sub(1, 10) == "[Animator]" then
+				table.insert(ANIM_LOG, kind .. " " .. msg)
+			end
+			real(...)
+		end
+	end
+	env.warn = capture("W", warn)
+	env.print = capture("P", print)
 	local chunk = luau.load(fs.readFile(file), { debugName = "Animator.client.lua", environment = env })
 	ltask.spawn(chunk)
 	-- the Animator may yield while it loads (an optional module's WaitForChild with a timeout yields once):
@@ -687,6 +736,11 @@ do
 		ltask.wait()
 	end
 	assert(rigsReady(), "v9_anim: the Animator did not finish loading")
+end
+-- --convert-after S: how long an upgrade constraint may stay before the Animator rebuilds it on this client (default
+-- 1.5 s; a large value leaves it to the self-check's first step)
+if args["convert-after"] then
+	H.require("AnimRig").CONVERT_AFTER = tonumber(args["convert-after"])
 end
 local DT = 1 / 60
 local NOPEN = args.nopen == true
@@ -990,6 +1044,25 @@ local function walkClip(clip, tier, timing)
 		animator.AnimationPlayed:Fire(tr)
 	end
 	playTrack()
+	-- (LoadAnimation: the Animator's keyframe fallback loads Roblox's stock tracks on an NPC; recorded, not played)
+	local loaded = {}
+	animator.LoadAnimation = function(_, anim)
+		local tr = { id = anim.AnimationId, weight = 0, speed = 1, playing = false }
+		function tr:Play(_, w, sp)
+			self.playing, self.weight, self.speed = true, w or 1, sp or 1
+		end
+		function tr:Stop()
+			self.playing = false
+		end
+		function tr:AdjustWeight(w)
+			self.weight = w
+		end
+		function tr:AdjustSpeed(sp)
+			self.speed = sp
+		end
+		table.insert(loaded, tr)
+		return tr
+	end
 	-- --npc: an Ambient gym member on Loop = walk (a server-moved NPC) instead of the local player's character: the
 	-- Animator senses its gait from the replicated root (and the Humanoid's MoveDirection / WalkSpeed as the intent)
 	local NPC = args.npc ~= nil
@@ -1010,7 +1083,7 @@ local function walkClip(clip, tier, timing)
 	local trace = {}
 	local frames = {}
 	local tStart = 0
-	local total = 4.5
+	local total = tonumber(args.walksecs) or 4.5
 	local nSteps = 0
 	local hist = {}
 	local sample = gaitSampler(model)
@@ -1194,6 +1267,27 @@ local function walkClip(clip, tier, timing)
 	rec.worstPen = worst
 	rec.animate = { disabled = animate.Disabled == true, playing = #animator:GetPlayingAnimationTracks(), started = started,
 		procAnim = model:GetAttribute("ProcAnim") == true }
+	-- the self-check: how the rig ended up driven, its joints, the stock tracks a keyframe fallback loaded, the log
+	do
+		local AR = H.require("AnimRig")
+		local RJ = H.require("RigJoints")
+		local nm, na = RJ.Count(model)
+		local walkW = 0
+		for _, tr in ipairs(loaded) do
+			if tostring(tr.id):find("507777826") then
+				walkW = tr.weight
+			end
+		end
+		local rg = AR.rigs[model]
+		rec.selfCheck = { fallback = AR.fallbackOf and AR.fallbackOf(model) or nil, motor6d = nm, ac = na, loaded = #loaded, walkWeight = walkW,
+			writesOk = rg and rg.writesOk == true or false, localMotors = rg and rg.localMotors == true or false, log = table.clone(ANIM_LOG),
+			ignore = IGNORE, animateOn = animate.Disabled == false }
+		print(string.format("      self-check: fallback %s, joints Motor6D %d / AC %d, writes verified %s, stock tracks loaded %d (walk weight %.2f)",
+			tostring(rec.selfCheck.fallback), nm, na, tostring(rec.selfCheck.writesOk), #loaded, walkW))
+		for _, l in ipairs(ANIM_LOG) do
+			print("      log: " .. l)
+		end
+	end
 	if timing == "steady" then
 		-- released (climbing): Roblox's animation back; on the ground again: off again
 		local HSTe = roblox.Enum.HumanoidStateType

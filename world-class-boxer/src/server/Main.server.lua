@@ -8,14 +8,13 @@ local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 local CollectionService = game:GetService("CollectionService")
 
--- [Studio] Roblox's Avatar Joint Upgrade rigs R15 characters with AnimationConstraints instead of Motor6Ds; the
--- procedural Animator, the head / headgear welds and /wcbdiag all drive Motor6Ds (a /wcbdiag from Studio showed
--- every joint "missing" and the player's character dead). tools/build_place.py pins the place setting; this is
--- the runtime fallback (before any character is built). MeshPartHeadsAndAccessories: the classic head must stay
--- a Part + SpecialMesh (default.project.json sets it too).
-pcall(function()
-	workspace.AvatarJointUpgrade = Enum.RolloutState.Disabled
-end)
+-- [Studio] Roblox's Avatar Joint Upgrade rigs R15 characters with AnimationConstraints instead of Motor6Ds. Its switch is
+-- StarterPlayer.AvatarJointUpgrade (RobloxScriptSecurity: a game script can neither read nor set it - the old
+-- "workspace.AvatarJointUpgrade = Disabled" here never did anything), so the place file carries it
+-- (tools/build_place.py; in a place of your own: StarterPlayer > Properties > AvatarJointUpgrade = Disabled) and the
+-- server rebuilds any upgraded rig's joints as Motor6Ds at runtime (Shared.RigJoints.EnsureMotors: onCharacter, the
+-- Workspace watcher below, Builder). MeshPartHeadsAndAccessories: the classic head must stay a Part + SpecialMesh
+-- (default.project.json sets it; the property is NotScriptable, so this pcall is only a harmless attempt).
 pcall(function()
 	workspace.MeshPartHeadsAndAccessories = Enum.MeshPartHeadsAndAccessories.Disabled
 end)
@@ -2589,9 +2588,67 @@ end)
 ------------------------------------------------------------------------
 -- Players
 ------------------------------------------------------------------------
+-- [Studio] the Avatar Joint Upgrade's AnimationConstraint joints back to Motor6Ds on every humanoid rig in Workspace
+-- (player characters, the gym members, opponents, referees, the crowd): whenever a constraint named as an R15 joint
+-- appears under a model with a Humanoid, that model is converted (deferred: the engine finishes building it first) and
+-- watched for later ones (ApplyDescription and ReplaceBodyPartR15 make new ones). Shared.RigJoints says why.
+local RigJoints = require(Shared:WaitForChild("RigJoints"))
+local function rigModelOf(inst)
+	local m = inst:FindFirstAncestorOfClass("Model")
+	while m do
+		if m:FindFirstChildOfClass("Humanoid") then
+			return m
+		end
+		m = m:FindFirstAncestorOfClass("Model")
+	end
+	return nil
+end
+local jointsQueued = setmetatable({}, { __mode = "k" })
+local function queueMotors(inst)
+	-- (by class only: a constraint may be named after it is parented; EnsureMotors picks the R15 joints by name)
+	if not inst:IsA("AnimationConstraint") then
+		return
+	end
+	local m = rigModelOf(inst)
+	if not m or jointsQueued[m] then
+		return
+	end
+	jointsQueued[m] = true
+	task.defer(function()
+		jointsQueued[m] = nil
+		if m.Parent then
+			local okM, errM = pcall(RigJoints.WatchMotors, m)
+			if not okM then
+				warn("[Boxer] could not rebuild the joints of " .. m.Name .. " as Motor6Ds: " .. tostring(errM))
+			end
+		end
+	end)
+end
+workspace.DescendantAdded:Connect(queueMotors)
+for _, d in ipairs(workspace:GetDescendants()) do
+	queueMotors(d)
+end
+local motorsReported = false
+
 local function onCharacter(player, char)
 	endSession(player, true)
 	local hum = char:WaitForChild("Humanoid", 10)
+	-- the upgrade's AnimationConstraints -> Motor6Ds before anything animates or dresses the rig (and again whenever
+	-- the engine makes new ones); one Output line the first time, so the user can see it happened
+	do
+		local kind0 = RigJoints.Kind(char)
+		local okM, errM = pcall(RigJoints.WatchMotors, char)
+		if not okM then
+			warn("[Boxer] could not rebuild " .. char.Name .. "'s joints as Motor6Ds: " .. tostring(errM))
+		elseif kind0 == "AnimationConstraint" or kind0 == "mixed" then
+			if not motorsReported then
+				motorsReported = true
+				local nm, na = RigJoints.Count(char)
+				print(string.format("[Boxer] %s spawned with Avatar Joint Upgrade joints (AnimationConstraints): rebuilt as Motor6Ds (%d Motor6D / %d left). "
+					.. "To stop this at the source set StarterPlayer > AvatarJointUpgrade = Disabled in this place's Properties.", char.Name, nm, na))
+			end
+		end
+	end
 	if hum then
 		-- the town pace is a walk (StarterPlayer's CharacterWalkSpeed says so too); Shift runs (FightClient)
 		hum.WalkSpeed = Config.TownWalkSpeed

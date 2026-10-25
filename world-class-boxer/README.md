@@ -22,10 +22,34 @@ built snapshot. It can be older than `src/`, so rebuild it after you pull change
 | `src/client/modules` | `StarterPlayerScripts.BoxerClient` |
 
 ```sh
-rojo build -o BecomeAWorldClassBoxer.rbxlx   # a fresh place file
+python3 tools/build_place.py                 # a fresh place file (rojo build + the settings rojo cannot write)
 rojo serve                                   # live sync into Studio (Rojo plugin > Connect)
 ```
-Lint with `selene src`.
+Lint with `selene src`. Build the place with `tools/build_place.py` rather than a bare `rojo build`. Rojo cannot
+write `StarterPlayer.AvatarJointUpgrade`, so the script adds it to the place file (see below).
+
+### Using your own place (syncing or pasting this code into it)
+Place-level settings are saved in the place file, not in `src/`. A place of your own (made from a Studio template,
+or a copy of an older build) keeps its own settings when you `rojo serve` or paste the scripts into it. Set these
+by hand once, in **Explorer > select the service > Properties**:
+
+| Service | Property | Value | Why |
+|---|---|---|---|
+| **StarterPlayer** | **AvatarJointUpgrade** | **Disabled** | Roblox's Avatar Joint Upgrade (on by default in new places) gives every R15 character and NPC `AnimationConstraint` joints instead of `Motor6D`s. The procedural animation's writes to those joints did not move the limbs in Studio: the boxer walked in the bind pose. |
+| Workspace | MeshPartHeadsAndAccessories | Disabled | The classic head stays a Part + SpecialMesh. |
+
+Neither property can be set by a script. `AvatarJointUpgrade` is RobloxScriptSecurity and
+`MeshPartHeadsAndAccessories` is NotScriptable, so the game cannot fix them at runtime. It copes anyway:
+- The server rebuilds every upgraded rig's joints as Motor6Ds (`Shared/RigJoints.EnsureMotors`) and prints
+  `[Boxer] <name> spawned with Avatar Joint Upgrade joints (AnimationConstraints): rebuilt as Motor6Ds ...`.
+- The client Animator prints `[Animator] running: driving N rigs (Motor6D a / AnimationConstraint b); your
+  character's joints: Motor6D` once your character spawns.
+- The Animator checks that its writes really move the limbs. If they do not, it warns
+  `[Animator] joint writes are not taking effect on <name> (<joint class> rig): ...`. It then rebuilds that rig on
+  Motor6Ds, or switches it to Roblox's own animation: the default Animate script for you, the stock R15
+  walk for NPCs. Nobody walks frozen, but the procedural animation is lost on that rig. Set the property above.
+- `/wcbdiag` in chat prints, for each rig, the bend each limb shows next to the bend the Animator wrote, and a
+  verdict on whether the writes take effect.
 
 ## Publishing requirements
 
@@ -558,7 +582,10 @@ Studio, so check these in Studio:
 
 ## Animation
 
-Everything is procedural, driven on each client by `Animator.client.lua` and the `Anim*` modules.
+Everything is procedural, driven on each client by `Animator.client.lua` and the `Anim*` modules. It writes
+the R15 Motor6Ds' `Transform` in `RunService.PreSimulation`, after Roblox's own animation step. The rigs are kept on
+Motor6Ds even where the Avatar Joint Upgrade is on (see [Using your own place](#using-your-own-place-syncing-or-pasting-this-code-into-it)).
+A rig whose joints ignore the writes falls back to Roblox's own animation and says so in Output.
 - **Fight styles:** each style has its own stance, bounce, guard and idle life, and a per-boxer
   persona keeps two boxers of one style from moving alike. The styles are Out-boxer, Swarmer,
   Slugger, Counter puncher and Boxer-puncher.

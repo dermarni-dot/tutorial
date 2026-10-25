@@ -16,12 +16,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
 local BuilderTiers = require(Shared:WaitForChild("BuilderTiers"))
--- [Studio] the joints may be Motor6Ds or AnimationConstraints (Workspace.AvatarJointUpgrade): one lookup for both
+-- [Studio] the joints may be Motor6Ds or AnimationConstraints (StarterPlayer.AvatarJointUpgrade): one lookup for both
 local RigJoints = require(Shared:WaitForChild("RigJoints"))
 
 local Diag = {}
 Diag.PREFIX = "[WCBDIAG] "
-Diag.VERSION = 1
+Diag.VERSION = 2 -- (2: the sample reports written vs shown joint angles and the Animator's mode)
 
 local PARTS = { "HumanoidRootPart", "LowerTorso", "UpperTorso", "Head", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm",
 	"RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot" }
@@ -689,16 +689,33 @@ end
 
 ------------------------------------------------------------------------
 -- Motion sample (the caller feeds frames; pure here): per tick the root's velocity and height, each foot's world Y
--- and horizontal travel while it is down, the hip / knee / elbow bend from the live Transforms, and whether any
--- Animate track was playing. Diag.NewSample() -> S; Diag.SampleTick(S, model, t); Diag.SampleLines(S) -> { lines, verdicts }
+-- and horizontal travel while it is down, the hip / knee / elbow bend the limbs really show (measured from the parts)
+-- next to the bend the Animator wrote (RigJoints.Written, client), and whether any Animate track was playing.
+-- [Studio] the bend used to be read from the joint's Transform - the value written - so "knees never bent" could not
+-- tell "never written" from "written and ignored by the engine"; written vs actual can.
+-- Diag.NewSample() -> S; Diag.SampleTick(S, model, t); Diag.SampleLines(S) -> { lines, verdicts }
 ------------------------------------------------------------------------
+-- the joint's bend (deg, about X) as the limb shows it, and as the Animator wrote it (nil when it writes nothing)
 local function bend(model, _, mname)
 	local m = RigJoints.Find(model, mname)
 	if not m then
 		return nil
 	end
-	local x = m.Transform:ToEulerAnglesXYZ()
-	return math.deg(x)
+	local a = RigJoints.Measure(m)
+	local actual = a and math.deg((a:ToEulerAnglesXYZ())) or nil
+	local written
+	local wf = RigJoints.Written
+	if wf then
+		local ok, w = pcall(wf, model, mname)
+		if ok and typeof(w) == "CFrame" then
+			written = math.deg((w:ToEulerAnglesXYZ()))
+			-- (the whole rotation's gap too: a write that shows on another axis is still a write that shows)
+			if a then
+				return actual, written, RigJoints.Angle(w:Inverse() * a)
+			end
+		end
+	end
+	return actual, written, nil
 end
 
 function Diag.NewSample()
@@ -736,11 +753,23 @@ function Diag.SampleTick(S, model, t)
 		local _, _, rz = rcf:ToOrientation()
 		roll = math.deg(rz)
 	end
+	local hip, hipW, hipG = bend(model, "RightUpperLeg", "RightHip")
+	local knee, kneeW, kneeG = bend(model, "RightLowerLeg", "RightKnee")
+	local elbow, elbowW, elbowG = bend(model, "RightLowerArm", "RightElbow")
 	local tick = {
 		t = t, vx = Vector3.new(vel.X, 0, vel.Z).Magnitude, rootY = root.Position.Y, lY = lf.Position.Y, rY = rf.Position.Y,
-		lP = lf.Position, rP = rf.Position, hip = bend(model, "RightUpperLeg", "RightHip"), knee = bend(model, "RightLowerLeg", "RightKnee"),
-		elbow = bend(model, "RightLowerArm", "RightElbow"), playing = playing, pos = rcf.Position, lat = lat, roll = roll,
+		lP = lf.Position, rP = rf.Position, hip = hip, knee = knee, elbow = elbow, hipW = hipW, kneeW = kneeW, elbowW = elbowW,
+		gap = math.max(hipG or 0, kneeG or 0, elbowG or 0), gapN = (hipG and 1 or 0) + (kneeG and 1 or 0) + (elbowG and 1 or 0),
+		playing = playing, pos = rcf.Position, lat = lat, roll = roll,
 	}
+	if S.status == nil and RigJoints.Status then
+		local ok, st = pcall(RigJoints.Status, model)
+		S.status = ok and st or nil
+	end
+	if S.kind == nil then
+		local kind, nm, na = RigJoints.Kind(model)
+		S.kind = string.format("%s (Motor6D %d / AnimationConstraint %d)", kind, nm, na)
+	end
 	table.insert(S.ticks, tick)
 	-- a foot is "down" when it is within 0.12 of the lowest foot height seen so far; its travel then is slide
 	local n = #S.ticks
@@ -776,15 +805,43 @@ function Diag.SampleLines(S)
 		rootMin, rootMax = math.min(rootMin, k.rootY), math.max(rootMax, k.rootY)
 		lo = math.min(lo, k.lY, k.rY)
 	end
-	table.insert(lines, string.format("sample %d ticks over %.1fs: vmax=%.2f rootY %.2f..%.2f (bob %.2f) lowestFootY=%.2f animateTicks=%d slideL=%.2f/%d slideR=%.2f/%d",
-		n, S.ticks[n].t - S.ticks[1].t, vmax, rootMin, rootMax, rootMax - rootMin, lo, S.tracks, S.slideL, S.downL, S.slideR, S.downR))
+	-- (one header line, one line per tick: the joints' class and the Animator's mode ride on the header; hip / knee / elbow
+	-- below are the bend the limb SHOWS, then (wN) the bend the Animator WROTE, gap = the largest written-vs-shown difference)
+	table.insert(lines, string.format("sample %d ticks over %.1fs: vmax=%.2f rootY %.2f..%.2f (bob %.2f) lowestFootY=%.2f animateTicks=%d slideL=%.2f/%d slideR=%.2f/%d"
+		.. " | joints: %s; Animator: %s | bends: shown(wWritten)",
+		n, S.ticks[n].t - S.ticks[1].t, vmax, rootMin, rootMax, rootMax - rootMin, lo, S.tracks, S.slideL, S.downL, S.slideR, S.downR,
+		tostring(S.kind or "?"), tostring(S.status or "no report (server view, or the Animator is not running)")))
 	local latMax, rollMax = 0, 0
+	local gapMax, gapTicks, wroteKnee = 0, 0, false
+	local function ab(a, w)
+		local sa = a and string.format("%d", math.round(a)) or "-"
+		if w then
+			return sa .. string.format("(w%d)", math.round(w))
+		end
+		return sa
+	end
 	for _, k in ipairs(S.ticks) do
 		latMax = math.max(latMax, math.abs(k.lat or 0))
 		rollMax = math.max(rollMax, math.abs(k.roll or 0))
-		table.insert(lines, string.format("  t=%.1f v=%.2f rootY=%.2f footL=%.2f footR=%.2f hip=%s knee=%s elbow=%s lat=%+.3f roll=%+.1f%s", k.t, k.vx, k.rootY, k.lY, k.rY,
-			k.hip and string.format("%d", k.hip) or "-", k.knee and string.format("%d", k.knee) or "-", k.elbow and string.format("%d", k.elbow) or "-",
+		if (k.gapN or 0) > 0 then
+			gapTicks += 1
+			gapMax = math.max(gapMax, k.gap or 0)
+		end
+		if k.kneeW and math.abs(k.kneeW) > 8 then
+			wroteKnee = true
+		end
+		table.insert(lines, string.format("  t=%.1f v=%.2f rootY=%.2f footL=%.2f footR=%.2f hip=%s knee=%s elbow=%s gap=%s lat=%+.3f roll=%+.1f%s", k.t, k.vx, k.rootY, k.lY, k.rY,
+			ab(k.hip, k.hipW), ab(k.knee, k.kneeW), ab(k.elbow, k.elbowW), (k.gapN or 0) > 0 and string.format("%d", math.round(k.gap)) or "-",
 			k.lat or 0, k.roll or 0, k.playing and " ANIMATE" or ""))
+	end
+	-- do the Animator's writes take effect? (client only: the server sees no writes)
+	if gapTicks > 0 then
+		if gapMax > 10 then
+			table.insert(verdicts, string.format("BAD  joint writes are NOT taking effect: the limbs show up to %.0f deg away from the pose the Animator wrote (%s). "
+				.. "The Animator switches such a rig to Roblox's animation by itself; in your own place set StarterPlayer > AvatarJointUpgrade = Disabled", gapMax, tostring(S.kind)))
+		else
+			table.insert(verdicts, string.format("OK   joint writes take effect (written vs shown within %.1f deg over %d ticks)", gapMax, gapTicks))
+		end
 	end
 	-- the root itself (not the joints): a sideways travel per tick past 0.1 studs or a roll past 5 degrees is the
 	-- Humanoid / physics rocking the character - a collider, a mass off the axis, a mover on the root
@@ -818,7 +875,11 @@ function Diag.SampleLines(S)
 			end
 		end
 		if not bentKnee then
-			table.insert(verdicts, "BAD  the knees never bent while moving: the Animator is not writing this rig's legs (or its writes are overwritten)")
+			if wroteKnee then
+				table.insert(verdicts, "BAD  the knees never bent while moving although the Animator wrote a bend: its writes do not reach the limbs")
+			else
+				table.insert(verdicts, "BAD  the knees never bent while moving: the Animator is not writing this rig's legs (or its writes are overwritten)")
+			end
 		end
 	end
 	if S.tracks > 0 then

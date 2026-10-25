@@ -25,6 +25,7 @@ local Body = require(script.Parent:WaitForChild("BuilderBody"))
 local LookData = require(script.Parent:WaitForChild("LookData"))
 local BodyTiers = require(script.Parent:WaitForChild("BodyTiers"))
 local BuilderTiers = require(script.Parent:WaitForChild("BuilderTiers"))
+local BuilderGear = require(script.Parent:WaitForChild("BuilderGear"))
 local AvatarLook = require(script.Parent:WaitForChild("AvatarLook"))
 
 local Builder = {}
@@ -149,7 +150,8 @@ function Builder.Description(app, build, opts)
 	-- avatar is copied: the body stays the muscle-tier body
 	local av = opts and opts.avatar
 	if type(av) == "table" then
-		if av.useHair then
+		-- (Config.BaldMode: never the avatar's hair accessories)
+		if av.useHair and not Config.BaldMode then
 			desc.HairAccessory = av.hair or ""
 		end
 		desc.Face = av.face or 0
@@ -700,6 +702,7 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 		if (opts.only.Face or colors) and type(opts.damage) == "table" then
 			Builder.SetDamage(model, app, opts.damage)
 		end
+		step("Bald", Hair.StripBald, model)
 		-- (the headgear follows the head: a head swap or a colour change in the Creator rebuilds it)
 		step("Headgear", headgearLook, model, app, opts, colors and csp.detail or opts.detail)
 		step("Hat", capLook, model, opts, colors and csp.detail or opts.detail)
@@ -731,6 +734,9 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	faceStep(model, app, build, opts)
 	headStep(model, app, build, opts, "Hair")
 	headStep(model, app, build, opts, "Beard")
+	-- Config.BaldMode: no hair accessory or old hair / beard part survives on anyone (uncached: cheap, and an
+	-- accessory can arrive with any ApplyDescription)
+	step("Bald", Hair.StripBald, model)
 	-- the headgear every boxer wears (on the final head; its own cache)
 	step("Headgear", headgearLook, model, app, opts, sp.detail)
 	-- the officials' caps (the referee's, the coach's) when they wear no headgear
@@ -767,7 +773,66 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	-- last: the rig is final (head swap, rescale) and every attribute above is set
 	step("LookData", publishLook, model, app, build, opts, sp, gear)
 	buildRecord(model)
+	Builder.NoteForRetry(model, app, build, gear, opts)
 end
+
+------------------------------------------------------------------------
+-- A mesh that failed loads later: the boxers built meanwhile are rebuilt on it
+------------------------------------------------------------------------
+-- A body part or gear mesh that did not load leaves the default part / the part-built gear (never a box). BuilderTiers
+-- and BuilderGear retry it on a backoff (Kit.ASSET_BACKOFF, a few minutes); when it loads (Kit.AssetReady) every boxer
+-- whose last full Cosmetics ran while a load was failing is built again from that same call (the layers whose inputs
+-- did not change stay cached; the one that fell back now resolves to the mesh). A boxer whose look changed since
+-- (LookSig moved: a newer build or preview) or who left the DataModel is skipped and forgotten.
+Builder.RETRY_SETTLE = 0.5 -- seconds: several meshes arriving together rebuild a boxer once
+local retryArgs = setmetatable({}, { __mode = "k" }) -- model -> { app, build, gear, opts, sig }
+local retryQueued = setmetatable({}, { __mode = "k" })
+function Builder.NoteForRetry(model, app, build, gear, opts)
+	if BuilderTiers.Failing() or BuilderGear.Failing() then
+		retryArgs[model] = { app = app, build = build, gear = gear, opts = opts, sig = model:GetAttribute("LookSig") }
+	else
+		retryArgs[model] = nil
+	end
+end
+function Builder.PendingRetries()
+	local n = 0
+	for _ in pairs(retryArgs) do
+		n += 1
+	end
+	return n
+end
+function Builder.RetryBuilds()
+	local n = 0
+	for model, a in pairs(retryArgs) do
+		local inGame = false
+		pcall(function()
+			inGame = model:IsDescendantOf(game)
+		end)
+		if not inGame or model:GetAttribute("LookSig") ~= a.sig then
+			retryArgs[model] = nil
+		elseif not retryQueued[model] then
+			retryQueued[model] = true
+			n += 1
+			task.delay(Builder.RETRY_SETTLE, function()
+				retryQueued[model] = nil
+				local cur = retryArgs[model]
+				if cur ~= a or not model.Parent then
+					return
+				end
+				retryArgs[model] = nil
+				local ok, err = pcall(Builder.Cosmetics, model, a.app, a.build, a.gear, a.opts)
+				if not ok then
+					warn("[Boxer] rebuild after a mesh loaded failed on " .. tostring(model.Name) .. ":", err)
+				end
+				pcall(Builder.OnPlaced, model)
+			end)
+		end
+	end
+	return n
+end
+Kit.OnAssetReady(function()
+	Builder.RetryBuilds()
+end)
 
 -- Apply to a live player character (yields). Re-scales only when the body changed.
 function Builder.Apply(character, app, build, gear, opts)
@@ -803,8 +868,13 @@ function Builder.Apply(character, app, build, gear, opts)
 		local avKey = AvatarLook.Key(av)
 		character:SetAttribute("AvatarLook", avKey ~= "" and avKey or nil)
 	end
+	-- [Studio] the Avatar Joint Upgrade's AnimationConstraint joints -> Motor6Ds before the layers are fitted (RigJoints)
+	pcall(function()
+		require(script.Parent:WaitForChild("RigJoints")).WatchMotors(character)
+	end)
 	if character.Parent then
-		Builder.Cosmetics(character, app, build, gear, opts)
+		-- a player's own boxer: his meshes load before any background / NPC load (Kit.Priority)
+		Kit.Priority(Builder.Cosmetics, character, app, build, gear, opts)
 		-- the engine's deferred passes after the description (scaling, the head conversion) run after this returns
 		Builder.OnPlaced(character)
 	end
@@ -859,6 +929,10 @@ function Builder.CreateNPC(app, build, gear, displayName, opts)
 		return nil
 	end
 	model.Name = displayName or "Boxer"
+	-- [Studio] the Avatar Joint Upgrade's AnimationConstraint joints -> Motor6Ds before anything is built on it (RigJoints)
+	pcall(function()
+		require(script.Parent:WaitForChild("RigJoints")).WatchMotors(model)
+	end)
 	local animate = model:FindFirstChild("Animate")
 	if animate then
 		animate:Destroy()
