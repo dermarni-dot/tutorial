@@ -806,7 +806,7 @@ function Builder.RetryBuilds()
 	for model, a in pairs(retryArgs) do
 		local inGame = false
 		pcall(function()
-			inGame = model:IsDescendantOf(game)
+			inGame = model:IsDescendantOf(game) or model:FindFirstAncestorWhichIsA("Workspace") ~= nil
 		end)
 		if not inGame or model:GetAttribute("LookSig") ~= a.sig then
 			retryArgs[model] = nil

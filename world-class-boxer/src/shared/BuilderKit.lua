@@ -478,7 +478,10 @@ end
 -- hold a part of the model that is still in it; a Weld / Motor6D must put the piece where it is (Part0.CFrame * C0 =
 -- Part1.CFrame * C1: a C0 computed for another size or another part shows here); and the piece must touch its anchor:
 -- the distance from the piece's centre to the anchor's box (in the anchor's space) at most the piece's half extent +
--- slack. A piece welded to another built piece is followed to the body part at the end of the chain.
+-- slack (0.15 studs: a buckle on a belt over the trousers, a logo patch on the glove's face anchored to the hand). A
+-- piece welded to another built piece is followed to the body part at the end of the chain. The head-worn folders
+-- (Headgear, Hat) must also be fitted to the live head: their HeadSize record equal to the head's Size (gear sized for
+-- another head sits off it although welded).
 -- Returns { problems = { "Folder/Piece: why" ... }, pieces = n }
 local function jointOf(p)
 	for _, c in ipairs(p:GetChildren()) do
@@ -496,7 +499,7 @@ local function boxDistance(rel, half)
 end
 function Kit.FitAudit(model, opts)
 	opts = opts or {}
-	local slack = opts.slack or 0.05
+	local slack = opts.slack or 0.15
 	local out = { problems = {}, pieces = 0 }
 	local look = model:FindFirstChild("BoxerLook")
 	local list = {}
@@ -516,6 +519,14 @@ function Kit.FitAudit(model, opts)
 	local function note(p, why)
 		local f = p.Parent and p.Parent.Name or "?"
 		table.insert(out.problems, f .. "/" .. p.Name .. ": " .. why)
+	end
+	local head = model:FindFirstChild("Head")
+	for _, fname in ipairs({ "Headgear", "Hat" }) do
+		local f = look and look:FindFirstChild(fname)
+		local fit = f and f:GetAttribute("HeadSize")
+		if f and #f:GetChildren() > 0 and head and head:IsA("BasePart") and typeof(fit) == "Vector3" and (fit - head.Size).Magnitude > 1e-3 then
+			table.insert(out.problems, string.format("%s: fitted to a %s head, the head is %s", fname, tostring(fit), tostring(head.Size)))
+		end
 	end
 	for _, p in ipairs(list) do
 		out.pieces += 1

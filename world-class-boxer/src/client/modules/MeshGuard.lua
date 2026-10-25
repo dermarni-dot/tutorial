@@ -157,6 +157,7 @@ local function retryLater(id, rec)
 			return
 		end
 		stats.retries += 1
+		rec.retryPending = true
 		preload(id)
 	end)
 end
@@ -168,6 +169,7 @@ function evaluate(id, status)
 	end
 	local s = statusName(status)
 	if s == "Success" then
+		rec.retryPending = nil
 		rec.state = "ok"
 		for p in pairs(rec.parts) do
 			local r = pieces[p]
@@ -185,6 +187,7 @@ function evaluate(id, status)
 			end
 		end
 		if was ~= "failed" or rec.retryPending then
+			rec.retryPending = nil
 			rec.tries = (rec.tries or 0) + 1
 			retryLater(id, rec)
 		end
