@@ -125,24 +125,28 @@ local function restore(rec)
 end
 
 local evaluate -- (id, status)
+local hasGeometry -- (rec)
 
+-- [Studio] preload the MeshPart INSTANCE, never the bare id string: PreloadAsync fetches a string content id as an
+-- image, so a mesh id fails with "Asset type does not match requested type" and a perfectly good mesh reads as
+-- failed (the stand-in would then hide it). Given the part, the engine fetches its MeshId as a mesh.
 local function preload(id)
 	task.spawn(function()
 		local cp = svc("ContentProvider")
+		local ir = ids[id]
+		local inst = ir and next(ir.parts)
+		if not inst then
+			return
+		end
 		local got
 		pcall(function()
-			cp:PreloadAsync({ id }, function(_, status)
-				got = status
+			cp:PreloadAsync({ inst }, function(contentId, status)
+				if contentId == id or got == nil then
+					got = status
+				end
 			end)
 		end)
-		if got ~= nil then
-			evaluate(id, got)
-		else
-			local ok, st = pcall(function()
-				return cp:GetAssetFetchStatus(id)
-			end)
-			evaluate(id, ok and st or nil)
-		end
+		evaluate(id, got)
 	end)
 end
 
@@ -162,6 +166,20 @@ local function retryLater(id, rec)
 	end)
 end
 
+-- a part the server built from a loaded mesh carries its geometry (MeshSize): it draws, whatever a fetch status
+-- says (a status can be stale or come from a fetch of the wrong asset type)
+function hasGeometry(rec)
+	for p in pairs(rec.parts) do
+		local ok, ms = pcall(function()
+			return p.MeshSize
+		end)
+		if ok and typeof(ms) == "Vector3" and ms.X > 1e-4 and ms.Y > 1e-4 and ms.Z > 1e-4 and ms.X == ms.X then
+			return true
+		end
+	end
+	return false
+end
+
 function evaluate(id, status)
 	local rec = ids[id]
 	if not rec then
@@ -177,7 +195,7 @@ function evaluate(id, status)
 				restore(r)
 			end
 		end
-	elseif s == "Failure" or s == "TimedOut" or id == "" then
+	elseif (s == "Failure" or s == "TimedOut" or id == "") and not hasGeometry(rec) then
 		local was = rec.state
 		rec.state = "failed"
 		for p in pairs(rec.parts) do

@@ -385,6 +385,7 @@ do
 		return s
 	end
 	local status, changed = {}, {}
+	local stringPreloads = 0
 	local CP = {
 		GetAssetFetchStatus = function(_, id)
 			return status[id] or "None"
@@ -394,9 +395,15 @@ do
 			return changed[id]
 		end,
 		PreloadAsync = function(_, list, cb)
-			for _, id in ipairs(list) do
+			for _, item in ipairs(list) do
+				-- (the engine fetches a bare string as an IMAGE: a mesh id asked for that way fails with "Asset
+				-- type does not match"; given a MeshPart it fetches the MeshId as a mesh and reports that id)
+				if type(item) == "string" then
+					stringPreloads += 1
+				end
+				local key = type(item) == "string" and item or item.MeshId
 				if cb then
-					cb(id, status[id] or "Loading")
+					cb(key, type(item) == "string" and "Failure" or (status[key] or "Loading"))
 				end
 			end
 		end,
@@ -464,6 +471,14 @@ do
 	changed["rbxassetid://96507267130276"]:Fire("Success")
 	check("guard: loaded: the glove shows again", glove.Transparency == 0)
 	check("guard: loaded: the stand-in is gone", glove:FindFirstChild("MeshFallback") == nil)
+	check("guard: never preloads a bare id string (fetched as an image: 'Asset type does not match')", stringPreloads == 0, stringPreloads)
+	-- a part that already has geometry (the server loaded its mesh) is never hidden, whatever a fetch status says
+	local loaded = piece("Wrap_L", "rbxassetid://96507267130276", Vector3.new(0.4, 0.4, 0.6))
+	loaded.MeshSize = Vector3.new(0.4, 0.44, 0.63)
+	status["rbxassetid://96507267130276"] = "Failure"
+	added:Fire(loaded)
+	ltask.wait()
+	check("guard: a part with loaded geometry is left alone on a stale Failure", loaded.Transparency == 0 and loaded:FindFirstChild("MeshFallback") == nil)
 	-- an empty MeshId falls back at once
 	local empty = piece("Glove_L", "", Vector3.new(0.6, 0.96, 0.83))
 	added:Fire(empty)
