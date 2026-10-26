@@ -6,12 +6,13 @@
 --
 --   lune run tools/sim/v9_anim.luau [--out DIR] [--tiers 1,3,5] [--clips walk,jog,punch] [--frames N]
 --                                   [--src DIR] (another commit's src: the "before" set)
---                                   [--timing steady,studio,hz240,spike] [--nopen]
+--                                   [--timing steady,studio,hz240,spike,rough] [--nopen] [--shiftat S]
 -- --timing: the frame timing the walk / jog / run clips run under (test_walkstable.luau): steady = 60 Hz, the root
 --   gliding exactly dt x v a frame (the default); studio = a 60 Hz client whose frame times wander +-15 % while the
 --   physics advances in whole 240 Hz steps (what Studio does: the root's travel a frame is never dt x v); hz240 = a
 --   240 Hz client; wander = the frame times of studio with the physics advancing exactly dt x v (the sensing alone);
---   spike = 60 Hz with a 0.1 s hitch every 47 frames and one 0.25 s hitch. The clips' ids carry the
+--   spike = 60 Hz with a 0.1 s hitch every 47 frames and one 0.25 s hitch; rough = frame times scattered between 1/80
+--   and 1/28 s (no period) on 240 Hz physics. The clips' ids carry the
 --   mode (walk_t3_studio) and their metrics the per-1/60 s roughness of the trunk and head (jitter). --nopen skips
 --   the mesh interpenetration pass (the slow part of a walk clip)
 --
@@ -19,6 +20,8 @@
 --   walk / jog / run: a player character (Players.LocalPlayer.Character) whose HumanoidRootPart glides along -Z at
 --     5 / 11 / 16 studs/s on a flat floor (workspace:Raycast hits Y = 0), Humanoid state Running; recorded after a
 --     settle, `frames` evenly spaced over one full gait cycle (two steps)
+--   shift: the walk at 6.5 studs/s, then Shift - the pace jumps to 16 in one frame at --shiftat (2.5 s); its metrics
+--     carry the switch's own summary (shift), the contacts after it and the /wcbdiag 10 Hz sample (diag)
 --   punch: two "Fighter" models 3.4 studs apart facing each other; jab, cross, lead hook, rear hook, uppercut and a
 --     body jab (Act / ActId as FightEngine sends them), recorded at the punch's peak (the frame of the glove's
 --     furthest reach) plus a few in-between frames
@@ -761,6 +764,15 @@ local function timingOf(mode)
 			-- [Studio] a server-owned root as a client sees it: its position arrives in replication steps (~20 Hz), held
 			-- for the frames between - two frames of no travel, then three frames' worth at once
 			return nominal, (n % 3 == 0) and 3 * nominal or 0
+		elseif mode == "rough" then
+			-- [Studio] a busy client: frame times scattered between ~1/80 and ~1/28 s (a deterministic hash, no period),
+			-- the physics in whole 240 Hz steps
+			local h = (math.sin(n * 12.9898 + 78.233) * 43758.5453) % 1
+			local fdt = 1 / 80 + h * h * (1 / 28 - 1 / 80)
+			acc += fdt
+			local steps = math.floor(acc * 240 + 1e-9)
+			acc -= steps / 240
+			return fdt, steps / 240
 		elseif mode == "spike" then
 			if n % 47 == 0 then
 				return 0.1, 0.1
@@ -1006,7 +1018,12 @@ end
 ------------------------------------------------------------------------
 -- walk = Config.TownWalkSpeed (StarterPlayer.CharacterWalkSpeed), jog = the ring's base pace, run = Config.TownRunSpeed
 -- (Shift), sprint = the roadwork pace (Main: 18 + Stamina x 0.06); --speeds walk=5,run=16 overrides
-local SPEEDS = { walk = 6.5, jog = 11, run = 16, sprint = 22 }
+local SPEEDS = { walk = 6.5, jog = 11, run = 16, sprint = 22, shift = 16 }
+-- shift: [Studio] W held at the town's walking pace, then Shift: the Humanoid's speed jumps from walk to run in one
+-- frame (WalkSpeed 6.5 -> 16; AssemblyLinearVelocity follows within a physics step) at SHIFT_AT s; its steady numbers
+-- are from 1.5 s after it, the switch's own (rec.shift) over the 1.5 s after it, and the diagnostic's 10 Hz sample
+-- (Diag.SampleTick, as /wcbdiag reads Studio) from just before it (rec.diag: the lines and the verdicts)
+local SHIFT_AT = tonumber(args.shiftat) or 2.5
 for kv in (args.speeds or ""):gmatch("[^,]+") do
 	local k, v = kv:match("(%a+)=([%d%.]+)")
 	if k then
@@ -1083,7 +1100,10 @@ local function walkClip(clip, tier, timing)
 	local trace = {}
 	local frames = {}
 	local tStart = 0
-	local total = tonumber(args.walksecs) or 4.5
+	local total = tonumber(args.walksecs) or (clip == "shift" and SHIFT_AT + 3.5 or 4.5)
+	local tSteady = clip == "shift" and SHIFT_AT + 1.5 or 2.5
+	local Diag = H.require("Diag")
+	local DS, nextDiag = Diag.NewSample(), SHIFT_AT - 0.1
 	local nSteps = 0
 	local hist = {}
 	local sample = gaitSampler(model)
@@ -1094,13 +1114,21 @@ local function walkClip(clip, tier, timing)
 		t += fdt
 		nSteps += 1
 		local i = nSteps
-		if t > 1 then
+		if clip == "shift" then
+			if t > SHIFT_AT then
+				v = speed
+			elseif t > 1 then
+				v = math.min(SPEEDS.walk, v + SPEEDS.walk / 0.5 * fdt)
+			end
+		elseif t > 1 then
 			v = math.min(speed, v + speed / 0.5 * fdt)
 		end
 		z -= v * pdt
 		hrp.CFrame = CFrame.new(0, y0, z)
 		hrp.AssemblyLinearVelocity = Vector3.new(0, 0, -v)
 		hum.MoveDirection = v > 0 and Vector3.new(0, 0, -1) or Vector3.zero
+		-- (the player's camera follows him: his rig stays in the Animator's near band, lod 3, as in Studio)
+		E.camera.CFrame = CFrame.new(0, y0 + 3, z + 10)
 		if animate.Disabled ~= true and i % 20 == 0 then
 			playTrack()
 		end
@@ -1124,10 +1152,14 @@ local function walkClip(clip, tier, timing)
 			end
 		end
 		table.insert(SALL, smp)
-		if t > 2.5 then
+		if t > tSteady then
 			table.insert(S, smp)
 		end
-		if t > 2.5 then
+		if clip == "shift" and t >= nextDiag and t < SHIFT_AT + 2.5 then
+			Diag.SampleTick(DS, model, nextDiag - SHIFT_AT + 0.5)
+			nextDiag += 0.1
+		end
+		if t > tSteady then
 			local lt = model:FindFirstChild("LowerTorso")
 			local ut = model:FindFirstChild("UpperTorso")
 			local head = model:FindFirstChild("Head")
@@ -1142,7 +1174,7 @@ local function walkClip(clip, tier, timing)
 				lf = model:FindFirstChild("LeftFoot").Position, rf = model:FindFirstChild("RightFoot").Position })
 			table.insert(hist, { t = t, i = i })
 		end
-		if t > 2.5 and tStart == 0 then
+		if t > tSteady and tStart == 0 then
 			tStart = t
 		end
 	end
@@ -1309,6 +1341,46 @@ local function walkClip(clip, tier, timing)
 		rec.animate.backDisabled = animate.Disabled == true and #animator:GetPlayingAnimationTracks() == 0
 	end
 	rec.gait = gaitSummary(S)
+	if clip == "shift" then
+		rec.shift = gaitSummary((function()
+			local o = {}
+			for _, x in ipairs(SALL) do
+				if x.t > SHIFT_AT and x.t <= SHIFT_AT + 1.5 then
+					table.insert(o, x)
+				end
+			end
+			return o
+		end)())
+		rec.diag = Diag.SampleLines(DS)
+		for _, l in ipairs(rec.diag.lines) do
+			print("      diag " .. l)
+		end
+		for _, l in ipairs(rec.diag.verdicts) do
+			print("      diag " .. l)
+		end
+	end
+	-- the feet's contacts (a sole within 0.03 of the floor) from the switch on (else from 2.5 s): every touchdown and
+	-- toe-off, in order, and the rig as the Animator measured it
+	do
+		local from = clip == "shift" and SHIFT_AT or 2.5
+		local ev, down = {}, {}
+		for _, x in ipairs(SALL) do
+			if x.t > from then
+				for _, k in ipairs({ "L", "R" }) do
+					local d = x["sole" .. k] < 0.03
+					if down[k] ~= nil and d ~= down[k] then
+						table.insert(ev, { t = r4(x.t), s = k, down = d })
+					end
+					down[k] = d
+				end
+			end
+		end
+		rec.contacts = ev
+		local rg = H.require("AnimRig").rigs[model]
+		local g = rg and rg.geo or {}
+		rec.legLen, rec.lod = g.legLen and r4(g.legLen), rg and rg.lod
+		print(string.format("      rig: HipHeight %.2f legLen %.2f hipW %.2f lod %s", hum.HipHeight, g.legLen or -1, g.hipW or -1, tostring(rg and rg.lod)))
+	end
 	rec.start = gaitSummary((function()
 		local o = {}
 		for _, x in ipairs(SALL) do
@@ -2377,7 +2449,7 @@ for _, tier in ipairs(TIERS) do
 	if CLIPS.rest then
 		restClip(tier)
 	end
-	for _, clip in ipairs({ "walk", "jog", "run", "sprint" }) do
+	for _, clip in ipairs({ "walk", "jog", "run", "sprint", "shift" }) do
 		if CLIPS[clip] then
 			for _, timing in ipairs(TIMINGS) do
 				walkClip(clip, tier, timing)

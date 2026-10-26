@@ -718,6 +718,9 @@ local function bend(model, _, mname)
 	return actual, written, nil
 end
 
+-- a sampled foot is down when its sole's lowest corner is within this of the lowest any sole reached (studs)
+Diag.SOLE_DOWN = 0.05
+
 function Diag.NewSample()
 	return { ticks = {}, lastL = nil, lastR = nil, slideL = 0, slideR = 0, downL = 0, downR = 0, tracks = 0 }
 end
@@ -770,24 +773,54 @@ function Diag.SampleTick(S, model, t)
 		local kind, nm, na = RigJoints.Kind(model)
 		S.kind = string.format("%s (Motor6D %d / AnimationConstraint %d)", kind, nm, na)
 	end
+	-- the sole: the foot box's lowest corner (world height, and which corner: its part-space point)
+	for _, f in ipairs({ { lf, "l" }, { rf, "r" } }) do
+		local part, k = f[1], f[2]
+		local h = part.Size / 2
+		local cf = part.CFrame
+		local lowY, lowQ = math.huge, nil
+		for _, sx in ipairs({ -1, 1 }) do
+			for _, sy in ipairs({ -1, 1 }) do
+				for _, sz in ipairs({ -1, 1 }) do
+					local q = Vector3.new(h.X * sx, h.Y * sy, h.Z * sz)
+					local w = cf * q
+					if w.Y < lowY then
+						lowY, lowQ = w.Y, q
+					end
+				end
+			end
+		end
+		tick[k .. "CF"], tick[k .. "SoleY"], tick[k .. "SoleQ"] = cf, lowY, lowQ
+	end
 	table.insert(S.ticks, tick)
-	-- a foot is "down" when it is within 0.12 of the lowest foot height seen so far; its travel then is slide
+	-- a foot is "down" when its sole's lowest corner is within SOLE_DOWN of the lowest seen so far on this tick and the
+	-- last; its slide is how far the corner that touched has moved along the floor since. (The foot's
+	-- centre within 0.12 of its lowest, as this read before, also caught a runner's foot a few centimetres over the
+	-- ground in the last instant of its swing - moving at the body's pace - and the centre of a planted foot rolling up
+	-- onto its toes: every 10 Hz sample of a run read as BAD "the planted feet slide" with the feet holding still)
 	local n = #S.ticks
+	S.soleLo = math.min(S.soleLo or math.huge, tick.lSoleY, tick.rSoleY)
 	if n > 1 then
-		local lo = math.huge
-		for _, k in ipairs(S.ticks) do
-			lo = math.min(lo, k.lY, k.rY)
-		end
+		local lo = S.soleLo
 		local prev = S.ticks[n - 1]
-		if tick.lY < lo + 0.12 and prev.lY < lo + 0.12 then
-			local d = (Vector3.new(tick.lP.X, 0, tick.lP.Z) - Vector3.new(prev.lP.X, 0, prev.lP.Z)).Magnitude
-			S.slideL += d
-			S.downL += 1
-		end
-		if tick.rY < lo + 0.12 and prev.rY < lo + 0.12 then
-			local d = (Vector3.new(tick.rP.X, 0, tick.rP.Z) - Vector3.new(prev.rP.X, 0, prev.rP.Z)).Magnitude
-			S.slideR += d
-			S.downR += 1
+		for _, k in ipairs({ "l", "r" }) do
+			if prev[k .. "SoleQ"] and tick[k .. "SoleY"] < lo + Diag.SOLE_DOWN and prev[k .. "SoleY"] < lo + Diag.SOLE_DOWN then
+				-- (the corner down on either tick, the one that held: a foot rolling from its heel onto its toes between
+				-- two samples moves the heel corner and keeps the toe, landing heel first the other way round; a slide
+				-- moves both)
+				local d = math.huge
+				for _, q in ipairs({ prev[k .. "SoleQ"], tick[k .. "SoleQ"] }) do
+					local a, b = prev[k .. "CF"] * q, tick[k .. "CF"] * q
+					d = math.min(d, Vector3.new(b.X - a.X, 0, b.Z - a.Z).Magnitude)
+				end
+				if k == "l" then
+					S.slideL += d
+					S.downL += 1
+				else
+					S.slideR += d
+					S.downR += 1
+				end
+			end
 		end
 	end
 end

@@ -9,7 +9,12 @@
 --   * a Humanoid's AutoRotate snap turns (the snapturn clip: quarter turns at 18 rad/s on WASD, a reversal): no bank into
 --     them, the head's lead, the chest / pelvis twist and the pelvis' lag behind the root bounded; a held curve still
 --     banks and the head still leads a turn in place; a start's forward lean bounded
---   lune run tools/sim/test_walkstable.luau            (~20 s; the clips land in tools/sim/out/walkstable)
+--   * [Studio] the run as /wcbdiag sampled it (W held at 6.5 studs/s, then Shift: 16 in one frame) on a rig of the
+--     user's leg (2.67 studs), at 30 Hz, on Studio's wandering frames and on scattered 1/80..1/28 s frames: a regular
+--     cadence and alternating steps with a flight between them from the first stride on, no swing held for a stride,
+--     the hip / knee / foot clearance of a person's run at ~5 m/s, no planted-foot slide (the sim's contact and the
+--     diagnostic's own 10 Hz verdict), a small pelvis bounce, a slight lean, swinging arms
+--   lune run tools/sim/test_walkstable.luau            (~30 s; the clips land in tools/sim/out/walkstable)
 local fs = require("@lune/fs")
 local process = require("@lune/process")
 local serde = require("@lune/serde")
@@ -239,6 +244,137 @@ if rAC.ok then
 		check(string.format("AC rig: the same sway / roll (%.3f / %.1f vs %.3f / %.1f)", mAC.pelvisSwayX, mAC.pelvisRollDeg, steady.pelvisSwayX, steady.pelvisRollDeg),
 			math.abs(mAC.pelvisSwayX - steady.pelvisSwayX) < 0.005 and math.abs(mAC.pelvisRollDeg - steady.pelvisRollDeg) < 0.3)
 		check(string.format("AC rig: the planted feet hold (slide %.3f / %.3f)", g.slideL, g.slideR), g.slideL < 0.03 and g.slideR < 0.03)
+	end
+end
+
+------------------------------------------------------------------------
+-- [Studio] the run: "the running is still messed up". /wcbdiag on the user's rig (R15, HipHeight 3.03, legLen 2.67,
+-- heightScale 1.13, lod 3) holding W, then Shift (6.5 -> 16 studs/s in a frame), sampled at 10 Hz: the hip swinging
+-- -20 .. 75 in jumps, the knee folded to 134, the feet kicked up 1.3 studs (half the leg), one foot in the air for
+-- 0.7 s after the switch and "BAD the planted feet slide". The sim reproduced every one of those numbers on a 2.69-stud
+-- leg (the swing timed to the schedule's next touchdown after an early toe-off; a 1.3-stud lift peaking under the hip;
+-- the foot brought to rest in the world at the touchdown, a stud past the spot). A person running at ~5 m/s, scaled
+-- to the leg: ~165-180 steps / min, hip flexion to ~45-55 relative to the pelvis, swing knee ~100-120, the foot well
+-- under half the leg off the ground, a flight phase between alternating steps, the pelvis bouncing ~a tenth of the leg
+------------------------------------------------------------------------
+local OUT_RUN = OUT .. "_run"
+local RUN_TIMINGS = { "hz30", "studio", "rough" }
+local rR = process.exec(luneBin(), { "run", "tools/sim/v9_anim.luau", "--tiers", "3", "--clips", "shift", "--no-mesh", "--nopen", "--frames", "1",
+	"--height", "78", "--timing", table.concat(RUN_TIMINGS, ","), "--out", OUT_RUN }, { cwd = root })
+check("v9_anim runs the walk -> run switch", rR.ok, (rR.stderr or "") .. (rR.stdout or ""):sub(-600))
+if rR.ok then
+	local byT = {}
+	for _, m in ipairs(serde.decode("json", fs.readFile(OUT_RUN .. "/metrics.json"))) do
+		if m.clip == "shift" then
+			byT[m.timing] = m
+		end
+	end
+	local function median(xs)
+		local c = table.clone(xs)
+		table.sort(c)
+		return #c > 0 and c[math.floor((#c + 1) / 2)] or 0
+	end
+	for _, timing in ipairs(RUN_TIMINGS) do
+		local m = byT[timing]
+		check("run " .. timing .. " recorded", m ~= nil)
+		if m then
+			local tag = "run " .. timing .. ": "
+			local L = m.legLen or 2.67
+			check(tag .. string.format("the rig's leg is the user's (%.2f studs, lod %s)", L, tostring(m.lod)), L > 2.55 and L < 2.8 and m.lod == 3)
+			-- the contacts from the switch on: swings, stances, touchdowns in order
+			local up, swings, stances, touch, flights = {}, {}, {}, {}, {}
+			local lastUp, lastDown = {}, {}
+			for _, e in ipairs(m.contacts or {}) do
+				if e.down then
+					if lastUp[e.s] then
+						table.insert(swings, { t = lastUp[e.s], d = e.t - lastUp[e.s] })
+					end
+					table.insert(touch, e)
+					-- (the other foot left before this one came down: both in the air between)
+					local o = e.s == "L" and "R" or "L"
+					if lastUp[o] and (not lastDown[o] or lastDown[o] < lastUp[o]) then
+						table.insert(flights, e.t - lastUp[o])
+					else
+						table.insert(flights, 0)
+					end
+					lastDown[e.s] = e.t
+				else
+					if lastDown[e.s] then
+						table.insert(stances, e.t - lastDown[e.s])
+					end
+					lastUp[e.s] = e.t
+				end
+				up[e.s] = true
+			end
+			local swD = {}
+			local longest, longestAt = 0, 0
+			for _, sw in ipairs(swings) do
+				table.insert(swD, sw.d)
+				if sw.d > longest then
+					longest, longestAt = sw.d, sw.t
+				end
+			end
+			local mSw = median(swD)
+			check(tag .. string.format("no swing held for a stride after the switch (longest %.3f s at %.2f, median %.3f)", longest, longestAt, mSw),
+				#swD >= 6 and longest <= 1.15 * mSw and longest <= 0.6)
+			-- (contacts and steps quantised to the frame: 33 ms at 30 Hz)
+			local stLo, stHi = math.huge, 0
+			for i, d in ipairs(stances) do
+				if i > 1 then
+					stLo, stHi = math.min(stLo, d), math.max(stHi, d)
+				end
+			end
+			check(tag .. string.format("short, even contacts (%.3f..%.3f s)", stLo, stHi), stLo >= 0.13 and stHi <= 0.26 and stHi - stLo <= 0.075)
+			-- alternating steps at a regular interval, half the period each: the first two after the switch settle the
+			-- feet's half-cycle (within a fifth), every later one within 12 % (a 30 Hz frame is 9 % of a step)
+			local alt, steps = true, {}
+			for i = 2, #touch do
+				alt = alt and touch[i].s ~= touch[i - 1].s
+				table.insert(steps, touch[i].t - touch[i - 1].t)
+			end
+			local mStep = median(steps)
+			local worst, worst0 = 0, 0
+			for i, d in ipairs(steps) do
+				if i <= 2 then
+					worst0 = math.max(worst0, math.abs(d - mStep) / mStep)
+				else
+					worst = math.max(worst, math.abs(d - mStep) / mStep)
+				end
+			end
+			check(tag .. string.format("alternating steps of %.3f s: the first two within %.0f %%, every later one within %.0f %%", mStep, worst0 * 100,
+				worst * 100), alt and #steps >= 6 and worst0 <= 0.2 and worst <= 0.12)
+			local spm = 120 / m.period
+			check(tag .. string.format("cadence %.0f steps / min (period %.3f, steps %.3f)", spm, m.period, mStep), spm >= 160 and spm <= 185
+				and math.abs(mStep - m.period / 2) <= 0.05 * m.period)
+			local fLo = math.huge
+			for i, f in ipairs(flights) do
+				if i > 1 then
+					fLo = math.min(fLo, f)
+				end
+			end
+			check(tag .. string.format("a flight before every touchdown after the first (shortest %.3f s)", fLo), fLo >= 0.04 and fLo < 0.25)
+			-- the run's angles: the steady run (1.5 s after the switch) and the switch itself
+			for _, part in ipairs({ { "steady", m.gait, 62, 0.36 }, { "switch", m.shift, 66, 0.4 } }) do
+				local g, nm, hipCap, soleCap = part[2], part[1], part[3], part[4]
+				local hip = math.max(g.hipL[2], g.hipR[2])
+				local knee = math.max(g.kneeL[2], g.kneeR[2])
+				local sole = math.max(g.soleL[2], g.soleR[2])
+				check(tag .. string.format("%s: peak hip flexion %.0f (a person's ~45-55; it was 75-90)", nm, hip), hip >= 40 and hip <= hipCap)
+				check(tag .. string.format("%s: peak swing knee %.0f (a person's ~100-120; it was 134-136)", nm, knee), knee >= 92 and knee <= 122)
+				check(tag .. string.format("%s: foot clearance %.2f studs = %.0f %% of the leg (it was 50 %%)", nm, sole, 100 * sole / L), sole >= 0.15 * L
+					and sole <= soleCap * L)
+				check(tag .. string.format("%s: the planted feet hold (slide %.3f / %.3f studs)", nm, g.slideL, g.slideR), g.slideL <= 0.08 and g.slideR <= 0.08)
+			end
+			local g = m.gait
+			local bob = g.pelvisY[2] - g.pelvisY[1]
+			check(tag .. string.format("the pelvis bounces %.3f studs (%.0f %% of the leg)", bob, 100 * bob / L), bob >= 0.04 * L and bob <= 0.12 * L)
+			check(tag .. string.format("a slight forward lean (trunk pitch %.1f..%.1f)", g.trunkPitch[1], g.trunkPitch[2]), g.trunkPitch[1] >= -11
+				and g.trunkPitch[2] <= -2)
+			check(tag .. string.format("the arms swing (shoulder %.0f..%.0f)", g.shoulderL[1], g.shoulderL[2]), g.shoulderL[2] - g.shoulderL[1] >= 40)
+			-- the diagnostic's own 10 Hz verdict, as Studio prints it
+			local v = table.concat(m.diag and m.diag.verdicts or {}, "\n")
+			check(tag .. "/wcbdiag: planted feet hold", v:find("OK   planted feet hold", 1, true) ~= nil, v:match("[^\n]*planted[^\n]*"))
+		end
 	end
 end
 

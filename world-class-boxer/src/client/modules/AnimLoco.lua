@@ -87,6 +87,14 @@ local WALK_MAX = 1.15
 -- pop), and how quickly the braking follows the deceleration (1/s: from the frame's raw deceleration it would
 -- switch the braking steps on in a single frame)
 local RUN_BLEND_MAX, BRAKE_RATE = 6, 12
+-- how quickly a runner's schedule catches up with a foot that toed off out of its turn (1/s: runSync)
+local PHASE_SYNC = 14
+-- a runner's swing: the foot's peak height over the ground (a share of the leg: RUN_LIFT + RUN_LIFT_V x the
+-- human-equivalent m/s; ~0.36 of it at 16 studs/s, a person's heel at 4.5 m/s), the share of it a late hump keeps
+-- over the ground for the touchdown, and the foot's speed along the ground as it meets it (a share of the body's)
+local RUN_LIFT, RUN_LIFT_V, RUN_LIFT_LATE, RUN_LAND_V = 0.14, 0.05, 0.25, 0.45
+-- the least bend a runner's swing knee keeps as the foot reaches for the ground (rad; a person's ~15-20 at touchdown)
+local RUN_REACH_KNEE = 16 * PI / 180
 -- gravity in the rig's studs (9.81 m/s^2 at the gait's Froude scale: VH and LREF): a runner's flight falls at it
 local GRAV = 8.829 / (VH * VH * LREF)
 -- a pushing foot (AnimLoco.feet): the most it rolls up onto the toes (rad), and how fast
@@ -631,6 +639,13 @@ local function updateGait(rig, t, dt)
 		end
 	end
 	lo.phase += dt / lo.T
+	-- (a runner's schedule catching up with a foot that toed off out of its turn: runSync)
+	local pc = lo.phaseCorr or 0
+	if pc ~= 0 then
+		local d = abs(pc) < 1e-3 and pc or pc * (1 - exp(-dt * PHASE_SYNC))
+		lo.phase += d
+		lo.phaseCorr = pc - d
+	end
 end
 AnimLoco.updateGait = updateGait
 
@@ -998,6 +1013,7 @@ local function startSwing(f, t, dur, liftH, kind)
 	f.planNew = true
 	f.pushOn = false
 	f.retimed = false
+	f.reachOff = nil
 end
 
 -- a walker's swing (walk pace) is planned as the ankle's own path, carried on from the push-off's last frame:
@@ -1032,6 +1048,32 @@ local function retime(f, t, rem)
 	if f.plan then
 		rebaseSwing(f, t, u0 > 0.3)
 	end
+end
+
+-- [Studio] a runner's foot that toes off away from the start of its swing window (the pelvis has left it out of
+-- reach early, or it held on late: the walk's feet as Shift takes the pace from 6.5 to 16 in a frame, the pace still
+-- blending, a hitch, a curve) takes the swing its pace has and the schedule follows it - its phase eased to that
+-- foot's lift-off (lo.phaseCorr, over ~0.15 s; forward up to half a cycle, back up to half) and the other foot, in the
+-- air, retimed to land half a cycle from this one's touchdown (alternating steps again within the stride). Timed to
+-- the schedule's next touchdown instead, the swing ran on for 0.7-0.8 s (a whole stride: one foot hanging in the air,
+-- the steps uneven for a second after every change of pace). Returns the swing's duration and the cycle it belongs
+-- to, or nil (a walker, pulling up, or a foot leaving on time: the schedule's own)
+local function runSync(rig, s, off, sw, t)
+	local lo = rig.loco
+	local x = (lo.phase + (lo.phaseCorr or 0) - off) % 1
+	local c = x > 0.5 and 1 - x or -x
+	if lo.run < 0.5 or (lo.brake or 0) > 0.3 or abs(c) < 0.04 then
+		return nil
+	end
+	lo.phaseCorr = (lo.phaseCorr or 0) + c
+	local o = rig.foot[s == "L" and "R" or "L"]
+	if o.swing and (lo.turnK or 0) < 0.3 then
+		local rem = (sw - 0.5) * lo.T
+		if rem > 0.06 and abs(o.t0 + o.dur - t - rem) > 0.02 then
+			retime(o, t, rem)
+		end
+	end
+	return sw * lo.T, floor(lo.phase + lo.phaseCorr - off + 1e-6)
 end
 
 -- the swing's knee by design (rad) at u (0 = the plan's start .. 1 = heel strike): from the knee the push-off left,
@@ -1267,8 +1309,6 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 	local prof = walking and profileOf(rig) or NO_STYLE
 	local run = lo.run
 	local back = walking and lo.back or 0
-	-- a runner's heel kick scales with the leg
-	local runLegK = (g.ok and g.legLen or 2.45) / 2.45
 	local legLen = g.legLen
 	-- a walker's track: the feet land well inside the hips' width (a person's ~10 cm apart walking, nearly on one
 	-- line running), not under the hip joints like pillars (sideways the side step keeps them apart)
@@ -1314,7 +1354,9 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 	end
 	-- moving gait: lift each foot when its phase window opens (or as soon as it may, inside it)
 	-- (low, quick pivot steps in a hard turn)
-	local walkLift = lerp(0.2 + 0.015 * speed, min(1.6, 0.3 + 0.055 * speed) * runLegK, run) * (1 - 0.75 * (lo.turnK or 0))
+	-- ([Studio] a runner's by the leg and the human pace: 0.3 + 0.055 x studs/s - 1.3 studs at 16, half the leg - had
+	-- the knee folded to 135 and the thigh raised to the horizontal on every stride)
+	local walkLift = lerp(0.2 + 0.015 * speed, (RUN_LIFT + RUN_LIFT_V * (lo.vh or 4)) * (legLen or 2.45), run) * (1 - 0.75 * (lo.turnK or 0))
 	if moving then
 		for _, s in ipairs(SIDES) do
 			local f = rig.foot[s]
@@ -1485,7 +1527,10 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 					local off = s == "L" and lo.offL or lo.offR
 					local sw = 1 - lo.duty
 					local x = (lo.phase - off) % 1
-					if x > sw then
+					local rd, rc = runSync(rig, s, off, sw, t)
+					if rd then
+						dur, f.cycle = rd, rc
+					elseif x > sw then
 						dur = max(full * 0.8, (1 - x + sw) * lo.T)
 						f.cycle = floor(lo.phase - off) + 1
 					else
@@ -1568,9 +1613,10 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			if moving and (sk == "walk" or sk == "shuffle" or sk == "stagger") then
 				if sk == "walk" then
 					-- walkers plant the heel a little ahead of the hip (about 0.4 of the contact) and push
-					-- off further behind it; runners land closer under the body
+					-- off further behind it; runners land a little closer under the body (0.3 of it: [Studio] at 0.17
+					-- the stance swept further behind than the leg reaches and every foot toed off early, out of turn)
 					-- (a hard turn's pivot steps land under the body)
-					lead = lo.duty * lo.stride * lerp(0.36, 0.17, lo.run) * (1 - (lo.turnK or 0))
+					lead = lo.duty * lo.stride * lerp(0.36, 0.3, lo.run) * (1 - (lo.turnK or 0))
 				elseif sk == "stagger" then
 					lead = lo.stride * 0.25
 				else
@@ -1651,7 +1697,10 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			f.landRel = V3(f.landRel.X, gy, f.landRel.Z)
 			f.landYaw = landYaw
 			if u >= 1 then
-				f.swing, f.P, f.yawW, f.lastStep, f.curLift = false, V3(tgt.X, gy, tgt.Z), landYaw, t, 0
+				-- (a runner's foot lands where its reach brought it: AnimLoco.feet's RUN_REACH_KNEE)
+				local ro = f.reachOff or ZERO
+				f.reachOff = nil
+				f.swing, f.P, f.yawW, f.lastStep, f.curLift = false, V3(tgt.X + ro.X, gy, tgt.Z + ro.Z), landYaw, t, 0
 				f.landT = t
 				f.sigT = t
 				f.dropH = nil
@@ -1663,9 +1712,15 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				-- (a runner's foot leaves the ground moving on already - it rises behind him as the knee folds
 				-- instead of trailing straight - and slows into the touchdown: a Hermite start at half the swing's
 				-- mean speed)
+				-- ([Studio] and it still travels at RUN_LAND_V of the body's pace as it meets the ground - the swing leg's
+				-- retraction - coming down onto it (the arc's late hump). Brought to rest in the world at the touchdown
+				-- the ankle ran a stud past the landing spot - the thigh raised to 70-90 degrees, the leg straight and the
+				-- foot hovering a fifth of a stud over the floor - and came back to it as the body caught up)
 				local e = K.smoother(u)
 				if sk == "walk" and lo.run > 0.01 then
-					e = lerp(e, u * u * (3 - 2 * u) + 0.5 * u * (1 - u) * (1 - u), lo.run)
+					local span = (tgt - f.fromP).Magnitude
+					local m1 = clamp(RUN_LAND_V * speed * f.dur / max(0.5, span), 0, 0.6)
+					e = lerp(e, u * u * (3 - 2 * u) + 0.5 * u * (1 - u) * (1 - u) + m1 * u * u * (u - 1), lo.run)
 				end
 				local pos = f.fromP:Lerp(tgt, e)
 				-- (up a step the foot rises to the new height early, down one it stays high, then drops)
@@ -1677,10 +1732,19 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				-- in to the heel strike; running kicks the heel up early behind the body, then the knee
 				-- unfolds as the foot reaches forward. A smooth skewed bump u^a (1-u)^b (zero slope at
 				-- lift-off and touchdown: no knee snap)
-				-- (a runner kicks the heel up early behind the body, then the knee unfolds as the foot reaches)
+				-- (a runner kicks the heel up early behind the body - the peak a quarter of the way, while the foot is
+				-- still behind the hip - then the knee unfolds as the foot passes low under the body and reaches; a late
+				-- hump (RUN_LIFT_LATE, highest at 0.83) holds it a few centimetres up and brings it DOWN onto the ground,
+				-- as a runner's foot comes, not skimming in along the floor at the body's pace. [Studio] peaking at 0.4
+				-- with a slow fall the foot was carried highest under and in front of the hip: the thigh raised to the
+				-- horizontal, a sprinter's high knees at 16 studs/s)
 				local a = sk == "walk" and lerp(1.6, 1.25, lo.run) or 2
 				local b = sk == "walk" and lerp(2.4, 1.9, lo.run) or 2
-				f.curLift = f.liftH * K.skewBump(u, a, b) * (1 - 0.75 * (lo.turnK or 0)) + (f.dropH or 0) * (1 - K.smoother(u))
+				local bump = K.skewBump(u, a, b)
+				if sk == "walk" and lo.run > 0.01 then
+					bump = lerp(bump, (1 - RUN_LIFT_LATE) * K.skewBump(u, 1.1, 3.4) + RUN_LIFT_LATE * K.skewBump(u, 5, 1), lo.run)
+				end
+				f.curLift = f.liftH * bump * (1 - 0.75 * (lo.turnK or 0)) + (f.dropH or 0) * (1 - K.smoother(u))
 				-- foot roll through the swing: toe-off -> level -> landing attitude
 				local landP, mid
 				if sk == "walk" then
@@ -1868,6 +1932,24 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 						end
 					end
 				end
+				-- [Studio] a runner's foot reaching for the ground never locks the knee straight in the air: the ankle is
+				-- kept where the leg reaches it with RUN_REACH_KNEE of bend (brought back under the body - the swing
+				-- leg's retraction - not lifted), so it meets the ground softly bent. Past that the IK stretched the
+				-- leg dead straight and the foot hovered a fifth of a stud over the floor for the last tenth of a second
+				-- (and it touches down there: a foot set down on the spot further on would jump to it in the landing frame)
+				f.reachOff = nil
+				if run > 0.01 and u > 0.5 then
+					local dMax = R.slackFor(leg, RUN_REACH_KNEE, WALK_SOFT) * (leg.l1 + leg.l2)
+					local d = tgt - hipP + V3(0, lo.drop + (lo.dropV or 0) * dt, 0)
+					local h2 = d.X * d.X + d.Z * d.Z
+					if h2 + d.Y * d.Y > dMax * dMax and h2 > 1e-6 then
+						local k = sqrt(max(0, dMax * dMax - d.Y * d.Y) / h2)
+						k = lerp(1, min(1, k), run * smooth((u - 0.5) / 0.15))
+						local t2 = V3(hipP.X + (tgt.X - hipP.X) * k, tgt.Y, hipP.Z + (tgt.Z - hipP.Z) * k)
+						f.reachOff = trueCF:VectorToWorldSpace(t2 - tgt)
+						tgt = t2
+					end
+				end
 			end
 			targets[s] = tgt
 			-- the stance leg's knee by design (heel strike nearly straight, loading flex, locked by mid-stance;
@@ -2030,12 +2112,14 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			if psi < ds then
 				-- (the leg's push rises and fades as a half sine, over the step as a whole holding the body up: the
 				-- pelvis meets the flight's speed and its free fall at touchdown and toe-off, lowest at mid-stance)
-				-- (a sprinter's stiffer leg sinks less: toward a shallower curve that meets the flight the same way)
+				-- (a runner's stiffer leg sinks less: toward a shallower curve that meets the flight the same way - all
+				-- the way from ~4.5 m/s; [Studio] from 4.8 only, the pelvis bounced 0.36 studs at 16 studs/s, 13 % of
+				-- the leg, and sank the stance knee to 60)
 				local tc, w = psi * half, PI / Tc
 				local kw = (Tc + Tf) * 0.5
 				y = -GRAV * Tf * 0.5 * tc + GRAV * (kw * (tc - sin(w * tc) / w) - 0.5 * tc * tc)
 				vy = -GRAV * Tf * 0.5 + GRAV * (kw * (1 - cos(w * tc)) - tc)
-				local stiff = 0.7 * clamp((lo.vh - 4.8) / 2, 0, 1)
+				local stiff = clamp((lo.vh - 3) / 1.5, 0, 1)
 				if stiff > 0 then
 					local A = GRAV * Tf * Tc / (2 * PI)
 					local sn, cs = sin(w * tc), cos(w * tc)
@@ -2213,6 +2297,10 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 					local full = sw * lo.T
 					local dur = max((sw + (x > 0.5 and 1 - x or -x)) * lo.T, 0.55 * full)
 					f.cycle = floor(lo.phase - off) + (x > 0.5 and 1 or 0)
+					local rd, rc = runSync(rig, s, off, sw, t)
+					if rd then
+						dur, f.cycle = rd, rc
+					end
 					startSwing(f, t, dur, walkLift * clamp(dur / max(0.05, full) + 0.1, 0.4, 1), "walk")
 				end
 			end
