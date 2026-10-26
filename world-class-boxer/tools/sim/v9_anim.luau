@@ -22,6 +22,10 @@
 --     settle, `frames` evenly spaced over one full gait cycle (two steps)
 --   shift: the walk at 6.5 studs/s, then Shift - the pace jumps to 16 in one frame at --shiftat (2.5 s); its metrics
 --     carry the switch's own summary (shift), the contacts after it and the /wcbdiag 10 Hz sample (diag)
+--   strafe / strafe16 / strafering / strafeturn: the body kept facing -Z while he goes sideways, on the diagonals and
+--     back, the direction flipping (strafeClip: the town walk, Shift's pace, a Fighter's footwork, and AutoRotate on); its
+--     metrics carry each stretch's and each change's numbers (the feet across the pelvis, slide, roll, contacts, the
+--     joints' frame-to-frame change). --dump A,B prints its frames between A and B s, --debugrig T [--debugwin S] the feet
 --   punch: two "Fighter" models 3.4 studs apart facing each other; jab, cross, lead hook, rear hook, uppercut and a
 --     body jab (Act / ActId as FightEngine sends them), recorded at the punch's peak (the frame of the glove's
 --     furthest reach) plus a few in-between frames
@@ -1578,6 +1582,295 @@ local function scriptClip(clip, tier)
 end
 
 ------------------------------------------------------------------------
+-- strafing clips: the body kept facing -Z (Shift Lock / first person; a boxer facing his man) while he goes off to the
+-- side, on the diagonals and backward, the direction flipping (D -> A, W -> A); the Humanoid's velocity reaches the new
+-- direction in about a tenth of a second. strafe = the town walk (6.5), strafe16 = Shift (16), strafering = a Fighter's
+-- footwork in the stance (the shuffle), strafeturn = AutoRotate on: the root turns toward the new way at a Humanoid's
+-- ~18 rad/s, so for a moment he moves sideways to his facing. Under every --timing. Metrics per segment (its steady
+-- part, from 0.9 s in) and per change of direction (the 0.7 s after it): the feet's lateral offsets from the pelvis
+-- (crossing), the planted feet's slide, the pelvis' roll and sway, the contacts, the hip's flexion / abduction, and the
+-- largest change of a joint angle in a frame (scaled to 1/60 s)
+------------------------------------------------------------------------
+local DIRS = { D = { 1, 0 }, A = { -1, 0 }, W = { 0, -1 }, S = { 0, 1 }, WD = { 0.7071, -0.7071 }, WA = { -0.7071, -0.7071 },
+	SA = { -0.7071, 0.7071 }, SD = { 0.7071, 0.7071 } }
+local STRAFES = {
+	strafe = { speed = "walk", segs = { { 1, "D" }, { 3.4, "A" }, { 5.8, "WD" }, { 7.6, "W" }, { 9.0, "A" }, { 10.6, "SA" }, { 12.2, "D" }, { 13.8 } } },
+	strafe16 = { speed = "run", segs = { { 1, "D" }, { 3.4, "A" }, { 5.8, "WD" }, { 7.6, "W" }, { 9.0, "A" }, { 10.6, "SA" }, { 12.2, "D" }, { 13.8 } } },
+	strafering = { speed = "ring", fighter = true, segs = { { 1, "D" }, { 3.0, "A" }, { 5.0, "D" }, { 7.0, "WA" }, { 8.6, "A" }, { 10.2 } } },
+	strafeturn = { speed = "walk", autorot = true, segs = { { 1, "W" }, { 2.6, "D" }, { 4.2, "A" }, { 5.8, "W" }, { 7.4, "SA" }, { 9.0 } } },
+}
+SPEEDS.ring = SPEEDS.ring or 6
+local function strafeClip(clip, tier, timing)
+	local sc = STRAFES[clip]
+	local tick = timingOf(timing)
+	local TTAG = timing ~= "steady" and ("_" .. timing) or ""
+	local model, hum = makeBoxer(tier)
+	model.Name = "Walker"
+	if sc.fighter then
+		model:SetAttribute("Guard", "stance")
+		model:SetAttribute("Style", "BoxerPuncher")
+		model:SetAttribute("Stam", 1)
+		CS:AddTag(model, "Fighter")
+	end
+	player.Character = model
+	player.CharacterAdded:Fire(model)
+	local hrp = model:FindFirstChild("HumanoidRootPart")
+	local lt = model:FindFirstChild("LowerTorso")
+	local y0 = hrp.CFrame.Y
+	local sample = gaitSampler(model)
+	local speed = SPEEDS[sc.speed]
+	local segs = sc.segs
+	local total = segs[#segs][1] + 1
+	local x, z, yaw, vx, vz = 0, 0, 0, 0, 0
+	local S = {}
+	local t = 0
+	local function segAt(tt)
+		local k = 0
+		for i, s in ipairs(segs) do
+			if tt >= s[1] then
+				k = i
+			end
+		end
+		return k
+	end
+	while t < total do
+		local fdt, pdt = tick()
+		t += fdt
+		local si = segAt(t)
+		local d = si > 0 and segs[si][2] and DIRS[segs[si][2]]
+		-- (the wanted way in the body's frame; AutoRotate: in the world, the root turning toward it)
+		local tx, tz = 0, 0
+		if d then
+			tx, tz = d[1] * speed, d[2] * speed
+		end
+		local kv = 1 - math.exp(-fdt * 30)
+		vx += (tx - vx) * kv
+		vz += (tz - vz) * kv
+		local yr = 0
+		if sc.autorot and (tx ~= 0 or tz ~= 0) then
+			local want = math.atan2(-tx, -tz)
+			local e = ((want - yaw + PI) % (2 * PI)) - PI
+			yr = math.clamp(e / fdt, -18, 18)
+			yaw += yr * fdt
+		end
+		x += vx * pdt
+		z += vz * pdt
+		hrp.CFrame = CFrame.new(x, y0, z) * CFrame.Angles(0, yaw, 0)
+		hrp.AssemblyLinearVelocity = Vector3.new(vx, 0, vz)
+		hrp.AssemblyAngularVelocity = Vector3.new(0, yr, 0)
+		local vm = math.sqrt(vx * vx + vz * vz)
+		hum.MoveDirection = (tx ~= 0 or tz ~= 0) and Vector3.new(tx, 0, tz).Unit or Vector3.zero
+		E.camera.CFrame = CFrame.new(x, y0 + 3, z + 10)
+		frame({ model }, fdt)
+		local smp = sample(t)
+		smp.v, smp.fdt, smp.seg = vm, fdt, si
+		-- (the feet's offsets across the pelvis: in its own frame, levelled - on a diagonal it turns toward the way he goes)
+		local rcf = hrp.CFrame
+		local lk = lt.CFrame.LookVector
+		local pcf = CFrame.lookAt(lt.Position, lt.Position + Vector3.new(lk.X, 0, lk.Z))
+		local aL, aR = pcf:PointToObjectSpace(smp.anklePL), pcf:PointToObjectSpace(smp.anklePR)
+		smp.xL, smp.xR, smp.pelX = aL.X, aR.X, rcf:PointToObjectSpace(lt.Position).X
+		local rel = rcf:Inverse() * lt.CFrame
+		local _, _, rz = rel:ToOrientation()
+		smp.pRoll = math.deg(rz)
+		for _, sd in ipairs({ "Left", "Right" }) do
+			local ul = model:FindFirstChild(sd .. "UpperLeg")
+			local dd = lt.CFrame:VectorToObjectSpace(-ul.CFrame.UpVector)
+			smp["abd" .. sd:sub(1, 1)] = math.deg(math.atan2(dd.X * (sd == "Right" and 1 or -1), -dd.Y))
+			-- (the foot turned against the shin: the toes pointing where the knee does, never twisted round it)
+			-- (their hinge axes, the RightVectors: level whatever the foot's roll onto the toes or the shin's lean)
+			local sl, fl = model:FindFirstChild(sd .. "LowerLeg").CFrame.RightVector, model:FindFirstChild(sd .. "Foot").CFrame.RightVector
+			smp["twist" .. sd:sub(1, 1)] = math.deg(math.abs(((math.atan2(fl.Z, fl.X) - math.atan2(sl.Z, sl.X) + 3 * PI) % (2 * PI)) - PI))
+		end
+		table.insert(S, smp)
+		if args.debugrig and t > tonumber(args.debugrig) and t < tonumber(args.debugrig) + (tonumber(args.debugwin) or 0.12) then
+			local rg = H.require("AnimRig").rigs[model]
+			local lo = rg and rg.loco
+			if lo then
+				print(string.format("dbg %.3f loco moving %s run %.2f side %.2f sideK %.2f lead %s offR %.2f T %.3f duty %.2f phase %.3f legYaw %.2f sideA %.2f sideB %.2f lv %s",
+					t, tostring(lo.moving), lo.run, lo.side, lo.sideK or -1, tostring(lo.sideLead or lo.lead), lo.offR or -1, lo.T or -1, lo.duty or -1,
+					lo.phase or -1, lo.legYaw or 0, lo.sideA or -1, lo.sideB or -1, tostring(lo.lv)))
+			end
+			for _, sd in ipairs({ "L", "R" }) do
+				local f = rg and rg.foot[sd]
+				if f then
+					if f.dbgT then
+						print("   tgt stages", sd, tostring(f.dbgT.base), tostring(f.dbgT.side), tostring(f.dbgT.gap), tostring(f.dbgT.aim))
+					end
+					print(string.format("dbg %.3f %s yawW %.0f home %.0f cur %.0f swing=%s kind=%s u=%.2f P=%s cur=%s tgt=%s push=%s sole=%.3f", t, sd, math.deg(f.yawW), math.deg(f.homeYaw or 0), math.deg(f.curYaw or 0), tostring(f.swing), tostring(f.stepKind),
+						(t - f.t0) / f.dur, tostring(f.P), tostring(f.cur), tostring(f.tgtW), tostring(f.push), smp["sole" .. sd]))
+				end
+			end
+		end
+		-- (--dump A,B: the strafe's per-frame numbers between A and B s)
+		local da, db = (args.dump or ""):match("([%d%.]+),([%d%.]+)")
+		if da and t >= tonumber(da) and t <= tonumber(db) then
+			print(string.format("dump %.3f yaw %.0f tw %.0f/%.0f v %.2f xL %.2f xR %.2f pelX %.3f roll %.1f soleL %.2f soleR %.2f abd %.0f/%.0f hip %.0f/%.0f knee %.0f/%.0f pelY %.3f",
+				t, math.deg(yaw), smp.twistL, smp.twistR, vm, smp.xL, smp.xR, smp.pelX, smp.pRoll, smp.soleL, smp.soleR, smp.abdL, smp.abdR, smp.hipL, smp.hipR, smp.kneeL, smp.kneeR, smp.pelvisY))
+		end
+	end
+	local function window(a, b)
+		local o = {}
+		for _, s in ipairs(S) do
+			if s.t > a and s.t <= b then
+				table.insert(o, s)
+			end
+		end
+		return o
+	end
+	local function feetOf(W)
+		local gapMin, xLmax, xRmin = math.huge, -math.huge, math.huge
+		local rMin, rMax, pxMin, pxMax = math.huge, -math.huge, math.huge, -math.huge
+		local abd, flex = { math.huge, -math.huge }, { math.huge, -math.huge }
+		local twist = 0
+		for _, s in ipairs(W) do
+			twist = math.max(twist, s.twistL, s.twistR)
+			gapMin = math.min(gapMin, s.xR - s.xL)
+			xLmax, xRmin = math.max(xLmax, s.xL), math.min(xRmin, s.xR)
+			rMin, rMax = math.min(rMin, s.pRoll), math.max(rMax, s.pRoll)
+			pxMin, pxMax = math.min(pxMin, s.pelX), math.max(pxMax, s.pelX)
+			for _, k in ipairs({ "L", "R" }) do
+				abd[1], abd[2] = math.min(abd[1], s["abd" .. k]), math.max(abd[2], s["abd" .. k])
+				flex[1], flex[2] = math.min(flex[1], s["hip" .. k]), math.max(flex[2], s["hip" .. k])
+			end
+		end
+		return { gapMin = r4(gapMin), xLmax = r4(xLmax), xRmin = r4(xRmin), rollRange = r4(rMax - rMin), roll = { r4(rMin), r4(rMax) },
+			swayX = r4(pxMax - pxMin), abd = { r4(abd[1]), r4(abd[2]) }, flex = { r4(flex[1]), r4(flex[2]) }, footTwist = r4(twist) }
+	end
+	local function contactsOf(W)
+		-- (down under 0.02 studs, up over 0.045: a sole skimming a centimetre over the floor is no step)
+		local ev, down = {}, {}
+		for _, s in ipairs(W) do
+			for _, k in ipairs({ "L", "R" }) do
+				local h = s["sole" .. k]
+				local dn = down[k]
+				if dn == nil then
+					dn = h < 0.03
+				elseif dn and h > 0.045 then
+					dn = false
+				elseif not dn and h < 0.02 then
+					dn = true
+				end
+				if down[k] ~= nil and dn ~= down[k] then
+					table.insert(ev, { t = r4(s.t), s = k, down = dn })
+				end
+				down[k] = dn
+			end
+		end
+		-- (a foot back down within 0.04 s of leaving the floor bounced - a scuff, not a step)
+		local td, lastUp = {}, {}
+		for _, e in ipairs(ev) do
+			if e.down then
+				if not (lastUp[e.s] and e.t - lastUp[e.s] < 0.04 and #td > 0) then
+					table.insert(td, e)
+				end
+			else
+				lastUp[e.s] = e.t
+			end
+		end
+		local alt, steps = true, {}
+		for i = 2, #td do
+			alt = alt and td[i].s ~= td[i - 1].s
+			table.insert(steps, td[i].t - td[i - 1].t)
+		end
+		local lo, hi = math.huge, 0
+		for _, d in ipairs(steps) do
+			lo, hi = math.min(lo, d), math.max(hi, d)
+		end
+		-- (each foot's own touchdowns: a regular stride, whatever the rhythm between the two - a gallop's is uneven)
+		local last, sLo, sHi = {}, math.huge, 0
+		for _, e in ipairs(td) do
+			if last[e.s] then
+				sLo, sHi = math.min(sLo, e.t - last[e.s]), math.max(sHi, e.t - last[e.s])
+			end
+			last[e.s] = e.t
+		end
+		local firstUp
+		for _, e in ipairs(ev) do
+			if not e.down then
+				firstUp = e.s
+				break
+			end
+		end
+		return { n = #td, alternating = alt, stepMin = r4(#steps > 0 and lo or 0), stepMax = r4(hi), strideMin = r4(sHi > 0 and sLo or 0),
+			strideMax = r4(sHi), firstUp = firstUp }
+	end
+	local KEYS_P = { "kneeL", "kneeR", "hipL", "hipR", "abdL", "abdR", "pRoll", "trunkRoll", "trunkPitch" }
+	local function popsOf(W)
+		local o = { pelvisY = 0 }
+		for _, k in ipairs(KEYS_P) do
+			o[k] = 0
+		end
+		for i = 2, #W do
+			local a, b = W[i - 1], W[i]
+			local sc60 = (1 / 60) / math.max(b.fdt, 1 / 240)
+			for _, k in ipairs(KEYS_P) do
+				o[k] = math.max(o[k], math.abs(((b[k] - a[k] + 540) % 360) - 180) * math.min(sc60, 1))
+			end
+			o.pelvisY = math.max(o.pelvisY, math.abs(b.pelvisY - a.pelvisY) * math.min(sc60, 1))
+		end
+		for k, v in pairs(o) do
+			o[k] = r4(v)
+		end
+		return o
+	end
+	local rec = { clip = clip, tier = tier, timing = timing, speed = speed, height = HEIGHT, segs = {}, flips = {} }
+	for i, s in ipairs(segs) do
+		local t1 = segs[i + 1] and segs[i + 1][1] or total
+		local name = s[2] or "stop"
+		if s[2] then
+			local W = window(s[1] + 0.9, t1)
+			local g = gaitSummary(W)
+			local seg = feetOf(W)
+			seg.dir, seg.t0, seg.t1 = name, s[1], t1
+			seg.slideL, seg.slideR = g.slideL, g.slideR
+			seg.knee = { math.min(g.kneeL[1], g.kneeR[1]), math.max(g.kneeL[2], g.kneeR[2]) }
+			seg.pelvisY = g.pelvisY
+			seg.trunkRoll, seg.trunkPitch = g.trunkRoll, g.trunkPitch
+			seg.contacts = contactsOf(W)
+			seg.pops = popsOf(W)
+			table.insert(rec.segs, seg)
+		end
+		if i > 1 then
+			local W = window(s[1] - 0.05, s[1] + 0.7)
+			local g = gaitSummary(W)
+			local fl = feetOf(W)
+			fl.from, fl.to, fl.t = segs[i - 1][2], name, s[1]
+			fl.slideL, fl.slideR = g.slideL, g.slideR
+			fl.pops = popsOf(W)
+			-- (from the moment the way he goes has turned over: the Humanoid's velocity takes ~0.1 s)
+			fl.contacts = contactsOf(window(s[1] + 0.06, s[1] + 0.7))
+			table.insert(rec.flips, fl)
+		end
+	end
+	rec.pops = popsOf(window(0.9, total))
+	print(string.format("%s T%d %s v=%.1f", clip, tier, timing, speed))
+	for _, sg in ipairs(rec.segs) do
+		print(string.format("   seg %-3s gap %.2f twist %.0f bob %.3f (xL max %.2f xR min %.2f)  slide %.3f/%.3f  roll %.1f..%.1f  sway %.3f  abd %.0f..%.0f  flex %.0f..%.0f  knee %.0f..%.0f  steps %d alt %s (%.2f..%.2f)  trunk roll %.1f..%.1f",
+			sg.dir, sg.gapMin, sg.footTwist, sg.pelvisY[2] - sg.pelvisY[1], sg.xLmax, sg.xRmin, sg.slideL, sg.slideR, sg.roll[1], sg.roll[2], sg.swayX, sg.abd[1], sg.abd[2], sg.flex[1], sg.flex[2],
+			sg.knee[1], sg.knee[2], sg.contacts.n, tostring(sg.contacts.alternating), sg.contacts.stepMin, sg.contacts.stepMax, sg.trunkRoll[1], sg.trunkRoll[2]))
+		print(string.format("        steady per-frame: knee %.1f/%.1f hip %.1f/%.1f abd %.1f/%.1f", sg.pops.kneeL, sg.pops.kneeR, sg.pops.hipL, sg.pops.hipR, sg.pops.abdL, sg.pops.abdR))
+	end
+	for _, fl in ipairs(rec.flips) do
+		local p = fl.pops
+		print(string.format("   flip %s->%s gap %.2f twist %.0f slide %.3f/%.3f  roll %.1f..%.1f  pops knee %.1f/%.1f hip %.1f/%.1f abd %.1f/%.1f roll %.2f trunk %.2f/%.2f pelvisY %.3f",
+			tostring(fl.from), fl.to, fl.gapMin, fl.footTwist, fl.slideL, fl.slideR, fl.roll[1], fl.roll[2], p.kneeL, p.kneeR, p.hipL, p.hipR, p.abdL, p.abdR, p.pRoll,
+			p.trunkRoll, p.trunkPitch, p.pelvisY))
+	end
+	Host.WriteJSON(string.format("%s/gait_%s_t%d%s%s.json", OUT, clip, tier, HTAG, TTAG), { clip = clip, tier = tier, timing = timing, rec = rec,
+		series = seriesOf(S) })
+	table.insert(metrics, rec)
+	if sc.fighter then
+		CS:RemoveTag(model, "Fighter")
+	end
+	player.Character = nil
+	model:Destroy()
+	for _ = 1, 3 do
+		frame({})
+	end
+end
+
+------------------------------------------------------------------------
 -- punches
 ------------------------------------------------------------------------
 local PUNCH_LIST = {
@@ -2459,6 +2752,13 @@ for _, tier in ipairs(TIERS) do
 	for _, clip in ipairs({ "startstop", "turn", "curve", "snapturn" }) do
 		if CLIPS[clip] then
 			scriptClip(clip, tier)
+		end
+	end
+	for _, clip in ipairs({ "strafe", "strafe16", "strafering", "strafeturn" }) do
+		if CLIPS[clip] then
+			for _, timing in ipairs(TIMINGS) do
+				strafeClip(clip, tier, timing)
+			end
 		end
 	end
 	if CLIPS.punch then

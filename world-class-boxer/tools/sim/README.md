@@ -461,6 +461,24 @@ lune run tools/sim/v9_anim.luau --tiers 3 --clips walk,snapturn --no-mesh --nope
   snap turns without a bank, with the head's lead, the twist and the pelvis' lag bounded; a held curve still banked, the
   head still leading a turn in place, a start's forward lean bounded.
 
+## The punches' arm motion and the stance's life: test_punchanim
+
+```sh
+lune run tools/sim/test_punchanim.luau [--report] [--src DIR]   # ~20 s; --report prints the numbers per punch
+lune run tools/sim/test_punchanim.luau --dump leadhook [--fps 30] [--rep 2]   # that punch frame by frame
+```
+
+The REAL Animator on two plain R15 block rigs with the joints of v9_anim's tier-3 Athletic boxer (sizes and rig
+attachments measured off Builder.Cosmetics' build), at 60 and 30 fps with wandering frame times (+-35 %, a 2.5-frame
+hitch every 53 frames). Every punch (jab, cross, lead / rear hook, uppercut, overhand, body jab, body hook; twice each) is
+measured in the puncher's UpperTorso frame against the stance's own glove spot (rig.guardL / guardR, so the guard's
+life is not the punch's) and checked: no overshoot past contact (the elbow opens <= 4 degrees, 8 to the body; the fist
+<= 0.06 studs further), out on time, the elbow never hyperextended, the wrist aligned, straights locked just short of
+straight, hooks with the elbow at 70-110 degrees and the arm about level, the hips and waist turning into crosses and
+hooks, the uppercut's pelvis rising out of its dip, the off hand at the guard (no drop), the fist back at the guard by
+Combos.Recovery (windup x 1.9) and still after it (no droop, no ringing). Then the fight stance and the town idle over
+6 s (fidgets left out): breathing, weight shift, the hands' and shoulders' life present but small, and smooth.
+
 ## Knockdowns and knockouts on the canvas: v10_ko_render
 
 ```sh

@@ -75,7 +75,9 @@ local KEYS, LEG_KEYS = R.KEYS, R.LEG_KEYS
 local ARM_KEYS = { LS = true, LE = true, LW = true, RS = true, RE = true, RW = true }
 -- a walker's swinging arm joints and where their post-filter transform is kept
 local ARM_OUT = { LS = "lsOut", LE = "leOut", RS = "rsOut", RE = "reOut", LW = "lwOut", RW = "rwOut" }
-local PUNCH_JOINT_RATE = 38
+local PUNCH_JOINT_RATE = 60
+-- a fighter's arms: the base filter's rate x this (the guard tracks its spots on the trunk)
+local GUARD_ARM_RATE = 2.5
 local TAGS = { "Fighter", "Trainee", "Ambient", "Preview", "Referee" }
 -- player characters walk / run / jump with the procedural gait (false = Roblox's default Animate)
 local DRIVE_PLAYERS = true
@@ -1166,6 +1168,12 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 		end
 	end
 	local ab = p.snap and 1 or (1 - exp(-dt * rate))
+	-- (a fighter's guard arms ride the trunk tighter than the rest glides: at the body's rate a 0.2 s bounce left the
+	-- gloves a quarter of a stud behind their spots, trailing the chest like loose arms; a dazed guard keeps its lag)
+	local abArm = ab
+	if rig.isFighter and guard ~= "down" and not p.rate and not p.snap then
+		abArm = 1 - exp(-dt * rate * GUARD_ARM_RATE)
+	end
 	local joints = rig.joints
 	if rig.wasPlant and not rig.plant then
 		-- leaving planted feet: the keyed legs start from where the IK left them
@@ -1179,7 +1187,7 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 	for _, k in ipairs(KEYS) do
 		local j = joints[k]
 		if j then
-			j.base = j.base:Lerp(p[k], ab)
+			j.base = j.base:Lerp(p[k], ARM_KEYS[k] and abArm or ab)
 			p[k] = j.base
 		end
 	end
@@ -1285,8 +1293,9 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 		end
 	end
 	-- a walker's arm swing, in step with the legs (after the filters, like the pelvis): opposite the legs,
-	-- faded out while a gesture owns the arms
-	local sL, eL, zL, sR, eR, zR, yL, yR, wL, wR = Loco.armOffsets(rig, dt, rig.gesture ~= nil)
+	-- faded out while a gesture or a punch owns the arms (a punch thrown on the move: the swing laid over the punching
+	-- arm swung it loose round its own line)
+	local sL, eL, zL, sR, eR, zR, yL, yR, wL, wR = Loco.armOffsets(rig, dt, rig.gesture ~= nil or (punching and true or false))
 	if sL and joints.LS and joints.LE and joints.RS and joints.RE then
 		rig.armOut = true
 		rig.lsOut = A(sL, yL, zL) * joints.LS.cur

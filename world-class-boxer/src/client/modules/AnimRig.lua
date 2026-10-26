@@ -821,8 +821,11 @@ function AnimRig.solveLeg(rig, p, s, rootT, targetHRP, footYaw, pitch, knee, sof
 	end
 	local hp, roll, flexK = K.legIK(d.X, d.Y, d.Z, leg.l1, leg.l2)
 	-- the knee tracks over the toes: twist the leg about the hip -> ankle line
+	-- (that line points down: a turn about it by +x is a yaw of -x, so the foot's yaw goes in negated - [Studio] taken as
+	-- it was, the knee turned AWAY from the toes: a foot left planted as AutoRotate snapped the root round stood twisted
+	-- 90-180 degrees under its shin, a boxer's turned stance foot under a knee turned the other way)
 	local look = hipFrame.LookVector
-	local tw = clamp(K.wrap(footYaw - atan2(-look.X, -look.Z)) * 0.55 + (knee or 0), -0.8, 0.8)
+	local tw = clamp((knee or 0) - K.wrap(footYaw - atan2(-look.X, -look.Z)) * 0.55, -0.8, 0.8)
 	local hipT = A(0, 0, roll) * A(hp, 0, 0)
 	if abs(tw) > 1e-3 and d.Magnitude > 1e-3 then
 		hipT = CFrame.fromAxisAngle(d.Unit, tw) * hipT

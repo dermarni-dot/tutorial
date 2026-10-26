@@ -14,7 +14,10 @@
 --     cadence and alternating steps with a flight between them from the first stride on, no swing held for a stride,
 --     the hip / knee / foot clearance of a person's run at ~5 m/s, no planted-foot slide (the sim's contact and the
 --     diagnostic's own 10 Hz verdict), a small pelvis bounce, a slight lean, swinging arms
---   lune run tools/sim/test_walkstable.luau            (~30 s; the clips land in tools/sim/out/walkstable)
+--   * [Studio] strafing (the strafe / strafe16 / strafering / strafeturn clips): the feet never cross, the planted ones
+--     hold, the pelvis stays level and the trunk upright, alternating regular contacts, a side step's legs (abducted,
+--     no fore-aft swing), the foot turned with the shin, and no joint pops as the direction flips, under jittery frames
+--   lune run tools/sim/test_walkstable.luau            (~60 s; the clips land in tools/sim/out/walkstable)
 local fs = require("@lune/fs")
 local process = require("@lune/process")
 local serde = require("@lune/serde")
@@ -374,6 +377,120 @@ if rR.ok then
 			-- the diagnostic's own 10 Hz verdict, as Studio prints it
 			local v = table.concat(m.diag and m.diag.verdicts or {}, "\n")
 			check(tag .. "/wcbdiag: planted feet hold", v:find("OK   planted feet hold", 1, true) ~= nil, v:match("[^\n]*planted[^\n]*"))
+		end
+	end
+end
+
+------------------------------------------------------------------------
+-- [Studio] "moving side to side still looks weird": the body kept facing (Shift Lock / first person, a boxer facing his
+-- man, the AI circling) while he goes off sideways, on the diagonals and backward, the direction flipping (D to A, W to
+-- A, a back-diagonal into D), at the town walk (6.5) and at Shift's pace (16), a fighter's footwork in the stance, and
+-- with AutoRotate on (the root snapping round toward the new way: sideways to his facing for a moment), each on a 30 Hz
+-- phone, Studio's wandering frames and scattered 1/80..1/28 s frames. Before, a side step was the forward walk turned
+-- sideways - each foot swept 1.4 studs across under the body, the trailing leg left 2.2 studs out (abducted 42
+-- degrees), the leading one crossing under the pelvis, the knees folding to 69, the pelvis bobbing a third of a stud; at
+-- 16 the legs splayed to 50-70 degrees; an AutoRotate snap left the planted foot twisted 90-180 degrees under its shin
+-- and a landing foot skidded 0.7 studs
+------------------------------------------------------------------------
+local OUT_ST = OUT .. "_strafe"
+local ST_TIMINGS = { "hz30", "studio", "rough" }
+local rS = process.exec(luneBin(), { "run", "tools/sim/v9_anim.luau", "--tiers", "3", "--clips", "strafe,strafe16,strafering,strafeturn", "--no-mesh",
+	"--nopen", "--frames", "1", "--height", "78", "--timing", table.concat(ST_TIMINGS, ","), "--out", OUT_ST }, { cwd = root })
+check("v9_anim runs the strafing clips", rS.ok, (rS.stderr or "") .. (rS.stdout or ""):sub(-600))
+if rS.ok then
+	local byCT = {}
+	for _, m in ipairs(serde.decode("json", fs.readFile(OUT_ST .. "/metrics.json"))) do
+		if m.segs then
+			byCT[m.clip .. "_" .. m.timing] = m
+		end
+	end
+	local SIDEWAYS = { D = true, A = true, stop = true }
+	-- per clip: the lateral gap the feet keep (studs, ankle to ankle across the pelvis), a side step's legs (the most a hip
+	-- abducts, the swing knee's peak, the thigh's fore-aft swing; side = the clip steps sideways to its facing), the gap
+	-- through a change between sideways ways (D <-> A, a stop), the planted feet's slide and the frame-to-frame floors of
+	-- the joints' change. Through a change to or from a forward / diagonal way the pelvis turns with the legs (by up to 43
+	-- degrees in a fifth of a second) and the feet are measured across a turning frame: slide, pops and twist only; with
+	-- AutoRotate the snap's pivot steps cross under the turning body for a moment, as a person's do
+	local SPEC = {
+		strafe = { gap = 0.35, side = true, abd = 42, knee = 75, flex = 50, flipGap = 0.2, slide = 0.08, segSlide = 0.08, floor = { knee = 20, hip = 15, abd = 15 } },
+		-- (16 studs/s across: a side gallop at a pace no person shuffles at - the legs spread further, the swing knee folds
+		-- as a runner's, a reversal brings the feet closer for a frame; a change between it and the forward run folds or
+		-- opens the knee as fast as the run's own swing)
+		strafe16 = { gap = 0.35, side = true, abd = 56, knee = 90, flex = 50, flipGap = 0.15, slide = 0.08, segSlide = 0.08, floor = { knee = 70, hip = 50, abd = 40 } },
+		strafering = { gap = 1.2, side = true, abd = 46, knee = 90, flex = 65, flipGap = 0.9, slide = 0.08, segSlide = 0.08, floor = { knee = 30, hip = 20, abd = 20 } },
+		-- (AutoRotate: the body faces the way he goes once the snap is over - a forward walk, whose start from rest and
+		-- toe-off after a snap scuff 0.08-0.12 studs (the forward walk's own, untouched here); the snap's pivot steps)
+		strafeturn = { gap = 0.35, slide = 0.08, segSlide = 0.13, floor = { knee = 32, hip = 22, abd = 24 } },
+	}
+	for _, clip in ipairs({ "strafe", "strafe16", "strafering", "strafeturn" }) do
+		for _, timing in ipairs(ST_TIMINGS) do
+			local m = byCT[clip .. "_" .. timing]
+			local tag = clip .. " " .. timing .. ": "
+			check(tag .. "recorded", m ~= nil)
+			if m then
+				local sp = SPEC[clip]
+				-- the gait's own frame-to-frame motion, on the clip's steadiest stretch (the forward walk / run, or the first
+				-- sideways one): a flip may move a joint no faster than 1.5 times that, and 6 degrees
+				local ref = { kneeL = 0, hipL = 0, abdL = 0 }
+				for _, sg in ipairs(m.segs) do
+					for k in pairs(ref) do
+						local r = k:sub(1, -2)
+						ref[k] = math.max(ref[k], sg.pops[r .. "L"], sg.pops[r .. "R"])
+					end
+				end
+				for _, sg in ipairs(m.segs) do
+					local st = tag .. sg.dir .. " "
+					local c = sg.contacts
+					check(st .. string.format("feet never cross (gap %.2f studs across the pelvis, the left foot to %.2f, the right to %.2f)", sg.gapMin,
+						sg.xLmax, sg.xRmin), sg.gapMin >= sp.gap)
+					check(st .. string.format("planted feet hold (slide %.3f / %.3f studs)", sg.slideL, sg.slideR), sg.slideL <= sp.segSlide and sg.slideR <= sp.segSlide)
+					check(st .. string.format("pelvis level (roll %.1f..%.1f), little sway (%.3f studs)", sg.roll[1], sg.roll[2], sg.swayX),
+						sg.roll[2] - sg.roll[1] <= 8 and math.max(-sg.roll[1], sg.roll[2]) <= 7 and sg.swayX <= 0.2)
+					check(st .. string.format("trunk upright (roll %.1f..%.1f)", sg.trunkRoll[1], sg.trunkRoll[2]), sg.trunkRoll[1] >= -6 and sg.trunkRoll[2] <= 6)
+					-- (a forward walk's stretch between the changes holds two or three steps: alternating; a sideways one four or more,
+					-- each foot's stride regular)
+					check(st .. string.format("alternating contacts, a regular stride (%d steps, each foot every %.3f..%.3f s)", c.n, c.strideMin, c.strideMax),
+						c.alternating and c.n >= 1 and (not sp.side or c.n < 4 or (c.strideMin > 0 and c.strideMax <= 1.4 * c.strideMin + 0.04)))
+					check(st .. string.format("the foot turned with the shin (twist %.0f)", sg.footTwist), sg.footTwist <= 25)
+					if sp.side and SIDEWAYS[sg.dir] then
+						check(st .. string.format("a side step: hip abducts to %.0f, knee peaks %.0f, the thigh swings fore-aft %.0f..%.0f", sg.abd[2],
+							sg.knee[2], sg.flex[1], sg.flex[2]), sg.abd[2] <= sp.abd and sg.knee[2] <= sp.knee and sg.flex[2] - sg.flex[1] <= sp.flex)
+					end
+				end
+				for _, fl in ipairs(m.flips) do
+					local ft = tag .. string.format("%s -> %s ", tostring(fl.from), fl.to)
+					local p = fl.pops
+					check(ft .. string.format("planted feet hold (slide %.3f / %.3f studs)", fl.slideL, fl.slideR), fl.slideL <= sp.slide and fl.slideR <= sp.slide)
+					local worst = {}
+					for k in pairs(ref) do
+						local r = k:sub(1, -2)
+						local v, cap = math.max(p[r .. "L"], p[r .. "R"]), math.max(1.5 * ref[k] + 6, sp.floor[r])
+						if v > cap then
+							table.insert(worst, string.format("%s %.1f > %.1f", r, v, cap))
+						end
+					end
+					check(ft .. "no joint pops (per 1/60 s, against the gait's own)", #worst == 0, table.concat(worst, ", "))
+					-- (into a diagonal the pelvis turns with the legs: a runner's forward tilt reads partly as roll in the body's frame)
+					check(ft .. string.format("pelvis roll %.1f..%.1f, %.2f a frame", fl.roll[1], fl.roll[2], p.pRoll), math.max(-fl.roll[1], fl.roll[2]) <= 15
+						and p.pRoll <= 2)
+					check(ft .. string.format("the foot turned with the shin (twist %.0f; it was 120-180 in a snap)", fl.footTwist), fl.footTwist <= 40)
+					if sp.flipGap and SIDEWAYS[fl.from] and SIDEWAYS[fl.to] then
+						check(ft .. string.format("feet never cross (gap %.2f)", fl.gapMin), fl.gapMin >= sp.flipGap)
+					end
+					if clip == "strafering" and (fl.to == "D" or fl.to == "A") and SIDEWAYS[fl.from] then
+						-- (a boxer's footwork: once the way he goes has turned over, the foot on the side of travel moves first)
+						local want = (fl.to == "D") and "R" or "L"
+						check(ft .. string.format("the lead foot steps first (%s)", tostring(fl.contacts.firstUp)), fl.contacts.firstUp == want)
+					end
+				end
+				if clip == "strafering" then
+					local hi = 0
+					for _, sg in ipairs(m.segs) do
+						hi = math.max(hi, sg.pelvisY[2] - sg.pelvisY[1])
+					end
+					check(tag .. string.format("a low bounce (pelvis %.3f studs at most over a stretch)", hi), hi <= 0.28)
+				end
+			end
 		end
 	end
 end
