@@ -587,7 +587,7 @@ function GS.new(device, opts)
 	end
 
 	-- the world, the player and the services
-	local H = Host.new({ globals = { Instance = Instance, workspace = E.workspace, Workspace = E.workspace } })
+	local H = Host.new({ src = opts.src, globals = { Instance = Instance, workspace = E.workspace, Workspace = E.workspace } })
 	S.host = H
 	E.install(H)
 	local lp = E.localPlayer

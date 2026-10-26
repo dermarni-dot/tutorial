@@ -422,7 +422,9 @@ do
 		end
 		return g
 	end
-
+	-- (the fight HUD is ~700 GUI objects, built at start-up into the disabled FightUI: a frame is let through between
+	-- its parts so the loading screen keeps drawing; nothing reads them before a fight)
+	task.wait()
 	local board = UI.Frame(hud, { Name = "Scoreboard", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), Size = UDim2.new(1, -40, 0, 140) })
 	local boardMax = UI.New("UISizeConstraint", { MaxSize = Vector2.new(1380, 140), Parent = board })
 	local BOARD_H, BOARD_H_COMPACT = 140, 70
@@ -533,6 +535,7 @@ do
 		return p
 	end
 	L = fighterPanel("L")
+	task.wait()
 	R = fighterPanel("R")
 
 	-- positions every piece of a panel for the full board or the slim phone strip
@@ -608,7 +611,7 @@ do
 		UI.Pad(t, 0, 6)
 		KM.stackKD(panel)
 	end
-
+	task.wait()
 	-- center: the round and the clock (the network's LIVE tag sits in the clock's top band, inside the
 	-- scoreboard); the crowd meter under the time
 	clock = UI.Frame(board, { Name = "Clock", Size = UDim2.new(0, 176, 1, 0), Position = UDim2.fromScale(0.5, 0), AnchorPoint = Vector2.new(0.5, 0), Visible = false })
@@ -713,7 +716,7 @@ do
 		liveTag.BackgroundColor3 = color
 		layoutClockTop()
 	end
-
+	task.wait()
 	angleTag = UI.Chip(hud, "ANGLE  +ACCURACY", T.gold, { solid = true, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 184), h = 26, TextSize = 13 })
 
 	-- the reach (Shared.HitGeometry, the server's own hit detection): the frames the fight's start message hands
@@ -936,7 +939,7 @@ do
 		crowdGlow.BackgroundTransparency = 1 - 0.55 * math.clamp(k, 0, 1)
 		UI.Tween(crowdGlow, { BackgroundTransparency = 1 }, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
 	end
-
+	task.wait()
 	-- the lower third: live commentary
 	local ticker = UI.Frame(hud, { Name = "Ticker", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -14), Size = UDim2.new(1, -48, 0, 40), BackgroundColor3 = T.bg })
 	UI.New("UISizeConstraint", { MaxSize = Vector2.new(1080, 40), Parent = ticker })
@@ -1219,7 +1222,7 @@ do
 		tickerText.TextTransparency = 1
 		UI.Tween(tickerText, { TextTransparency = 0 }, 0.3)
 	end
-
+	task.wait()
 	-- floating hit markers over the opponent for every punch you land: the punch's name (gold and bigger for
 	-- a big shot), kept under the scoreboard and inside the picture
 	markers = UI.Frame(hud, { Name = "Markers", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 15 })
@@ -1498,7 +1501,7 @@ do
 		end
 		return f
 	end
-
+	task.wait()
 	-- the knockdown count: a band with the referee's count, big (a phone gets its own sizes, not a UIScale)
 	countBox = UI.Frame(hud, { Name = "Count", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 200), Size = UDim2.fromOffset(520, 230), BackgroundTransparency = 1, Visible = false, ZIndex = 22 })
 	countKicker, countKickerText = UI.Chip(countBox, "KNOCKDOWN", T.red, { solid = true, textColor = Color3.new(1, 1, 1), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), h = 28, TextSize = 15 })
@@ -1841,6 +1844,7 @@ do
 			KM.intel.Layout(below, compact, touchPad ~= nil or UserInputService.TouchEnabled, math.max(40, UI.MinHit(hud)))
 		end
 	end
+	task.wait()
 	-- the combo counter (BoxerClient.ComboHud: display only, the server judges the chains)
 	KM.combo = KM.module("ComboHud")
 	if KM.combo then
@@ -1851,6 +1855,7 @@ do
 	if KM.intel then
 		KM.intel.Mount(hud)
 	end
+	task.wait()
 	gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutHud)
 	hud:GetAttributeChangedSignal("UIScale"):Connect(layoutHud)
 	layoutHud()

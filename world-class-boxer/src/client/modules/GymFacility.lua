@@ -224,6 +224,7 @@ end
 -- keyed sub-builds: a sub-model is rebuilt only when its key changes
 ------------------------------------------------------------------------
 local keys = {}
+local slicing -- { fn, thread }: Refresh's info.slice, called after each piece Refresh's own thread rebuilds
 local function rebuild(root, name, key, builder, ...)
 	local cur = root:FindFirstChild(name)
 	if keys[name] == key and cur then
@@ -237,6 +238,9 @@ local function rebuild(root, name, key, builder, ...)
 	local ok, err = pcall(builder, m, ...)
 	if not ok then
 		warn("[GymFacility] " .. name .. ": " .. tostring(err))
+	end
+	if slicing and slicing.thread == coroutine.running() then
+		slicing.fn()
 	end
 	return m
 end
@@ -2126,6 +2130,8 @@ function GymFacility.Refresh(P, localGym, info)
 		return
 	end
 	local idx = math.clamp(tonumber(info.idx) or 1, 1, 4)
+	-- info.slice (optional): a Perf.Budget slicer, the pieces below spread over frames (GymVisuals.Refresh)
+	slicing = type(info.slice) == "function" and { fn = info.slice, thread = coroutine.running() } or nil
 	if not root or root.Parent ~= localGym then
 		root = localGym:FindFirstChild("Facility") or newModel(localGym, "Facility")
 		keys = {}
@@ -2165,6 +2171,7 @@ function GymFacility.Refresh(P, localGym, info)
 		pcall(revealTier, idx, info.def)
 	end
 	GymFacility.Tier = idx
+	slicing = nil
 end
 
 -- ropes at 30 Hz near the ring, fans bob at 10 Hz near the door, roof leaks drip

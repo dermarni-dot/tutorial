@@ -9,6 +9,8 @@
 --                                 limit, a phone's battery saver) rather than by load: it keeps the level
 --   Perf.Name(level?)             "Low" | "Medium" | "High" (the current level by default)
 --   Perf.Hold(seconds)            Auto passes no judgement for that long (a loading screen, a big build)
+--   Perf.Budget(ms?)              a time slicer for long work in a yieldable thread: call it between steps, it
+--                                 yields a frame once ms (default 4) of work ran since the last yield
 --   Perf.Refresh()                re-read the Graphics choice now (Settings calls it: attribute signals
 --                                 may run deferred)
 -- The player chooses Graphics in Settings (client attribute GfxDetail: Auto | High | Medium | Low).
@@ -118,6 +120,24 @@ end
 function Perf.Hold(seconds)
 	holdUntil = math.max(holdUntil, os.clock() + (tonumber(seconds) or 0))
 	slow, verySlow, fast, crawl = 0, 0, 0, 0
+end
+
+-- a time slicer for long client work (the start-up, a big build) in a thread that may yield: call the returned
+-- function between steps; once ms of work (default BUDGET_MS) has run since the last yield it waits for the next
+-- frame (returns true), so the frame is drawn - the loading screen, the menu's fade - instead of one long hitch.
+-- A step itself is never split: keep the steps small.
+Perf.BUDGET_MS = 4
+function Perf.Budget(ms)
+	local limit = (tonumber(ms) or Perf.BUDGET_MS) / 1000
+	local t0 = os.clock()
+	return function()
+		if os.clock() - t0 < limit then
+			return false
+		end
+		task.wait()
+		t0 = os.clock()
+		return true
+	end
 end
 
 -- where Auto starts: phones and small tablets begin at Medium, everything else at High; the frame

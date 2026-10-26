@@ -780,6 +780,27 @@ screen("hub_records", function(dev)
 	scrollTo(S, "Records")
 	return S
 end)
+-- the Sponsors tab: three running deals (a missed-post strike, a losing streak, no robe on), offers with an
+-- exclusivity conflict and a slot clash, the perks line and the brands still watching
+screen("hub_sponsors", function(dev)
+	local S = client(dev, { program = function(prof)
+		prof.tier, prof.popularity = 5, 36
+		prof.gear.equipped.robe = "None"
+		prof.sponsors = {
+			seed = 4242, fights = 3, signed = { ApexAthletics = true },
+			deals = {
+				trunks = { id = "ApexAthletics", fightsLeft = 4, signedDay = 1, mult = 1.1, strikes = 0, losses = 0, earned = 61000 },
+				corner = { id = "VoltaraEnergy", fightsLeft = 2, signedDay = 3, mult = 0.95, strikes = 1, losses = 0, earned = 30000 },
+				robe = { id = "CopperlineBank", fightsLeft = 6, signedDay = 3, mult = 1, strikes = 0, losses = 1, earned = 28000 },
+			},
+			offers = { { id = "Kinetiq", left = 1, mult = 1.05 }, { id = "Glitchrift", left = 2, mult = 0.9 }, { id = "Hushwave", left = 3, mult = 1.2 } },
+		}
+	end })
+	S.require("Client/Hub").Open("Sponsors")
+	S.settle(0.6)
+	check("hub_sponsors@" .. dev .. ": deals and offers listed", named(S, "DealName") ~= nil and named(S, "SponsorPerks") ~= nil)
+	return S
+end)
 screen("hub_coaches", function(dev)
 	local S = client(dev)
 	S.require("Client/Hub").Open("Coaches")

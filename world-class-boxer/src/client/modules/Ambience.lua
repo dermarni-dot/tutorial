@@ -1036,14 +1036,29 @@ local function addShaft(glass)
 	shafts[glass] = e
 end
 
+-- the gym's window and skylight glass (MapBuilder: the hall's walls, the Elite wing's walls and roof). The town
+-- under Gym.City has none and is most of the server's instances (~18,000 of ~21,000): it is not walked. Runs in
+-- Start's own thread: the walk pauses a frame every SCAN_BUDGET seconds (it ran at start-up, in the first frames)
+local SCAN_BUDGET = 0.004
 local function scanWindows()
 	local g = workspace:FindFirstChild("Gym")
 	if not g then
 		return
 	end
-	for _, d in ipairs(g:GetDescendants()) do
-		if d:IsA("BasePart") and (d.Name == "WindowGlass" or d.Name == "SkylightGlass") then
-			addShaft(d)
+	local t0 = os.clock()
+	for _, c in ipairs(g:GetChildren()) do
+		if c.Name ~= "City" then
+			local list = c:GetDescendants()
+			table.insert(list, c)
+			for i, d in ipairs(list) do
+				if d:IsA("BasePart") and (d.Name == "WindowGlass" or d.Name == "SkylightGlass") and d.Parent then
+					addShaft(d)
+				end
+				if i % 100 == 0 and os.clock() - t0 > SCAN_BUDGET then
+					task.wait()
+					t0 = os.clock()
+				end
+			end
 		end
 	end
 end

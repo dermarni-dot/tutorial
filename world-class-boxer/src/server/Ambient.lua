@@ -246,7 +246,12 @@ local function walker(npc, def)
 			end
 			-- [Studio] Gait: the intended world velocity, for the clients' Animator (a replicated root's own travel
 			-- stutters; the gait follows this and only checks it against the travel - CONTRACTS section 7)
-			npc:SetAttribute("Gait", -flat.Unit * hum.WalkSpeed)
+			-- (quantized and change-only: on a straight leg the heading only wobbles, so nothing replicates)
+			local g = -flat.Unit * hum.WalkSpeed
+			g = Vector3.new(math.floor(g.X * 4 + 0.5) / 4, 0, math.floor(g.Z * 4 + 0.5) / 4)
+			if npc:GetAttribute("Gait") ~= g then
+				npc:SetAttribute("Gait", g)
+			end
 			task.wait(1)
 		end
 		npc:SetAttribute("Gait", nil)
@@ -275,6 +280,7 @@ function Ambient.Start()
 			b.CFrame = CFrame.new(def.at.X, (def.floor or 0.5) + (def.seat or 1.5) / 2, def.at.Z) * CFrame.Angles(0, yawTo(def.at, def.look), 0)
 			b.Color = Color3.fromRGB(110, 80, 55)
 			b.Material = Enum.Material.WoodPlanks
+			b.CanTouch = false -- (nothing listens for touches)
 			b.Parent = folder
 		end
 		local ok, npc = pcall(spawnMember, folder, def)

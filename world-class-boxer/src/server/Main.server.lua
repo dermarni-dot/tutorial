@@ -2101,6 +2101,24 @@ function handlers.DropSponsor(player, profile, key)
 	return { ok = ok, err = not ok and info or nil }
 end
 
+-- turn an offer down (Server Sponsors validates the id against the offers on the table)
+function handlers.DeclineSponsor(player, profile, id)
+	if type(id) ~= "string" then
+		return { ok = false, err = "Unknown sponsor" }
+	end
+	local ok, info = Career.DeclineSponsor(profile, id)
+	return { ok = ok, err = not ok and info or nil, name = ok and info or nil }
+end
+
+-- the social post a deal asks for before each fight (slot or sponsor id)
+function handlers.PostSponsor(player, profile, key)
+	if type(key) ~= "string" then
+		return { ok = false, err = "No such deal." }
+	end
+	local ok, info = Career.SponsorPost(profile, key)
+	return { ok = ok, err = not ok and info or nil, name = ok and info or nil }
+end
+
 function handlers.Autograph(player, profile)
 	local ok, err = Career.Autograph(profile)
 	return { ok = ok, err = err }
@@ -2738,10 +2756,11 @@ end
 -- the fight venues' templates (8.6k instances in ServerStorage, about a fifth of the boot's Lua) are built
 -- off the boot's critical path: the first player's profile load is already in flight when they start,
 -- and the gym room's sparring athletes (spawned in their own thread) are long in place before anyone can
--- spar. A fight that came first would have built them in Venues.New already.
+-- spar. A fight that came first would have built them in Venues.New already. Paced (a frame between templates and
+-- their big pieces): built in one step, the 8.6k instances held up every frame of the join meanwhile
 task.delay(3, function()
 	if not game:GetService("ServerStorage"):FindFirstChild("Venue_Arena") then
-		Venues.BuildTemplates()
+		Venues.BuildTemplates(true)
 	end
 end)
 

@@ -447,7 +447,9 @@ function Host.new(opts)
 		local env = table.clone(G)
 		env.script = n
 		local rel = file:sub(1, #root) == root and file:sub(#root + 2) or file
-		local chunk = luau.load(fs.readFile(file), { debugName = rel, environment = env, codegenEnabled = true })
+		-- (H.bytecode(file): a test's precompiled bytecode for the file, or nil: the source, compiled here)
+		local code = H.bytecode and H.bytecode(file) or fs.readFile(file)
+		local chunk = luau.load(code, { debugName = rel, environment = env, codegenEnabled = true })
 		local ok, res = pcall(chunk)
 		H.loading[n] = nil
 		if not ok then

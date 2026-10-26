@@ -1005,7 +1005,7 @@ and Decals the server builds (no client generation, no Editable memory).
 | Arenas (VenueFX) | 2 key-light shadows, spot rays at 7 Hz, crowd bob budget 280 / 150 parts a tick | 1 key-light shadow, spot rays at 4 Hz, crowd budget 160 / 0, printed impostor rows behind the front row |
 | Training screens (BodyMap, MuscleScreen) | muscle map painted at 1 image px per design px; the muscle viewer's shells breathe at 20 Hz | 0.75 px without the glow layer; shells hold still, the figure turns at 30 Hz |
 | Main menu (MainMenu, MenuStage) | 20 dust motes; the set: 2 of its 4 light shadows, dust at about half rate, signs at 3/4 resolution | 10 motes; the set: no light shadows, no dust, signs at half resolution |
-| Gym and city lights (WorldLOD) | shadows only from the lights marked ShadowKeep; small accent lights past 90 studs and mid lights past 220 off | no light shadows; accent lights off; mid lights past 110 and big fills past 170 off; parts under 4 studs cast no shadow |
+| Gym and city lights (WorldLOD) | shadows only from the lights marked ShadowKeep, the 2 nearest within 160 studs; small accent lights past 90 studs, mid lights past 220 and big fills past 700 off | no light shadows; accent lights off; mid lights past 110 and big fills past 170 off; parts under 4 studs cast no shadow |
 | Signs (SurfaceGui / BillboardGui) | drawn to 3/4 of their distance at 3/4 resolution | half distance, half resolution (scale-only layouts, so nothing moves) |
 | Particles and gym effects (WorldLOD, Ambience, GymVisuals) | continuous particles at 55%, none beyond 260 studs; gym dust x0.55; sun shafts drawn to 130 studs with 3 bounce lights (170 and 6 at High); 4 sweat puddles, gone at 45 studs | particles at 25%, none beyond 150 studs; no gym dust, sun shafts or sweat puddles |
 | Gym motion (GymMirror, GymVisuals, Ambience) | mirror at 24 Hz; equipment moves within 120 studs, fans and timers within 130 | mirror at 15 Hz; 90 / 100 studs |
@@ -1014,9 +1014,12 @@ and Decals the server builds (no client generation, no Editable memory).
 High is the full look: AnatomyClient's own defaults on Auto (`Config.Anatomy`: 6 full-detail characters,
 70 / 160 studs, 2.5 ms a frame) and its "full" preset when High is picked by name (10, 90 / 200 studs,
 4 ms); animation bands 45 / 110 / 170 / 230; hair 25 / 60; 3 arena key shadows, spot rays at 12 Hz, crowd budget 420 / 300; mirror at 30 Hz.
-High also gains two savings nobody can see: the gym and city lights far beyond any view switch off
-(an arena fight is 5,700 studs from the gym, whose 170 lights used to stay on through every bout), and
-the gym's ambience loops pause while the camera is that far away.
+High also gains savings nobody can see: the gym and city lights switch off once their pool is a few pixels
+under the haze (accent lights past 200 studs, mid lights past 450, big fills past 900: the lamps' Neon bulbs
+and lenses stay lit; the city at night had about 470 lights on anywhere in town, now 200-350 depending on where
+you stand, and an arena fight 5,700 studs away has none of them on); only the 4 nearest shadow-casting lights
+within 240 studs keep their shadows (the ring's cans while you are in the gym, none from the street); and the
+gym's ambience loops pause while the camera is far away.
 
 **Bodies and faces.**
 - A tier body is 14 MeshParts of 190-1,800 triangles (about 6.7k a body for the tiers; the classic head is the
@@ -1038,6 +1041,10 @@ the gym's ambience loops pause while the camera is that far away.
   them at once if a fight ever comes first).
 - Map and venue parts have CanTouch off (nothing listens to `.Touched`), and the posed gym NPCs skip
   the Humanoid state machine.
+- Decor whose shadow nobody can see casts none: parts under a stud on their longest side (bottles, bolts,
+  buttons) and thin slabs lying on the ground (floor tape, finish lines, seams), in the server's gym and city
+  (`GymDecor`'s part helper, which CityKit shares) and your client-built gym (`GymVisuals`): the gym and city's
+  sun-shadow casters 10,178 -> 9,897, your local gym's 852 -> 470.
 - Gym members' gear and round-1 hair are built at low detail when the clients draw their hair themselves
   anyway (decided once at boot by a probe EditableMesh on the server); without the Editable APIs they stay at
   medium detail. (Measured with the retired round-1 muscle layer: 10,703 -> 9,108 instances and 2,788 ->

@@ -1997,7 +1997,55 @@ local SLOT_WHERE = {
 local dropConfirm = nil
 
 local function payLine(d)
-	return string.format("%s per fight  +%s win  +%s KO", money(d.perFight or 0), money(d.winBonus or 0), money(d.koBonus or 0))
+	local t = string.format("%s per fight", money(d.perFight or 0))
+	if (d.winBonus or 0) > 0 then
+		t ..= "  +" .. money(d.winBonus) .. " win"
+	end
+	if (d.koBonus or 0) > 0 then
+		t ..= "  +" .. money(d.koBonus) .. " KO"
+	end
+	if (d.titleBonus or 0) > 0 then
+		t ..= "  +" .. money(d.titleBonus) .. " title win"
+	end
+	return t
+end
+
+-- the deal's clauses in plain words (the social post, the logo, the performance clause, the perk)
+local function clauseLines(d)
+	local out = {}
+	if d.post then
+		table.insert(out, "Social post before every fight, or half the fee (two misses end the deal).")
+	end
+	if d.wear == "robe" then
+		table.insert(out, "Walk out in a robe so the logo is seen, or half the fee.")
+	elseif d.wear == "gloves" then
+		local b = Catalog.Brand(d.gloveBrand)
+		table.insert(out, string.format("Fight in %s gloves, or half the fee.", b and b.name or tostring(d.gloveBrand)))
+	end
+	if d.maxLosses then
+		table.insert(out, string.format("Performance clause: dropped after %d straight losses.", d.maxLosses))
+	end
+	if d.perkText then
+		table.insert(out, "Perk: " .. d.perkText .. ".")
+	end
+	return out
+end
+
+-- the logo chip and two fixed lines (name; slot, scope and category) at the head of a deal / offer card
+local function dealHead(c, d, sub)
+	local row = UI.Row(c, 44)
+	logoChip(row, d)
+	local info = UI.Frame(row, { BackgroundTransparency = 1, Size = UDim2.new(1, -150, 1, 0) })
+	UI.List(info, 2)
+	UI.Text(info, tostring(d.name or "?"), { Name = "DealName", Font = T.semi, TextSize = 15, Size = UDim2.new(1, 0, 0, 20), AutomaticSize = Enum.AutomaticSize.None,
+		TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	UI.Text(info, sub, { TextSize = 12, TextColor3 = T.sub, Size = UDim2.new(1, 0, 0, 18), AutomaticSize = Enum.AutomaticSize.None,
+		TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	return row
+end
+
+local function scopeLine(d)
+	return string.format("%s  -  %s", tostring(d.scope or ""), tostring(d.catName or d.cat or ""))
 end
 
 -- PvP: the record / rating, Find Match and the boxers in the server (the PvP module draws it)
@@ -2016,31 +2064,49 @@ end
 R.Sponsors = function(body, P)
 	local sp = P.sponsors or {}
 	local deals = sp.deals or {}
-	UI.Line(body, "Sponsors pay every fight you take, with bonuses for wins and knockouts. One brand per slot. Bigger names come to you as your tier and popularity grow.", { TextColor3 = T.sub, TextSize = 13 })
+	UI.Line(body, "Brands pay every fight you take, with bonuses for wins, knockouts and title wins. One brand per slot and one per category. Offers come and go after every fight; bigger names call as your tier, fame, wins and ranking grow.", { TextColor3 = T.sub, TextSize = 13 })
+	if type(sp.perks) == "table" and #sp.perks > 0 then
+		UI.Line(body, "Perks in force: " .. table.concat(sp.perks, ", ") .. ".", { Name = "SponsorPerks", TextColor3 = T.green, Font = T.semi, TextSize = 13 })
+	end
 	for _, slot in ipairs(Catalog.SponsorSlots) do
 		local d = deals[slot]
 		local c = UI.Card(body, { stroke = d and T.gold or nil })
 		UI.Line(c, (SLOT_NAMES[slot] or slot:upper()) .. (d and "" or "  -  open slot"), { Font = T.bold, TextColor3 = d and T.gold or T.sub })
 		if d then
-			local row = UI.Row(c, 44)
-			logoChip(row, d)
-			local info = UI.Frame(row, { BackgroundTransparency = 1, Size = UDim2.new(1, -150, 1, 0) })
-			UI.List(info, 2)
-			UI.Line(info, string.format("%s  (%s)", d.name, d.scope or ""), { Font = T.semi, TextSize = 15 })
-			UI.Line(info, string.format("%s   -   %d fight%s left", payLine(d), d.fightsLeft or 0, (d.fightsLeft or 0) == 1 and "" or "s"), { TextSize = 12, TextColor3 = T.sub })
+			dealHead(c, d, scopeLine(d))
+			UI.Line(c, string.format("%s   -   %d fight%s left   -   earned %s", payLine(d), d.fightsLeft or 0, (d.fightsLeft or 0) == 1 and "" or "s", money(d.earned or 0)), { TextSize = 12, TextColor3 = T.sub })
+			for _, l in ipairs(clauseLines(d)) do
+				UI.Line(c, l, { TextSize = 12, TextColor3 = T.sub })
+			end
+			-- where the clauses stand before the next fight
+			if d.post then
+				UI.Line(c, d.posted and "Post for the next fight: done." or string.format("Post for the next fight: due (strikes %d of 2).", d.strikes or 0),
+					{ TextSize = 12, TextColor3 = d.posted and T.green or T.gold })
+			end
+			if d.wear and d.wearOk == false then
+				UI.Line(c, d.wear == "robe" and "No robe equipped: the logo won't be seen." or "You're not in their gloves.", { TextSize = 12, TextColor3 = T.red })
+			end
+			if d.maxLosses and (d.losses or 0) > 0 then
+				UI.Line(c, string.format("Losing streak: %d of %d.", d.losses, d.maxLosses), { TextSize = 12, TextColor3 = T.red })
+			end
 			UI.Line(c, SLOT_WHERE[slot] or "", { TextSize = 12, TextColor3 = T.sub })
 			local confirming = dropConfirm == slot
-			buttons(c, {
-				act(confirming and "Confirm: End Deal" or "END DEAL", confirming and T.red or T.panel2, function()
-					if not confirming then
-						dropConfirm = slot
-						Hub.RenderNow()
-						return
-					end
-					dropConfirm = nil
-					result(State.req("DropSponsor", slot), "Deal ended.")
-				end, 180),
-			}, 30)
+			local list = {}
+			if d.post and not d.posted then
+				table.insert(list, act("POST", T.gold, function()
+					result(State.req("PostSponsor", slot), "Posted for " .. tostring(d.name) .. ".")
+				end, 110))
+			end
+			table.insert(list, act(confirming and "Confirm: End" or "END DEAL", confirming and T.red or T.panel2, function()
+				if not confirming then
+					dropConfirm = slot
+					Hub.RenderNow()
+					return
+				end
+				dropConfirm = nil
+				result(State.req("DropSponsor", slot), "Deal ended.")
+			end, 150))
+			buttons(c, list, 30)
 		else
 			UI.Line(c, SLOT_WHERE[slot] or "", { TextSize = 12, TextColor3 = T.sub })
 		end
@@ -2048,45 +2114,64 @@ R.Sponsors = function(body, P)
 	local offers = sp.offers or {}
 	UI.Header(body, "OFFERS ON THE TABLE")
 	if #offers == 0 then
-		UI.Line(body, "No brand wants you yet. Win fights, climb the tiers and build your popularity.", { TextColor3 = T.sub, TextSize = 13 })
+		UI.Line(body, "No offers right now. Brands call after fights: win, climb the tiers and build your popularity.", { TextColor3 = T.sub, TextSize = 13 })
 	end
 	for _, o in ipairs(offers) do
 		local c = UI.Card(body)
-		local row = UI.Row(c, 44)
-		logoChip(row, o)
-		local info = UI.Frame(row, { BackgroundTransparency = 1, Size = UDim2.new(1, -150, 1, 0) })
-		UI.List(info, 2)
-		UI.Line(info, string.format("%s  -  %s  (%s)", o.name, SLOT_NAMES[o.slot] or o.slot, o.scope or ""), { Font = T.semi, TextSize = 15 })
-		UI.Line(info, string.format("%s   -   %d-fight contract%s", payLine(o), o.fights or 0, (o.signingBonus or 0) > 0 and ("   -   signing bonus " .. money(o.signingBonus)) or ""), { TextSize = 12, TextColor3 = T.sub })
+		dealHead(c, o, string.format("%s  -  %s", SLOT_NAMES[o.slot] or tostring(o.slot), scopeLine(o)))
+		UI.Line(c, payLine(o), { TextSize = 12, TextColor3 = T.sub })
+		UI.Line(c, string.format("%d-fight contract%s   -   offer ends in %d fight%s", o.fights or 0,
+			(o.signingBonus or 0) > 0 and ("   -   signing bonus " .. money(o.signingBonus)) or "", o.left or 1, (o.left or 1) == 1 and "" or "s"), { TextSize = 12, TextColor3 = T.sub })
+		for _, l in ipairs(clauseLines(o)) do
+			UI.Line(c, l, { TextSize = 12, TextColor3 = T.sub })
+		end
+		if o.conflict then
+			UI.Line(c, string.format("Exclusive: signing ends your %s deal (same category).", o.conflict), { TextSize = 12, TextColor3 = T.red })
+		end
+		if o.taken and o.taken ~= o.conflict then
+			UI.Line(c, string.format("Replaces %s in your %s slot.", o.taken, tostring(o.slot)), { TextSize = 12, TextColor3 = T.gold })
+		end
+		local blocked = o.taken ~= nil or o.conflict ~= nil
 		buttons(c, {
-			act(o.taken and ("REPLACE " .. tostring(o.taken):upper()) or "SIGN", o.taken and T.panel2 or T.gold, function()
-				if result(State.req("SignSponsor", o.id, o.taken ~= nil), "Signed with " .. o.name .. ".") then
+			act(blocked and "REPLACE" or "SIGN", blocked and T.panel2 or T.gold, function()
+				if result(State.req("SignSponsor", o.id, blocked), "Signed with " .. o.name .. ".") then
 					dropConfirm = nil
 				end
-			end, o.taken and 260 or 140),
+			end, 140),
+			act("DECLINE", T.panel2, function()
+				result(State.req("DeclineSponsor", o.id), "Declined " .. o.name .. ".")
+			end, 120),
 		}, 30)
 	end
-	-- who comes next: requirements of the brands not interested yet
-	local later = {}
-	local active = {}
+	-- who comes next: the closest brands not interested yet (Catalog.SponsorEligible says what they need)
+	local ctx = { tier = P.tier or 1, pop = P.popularity or 0, wins = P.record and P.record.w or 0, rank = (P.tier or 1) >= 8 and 1 or (P.bestRank or 999) }
+	local busy = {}
 	for _, d in pairs(deals) do
-		active[d.id] = true
+		busy[d.id] = true
 	end
-	local offered = {}
 	for _, o in ipairs(offers) do
-		offered[o.id] = true
+		busy[o.id] = true
 	end
+	local later = {}
 	for _, def in ipairs(Catalog.Sponsors) do
-		if not active[def.id] and not offered[def.id] then
-			local tierName = Config.Tiers[def.minTier] and Config.Tiers[def.minTier].name or ("tier " .. def.minTier)
-			table.insert(later, string.format("%s (%s, %s): needs %s and %d popularity", def.name, def.scope, SLOT_NAMES[def.slot] or def.slot, tierName, def.minPop))
+		local ok, missing = Catalog.SponsorEligible(def, ctx)
+		if not busy[def.id] and not ok then
+			local n = Catalog.SponsorNeeds(def)
+			table.insert(later, { def = def, missing = missing, key = n.tier * 1000 + n.pop })
 		end
 	end
+	table.sort(later, function(a, b)
+		return a.key < b.key
+	end)
 	if #later > 0 then
 		local c = UI.Card(body)
 		UI.Line(c, "WATCHING YOUR CAREER", { Font = T.bold, TextColor3 = T.sub })
-		for _, l in ipairs(later) do
-			UI.Line(c, l, { TextSize = 12, TextColor3 = T.sub })
+		for i = 1, math.min(6, #later) do
+			local e = later[i]
+			UI.Line(c, string.format("%s (%s, %s): needs %s", e.def.name, e.def.scope, Catalog.SponsorCats[e.def.cat] or e.def.cat, e.missing), { TextSize = 12, TextColor3 = T.sub })
+		end
+		if #later > 6 then
+			UI.Line(c, string.format("...and %d more brands further up.", #later - 6), { TextSize = 12, TextColor3 = T.sub })
 		end
 	end
 end

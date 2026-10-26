@@ -20,6 +20,16 @@ local Modules = script.Parent:WaitForChild("BoxerClient")
 local State = require(Modules:WaitForChild("State"))
 local Settings = require(Modules:WaitForChild("Settings"))
 Settings.Start(State)
+local Perf = require(Modules:WaitForChild("Perf"))
+-- the profile is asked for now, not after the rest of the start-up: the server's answer (its DataStore read) comes
+-- back while the systems below start (the initial fetch at the end uses it; false = the request failed)
+local firstProfile = nil
+task.spawn(function()
+	firstProfile = State.req("GetProfile") or false
+end)
+-- the start-up is spread over frames (Perf.Budget): the loading screen keeps drawing while the modules load, the
+-- systems start and the HUD is built, instead of one frame of all of it
+local breathe = Perf.Budget()
 local GymVisuals = require(Modules:WaitForChild("GymVisuals"))
 local Creator = require(Modules:WaitForChild("Creator"))
 local Hub = require(Modules:WaitForChild("Hub"))
@@ -27,6 +37,7 @@ local Activities = require(Modules:WaitForChild("Activities"))
 local Services = require(Modules:WaitForChild("Services"))
 local Ambience = require(Modules:WaitForChild("Ambience"))
 local Flags = require(Modules:WaitForChild("Flags"))
+breathe()
 -- the title screen is optional too: without it a new player goes straight to the creator
 local okMenu, MainMenu = pcall(function()
 	return require(Modules:WaitForChild("MainMenu", 10))
@@ -35,7 +46,9 @@ if not (okMenu and type(MainMenu) == "table") then
 	warn("[ClientMain] MainMenu unavailable:", MainMenu)
 	MainMenu = nil
 end
+breathe()
 Ambience.Start()
+breathe()
 -- city dressing (homes, fans, billboards, stores): optional, so a broken city never takes the HUD
 -- and the gym prompts down with it
 local okCityMod, CityVisuals = pcall(function()
@@ -47,6 +60,7 @@ else
 	warn("[ClientMain] CityVisuals unavailable:", CityVisuals)
 	CityVisuals = nil
 end
+breathe()
 -- the gym's and the city's extra detail layer (WorldDetail: streamed by Graphics level and distance): optional too
 task.spawn(function()
 	local ok, WorldDetail = pcall(function()
@@ -58,6 +72,7 @@ task.spawn(function()
 		warn("[ClientMain] WorldDetail unavailable:", WorldDetail)
 	end
 end)
+breathe()
 -- anatomy meshes (EditableMesh characters, ANATOMY_CONTRACTS.md): optional; any failure keeps the
 -- part-built look
 local okAnatomy, AnatomyClient = pcall(function()
@@ -68,6 +83,7 @@ if okAnatomy and type(AnatomyClient) == "table" then
 else
 	warn("[ClientMain] AnatomyClient unavailable:", AnatomyClient)
 end
+breathe()
 -- PvP (challenges, Find Match, the PvP record): optional like the city, a failure never takes the HUD down
 local okPvP, PvPClient = pcall(function()
 	return require(Modules:WaitForChild("PvP", 10))
@@ -81,6 +97,7 @@ else
 	warn("[ClientMain] PvP unavailable:", PvPClient)
 	PvPClient = nil
 end
+breathe()
 -- the first-time tutorial fight (its offer, step card and wrap-up): optional like the city
 local okTut, TutorialClient = pcall(function()
 	return require(Modules:WaitForChild("Tutorial", 10))
@@ -94,6 +111,7 @@ else
 	warn("[ClientMain] Tutorial unavailable:", TutorialClient)
 	TutorialClient = nil
 end
+breathe()
 -- the rig diagnostic ("/wcbdiag" in chat, Settings -> GAME -> COPY DIAGNOSTIC TO OUTPUT): optional, runs only when invoked
 task.spawn(function()
 	local ok, DiagClient = pcall(function()
@@ -108,6 +126,7 @@ task.spawn(function()
 		warn("[ClientMain] DiagClient unavailable:", DiagClient)
 	end
 end)
+breathe()
 -- the celebration cutscene after a won tournament final / a new title (camera, confetti, banner, SKIP): optional
 task.spawn(function()
 	local ok, CeremonyClient = pcall(function()
@@ -119,6 +138,7 @@ task.spawn(function()
 		warn("[ClientMain] Ceremony unavailable:", CeremonyClient)
 	end
 end)
+breathe()
 -- [Entrance] the ring-walk cinematic (camera, crowd carry, reveal, SKIP) and the Locker's ENTRANCE picker: optional
 task.spawn(function()
 	local ok, err = pcall(function()
@@ -129,6 +149,7 @@ task.spawn(function()
 		warn("[ClientMain] Entrance unavailable:", err)
 	end
 end)
+breathe()
 -- a boxer's mesh (gear, body) this client cannot fetch shows a rounded stand-in, never the engine's box: optional
 task.spawn(function()
 	local ok, err = pcall(function()
@@ -138,6 +159,7 @@ task.spawn(function()
 		warn("[ClientMain] MeshGuard unavailable:", err)
 	end
 end)
+breathe()
 local gui = State.gui
 local rec = State.rec
 
@@ -224,6 +246,7 @@ UI.Corner(campBox, UI.R.md)
 UI.New("UIPadding", { PaddingTop = UDim.new(0, 7), PaddingBottom = UDim.new(0, 7), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), Parent = campBox })
 local hudCamp = UI.Text(campBox, "", { Font = T.semi, TextSize = 12, TextColor3 = T.sub })
 local hudWarn = UI.Text(hud, "", { Font = T.semi, TextSize = 12, TextColor3 = T.red, LayoutOrder = 6, Visible = false })
+breathe()
 
 -- quick actions under the plate
 local hudButtons = UI.Frame(gui, { Name = "HudButtons", BackgroundTransparency = 1, Size = UDim2.fromOffset(360, 40), Position = UDim2.fromOffset(20, 16), Visible = false })
@@ -353,6 +376,7 @@ local function layoutHud()
 end
 hud:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutHud)
 gui:GetAttributeChangedSignal("UIScale"):Connect(layoutHud)
+breathe()
 
 ------------------------------------------------------------------------
 -- Time of day follows your energy (morning after sleep, night when you're spent)
@@ -575,6 +599,8 @@ State.Notify.OnClientEvent:Connect(function(msg)
 	end
 end)
 
+breathe()
+
 ------------------------------------------------------------------------
 -- Retirement
 ------------------------------------------------------------------------
@@ -620,6 +646,40 @@ State.FightRemote.OnClientEvent:Connect(function(msg)
 end)
 local lastFlag
 local hubShownKey = nil -- the profile / state the open hub was last rebuilt for
+-- the gym's and the city's dressing for a profile (GymVisuals, CityVisuals: well over a thousand parts the first
+-- time) is built in a thread of its own, a few ms a frame (Perf.Budget), after the frame the profile (and the title
+-- screen) arrived in, never inside it. One build at a time: a profile that arrives meanwhile is built next (both
+-- refreshes are keyed, so that one is cheap)
+local dressP, dressing, dressedOnce = nil, false, false
+local function dressWorld(P)
+	dressP = P
+	if dressing then
+		return
+	end
+	dressing = true
+	task.defer(function()
+		if not dressedOnce then
+			dressedOnce = true
+			task.wait() -- (the first build: the title screen's first frame goes out first)
+		end
+		while dressP do
+			local p = dressP
+			dressP = nil
+			local slice = Perf.Budget()
+			local okGym, errGym = pcall(GymVisuals.Refresh, p, slice)
+			if not okGym then
+				warn("[ClientMain] gym:", errGym)
+			end
+			if CityVisuals then
+				local okCity, errCity = pcall(CityVisuals.Refresh, p, slice)
+				if not okCity then
+					warn("[ClientMain] city:", errCity)
+				end
+			end
+		end
+		dressing = false
+	end)
+end
 -- the server is retrying a failed DataStore read: say so once (the career is not lost)
 local loadRetryShown = false
 local function refresh()
@@ -731,13 +791,7 @@ local function refresh()
 	hudWarn.Text = table.concat(warns, "  ·  ")
 	hudWarn.Visible = #warns > 0
 	task.defer(layoutHud)
-	GymVisuals.Refresh(P) -- also draws the trophy case, career wall and facility tier (GymFacility)
-	if CityVisuals then
-		local okCity, errCity = pcall(CityVisuals.Refresh, P)
-		if not okCity then
-			warn("[ClientMain] city:", errCity)
-		end
-	end
+	dressWorld(P) -- also draws the trophy case, career wall and facility tier (GymFacility)
 	updateDaylight(P)
 	-- the hub is rebuilt (hundreds of GUI objects) for a new profile or a new busy / fight state, not for a
 	-- refresh that only re-checks the HUD's visibility (a window opening or closing: State.Refresh)
@@ -944,10 +998,18 @@ player.CharacterAdded:Connect(function()
 	end
 end)
 
--- initial fetch
+-- initial fetch (the first answer is the request made at the start)
 task.spawn(function()
-	for _ = 1, 30 do
-		local res = State.req("GetProfile")
+	for i = 1, 30 do
+		local res
+		if i == 1 then
+			while firstProfile == nil do
+				task.wait()
+			end
+			res = firstProfile
+		else
+			res = State.req("GetProfile")
+		end
 		if res and not res.loading and res.created ~= nil then
 			State.SetProfile(res)
 			return

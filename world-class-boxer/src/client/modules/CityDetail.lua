@@ -226,6 +226,10 @@ end
 ------------------------------------------------------------------------
 -- every shop front of both rows: { cf (the sign's frame: -Z to the street, origin on the front plane
 -- at ground), w, h, depth, sign (part), grids, awning, facade, marquee, columns, canopy, doorX (local) }
+-- the parts the shop pass below reads besides the signs (any other part is skipped: the row's thousands of parts
+-- against every shop's frame was ~all of WorldDetail's start-up, in one frame)
+local SHOP_PARTS = { Cornice = true, ShopAwning = true, ShopInterior = true, Marquee = true, Pediment = true, MuseumSteps = true,
+	LobbyCanopy = true, ACUnit = true, ShopDoor = true, DoorFrame = true }
 local function readShops()
 	local root = cityRoot()
 	local shops = {}
@@ -234,7 +238,7 @@ local function readShops()
 		if row then
 			local parts = {}
 			for _, d in ipairs(row:GetDescendants()) do
-				if d:IsA("BasePart") then
+				if d:IsA("BasePart") and (d.Name == "ShopSign" or SHOP_PARTS[d.Name] or d:GetAttribute("WinRows")) then
 					table.insert(parts, d)
 				end
 			end

@@ -134,8 +134,12 @@ function WorldDetail.Start()
 		end
 		acc = 0
 		local ok, err = pcall(function()
-			makeGym()
-			makeCity()
+			-- (one streamer registered per pass: each reads the server's world)
+			if gymS or not (GymDetail and gymReady()) then
+				makeCity()
+			else
+				makeGym()
+			end
 			applyLevel(lv())
 			local cam = workspace.CurrentCamera
 			local pos = cam and cam.CFrame.Position or Vector3.zero

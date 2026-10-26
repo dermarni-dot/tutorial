@@ -541,12 +541,34 @@ end
 local function dumpRoot(root)
 	local out = { parts = {}, lights = {}, guis = {}, decals = {}, beams = {} }
 	local counts = { instances = 0, parts = 0, meshparts = 0, lights = 0, guis = 0, decals = 0, beams = 0, particles = 0, models = 0 }
+	-- the performance flags (unset = the engine default: unanchored, collides, queries, touches, casts a shadow)
+	local perf = { shadowLights = 0, onLights = 0, casters = 0, smallCasters = 0, unanchored = 0, collide = 0, query = 0, touch = 0 }
+	counts.perf = perf
 	local index = {}
 	local list = root:GetDescendants()
 	for _, o in ipairs(list) do
 		counts.instances += 1
 		if o:IsA("BasePart") then
 			counts.parts += 1
+			if o.Anchored ~= true then
+				perf.unanchored += 1
+			end
+			if o.CanCollide ~= false then
+				perf.collide += 1
+			end
+			if o.CanQuery ~= false then
+				perf.query += 1
+			end
+			if o.CanTouch ~= false then
+				perf.touch += 1
+			end
+			if o.CastShadow ~= false and (o.Transparency or 0) < 1 then
+				perf.casters += 1
+				local sz = o.Size
+				if sz and math.max(sz.X, sz.Y, sz.Z) < 2 then
+					perf.smallCasters += 1
+				end
+			end
 			if o.ClassName == "MeshPart" then
 				counts.meshparts += 1
 			end
@@ -564,6 +586,9 @@ local function dumpRoot(root)
 			end
 			if o.CanTouch ~= nil then
 				it.ct = o.CanTouch
+			end
+			if o.CastShadow == false then
+				it.ns = true
 			end
 			local tg = CS:GetTags(o)
 			if #tg > 0 then
@@ -592,6 +617,12 @@ local function dumpRoot(root)
 		local cls = o.ClassName
 		if cls == "PointLight" or cls == "SpotLight" or cls == "SurfaceLight" then
 			counts.lights += 1
+			if o.Enabled ~= false then
+				perf.onLights += 1
+				if o.Shadows == true then
+					perf.shadowLights += 1
+				end
+			end
 			local p = rawget(o, "_parent")
 			if p and index[p] then
 				local pp = p
@@ -659,6 +690,8 @@ local function record(name, root)
 	scene.roots[name] = d
 	scene.counts[name] = c
 	print(string.format("%-18s instances %6d  parts %6d  lights %4d  guis %4d  decals %4d  beams %4d  particles %3d", name, c.instances, c.parts, c.lights, c.guis, c.decals, c.beams, c.particles))
+	local pf = c.perf
+	print(string.format("%-18s perf: lights on %d (shadowed %d)  shadow casters %d (small %d)  unanchored %d  collide %d  query %d  touch %d", "", pf.onLights, pf.shadowLights, pf.casters, pf.smallCasters, pf.unanchored, pf.collide, pf.query, pf.touch))
 end
 
 local function try(label, fn, ...)

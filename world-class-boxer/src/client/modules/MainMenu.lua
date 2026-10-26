@@ -52,6 +52,7 @@ local function topShift(base)
 	return math.max(0, topPad - base)
 end
 local intro = true -- the logo / menu entrance plays once per open (not on a rebuild)
+local openToken -- this open's (the set is built a frame after Open: a close / reopen meanwhile drops that build)
 -- the home layer is built once per open and only hidden under the other screens: back home it is shown as it was,
 -- rebuilt only when something it shows changed meanwhile (a profile push, a resize, a setting)
 local homeDirty = false
@@ -1559,12 +1560,10 @@ function MainMenu.Open(which)
 	layers.home = UI.Frame(root, { Name = "Home", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
 	layers.screen = UI.Frame(root, { Name = "Screen", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, SelectionGroup = true })
 	layers.wipe = UI.Frame(root, { Name = "Wipe", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 20 })
-	-- fade up from black
+	-- fade up from black: the set and the boxer's copy (hundreds of parts) are built behind the black on a frame of
+	-- their own, and the fade starts on the frame after that, so it plays whole instead of losing its first frames
+	-- to the build (it used to start in the same frame as the menu, the set, the clone and the world's dressing)
 	local black = UI.Frame(root, { Name = "Fade", BackgroundColor3 = Color3.new(0, 0, 0), Size = UDim2.fromScale(1, 1), ZIndex = 30 })
-	UI.Tween(black, { BackgroundTransparency = 1 }, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
-	task.delay(1, function()
-		black:Destroy()
-	end)
 	buildBackdrop(layers.backdrop)
 	view = "home"
 	intro = true
@@ -1574,8 +1573,23 @@ function MainMenu.Open(which)
 		show(which, true)
 	end
 	Perf.Hold(3) -- building the set and the clone is a hitch, not the frame rate
-	sceneStart()
-	track(RunService.RenderStepped:Connect(sceneStep))
+	local token = {}
+	openToken = token
+	task.spawn(function()
+		task.wait()
+		if openToken ~= token or not isOpen or closing then
+			return
+		end
+		sceneStart()
+		track(RunService.RenderStepped:Connect(sceneStep))
+		task.wait()
+		if black.Parent then
+			UI.Tween(black, { BackgroundTransparency = 1 }, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+			task.delay(1, function()
+				black:Destroy()
+			end)
+		end
+	end)
 	track(UserInputService.InputBegan:Connect(onInput))
 	-- a new screen size (rotation, window resize, UI scale setting): rebuild in place, once the change
 	-- settles and no pointer is held (a drag in progress keeps its widget)

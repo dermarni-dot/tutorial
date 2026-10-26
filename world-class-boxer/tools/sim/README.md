@@ -518,3 +518,26 @@ lune run tools/sim/v10_postfight_scene.luau [--out DIR] [--frames heavy,mixed,do
   heavyweights and a referee at `PostFight.Layout`'s places from `HitGeometry.Frame` off the built rigs, the pf* poses
   before and after the hand goes up; per frame the smallest body gaps and the deepest mesh-box overlap. The render:
   top view and the hard camera (Ceremony.resultShot) per frame, plus the sheet `postfight_scene.jpg`.
+
+## Brand deals: test_sponsors
+
+`lune run tools/sim/test_sponsors.luau [-v]` (a few seconds) checks `Catalog.Sponsors` (fictional brands, every scope
+and category, rival brands) and `src/server/Sponsors.lua` on real careers: offer generation by tier (weighted
+random, refreshed after fights, different per career), the exclusivity clause and REPLACE, payouts (per fight, win /
+KO / title bonuses, the negotiated mult, the signing bonus once), the social-post and logo clauses, perks (training
+XP, morning energy, gear / meal discounts, fan growth through a real `Career.ApplyResult`), offer expiry and
+cooldowns, contract length, the performance clause, and the v1 -> v2 save migration (`Training.Migrate`).
+`test_ui_layout --only hub_sponsors` lays out the Hub's Sponsors tab on every device.
+
+## Start-up smoothness: loadframes
+
+`lune run tools/sim/loadframes.luau [--seconds 6] [--new 1] [--lat 0.3] [--top 8] [--debug 1] [--src DIR]` runs the
+REAL client start-up (ClientMain, FightClient and Animator, each in a thread of its own as the engine starts them) on
+guisim over the server's gym and city (`MapBuilder.BuildGym`), GetProfile answering after `--lat` seconds (a returning
+boxer with the title screen at start; `--new 1` a first join). Every script is compiled up front (`H.bytecode`: the
+sim's compile is not a frame's) and `task.wait` / `task.delay` resume on the harness's 60 Hz frames, as the engine
+resumes them on a Heartbeat. Prints the start-up's first frame, the longest frames (Lua ms, instances made, what ran:
+thread slices, RenderStepped / Heartbeat handlers, BindableEvent handlers, first requires), the longest single slices,
+when the title screen opened, and a `SUMMARY` line. `--src DIR` runs another tree (a before set:
+`guisim.new(device, { src = DIR })`). The Lua times are the fake engine's (instances are Lua tables, a layout pass per
+AbsoluteSize read): compare one version with another, not with a device; the instance counts are exact.

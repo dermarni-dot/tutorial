@@ -4546,7 +4546,14 @@ function Fight:Update(dt)
 		self.sendAcc = 0
 		local time = math.max(0, math.ceil(self.roundEnd - now))
 		self:SendEach(function(P)
-			return { t = "state", b = self:PackState(P, self:Other(P), time, now) }
+			local b = self:PackState(P, self:Other(P), time, now)
+			-- (a packet the same as this viewer's last is skipped: bars full, clock held; one a second all the same)
+			local key = buffer.tostring(b)
+			if key == P.stateSent and now - (P.stateSentAt or -math.huge) < 1 then
+				return nil
+			end
+			P.stateSent, P.stateSentAt = key, now
+			return { t = "state", b = b }
 		end)
 	end
 end

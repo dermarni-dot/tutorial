@@ -78,6 +78,15 @@ local dynamics = {} -- id -> dynamic state (swing etc.)
 ------------------------------------------------------------------------
 -- helpers
 ------------------------------------------------------------------------
+-- decor whose shadow nobody can see (as GymDecor's): under a stud on its longest side (bolts, seams, dumbbell heads),
+-- or a thin slab lying on the floor (tape, chalk lines, mats). opts.shadow = true keeps one
+local function shadowless(size, cf)
+	if math.max(size.X, size.Y, size.Z) < 1 then
+		return true
+	end
+	return size.Y <= 0.12 and size.Y <= size.X and size.Y <= size.Z and cf.Y < 1.5 and math.abs(cf.UpVector.Y) > 0.98
+end
+
 local function part(model, name, size, cf, color, material, opts)
 	opts = opts or {}
 	local p = Instance.new(opts.wedge and "WedgePart" or "Part")
@@ -92,7 +101,7 @@ local function part(model, name, size, cf, color, material, opts)
 	p.CanCollide = opts.collide == true
 	p.CanQuery = opts.collide == true
 	p.CanTouch = false
-	p.CastShadow = opts.shadow ~= false
+	p.CastShadow = opts.shadow == true or (opts.shadow ~= false and (opts.collide == true or not shadowless(size, cf)))
 	if opts.shape then
 		p.Shape = opts.shape
 	end
@@ -3078,10 +3087,13 @@ end
 ------------------------------------------------------------------------
 local GymFacility, GymMirror, Ambience
 local poolKey, ringKey, tierIdx
-function GymVisuals.Refresh(P)
+-- slice (optional, from a thread that may yield: ClientMain's Perf.Budget): called after every piece built, it
+-- spreads the first build (every station, the pool, the facility tier) over frames instead of one long hitch
+function GymVisuals.Refresh(P, slice)
 	if not P or not P.created or not P.gym then
 		return
 	end
+	slice = type(slice) == "function" and slice or function() end
 	if not folder or not (folder.Parent or GymVisuals.hidden) then
 		folder = Instance.new("Folder")
 		folder.Name = "LocalGym"
@@ -3096,6 +3108,7 @@ function GymVisuals.Refresh(P)
 		local key = string.format("%d|%d|%s", lv, math.floor(cond / 5), tostring(id == "chamber" and owns))
 		if not built[id] or built[id].key ~= key then
 			buildStation(id, lv, cond, { key = key, ownsChamber = owns, reveal = not first })
+			slice()
 		end
 	end
 	local plv = math.max(1, P.gym.levels.pool or 1)
@@ -3109,6 +3122,7 @@ function GymVisuals.Refresh(P)
 		m.Name = "PoolUpgrades"
 		m.Parent = folder
 		buildPool(m, plv)
+		slice()
 	end
 	local rlv = math.max(1, P.gym.levels.ring or 1)
 	if ringKey ~= rlv then
@@ -3125,7 +3139,7 @@ function GymVisuals.Refresh(P)
 	GymVisuals.Tier = idx
 	GymFacility = GymFacility or optional("GymFacility")
 	if GymFacility then
-		local okF, err = pcall(GymFacility.Refresh, P, folder, { idx = idx, def = def, frac = frac, needs = needs, prev = prevTier, ringLevel = rlv })
+		local okF, err = pcall(GymFacility.Refresh, P, folder, { idx = idx, def = def, frac = frac, needs = needs, prev = prevTier, ringLevel = rlv, slice = slice })
 		if not okF then
 			warn("[GymVisuals] facility:", err)
 		end
