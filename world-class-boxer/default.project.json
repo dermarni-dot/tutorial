@@ -84,6 +84,9 @@
         "RingWalk": {
           "$path": "src/server/RingWalk.lua"
         },
+        "Sponsors": {
+          "$path": "src/server/Sponsors.lua"
+        },
         "Tourney": {
           "$path": "src/server/Tourney.lua"
         },

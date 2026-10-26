@@ -23,6 +23,9 @@ do
 	Traits = (ok and type(mod) == "table" and type(mod.ForBoxer) == "function") and mod or nil
 end
 
+-- the brand deals' perks (training XP, morning energy, gear / meal discounts) and their save migration
+local Sponsors = require(script.Parent.Sponsors)
+
 local Training = {}
 local rng = Random.new()
 local MG = Config.MuscleGrowth
@@ -1850,7 +1853,8 @@ function Training.Perform(profile, act, quality, opts)
 	for _, g in pairs(result.gains) do
 		statTotal += math.max(0, finite(g, 0))
 	end
-	local xp = math.floor((18 + statTotal * 45 + finite(grown.total, 0) * 24) * quality * math.min(scale, 1.5) * (mods and mods.rep or 1) + 0.5)
+	local xp = math.floor((18 + statTotal * 45 + finite(grown.total, 0) * 24) * quality * math.min(scale, 1.5) * (mods and mods.rep or 1)
+		* (1 + Sponsors.Perk(profile, "xp")) + 0.5)
 	local before = Training.XPInfo(profile.xp)
 	profile.xp = before.xp + xp
 	-- mastery, overload, the camp log, goals (their XP lands on top) -> the report card
@@ -2129,12 +2133,14 @@ function Training.Eat(profile, mealId)
 	if meal.requires and not Training.Owned(profile, meal.requires) then
 		return false, "Hire a Nutritionist (Shop) to unlock this."
 	end
-	if profile.money < meal.price then
+	-- (a food sponsor's discount comes off the bill)
+	local price = Sponsors.Price(profile, meal.price, "meals")
+	if profile.money < price then
 		return false, "Not enough money."
 	end
 	local c = profile.condition
 	local boost = Training.Owned(profile, "Nutritionist") and 1.25 or 1
-	profile.money -= meal.price
+	profile.money -= price
 	local before = c.nutrition
 	c.nutrition = c.nutrition + meal.nutrition * boost
 	if c.nutrition > 100 then
@@ -2724,7 +2730,8 @@ function Training.Sleep(profile)
 			c.sore[grp] = v >= 0.02 and v or nil
 		end
 	end
-	c.energy = clamp(55 + 45 * q, 0, 100)
+	-- (+ a sponsor's recovery perk: the energy drink, the coffee, the lie-flat seat)
+	c.energy = clamp(55 + 45 * q + Sponsors.Perk(profile, "recovery"), 0, 100)
 	c.fatigue = clamp(c.fatigue - (12 + 30 * q), 0, 100)
 	c.nutrition = clamp(c.nutrition - 30, 0, 100)
 	c.hydration = clamp(c.hydration - 22, 0, 100)
@@ -2983,10 +2990,12 @@ function Training.BuyGear(profile, kind, id)
 	if item.requiresTier and profile.tier < item.requiresTier then
 		return false, "Unlocks when you become a World Champion."
 	end
-	if profile.money < item.price then
+	-- (a gear sponsor's discount comes off at the counter)
+	local price = Sponsors.Price(profile, item.price, "gear")
+	if profile.money < price then
 		return false, "Not enough money."
 	end
-	profile.money -= item.price
+	profile.money -= price
 	profile.gear.owned[kind][id] = true
 	profile.gear.equipped[kind] = id
 	if kind ~= "mouthguard" and kind ~= "robe" then
@@ -3811,6 +3820,8 @@ function Training.Migrate(profile)
 	end
 	logMuscleHistory(profile)
 	migrateProgram(profile)
+	-- brand deals: a v1 sponsors table gets the v2 fields (offers, clauses, cooldowns); corrupt entries dropped
+	Sponsors.Migrate(profile)
 	return profile
 end
 

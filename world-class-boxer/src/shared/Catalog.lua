@@ -355,48 +355,240 @@ Catalog.Shop = {
 }
 
 ------------------------------------------------------------------------
--- Sponsors (all fictional). One active deal per slot (trunks | robe | corner | gear).
--- perFight is paid every fight while the deal runs, winBonus / koBonus on top; fights = contract length.
+-- Sponsors (all fictional brands; never a real company). One running deal per slot (trunks | robe |
+-- corner | gear), and one brand per category (cat): two energy drinks, two banks, two watchmakers... can
+-- never both be on the books (the exclusivity clause; Shared Catalog.SponsorConflict).
+-- Each brand belongs to a scope (Local -> Regional -> National -> Global, Catalog.SponsorScopes) that
+-- unlocks with the career tier, popularity, pro wins and ranking, plus its own minTier / minPop /
+-- minWins / minRank on top. Deal terms (Server Sponsors.lua pays them; an offer scales the money by
+-- its negotiated `mult`):
+--   signing = paid once, the first time you ever sign the brand; perFight every fight while the deal
+--   runs; winBonus / koBonus / titleBonus on a win / a stoppage win / a title-fight win; fights =
+--   contract length in fights; post = one social post per fight (Hub POST button; a missed post halves
+--   that fight's base pay and is a strike, two strikes end the deal); wear = "robe" (walk out in a robe)
+--   | "gloves" (fight in gloveBrand gloves, Catalog.Brands): the logo must be seen or the fight pays half
+--   base; maxLosses = performance clause (dropped after that many straight losses);
+--   perk = { kind = "xp" (training XP x(1+amount)) | "recovery" (+amount morning energy) |
+--   "discount" (on = "gear" | "meals", price x(1-amount)) | "fans" (fame from wins x(1+amount)) };
+--   weight = offer weight (default 1).
 -- logo = { bg, fg = {r,g,b}, text, glyph } drawn on trunks / robe / corner pads / billboards;
--- shop = the CityMap shop front that belongs to the brand (local sponsors).
+-- shop = the CityMap shop front that belongs to the brand (local sponsors; its window gets your standee).
 ------------------------------------------------------------------------
-Catalog.Sponsors = {
-	{ id = "TonysPizza", name = "Tony's Pizza", scope = "Local", minTier = 2, minPop = 3, perFight = 600, winBonus = 300, koBonus = 300, fights = 4, slot = "trunks",
-		logo = { bg = { 200, 30, 30 }, fg = { 255, 240, 200 }, text = "TONY'S", glyph = "PIZZA" }, shop = "TONY'S PIZZA" },
-	{ id = "IronSupplements", name = "Iron Supplements", scope = "Local", minTier = 2, minPop = 5, perFight = 900, winBonus = 400, koBonus = 400, fights = 4, slot = "robe",
-		logo = { bg = { 30, 30, 30 }, fg = { 240, 110, 20 }, text = "IRON", glyph = "SUPPS" }, shop = "IRON SUPPLEMENTS" },
-	{ id = "FuelAndGo", name = "Fuel & Go", scope = "Local", minTier = 3, minPop = 10, perFight = 2500, winBonus = 1000, koBonus = 1500, fights = 5, slot = "corner",
-		logo = { bg = { 20, 140, 60 }, fg = { 255, 255, 255 }, text = "FUEL & GO", glyph = "F&G" }, shop = "FUEL & GO" },
-	{ id = "WCBProShop", name = "WCB Pro Shop", scope = "Local", minTier = 3, minPop = 12, perFight = 3000, winBonus = 1500, koBonus = 1500, fights = 5, slot = "gear",
-		logo = { bg = { 25, 60, 200 }, fg = { 255, 255, 255 }, text = "WCB PRO", glyph = "WCB" }, shop = "WCB PRO SHOP" },
-	{ id = "ApexAthletics", name = "Apex Athletics", scope = "National", minTier = 5, minPop = 30, perFight = 25000, winBonus = 10000, koBonus = 15000, fights = 6, slot = "trunks",
-		logo = { bg = { 20, 20, 20 }, fg = { 0, 170, 190 }, text = "APEX", glyph = "AX" } },
-	{ id = "VoltaraEnergy", name = "Voltara Energy", scope = "National", minTier = 5, minPop = 35, perFight = 30000, winBonus = 12000, koBonus = 20000, fights = 6, slot = "corner",
-		logo = { bg = { 120, 30, 160 }, fg = { 255, 230, 60 }, text = "VOLTARA", glyph = "V" } },
-	{ id = "NorthwindAir", name = "Northwind Air", scope = "Global", minTier = 6, minPop = 45, perFight = 60000, winBonus = 25000, koBonus = 25000, fights = 6, slot = "robe",
-		logo = { bg = { 240, 240, 240 }, fg = { 25, 60, 200 }, text = "NORTHWIND", glyph = "NW" } },
-	{ id = "BluepeakMobile", name = "Bluepeak Mobile", scope = "Global", minTier = 6, minPop = 50, perFight = 80000, winBonus = 30000, koBonus = 40000, fights = 6, slot = "gear",
-		logo = { bg = { 0, 90, 170 }, fg = { 255, 255, 255 }, text = "BLUEPEAK", glyph = "BP" } },
-	{ id = "CrownmarkWatches", name = "Crownmark Watches", scope = "Global", minTier = 8, minPop = 65, perFight = 250000, winBonus = 100000, koBonus = 100000, fights = 5, slot = "robe",
-		logo = { bg = { 20, 20, 20 }, fg = { 230, 180, 30 }, text = "CROWNMARK", glyph = "CM" } },
-	{ id = "HalcyonMotors", name = "Halcyon Motors", scope = "Global", minTier = 8, minPop = 75, perFight = 400000, winBonus = 150000, koBonus = 200000, fights = 5, slot = "trunks",
-		logo = { bg = { 160, 160, 170 }, fg = { 20, 20, 20 }, text = "HALCYON", glyph = "H" } },
+Catalog.SponsorScopeOrder = { "Local", "Regional", "National", "Global" }
+Catalog.SponsorScopes = {
+	Local = { id = "Local", order = 1, name = "Local shop", minTier = 2, minPop = 0, minWins = 0, offerFights = 3 },
+	Regional = { id = "Regional", order = 2, name = "Regional", minTier = 3, minPop = 8, minWins = 4, offerFights = 3 },
+	National = { id = "National", order = 3, name = "National", minTier = 5, minPop = 25, minWins = 10, offerFights = 2 },
+	Global = { id = "Global", order = 4, name = "Global", minTier = 6, minPop = 40, minWins = 15, minRank = 15, offerFights = 2 },
 }
-Catalog.SponsorSlots = { "trunks", "robe", "corner", "gear" }
+Catalog.SponsorCats = {
+	food = "Restaurant", fastfood = "Fast food", coffee = "Coffee", convenience = "Convenience store", grooming = "Barber & grooming",
+	lifestyle = "Lifestyle", gym = "Boxing gym", retail = "Fight-gear retail", gloves = "Gloves & equipment", supplements = "Supplements",
+	energy = "Energy drink", sportswear = "Sportswear", bank = "Bank & fintech", cars = "Cars", gaming = "Gaming", tech = "Headphones & tech",
+	streaming = "Streaming", mobile = "Mobile network", airline = "Airline", watches = "Watches", cologne = "Cologne",
+}
+Catalog.SponsorPerks = {
+	xp = "training XP", recovery = "morning energy", discount = "off", fans = "fan growth from wins",
+}
 
-function Catalog.Sponsor(id)
-	return Catalog.Find(Catalog.Sponsors, id)
+local function rgbT(r, g, b)
+	return { r, g, b }
+end
+local function logo(bg, fg, text, glyph)
+	return { bg = bg, fg = fg, text = text, glyph = glyph }
 end
 
--- sponsors whose requirements a career meets (deterministic; offers = this minus active deals)
-function Catalog.SponsorsFor(careerTier, popularity)
+Catalog.Sponsors = {
+	-- Local: Main Street businesses and neighbourhood gyms
+	{ id = "TonysPizza", name = "Tony's Pizza", scope = "Local", cat = "food", slot = "trunks", minTier = 2, minPop = 3,
+		signing = 300, perFight = 600, winBonus = 300, koBonus = 300, fights = 4, perk = { kind = "discount", on = "meals", amount = 0.15 },
+		logo = logo(rgbT(200, 30, 30), rgbT(255, 240, 200), "TONY'S", "PIZZA"), shop = "TONY'S PIZZA" },
+	{ id = "ChampsDiner", name = "Champ's Diner", scope = "Local", cat = "food", slot = "corner", minTier = 2, minPop = 6,
+		signing = 400, perFight = 800, winBonus = 500, koBonus = 200, fights = 5, perk = { kind = "recovery", amount = 4 },
+		logo = logo(rgbT(190, 20, 30), rgbT(255, 255, 255), "CHAMP'S", "DINER"), shop = "CHAMP'S DINER" },
+	{ id = "CornerCafe", name = "Corner Cafe", scope = "Local", cat = "coffee", slot = "gear", minTier = 2, minPop = 3,
+		signing = 200, perFight = 450, winBonus = 200, koBonus = 0, fights = 6, perk = { kind = "recovery", amount = 6 },
+		logo = logo(rgbT(60, 40, 30), rgbT(255, 230, 190), "CORNER CAFE", "COFFEE"), shop = "CORNER CAFE" },
+	{ id = "FreshFades", name = "Fresh Fades Barbershop", scope = "Local", cat = "grooming", slot = "robe", minTier = 2, minPop = 4,
+		signing = 250, perFight = 500, winBonus = 250, koBonus = 250, fights = 3, post = true, wear = "robe", perk = { kind = "fans", amount = 0.1 },
+		logo = logo(rgbT(14, 30, 70), rgbT(240, 240, 245), "FRESH FADES", "BARBERS"), shop = "FRESH FADES BARBERSHOP" },
+	{ id = "InkAndIron", name = "Ink & Iron Tattoo", scope = "Local", cat = "lifestyle", slot = "gear", minTier = 2, minPop = 8,
+		signing = 300, perFight = 700, winBonus = 300, koBonus = 700, fights = 4, post = true, perk = { kind = "fans", amount = 0.12 },
+		logo = logo(rgbT(20, 14, 26), rgbT(220, 90, 255), "INK & IRON", "TATTOO"), shop = "INK & IRON TATTOO" },
+	{ id = "SouthsideBC", name = "Southside Boxing Club", scope = "Local", cat = "gym", slot = "trunks", minTier = 2, minPop = 2,
+		signing = 0, perFight = 350, winBonus = 600, koBonus = 600, fights = 6, maxLosses = 2, perk = { kind = "xp", amount = 0.08 }, weight = 1.3,
+		logo = logo(rgbT(240, 240, 235), rgbT(30, 30, 30), "SOUTHSIDE", "BOXING CLUB") },
+	{ id = "HammerheadGym", name = "Hammerhead Fight Gym", scope = "Local", cat = "gym", slot = "corner", minTier = 2, minPop = 4,
+		signing = 500, perFight = 700, winBonus = 300, koBonus = 500, fights = 4, maxLosses = 2, perk = { kind = "xp", amount = 0.06 },
+		logo = logo(rgbT(20, 50, 70), rgbT(120, 220, 230), "HAMMERHEAD", "FIGHT GYM") },
+	{ id = "IronSupplements", name = "Iron Supplements", scope = "Local", cat = "supplements", slot = "robe", minTier = 2, minPop = 5,
+		signing = 450, perFight = 900, winBonus = 400, koBonus = 400, fights = 4, wear = "robe", perk = { kind = "xp", amount = 0.05 },
+		logo = logo(rgbT(30, 30, 30), rgbT(240, 110, 20), "IRON", "SUPPS"), shop = "IRON SUPPLEMENTS" },
+	{ id = "FuelAndGo", name = "Fuel & Go", scope = "Local", cat = "convenience", slot = "corner", minTier = 3, minPop = 10,
+		signing = 1250, perFight = 2500, winBonus = 1000, koBonus = 1500, fights = 5, perk = { kind = "recovery", amount = 5 },
+		logo = logo(rgbT(20, 140, 60), rgbT(255, 255, 255), "FUEL & GO", "F&G"), shop = "FUEL & GO" },
+	{ id = "WCBProShop", name = "WCB Pro Shop", scope = "Local", cat = "retail", slot = "gear", minTier = 3, minPop = 12,
+		signing = 1500, perFight = 3000, winBonus = 1500, koBonus = 1500, fights = 5, perk = { kind = "discount", on = "gear", amount = 0.1 },
+		logo = logo(rgbT(25, 60, 200), rgbT(255, 255, 255), "WCB PRO", "WCB"), shop = "WCB PRO SHOP" },
+
+	-- Regional: the state's glove makers, chains and money
+	{ id = "Strikewell", name = "Strikewell Gloves", scope = "Regional", cat = "gloves", slot = "trunks", minTier = 3, minPop = 9,
+		signing = 1000, perFight = 1800, winBonus = 800, koBonus = 600, fights = 4, wear = "gloves", gloveBrand = "Strikewell", perk = { kind = "discount", on = "gear", amount = 0.15 },
+		logo = logo(rgbT(20, 60, 190), rgbT(255, 200, 40), "STRIKEWELL", "SW") },
+	{ id = "Ringcraft", name = "Ringcraft Equipment", scope = "Regional", cat = "gloves", slot = "gear", minTier = 3, minPop = 10,
+		signing = 1500, perFight = 2200, winBonus = 900, koBonus = 900, fights = 5, wear = "gloves", gloveBrand = "Ringcraft", perk = { kind = "discount", on = "gear", amount = 0.2 },
+		logo = logo(rgbT(200, 25, 30), rgbT(245, 245, 245), "RINGCRAFT", "RC") },
+	{ id = "ThunderheadEnergy", name = "Thunderhead Energy", scope = "Regional", cat = "energy", slot = "corner", minTier = 3, minPop = 14,
+		signing = 1500, perFight = 1500, winBonus = 1000, koBonus = 4000, fights = 5, post = true, perk = { kind = "recovery", amount = 8 },
+		logo = logo(rgbT(20, 20, 30), rgbT(90, 200, 255), "THUNDERHEAD", "ENERGY") },
+	{ id = "Forgewell", name = "Forgewell Nutrition", scope = "Regional", cat = "supplements", slot = "robe", minTier = 3, minPop = 12,
+		signing = 2000, perFight = 3000, winBonus = 1200, koBonus = 800, fights = 5, wear = "robe", perk = { kind = "xp", amount = 0.08 },
+		logo = logo(rgbT(240, 120, 20), rgbT(20, 20, 20), "FORGEWELL", "NUTRITION") },
+	{ id = "Grillstack", name = "Grillstack Burgers", scope = "Regional", cat = "fastfood", slot = "trunks", minTier = 3, minPop = 15,
+		signing = 2500, perFight = 3500, winBonus = 1500, koBonus = 1500, fights = 4, post = true, perk = { kind = "fans", amount = 0.1 },
+		logo = logo(rgbT(250, 200, 40), rgbT(150, 20, 20), "GRILLSTACK", "BURGERS") },
+	{ id = "GridlineGaming", name = "Gridline Gaming", scope = "Regional", cat = "gaming", slot = "gear", minTier = 3, minPop = 12,
+		signing = 1000, perFight = 2000, winBonus = 1500, koBonus = 2500, fights = 6, post = true, perk = { kind = "fans", amount = 0.15 },
+		logo = logo(rgbT(10, 10, 14), rgbT(60, 255, 140), "GRIDLINE", "GAMING") },
+	{ id = "RivermarkCU", name = "Rivermark Credit Union", scope = "Regional", cat = "bank", slot = "robe", minTier = 4, minPop = 18,
+		signing = 6000, perFight = 5000, winBonus = 0, koBonus = 0, fights = 8, maxLosses = 3, weight = 0.8,
+		logo = logo(rgbT(14, 60, 50), rgbT(230, 220, 170), "RIVERMARK", "CREDIT UNION") },
+	{ id = "PrestigeMotors", name = "Prestige Motors", scope = "Regional", cat = "cars", slot = "robe", minTier = 4, minPop = 20,
+		signing = 4000, perFight = 4500, winBonus = 2000, koBonus = 2000, fights = 5, wear = "robe", perk = { kind = "fans", amount = 0.1 },
+		logo = logo(rgbT(12, 12, 16), rgbT(220, 220, 230), "PRESTIGE", "MOTORS"), shop = "PRESTIGE MOTORS" },
+
+	-- National: household names
+	{ id = "ApexAthletics", name = "Apex Athletics", scope = "National", cat = "sportswear", slot = "trunks", minTier = 5, minPop = 30,
+		signing = 12500, perFight = 25000, winBonus = 10000, koBonus = 15000, titleBonus = 30000, fights = 6, perk = { kind = "recovery", amount = 6 },
+		logo = logo(rgbT(20, 20, 20), rgbT(0, 170, 190), "APEX", "AX") },
+	{ id = "Kinetiq", name = "Kinetiq Sportswear", scope = "National", cat = "sportswear", slot = "robe", minTier = 5, minPop = 32,
+		signing = 20000, perFight = 22000, winBonus = 14000, koBonus = 8000, titleBonus = 25000, fights = 7, wear = "robe", perk = { kind = "xp", amount = 0.06 },
+		logo = logo(rgbT(240, 240, 240), rgbT(220, 40, 80), "KINETIQ", "KQ") },
+	{ id = "VoltaraEnergy", name = "Voltara Energy", scope = "National", cat = "energy", slot = "corner", minTier = 5, minPop = 35,
+		signing = 15000, perFight = 30000, winBonus = 12000, koBonus = 20000, titleBonus = 20000, fights = 6, post = true, perk = { kind = "recovery", amount = 10 },
+		logo = logo(rgbT(120, 30, 160), rgbT(255, 230, 60), "VOLTARA", "V") },
+	{ id = "Ironvale", name = "Ironvale Pro Gear", scope = "National", cat = "gloves", slot = "gear", minTier = 5, minPop = 30,
+		signing = 15000, perFight = 20000, winBonus = 8000, koBonus = 12000, titleBonus = 20000, fights = 6, wear = "gloves", gloveBrand = "Ironvale",
+		perk = { kind = "discount", on = "gear", amount = 0.25 }, logo = logo(rgbT(20, 20, 20), rgbT(210, 210, 215), "IRONVALE", "IV") },
+	{ id = "GoldenCluck", name = "Golden Cluck Chicken", scope = "National", cat = "fastfood", slot = "corner", minTier = 5, minPop = 33,
+		signing = 10000, perFight = 26000, winBonus = 10000, koBonus = 10000, fights = 5, post = true, perk = { kind = "fans", amount = 0.12 },
+		logo = logo(rgbT(200, 30, 20), rgbT(255, 210, 60), "GOLDEN CLUCK", "CHICKEN") },
+	{ id = "CopperlineBank", name = "Copperline Bank", scope = "National", cat = "bank", slot = "robe", minTier = 5, minPop = 36,
+		signing = 30000, perFight = 28000, winBonus = 0, koBonus = 0, titleBonus = 40000, fights = 8, maxLosses = 2, weight = 0.8,
+		logo = logo(rgbT(150, 80, 40), rgbT(255, 240, 220), "COPPERLINE", "BANK") },
+	{ id = "Hushwave", name = "Hushwave Audio", scope = "National", cat = "tech", slot = "gear", minTier = 5, minPop = 28,
+		signing = 8000, perFight = 18000, winBonus = 9000, koBonus = 9000, fights = 6, post = true, perk = { kind = "xp", amount = 0.05 },
+		logo = logo(rgbT(30, 30, 36), rgbT(255, 255, 255), "HUSHWAVE", "AUDIO") },
+	{ id = "Glitchrift", name = "Glitchrift Games", scope = "National", cat = "gaming", slot = "trunks", minTier = 5, minPop = 34,
+		signing = 12000, perFight = 16000, winBonus = 12000, koBonus = 25000, fights = 6, post = true, perk = { kind = "fans", amount = 0.2 },
+		logo = logo(rgbT(40, 10, 70), rgbT(255, 80, 200), "GLITCHRIFT", "GAMES") },
+	{ id = "Reelstorm", name = "Reelstorm+", scope = "National", cat = "streaming", slot = "robe", minTier = 6, minPop = 40,
+		signing = 25000, perFight = 35000, winBonus = 10000, koBonus = 10000, titleBonus = 50000, fights = 6, post = true, perk = { kind = "fans", amount = 0.2 },
+		logo = logo(rgbT(10, 10, 10), rgbT(255, 60, 60), "REELSTORM+", "STREAMING") },
+	{ id = "Corelab", name = "Corelab Nutrition", scope = "National", cat = "supplements", slot = "gear", minTier = 5, minPop = 30,
+		signing = 14000, perFight = 21000, winBonus = 9000, koBonus = 6000, fights = 6, maxLosses = 3, perk = { kind = "xp", amount = 0.1 },
+		logo = logo(rgbT(240, 240, 240), rgbT(30, 120, 60), "CORELAB", "NUTRITION") },
+
+	-- Global: the world's biggest brands
+	{ id = "NorthwindAir", name = "Northwind Air", scope = "Global", cat = "airline", slot = "robe", minTier = 6, minPop = 45,
+		signing = 30000, perFight = 60000, winBonus = 25000, koBonus = 25000, titleBonus = 80000, fights = 6, wear = "robe", perk = { kind = "recovery", amount = 8 },
+		logo = logo(rgbT(240, 240, 240), rgbT(25, 60, 200), "NORTHWIND", "NW") },
+	{ id = "BluepeakMobile", name = "Bluepeak Mobile", scope = "Global", cat = "mobile", slot = "gear", minTier = 6, minPop = 50,
+		signing = 40000, perFight = 80000, winBonus = 30000, koBonus = 40000, titleBonus = 80000, fights = 6, post = true, perk = { kind = "fans", amount = 0.15 },
+		logo = logo(rgbT(0, 90, 170), rgbT(255, 255, 255), "BLUEPEAK", "BP") },
+	{ id = "Echoform", name = "Echoform Audio", scope = "Global", cat = "tech", slot = "corner", minTier = 6, minPop = 48,
+		signing = 40000, perFight = 70000, winBonus = 30000, koBonus = 50000, titleBonus = 60000, fights = 6, post = true, perk = { kind = "xp", amount = 0.08 },
+		logo = logo(rgbT(250, 250, 250), rgbT(20, 20, 20), "ECHOFORM", "EF") },
+	{ id = "Kazari", name = "Kazari Fight Gear", scope = "Global", cat = "gloves", slot = "gear", minTier = 7, minPop = 50,
+		signing = 60000, perFight = 90000, winBonus = 40000, koBonus = 60000, titleBonus = 100000, fights = 6, wear = "gloves", gloveBrand = "Kazari",
+		perk = { kind = "discount", on = "gear", amount = 0.3 }, logo = logo(rgbT(120, 20, 30), rgbT(255, 215, 90), "KAZARI", "KZ") },
+	{ id = "Tempest", name = "Tempest Chronographs", scope = "Global", cat = "watches", slot = "trunks", minTier = 7, minPop = 55,
+		signing = 100000, perFight = 150000, winBonus = 120000, koBonus = 60000, titleBonus = 250000, fights = 6, maxLosses = 2, perk = { kind = "fans", amount = 0.15 },
+		logo = logo(rgbT(20, 30, 60), rgbT(200, 210, 230), "TEMPEST", "CHRONO") },
+	{ id = "MaisonVelour", name = "Maison Velour", scope = "Global", cat = "cologne", slot = "robe", minTier = 7, minPop = 60,
+		signing = 80000, perFight = 120000, winBonus = 50000, koBonus = 30000, titleBonus = 150000, fights = 5, post = true, wear = "robe", perk = { kind = "fans", amount = 0.25 },
+		logo = logo(rgbT(30, 10, 30), rgbT(230, 190, 120), "MAISON VELOUR", "PARFUMS") },
+	{ id = "SkylarkStream", name = "Skylark Stream", scope = "Global", cat = "streaming", slot = "corner", minTier = 7, minPop = 58,
+		signing = 90000, perFight = 140000, winBonus = 60000, koBonus = 90000, titleBonus = 200000, fights = 6, post = true, perk = { kind = "fans", amount = 0.3 },
+		logo = logo(rgbT(90, 180, 255), rgbT(10, 20, 50), "SKYLARK", "STREAM") },
+	{ id = "CrownmarkWatches", name = "Crownmark Watches", scope = "Global", cat = "watches", slot = "robe", minTier = 8, minPop = 65,
+		signing = 125000, perFight = 250000, winBonus = 100000, koBonus = 100000, titleBonus = 300000, fights = 5, wear = "robe", maxLosses = 2, perk = { kind = "fans", amount = 0.2 },
+		logo = logo(rgbT(20, 20, 20), rgbT(230, 180, 30), "CROWNMARK", "CM") },
+	{ id = "QuorraPay", name = "Quorra Pay", scope = "Global", cat = "bank", slot = "corner", minTier = 8, minPop = 70,
+		signing = 300000, perFight = 300000, winBonus = 0, koBonus = 0, titleBonus = 300000, fights = 10, maxLosses = 2, weight = 0.8,
+		logo = logo(rgbT(20, 20, 26), rgbT(120, 255, 200), "QUORRA", "PAY") },
+	{ id = "HalcyonMotors", name = "Halcyon Motors", scope = "Global", cat = "cars", slot = "trunks", minTier = 8, minPop = 75,
+		signing = 200000, perFight = 400000, winBonus = 150000, koBonus = 200000, titleBonus = 400000, fights = 5, perk = { kind = "fans", amount = 0.25 },
+		logo = logo(rgbT(160, 160, 170), rgbT(20, 20, 20), "HALCYON", "H") },
+	{ id = "LaurelLegacy", name = "Laurel Legacy", scope = "Global", cat = "gloves", slot = "gear", minTier = 9, minPop = 85,
+		signing = 250000, perFight = 350000, winBonus = 150000, koBonus = 200000, titleBonus = 500000, fights = 5, wear = "gloves", gloveBrand = "Laurel",
+		perk = { kind = "discount", on = "gear", amount = 0.3 }, logo = logo(rgbT(20, 20, 20), rgbT(255, 215, 90), "LAUREL", "LL") },
+}
+Catalog.SponsorSlots = { "trunks", "robe", "corner", "gear" }
+Catalog.SponsorById = {}
+for _, s in ipairs(Catalog.Sponsors) do
+	Catalog.SponsorById[s.id] = s
+end
+
+function Catalog.Sponsor(id)
+	return type(id) == "string" and Catalog.SponsorById[id] or nil
+end
+
+-- what a brand needs from the career: its scope's gate and its own minimums, whichever is higher.
+-- -> { tier, pop, wins, rank? } (rank: the best world ranking, nil = none needed)
+function Catalog.SponsorNeeds(def)
+	local sc = Catalog.SponsorScopes[def.scope] or Catalog.SponsorScopes.Local
+	local rank = def.minRank or sc.minRank
+	if def.minRank and sc.minRank then
+		rank = math.min(def.minRank, sc.minRank)
+	end
+	return {
+		tier = math.max(def.minTier or 1, sc.minTier or 1), pop = math.max(def.minPop or 0, sc.minPop or 0),
+		wins = math.max(def.minWins or 0, sc.minWins or 0), rank = rank,
+	}
+end
+
+-- does a career (ctx = { tier, pop, wins, rank }) interest the brand? -> ok, missing (text) or nil
+function Catalog.SponsorEligible(def, ctx)
+	if type(def) ~= "table" then
+		return false, "unknown brand"
+	end
+	ctx = type(ctx) == "table" and ctx or {}
+	local n = Catalog.SponsorNeeds(def)
+	local miss = {}
+	if (tonumber(ctx.tier) or 1) < n.tier then
+		table.insert(miss, Config.Tiers[n.tier] and Config.Tiers[n.tier].name or ("tier " .. n.tier))
+	end
+	if (tonumber(ctx.pop) or 0) < n.pop then
+		table.insert(miss, string.format("%d popularity", n.pop))
+	end
+	if (tonumber(ctx.wins) or 0) < n.wins then
+		table.insert(miss, string.format("%d pro wins", n.wins))
+	end
+	if n.rank and (tonumber(ctx.rank) or 999) > n.rank then
+		table.insert(miss, string.format("a top-%d ranking", n.rank))
+	end
+	if #miss > 0 then
+		return false, table.concat(miss, ", ")
+	end
+	return true, nil
+end
+
+-- sponsors whose requirements a career meets (wins / rank optional: an old caller passes tier and popularity only)
+function Catalog.SponsorsFor(careerTier, popularity, wins, rank)
+	local ctx = { tier = careerTier or 1, pop = popularity or 0, wins = wins or math.huge, rank = rank or 1 }
 	local out = {}
 	for _, s in ipairs(Catalog.Sponsors) do
-		if (careerTier or 1) >= s.minTier and (popularity or 0) >= s.minPop then
+		if Catalog.SponsorEligible(s, ctx) then
 			table.insert(out, s)
 		end
 	end
 	return out
+end
+
+-- the exclusivity clause: two brands of one category can never both be signed
+function Catalog.SponsorConflict(a, b)
+	return type(a) == "table" and type(b) == "table" and a.id ~= b.id and a.cat ~= nil and a.cat == b.cat
 end
 
 ------------------------------------------------------------------------

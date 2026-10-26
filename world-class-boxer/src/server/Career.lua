@@ -23,6 +23,7 @@ do
 end
 local World = require(script.Parent.World)
 local Training = require(script.Parent.Training)
+local Sponsors = require(script.Parent.Sponsors)
 -- the tournaments (Shared.Tournaments: the events; Tourney: the brackets, the belts, the calendar)
 local Tourney = require(script.Parent.Tourney)
 local Tournaments = require(Shared:WaitForChild("Tournaments"))
@@ -512,160 +513,53 @@ function Career.Buy(profile, id)
 end
 
 ------------------------------------------------------------------------
--- Sponsors: real deals with fictional brands (Catalog.Sponsors). One deal per slot
--- (trunks | robe | corner | gear); each pays per fight plus win / KO bonuses for a set number
--- of fights. Saved lazily as profile.sponsors = { deals = { [slot] = { id, fightsLeft, signedDay } },
--- signed = { [id] = true } } (signed: first-time signing bonus and popularity only once per brand).
+-- Sponsors: brand deals with fictional brands (Catalog.Sponsors), run by Server Sponsors.lua (offers,
+-- clauses, payouts, perks, the save's profile.sponsors). These wrappers give it the career's ranking.
 ------------------------------------------------------------------------
 -- share of the old popularity formula paid as merch / appearance fees while you have NO deal
 local ENDORSE_SHARE = 0.5
 
 local function sponsorState(profile)
-	local s = profile.sponsors
-	if type(s) ~= "table" then
-		s = {}
-		profile.sponsors = s
-	end
-	if type(s.deals) ~= "table" then
-		s.deals = {}
-	end
-	if type(s.signed) ~= "table" then
-		s.signed = {}
-	end
-	-- drop corrupt or unknown deals (a sponsor removed from the catalog, a wrong slot, NaN fights)
-	for slot, d in pairs(s.deals) do
-		local def = type(d) == "table" and Catalog.Sponsor(d.id)
-		local left = def and tonumber(d.fightsLeft)
-		if not def or def.slot ~= slot or not left or left ~= left or left <= 0 then
-			s.deals[slot] = nil
-		else
-			d.fightsLeft = clamp(math.floor(left), 1, 99)
-			d.signedDay = tonumber(d.signedDay) or 1
-		end
-	end
-	return s
+	return Sponsors.State(profile)
+end
+
+local function sponsorCtx(profile)
+	local okRank, best = pcall(World.BestRank, profile)
+	return Sponsors.Ctx(profile, okRank and best or nil)
 end
 
 -- { [slot] = sponsor id } of the running deals (Venues.New opts.sponsors, LookOpts patches)
 function Career.ActiveSponsors(profile)
-	local out = {}
-	if type(profile) ~= "table" or not profile.created then
-		return out
-	end
-	for slot, d in pairs(sponsorState(profile).deals) do
-		out[slot] = d.id
-	end
-	return out
+	return Sponsors.Active(profile)
 end
 
-local function logoOf(def)
-	local l = def and def.logo
-	if type(l) ~= "table" then
-		return nil
-	end
-	return { text = l.text, glyph = l.glyph, fg = l.fg, bg = l.bg }
-end
-
-local function sponsorView(def)
-	return {
-		id = def.id, name = def.name, scope = def.scope, slot = def.slot, perFight = def.perFight, winBonus = def.winBonus,
-		koBonus = def.koBonus, fights = def.fights, minTier = def.minTier, minPop = def.minPop, logo = logoOf(def), shop = def.shop,
-	}
-end
-
--- deals the career qualifies for that are not running; `taken` names the deal already in that slot
+-- the offers on the table (views); `taken` names the deal in that slot, `conflict` the same-category brand
 function Career.SponsorOffers(profile)
-	local s = sponsorState(profile)
-	local active = {}
-	for _, d in pairs(s.deals) do
-		active[d.id] = true
-	end
-	local out = {}
-	for _, def in ipairs(Catalog.SponsorsFor(profile.tier, profile.popularity)) do
-		if not active[def.id] then
-			local v = sponsorView(def)
-			local cur = s.deals[def.slot]
-			local curDef = cur and Catalog.Sponsor(cur.id)
-			v.taken = curDef and curDef.name or nil
-			v.signingBonus = not s.signed[def.id] and math.floor(def.perFight * 0.5) or 0
-			table.insert(out, v)
-		end
-	end
-	return out
+	return Sponsors.OfferViews(profile)
 end
 
--- sign a deal; replace = true swaps out whatever runs in that slot. -> ok, err | name
+-- sign an offer; replace = true ends what blocks it (the slot's deal, an exclusive rival). -> ok, err | name
 function Career.SignSponsor(profile, id, replace)
-	if profile.retired then
-		return false, "You're retired."
-	end
-	local def = Catalog.Sponsor(id)
-	if not def then
-		return false, "Unknown sponsor"
-	end
-	local eligible = false
-	for _, e in ipairs(Catalog.SponsorsFor(profile.tier, profile.popularity)) do
-		if e.id == def.id then
-			eligible = true
-		end
-	end
-	if not eligible then
-		return false, string.format("%s wants a bigger name: %s and %d popularity.", def.name,
-			Config.Tiers[def.minTier] and Config.Tiers[def.minTier].name or ("tier " .. def.minTier), def.minPop)
-	end
-	local s = sponsorState(profile)
-	local cur = s.deals[def.slot]
-	if cur and cur.id == def.id then
-		return false, "Already signed."
-	end
-	if cur and replace ~= true then
-		local curDef = Catalog.Sponsor(cur.id)
-		return false, string.format("Your %s slot already carries %s.", def.slot, curDef and curDef.name or cur.id)
-	end
-	s.deals[def.slot] = { id = def.id, fightsLeft = def.fights, signedDay = profile.day }
-	-- a brand's first deal: signing bonus and a popularity bump from the announcement
-	if not s.signed[def.id] then
-		s.signed[def.id] = true
-		profile.money += math.floor(def.perFight * 0.5)
-		profile.popularity = clamp(profile.popularity + 1, 0, 100)
-	end
-	return true, def.name
+	return Sponsors.Sign(profile, id, replace, sponsorCtx(profile))
+end
+
+function Career.DeclineSponsor(profile, id)
+	return Sponsors.Decline(profile, id)
 end
 
 -- end a deal early (slot name or sponsor id)
 function Career.DropSponsor(profile, key)
-	local s = sponsorState(profile)
-	for slot, d in pairs(s.deals) do
-		if slot == key or d.id == key then
-			s.deals[slot] = nil
-			local def = Catalog.Sponsor(d.id)
-			return true, def and def.name or d.id
-		end
-	end
-	return false, "No such deal."
+	return Sponsors.Drop(profile, key)
+end
+
+-- the social post a deal asks for before each fight
+function Career.SponsorPost(profile, key)
+	return Sponsors.Post(profile, key)
 end
 
 -- fight-night pay from every running deal; counts the contracts down. -> total, notes
-function Career.SponsorIncome(profile, win, isKO)
-	local s = sponsorState(profile)
-	local total, notes, names = 0, {}, {}
-	for _, slot in ipairs(Catalog.SponsorSlots) do
-		local d = s.deals[slot]
-		local def = d and Catalog.Sponsor(d.id)
-		if def then
-			local pay = def.perFight + (win and def.winBonus or 0) + ((win and isKO) and def.koBonus or 0)
-			total += pay
-			table.insert(names, def.name)
-			d.fightsLeft -= 1
-			if d.fightsLeft <= 0 then
-				s.deals[slot] = nil
-				table.insert(notes, string.format("Your %s deal is complete. Sign a new one in the Sponsors tab.", def.name))
-			end
-		end
-	end
-	if #names > 0 then
-		table.insert(notes, 1, string.format("Sponsors (%s) paid %s.", table.concat(names, ", "), Config.Money(total)))
-	end
+function Career.SponsorIncome(profile, win, isKO, title, loss)
+	local total, notes = Sponsors.Payout(profile, { win = win, ko = isKO, title = title, loss = loss })
 	return total, notes
 end
 
@@ -713,14 +607,7 @@ end
 
 -- a running deal's patch for Builder (opts.sponsorTrunks / sponsorRobe = { text, fg, bg })
 local function sponsorPatch(profile, slot)
-	local s = profile.sponsors
-	local d = type(s) == "table" and type(s.deals) == "table" and s.deals[slot]
-	local def = type(d) == "table" and Catalog.Sponsor(d.id)
-	local l = def and def.logo
-	if type(l) ~= "table" then
-		return nil
-	end
-	return { text = l.text, fg = l.fg, bg = l.bg }
+	return Sponsors.Patch(profile, slot)
 end
 
 function Career.LookOpts(profile, extra)
@@ -1021,7 +908,7 @@ function Career.ApplyResult(profile, res)
 	-- unsigned merch & appearance fees (the gap map's fallback), so not signing never pays more than
 	-- signing: at tier 3+ even the smallest local deal outpays it within a few fights.
 	local hadDeals = next(sponsorState(profile).deals) ~= nil -- before SponsorIncome expires any
-	local sponsor, sponsorNotes = Career.SponsorIncome(profile, win, isKO)
+	local sponsor, sponsorNotes = Career.SponsorIncome(profile, win, isKO, Sponsors.TITLE_KINDS[offer.kind] == true, loss)
 	local endorse = 0
 	if not hadDeals and profile.tier >= 3 and profile.popularity >= 5 then
 		endorse = round((profile.popularity ^ 1.4) * 35 * profile.tier * ENDORSE_SHARE)
@@ -1047,7 +934,9 @@ function Career.ApplyResult(profile, res)
 	local m = profile.mental
 	if win then
 		-- (a tournament's fame comes per round from Tourney.AfterResult, not the big-night bonus)
-		profile.popularity = math.clamp(profile.popularity + 2 + (isKO and 2 or 0) + (offer.kind ~= "Pro Fight" and offer.kind ~= "Amateur Bout" and not offer.tourney and 6 or 0), 0, 100)
+		-- (a sponsor's fan-growth perk scales the fame a win brings)
+		local fame = (2 + (isKO and 2 or 0) + (offer.kind ~= "Pro Fight" and offer.kind ~= "Amateur Bout" and not offer.tourney and 6 or 0)) * (1 + Sponsors.Perk(profile, "fans"))
+		profile.popularity = math.clamp(profile.popularity + fame, 0, 100)
 		m.Confidence = math.clamp(m.Confidence + 4 + (isKO and 2 or 0), 25, 100)
 	elseif loss then
 		profile.popularity = math.clamp(profile.popularity - 1, 0, 100)
@@ -1187,6 +1076,10 @@ function Career.ApplyResult(profile, res)
 	if profile.tier == 9 and profile.defenses >= 2 and Career.Legacy(profile).score >= 500 then
 		profile.tier = 10
 		table.insert(notes, "You are now a BOXING LEGEND.")
+	end
+	-- sponsor offers count down, expire and are topped up for the career as it now stands
+	for _, n in ipairs(safe(Sponsors.AfterFight, profile, Sponsors.Ctx(profile, best)) or {}) do
+		table.insert(notes, n)
 	end
 
 	-- new special moves: one note each on the result screen (ClientMain shows them in gold), with what
@@ -1372,17 +1265,7 @@ local function gymTierSummary(profile)
 end
 
 local function sponsorSummary(profile)
-	local s = sponsorState(profile)
-	local deals = {}
-	for slot, d in pairs(s.deals) do
-		local def = Catalog.Sponsor(d.id)
-		if def then
-			local v = sponsorView(def)
-			v.fightsLeft, v.signedDay = d.fightsLeft, d.signedDay
-			deals[slot] = v
-		end
-	end
-	return { deals = deals, offers = Career.SponsorOffers(profile) }
+	return Sponsors.Summary(profile, sponsorCtx(profile))
 end
 
 function Career.Summary(profile, storeOk)
