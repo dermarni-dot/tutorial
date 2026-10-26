@@ -690,7 +690,9 @@ do
 		elseif g.name == "HGStrap" then
 			local tip = g.pos + g.cf.LookVector * (g.size.Z / 2)
 			local tail = g.pos - g.cf.LookVector * (g.size.Z / 2)
-			check("headgear: a chin strap from under the ear pad to under the chin (|x| < 0.1, y < -0.5)", g.shape == "Block" and math.abs(tip.X) < 0.1 and tip.Y < -0.5
+			-- (the tip tucked into the jaw's rounded underside, never below the head's base: on the neck it shows)
+			check("headgear: a chin strap from under the ear pad to under the chin (|x| < 0.1, -0.5 <= y < -0.4)", g.shape == "Block" and math.abs(tip.X) < 0.1
+				and tip.Y < -0.4 and tip.Y >= -0.5
 				and math.abs(tail.X) > 0.45 and tail.Y < -0.2, string.format("tip (%.2f %.2f %.2f) tail (%.2f %.2f %.2f)", tip.X, tip.Y, tip.Z, tail.X, tail.Y, tail.Z))
 		end
 	end

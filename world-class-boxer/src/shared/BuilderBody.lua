@@ -601,6 +601,18 @@ local function outfitMesh(folder, model, app, opts, sp, pieces)
 	return made
 end
 
+-- the height of the neck (the Neck pivot the head's base sits on) in the UpperTorso's space. A tier UpperTorso's box
+-- reaches past it (the mesh's neck stub runs up into the head), so its top is NOT the shoulder line the round-1 blocks
+-- were placed from: a collar or a robe at the box top rings the jaw. The default block: its top
+local function neckHeight(ut)
+	local a = ut and ut:FindFirstChild("NeckRigAttachment")
+	if a and a:IsA("Attachment") then
+		return math.min(a.Position.Y, ut.Size.Y * 0.5)
+	end
+	return ut and ut.Size.Y * 0.5 or 0
+end
+Body.NeckHeight = neckHeight
+
 local function outfitBuild(folder, model, app, opts, sp)
 	local outfit = sp.outfit
 	local shirt = outfitColors(app, outfit, opts)
@@ -609,18 +621,25 @@ local function outfitBuild(folder, model, app, opts, sp)
 	local black = Color3.fromRGB(16, 16, 18)
 	if ut then
 		local s = BodyTiers.CoreSize(ut) -- (v17: the torso's own width, not the shoulder caps')
-		local d = 0.55 * (head and head.Size.X or 1.2)
-		-- shirt collar round the neck, button placket down the front
-		mk(folder, ut, "Collar", V3(0.14, d * 1.18, d * 1.18), ut.CFrame * CF(0, s.Y * 0.5 + 0.04, 0.02) * ANG(0, 0, RAD(90)), shirt, "Cylinder", FABRIC)
+		-- shirt collar round the base of the neck (the ring's top just under the head's base: never up round the jaw),
+		-- wide enough to stand round the tier torso's neck stub; button placket down the front
+		local span = head and math.min(head.Size.X, head.Size.Y, head.Size.Z) or 1.2
+		local d = 0.86 * span
+		local ny = neckHeight(ut)
+		local cy = ny - 0.09
+		mk(folder, ut, "Collar", V3(0.14, d, d), ut.CFrame * CF(0, cy, 0.02) * ANG(0, 0, RAD(90)), shirt, "Cylinder", FABRIC)
 		if outfit == "referee" then
-			mk(folder, ut, "BowTie", V3(0.34, 0.12, 0.06), ut.CFrame * CF(0, s.Y * 0.45, -s.Z * 0.5 - 0.06), black, "Ellipsoid", SMOOTH)
-			mk(folder, ut, "BowKnot", V3(0.08, 0.09, 0.07), ut.CFrame * CF(0, s.Y * 0.45, -s.Z * 0.5 - 0.09), Color3.fromRGB(30, 30, 34), "Ellipsoid", SMOOTH)
+			-- the bow tie on the collar's front, under the chin
+			mk(folder, ut, "BowTie", V3(0.34, 0.12, 0.06), ut.CFrame * CF(0, cy - 0.04, 0.02 - d * 0.5 - 0.03), black, "Ellipsoid", SMOOTH)
+			mk(folder, ut, "BowKnot", V3(0.08, 0.09, 0.07), ut.CFrame * CF(0, cy - 0.04, 0.02 - d * 0.5 - 0.06), Color3.fromRGB(30, 30, 34), "Ellipsoid", SMOOTH)
 			if lod >= 2 then
 				mk(folder, ut, "Placket", V3(0.1, s.Y * 0.82, 0.02), ut.CFrame * CF(0, -s.Y * 0.06, -s.Z * 0.5 - 0.012), darken(shirt, 0.94), "Block", FABRIC)
 			end
 		else
 			-- cornerman: team polo with a towel over the shoulder and CORNER on the back
-			mk(folder, ut, "Towel", V3(0.5, 0.12, s.Z * 1.25), ut.CFrame * CF(s.X * 0.3, s.Y * 0.52, 0) * ANG(0, 0, RAD(-12)), Color3.fromRGB(235, 235, 230), "Block", FABRIC)
+			-- (on the shoulder's top, out of the neck column, under the head's base)
+			mk(folder, ut, "Towel", V3(0.5, 0.12, s.Z * 1.25), ut.CFrame * CF(math.max(s.X * 0.3, 0.55 * span), ny - 0.12, 0) * ANG(0, 0, RAD(-12)),
+				Color3.fromRGB(235, 235, 230), "Block", FABRIC)
 			if sp.cfg.wordmarks then
 				textPatch(folder, ut, "TeamText", V3(s.X * 0.8, s.Y * 0.22, 0.02), ut.CFrame * CF(0, s.Y * 0.18, s.Z * 0.5 + 0.012), "CORNER", contrast(shirt), Enum.NormalId.Back, "Oswald")
 			end
@@ -1464,12 +1483,16 @@ function Body.SetRobe(model, app, on, opts)
 	if ut then
 		local s = ut.Size
 		local x0, x1, z0, z1 = bounds({ [ut] = CF() }, -s.X / 2, s.X / 2, -s.Z / 2, s.Z / 2, -s.Y / 2, s.Y / 2)
-		local rs = V3(x1 - x0 + 2 * MT, s.Y + 0.05, z1 - z0 + 2 * MT)
-		local shell = mk(folder, ut, "RobeTorso", rs, ut.CFrame * CF((x0 + x1) / 2, 0.02, (z0 + z1) / 2), color, "Block", mat)
+		-- the shell from under the torso up to the neck's base (the head's base on the Neck pivot): a tier torso's box
+		-- runs on up its neck stub into the head, and a shell to the box top boxed in the jaw
+		local top, bottom = neckHeight(ut) - 0.01, -s.Y / 2 - 0.005
+		local ty = (top + bottom) / 2
+		local rs = V3(x1 - x0 + 2 * MT, top - bottom, z1 - z0 + 2 * MT)
+		local shell = mk(folder, ut, "RobeTorso", rs, ut.CFrame * CF((x0 + x1) / 2, ty, (z0 + z1) / 2), color, "Block", mat)
 		shell.Reflectance = refl
 		local front = rs.Z * 0.5 - (z0 + z1) / 2
 		for _, side in ipairs({ -1, 1 }) do
-			mk(folder, ut, "Lapel", V3(0.22 * math.min(1, s.X / 1.6), s.Y * 1.0, 0.04), ut.CFrame * CF(side * 0.14 * s.X / 1.6, 0.02, -front - 0.02) * ANG(0, 0, RAD(-12 * side)), trim, "Block", mat)
+			mk(folder, ut, "Lapel", V3(0.22 * math.min(1, s.X / 1.6), rs.Y - 0.05, 0.04), ut.CFrame * CF(side * 0.14 * s.X / 1.6, ty - 0.025, -front - 0.02) * ANG(0, 0, RAD(-12 * side)), trim, "Block", mat)
 		end
 		local nick = opts and opts.nick or ""
 		if nick == "" then
@@ -1487,7 +1510,8 @@ function Body.SetRobe(model, app, on, opts)
 			-- sides and back, welded to the head so it turns with it. Its front edge sits at about -0.41 of
 			-- the head depth: in front of A's hidden-hair line (-0.36), behind the face (-0.5), so the face
 			-- stays open. The drape is the fabric falling from the hood onto the shoulders and upper back.
-			mk(folder, ut, "HoodDrape", V3(s.X * 0.62, s.Y * 0.3, s.Z * 0.75), ut.CFrame * CF(0, s.Y * 0.42, s.Z * 0.32), color, "Ellipsoid", mat)
+			-- (its top at the neck's base, behind it: never up the back of the neck when the hood is down)
+			mk(folder, ut, "HoodDrape", V3(s.X * 0.62, s.Y * 0.3, s.Z * 0.75), ut.CFrame * CF(0, top - s.Y * 0.15, s.Z * 0.32), color, "Ellipsoid", mat)
 			-- (over a boxer's headgear, Builder HeadgearColor: the hood stays DOWN, only the drape. No ellipsoid hood can
 			-- close over the headgear's shell without reaching in front of the face)
 			local head = model:GetAttribute("HeadgearColor") == nil and part(model, "Head")

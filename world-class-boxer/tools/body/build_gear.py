@@ -53,6 +53,7 @@ Y_SEAT = (2.46, 3.12)       # trunk seat: the bottom edge just under the crotch,
 Y_LEG_TOP = 2.80            # shorts leg top (closed, inside the seat)
 Y_HEM = {"short": 1.99, "long": 1.62}   # mid-thigh / just above the knee
 Y_TOP = (4.12, 4.66)        # sports top: underband to the armpit line (the straps go on over the shoulders)
+STRAP_X = (0.39, 0.16, 0.08)  # the strap path's |x|: base + bulge * sin(sweep) - drift * t (0.51 over the trapezius)
 
 # pieces worn by the HIGHEST tier among several body parts (BuilderGear: the entry of that tier, its offset moved
 # onto the part's own tier by the RootRigAttachment's - the LowerTorso's rest frame is the same at every tier)
@@ -1002,9 +1003,11 @@ def sports_top(B, n):
         path = []
         for t in np.linspace(0, 1, 13):
             # from inside the torso, rays sweeping front (a = 0) -> straight up -> back (a = pi), each hitting the
-            # outer surface; x moves from above the pec over the trapezius to the racer back
+            # outer surface; x moves from above the pec over the trapezius to the racer back. Over the top the strap's
+            # inner edge stays outside the neck column (|x| <= 0.38: the torso's neck stub, which the head
+            # sits on): x 0.25 + 0.10 there put the strap on the stub, running up the neck into the jaw
             a = math.pi * t
-            x = sx * (0.25 + 0.10 * math.sin(a) - 0.09 * t)
+            x = sx * (STRAP_X[0] + STRAP_X[1] * math.sin(a) - STRAP_X[2] * t)
             o = np.array([x, 4.50, c[1]])
             dvec = np.array([0.0, math.sin(a), -math.cos(a)])
             h = surf_hit(ut, o, -dvec, 0.030)

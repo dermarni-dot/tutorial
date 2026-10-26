@@ -867,8 +867,11 @@ local function faceBuild(model, app, opts, build)
 	local chinY = (-0.385 - 0.025 * chin - chinDrop * 0.5) * s.Y
 	local chinRise = (0.0065 + 0.0055 * chin + 0.003 * jawDef) * s.Z
 	lp("Chin", 0, chinY + 0.005 * s.Y, (0.24 + 0.07 * chin) * (1 - chinNarrow) * s.X, (0.11 + 0.03 * chin + chinDrop * 0.3) * s.Y, math.max(chinRise, 0.0015), 0.72, skin)
-	if chinDrop > 0 then -- long face: extend the lower face
-		add("LowerFace", V3(0.7 * s.X, chinDrop * 2 * s.Y, 0.7 * s.Z), at(0, -0.5 * s.Y, 0), skin, "Ellipsoid")
+	-- long face: a fuller lower jaw, a lens on the rounded bottom edge of the head. Never a part hung under the head:
+	-- the head sits on the tier torso's neck (its base on the Neck pivot), so anything below its base is a lump on the
+	-- neck (the old 0.7-wide ellipsoid centred on the base stuck out round the jaw and under it)
+	if chinDrop > 0 then
+		lp("LowerFace", 0, -0.39 * s.Y, 0.5 * s.X, (0.1 + chinDrop) * s.Y, (0.006 + 0.04 * chinDrop) * s.Z, 0.72, skin)
 	end
 	if (face.chinCleft or 0) > 0.15 and full then
 		opt("skin", 1, function()
@@ -885,7 +888,8 @@ local function faceBuild(model, app, opts, build)
 	end
 	if jowl > 0.3 and not low then
 		opt("skin", 1, function()
-			add("DoubleChin", V3((0.42 + 0.12 * jowl) * s.X, (0.1 + 0.06 * jowl) * s.Y, 0.45 * s.Z), at(0, -0.5 * s.Y, -0.18 * s.Z), skin, "Ellipsoid")
+			-- (a lens under the chin on the head's rounded bottom edge: never below the head's base, on the neck)
+			lp("DoubleChin", 0, -0.42 * s.Y, (0.36 + 0.12 * jowl) * s.X, (0.1 + 0.04 * jowl) * s.Y, (0.006 + 0.008 * jowl) * s.Z, 0.75, skin)
 		end)
 	end
 	-- cheekbones and cheeks (lean faces show more bone); below full detail full cheeks replace the bone. The
@@ -1603,7 +1607,9 @@ end
 --   the eyes (|x| >= 0.37; the drawn ink ends at 0.237), never across the face (z >= -0.29)
 -- * HGSide x2 (full) / HGEars (medium: one drum through the head whose ends are the two ear pads): the ear pads
 --   flush on the side walls, 0.1 proud; HGEarHole x2 (full): the dark openings over the ears
--- * HGStrap x2 (full): the chin strap from under each ear pad to a point under the chin
+-- * HGStrap x2 (full): the chin strap from under each ear pad to a point under the chin, its tip tucked into the
+--   jaw's rounded underside (never below the head's base: the head sits on the tier torso's neck, a strap end under
+--   the base shows as a dark stub on the neck)
 -- Nothing in front of the face: no part reaches z < -0.35 spans below the brow line (HEADGEAR_OPENING.top), none
 -- covers the eye points (+-0.2, 0, -0.5); the ear pads stand >= 0.03 off the side planes, the crown cap >= 0.03
 -- above the top. The opening (fractions of the head): the band from y = top up, nothing at |x| < side above the
@@ -1631,7 +1637,7 @@ Head.HG = {
 	side = { x = 0.52, y = 0, z = -0.02, w = 0.14, h = 0.56, d = 0.58 },
 	ears = { y = 0, z = -0.02, d = 0.56, len = 1.18 },
 	hole = { x = 0.585, y = 0.02, z = -0.02, w = 0.03, h = 0.16, d = 0.12 },
-	strap = { a = { 0.5, -0.28, 0.02 }, b = { 0.08, -0.52, -0.24 }, w = 0.07, t = 0.025 },
+	strap = { a = { 0.5, -0.28, 0.02 }, b = { 0.08, -0.46, -0.26 }, w = 0.07, t = 0.025 },
 }
 
 -- A pad colour within a hair of the skin reads as a bare, bulging head (Looks.Palette's brown {110, 70, 40} against

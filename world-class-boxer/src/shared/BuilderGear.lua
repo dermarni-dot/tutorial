@@ -384,6 +384,17 @@ function BuilderGear.Resolve(model, group, style)
 		local ratio = BuilderTiers.RatioOf(body) or V3(1, 1, 1)
 		local g = BodyTiers.GearScale(frame, BodyTiers.Group(p.part))
 		ratio = V3(ratio.X * g[1], ratio.Y * g[2], ratio.Z * g[3])
+		-- the frames' torsos differ from the default family's in girth, not in the skeleton gearScale carries (its
+		-- UpperTorso X / Z are 1): a piece on the UpperTorso (the sports top, the officials' shirts) takes the chest's
+		-- width / depth against the default family's at its tier, or it sinks into a Muscular / Power / Heavyweight
+		-- chest (the skin through the top, the straps buried) and stands off a Lean one
+		if frame and p.part == "UpperTorso" then
+			local fF = BodyTiers.Fit(own, "chest", nil, frame)
+			local fD = BodyTiers.Fit(tier, "chest")
+			if fF and fD and fD.width > 0 and fD.depth > 0 then
+				ratio = V3(ratio.X * fF.width / fD.width, ratio.Y, ratio.Z * fF.depth / fD.depth)
+			end
+		end
 		table.insert(out, { name = name, entry = e, body = body, template = template, ratio = ratio })
 	end
 	return out
