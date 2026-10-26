@@ -118560,7 +118560,7 @@ return K
             <string name="Source"><![CDATA[-- DiagClient: runs the rig diagnostic (Shared.Diag) on this client and asks the server for its own view of the same
 -- models. Invoked by "/wcbdiag" in chat (Player.Chatted and a TextChatCommand, whichever chat the place runs) or the
 -- Settings -> GAME -> COPY DIAGNOSTIC TO OUTPUT button; nothing runs otherwise. Reports: the local character and the
--- nearest two other humanoid models (NPCs, other players), each as one [WCBDIAG] block in the Output, then a 2-second
+-- nearest two other humanoid models (NPCs, other players), each as one [WCBDIAG] block in the Output, then a 4-second
 -- motion sample of each at 10 Hz (walk or punch while it runs) and the server's blocks (the same models as the server
 -- sees them: part sizes, HipHeight, the swap counters). Copy everything between the first "== " and the last "== end".
 local Players = game:GetService("Players")
@@ -118572,7 +118572,8 @@ local BuilderTiers = require(Shared:WaitForChild("BuilderTiers"))
 
 local DiagClient = {}
 DiagClient.COMMAND = "/wcbdiag"
-DiagClient.SAMPLE_SECONDS = 2
+DiagClient.SAMPLE_SECONDS = 4
+DiagClient.WAIT_FOR_MOVE = 15 -- the sample starts when the local character moves (time to leave the chat box)
 DiagClient.SAMPLE_HZ = 10
 DiagClient.NEARBY = 2
 
@@ -118635,7 +118636,20 @@ function DiagClient.Run(State)
 			end)
 		end
 		-- the motion sample: walk / punch while it runs
-		say(string.format("sampling %d model(s) for %d s at %d Hz: WALK or PUNCH now", #models, DiagClient.SAMPLE_SECONDS, DiagClient.SAMPLE_HZ))
+		-- typing the command leaves the keyboard in the chat box: the sample waits for the character to move (or a
+		-- punch: any joint change shows in the bends), up to WAIT_FOR_MOVE seconds, so a run is caught mid-stride
+		say(string.format("RUN or WALK now (click the game, hold W, Shift to run): the %d s sample starts when you move (waits up to %d s)",
+			DiagClient.SAMPLE_SECONDS, DiagClient.WAIT_FOR_MOVE))
+		local w0 = os.clock()
+		while root and root.Parent and os.clock() - w0 < DiagClient.WAIT_FOR_MOVE do
+			local v = root.AssemblyLinearVelocity
+			if Vector3.new(v.X, 0, v.Z).Magnitude > 1 then
+				task.wait(0.4) -- (past the first step's acceleration)
+				break
+			end
+			RunService.Heartbeat:Wait()
+		end
+		say(string.format("sampling %d model(s) for %d s at %d Hz: keep moving", #models, DiagClient.SAMPLE_SECONDS, DiagClient.SAMPLE_HZ))
 		local samples = {}
 		for i, m in ipairs(models) do
 			samples[i] = Diag.NewSample()
@@ -137407,7 +137421,7 @@ local function screenSettings(layer)
 	local function runDiag()
 		if State.open.Diag then
 			State.open.Diag()
-			State.toast("Diagnostic printed to the Output (walk or punch for 2 seconds)", T.sub, 4)
+			State.toast("Diagnostic printed to the Output (start running: the sample begins when you move)", T.sub, 4)
 		else
 			State.toast("The diagnostic is not loaded on this client.", T.red)
 		end
@@ -138921,12 +138935,13 @@ return MenuStage
 -- client can fetch it: a mesh uploaded minutes ago answers "Asset content representation is being generated" for a
 -- while, a moderation or permission hiccup fails it, and a MeshPart whose mesh did not arrive is drawn as its box (the
 -- gym's gloves as red blocks several times the hand's size). For every tagged part:
--- * its MeshId's fetch status (ContentProvider:GetAssetFetchStatus, and its changed signal; a PreloadAsync asks for it)
+-- * its MeshId's fetch status (ContentProvider:GetAssetFetchStatus, and its changed signal; the engine's own draw
+--   fetch, never one of ours: a PreloadAsync logged "Asset type does not match" for good meshes in Studio)
 -- * Failure / TimedOut (or an empty MeshId): the part is hidden on this client (Transparency 1, the old value kept)
 --   and a stand-in drawn in its place: a rounded shape the size of the part (an ellipsoid: the Sphere mesh is built
 --   in, it cannot fail), in the part's colour and material, welded to it so it follows every pose; thin detail pieces
 --   (laces, stripes, hems, straps, buttons, badges...) are hidden without one
--- * retried on a backoff (BACKOFF, a few minutes: PreloadAsync again); when the status turns Success the stand-in goes
+-- * re-checked on a backoff (BACKOFF, a few minutes: the status read again); when the status turns Success the stand-in goes
 --   and the part shows again
 -- Local only: nothing here replicates; the server's rebuild of a folder takes the stand-ins with it (they are children
 -- of the parts). MeshGuard.Stats() for the diagnostic / tests.
@@ -139044,26 +139059,18 @@ end
 local evaluate -- (id, status)
 local hasGeometry -- (rec)
 
--- [Studio] preload the MeshPart INSTANCE, never the bare id string: PreloadAsync fetches a string content id as an
--- image, so a mesh id fails with "Asset type does not match requested type" and a perfectly good mesh reads as
--- failed (the stand-in would then hide it). Given the part, the engine fetches its MeshId as a mesh.
+-- [Studio] never fetch anything here: ContentProvider:PreloadAsync logged "Asset type does not match requested type"
+-- for every body and gear mesh in Studio (given an id string or the part itself), and that failure is what made good
+-- meshes read as failed and hid them behind stand-ins. The engine already fetches each MeshId as a mesh to draw the
+-- part, so this only READS the status of that fetch (GetAssetFetchStatus never starts a fetch).
 local function preload(id)
 	task.spawn(function()
-		local cp = svc("ContentProvider")
-		local ir = ids[id]
-		local inst = ir and next(ir.parts)
-		if not inst then
-			return
-		end
-		local got
-		pcall(function()
-			cp:PreloadAsync({ inst }, function(contentId, status)
-				if contentId == id or got == nil then
-					got = status
-				end
-			end)
+		local ok, st = pcall(function()
+			return svc("ContentProvider"):GetAssetFetchStatus(id)
 		end)
-		evaluate(id, got)
+		if ok then
+			evaluate(id, st)
+		end
 	end)
 end
 
