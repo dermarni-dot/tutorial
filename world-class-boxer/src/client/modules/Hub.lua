@@ -270,7 +270,7 @@ local function showBoxer(id)
 	State.windows.BoxerCard = close
 	local top = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26) })
 	Flags.Draw(top, b.nat, { Size = UDim2.fromOffset(33, 22) })
-	UI.Text(top, string.format("\"%s\"  ·  %s  ·  Age %d", b.nick, b.nat, b.age), { Font = T.semi, TextColor3 = T.gold, TextSize = 14, Position = UDim2.fromOffset(44, 0),
+	UI.Text(top, string.format("\"%s\"  ·  %s  ·  Age %d", b.nick, b.nat, b.age) .. (tonumber(b.height) and ("  ·  " .. Config.HeightText(b.height)) or ""), { Font = T.semi, TextColor3 = T.gold, TextSize = 14, Position = UDim2.fromOffset(44, 0),
 		Size = UDim2.new(1, -44, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	local strip = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 64) })
 	UI.List(strip, 8, true)

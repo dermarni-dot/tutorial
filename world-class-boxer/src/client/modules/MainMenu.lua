@@ -915,7 +915,7 @@ local function scoutPanel(panel, id, grow)
 	local nameRow = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 2 })
 	Flags.Draw(nameRow, b.nat, { Size = UDim2.fromOffset(36, 24), Position = UDim2.fromOffset(0, 10) })
 	UI.Title(nameRow, string.upper(b.name or "?"), { TextSize = 36, Position = UDim2.fromOffset(46, 0), Size = UDim2.new(1, -46, 0, 44), TextTruncate = Enum.TextTruncate.AtEnd })
-	UI.Text(body, string.format('"%s"  ·  %s  ·  Age %d', b.nick or "", b.nat or "", b.age or 0), { TextSize = 14, TextColor3 = T.gold, LayoutOrder = 3 })
+	UI.Text(body, string.format('"%s"  ·  %s  ·  Age %d', b.nick or "", b.nat or "", b.age or 0) .. (tonumber(b.height) and ("  ·  " .. Config.HeightText(b.height)) or ""), { TextSize = 14, TextColor3 = T.gold, LayoutOrder = 3 })
 	local strip = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 64), LayoutOrder = 4 })
 	UI.List(strip, 8, true)
 	local r = b.record or {}

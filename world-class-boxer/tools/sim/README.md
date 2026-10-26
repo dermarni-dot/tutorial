@@ -559,3 +559,33 @@ thread slices, RenderStepped / Heartbeat handlers, BindableEvent handlers, first
 when the title screen opened, and a `SUMMARY` line. `--src DIR` runs another tree (a before set:
 `guisim.new(device, { src = DIR })`). The Lua times are the fake engine's (instances are Lua tables, a layout pass per
 AbsoluteSize read): compare one version with another, not with a device; the instance counts are exact.
+
+## Punches across heights: the reach clip, hg_fit, test_hitdetect, test_heightaim, test_heights
+
+```sh
+lune run tools/sim/v9_anim.luau --tiers 3 --clips reach --height 64 --oheight 80 --find 3.2,7.0 --reps 5 --fast 1 --no-mesh --reachout OUT.json
+lune run tools/sim/v9_anim.luau --tiers 3 --clips reach --frame Lean --oframe "Heavyweight Build" --gaps 3.2,3.45,...,6.2 --reps 3 --fast 1 --no-mesh
+lune run tools/sim/hg_fit.luau [--kinds 14] [--json FILE]   # fit HitGeometry.TARGET / WIDE (and KIND) to anim_reach.json
+lune run tools/sim/test_heightaim.luau [--report] [--only 64-80,80-64]   # ~2 min
+lune run tools/sim/test_heights.luau [-v]                               # under a second
+```
+
+- `v9_anim --clips reach`: A throws every punch (head and body) at B on the tier-3 rigs; `--oheight` gives B his own
+  height (A's is `--height`), `--find LO,HI[,STEPS]` finds each punch's boundary by bisection instead of a `--gaps`
+  sweep (the gap out to which the median closest glove surface is within `--contact C`: 0.15 for a head shot, 0.2 a head
+  hook, 0.35 a body shot), `--fast 1` throws shorter (the glove's closest is well inside half a second), `--probe 1`
+  prints A's parts, rig attachments, gloves and his stance's shoulder height (test_heightaim's block rig is made to them). Each sample also has the glove's height over the target's centre at its closest (`dy`) and at
+  the contact frame (`csurf` / `cdy`, the arm's angles `carm`).
+- `tools/sim/anim_reach.json`: `pairs` (the five frames at 70 in, every pairing) and `heights` (the Athletic frame at
+  64 / 70 / 75 / 80 in, every pairing). `hg_fit` fits HitGeometry to both (`--kinds N`: also each punch's shape,
+  HitGeometry.KIND, the aimed zones ZONE and the step's growth SHAPE); `test_hitdetect` holds the hit test to them (0.25
+  stud on the frames, 0.4 on the heights and a tenth on average).
+- `test_heightaim`: the REAL Animator on two block rigs with the tier-3 Athletic boxer's joints and gloves, each scaled
+  to his height (Builder.Scales' HeightScale), the server's HitGeometry on the frames read off them: every pairing of
+  5'4", 5'10", 6'3", 6'8" both ways, every punch head and body - where the server lands it the glove visibly lands, on
+  the chin / jaw or the torso, at the contact frame; past its reach the glove misses; the arm at contact natural
+  (AnimFight.ARM_HEIGHT); the reach proportional to the arm, the taller man's edge fair; and AI-vs-AI fights at the
+  extreme pairings (both land, neither throws from out of reach, the much shorter man works the body and the uppercut).
+- `test_heights`: the AI world's heights (Config.BoxerHeight: by division, 5'4" .. 6'9" for the men, 5'0" .. 6'4" for
+  the women, deterministic by id and name), the tall nicknames from 6'5" (Config.TallNicknames), World.MigrateHeights
+  for an older save, the tape's feet and inches.

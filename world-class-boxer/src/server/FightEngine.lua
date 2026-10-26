@@ -541,6 +541,22 @@ function Fight:HitTest(F, O, ptype, body, dist, mul, pose)
 		facing = self:OffLine(F, O, pose) })
 end
 
+-- can F's punch land on O at all from dist, on the head or (where the head is out of its reach - a much taller man's)
+-- on the body, as Fight:Punch would throw it? The geometry alone (his bend, not his facing: the AI squares up as it
+-- throws). FightAI's "in range": PunchRange is floored at the close spacing, where a short man's overhand at a giant's
+-- head still cannot get up there. True without the module
+function Fight:CanLand(F, O, ptype, dist)
+	local G, OG = self:Geo(F), self:Geo(O)
+	if not (G and OG and HitGeometry) then
+		return true
+	end
+	local o = { bend = self:Bend(O), noRedirect = true }
+	if HitGeometry.Test(G, OG, ptype, false, dist, o).ok then
+		return true
+	end
+	return ptype ~= "overhand" and HitGeometry.Test(G, OG, ptype, true, dist, o).ok
+end
+
 -- degrees between F's facing and the line from him to O (flat); nil when either root is missing. pose = { fp, op,
 -- look } tests a recorded moment instead of the live one
 function Fight:OffLine(F, O, pose)

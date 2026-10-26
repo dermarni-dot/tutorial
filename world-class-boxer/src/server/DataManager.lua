@@ -38,6 +38,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Training = require(script.Parent:WaitForChild("Training"))
+-- (the AI world's heights: an older save's boxers get theirs, World.MigrateHeights)
+local World = require(script.Parent:WaitForChild("World"))
 -- the first-time tutorial's flag rules (optional: an older Shared folder still loads careers)
 local Tutorial
 do
@@ -139,6 +141,12 @@ local function prepare(data)
 		local ok, err = pcall(Training.Migrate, data)
 		if not ok then
 			warn("[Boxer] Save migration failed, career loaded unchanged:", err)
+		end
+		-- the world's boxers from before the varied heights (every one within a few inches of 5'10"): their
+		-- deterministic heights and a really tall one's nickname, once (World.HEIGHT_V marks them)
+		local okH, errH = pcall(World.MigrateHeights, data.world)
+		if not okH then
+			warn("[Boxer] World heights migration failed, kept as saved:", errH)
 		end
 	end
 	-- the first-time tutorial fight: anyone who already played (a career, an older save) counts as done

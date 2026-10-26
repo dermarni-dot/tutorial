@@ -217,7 +217,10 @@ local function run(name, spec)
 			local clinched = P.state == "clinch" or O.state == "clinch"
 			local mode = R.mode or "orbit"
 			st.modes[mode] = (st.modes[mode] or 0) + 1
-			if mode ~= "count" and mode ~= "catch" then
+			-- (fightsim stands the men back at +-3 on the centre line at each round's start, wherever the referee is: a
+			-- teleport the game never makes - they come out of their corners - so its first ticks are not his doing)
+			local teleported = fight.resumedAt ~= nil and now - fight.resumedAt < 0.2
+			if mode ~= "count" and mode ~= "catch" and not teleported then
 				if near < st.refMinStand then
 					local F = dP < dO and P or O
 					st.refMinWhy = string.format("t%.1f mode %s, %s %s ws %.1f%s%s", now, mode, F == P and "red" or "blue", F.state, F.hum.WalkSpeed, now < (F.stumbleUntil or 0) and " stumbling" or "", now < (F.lungeUntil or 0) and " lunging" or "")
@@ -324,6 +327,26 @@ for i, a in ipairs(FRAMES) do
 		local st = run(a .. " v " .. b, { red = { frame = a, style = "Swarmer", level = 70 }, blue = { frame = b, style = "Slugger", level = 70 }, seed = seed })
 		kdSeen += st.kdEp
 	end
+end
+-- the world's height range (Config.BoxerHeightRange: 5'4" .. 6'9"): the shortest against the tallest both ways, two of the
+-- tallest, the referee and the separation with them
+for _, hp in ipairs({ { 64, 81, "Lean", "Heavyweight Build" }, { 81, 64, "Heavyweight Build", "Athletic" }, { 81, 81, "Heavyweight Build", "Heavyweight Build" } }) do
+	seed += 1
+	local st = run(string.format("%d in v %d in", hp[1], hp[2]), { red = { frame = hp[3], style = "Swarmer", level = 70, height = hp[1] },
+		blue = { frame = hp[4], style = "Slugger", level = 70, height = hp[2] }, seed = seed })
+	kdSeen += st.kdEp
+end
+do
+	local f = S.NewFight(S.Boxer({ frame = "Heavyweight Build", height = 81 }, Random.new(1)), S.Boxer({ frame = "Heavyweight Build", height = 81 }, Random.new(2)), 3, 1)
+	local g = S.NewFight(S.Boxer({ frame = "Heavyweight Build", height = 70 }, Random.new(1)), S.Boxer({ frame = "Heavyweight Build", height = 70 }, Random.new(2)), 3, 1)
+	check(string.format("two 6'9\" men stand further apart than two 5'10\" ones (MinSep %.2f vs %.2f)", f:MinSep(), g:MinSep()), f:MinSep() > g:MinSep())
+	check("ClinchRange > ClinchSep for two 6'9\" men", f:ClinchRange(f.P) > f:ClinchSep())
+end
+-- (and a mismatch, so the knockdown rules are exercised whatever the even fights above came to: the hooks land a stud
+-- closer in than they did before the reach was measured off the animation, and even bouts see fewer knockdowns)
+do
+	local st = run("mismatch (Slugger 88 v 52)", { red = { style = "Slugger", level = 88 }, blue = { style = "OutBoxer", level = 52 }, seed = 47 })
+	kdSeen += st.kdEp
 end
 run("pressure bot v Heavyweight", { red = { bot = "pressure", frame = "Athletic" }, blue = { frame = "Heavyweight Build", style = "Slugger", level = 75 }, seed = 31 })
 run("smart bot v Lean", { red = { bot = "smart", frame = "Heavyweight Build" }, blue = { frame = "Lean", style = "OutBoxer", level = 65 }, seed = 32, rounds = 3 })

@@ -158,7 +158,7 @@ function Career.OppView(profile, b)
 		id = b.id, name = b.name, nick = b.nick, nat = b.nat, style = style and style.name or b.style,
 		archetype = arch and arch.name or "", overall = b.overall, record = b.record, age = b.age,
 		personality = b.personality, h2h = b.h2h, heat = b.heat, belts = b.belts, ranks = ranks,
-		tbelts = Career.TourneyBelts(b),
+		tbelts = Career.TourneyBelts(b), height = b.height,
 	}
 end
 

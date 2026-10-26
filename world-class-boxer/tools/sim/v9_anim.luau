@@ -2644,10 +2644,29 @@ local function reachClip(tier)
 	local HG = H.require("HitGeometry")
 	local a = makeBoxer(tier)
 	a.Name = "BoxerA"
-	local b = makeBoxer(3, { gloves = 2, trunks = 4, frame = args.oframe or FRAME })
+	-- (--oheight IN: B's own height, A's --height otherwise: the height pairings)
+	local b = makeBoxer(3, { gloves = 2, trunks = 4, frame = args.oframe or FRAME, height = tonumber(args.oheight) })
 	b.Name = "BoxerB"
 	-- the frames as the server's geoFrame reads them: the rest pose, the soles on the floor (Y = 0)
 	local geoA, geoB = HG.Frame(a, 0), HG.Frame(b, 0)
+	if args.probe then
+		-- (--probe 1: A's body parts, rig attachments and gloves, for a block rig made to its measure)
+		local hum = a:FindFirstChildOfClass("Humanoid")
+		print(string.format("probe HipHeight %.4f", hum and hum.HipHeight or -1))
+		for _, d in ipairs(a:GetDescendants()) do
+			if d:IsA("BasePart") and (a:FindFirstChild(d.Name) == d or d.Name:match("^Glove")) then
+				local hand = a:FindFirstChild(d.Name == "GloveL" and "LeftHand" or "RightHand")
+				local rel = d.Name:match("^Glove") and hand and hand.CFrame:ToObjectSpace(d.CFrame).Position or nil
+				print(string.format("probe part %s size %.4f %.4f %.4f y %.4f%s", d.Name, d.Size.X, d.Size.Y, d.Size.Z, d.Position.Y,
+					rel and string.format(" offHand %.4f %.4f %.4f", rel.X, rel.Y, rel.Z) or ""))
+				for _, at in ipairs(d:GetChildren()) do
+					if at.ClassName == "Attachment" and at.Name:match("RigAttachment$") then
+						print(string.format("probe   att %s %.4f %.4f %.4f", at.Name, at.Position.X, at.Position.Y, at.Position.Z))
+					end
+				end
+			end
+		end
+	end
 	local gaps = {}
 	for s in (args.gaps or "4.2,5.0,5.8"):gmatch("[^,]+") do
 		table.insert(gaps, tonumber(s))
@@ -2664,70 +2683,176 @@ local function reachClip(tier)
 		local q = Vector3.new(math.clamp(lp.X, -s.X, s.X), math.clamp(lp.Y, -s.Y, s.Y), math.clamp(lp.Z, -s.Z, s.Z))
 		return (lp - q).Magnitude
 	end
-	local res = {}
+	-- (--fast 1: shorter throws - the glove's closest comes well inside 0.5 s - and a shorter way home between them)
+	local FAST = args.fast ~= nil and args.fast ~= "0"
+	local PUNCH_F, HOME_F, SETTLE_F, GAP_F = FAST and 32 or 50, FAST and 36 or 40, FAST and 10 or 20, FAST and 45 or 90
 	local actId = 0
-	for _, gap in ipairs(gaps) do
+	local function place(gap)
 		ha.CFrame = CFrame.new(0, ha.CFrame.Y, gap / 2)
 		hb.CFrame = CFrame.new(0, hb.CFrame.Y, -gap / 2) * CFrame.Angles(0, math.pi, 0)
-		for _ = 1, 90 do
-			frame({ a, b })
+	end
+	-- one punch thrown REPS times from `gap`: the median closest the glove came (and its height off the target's
+	-- centre then), and the same at the contact frame
+	local function throwAt(gap, act)
+		local hand = act:match("^[^|]*|(%a)")
+		local glove
+		for _, d in ipairs(a:GetDescendants()) do
+			if (d.ClassName == "MeshPart" or d.ClassName == "Part") and d.Name == "Glove" .. hand then
+				glove = d
+			end
 		end
-		for _, pd in ipairs(REACH_LIST) do
-			local name, act = pd[1], pd[2]
-			-- (--only jab|body,cross: just those punches)
-			if args.only and not ("," .. args.only .. ","):find("," .. name .. ",", 1, true) then
-				continue
-			end
-			local hand = act:match("^[^|]*|(%a)")
-			local glove
-			for _, d in ipairs(a:GetDescendants()) do
-				if (d.ClassName == "MeshPart" or d.ClassName == "Part") and d.Name == "Glove" .. hand then
-					glove = d
-				end
-			end
-			glove = glove or a:FindFirstChild(hand == "L" and "LeftHand" or "RightHand")
-			local body = act:find("|body|", 1, true) ~= nil
-			-- (--reps N: the punch thrown N times from the gap - the client picks a variant per throw, a paw or a
-			-- long jab, a tight or a wide hook - and the median of the closest each came is the visible reach)
-			local surfs = {}
-			for _ = 1, REPS do
+		glove = glove or a:FindFirstChild(hand == "L" and "LeftHand" or "RightHand")
+		local body = act:find("|body|", 1, true) ~= nil
+		-- (--reps N: the punch thrown N times from the gap - the client picks a variant per throw, a paw or a
+		-- long jab, a tight or a wide hook - and the median of the closest each came is the visible reach)
+		local surfs, dys, cs = {}, {}, {}
+		for _ = 1, REPS do
 			actId += 1
 			a:SetAttribute("Act", act)
 			a:SetAttribute("ActId", actId)
-			local best = math.huge
-			for _ = 1, 50 do
+			local best, bestDy = math.huge, 0
+			-- (the contact: the act's windup after it starts, when the server resolves the punch)
+			local windup = tonumber(act:match("^[^|]*|%a|%a+|([%d%.]+)")) or 0.2
+			local csurf, cdy, carm
+			for k = 1, PUNCH_F do
 				frame({ a, b })
 				local gp = glove.Position
 				local gr = math.max(glove.Size.X, glove.Size.Z) / 2
-				local s
+				local s, dy
 				if body then
-					s = math.min(boxGap(gp, b:FindFirstChild("UpperTorso")), boxGap(gp, b:FindFirstChild("LowerTorso"))) - gr
+					local ut = b:FindFirstChild("UpperTorso")
+					s = math.min(boxGap(gp, ut), boxGap(gp, b:FindFirstChild("LowerTorso"))) - gr
+					dy = gp.Y - ut.Position.Y
 				else
 					local hd = b:FindFirstChild("Head")
 					s = (gp - hd.Position).Magnitude - math.max(hd.Size.X, hd.Size.Y) / 2 - gr
+					dy = gp.Y - hd.Position.Y
 				end
-				best = math.min(best, s)
+				if s < best then
+					best, bestDy = s, dy
+				end
+				if not csurf and k * DT >= windup - 1e-6 then
+					csurf, cdy = s, dy
+					-- (the arm at contact: the shoulder-to-glove line's and the upper arm's elevation, the elbow's bend)
+					local side = hand == "L" and "Left" or "Right"
+					local ua, la = a:FindFirstChild(side .. "UpperArm"), a:FindFirstChild(side .. "LowerArm")
+					local sa = ua and ua:FindFirstChild(side .. "ShoulderRigAttachment")
+					if ua and la and sa then
+						local sp = ua.CFrame:PointToWorldSpace(sa.Position)
+						local v = gp - sp
+						carm = { math.deg(math.asin(math.clamp(v.Unit.Y, -1, 1))), math.deg(math.asin(math.clamp(-ua.CFrame.UpVector.Y, -1, 1))),
+							math.deg(math.acos(math.clamp(ua.CFrame.UpVector:Dot(la.CFrame.UpVector), -1, 1))) }
+					end
+				end
 			end
 			-- (back to the guard and the roots where they were: a lunge moves A's root)
 			a:SetAttribute("Act", "idle")
-			for _ = 1, 40 do
+			for _ = 1, HOME_F do
 				frame({ a, b })
 			end
-			ha.CFrame = CFrame.new(0, ha.CFrame.Y, gap / 2)
-			hb.CFrame = CFrame.new(0, hb.CFrame.Y, -gap / 2) * CFrame.Angles(0, math.pi, 0)
-			for _ = 1, 20 do
+			place(gap)
+			for _ = 1, SETTLE_F do
 				frame({ a, b })
 			end
 			table.insert(surfs, best)
+			table.insert(dys, bestDy)
+			table.insert(cs, { csurf or best, cdy or bestDy, carm })
+		end
+		table.sort(surfs)
+		table.sort(dys)
+		local med = surfs[math.floor((#surfs + 1) / 2)]
+		-- (csurf / cdy: the same at the contact frame, the median throw's)
+		table.sort(cs, function(x, y)
+			return x[1] < y[1]
+		end)
+		local cm = cs[math.floor((#cs + 1) / 2)]
+		return { gap = gap, surf = r4(med), min = r4(surfs[1]), max = r4(surfs[#surfs]), dy = r4(dys[math.floor((#dys + 1) / 2)]),
+			csurf = r4(cm[1]), cdy = r4(cm[2]), carm = cm[3] and { r4(cm[3][1]), r4(cm[3][2]), r4(cm[3][3]) } or nil }
+	end
+	if args.probe then
+		place(4.6)
+		for _ = 1, 60 do
+			frame({ a, b })
+		end
+		local ua = a:FindFirstChild("LeftUpperArm")
+		local sp = ua.CFrame:PointToWorldSpace(ua:FindFirstChild("LeftShoulderRigAttachment").Position)
+		print(string.format("probe stance: A shoulder %.3f UT %.3f head %.3f root %.3f", sp.Y, a:FindFirstChild("UpperTorso").Position.Y, a:FindFirstChild("Head").Position.Y,
+			a:FindFirstChild("HumanoidRootPart").Position.Y))
+	end
+	local function wanted(name)
+		-- (--only jab|body,cross: just those punches)
+		return not args.only or ("," .. args.only .. ","):find("," .. name .. ",", 1, true) ~= nil
+	end
+	local res = {}
+	local bound = {}
+	if args.find then
+		-- --find LO,HI[,STEPS]: per punch the boundary by bisection (the gap where the median closest stops reaching
+		-- CONTACT, assumed to land at LO), STEPS halvings (default 6); the gaps tried are kept as the sweep
+		local lo0, hi0, steps = args.find:match("^([%d%.]+),([%d%.]+),?(%d*)$")
+		lo0, hi0, steps = tonumber(lo0), tonumber(hi0), tonumber(steps) or 6
+		local C = tonumber(args.contact) or 0.15
+		for _, pd in ipairs(REACH_LIST) do
+			local name, act = pd[1], pd[2]
+			if wanted(name) then
+				res[name] = {}
+				local function at(g)
+					place(g)
+					for _ = 1, GAP_F do
+						frame({ a, b })
+					end
+					local r = throwAt(g, act)
+					table.insert(res[name], r)
+					return r
+				end
+				local r0 = at(lo0)
+				if r0.surf > C then
+					bound[name] = 0
+				else
+					local lo, hi = lo0, hi0
+					local rlo, rhi = r0, nil
+					for _ = 1, steps do
+						local mid = (lo + hi) / 2
+						local r = at(mid)
+						if r.surf <= C then
+							lo, rlo = mid, r
+						else
+							hi, rhi = mid, r
+						end
+					end
+					-- (interpolated between the last landing gap and the first miss)
+					if rhi then
+						bound[name] = r4(lo + (C - rlo.surf) / math.max(1e-4, rhi.surf - rlo.surf) * (hi - lo))
+						bound[name] = math.clamp(bound[name], lo, hi)
+					else
+						bound[name] = hi0
+					end
+				end
+				table.sort(res[name], function(x, y)
+					return x.gap < y.gap
+				end)
+				print(string.format("find T%d %s->%s h%s->%s %-14s boundary %.3f (%d throws)", tier, FRAME or "Athletic", args.oframe or FRAME or "Athletic",
+					tostring(HEIGHT or "-"), tostring(args.oheight or HEIGHT or "-"), name, bound[name], #res[name] * REPS))
 			end
-			table.sort(surfs)
-			local med = surfs[math.floor((#surfs + 1) / 2)]
-			res[name] = res[name] or {}
-			table.insert(res[name], { gap = gap, surf = r4(med), min = r4(surfs[1]), max = r4(surfs[#surfs]) })
-			print(string.format("reach T%d %s->%s %-14s gap %.2f  glove surface %.3f (%.3f..%.3f)", tier, FRAME or "Athletic", args.oframe or FRAME or "Athletic", name, gap, med, surfs[1], surfs[#surfs]))
+		end
+	else
+		for _, gap in ipairs(gaps) do
+			place(gap)
+			for _ = 1, GAP_F do
+				frame({ a, b })
+			end
+			for _, pd in ipairs(REACH_LIST) do
+				local name, act = pd[1], pd[2]
+				if wanted(name) then
+					local r = throwAt(gap, act)
+					res[name] = res[name] or {}
+					table.insert(res[name], r)
+					print(string.format("reach T%d %s->%s %-14s gap %.2f  glove surface %.3f (%.3f..%.3f)", tier, FRAME or "Athletic", args.oframe or FRAME or "Athletic", name, gap, r.surf, r.min, r.max))
+				end
+			end
 		end
 	end
-	local out = { tier = tier, frame = FRAME or "Athletic", oframe = args.oframe or FRAME or "Athletic", geoA = geoA, geoB = geoB, punches = res }
+	local out = { tier = tier, frame = FRAME or "Athletic", oframe = args.oframe or FRAME or "Athletic", height = HEIGHT, oheight = tonumber(args.oheight) or HEIGHT,
+		geoA = geoA, geoB = geoB, punches = res, boundary = args.find and bound or nil }
 	Host.WriteJSON(args.reachout or (OUT .. "/reach.json"), out, true)
 	for _, m in ipairs({ a, b }) do
 		CS:RemoveTag(m, "Fighter")

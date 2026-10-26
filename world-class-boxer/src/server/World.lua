@@ -40,6 +40,53 @@ local function aggressionFor(styleId)
 	return s and math.floor(s.ai.aggression * 100) or 50
 end
 
+-- a boxer's height (inches) and, a really tall one's, his nickname: deterministic by his id and name (Config.BoxerHeight,
+-- Config.TallNick), so he keeps them across fights, saves and the migration of an older save. HEIGHT_V marks a boxer
+-- whose height came from this (an older save's were 60 + 1.6 x class +- 3: every division within three inches of one
+-- height, a middleweight 5'7" .. 6'1", the tallest heavyweight 6'5")
+local HEIGHT_V = 1
+World.HEIGHT_V = HEIGHT_V
+function World.HeightKey(b)
+	return tostring(b.id) .. "|" .. tostring(b.name)
+end
+function World.ApplyHeight(b)
+	if type(b) ~= "table" then
+		return b
+	end
+	local key = World.HeightKey(b)
+	b.height = Config.BoxerHeight(key, b.class, b.gender == 2)
+	local tall = Config.TallNick(key, b.height, tostring(b.name or ""):match("^(%S+)"))
+	if tall then
+		-- (his own nickname kept to give back should a save ever shrink him)
+		b.ownNick = b.ownNick or b.nick
+		b.nick = tall
+	elseif b.ownNick then
+		b.nick, b.ownNick = b.ownNick, nil
+	end
+	b.heightV = HEIGHT_V
+	return b
+end
+
+-- an older save's world: every boxer without the current heights gets them (and a tall one his nickname); idempotent.
+-- Returns how many boxers changed
+function World.MigrateHeights(world)
+	if type(world) ~= "table" or type(world.boxers) ~= "table" then
+		return 0
+	end
+	local n = 0
+	for id, b in pairs(world.boxers) do
+		if type(b) == "table" and b.heightV ~= HEIGHT_V then
+			b.id = b.id or id
+			if tonumber(b.class) == nil then
+				b.class = 5
+			end
+			World.ApplyHeight(b)
+			n += 1
+		end
+	end
+	return n
+end
+
 local function newBoxer(world, rng, ci, target, usedNames, ageLo, ageHi)
 	local id = "b" .. world.nextId
 	world.nextId += 1
@@ -65,7 +112,7 @@ local function newBoxer(world, rng, ci, target, usedNames, ageLo, ageHi)
 		stats.Reflexes = clampStat(stats.Reflexes + 5)
 	end
 	local frac = math.clamp((target - 26) / 64, 0, 1)
-	return {
+	local b = {
 		id = id, name = name, nick = Config.Nicknames[rng:NextInteger(1, #Config.Nicknames)],
 		nat = Config.Nationalities[rng:NextInteger(1, #Config.Nationalities)], gender = female and 2 or 1,
 		class = ci, style = arch.style, archetype = arch.id,
@@ -76,9 +123,12 @@ local function newBoxer(world, rng, ci, target, usedNames, ageLo, ageHi)
 			Confidence = 40 + frac * 40, Discipline = rng:NextInteger(35, 90), Aggression = aggressionFor(arch.style),
 			Focus = rng:NextInteger(35, 85), Composure = 35 + frac * 45,
 		},
-		lookSeed = rng:NextInteger(1, 2 ^ 30), height = math.clamp(60 + ci * 1.6 + rng:NextInteger(-3, 3), 60, 84),
+		lookSeed = rng:NextInteger(1, 2 ^ 30),
 		h2h = { w = 0, l = 0, d = 0 }, heat = 0, learned = {}, belts = {},
 	}
+	-- (the draw the old height took is still made: the rest of a seeded world comes out as it did)
+	rng:NextInteger(-3, 3)
+	return World.ApplyHeight(b)
 end
 
 -- a one-off boxer outside any saved world (the tutorial fight): the same generator as the world's boxers
@@ -101,6 +151,7 @@ function World.RandomBoxer(rng, ci, target, opts)
 		b.name = first .. " " .. Config.LastNames[rng:NextInteger(1, #Config.LastNames)]
 	end
 	b.id = "tut" .. b.id
+	World.ApplyHeight(b)
 	local fights = rng:NextInteger(2, 12)
 	local w = math.floor(fights * rng:NextNumber(0.4, 0.8) + 0.5)
 	b.record = { w = w, l = fights - w, d = 0, ko = math.floor(w * rng:NextNumber(0.2, 0.6)) }

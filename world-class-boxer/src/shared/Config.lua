@@ -1235,6 +1235,21 @@ Config.Nicknames = {
 	"Rocket", "Mad Dog", "The Wolf", "Diamond",
 }
 
+-- a really tall AI boxer (Config.TALL_INCHES and up: 6'5") goes by one of these instead (World: Config.TallNick, seeded
+-- by the boxer); "%s" is his first initial ("Big D"). Mostly the "Big" ones, with the towers and giants for variety
+Config.TallNicknames = {
+	"Big", "Big %s", "Big %s", "Big Man", "Big Country", "Big Time", "The Tower", "Skyscraper", "Long", "The Giant",
+	"Big Bear", "Long Ranger",
+}
+Config.TALL_INCHES = 77
+
+-- the AI boxers' heights (inches) by weight class: a men's mean and spread (the real divisions: a flyweight about
+-- 5'5", a heavyweight about 6'4", with plenty of short and tall men in each), women about 5 inches under. The whole
+-- field runs 5'4" .. 6'9" (women from 5'0"), most of it 5'8" .. 6'1"
+Config.BoxerHeights = {
+	{ 65.4, 1.7 }, { 66.2, 1.8 }, { 67.2, 1.9 }, { 68.3, 2.0 }, { 69.5, 2.1 }, { 70.8, 2.2 }, { 72.2, 2.3 }, { 73.6, 2.5 }, { 75.6, 2.8 },
+}
+Config.BoxerHeightRange = { men = { 64, 81 }, women = { 60, 76 } }
 Config.Personalities = {
 	"Trash Talker", "Respectful Veteran", "Showman", "Silent Assassin", "Hothead", "Technician",
 }
@@ -1627,6 +1642,72 @@ end
 function Config.HeightText(inches)
 	inches = math.floor(inches + 0.5)
 	return string.format("%d'%d\"", math.floor(inches / 12), inches % 12)
+end
+
+-- a whole number 0 .. 2^31 - 1 from a string (FNV-1a folded to 31 bits): the same on every server and in every
+-- version of the engine, unlike Random's stream
+local function keyHash(str)
+	local h = 2166136261
+	for i = 1, #str do
+		h = bit32.bxor(h, string.byte(str, i))
+		-- (x 16777619 = x 2^24 + x 403, mod 2^32, kept under 2^53 so the double stays exact)
+		h = ((h % 256) * 16777216 + h * 403) % 4294967296
+	end
+	return h % 2147483647
+end
+Config.KeyHash = keyHash
+-- the n-th uniform 0..1 of a key (deterministic)
+local function keyUniform(key, n)
+	return (keyHash(key .. "#" .. n) + 0.5) / 2147483647
+end
+
+-- an AI boxer's height in whole inches, deterministic: key = what identifies him (World: his id and name), ci = his
+-- weight class index, female = bool. A normal draw round his division's mean (Config.BoxerHeights), clamped to the
+-- field's range
+function Config.BoxerHeight(key, ci, female)
+	key = tostring(key or "")
+	local row = Config.BoxerHeights[math.clamp(math.floor(tonumber(ci) or 5), 1, #Config.BoxerHeights)]
+	local mean, sd = row[1], row[2]
+	if female then
+		mean, sd = mean - 5, sd * 0.9
+	end
+	-- (Box-Muller off two of the key's uniforms)
+	local u1, u2 = keyUniform(key, 1), keyUniform(key, 2)
+	local z = math.sqrt(-2 * math.log(u1)) * math.cos(2 * math.pi * u2)
+	local lim = female and Config.BoxerHeightRange.women or Config.BoxerHeightRange.men
+	-- (a draw past the field's edge is folded back inside it, not piled up on the edge: no division of 5'4" men)
+	local h = mean + z * sd
+	if h < lim[1] then
+		h = lim[1] + (lim[1] - h) * 0.5
+	elseif h > lim[2] + 0.49 then
+		h = lim[2] - (h - lim[2]) * 0.5
+	end
+	return math.clamp(math.floor(h + 0.5), lim[1], lim[2])
+end
+
+-- the nickname a boxer of `inches` goes by: a tall one from Config.TallNicknames (deterministic by key; "%s" takes the
+-- first name's initial), else nil (keep his own)
+function Config.TallNick(key, inches, first)
+	if (tonumber(inches) or 0) < Config.TALL_INCHES then
+		return nil
+	end
+	key = tostring(key or "")
+	local list = Config.TallNicknames
+	local pick = list[math.clamp(math.floor(keyUniform(key, 3) * #list) + 1, 1, #list)]
+	if pick:find("%s", 1, true) then
+		local initial = string.upper(string.sub(tostring(first or ""), 1, 1))
+		pick = initial:match("%a") and string.format(pick, initial) or "Big"
+	end
+	return pick
+end
+function Config.IsTallNick(nick)
+	nick = tostring(nick or "")
+	for _, w in ipairs({ "Big", "Tower", "Skyscraper", "Long", "Giant" }) do
+		if nick:find(w, 1, true) then
+			return true
+		end
+	end
+	return false
 end
 
 function Config.Money(n)

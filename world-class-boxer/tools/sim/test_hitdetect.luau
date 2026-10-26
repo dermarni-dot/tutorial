@@ -1,13 +1,13 @@
 --!nocheck
 -- tools/sim/test_hitdetect.luau: the hit detection off the rigs (Shared.HitGeometry) and its use in FightEngine
 -- (tools/sim/fightsim: the real Fight methods on stub rigs), pinned:
---   * calibration: the unit rig against itself lands every punch at exactly the distance the fight was balanced on
---     (FightMotion.Spacing.base x Config.Punches[p].range), the unit pair's separation and clinch reach are the old
---     spacing's
+--   * calibration: the Athletic rig (and the sims' unit frame, calibrated on its own) against itself lands every punch at
+--     exactly where the animation's glove visibly lands (HitGeometry.TARGET), the unit pair's separation and clinch reach
+--     are the old spacing's
 --   * height: a short man's straights and hooks to a much taller head fall short where the tall man's land, and
---     fall to the body out at range; the tall man bent over (a duck, a roll) is reachable; uppercuts reach up
---     (the short man's lands on the tall chin from inside) and the longer man's jab reaches further than the
---     shorter man's; every punch type, short vs tall, tall vs short, the same height
+--     fall to the body out at range; the tall man bent over (a duck, a roll) is reachable; two feet taller, every head
+--     shot of the short man lands on the body (the bent-over giant's chin in reach of his jab and uppercut) and the
+--     longer man's jab reaches further than the shorter man's; every punch type, short vs tall, tall vs short, the same height
 --   * the frame scales at their limits (Builder.Scales' clamps) never break it: finite ranges, separation that
 --     keeps the torsos apart, a clinch reach past the separation
 --   * the engine: PunchRange is the geometry's (floored at the close spacing), Resolve misses "short" / lands /
@@ -18,6 +18,9 @@
 --     AnimFight's glove visibly reaches the target (tools/sim/anim_reach.json, measured by v9_anim --clips reach on
 --     the tier-3 rigs; the frames the server reads off those rigs); MinSep + 0.3 < PunchRange(jab) both ways for
 --     every pairing, the rigs' and the sims' scale frames at 60 / 70 / 84 inches
+--   * the heights: the same against the animation over every pairing of 5'4", 5'10", 6'3" and 6'8" both ways
+--     (anim_reach.json's heights: within 0.4 stud, a tenth on average; a punch the animation never lands from 3.2 - a
+--     short man's hook at a much taller jaw - the test does not land past there either)
 --   * the facing: a straight thrown off the line it faces goes wide, a hook finds a head well off it
 --   * lag compensation at 80-150 ms against a man backing off (and circling): the hit his screen showed stands when
 --     the live miss is movement within LAG_TOL; a press his screen showed short, one with no stamp and one the man
@@ -126,7 +129,9 @@ check("calibration: the unit pair's separation is the old spacing", near(HG.MinS
 check("calibration: the unit pair's clinch reach is the old spacing", near(HG.ClinchRange(U, U), HG.CLINCH, 0.01), HG.ClinchRange(U, U))
 -- (the animation: the cross's hip turn carries it past the jab's flick; the lead hook and the uppercut are the
 -- short punches; the rear hook comes through like the cross)
-check("same height: the cross outreaches the jab, the jab the lead hook, the lead hook the uppercut", HG.Range(MID, MID, "cross", false) > HG.Range(MID, MID, "jab", false) and HG.Range(MID, MID, "jab", false) > HG.Range(MID, MID, "leadhook", false) and HG.Range(MID, MID, "leadhook", false) > HG.Range(MID, MID, "uppercut", false))
+-- (the animation's order: the hooks keep their square elbow and barely lean in - AnimFight.HOOK_ARM, HOOK_LUNGE_MAX - so the
+-- uppercut, stepping in under the chin, now outreaches them)
+check("same height: the cross outreaches the jab, the jab the uppercut, the uppercut the hooks", HG.Range(MID, MID, "cross", false) > HG.Range(MID, MID, "jab", false) and HG.Range(MID, MID, "jab", false) > HG.Range(MID, MID, "uppercut", false) and HG.Range(MID, MID, "uppercut", false) > HG.Range(MID, MID, "leadhook", false))
 do
 	local t = HG.Test(U, U, "jab", false, 4.0)
 	check("test: a jab from 4.0 lands on the head, with margin", t.ok and t.zone == "head" and not t.redirected and t.margin > 0.3, t.margin)
@@ -143,7 +148,7 @@ local M66, M76 = frame(66), frame(76, "Muscular")
 for _, p in ipairs({ "jab", "cross" }) do
 	local up, down, lvlS, lvlT = HG.Range(M66, M76, p, false), HG.Range(M76, M66, p, false), HG.Range(M66, M66, p, false), HG.Range(M76, M76, p, false)
 	check("height: the shorter man's " .. p .. " to the head is cut (66 vs 76 in)", up < lvlS - 0.2 and up > lvlS * 0.8, up .. " vs " .. lvlS)
-	check("height: the taller man's " .. p .. " down to the head is not", down >= lvlT - 0.05, down .. " vs " .. lvlT)
+	check("height: the taller man's " .. p .. " down to the head is not (a tenth: the fit's)", down >= lvlT - 0.1, down .. " vs " .. lvlT)
 	check("height: the longer man's " .. p .. " reaches further", down > up + 0.5, down .. " vs " .. up)
 	check("height: the shorter man's " .. p .. " to the body keeps its reach", HG.Range(M66, M76, p, true) >= HG.Range(M66, M66, p, true) - 0.05)
 end
@@ -158,14 +163,16 @@ do
 		local far = HG.Test(SHORT, TALL, p, false, 4.6, { floor = floor })
 		check("extreme: the short man's " .. p .. " to the tall head from 4.6 falls to the body or misses", not far.ok or far.redirected, far.zone)
 	end
-	local inJab = HG.Test(SHORT, TALL, "jab", false, floor, { floor = floor })
-	check("extreme: the short man's jab reaches the tall chin inside", inJab.ok and inJab.zone == "head", inJab.why)
-	local inUp = HG.Test(SHORT, TALL, "uppercut", false, floor, { floor = floor })
-	check("extreme: the short man's uppercut reaches the tall chin inside", inUp.ok and inUp.zone == "head", inUp.why)
-	local inHook = HG.Test(SHORT, TALL, "leadhook", false, floor, { floor = floor })
-	check("extreme: the short man's hook to the tall head falls to the body even inside", inHook.ok and inHook.zone == "body" and inHook.redirected, inHook.zone)
-	local bent = HG.Test(SHORT, TALL, "leadhook", false, floor, { floor = floor, bend = 1 })
-	check("extreme: ...unless the tall man is bent over", bent.ok and bent.zone == "head", bent.why)
+	-- (two feet taller: the chin is out of every one of the short man's punches standing up - AnimFight's glove stops under
+	-- it, the arm never thrown up overhead - so a head shot lands where it can, on the body)
+	for _, p in ipairs({ "jab", "uppercut", "leadhook" }) do
+		local v = HG.Test(SHORT, TALL, p, false, floor, { floor = floor })
+		check("extreme: the short man's " .. p .. " at the giant's head lands on his body inside", v.ok and v.zone == "body" and v.redirected, tostring(v.zone) .. " " .. tostring(v.why))
+	end
+	for _, p in ipairs({ "jab", "uppercut" }) do
+		local bent = HG.Test(SHORT, TALL, p, false, floor, { floor = floor, bend = 1 })
+		check("extreme: ...and on his chin when he is bent over: the " .. p, bent.ok and bent.zone == "head", bent.why)
+	end
 	for _, p in ipairs(PUNCHES) do
 		local d = HG.Test(TALL, SHORT, p, false, floor, { floor = floor })
 		check("extreme: the tall man's " .. p .. " lands on the short head inside", d.ok and d.zone == "head", tostring(d.why))
@@ -389,6 +396,56 @@ do
 	check("boundary: all 25 frame pairings measured", pairsSeen == 25, pairsSeen)
 	check("boundary: every punch's hit / miss boundary is monotone", nonMono == 0, nonMono)
 	print(string.format("  boundary: worst |hit test - animation| %.3f stud over %d punches (%s)", worst, n, worstWhat))
+	-- the same over the heights (AR.heights: the Athletic frame at 5'4", 5'10", 6'3" and 6'8", every pairing both ways):
+	-- out to where the animation's glove visibly reaches, within HEIGHT_TOL; a punch the animation does not land even
+	-- from 3.2 (a short man's hook at a much taller jaw) the test does not land from past there either; one the
+	-- animation lands only from `near` out (a straight up at a taller chin, too steep up close) not well inside that
+	-- (the heights' spread is a little wider than the frames': the client's variants - a tight or a wide hook, a long jab -
+	-- reach a few tenths apart up at a much taller man and the median throw's is what was measured; on average they agree
+	-- to a tenth)
+	local HEIGHT_TOL = 0.4
+	local hSeen, hWorst, hWhat = 0, 0, ""
+	local hSum, hN = 0, 0
+	for _, pr in ipairs(AR.heights or {}) do
+		local A, B = pr.geoA, pr.geoB
+		hSeen += 1
+		for _, key in ipairs(KEYS) do
+			local p, z = key:match("^(%a+)|?(%a*)$")
+			local body = z == "body"
+			local anim = pr.boundary[key]
+			local last, first = nil, nil
+			local d = 3.2
+			while d <= 8 do
+				if HG.Test(A, B, p, body, d, { noRedirect = true }).ok then
+					last = d
+					first = first or d
+				elseif last then
+					break
+				end
+				d += 0.02
+			end
+			local what = string.format("%d -> %d in %s", pr.height, pr.oheight, key)
+			if anim <= 0 then
+				check(string.format("heights: %s: the animation never lands it, nor does the test past 3.2 (%.2f)", what, last or 0), (last or 0) <= 3.2 + HEIGHT_TOL)
+			else
+				local e = last and math.abs(last - anim) or math.huge
+				if e > hWorst then
+					hWorst, hWhat = e, string.format("%s: hit test %.2f, animation %.2f", what, last or -1, anim)
+				end
+				hSum += math.min(e, 2)
+				hN += 1
+				check(string.format("heights: %s lands out to the animation's reach (%.2f vs %.2f)", what, last or -1, anim), e <= HEIGHT_TOL)
+				local near = pr.near and pr.near[key]
+				if near and near > 3.3 then
+					check(string.format("heights: %s not from well inside where the animation starts to land (%.2f vs %.2f)", what, first or -1, near),
+						first ~= nil and first >= near - HEIGHT_TOL)
+				end
+			end
+		end
+	end
+	check("heights: all 16 height pairings measured", hSeen == 16, hSeen)
+	check(string.format("heights: the hit test and the animation agree to a tenth of a stud on average (%.3f)", hSum / math.max(1, hN)), hSum / math.max(1, hN) <= 0.12)
+	print(string.format("  heights: worst |hit test - animation| %.3f stud (%s), mean %.3f over %d", hWorst, hWhat, hSum / math.max(1, hN), hN))
 end
 -- the same invariant on the sims' frames (FrameFromScales: the five frames at 60, 70 and 84 inches, every pairing)
 do
@@ -439,6 +496,8 @@ do
 	end
 	f:Resolve(P, O, "jab", false, 1)
 	check("facing: the engine calls a jab thrown 45 degrees off him wide", why == "wide" and P.lastHit and P.lastHit.why == "wide", why)
+	-- (a hook's reach is the animation's, a stud under the jab's: a step in for it, the same 45 degrees off)
+	O.root.CFrame = CF.lookAt(V.new(3.6, 3.2, 0), V.new(0, 3.2, 0))
 	f:Resolve(P, O, "leadhook", false, 1)
 	check("facing: and lets the hook from there reach him", P.lastHit and P.lastHit.ok, P.lastHit and P.lastHit.why)
 	-- /wcbdiag's FIGHT block shows the verdict (and the AI's read when there is a brain)

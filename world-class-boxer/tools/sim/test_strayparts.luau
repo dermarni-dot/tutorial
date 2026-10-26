@@ -12,8 +12,9 @@
 --     is measured by its uploaded mesh's own vertices (tools/body/uploaded.json maps the id to the file)
 --   * asserted for every piece (a BasePart under BoxerLook, an accessory handle, a prop):
 --       - welded (Weld / WeldConstraint / Motor6D) to a part of the model, the chain ending on a body part
---       - on its host: its centre within its own half extent (+ slack) of the host's box (nothing off the silhouette,
---         at the origin or far away), and not several times the host's size
+--       - on its host: its centre within its own half extent (+ slack) of the host's box - or of the piece it hangs from,
+--         a robe's knot on its belt - (nothing off the silhouette, at the origin or far away), and not several times the
+--         host's size
 --       - no MeshFallback stand-in sphere on the server build
 --       - a head-worn piece (face, headgear, cap) never reaches under the head's base (the neck)
 --       - nothing but skin on the NECK: no non-skin point in the column round the neck axis between the shoulders and
@@ -583,6 +584,14 @@ local function scan(model, label)
 		local slack = SLACK_FOLDER[p.Parent and p.Parent.Name or ""] or SLACK
 		local reach = 0.5 * math.max(p.Size.X, p.Size.Y, p.Size.Z) + slack
 		local off = boxDistance(rel, host.Size * 0.5)
+		-- (a piece hanging from another piece - a robe's knot and tails on its belt - may sit on that piece instead: over a
+		-- 6'9" man's long trunks the robe stands well off his hips' box, and the knot rides on the robe; that piece is
+		-- itself held to the body part above)
+		local j = jointOf(p)
+		local mid = j and ((j.Part0 == p and j.Part1) or j.Part0)
+		if off > reach and mid and mid ~= host and mid:IsA("BasePart") and not BODY[mid.Name] then
+			off = math.min(off, boxDistance(mid.CFrame:PointToObjectSpace(p.Position), mid.Size * 0.5))
+		end
 		check(label .. ": " .. name .. " is on its host " .. host.Name, off <= reach, string.format("%.2f studs off %s's box (allowed %.2f)", off, host.Name, reach))
 		local hostBig = math.max(host.Size.X, host.Size.Y, host.Size.Z, host == head and span or 0)
 		check(label .. ": " .. name .. " is sized for its host " .. host.Name, math.max(p.Size.X, p.Size.Y, p.Size.Z) <= 3 * hostBig + 0.5,
@@ -705,16 +714,19 @@ local function run(gearMode)
 			end
 		end
 	end
-	-- fight-night opponents and sparring partners
-	for _, seed in ipairs({ 5150, 6262, 7373, 8484 }) do
+	-- fight-night opponents and sparring partners, over the world's height range (Config.BoxerHeightRange: a 5'4"
+	-- flyweight to a 6'9" heavyweight, the women 5'0" .. 6'4"), the tall ones with their tall nickname on the waistband
+	for si, seed in ipairs({ 5150, 6262, 7373, 8484 }) do
 		for _, g in ipairs({ 1, 2 }) do
-			local app = Looks.Random(seed, g, { age = 28, class = 5 })
+			local hIn = (g == 1 and { 64, 70, 77, 81 } or { 60, 66, 72, 76 })[si]
+			local app = Looks.Random(seed, g, { age = 28, class = 5, height = hIn })
 			local build = Looks.RandomBuild(seed, 0.8, 28, app.body.frame)
+			local nick = hIn >= 77 and "Skyscraper" or "The Opp"
 			local m = Builder.CreateNPC(app, build, { gloves = "Competition", wraps = "OldWraps" }, "Opp" .. seed,
-				{ hands = "gloves", mouthguard = true, detail = "full", fightNight = true, name = "Opp", nick = "The Opp", nat = "USA", waistText = "OPP" })
+				{ hands = "gloves", mouthguard = true, detail = "full", fightNight = true, name = "Opp", nick = nick, nat = "USA", waistText = nick })
 			if m then
 				m.Parent = E.workspace
-				scan(m, "opponent " .. seed .. "/" .. g .. tag)
+				scan(m, "opponent " .. seed .. "/" .. g .. " " .. hIn .. "in" .. tag)
 				Builder.SetHeadgear(m, Color3.fromRGB(170, 25, 30), true)
 				scan(m, "sparring " .. seed .. "/" .. g .. tag)
 				Builder.SetHeadgear(m, nil, false)
@@ -762,9 +774,10 @@ local function sweep(gearMode)
 				local seed = 9000 + fi * 101 + math.floor(fit * 100) + g
 				local app = Looks.Random(seed, g, { age = 27, class = 5 })
 				app.body.frame = frame
-				-- the height range (inches): short to tall for the gender
-				local hs = g == 1 and { 64, 70, 78 } or { 59, 65, 72 }
-				app.height = hs[(n % 3) + 1]
+				-- the height range (inches): short to tall for the gender (the world's opponents run 5'4" .. 6'9",
+				-- the women 5'0" .. 6'4")
+				local hs = g == 1 and { 64, 70, 78, 81 } or { 59, 65, 72, 76 }
+				app.height = hs[(n % 4) + 1]
 				local build = Looks.RandomBuild(seed, fit, 27, frame)
 				local detail = ({ "low", "medium", "full" })[(n % 3) + 1]
 				local hands = ({ "gloves", "wraps", "bare" })[((n // 3) % 3) + 1]

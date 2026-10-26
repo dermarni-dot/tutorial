@@ -1551,12 +1551,13 @@ function Body.SetRobe(model, app, on, opts)
 		local cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
 		local w, d = x1 - x0 + 2 * MT, z1 - z0 + 2 * MT
 		mk(folder, lt, "RobeSkirt", V3(w, h, d), lt.CFrame * CF(cx, top - h / 2, cz), color, "Block", mat).Reflectance = refl
-		mk(folder, lt, "RobeBelt", V3(w + 0.03, 0.18, d + 0.03), lt.CFrame * CF(cx, top - 0.16, cz), trim, "Block", mat)
-		-- (v10) the belt's knot at the front and its two tails hanging from it
+		local belt = mk(folder, lt, "RobeBelt", V3(w + 0.03, 0.18, d + 0.03), lt.CFrame * CF(cx, top - 0.16, cz), trim, "Block", mat)
+		-- (v10) the belt's knot at the front and its two tails hanging from it (welded to the belt they hang from: over
+		-- a big man's trunks the robe's front stands well off the hips' box, and the knot rides on the robe, not the hips)
 		local fz = cz - (d + 0.03) / 2
-		mk(folder, lt, "BeltKnot", V3(0.24, 0.2, 0.08), lt.CFrame * CF(cx + 0.12, top - 0.16, fz - 0.03), trim, "Block", mat)
+		mk(folder, belt, "BeltKnot", V3(0.24, 0.2, 0.08), lt.CFrame * CF(cx + 0.12, top - 0.16, fz - 0.03), trim, "Block", mat)
 		for i, ang in ipairs({ -8, 10 }) do
-			mk(folder, lt, "BeltTail", V3(0.13, 0.5, 0.035), lt.CFrame * CF(cx + 0.06 + 0.13 * i, top - 0.45, fz - 0.035) * ANG(0, 0, RAD(ang)), trim, "Block", mat)
+			mk(folder, belt, "BeltTail", V3(0.13, 0.5, 0.035), lt.CFrame * CF(cx + 0.06 + 0.13 * i, top - 0.45, fz - 0.035) * ANG(0, 0, RAD(ang)), trim, "Block", mat)
 		end
 	end
 	for _, side in ipairs({ "Left", "Right" }) do

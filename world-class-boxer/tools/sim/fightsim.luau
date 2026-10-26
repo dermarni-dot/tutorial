@@ -181,8 +181,10 @@ function FightSim.new(opts)
 			id = spec.id or ("sim" .. simId), name = spec.name or (style .. " " .. simId), style = style, archetype = spec.archetype or ARCH_OF[style],
 			stats = stats, class = 5, record = spec.record or { w = 10, l = 3, d = 0, ko = 5 }, isPlayer = spec.bot ~= nil or nil,
 			mental = { Confidence = 40 + frac * 40, Discipline = 60, Aggression = math.floor((Config.FindById(Config.Styles, style).ai.aggression) * 100), Focus = spec.focus or (40 + frac * 40), Composure = 35 + frac * 45 },
-			-- (spec.frame: the body frame, Shared.FrameTraits; the engine reads data.app.body.frame)
-			app = { gender = 1, body = { frame = spec.frame or "Athletic" } }, moves = spec.moves, h2h = spec.h2h,
+			-- (spec.frame: the body frame, Shared.FrameTraits; the engine reads data.app.body.frame; spec.height: the tape's
+			-- height in inches, and the reach with it - the stub rigs' hit geometry is built from them)
+			app = { gender = 1, body = { frame = spec.frame or "Athletic" }, height = spec.height }, moves = spec.moves, h2h = spec.h2h,
+			height = spec.height, reach = spec.reach or spec.height,
 		}
 	end
 

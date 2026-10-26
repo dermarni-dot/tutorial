@@ -938,7 +938,12 @@ local STYLE_VARIANT = {
 	CounterPuncher = { counter = 2.4, check = 1.6, snap = 1.3, dip = 1.4 },
 }
 
-local function pickVariant(rig, def, kind, comboPos)
+-- (a straight thrown from out near the end of its reach - past STRAIGHT_FAR x the arm plus a stud, root to root - is always
+-- the long one: the paw, the dipping or the countering cross, even the plain one land a few tenths apart out there, and
+-- the server, which cannot know which the client picks, lands every jab at the same range)
+local STRAIGHT_FAR = 1.6
+local FAR_VARIANT = "long"
+local function pickVariant(rig, def, kind, comboPos, body, far)
 	local vs = def.variants
 	if not vs then
 		return nil
@@ -951,6 +956,14 @@ local function pickVariant(rig, def, kind, comboPos)
 		if kind == "jab" and comboPos >= 2 and v.name == "paw" then
 			w *= 2
 		end
+		-- (the paw feels for the range at the head: a jab to the body is a real one - the paw's short arm fell a third of
+		-- a stud short of a body the server, which cannot know the variant, had it land on)
+		if body and v.name == "paw" then
+			w = 0
+		end
+		if far and v.name ~= FAR_VARIANT then
+			w = 0
+		end
 		ws[i] = w
 	end
 	local roll = K.rand3(rig.seed, rig.punchCount * 1.37 + comboPos, #kind)
@@ -958,7 +971,7 @@ local function pickVariant(rig, def, kind, comboPos)
 end
 
 -- merged parameters for one punch (allocates once per punch, never per frame)
-local function punchParams(rig, kind, comboPos, force, over)
+local function punchParams(rig, kind, comboPos, force, over, body, far)
 	local def = PUNCH[kind] or PUNCH.cross
 	local v
 	if force and def.variants then
@@ -969,7 +982,7 @@ local function punchParams(rig, kind, comboPos, force, over)
 			end
 		end
 	end
-	v = v or pickVariant(rig, def, kind, comboPos)
+	v = v or pickVariant(rig, def, kind, comboPos, body, far)
 	local prm = table.clone(def)
 	prm.variants = nil
 	if v then
@@ -1058,7 +1071,13 @@ function AnimFight.startPunch(rig, act, t)
 			heelR = 0.15, heelL = 0.1, step = false, stepR = false }
 		act.inside = true
 	end
-	act.prm = punchParams(rig, kind, comboPos, act.variant, act.over)
+	local far = false
+	if (kind == "jab" or kind == "cross") and rig.oppRig and rig.oppRig.root and rig.root and rig.geo and rig.geo.ok then
+		local arm = rig.geo[R.ARM_OF[hand][3]]
+		local d = rig.oppRig.root.Position - rig.root.Position
+		far = arm ~= nil and arm.ok and sqrt(d.X * d.X + d.Z * d.Z) > arm.dMax * STRAIGHT_FAR + 1
+	end
+	act.prm = punchParams(rig, kind, comboPos, act.variant, act.over, act.zone == "body", far)
 	if kind == "uppercut" then
 		act.prm.mirror = hand == "L" and -1 or 1
 	else
@@ -1166,6 +1185,10 @@ local function bodySpot(rig, tgt, dir, hand, act)
 	return tgt.CFrame:PointToWorldSpace(V3(sx + nx / nm * gr, 0, sz + nz / nm * gr))
 end
 
+-- (the farthest a punch is aimed at the man rather than thrown at the air, standard torso units: past a long man's
+-- reach with his lunge - at 6 a 6'8" man's body jab stopped aiming at the same 5.3 studs as a 5'10" man's, the arm's
+-- extra length never used; the spot itself is dropped past 8, aimPoint's last check)
+local AIM_FAR = 8
 -- aim point in standard UpperTorso units, or nil (nobody in front / far rig)
 local function aimPoint(rig, p, act, body, near)
 	if not near then
@@ -1237,7 +1260,9 @@ local function aimPoint(rig, p, act, body, near)
 						-- (the fist's centre beside the jaw: the glove meets the side of the face from outside)
 						-- (at the jaw's hinge, the bottom of the head - the big glove covers the jaw from there: the arm comes
 						-- round about level, never reaching up at the temple with the elbow over the shoulder)
-						pt = c + toMe * (tgt.Size.Z * 0.25) + side * (tgt.Size.X * 0.6 + 0.35) - V3(0, tgt.Size.Y * 0.42, 0)
+						-- (the glove's inside face on the jaw: the jaw's half width - narrower than the head's - plus the glove;
+						-- a fixed 0.35 stud past 0.6 of the head left a padded glove a sixth of a stud off every jaw)
+						pt = c + toMe * (tgt.Size.Z * 0.25) + side * (tgt.Size.X * 0.42 + (g["fistR" .. act.hand] or 0.4) * 0.9) - V3(0, tgt.Size.Y * 0.42, 0)
 					end
 				elseif prm.path == "upper" then
 					pt -= V3(0, body and 0.1 or 0.32, 0)
@@ -1253,7 +1278,9 @@ local function aimPoint(rig, p, act, body, near)
 					local k = clamp(((pt.Y - shY) / armT.dMax - TALL_LO) / (TALL_HI - TALL_LO), 0, 1)
 					act.tallK = k
 					if k > 0 then
-						local low = prm.path == "straight" and 0.12 or (prm.path == "over" and 0.3 or (prm.path == "upper" and 0.16 or 0.08))
+						-- (a straight a touch under the chin's middle, not its underside: a glove brushing under a tall man's
+						-- jaw read as neither a hit nor a miss)
+						local low = prm.path == "straight" and 0.05 or (prm.path == "over" and 0.3 or (prm.path == "upper" and 0.16 or 0.08))
 						pt -= V3(0, tgt.Size.Y * low * k, 0)
 					end
 				end
@@ -1281,7 +1308,7 @@ local function aimPoint(rig, p, act, body, near)
 			local lp = ut:PointToObjectSpace(pt)
 			lp = V3(lp.X / sc.X, lp.Y / sc.Y, lp.Z / sc.Z)
 			-- only something in front of us, within a few arm lengths
-			if lp.Z <= (isBag and 0.2 or -0.7) and lp.Magnitude <= 6 then
+			if lp.Z <= (isBag and 0.2 or -0.7) and lp.Magnitude <= AIM_FAR then
 				act.aimLocal = tgt.CFrame:PointToObjectSpace(pt)
 			end
 		end
@@ -1497,6 +1524,19 @@ local STRAIGHT_THROUGH = 0.3
 -- jab and cross on his collarbone, 0.2 under the jaw it was aimed at)
 local STRAIGHT_PITCH = math.tan(math.rad(15))
 local LEVEL_GIVE = 0.15
+-- the highest and lowest the fist goes over / under the punching shoulder at contact, as a share of the arm (the
+-- shoulder-to-fist line's rise; a straight at 0.72 is about 46 degrees up at full stretch, a hook at 0.42 with its
+-- square elbow about 32, an uppercut's forearm stands up under a much taller chin at 0.9 - the shorter man's punch):
+-- past it a much taller man's head is out of the punch's reach (it lands under his chin), a much shorter man's body
+-- below it. The server's hit test (HitGeometry.KIND, fitted to where this animation lands: tools/sim/hg_fit.luau)
+-- calls those the same way
+local ARM_HEIGHT = {
+	straight = { up = 0.72, bodyUp = 0.3, down = 0.9 },
+	hook = { up = 0.42, bodyUp = 0.2, down = 0.85 },
+	upper = { up = 0.9, bodyUp = 0.3, down = 1 },
+	over = { up = 0.62, bodyUp = 0.62, down = 1 },
+}
+AnimFight.ARM_HEIGHT = ARM_HEIGHT
 local function levelY(vy, h, pitch)
 	local lim = h * (pitch or STRAIGHT_PITCH)
 	return clamp(clamp(vy, -lim, lim), vy - LEVEL_GIVE, vy + LEVEL_GIVE)
@@ -2153,7 +2193,42 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 				end
 			end
 			if vS > reachS then
-				P3 = sh + v * (reachS / vS)
+				-- (a head shot out of reach stops short in front of the chin, at its height: shrunk back along the line to the
+				-- shoulder it ended up under the chin of a taller man, grazing it from below at every distance between
+				-- landing and missing, where the screen should show one or the other)
+				local wv = v * sc
+				if aimed and not isBag and not body and (prm.path == "straight" or prm.path == "hook") and abs(wv.Y) < reachS * 0.95 then
+					local hm = sqrt(wv.X * wv.X + wv.Z * wv.Z)
+					local k = hm > 1e-3 and sqrt(reachS * reachS - wv.Y * wv.Y) / hm or 1
+					P3 = sh + V3(wv.X * k, wv.Y, wv.Z * k) / sc
+				else
+					P3 = sh + v * (reachS / vS)
+				end
+			end
+			-- (and never higher or lower over the shoulder than a natural arm takes the fist: a short man's punch at
+			-- a much taller man's head lands under it - on his chin's underside, his neck - with the shoulder and elbow
+			-- where a boxer's are, not the arm thrown up overhead; a tall man's at a short man's body likewise; the
+			-- server's hit test is fitted to it: ARM_HEIGHT above)
+			if aimed and not isBag then
+				local lim = ARM_HEIGHT[prm.path]
+				if lim then
+					local ut = punchTorso(rig, p)
+					local vW = ut:VectorToWorldSpace((P3 - sh) * sc)
+					local up, down = arm.dMax * (body and lim.bodyUp or lim.up), arm.dMax * lim.down
+					local vy = clamp(vW.Y, -down, up)
+					if vy ~= vW.Y then
+						act.armClamp = vy - vW.Y
+						-- (a straight keeps its arm long: the fist goes on out at the lower height - a little past the
+						-- spot it was over, STRAIGHT_THROUGH at most - rather than the elbow folding up)
+						local h = sqrt(vW.X * vW.X + vW.Z * vW.Z)
+						local k = 1
+						if prm.path == "straight" and h > 1e-3 then
+							local len = vW.Magnitude
+							k = min(sqrt(max(0, len * len - vy * vy)), h + STRAIGHT_THROUGH) / h
+						end
+						P3 = sh + ut:VectorToObjectSpace(V3(vW.X * k, vy, vW.Z * k)) / sc
+					end
+				end
 			end
 			-- nor so close that the elbow has to fold shut: a target that ends up beside the shoulder
 			-- is met in front of it instead (a hook's turn already puts the target where it belongs)

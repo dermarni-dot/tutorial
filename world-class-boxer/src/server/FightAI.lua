@@ -776,6 +776,11 @@ end
 local INSIDE = { hook = 0.9, uppercut = 0.9, overhand = 0.95 }
 local INSIDE_JAB = { hook = 0.72, uppercut = 0.68, overhand = 0.88 }
 function FightAI:Fits(ptype, dist)
+	-- (a punch that cannot land from here on the head or the body - a short man's overhand at a giant's chin from as
+	-- close as they get, inside the floor PunchRange keeps - is not thrown)
+	if self.engine.CanLand and self.O and not self.engine:CanLand(self.F, self.O, ptype, dist) then
+		return false
+	end
 	local range = self.engine:PunchRange(self.F, ptype)
 	local kind = Config.Punches[ptype] and Config.Punches[ptype].kind or "straight"
 	local k = INSIDE[kind]
