@@ -246,7 +246,21 @@ end }, { __index = RUD })
 local TweenInfo = { new = function(time, style, dir, rep, rev, delay)
 	return { Time = time or 1, EasingStyle = style, EasingDirection = dir, RepeatCount = rep or 0, Reverses = rev or false, DelayTime = delay or 0 }
 end }
-local H = Host.new({ globals = { Instance = E.Instance, workspace = E.workspace, Workspace = E.workspace, UDim2 = UDim2, UDim = UDim, TweenInfo = TweenInfo }, src = args.src })
+local GLOBALS = { Instance = E.Instance, workspace = E.workspace, Workspace = E.workspace, UDim2 = UDim2, UDim = UDim, TweenInfo = TweenInfo }
+if args.perf then
+	-- (--perf runs VenueFX: fakeengine instances are Instances to typeof, and its follow spots build RaycastParams)
+	local luneTypeof = typeof
+	GLOBALS.typeof = function(v)
+		if type(v) == "table" and (E.IsInstance(v) or rawget(v, "_class") ~= nil or rawget(v, "ClassName") ~= nil) then
+			return "Instance"
+		end
+		return luneTypeof(v)
+	end
+	GLOBALS.RaycastParams = { new = function()
+		return { FilterDescendantsInstances = {}, FilterType = nil, IgnoreWater = true }
+	end }
+end
+local H = Host.new({ globals = GLOBALS, src = args.src })
 
 -- services as fakeengine instances (they hold real children); the host's GetService finds game._kids first
 local function svc(name, props)
@@ -676,6 +690,7 @@ local KINDS = {}
 for w in tostring(args.only or "CommunityCenter,ClubArena,Arena,Stadium"):gmatch("[^,]+") do
 	table.insert(KINDS, w)
 end
+
 -- the two houses: a Tuesday pro fight of a nobody (0.41) and a world title night (1, with 70% supporters)
 local FILLS = {
 	low = { kind = "Pro Fight", importance = 0.2, popularity = 10, playerNick = "ROOKIE" },
@@ -707,6 +722,130 @@ local function runFX(arena, center, react)
 		print("[crowd_scene] CrowdFX failed: " .. tostring(err))
 	end
 end
+------------------------------------------------------------------------
+-- --perf: the pre-fight scene's frames on the client, at a packed house: VenueFX.Start on the fight's arena (one
+-- frame), the frames while its time-sliced builds run (FrameBudget: the crowd's printed rows, VenueDetail), then
+-- --frames frames of the scene running (the crowd, the printed rows, the lights). Per frame: the Lua ms, the
+-- Instance.new calls and the property writes; the longest frame and what ran in it. Lua tables stand in for the
+-- engine's instances (and a GC pause can land in any frame): compare one version of the code with another, not with a
+-- device.
+--   lune run tools/sim/crowd_scene.luau --perf [--only Stadium] [--frames 240] [--level 3]
+------------------------------------------------------------------------
+if args.perf then
+	local ltask = require("@lune/task")
+	local okV, VenueFX = pcall(H.require, "Client/VenueFX")
+	if not okV then
+		print("[crowd_scene] VenueFX failed to load: " .. tostring(VenueFX))
+		return
+	end
+	local okB, FrameBudget = pcall(H.require, "Client/FrameBudget")
+	FrameBudget = okB and type(FrameBudget) == "table" and FrameBudget or nil
+	local FRAMES = tonumber(args.frames) or 240
+	local cnt = { new = 0, set = 0 }
+	local rawNew = E.Instance.new
+	E.Instance.new = function(cls, parent)
+		cnt.new += 1
+		return rawNew(cls, parent)
+	end
+	E.onSet = function()
+		cnt.set += 1
+	end
+	local function measure(fn, ...)
+		cnt.new, cnt.set = 0, 0
+		local t0 = os.clock()
+		local ok, err = pcall(fn, ...)
+		if not ok then
+			print("[crowd_scene] " .. tostring(err))
+		end
+		return (os.clock() - t0) * 1000, cnt.new, cnt.set
+	end
+	local function top(by, k)
+		local list = {}
+		for name, ms in pairs(by) do
+			table.insert(list, { name, ms / k })
+		end
+		table.sort(list, function(a, b)
+			return a[2] > b[2]
+		end)
+		local out = {}
+		for i = 1, math.min(6, #list) do
+			table.insert(out, string.format("%s %.1f", list[i][1], list[i][2]))
+		end
+		return table.concat(out, ", ")
+	end
+	-- frames: n, or (n = nil) until the queued builds are done; the stats and the longest frame's pieces
+	local function frames(n)
+		local st = { n = 0, max = 0, sum = 0, new = 0, maxNew = 0, set = 0, over = 0, by = {}, worst = {}, all = {} }
+		while (n and st.n < n) or (not n and FrameBudget and FrameBudget.Busy() and st.n < 3000) do
+			VenueFX.Profile = {}
+			local ms, nw, w = measure(function()
+				E.Heartbeat:Fire(1 / 60)
+			end)
+			ltask.wait()
+			st.n += 1
+			st.all[st.n] = ms
+			local other = ms
+			for name, v in pairs(VenueFX.Profile) do
+				st.by[name] = (st.by[name] or 0) + v
+				other -= v
+			end
+			if ms > st.max then
+				st.worst = VenueFX.Profile
+				st.worst["(rest: builds, other Heartbeat work)"] = other
+			end
+			st.max, st.sum = math.max(st.max, ms), st.sum + ms
+			st.new, st.maxNew, st.set = st.new + nw, math.max(st.maxNew, nw), st.set + w
+			if ms > 4 then
+				st.over += 1
+			end
+		end
+		return st
+	end
+	local function line(label, st)
+		local k = math.max(1, st.n)
+		table.sort(st.all)
+		local p95 = st.all[math.max(1, math.ceil(#st.all * 0.95))] or 0
+		print(string.format("    %-7s %5d frames | max %6.2f ms  p95 %5.2f  mean %5.2f ms  >4 ms %4d | new %6d (max %4d/frame) | writes %6.0f/frame",
+			label, st.n, st.max, p95, st.sum / k, st.over, st.new, st.maxNew, st.set / k))
+		if st.n > 0 then
+			print("            longest frame: " .. top(st.worst, 1))
+		end
+	end
+	for _, kind in ipairs(KINDS) do
+		local sms, snew = measure(function()
+			_G.__arena = Venues.New(kind, FILLS.max)
+		end)
+		local arena = _G.__arena
+		if arena then
+			arena.Parent = E.workspace
+			local center = arena.Anchors.RingCenter.Position
+			camAt(CFrame.lookAt(center + Vector3.new(-30, 12, 40), center))
+			VenueFX.Profile = {}
+			local cms, cnew, cset = measure(VenueFX.Start, arena, { venue = kind, stakes = { "WBC" }, kind = "World Title", rounds = 12,
+				tape = { you = { name = "Red" }, opp = { name = "Blue" } } })
+			local startBy = VenueFX.Profile
+			print(string.format("%s: server Venues.New %.1f ms (%d Instance.new)  |  client VenueFX.Start %.1f ms, %d Instance.new, %d writes",
+				kind, sms, snew, cms, cnew, cset))
+			print("            Start by piece (ms): " .. top(startBy, 1))
+			pcall(VenueFX.Phase, "entrance", { who = "opp", corner = "Blue" })
+			if FrameBudget then
+				FrameBudget.Longest = { ms = 0 }
+			end
+			line("build", frames(nil))
+			if FrameBudget then
+				print(string.format("            longest build slice: %.1f ms (%s)", FrameBudget.Longest.ms, tostring(FrameBudget.Longest.name)))
+			end
+			local run = frames(FRAMES)
+			line("scene", run)
+			print("            a frame by piece (mean ms): " .. top(run.by, run.n))
+			VenueFX.Profile = nil
+			pcall(VenueFX.Stop)
+			arena:Destroy()
+		end
+	end
+	return
+end
+
 for _, kind in ipairs(KINDS) do
 	for _, fill in ipairs({ "low", "max" }) do
 		local variants = { { "", nil } }

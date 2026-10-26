@@ -526,10 +526,15 @@ function VenueDetail.Build(arena, opts)
 	local b = rc.CFrame * CF(0, -sp.ringH, 0) -- the floor under the ring's centre, in the arena's frame
 	local m = Instance.new("Model")
 	m.Name = "VenueDetail"
+	-- (opts.tick: called after every piece - VenueFX's time-sliced build yields there; the model is parented in whole)
+	local tick = type(opts.tick) == "function" and opts.tick or nil
 	local function run(fn, ...)
 		local ok, err = pcall(fn, m, b, sp, ...)
 		if not ok then
 			warn("[VenueDetail] " .. tostring(kind) .. ": " .. tostring(err))
+		end
+		if tick then
+			tick()
 		end
 	end
 	-- tier 1

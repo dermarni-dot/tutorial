@@ -895,7 +895,9 @@ local function buildLights(arena, spec, kind)
 			cable.Parent = a0.Parent
 		end
 	end
-	-- key lights: 5 shadowed spot banks (the only shadow casters, so Future lighting stays cheap)
+	-- key lights: 5 spot banks, only the centre one shadowed (VenueFX's ring keys are the boxers' other shadow casters
+	-- and it keeps the same one bank on; four more shadowed lights from the arena's first frame were Future's dearest
+	-- cost before the client's Start got to them)
 	for _, c in ipairs({ { -10, -10 }, { 10, -10 }, { 10, 10 }, { -10, 10 }, { 0, 0 } }) do
 		local y = rigY - w / 2 - 0.9
 		prop(rig, "LampHousing", V3(3.2, 0.9, 3.2), CF(c[1], y + 0.2, c[2]), rgb(22, 22, 24), M.Metal, { CastShadow = false })
@@ -905,7 +907,7 @@ local function buildLights(arena, spec, kind)
 		end
 		-- the lamp housing must not cast shadows or it would block its own shadowed light
 		local l = deco(rig, "Lamp", V3(3, 0.3, 3), CF(c[1], y - 0.42, c[2]), rgb(255, 255, 240), M.SmoothPlastic, { CastShadow = false, Transparency = 1, CanCollide = false, CanQuery = false })
-		spotLight(l, FACE.Bottom, rgb(255, 250, 238), 55, rigY + 20, 3.2, true)
+		spotLight(l, FACE.Bottom, rgb(255, 250, 238), 55, rigY + 20, 3.2, c[1] == 0 and c[2] == 0)
 	end
 	-- coloured washes (no shadows): red side, blue side, amber fill
 	local cans = spec.parCans or 0
@@ -1591,7 +1593,9 @@ end
 ------------------------------------------------------------------------
 -- Template
 ------------------------------------------------------------------------
-local function buildTemplate(kind)
+-- pace (optional): called between the template's big pieces (BuildTemplates' paced start-up build: a frame each)
+local function buildTemplate(kind, pace)
+	pace = pace or function() end
 	local spec = SPECS[kind]
 	spec.displayName = (Config.Venues and Config.Venues[kind] and Config.Venues[kind].name) or (kind == "Gym" and "Sparring Ring" or kind)
 	local arena = Instance.new("Model")
@@ -1610,20 +1614,25 @@ local function buildTemplate(kind)
 	end
 	local rng = Random.new(#kind * 31)
 	buildRing(arena, spec)
+	pace()
 	if spec.rows > 0 then
 		-- the stands, the fans (sold out; Venues.New empties it to the night's house), the VIP / media boxes, the
 		-- camera platforms, the photographers and (bowl venues) the upper bowl; sets spec.bowlTop
 		Crowd.Build(arena, spec, { tvCamera = tvCamera })
+		pace()
 	end
 	buildRingside(arena, spec, Random.new(#kind * 71))
 	if kind ~= "Gym" then
 		buildWalkways(arena, spec, kind)
 	end
+	pace()
 	buildScreens(arena, spec, kind)
 	buildLights(arena, spec, kind)
+	pace()
 	buildBroadcast(arena, spec, Random.new(#kind * 97))
 	buildCharacter(arena, spec, Random.new(#kind * 13))
 	if spec.gym then
+		pace()
 		buildGymRoom(arena, spec, Random.new(4242))
 	end
 	-- anchors (on the surface a fighter stands on)
@@ -1653,15 +1662,41 @@ local function buildTemplate(kind)
 	return arena
 end
 
-function Venues.BuildTemplates()
+-- paced (Main's start-up build): a frame between the templates and between their big pieces, the Arena (every
+-- venue's fallback) first, a template already there kept. 8.6k instances in one server step held the frame of
+-- every client meanwhile (in Studio the server and the client are one process: the menu's fade stalled on it).
+-- Unpaced (a fight that found no template): all of them now, in this step.
+function Venues.BuildTemplates(paced)
+	local kinds = {}
 	for kind in pairs(SPECS) do
-		local old = ServerStorage:FindFirstChild("Venue_" .. kind)
-		if old then
-			old:Destroy()
-		end
-		local ok, err = pcall(buildTemplate, kind)
-		if not ok then
-			warn("[Venues] template " .. kind .. " failed:", err)
+		table.insert(kinds, kind)
+	end
+	table.sort(kinds, function(a, b)
+		return (a == "Arena" and 0 or 1) < (b == "Arena" and 0 or 1) or ((a == "Arena") == (b == "Arena") and a < b)
+	end)
+	local pace = paced and function()
+		task.wait()
+	end or nil
+	for _, kind in ipairs(kinds) do
+		local name = "Venue_" .. kind
+		local old = ServerStorage:FindFirstChild(name)
+		if not (paced and old) then
+			if old then
+				old:Destroy()
+			end
+			local ok, res = pcall(buildTemplate, kind, pace)
+			if not ok then
+				warn("[Venues] template " .. kind .. " failed:", res)
+			elseif paced then
+				-- (a fight that came meanwhile built every template itself: that one stays)
+				for _, c in ipairs(ServerStorage:GetChildren()) do
+					if c.Name == name and c ~= res then
+						res:Destroy()
+						break
+					end
+				end
+				task.wait()
+			end
 		end
 	end
 end
@@ -1997,6 +2032,13 @@ function Venues.New(kind, opts)
 	arena:SetAttribute("PlayerNick", type(opts.nick) == "string" and opts.nick or "")
 	arena:SetAttribute("Spar", kind == "Gym")
 	arena:SetAttribute("Supporters", math.floor(supporters * 100) / 100)
+	-- the clone's descendants, walked once (after the dressing that adds or removes any) for the ribbons, the members'
+	-- bags and the rigs' re-fit: three walks of a packed house's few thousand instances were one
+	local descList
+	local function desc()
+		descList = descList or arena:GetDescendants()
+		return descList
+	end
 	-- each dressing step is optional: a failure leaves a plain but working venue
 	local function try(name, fn, ...)
 		local ok, err = pcall(fn, ...)
@@ -2082,7 +2124,7 @@ function Venues.New(kind, opts)
 				table.insert(bill, table.concat(stakes, " / ") .. " WORLD CHAMPIONSHIP")
 			end
 			local text = table.concat(bill, "   -   ") .. "   -   "
-			for _, d in ipairs(arena:GetDescendants()) do
+			for _, d in ipairs(desc()) do
 				if d.Name == "Text" and d:IsA("TextLabel") and d.Parent and d.Parent.Name == "Ticker" then
 					d.Text = string.rep(text, 3)
 				end
@@ -2095,7 +2137,7 @@ function Venues.New(kind, opts)
 	-- members' bag rigs keep their pivot as a world-space attribute (GymVisuals / Animator read it):
 	-- follow the move, and give every copy its own Index so two rooms never share a bag id
 	local moved = arena:GetPivot() * before:Inverse()
-	for _, d in ipairs(arena:GetDescendants()) do
+	for _, d in ipairs(desc()) do
 		if d:IsA("Model") and CollectionService:HasTag(d, "MemberBag") then
 			local hook = d:GetAttribute("Hook")
 			if typeof(hook) == "Vector3" then
@@ -2109,7 +2151,7 @@ function Venues.New(kind, opts)
 	-- headgear re-fit once the engine's post-parent passes have run (Builder.OnPlaced; a no-op while it fits)
 	pcall(function()
 		local Builder = require(Shared:WaitForChild("Builder"))
-		for _, d in ipairs(arena:GetDescendants()) do
+		for _, d in ipairs(desc()) do
 			if d:IsA("Humanoid") and d.Parent and d.Parent:IsA("Model") then
 				Builder.OnPlaced(d.Parent)
 			end

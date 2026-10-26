@@ -13,7 +13,9 @@
 --     CrowdReact attribute, Crowd.React on the server) spreads from the ring outward at ~70 studs a second: a big
 --     punch, a knockdown, the count, the get-up, the bell, the round's end, the KO and the winner's announcement.
 --     Each fan answers by his favourite: cheer (stand, arms up, jump) or boo.
---   CrowdFX.Start(arena, { center, share, venue })  CrowdFX.Update(dt, now, excite, supportBoost)
+--   CrowdFX.Start(arena, { center, share, venue, sync })  CrowdFX.Update(dt, now, excite, supportBoost)
+--   (Start draws the printed rows and the bowl time-sliced, a few ms a frame, the rows nearest the ring first;
+--   opts.sync / opts.everyone draw them all at once)
 --   CrowdFX.React(event, data)  CrowdFX.Fans()  CrowdFX.Guis()  CrowdFX.Stop()
 --   CrowdFX.Print(arena, share, folder) (the printed rows alone: the previews use it offline)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -39,6 +41,16 @@ end
 local function lodPick(low, medium, high)
 	return WorldLOD and WorldLOD.Pick(low, medium, high) or high
 end
+-- the time-sliced build (optional: without it the printed rows are drawn in one go)
+local FrameBudget
+do
+	local m = script.Parent:FindFirstChild("FrameBudget")
+	local ok, mod = false, nil
+	if m then
+		ok, mod = pcall(require, m)
+	end
+	FrameBudget = (ok and type(mod) == "table") and mod or nil
+end
 
 local CrowdFX = {}
 
@@ -57,6 +69,7 @@ local CROWD_EDGE = 3
 local WAVE_SPEED = 70 -- studs / s a reaction travels outward from the ring
 local PRINT_SLABS_PER_TICK = { 2, 4, 7 } -- printed rows redrawn a tick by level
 local BOWL_ROWS_PER_TICK = { 6, 12, 24 }
+local NONE = table.freeze({})
 
 local S = nil
 
@@ -349,18 +362,22 @@ local function poseFan(e, now, ex, boost, parts, cfs, k)
 	return k
 end
 
+-- the camera's view cone: its position, look and the tangent of its half diagonal
+local function viewCone()
+	local cam = workspace.CurrentCamera
+	local camCF = cam and cam.CFrame or CF(S.center)
+	local vp = cam and cam.ViewportSize
+	local aspect = (vp and vp.Y > 0) and vp.X / vp.Y or 16 / 9
+	return camCF.Position, camCF.LookVector, math.tan(math.rad((cam and cam.FieldOfView or 70) * 0.5)) * math.sqrt(1 + aspect * aspect)
+end
+
 local function updateRigs(dt, now, ex, boost)
 	local fans = S.fans
 	local count = #fans
 	if count == 0 then
 		return
 	end
-	local cam = workspace.CurrentCamera
-	local camCF = cam and cam.CFrame or CF(S.center)
-	local camPos, look = camCF.Position, camCF.LookVector
-	local vp = cam and cam.ViewportSize
-	local aspect = (vp and vp.Y > 0) and vp.X / vp.Y or 16 / 9
-	local tanD = math.tan(math.rad((cam and cam.FieldOfView or 70) * 0.5)) * math.sqrt(1 + aspect * aspect)
+	local camPos, look, tanD = viewCone()
 	local parts, cfs = S.bulkParts, S.bulkCFs
 	local k, moved, slow = 0, 0, 0
 	local budget, slowBudget = lodPick(160, 280, CROWD_BUDGET), lodPick(0, 150, CROWD_SLOW_BUDGET)
@@ -425,8 +442,10 @@ local function mk(class, props, parent)
 	return o
 end
 
--- draws one slab's fans; returns the slab record for the animation
-local function printSlab(slab, share, seedK)
+-- draws one slab's fans; returns the slab record for the animation. tick (optional) runs after every fan (the
+-- time-sliced build yields there): the slab's frames are made unparented and go in together at the end, so a slab
+-- is never seen half drawn
+local function printSlab(slab, share, seedK, tick)
 	local sg = slab:FindFirstChild("CrowdPrint")
 	local cols = tonumber(slab:GetAttribute("CrowdCols"))
 	if not sg or not cols then
@@ -444,15 +463,21 @@ local function printSlab(slab, share, seedK)
 	local colW = 1 / cols -- a seat in x scale
 	local asp = slabH / slabW -- x scale per y scale of the same length
 	local seatCol = slab.Color:Lerp(BLACK, 0.2)
-	local rec = { slab = slab, sg = sg, fans = {}, standing = standing, ringD = (slab.Position - S.center).Magnitude, phase = rng:NextNumber() * 6.28 }
+	local rec = { slab = slab, sg = sg, fans = {}, standing = standing, ringD = (slab.Position - S.center).Magnitude, phase = rng:NextNumber() * 6.28,
+		pos = slab.Position, rad = slabW / 2 + 1 }
+	local staged = {}
+	local function put(o)
+		staged[#staged + 1] = o
+		return o
+	end
 	-- the seat backs (one strip; the fans sit in front of it) unless standing room
 	if not standing then
-		mk("Frame", { Size = UDim2.fromScale(1, 0.46), Position = UDim2.fromScale(0, 0.5), BackgroundColor3 = seatCol, ZIndex = 1 }, sg)
+		put(mk("Frame", { Size = UDim2.fromScale(1, 0.46), Position = UDim2.fromScale(0, 0.5), BackgroundColor3 = seatCol, ZIndex = 1 }))
 		local divs = {}
 		for _ = 1, cols do
 			table.insert(divs, "▏")
 		end
-		local l = mk("TextLabel", { Size = UDim2.fromScale(1, 0.46), Position = UDim2.fromScale(0, 0.5), BackgroundTransparency = 1, TextScaled = true, RichText = false, Text = table.concat(divs, "      "), TextColor3 = seatCol:Lerp(BLACK, 0.5), ZIndex = 2 }, sg)
+		local l = put(mk("TextLabel", { Size = UDim2.fromScale(1, 0.46), Position = UDim2.fromScale(0, 0.5), BackgroundTransparency = 1, TextScaled = true, RichText = false, Text = table.concat(divs, "      "), TextColor3 = seatCol:Lerp(BLACK, 0.5), ZIndex = 2 }))
 		Typography.Apply(l, "glyph")
 	end
 	local bodyH = standing and 0.42 or 0.5
@@ -471,38 +496,44 @@ local function printSlab(slab, share, seedK)
 			local baseY = standing and 1 or 0.98
 			local f = { x = x, bw = bodyW * wk, bh = bodyH * hk, hw = headW * (female and 0.95 or 1), hh = headH, phase = rng:NextNumber() * 6.28, speed = 4 + rng:NextNumber() * 4,
 				energy = rng:NextNumber() < 0.3 and 0.6 or (rng:NextNumber() < 0.7 and 1 or 1.4), baseY = baseY, fav = rng:NextNumber() < 0.2 and -1 or 0, standing = standing, asp = asp }
-			f.body = mk("Frame", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(x, baseY), Size = UDim2.fromScale(f.bw, f.bh), BackgroundColor3 = shirt, ZIndex = 4 }, sg)
+			f.body = put(mk("Frame", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(x, baseY), Size = UDim2.fromScale(f.bw, f.bh), BackgroundColor3 = shirt, ZIndex = 4 }))
 			if standing then
 				-- legs under a stander
-				f.legs = mk("Frame", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(x, 1), Size = UDim2.fromScale(f.bw * 0.7, 0.34), BackgroundColor3 = rgb(32, 32, 38), ZIndex = 3 }, sg)
+				f.legs = put(mk("Frame", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(x, 1), Size = UDim2.fromScale(f.bw * 0.7, 0.34), BackgroundColor3 = rgb(32, 32, 38), ZIndex = 3 }))
 				f.body.Position = UDim2.fromScale(x, 1 - 0.3)
 				f.baseY = 1 - 0.3
 			end
 			local headY = f.baseY - f.bh + 0.01
 			if faces and rng:NextNumber() < 0.9 then
-				f.head = mk("ImageLabel", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(x, headY), Size = UDim2.fromScale(f.hw, f.hh), BackgroundColor3 = skin, BackgroundTransparency = 0,
-					Image = "rbxassetid://" .. tostring(pickFace(rng)), ScaleType = Enum.ScaleType.Fit, ZIndex = 5 }, sg)
+				f.head = put(mk("ImageLabel", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(x, headY), Size = UDim2.fromScale(f.hw, f.hh), BackgroundColor3 = skin, BackgroundTransparency = 0,
+					Image = "rbxassetid://" .. tostring(pickFace(rng)), ScaleType = Enum.ScaleType.Fit, ZIndex = 5 }))
 			else
-				f.head = mk("Frame", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(x, headY), Size = UDim2.fromScale(f.hw, f.hh), BackgroundColor3 = skin, ZIndex = 5 }, sg)
+				f.head = put(mk("Frame", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(x, headY), Size = UDim2.fromScale(f.hw, f.hh), BackgroundColor3 = skin, ZIndex = 5 }))
 			end
 			mk("UICorner", { CornerRadius = UDim.new(0.5, 0) }, f.head)
 			local hr = rng:NextNumber()
 			if hr < 0.45 then
 				-- a cap or a beanie over the top of the head
-				f.hat = mk("Frame", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(x, headY - f.hh * 0.62), Size = UDim2.fromScale(f.hw * (hr < 0.3 and 1.08 or 0.98), f.hh * (hr < 0.3 and 0.3 or 0.42)), BackgroundColor3 = c3(HATS[rng:NextInteger(1, #HATS)]), ZIndex = 6 }, sg)
+				f.hat = put(mk("Frame", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(x, headY - f.hh * 0.62), Size = UDim2.fromScale(f.hw * (hr < 0.3 and 1.08 or 0.98), f.hh * (hr < 0.3 and 0.3 or 0.42)), BackgroundColor3 = c3(HATS[rng:NextInteger(1, #HATS)]), ZIndex = 6 }))
 				mk("UICorner", { CornerRadius = UDim.new(0.5, 0) }, f.hat)
 				f.hatDy = f.hh * 0.62
 			end
 			-- arms: thin bars from the shoulders, rotated about their top (positioned so the top stays at the shoulder)
-			f.armL = mk("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromScale(colW * 0.12, f.bh * 0.78), BackgroundColor3 = shirt:Lerp(skin, rng:NextNumber() < 0.4 and 0.6 or 0), ZIndex = 3 }, sg)
-			f.armR = mk("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromScale(colW * 0.12, f.bh * 0.78), BackgroundColor3 = f.armL.BackgroundColor3, ZIndex = 3 }, sg)
+			f.armL = put(mk("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromScale(colW * 0.12, f.bh * 0.78), BackgroundColor3 = shirt:Lerp(skin, rng:NextNumber() < 0.4 and 0.6 or 0), ZIndex = 3 }))
+			f.armR = put(mk("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromScale(colW * 0.12, f.bh * 0.78), BackgroundColor3 = f.armL.BackgroundColor3, ZIndex = 3 }))
 			f.armLen = f.bh * 0.78
 			f.phone = rng:NextNumber() < 0.14
 			if f.phone then
-				f.phoneF = mk("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromScale(colW * 0.1, f.bh * 0.16), BackgroundColor3 = rgb(200, 225, 255), ZIndex = 7 }, sg)
+				f.phoneF = put(mk("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromScale(colW * 0.1, f.bh * 0.16), BackgroundColor3 = rgb(200, 225, 255), ZIndex = 7 }))
 			end
 			table.insert(rec.fans, f)
+			if tick then
+				tick()
+			end
 		end
+	end
+	for _, o in ipairs(staged) do
+		o.Parent = sg
 	end
 	rec.asp = asp
 	return rec
@@ -548,12 +579,18 @@ local function updatePrints(now, ex, boost)
 		return
 	end
 	local per = lodPick(PRINT_SLABS_PER_TICK[1], PRINT_SLABS_PER_TICK[2], PRINT_SLABS_PER_TICK[3])
+	local camPos, look, tanD = viewCone()
 	for _ = 1, per do
 		S.printIdx = (S.printIdx or 0) % #list + 1
 		local rec = list[S.printIdx]
-		local r = reactValue(S.react, rec.ringD, now)
+		-- (a slab out of the picture passes its turn: its fans keep the pose they had)
+		local d = rec.pos - camPos
+		local along = d:Dot(look)
+		local reach = math.max(along, 0) * tanD + rec.rad
+		local seen = S.everyone or (along > -rec.rad and d:Dot(d) - along * along <= reach * reach)
+		local r = seen and reactValue(S.react, rec.ringD, now) or 0
 		local att = (r > 0 and S.react) and S.react.att or "cheer"
-		for _, f in ipairs(rec.fans) do
+		for _, f in ipairs(seen and rec.fans or NONE) do
 			local fav = f.fav
 			local a = att
 			if att == "split" then
@@ -577,7 +614,8 @@ end
 ------------------------------------------------------------------------
 -- the upper bowl: RichText rows
 ------------------------------------------------------------------------
-local function bowlRows(slab, share)
+-- (rec: the record to fill, already listed, so the rows animate as they come in; tick: after every row)
+local function bowlRows(slab, share, rec, tick)
 	local sg = slab:FindFirstChild("CrowdPrint")
 	local rows = tonumber(slab:GetAttribute("CrowdRows"))
 	if not sg or not rows then
@@ -590,7 +628,8 @@ local function bowlRows(slab, share)
 	end
 	local rng = Random.new((tonumber(slab:GetAttribute("Seed")) or 1) * 331)
 	local cols = 110
-	local rec = { slab = slab, sg = sg, rows = {}, ringD = (slab.Position - S.center).Magnitude }
+	rec = rec or {}
+	rec.slab, rec.sg, rec.rows, rec.ringD = slab, sg, rec.rows or {}, (slab.Position - S.center).Magnitude
 	for i = 0, rows - 1 do
 		-- the far rows of the bowl fill last
 		local fill = rowFill(share, 0.6 + 0.4 * i / math.max(1, rows - 1), false)
@@ -615,11 +654,18 @@ local function bowlRows(slab, share)
 			end
 		end
 		local rowH = 1 / rows
-		local hl = mk("TextLabel", { Name = "CrowdRow", BackgroundTransparency = 1, RichText = true, TextScaled = true, TextColor3 = WHITE, Text = table.concat(heads), Size = UDim2.fromScale(1, rowH * 0.42), Position = UDim2.fromScale(0, i * rowH + rowH * 0.04), ZIndex = 3 }, sg)
-		local bl = mk("TextLabel", { Name = "CrowdRow", BackgroundTransparency = 1, RichText = true, TextScaled = true, TextColor3 = WHITE, Text = table.concat(bodies), Size = UDim2.fromScale(1, rowH * 0.5), Position = UDim2.fromScale(0, i * rowH + rowH * 0.42), ZIndex = 2 }, sg)
+		local hl = mk("TextLabel", { Name = "CrowdRow", BackgroundTransparency = 1, RichText = true, TextScaled = true, TextColor3 = WHITE, Text = table.concat(heads), Size = UDim2.fromScale(1, rowH * 0.42), Position = UDim2.fromScale(0, i * rowH + rowH * 0.04), ZIndex = 3 })
+		local bl = mk("TextLabel", { Name = "CrowdRow", BackgroundTransparency = 1, RichText = true, TextScaled = true, TextColor3 = WHITE, Text = table.concat(bodies), Size = UDim2.fromScale(1, rowH * 0.5), Position = UDim2.fromScale(0, i * rowH + rowH * 0.42), ZIndex = 2 })
 		Typography.Apply(hl, "glyph")
 		Typography.Apply(bl, "glyph")
+		hl.Parent, bl.Parent = sg, sg
 		table.insert(rec.rows, { h = hl, b = bl, y = i * rowH, rowH = rowH, phase = rng:NextNumber() * 6.28, d = rec.ringD + i * 2.6 })
+		if S.bowlTotal then
+			S.bowlTotal += 1
+		end
+		if tick then
+			tick()
+		end
 	end
 	-- mostly lit by the scene (the house lights VenueFX dims), a little self-lit so the far tiers never go black
 	sg.LightInfluence = 0.65
@@ -656,42 +702,80 @@ end
 ------------------------------------------------------------------------
 -- public
 ------------------------------------------------------------------------
--- draws the printed rows and the bowl for the arena (share = the house); the previews call it offline
-function CrowdFX.Print(arena, share, center)
-	local own = S == nil
-	if own then
-		S = { arena = arena, center = center or V3(0, 0, 0), prints = {}, bowlRecs = {}, bowlTotal = 0 }
-	end
+-- the printed rows' and the bowl's build, one slab after another (the rows nearest the ring first): each RowPrint
+-- slab drawn whole (printSlab), each BowlTier a row at a time. tick (optional) runs between the pieces; laidOut lays a
+-- finished slab's fans out at rest
+local function buildPrints(arena, share, tick, laidOut)
 	local bowl = arena:FindFirstChild("Bowl")
-	local prints, recs, total = {}, {}, 0
+	local jobs = {}
 	if bowl then
 		local k = 0
 		for _, slab in ipairs(bowl:GetChildren()) do
 			if slab:IsA("BasePart") and slab.Name == "RowPrint" then
 				k += 1
-				local rec = printSlab(slab, share, k)
-				if rec then
-					table.insert(prints, rec)
-				end
+				table.insert(jobs, { slab = slab, k = k, d = (slab.Position - S.center).Magnitude })
 			elseif slab:IsA("BasePart") and slab.Name == "BowlTier" then
-				local rec = bowlRows(slab, share)
-				if rec then
-					table.insert(recs, rec)
-					total += #rec.rows
-				end
+				table.insert(jobs, { slab = slab, bowl = true, d = (slab.Position - S.center).Magnitude })
 			end
 		end
 	end
-	table.sort(prints, function(a, b)
+	table.sort(jobs, function(a, b)
+		return a.d < b.d
+	end)
+	for _, j in ipairs(jobs) do
+		if j.bowl then
+			local rec = { rows = {} }
+			table.insert(S.bowlRecs, rec)
+			if not bowlRows(j.slab, share, rec, tick) then
+				table.remove(S.bowlRecs, table.find(S.bowlRecs, rec))
+			end
+		else
+			local rec = printSlab(j.slab, share, j.k, tick)
+			if rec then
+				if laidOut then
+					laidOut(rec)
+				end
+				table.insert(S.prints, rec)
+			end
+		end
+		if tick then
+			tick()
+		end
+	end
+	table.sort(S.prints, function(a, b)
 		return a.ringD < b.ringD
 	end)
+end
+
+-- draws the printed rows and the bowl for the arena (share = the house) in one go; the previews call it offline
+function CrowdFX.Print(arena, share, center)
+	local own = S == nil
 	if own then
-		local out = { prints = prints, bowl = recs }
-		S = nil
-		return out
+		S = { arena = arena, center = center or V3(0, 0, 0), prints = {}, bowlRecs = {}, bowlTotal = 0 }
 	end
-	S.prints, S.bowlRecs, S.bowlTotal = prints, recs, total
-	return { prints = prints, bowl = recs }
+	S.prints, S.bowlRecs, S.bowlTotal = {}, {}, 0
+	buildPrints(arena, share)
+	local out = { prints = S.prints, bowl = S.bowlRecs }
+	if own then
+		S = nil
+	end
+	return out
+end
+
+-- the fight's build of the printed rows, time-sliced on FrameBudget (the arena's 10k-odd frames and labels were one
+-- ~half-second frame at a packed Stadium): the rows already drawn animate while the rest come in
+local function restLayout(rec)
+	for _, f in ipairs(rec.fans) do
+		layoutFan(f, 0, 0, f.phone and 0.7 or 0, 0, 0)
+	end
+end
+local function startBuild()
+	local st = S
+	st.build = FrameBudget.Run(function()
+		if S == st then
+			buildPrints(st.arena, st.share, FrameBudget.Tick, restLayout)
+		end
+	end, false, "CrowdFX printed rows")
 end
 
 function CrowdFX.Start(arena, opts)
@@ -704,12 +788,11 @@ function CrowdFX.Start(arena, opts)
 		share = tonumber(opts.share) or tonumber(arena:GetAttribute("CrowdShare")) or 1, react = nil, lastLocal = {}, everyone = opts.everyone == true,
 	}
 	setupRigs()
-	CrowdFX.Print(arena, S.share, S.center)
-	-- lay the printed fans out once at rest
-	for _, rec in ipairs(S.prints) do
-		for _, f in ipairs(rec.fans) do
-			layoutFan(f, 0, 0, f.phone and 0.7 or 0, 0, 0)
-		end
+	-- the printed rows: all at once for the offline scenes (opts.everyone / opts.sync), time-sliced in the game
+	if S.everyone or opts.sync or not FrameBudget then
+		buildPrints(arena, S.share, nil, restLayout)
+	else
+		startBuild()
 	end
 	-- reactions the server (Crowd.React) broadcasts
 	pcall(function()
@@ -774,9 +857,21 @@ function CrowdFX.Update(dt, now, excite, supportBoost)
 	if S.react and now - S.react.t0 > S.react.hold + S.react.decay + 3 then
 		S.react = nil
 	end
-	updateRigs(dt, now, ex, boost)
-	updatePrints(now, ex, boost)
-	updateBowl(now, ex)
+	-- the rigs and the printed rows (+ the bowl) take turns: each on its own 30 Hz tick, half a tick apart, so a
+	-- 60 fps frame carries one of them, never both (a long frame, dt > 1/45, runs whatever is due)
+	S.accR = (S.accR or 1 / 60) + dt
+	S.accP = (S.accP or 0) + dt
+	local long, did = dt > 1 / 45, false
+	if S.accR >= 1 / 30 then
+		updateRigs(S.accR, now, ex, boost)
+		S.accR = 0
+		did = true
+	end
+	if S.accP >= 1 / 30 and (long or not did) then
+		S.accP = 0
+		updatePrints(now, ex, boost)
+		updateBowl(now, ex)
+	end
 end
 
 -- the rigs (for VenueFX's phone-light / flash volumes): { fan = part, pos = Vector3 }
@@ -788,8 +883,13 @@ end
 function CrowdFX.Guis()
 	local out = {}
 	if S then
-		for _, rec in ipairs(S.bowlRecs) do
-			table.insert(out, rec.sg)
+		-- (from the slabs, not the bowl's records: those come in with the time-sliced build)
+		local bowl = S.arena:FindFirstChild("Bowl")
+		for _, slab in ipairs(bowl and bowl:GetChildren() or {}) do
+			local sg = slab.Name == "BowlTier" and slab:IsA("BasePart") and tonumber(slab:GetAttribute("CrowdRows")) and slab:FindFirstChild("CrowdPrint")
+			if sg then
+				table.insert(out, sg)
+			end
 		end
 	end
 	return out
@@ -807,6 +907,10 @@ function CrowdFX.Stop()
 	pcall(function()
 		if S.conn then
 			S.conn:Disconnect()
+		end
+		if S.build then
+			FrameBudget.Cancel(S.build)
+			S.build = nil
 		end
 	end)
 	-- everyone back in his seat (the arena is usually gone already)

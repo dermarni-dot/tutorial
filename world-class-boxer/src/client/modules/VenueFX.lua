@@ -67,6 +67,16 @@ do
 	end
 	CrowdFX = (ok and type(mod) == "table") and mod or nil
 end
+-- the client's time-sliced builds (optional: without it the detail is built in one go)
+local FrameBudget
+do
+	local m = script.Parent:FindFirstChild("FrameBudget")
+	local ok, mod = false, nil
+	if m then
+		ok, mod = pcall(require, m)
+	end
+	FrameBudget = (ok and type(mod) == "table") and mod or nil
+end
 -- particle counts / rates for the level (at least one particle for a burst that asked for some)
 local function lodCount(n)
 	local k = WorldLOD and WorldLOD.FX() or 1
@@ -186,6 +196,15 @@ local function track(inst)
 	return inst
 end
 
+-- the arena's descendants, walked once for every setup piece that looks for its parts by name (show, particles, screens,
+-- gym: five walks of a packed Stadium's ~14k instances were one); Start drops the list when the pieces are done
+local function arenaDesc()
+	if not S.desc then
+		S.desc = S.arena:GetDescendants()
+	end
+	return S.desc
+end
+
 local function localPart(name, size, cf, color, material, props)
 	local p = Instance.new("Part")
 	p.Name = name
@@ -230,12 +249,18 @@ local function NS(a, b)
 end
 
 -- each subsystem runs in its own pcall: one failing piece is switched off with a single warning
--- instead of throwing every frame or taking the whole presentation down
+-- instead of throwing every frame or taking the whole presentation down (VenueFX.Profile, a table: the ms each
+-- piece took, summed by name - tools/sim/crowd_scene.luau --perf)
 local function step(name, fn, ...)
 	if not S or S.dead[name] then
 		return
 	end
+	local prof = VenueFX.Profile
+	local t0 = prof and os.clock()
 	local ok, err = pcall(fn, ...)
+	if prof then
+		prof[name] = (prof[name] or 0) + (os.clock() - t0) * 1000
+	end
 	if not ok then
 		S.dead[name] = true
 		warn("[VenueFX] " .. name .. " disabled:", err)
@@ -1006,7 +1031,7 @@ local function setupShow()
 	end
 	-- the LED fascias and ribbon boards get a glowing trim top and bottom (bloom picks it up)
 	local n = 0
-	for _, d in ipairs(S.arena:GetDescendants()) do
+	for _, d in ipairs(arenaDesc()) do
 		if d.Name == "LEDRibbon" and d:IsA("BasePart") and n < lodPick(6, 12, 24) then
 			n += 1
 			local col = (d.Position - S.center).Z < 0 and redC or blueC
@@ -1171,7 +1196,7 @@ local function setupParticles()
 	end
 	-- walkout smoke and CO2 jets on the entrance stage (club: smoke at the tunnel)
 	S.smoke, S.co2 = { Red = {}, Blue = {} }, { Red = {}, Blue = {} }
-	for _, d in ipairs(S.arena:GetDescendants()) do
+	for _, d in ipairs(arenaDesc()) do
 		if d:IsA("BasePart") then
 			local corner = d:GetAttribute("Corner")
 			if d.Name == "SmokeJet" and S.smoke[corner] then
@@ -1331,7 +1356,7 @@ local function setupScreens()
 	elseif S.spar then
 		header = "SPARRING"
 	end
-	for _, d in ipairs(S.arena:GetDescendants()) do
+	for _, d in ipairs(arenaDesc()) do
 		if d:IsA("SurfaceGui") then
 			if d.Name == "Screen" then
 				local corner = d.Parent and d.Parent:GetAttribute("Corner")
@@ -1398,7 +1423,7 @@ local function setupScreens()
 	S.archLeds = { Red = {}, Blue = {} }
 	S.walkLights = {}
 	S.parCans = {}
-	for _, d in ipairs(S.arena:GetDescendants()) do
+	for _, d in ipairs(arenaDesc()) do
 		if d:IsA("BasePart") then
 			local corner = d:GetAttribute("Corner")
 			if d.Name == "Chase" and S.chase[corner] then
@@ -1770,20 +1795,34 @@ end
 -- Sparring room: window god-rays, dust, round timer, telemetry
 ------------------------------------------------------------------------
 -- the detail layer, built last so no setup scan above ever sees its parts (they are named VD*), at the level in force
+-- time-sliced on FrameBudget, ahead of the crowd's printed rows (the walk's camera starts on the tunnels and the
+-- aisles): a packed venue's detail was one long frame on top of the rest of Start; the model goes in whole at the end
 local function setupDetail()
 	if not VenueDetail then
 		return
 	end
-	local model = VenueDetail.Build(S.arena, { venue = S.venue, level = WorldLOD and WorldLOD.Level() or 3 })
-	if model then
-		table.insert(S.created, model)
+	local st = S
+	local function build(tick)
+		local model = VenueDetail.Build(st.arena, { venue = st.venue, level = WorldLOD and WorldLOD.Level() or 3, tick = tick })
+		if model then
+			table.insert(st.created, model)
+		end
 	end
+	if not FrameBudget then
+		build(nil)
+		return
+	end
+	st.detailJob = FrameBudget.Run(function()
+		if S == st then
+			build(FrameBudget.Tick)
+		end
+	end, true, "VenueDetail")
 end
 
 local function setupGym()
 	S.gymTimer = nil
 	S.telemetry = nil
-	for _, d in ipairs(S.arena:GetDescendants()) do
+	for _, d in ipairs(arenaDesc()) do
 		if d.Name == "WindowPane" and d:IsA("BasePart") then
 			local dir = d:GetAttribute("SunDir")
 			dir = typeof(dir) == "Vector3" and dir.Unit or V3(-1, -0.75, 0.15).Unit
@@ -1881,12 +1920,14 @@ local function update(dt)
 	if next(S.moves) then
 		step("moves", updateMoves, dt, now)
 	end
+	-- (every frame: CrowdFX runs its rigs and its printed rows on alternate 30 Hz ticks of its own; started with the
+	-- 30 Hz group below, its rigs fall on the frames between the lighting's)
+	step("crowd", updateCrowd, dt, now)
 	acc30 += dt
 	if acc30 >= 1 / 30 then
 		local d = acc30
 		acc30 = 0
 		step("lighting", updateLighting, d)
-		step("crowd", updateCrowd, d, now)
 		step("screens", updateScreens, d, now)
 		step("broadcast", updateBroadcast, d, now)
 	end
@@ -1996,6 +2037,7 @@ function VenueFX.Start(arena, info)
 		}) do
 			step(piece[1], piece[2])
 		end
+		S.desc = nil
 		-- the arena's signs and shadow casters follow the Graphics level (its lights and effects are ours)
 		if WorldLOD then
 			pcall(WorldLOD.Watch, arena, { lights = false, emitters = false })
@@ -2038,6 +2080,7 @@ function VenueFX.Start(arena, info)
 	if conn then
 		conn:Disconnect()
 	end
+	acc30, acc10 = 0, 0
 	conn = RunService.Heartbeat:Connect(update)
 	return true
 end
@@ -2390,6 +2433,11 @@ function VenueFX.Stop()
 	end
 	if not S then
 		return
+	end
+	if S.detailJob then
+		-- (stopped mid-build: the unparented model is dropped with the job)
+		FrameBudget.Cancel(S.detailJob)
+		S.detailJob = nil
 	end
 	pcall(restoreLighting)
 	pcall(CharacterLight.SetExtra, {})

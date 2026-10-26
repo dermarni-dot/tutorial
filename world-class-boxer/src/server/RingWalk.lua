@@ -14,6 +14,7 @@
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
+local PhysicsService = game:GetService("PhysicsService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Entrance = require(Shared:WaitForChild("Entrance"))
 local Config = require(Shared:WaitForChild("Config"))
@@ -120,6 +121,29 @@ end
 ------------------------------------------------------------------------
 -- The entourage: the coach in his corner polo and towel (Officials "cornerman"), a cutman at the big rooms
 ------------------------------------------------------------------------
+-- the team's collision group: it collides with nothing (the boxers, the referee, each other, the world), so nobody
+-- is pushed by the team without a per-step CanCollide rewrite of every part (the Humanoid turns its torso parts'
+-- collisions back on in its own step; the group makes that moot). nil until tried, false when unavailable
+local TEAM_GROUP = "Entourage"
+local teamGroupReady = nil
+local function teamGroup()
+	if teamGroupReady == nil then
+		teamGroupReady = pcall(function()
+			if not PhysicsService:IsCollisionGroupRegistered(TEAM_GROUP) then
+				PhysicsService:RegisterCollisionGroup(TEAM_GROUP)
+			end
+			local names = { [TEAM_GROUP] = true, Default = true }
+			for _, g in ipairs(PhysicsService:GetRegisteredCollisionGroups()) do
+				names[g.name] = true
+			end
+			for name in pairs(names) do
+				PhysicsService:CollisionGroupSetCollidable(TEAM_GROUP, name, false)
+			end
+		end)
+	end
+	return teamGroupReady
+end
+
 local function buildMember(fight, corner, i)
 	if not (Builder and Builder.CreateNPC and Officials and Officials.Look) then
 		return nil
@@ -134,11 +158,15 @@ local function buildMember(fight, corner, i)
 	end
 	model.Name = (i == 1 and "Coach" or "Cutman") .. corner
 	local parts = {}
+	local grouped = teamGroup()
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("BasePart") then
 			d.CanCollide = false
 			d.CanTouch = false
 			d.CanQuery = false
+			if grouped then
+				d.CollisionGroup = TEAM_GROUP
+			end
 			table.insert(parts, d)
 		end
 	end
@@ -151,12 +179,15 @@ local function buildMember(fight, corner, i)
 		m.hum.WalkSpeed = 10
 		m.hum.AutoRotate = true
 	end
-	-- (the Humanoid turns collisions back on for its torso parts in its own step: nobody is pushed by the team)
-	m.noclip = RunService.Stepped:Connect(function()
-		for _, p in ipairs(parts) do
-			p.CanCollide = false
-		end
-	end)
+	-- fallback without the group: the Humanoid turns collisions back on for its torso parts in its own step, so they
+	-- are cleared before every physics step (nobody is pushed by the team)
+	if not grouped then
+		m.noclip = RunService.Stepped:Connect(function()
+			for _, p in ipairs(parts) do
+				p.CanCollide = false
+			end
+		end)
+	end
 	return m
 end
 
@@ -237,35 +268,48 @@ function RingWalk.Run(fight, env)
 		{ F = P, corner = "Red", plan = Entrance.Plan(RingWalk.Context(fight, P, "Red", true)) },
 	}
 	st.walks = walks
-	-- the entourage is built while the lead-in runs (CreateNPC yields); a team not ready by its walk stays home
+	-- the entourage is built while the lead-in runs (CreateNPC yields); a team not ready by its walk stays home.
+	-- One member after another, the first walker's team first (four CreateNPCs at once were one long server hitch at
+	-- the start of the walk, on top of the clients' own venue build)
 	if not env.noEntourage then
+		local queue = {}
 		for _, w in ipairs(walks) do
 			local n = (fight.venue == "Arena" or fight.venue == "Stadium" or w.plan.title) and 2 or 1
 			st.entourage[w.F] = {}
 			for i = 1, n do
-				task.spawn(function()
-					local m = buildMember(fight, w.corner, i)
-					if not m then
-						return
-					end
-					-- (a team built after its man has left the tunnel would pop in behind him: it stays home)
-					if st.done or stop() or (w.started and clock() - w.started > 1.2) then
-						dropMember(m)
-						return
-					end
-					m.model.Parent = fight.arena
-					local pts = RingWalk.Points(fight, w.corner)
-					placeMember(m, pts.entrance + (pts.entrance - pts.centre).Unit * 3 + Vector3.new(i == 1 and -2 or 2, 0, 0), pts.centre)
-					if m.root then
-						pcall(function()
-							m.root:SetNetworkOwner(nil)
-						end)
-					end
-					CollectionService:AddTag(m.model, "Ambient")
-					table.insert(st.entourage[w.F], m)
-				end)
+				table.insert(queue, { w = w, i = i })
 			end
 		end
+		task.spawn(function()
+			for qi, job in ipairs(queue) do
+				if st.done or stop() then
+					return
+				end
+				if qi > 1 then
+					task.wait()
+				end
+				local w, i = job.w, job.i
+				local m = buildMember(fight, w.corner, i)
+				if not m then
+					continue
+				end
+				-- (a team built after its man has left the tunnel would pop in behind him: it stays home)
+				if st.done or stop() or (w.started and clock() - w.started > 1.2) then
+					dropMember(m)
+					continue
+				end
+				m.model.Parent = fight.arena
+				local pts = RingWalk.Points(fight, w.corner)
+				placeMember(m, pts.entrance + (pts.entrance - pts.centre).Unit * 3 + Vector3.new(i == 1 and -2 or 2, 0, 0), pts.centre)
+				if m.root then
+					pcall(function()
+						m.root:SetNetworkOwner(nil)
+					end)
+				end
+				CollectionService:AddTag(m.model, "Ambient")
+				table.insert(st.entourage[w.F], m)
+			end
+		end)
 	end
 	local function hold(tEnd, each)
 		while clock() < tEnd and not stop() do
