@@ -1232,7 +1232,7 @@ local function screenSettings(layer)
 	local function runDiag()
 		if State.open.Diag then
 			State.open.Diag()
-			State.toast("Diagnostic printed to the Output (walk or punch for 2 seconds)", T.sub, 4)
+			State.toast("Diagnostic printed to the Output (start running: the sample begins when you move)", T.sub, 4)
 		else
 			State.toast("The diagnostic is not loaded on this client.", T.red)
 		end

@@ -4,12 +4,13 @@
 -- client can fetch it: a mesh uploaded minutes ago answers "Asset content representation is being generated" for a
 -- while, a moderation or permission hiccup fails it, and a MeshPart whose mesh did not arrive is drawn as its box (the
 -- gym's gloves as red blocks several times the hand's size). For every tagged part:
--- * its MeshId's fetch status (ContentProvider:GetAssetFetchStatus, and its changed signal; a PreloadAsync asks for it)
+-- * its MeshId's fetch status (ContentProvider:GetAssetFetchStatus, and its changed signal; the engine's own draw
+--   fetch, never one of ours: a PreloadAsync logged "Asset type does not match" for good meshes in Studio)
 -- * Failure / TimedOut (or an empty MeshId): the part is hidden on this client (Transparency 1, the old value kept)
 --   and a stand-in drawn in its place: a rounded shape the size of the part (an ellipsoid: the Sphere mesh is built
 --   in, it cannot fail), in the part's colour and material, welded to it so it follows every pose; thin detail pieces
 --   (laces, stripes, hems, straps, buttons, badges...) are hidden without one
--- * retried on a backoff (BACKOFF, a few minutes: PreloadAsync again); when the status turns Success the stand-in goes
+-- * re-checked on a backoff (BACKOFF, a few minutes: the status read again); when the status turns Success the stand-in goes
 --   and the part shows again
 -- Local only: nothing here replicates; the server's rebuild of a folder takes the stand-ins with it (they are children
 -- of the parts). MeshGuard.Stats() for the diagnostic / tests.
@@ -127,26 +128,18 @@ end
 local evaluate -- (id, status)
 local hasGeometry -- (rec)
 
--- [Studio] preload the MeshPart INSTANCE, never the bare id string: PreloadAsync fetches a string content id as an
--- image, so a mesh id fails with "Asset type does not match requested type" and a perfectly good mesh reads as
--- failed (the stand-in would then hide it). Given the part, the engine fetches its MeshId as a mesh.
+-- [Studio] never fetch anything here: ContentProvider:PreloadAsync logged "Asset type does not match requested type"
+-- for every body and gear mesh in Studio (given an id string or the part itself), and that failure is what made good
+-- meshes read as failed and hid them behind stand-ins. The engine already fetches each MeshId as a mesh to draw the
+-- part, so this only READS the status of that fetch (GetAssetFetchStatus never starts a fetch).
 local function preload(id)
 	task.spawn(function()
-		local cp = svc("ContentProvider")
-		local ir = ids[id]
-		local inst = ir and next(ir.parts)
-		if not inst then
-			return
-		end
-		local got
-		pcall(function()
-			cp:PreloadAsync({ inst }, function(contentId, status)
-				if contentId == id or got == nil then
-					got = status
-				end
-			end)
+		local ok, st = pcall(function()
+			return svc("ContentProvider"):GetAssetFetchStatus(id)
 		end)
-		evaluate(id, got)
+		if ok then
+			evaluate(id, st)
+		end
 	end)
 end
 

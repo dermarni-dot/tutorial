@@ -1,7 +1,7 @@
 -- DiagClient: runs the rig diagnostic (Shared.Diag) on this client and asks the server for its own view of the same
 -- models. Invoked by "/wcbdiag" in chat (Player.Chatted and a TextChatCommand, whichever chat the place runs) or the
 -- Settings -> GAME -> COPY DIAGNOSTIC TO OUTPUT button; nothing runs otherwise. Reports: the local character and the
--- nearest two other humanoid models (NPCs, other players), each as one [WCBDIAG] block in the Output, then a 2-second
+-- nearest two other humanoid models (NPCs, other players), each as one [WCBDIAG] block in the Output, then a 4-second
 -- motion sample of each at 10 Hz (walk or punch while it runs) and the server's blocks (the same models as the server
 -- sees them: part sizes, HipHeight, the swap counters). Copy everything between the first "== " and the last "== end".
 local Players = game:GetService("Players")
@@ -13,7 +13,8 @@ local BuilderTiers = require(Shared:WaitForChild("BuilderTiers"))
 
 local DiagClient = {}
 DiagClient.COMMAND = "/wcbdiag"
-DiagClient.SAMPLE_SECONDS = 2
+DiagClient.SAMPLE_SECONDS = 4
+DiagClient.WAIT_FOR_MOVE = 15 -- the sample starts when the local character moves (time to leave the chat box)
 DiagClient.SAMPLE_HZ = 10
 DiagClient.NEARBY = 2
 
@@ -76,7 +77,20 @@ function DiagClient.Run(State)
 			end)
 		end
 		-- the motion sample: walk / punch while it runs
-		say(string.format("sampling %d model(s) for %d s at %d Hz: WALK or PUNCH now", #models, DiagClient.SAMPLE_SECONDS, DiagClient.SAMPLE_HZ))
+		-- typing the command leaves the keyboard in the chat box: the sample waits for the character to move (or a
+		-- punch: any joint change shows in the bends), up to WAIT_FOR_MOVE seconds, so a run is caught mid-stride
+		say(string.format("RUN or WALK now (click the game, hold W, Shift to run): the %d s sample starts when you move (waits up to %d s)",
+			DiagClient.SAMPLE_SECONDS, DiagClient.WAIT_FOR_MOVE))
+		local w0 = os.clock()
+		while root and root.Parent and os.clock() - w0 < DiagClient.WAIT_FOR_MOVE do
+			local v = root.AssemblyLinearVelocity
+			if Vector3.new(v.X, 0, v.Z).Magnitude > 1 then
+				task.wait(0.4) -- (past the first step's acceleration)
+				break
+			end
+			RunService.Heartbeat:Wait()
+		end
+		say(string.format("sampling %d model(s) for %d s at %d Hz: keep moving", #models, DiagClient.SAMPLE_SECONDS, DiagClient.SAMPLE_HZ))
 		local samples = {}
 		for i, m in ipairs(models) do
 			samples[i] = Diag.NewSample()
