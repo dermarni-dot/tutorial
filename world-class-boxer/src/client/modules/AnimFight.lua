@@ -30,6 +30,11 @@ end)
 if not okFM or type(FightMotion) ~= "table" then
 	FightMotion = {}
 end
+-- (and a punch's act length: Combos.RECOVERY_MUL x its windup, FightEngine's busy window)
+local okCB, Combos = pcall(function()
+	return require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Combos"))
+end)
+local RECOVERY_MUL = okCB and type(Combos) == "table" and tonumber(Combos.RECOVERY_MUL) or 1.9
 -- (the swing a boxer is dealt when the server sets no PunchStyle: Traits.PunchStyle, seeded)
 local okTR, Traits = pcall(function()
 	return require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Traits"))
@@ -225,6 +230,8 @@ end
 -- shake out, big breath, double bounce, glove adjust)
 ------------------------------------------------------------------------
 local FIDGET_DUR = { tap = 0.55, roll = 0.85, neck = 1.1, feint = 0.42, pump = 0.6, shake = 0.9, breath = 1.3, bounce2 = 0.5, adjust = 0.75 }
+-- (the quiet after a punch is home before a fidget may begin, s)
+local FIDGET_AFTER_PUNCH = 0.6
 local FIDGET_LIST = { "tap", "roll", "neck", "feint", "pump", "shake", "breath", "bounce2", "adjust" }
 
 local function pickFidget(rig, st, t)
@@ -411,6 +418,10 @@ end
 ------------------------------------------------------------------------
 -- The stance: style x persona x physique x stamina x body damage, alive every frame
 ------------------------------------------------------------------------
+-- the gloves on the bounce: the share of it they ride up and down on the chest, and the soft spring they follow it on
+-- (damping ratio, gain of its lag). A tight guard rides the trunk: at 0.6 of the bounce plus an underdamped lag x 1.6
+-- the gloves bobbed 0.3-0.4 studs against the chin every bounce - loose arms, not a guard
+local GLOVE_BOUNCE, GLOVE_ZETA, GLOVE_LAG = 0.22, 0.7, 0.8
 -- gl / gr: the glove targets this frame (written into rig.guardL / guardR as 3-number arrays)
 function AnimFight.stance(p, rig, t, dt)
 	local a = rig.a
@@ -509,10 +520,10 @@ function AnimFight.stance(p, rig, t, dt)
 	local tuckL = min(0.22, max(0, -lt[3] - 1.05) * 0.6) * jam
 	local tuckR = min(0.22, max(0, -rt[3] - 1.05) * 0.6) * jam
 	gl[1] = lt[1] + P.guardX * -1 + noise(t * hf + 31, ns + 5) * hl[2] * life
-	gl[2] = lt[2] + P.guardY + swg.hands - sinkY + tuckL * 0.35 + noise(t * hf * 1.2 + 37, ns + 6) * hl[2] * life + bounce * 0.6
+	gl[2] = lt[2] + P.guardY + swg.hands - sinkY + tuckL * 0.35 + noise(t * hf * 1.2 + 37, ns + 6) * hl[2] * life + bounce * GLOVE_BOUNCE
 	gl[3] = lt[3] + sinkZ + tuckL + noise(t * hf * 0.9 + 41, ns + 7) * hl[2] * life * 0.6
 	gr[1] = rt[1] + P.guardX + sroll * 0.5 + noise(t * hf * 1.1 + 43, ns + 8) * hl[2] * life * 0.7
-	gr[2] = rt[2] + P.guardY + swg.hands * 0.7 - sinkY - 0.25 * gut + tuckR * 0.35 + noise(t * hf * 0.95 + 47, ns + 9) * hl[2] * life * 0.7 + bounce * 0.5
+	gr[2] = rt[2] + P.guardY + swg.hands * 0.7 - sinkY - 0.25 * gut + tuckR * 0.35 + noise(t * hf * 0.95 + 47, ns + 9) * hl[2] * life * 0.7 + bounce * GLOVE_BOUNCE * 0.85
 	gr[3] = rt[3] + sinkZ + tuckR + noise(t * hf + 53, ns + 10) * hl[2] * life * 0.4
 	-- secondary motion (no style is without it): the gloves ride the bounce on a soft spring - a beat late and
 	-- a touch past it, the way loose arms follow the body - breathing lifts the shoulders and the gloves with
@@ -523,8 +534,8 @@ function AnimFight.stance(p, rig, t, dt)
 			gs = { y = bounce, v = 0 }
 			rig.gloveSpr = gs
 		end
-		gs.y, gs.v = K.spring2(gs.y, gs.v, bounce, 11, 0.42, dt)
-		local lag = (gs.y - bounce) * 1.6
+		gs.y, gs.v = K.spring2(gs.y, gs.v, bounce, 11, GLOVE_ZETA, dt)
+		local lag = (gs.y - bounce) * GLOVE_LAG
 		local cir = 0.035 * life * (1 - 0.6 * mv)
 		local ph = t * 1.1 * tempo + ns
 		gl[1] += cir * cos(ph) * 0.6
@@ -532,6 +543,8 @@ function AnimFight.stance(p, rig, t, dt)
 		gr[1] += cir * cos(ph * 0.83 + 2) * 0.5
 		gr[2] += lag * 0.85 + br * 0.45 + cir * sin(ph * 0.83 + 2) * 0.8
 		gl[3] += cir * 0.5 * sin(ph * 0.7 + 1)
+		-- (and the head settles a beat behind the bounce: a hair of a nod as the gloves lag)
+		p.Neck = p.Neck * A(-lag * 0.35, 0, 0)
 	end
 	-- the out-boxer's pawing lead: measured little extensions ("range finding")
 	if hl[1] * swg.flick > 0.08 and mv < 0.6 then
@@ -636,7 +649,9 @@ end
 function AnimFight.fidgets(p, rig, st, t, gl, gr)
 	local f = rig.fidget
 	if not f then
-		if t >= rig.nextFidget and rig.loco.gaitW < 0.3 and not rig.pun.L and not rig.pun.R then
+		-- (never straight out of a punch: a feint or a glove tap starting as the fist got home read as the arm
+		-- bouncing off the guard)
+		if t >= rig.nextFidget and rig.loco.gaitW < 0.3 and not rig.pun.L and not rig.pun.R and t - (rig.punchDoneT or -1e9) > FIDGET_AFTER_PUNCH then
 			if rig.nextFidget > 0 then
 				local kind = pickFidget(rig, st, t)
 				rig.fidget = { kind = kind, start = t, dur = FIDGET_DUR[kind] or 0.6, side = rig.rng:NextNumber() < 0.5 and -1 or 1 }
@@ -842,7 +857,9 @@ local PUNCH = {
 		variants = {
 			{ w = 3, name = "snap" },
 			{ w = 2, name = "step", fwd = 0.34, lean = -0.08, step = 0.42 },
-			{ w = 1.4, name = "paw", reach = 0.82, sho = -0.12, hip = -0.03, rec = 0.72, pow = 1.25, low = 0.18 },
+			-- (a light, quick jab with little body behind it - still snapped out to the lock: at 0.82 of the reach it
+			-- landed with the elbow half bent, a limp arm pushed at him)
+			{ w = 1.4, name = "paw", reach = 0.96, sho = -0.12, hip = -0.03, rec = 0.72, pow = 1.25, low = 0.18 },
 			{ w = 1.4, name = "long", lean = -0.13, fwd = 0.26, sho = -0.3, dip = 0.08, reach = 1.06 },
 		} },
 	cross = { hand = "R", path = "straight", hip = 0.62, sho = 0.5, fwd = 0.38, side = -0.14, dip = 0.08, lean = -0.12, roll = -0.12,
@@ -906,9 +923,12 @@ local PEAK = {
 }
 -- (a straight's elbow turns out as the arm locks - the corkscrew - so the last of the bend lies flat and
 -- the forearm runs level along the punch's line instead of tipping up from a dropped elbow; a hook's elbow
--- comes up level with the fist, the upper arm out to the side)
+-- comes out to the side and back behind the fist, the arm's plane about level: with the fist up at a jaw
+-- over the shoulder the upper arm rises a little and the forearm the rest. Back, not up: the shoulder-to-fist
+-- line of a hook at a jaw over the shoulder points out and up, and a pole out and up lay along it - the
+-- elbow flipped between pointing at the floor and standing over the shoulder from one hook to the next)
 local POLE = {
-	straight = { 0.9, -0.45, 0.1 }, hook = { 0.9, 0.75, 0.15 }, upper = { 0.35, -1, 0.35 }, over = { 1, 0.08, 0.1 },
+	straight = { 0.9, -0.45, 0.1 }, hook = { 0.8, 0.6, 0.8 }, upper = { 0.35, -1, 0.35 }, over = { 1, 0.08, 0.1 },
 }
 -- style preference among a punch's variants (multiplies the weights by name)
 local STYLE_VARIANT = {
@@ -1215,7 +1235,9 @@ local function aimPoint(rig, p, act, body, near)
 							- V3(0, tgt.Size.Y * 0.2, 0)
 					else
 						-- (the fist's centre beside the jaw: the glove meets the side of the face from outside)
-						pt = c + toMe * (tgt.Size.Z * 0.25) + side * (tgt.Size.X * 0.6 + 0.35) - V3(0, tgt.Size.Y * 0.15, 0)
+						-- (at the jaw's hinge, the bottom of the head - the big glove covers the jaw from there: the arm comes
+						-- round about level, never reaching up at the temple with the elbow over the shoulder)
+						pt = c + toMe * (tgt.Size.Z * 0.25) + side * (tgt.Size.X * 0.6 + 0.35) - V3(0, tgt.Size.Y * 0.42, 0)
 					end
 				elseif prm.path == "upper" then
 					pt -= V3(0, body and 0.1 or 0.32, 0)
@@ -1306,7 +1328,10 @@ end
 -- (angle and radius together: a hook swings, it does not push forward), arriving across (inward) and
 -- fastest at contact; `through` drives it a touch on through the target at contact. Takes and returns
 -- UpperTorso standard units.
-local HOOK_SWING = 1.02
+-- (round the spine from the target's bearing, radians; HOOK_SWING_MAX for a target close by the spine. A chamber a
+-- full radian round took the fist out past the shoulder and back behind the chest before it came in - a looping,
+-- telegraphed arm thrown round like a rope)
+local HOOK_SWING, HOOK_SWING_MAX = 0.62, 0.85
 local HOOK_KEEP = 0.5
 local function hookPos(rig, p, act, P0, P3, u, eT, armK, inward, body, sc, through)
 	local toR = rig.root.CFrame:Inverse() * punchTorso(rig, p)
@@ -1338,7 +1363,7 @@ local function hookPos(rig, p, act, P0, P3, u, eT, armK, inward, body, sc, throu
 	-- (the boxer's arc: a wide looping hook swings further round, a tight one stays compact - the variant's arc
 	-- and his swing, AnimFight.swing; the landing spot is the same)
 	local arcK = clamp(((act.prm.arc or 0.6) / 0.6) ^ 0.6, 0.72, 1.5)
-	local sw = (clamp(1.4 / max(0.5, r3), HOOK_SWING, 1.22) * arcK + 0.15 * across) * (body and 0.75 or 1)
+	local sw = (clamp(0.85 / max(0.5, r3), HOOK_SWING, HOOK_SWING_MAX) * arcK + 0.15 * across) * (body and 0.75 or 1)
 	local ac = a3 - inward * sw
 	local rc = max(0.6, r3 - 0.15)
 	local c = h0:Lerp(V3(px + sin(ac) * rc, h0.Y + (p3.Y - h0.Y) * (body and 0.5 or 0.85) + (body and -0.05 or 0.1), pz - cos(ac) * rc), ck)
@@ -1445,7 +1470,14 @@ end
 -- Returns the share of the authored turn and the lunge (studs).
 local HOOK_REL = math.rad(46)
 local LUNGE_MAX = 0.5
-local HOOK_REACH, HOOK_LUNGE_MAX, UPPER_LUNGE_MAX = 0.72, 1.1, 1.25
+-- (a hook lunges only a little: the hips turn on the pivoting feet, which do not step in under it - a lunge of a stud
+-- past what the planted legs reach dropped the pelvis 0.75 studs as the fist landed; further out the arm opens up
+-- instead, to HOOK_ARM)
+local HOOK_REACH, HOOK_LUNGE_MAX, UPPER_LUNGE_MAX = 0.72, 0.3, 1.25
+-- (the farthest a hook's fist goes from its shoulder, a share of the arm: in range the hook lands at HOOK_REACH, the
+-- elbow square; thrown from further out - the server lands a hook from nearly as far as a jab - the arm opens to
+-- about 75 degrees, never flung out straight: it was landing at 35-40 degrees, a rope swung round the shoulder)
+local HOOK_ARM = 0.8
 local OVER_ROOM = 0.6
 -- a straight is fitted so its target sits STRAIGHT_REACH of the arm's full length from the shoulder (the
 -- IK's soft limit lands it with the elbow about 160 degrees open); in close the hips give up to GIVE_MAX
@@ -1658,7 +1690,8 @@ local function fitPunch(rig, p, act, body, near, gain, drop)
 	-- HOOK_REACH of the arm - so it steps in further for it)
 	local short = sqrt(dx * dx + dy * dy + dz * dz) - arm.dMax * (hook and HOOK_REACH or 0.97) * (prm.reach or 1)
 		+ (prm.path == "upper" and 0.25 or 0)
-	-- (hooks and uppercuts are the close punches: they step in for the range the bigger bodies keep)
+	-- (hooks and uppercuts are the close punches: an uppercut steps in for the range the bigger bodies keep, a hook only
+	-- leans in a little - HOOK_LUNGE_MAX)
 	return k, clamp(short + 0.05, 0, hook and HOOK_LUNGE_MAX or (prm.path == "upper" and UPPER_LUNGE_MAX or LUNGE_MAX))
 end
 
@@ -1704,10 +1737,27 @@ local function whipK(x)
 	x = clamp(x, 0, 1)
 	return x * x * x * (4 - 3 * x)
 end
+local ARM_EARLY = 0.94
 local SHO_CUT = 0.9
 local SHO_NORM = 1 / whipK(SHO_CUT)
-local RET_SPEED = 9 -- studs/s, the fastest average a fist comes home at
-local SWIVEL_RATE = 14 -- rad/s, the fastest the elbow turns round the arm's line in a punch
+-- the way home is over inside the server's recovery (FightEngine's busy window: windup x Combos.RECOVERY_MUL from the
+-- act's start), REC_SHARE of the way into what is left of it after the contact hold: the next punch of a combination
+-- sets off from the guard, and a fist hanging out past contact read as a limp arm. A long way home is still never
+-- flown faster than RET_FAST on average (a straight's way home is about as quick as its way out)
+local REC_SHARE = 0.85
+local RET_FAST = 19
+local REC_MIN = 0.07
+-- (the shape of the way home: it leaves the target at REC_V0 x its average speed - the fist snaps back off the
+-- target instead of easing away from it - and lands on the guard at rest: a cubic Hermite, monotonic for 0..3)
+local REC_V0 = 1.25
+local function recEase(x)
+	x = clamp(x, 0, 1)
+	return x * (REC_V0 + x * ((3 - 2 * REC_V0) + x * (REC_V0 - 2)))
+end
+local SWIVEL_RATE = 20 -- rad/s, the fastest the elbow turns round the arm's line in a punch
+-- (the share of the way home over which the elbow's line goes back to the guard's; the swivel catches up faster on
+-- the way home - up to SWIVEL_HOME x its rate - so it is on the guard's line when the stance takes the arm back)
+local REC_POLE, SWIVEL_HOME = 0.6, 3
 -- the fist's speed at contact the arm's drive is timed for (studs/s), per path
 local VPEAK = { straight = 22, hook = 23, upper = 16, over = 20 }
 -- the steadier drive of a straight with a long way to go (act.pow, 1.5 - 2): a cubic that sets off from a
@@ -1808,11 +1858,12 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 	local w = act.windup
 	local el = t - act.start
 	local hold = 0.045
-	-- (the recovery: the punch's own time, or longer for a long way home - a fist never flies back
-	-- faster than RET_SPEED on average; set at contact, act.recDur)
+	-- (the recovery: the punch's own time, inside the server's recovery (REC_SHARE), or longer for a long way
+	-- home - a fist never flies back faster than RET_FAST on average; set at contact, act.recDur)
 	-- (power shots take longer to come home: the body has further to unwind)
 	local recK = 0.85 + 0.3 * clamp(act.power or 0.6, 0, 1.5)
-	local rec = act.recDur or w * prm.rec * recK
+	local recMax = max(REC_MIN, (RECOVERY_MUL - 1) * w * REC_SHARE - hold)
+	local rec = act.recDur or min(w * prm.rec * recK, recMax)
 	if el >= w + hold + rec then
 		return false
 	end
@@ -1832,7 +1883,11 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 		hipK = smooth((el - th) / max(0.04, w - min(prm.hipLead or HIP_LEAD, w * 0.3) - th))
 		shoK = whipK(SHO_CUT * (u - prm.tSho) / (1 - prm.tSho)) * SHO_NORM
 		local ta = act.tArm or prm.tArm
-		armK = act.pow and evenDrive((u - ta) / (1 - ta), act.pow) or K.drive((u - ta) / (1 - ta), prm.pow)
+		-- (the drive is timed to arrive ARM_EARLY into the windup: the output filters carry the arm a frame behind
+		-- its target, and an arm still extending after contact - open 10 degrees further on the way home - read
+		-- as a limp arm flung out after the blow)
+		local tz = ARM_EARLY - ta
+		armK = act.pow and evenDrive((u - ta) / tz, act.pow) or K.drive((u - ta) / tz, prm.pow)
 		-- the shoulders' turn speed at contact (shoK per second) carries them on through it
 		if not act.follow then
 			act.follow = 0
@@ -2082,7 +2137,9 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 			-- measured in studs, the torso units are not square)
 			-- (a straight asks for the whole arm: the IK's soft limit still stops it just short, the elbow
 			-- about 160 degrees open)
-			local reachS = arm.dMax * (prm.path == "straight" and 1.03 or 0.985) * (prm.reach or 1)
+			-- (a hook keeps its square elbow, HOOK_ARM of the arm: one still out of reach after the turn and the lunge
+			-- lands short with its shape, never with the arm flung out straight like a rope)
+			local reachS = prm.path == "hook" and arm.dMax * HOOK_ARM or arm.dMax * (prm.path == "straight" and 1.03 or 0.985) * (prm.reach or 1)
 			local vS = (v * sc).Magnitude
 			-- (and a straight that ends up a little too close still snaps out straight: its fist goes up to
 			-- STRAIGHT_THROUGH on through the aim point - the glove already sinks into the face there - rather
@@ -2144,28 +2201,24 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 		local pole = poleOf(prm.path, body)
 		local kp
 		if retK > 0 then
-			-- recovery: the fist comes home first, a little lower and inside, fast then easing
+			-- recovery: the fist snaps straight back to the guard along the line it went out on - no dip under the
+			-- guard on the way, no loop, no settle past it - and lands there at rest (recEase)
 			local hit = act.hitPos or P3
-			-- (the fist rests on the target for the hold: it leaves from a standstill; smoothstep, not a
-			-- cubic ease: the way home peaks at 1.5x its average speed, not 3x)
-			local k = smooth(min(1, retK / 0.8))
-			-- (low and in front of the face on the way: a high guard - the peek-a-boo's gloves at the
-			-- forehead - is reached from below and in front, so the forearm never sweeps across the
-			-- face while the shoulders are still turned)
-			local c2 = Pg + V3(0, -0.3, -0.6)
-			-- (a fist that landed high or level with the face - an overhand over a deep crouch - first
-			-- comes forward and down, clear of the head; a straight one just starts home)
-			local c1 = V3(hit.X, min(hit.Y, Pg.Y + 0.35), min(hit.Z, Pg.Z - 0.65))
+			-- (it leaves the target already moving - the arm rebounds off it - and is home a little before the end of
+			-- the recovery, so the elbow and the corkscrew finish with it)
+			local k = recEase(retK / 0.92)
+			local d = Pg - hit
+			local c1, c2 = hit + d * 0.34, Pg - d * 0.18
 			-- (a hook to the body first comes back off him the way it went in, straight out from his middle: the line
 			-- home would cut through him as the shoulders unwind; straights and uppercuts just come straight back)
 			local ut = punchTorso(rig, p)
 			local kt, ke = act.keepTgt, act.keepE
 			if body and prm.path == "hook" and kt and ke and not ke[6] and kt.Parent then
 				local cu = ut:PointToObjectSpace(kt.CFrame:PointToWorldSpace(V3(ke[1], 0, ke[2])))
-				local d = V3(hit.X - cu.X / sc.X, 0, hit.Z - cu.Z / sc.Z)
-				if d.Magnitude > 1e-3 then
+				local dd = V3(hit.X - cu.X / sc.X, 0, hit.Z - cu.Z / sc.Z)
+				if dd.Magnitude > 1e-3 then
 					-- (never back past his own chest's front: the forearm would fold into it)
-					c1 = hit + d.Unit * BODY_BACKOFF
+					c1 = hit + dd.Unit * BODY_BACKOFF
 					c1 = V3(c1.X, c1.Y, min(c1.Z, max(hit.Z, Pg.Z) + 0.35))
 				end
 			end
@@ -2173,12 +2226,6 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 			-- onto the glove never swallows it - but lets go softly, on a short spring: one snapping back from the shot
 			-- does not jerk the glove after him)
 			local raw = K.bezier(hit, c1, c2, Pg, k)
-			-- (and it settles into the guard rather than parking on it: a touch past, back along the way it came,
-			-- and home - a fist coming back at speed does not stop dead)
-			local sv = Pg - hit
-			if sv.Magnitude > 0.3 then
-				raw += sv.Unit * (0.07 * K.bump(retK, 0.55, 1.0))
-			end
 			local off = keepOut(act, raw, sc, ut, KEEP_SOFT + (KEEP_SOFT_HOME - KEEP_SOFT) * smooth(min(1, retK / 0.3))) - raw
 			local o = act.keepO
 			if o and off.Magnitude < o.Magnitude then
@@ -2186,8 +2233,9 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 			end
 			act.keepO, act.keepT = off, t
 			pos = raw + act.keepO
-			-- the elbow settles back to the guard more slowly than the fist comes home
-			kp = 1 - smooth(retK)
+			-- the elbow settles back to its guard line over the first part of the way home: still up there as the
+			-- fist reached the guard, the stance's arm took it over and the elbow fell 70-90 degrees in two frames
+			kp = 1 - smooth(min(1, retK / REC_POLE))
 		else
 			if prm.path == "hook" then
 				pos = hookPos(rig, p, act, P0, P3, u, eT, armK, inward, body, sc, contact and followBump((el - w) / hold) or 0)
@@ -2195,10 +2243,10 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 				local B1, B2 = pathPoints(prm.path, P0, P3, inward, prm.arc or 0.6, prm.rise, prm.loop)
 				pos = K.bezier(P0, B1, B2, P3, armK)
 				if contact then
-					-- drives through a touch at contact
+					-- drives through a touch at contact (a touch: the elbow locks at contact, it does not open on past it)
 					local dir = (P3 - P0)
 					if dir.Magnitude > 1e-3 then
-						pos += dir.Unit * 0.07 * followBump((el - w) / hold)
+						pos += dir.Unit * 0.03 * followBump((el - w) / hold)
 					end
 				end
 			end
@@ -2208,12 +2256,13 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 			act.hitPos = pos
 			if contact then
 				local home = (pos - Pg) * sc
-				act.recDur = max(w * prm.rec * recK, home.Magnitude / RET_SPEED)
+				act.recDur = max(min(w * prm.rec * recK, recMax), home.Magnitude / RET_FAST)
 			end
 			-- the elbow's line through the punch follows time, not the accelerating fist (a hook's
 			-- elbow comes up with the hips, before the arm whips round: the shoulder never has to
 			-- swing the whole arm up and across in the last tenth of a second)
-			kp = smooth(clamp((u - eT) / ((1 - eT) * 0.85), 0, 1))
+			-- (and is in place before contact: still turning as the fist landed, a hook's elbow went on rising past it)
+			kp = smooth(clamp((u - eT) / ((1 - eT) * 0.72), 0, 1))
 			if contact then
 				kp = 1
 			end
@@ -2286,7 +2335,7 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 					n = n.Unit
 					if lp and lastT and t > lastT then
 						local ang = math.acos(clamp(lp:Dot(n), -1, 1))
-						local maxA = SWIVEL_RATE * (t - lastT)
+						local maxA = SWIVEL_RATE * (1 + (SWIVEL_HOME - 1) * min(1, retK / REC_POLE)) * (t - lastT)
 						if ang > maxA then
 							local q = n - lp * lp:Dot(n)
 							if q.Magnitude > 1e-4 then
@@ -2358,6 +2407,7 @@ function AnimFight.punches(p, rig, t, near)
 				any = true
 			else
 				rig.pun[h] = nil
+				rig.punchDoneT = t
 				if act == newest then
 					rig.bodyAct = nil
 					local bc = rig.bodyCur

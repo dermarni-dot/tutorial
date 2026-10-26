@@ -43,6 +43,8 @@ end
 
 -- relaxed standing: breathing, a slow weight shift that never repeats (noise), feet planted,
 -- the walk / run gait when the root moves
+-- how quickly a standing man's head catches up with his trunk's sway (1/s): it settles a beat behind it
+local HEAD_SETTLE = 3.5
 local function stand(p, rig, t, dt, breathe, shift)
 	local amp = R.ampOf(rig)
 	-- arms hang out from the body (+Z on the right shoulder = hand away from the hip): more with bulk,
@@ -56,11 +58,31 @@ local function stand(p, rig, t, dt, breathe, shift)
 	local ws = (shift or 1) * K.noise1(t * 0.21, ns + 90) * amp * (1 - mv)
 	p.Root = CF(0.07 * ws, -0.03 - 0.02 * abs(ws), 0) * A(0, 0.04 * ws, -0.035 * ws)
 	p.W = A(b - 0.02, 0, 0.03 * ws)
-	p.Neck = A(-b * 0.6 + K.noise1(t * 0.31, ns + 91) * 0.03, K.noise1(t * 0.17, ns + 92) * 0.07 * (1 - mv), -0.02 * ws)
-	p.RS = A(0.04 + b, 0, out + b * 0.5)
-	p.RE = A(0.18, 0, 0)
-	p.LS = A(0.04 + b, 0, -out - b * 0.5)
-	p.LE = A(0.18, 0, 0)
+	-- secondary motion, all of it small and slow (standing still; the gait owns a walker's): the head settles a beat
+	-- behind the trunk's sway (it keeps its line while the shoulders move under it, then follows), the shoulders lift
+	-- on the in-breath and roll a little forward and back on their own, the hands hang loose - the wrists a touch
+	-- flexed, the elbows easing - never a mannequin's locked arms
+	local still = 1 - mv
+	local trunkR, trunkP = 0.03 * ws - 0.035 * ws, b
+	local hs = rig.headSettle
+	if not hs then
+		hs = { r = trunkR, p = trunkP }
+		rig.headSettle = hs
+	end
+	local ka = 1 - math.exp(-(dt or 0) * HEAD_SETTLE)
+	hs.r += (trunkR - hs.r) * ka
+	hs.p += (trunkP - hs.p) * ka
+	local sr = K.noise1(t * 0.27, ns + 95) * 0.035 * still
+	local sl = K.noise1(t * 0.23 + 3, ns + 96) * 0.035 * still
+	local loose = K.noise1(t * 0.35 + 7, ns + 97) * still
+	p.Neck = A(-b * 0.6 + K.noise1(t * 0.31, ns + 91) * 0.03 + (hs.p - trunkP) * 0.8, K.noise1(t * 0.17, ns + 92) * 0.07 * still,
+		-0.02 * ws + (hs.r - trunkR) * 0.8)
+	p.RS = A(0.04 + b + sr, 0, out + b * 0.9)
+	p.RE = A(0.18 + 0.05 * loose + 0.6 * b, 0, 0)
+	p.LS = A(0.04 + b + sl, 0, -out - b * 0.9)
+	p.LE = A(0.18 - 0.04 * loose + 0.6 * b, 0, 0)
+	p.RW = A(0.1 + 0.03 * loose, 0, 0.04)
+	p.LW = A(0.1 - 0.03 * loose, 0, -0.04)
 	plant(rig, 0.1, 0.02, 0.12, -0.12, 0, 0)
 	-- the unweighted leg relaxes: knee forward, heel light
 	if ws > 0.3 then
