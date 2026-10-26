@@ -5993,9 +5993,14 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 			npcRoot:SetNetworkOwner(nil)
 		end
 	end
+	-- (a frame between the opponent's build and the player's re-dress: two heavy builds in one server step stall
+	-- the scene's first frames in Studio, where the server shares the client's frame)
+	task.wait()
 	local char = player.Character
-	if not char then
-		arena:Destroy()
+	if not (char and char.Parent and arena.Parent) then
+		if arena.Parent then
+			arena:Destroy()
+		end
 		return nil
 	end
 	-- fight-night look for the player: gloves on, mouthguard in
