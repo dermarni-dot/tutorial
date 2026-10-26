@@ -2,11 +2,15 @@
 -- casters - the server-built gym and city (workspace.Gym), your client-side gym and city dressing
 -- (LocalGym, LocalCity, WorldDetail) and, during a fight, the arena (signs and shadow casters only: VenueFX drives
 -- the arena's lights and effects itself). Ambience keeps its dust and sun shafts (GymAmbienceFX).
---   High    today's look. The only change: lights far beyond any view switch off (a fight venue is
---           ~5,700 studs from the gym, whose 90-200 lights otherwise stay on through the whole fight)
---   Medium  shadows only from lights marked ShadowKeep (two of the ring's four cans); small accent
---           lights (range < 16) beyond 90 studs and mid lights beyond 220 off; signs drawn out to 3/4
---           of their distance at 3/4 resolution; continuous particles at 55% (none beyond 260 studs)
+--   High    today's look. Lights whose pool can no longer be told apart switch off: accent lights (range < 16)
+--           beyond 200 studs, mid lights beyond 450, big fills beyond 900 (the lamps' Neon bulbs and lenses
+--           stay lit, so the street still reads lit; a fight venue is ~5,700 studs from the gym, whose lights
+--           otherwise stayed on through the whole fight); light shadows only from the 4 nearest shadowed
+--           lights within 240 studs (the ring's cans while you are in the gym, none from the street)
+--   Medium  shadows only from lights marked ShadowKeep (two of the ring's four cans), the 2 nearest within
+--           160 studs; small accent lights (range < 16) beyond 90 studs, mid lights beyond 220 and fills beyond
+--           700 off; signs drawn out to 3/4 of their distance at 3/4 resolution; continuous particles at 55%
+--           (none beyond 260 studs)
 --   Low     no light shadows; accent lights off; mid lights beyond 110 and big fills beyond 170 off;
 --           signs drawn out to half their distance at half resolution; particles at 25% (none beyond
 --           150 studs); small parts (under 4 studs) cast no shadow
@@ -30,13 +34,20 @@ do
 	Perf = (ok and type(mod) == "table") and mod or nil
 end
 
-local FAR = 2000 -- beyond any view on any level
--- light cull distances per level: { accent (< 16), mid (16..39), fill (>= 40) }; 0 = always off
+-- light cull distances per level: { accent (< 16), mid (16..39), fill (>= 40) }; 0 = always off. High's are
+-- ~13-20x the light's range: past that a pool is a few pixels under the haze (the city at night had ~470
+-- lights on within the old 2,000-stud reach, about 340 within these)
 local CULL = {
 	{ 0, 110, 170 },
-	{ 90, 220, FAR },
-	{ FAR, FAR, FAR },
+	{ 90, 220, 700 },
+	{ 200, 450, 900 },
 }
+-- shadow-casting lights: only the nearest SHADOW_MAX within SHADOW_NEAR studs of the camera keep their shadows
+-- (a spot's shadow map is re-drawn whenever something moves in its cone: the ring's cans over the sparring
+-- members, seen from the street). Re-ranked every SHADOW_EVERY seconds (a handful of lights).
+local SHADOW_NEAR = { 0, 160, 240 }
+local SHADOW_MAX = { 0, 2, 4 }
+local SHADOW_EVERY = 0.5
 local FX = { 0.25, 0.55, 1 } -- continuous particle rate multiplier
 local EMIT_FAR = { 150, 260, math.huge } -- continuous emitters further than this from the camera stop
 local SIGN_DIST = { 0.5, 0.75, 1 } -- SurfaceGui / BillboardGui MaxDistance multiplier
@@ -93,7 +104,12 @@ local function lightClass(l)
 	return r < 16 and 1 or (r < 40 and 2 or 3)
 end
 
-local function shadowAllowed(l, e)
+local shadowList = {} -- the lights whose own Shadows was on (the ranking's candidates)
+local shadowNear = {} -- light -> true while it ranks among the nearest (the last ranking)
+local shadowAcc = SHADOW_EVERY -- seconds since the last ranking (a level change ranks on the next frame)
+
+-- the level's rule alone (the ranking adds the distance and the count)
+local function shadowLevelAllows(l, e)
 	if not e.shadow then
 		return false
 	end
@@ -101,6 +117,10 @@ local function shadowAllowed(l, e)
 		return true
 	end
 	return level == 2 and l:GetAttribute("ShadowKeep") == true
+end
+
+local function shadowAllowed(l, e)
+	return shadowNear[l] == true and shadowLevelAllows(l, e)
 end
 
 local function applyLightShadow(l, e)
@@ -236,6 +256,10 @@ local function visit(inst)
 			}
 			lights[inst] = e
 			table.insert(lightList, inst)
+			if e.shadow then
+				table.insert(shadowList, inst)
+				shadowAcc = SHADOW_EVERY -- ranked on the next frame
+			end
 		end
 		applyLightShadow(inst, e)
 	elseif inst:IsA("SurfaceGui") or inst:IsA("BillboardGui") then
@@ -375,6 +399,7 @@ local function setLevel(l)
 		return
 	end
 	level = l
+	shadowAcc = SHADOW_EVERY
 	reapplyAll()
 	for _, fn in ipairs(listeners) do
 		task.spawn(fn, level)
@@ -387,11 +412,14 @@ end
 local sweepIdx = 0
 local emitIdx = 0
 -- lights visited per frame: ~200 lights come round every ~0.3 s on Low / Medium (the culling there
--- is within 90-220 studs); High only switches lights beyond any view, so ~1 s is plenty
-local SWEEP_PER_FRAME = { 12, 12, 4 }
+-- is within 90-220 studs); High's starts at 200 studs, so the ~470 of the city at night come round in ~1 s.
+-- A camera jump (a travel, a cut) sweeps them all at the fast rate, so the new place is lit at once
+local SWEEP_PER_FRAME = { 12, 12, 8 }
+local JUMP = 100 -- studs the camera moves in one frame that count as a jump
 local menuSweep = 0 -- lights left to visit at the fast rate after the menu hold changed
 local purgeAcc = 0
 
+local lastCamPos -- the camera's position last frame (a jump re-sweeps at the fast rate)
 local menuHold = false -- the main menu's set is up (LocalPlayer attribute MenuStage): every world light is culled
 local function sweepLight(l, camPos)
 	local e = lights[l]
@@ -439,12 +467,17 @@ local function purge()
 	while i <= n do
 		local l = lightList[i]
 		if l.Parent == nil then
-			lights[l], culled[l], wanted[l] = nil, nil, nil
+			lights[l], culled[l], wanted[l], shadowNear[l] = nil, nil, nil, nil
 			lightList[i] = lightList[n]
 			lightList[n] = nil
 			n -= 1
 		else
 			i += 1
+		end
+	end
+	for i = #shadowList, 1, -1 do
+		if shadowList[i].Parent == nil then
+			table.remove(shadowList, i)
 		end
 	end
 	for g in pairs(guis) do
@@ -475,6 +508,37 @@ local function purge()
 	end
 end
 
+-- the shadowed lights re-ranked: the nearest SHADOW_MAX the level allows within SHADOW_NEAR keep their shadows
+local shadowRank = {} -- reused: { light, distance } pairs
+local function rankShadows(camPos)
+	table.clear(shadowRank)
+	local near = SHADOW_NEAR[level] or 0
+	for _, l in ipairs(shadowList) do
+		local e = lights[l]
+		local holder = l.Parent
+		if e and holder and shadowLevelAllows(l, e) then
+			local pos = (holder:IsA("BasePart") and holder.Position) or (holder:IsA("Attachment") and holder.WorldPosition) or nil
+			local d = pos and (pos - camPos).Magnitude
+			if d and d <= near then
+				table.insert(shadowRank, { l, d })
+			end
+		end
+	end
+	table.sort(shadowRank, function(a, b)
+		return a[2] < b[2]
+	end)
+	table.clear(shadowNear)
+	for i = 1, math.min(#shadowRank, SHADOW_MAX[level] or 0) do
+		shadowNear[shadowRank[i][1]] = true
+	end
+	for _, l in ipairs(shadowList) do
+		local e = lights[l]
+		if e and l.Parent then
+			applyLightShadow(l, e)
+		end
+	end
+end
+
 local function step(dt)
 	-- queued registrations / re-applies under a time budget
 	if qHead <= #queue then
@@ -494,13 +558,20 @@ local function step(dt)
 			qHead = 1
 		end
 	end
+	-- light shadows: the nearest few (a handful of candidates, twice a second)
+	shadowAcc += dt
+	if shadowAcc >= SHADOW_EVERY and #shadowList > 0 then
+		shadowAcc = 0
+		local cam = workspace.CurrentCamera
+		rankShadows(cam and cam.CFrame.Position or Vector3.zero)
+	end
 	-- light culling: a slice per frame
 	local count = #lightList
 	if count > 0 then
 		local cam = workspace.CurrentCamera
 		local camPos = cam and cam.CFrame.Position or Vector3.zero
-		-- behind the main menu (its set floats ~1400 studs over the town, inside High's 2000-stud reach) the gym's
-		-- and the city's lights are all off; the sweep runs faster while it switches them (off, then back on)
+		-- behind the main menu (its set floats ~1400 studs over the town) the gym's and the city's lights are all
+		-- off, whatever their reach; the sweep runs faster while it switches them (off, then back on)
 		local p = Players.LocalPlayer
 		local hold = p ~= nil and p:GetAttribute("MenuStage") == true
 		local per = SWEEP_PER_FRAME[level] or 4
@@ -508,6 +579,11 @@ local function step(dt)
 			menuHold = hold
 			menuSweep = count
 		end
+		if lastCamPos and (camPos - lastCamPos).Magnitude > JUMP then
+			menuSweep = count
+			shadowAcc = SHADOW_EVERY
+		end
+		lastCamPos = camPos
 		if menuSweep > 0 then
 			per = math.max(per, 32)
 			menuSweep -= per
@@ -595,7 +671,11 @@ function WorldLOD.Stats()
 	for _ in pairs(shadowOff) do
 		ns += 1
 	end
-	return { level = level, lights = nl, culled = nc, guis = ng, emitters = ne, shadowOff = ns, queued = #queue - qHead + 1 }
+	local nsh = 0
+	for _ in pairs(shadowNear) do
+		nsh += 1
+	end
+	return { level = level, lights = nl, culled = nc, guis = ng, emitters = ne, shadowOff = ns, shadowLights = nsh, queued = #queue - qHead + 1 }
 end
 
 return WorldLOD

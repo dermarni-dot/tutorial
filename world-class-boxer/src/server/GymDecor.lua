@@ -49,6 +49,16 @@ local C = {
 ------------------------------------------------------------------------
 -- helpers
 ------------------------------------------------------------------------
+-- decor whose shadow nobody can see: under a stud on its longest side (bottles, bolts, buttons, bulbs), or a thin
+-- slab lying on the ground (floor tape, finish lines, seams: its shadow falls under itself). Each sun shadow
+-- caster is drawn again into the shadow map every frame it is in view (opts.shadow = true keeps one)
+local function shadowless(size, cf)
+	if math.max(size.X, size.Y, size.Z) < 1 then
+		return true
+	end
+	return size.Y <= 0.12 and size.Y <= size.X and size.Y <= size.Z and cf.Y < 1.5 and math.abs(cf.UpVector.Y) > 0.98
+end
+
 local function part(parent, name, size, cf, color, material, opts)
 	opts = opts or {}
 	local p = Instance.new(opts.class or "Part")
@@ -73,7 +83,7 @@ local function part(parent, name, size, cf, color, material, opts)
 	if opts.reflect then
 		p.Reflectance = opts.reflect
 	end
-	if opts.shadow == false then
+	if opts.shadow == false or (opts.shadow ~= true and not collide and shadowless(size, cf)) then
 		p.CastShadow = false
 	end
 	p.Parent = parent

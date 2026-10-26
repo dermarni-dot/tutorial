@@ -1509,26 +1509,50 @@ local NEAR = 180
 local WIN_RANGE = 760 -- the Main Street shop fronts
 local WIN_HYST = 80 -- hysteresis: built inside the range, destroyed beyond range + this
 local WIN_MAX = 48 -- grids alive at once (nearest first)
-local WIN_STEP = 8 -- grids built per pass (the first pass would otherwise make ~1,700 Frames at once)
+local WIN_BUDGET = 50 -- window bands (Frames, each with its UIGradient) built per pass, 8 passes a second, at least one grid a pass (the first
+-- pass would otherwise make ~1,700 Frames at once; 8 grids a pass once a second made ~700 instances in one frame, a
+-- hitch every second while the skyline filled in)
+local WIN_EVERY = 0.125 -- seconds between passes
 local winParts = {} -- every part carrying a window spec
 local winRange = {} -- part -> its draw range
 local winLive = {} -- part -> SurfaceGui
 local winScanAt = 0
+local winScanned -- the city root the parts were read from (a new one is read again)
+local winAddConn -- that root's DescendantAdded: parts built later join the list
 local winOrder = {} -- reused every pass (no per-pass allocation beyond the sort)
 
+local function addWindowPart(d)
+	if winRange[d] == nil and d:IsA("BasePart") and d:GetAttribute("WinRows") then
+		table.insert(winParts, d)
+		winRange[d] = tonumber(d:GetAttribute("WinRange")) or WIN_RANGE
+	end
+end
+
+-- the city's ~18,000 instances are walked once (and again only for a new city root, or while none has a spec
+-- yet); what the server adds later arrives through DescendantAdded. The old rescan walked them every 15 s
 local function scanWindowParts()
-	table.clear(winParts)
-	table.clear(winRange)
 	local c = cityRoot()
-	if not c then
+	if not c or (c == winScanned and #winParts > 0) then
 		return
 	end
-	for _, d in ipairs(c:GetDescendants()) do
-		if d:IsA("BasePart") and d:GetAttribute("WinRows") then
-			table.insert(winParts, d)
-			winRange[d] = tonumber(d:GetAttribute("WinRange")) or WIN_RANGE
-		end
+	table.clear(winParts)
+	table.clear(winRange)
+	if winAddConn then
+		winAddConn:Disconnect()
+		winAddConn = nil
 	end
+	for _, d in ipairs(c:GetDescendants()) do
+		addWindowPart(d)
+	end
+	winScanned = c
+	winAddConn = c.DescendantAdded:Connect(function(d)
+		-- (the spec's attributes are set in the same server step as the part; deferred all the same)
+		task.defer(function()
+			if d.Parent then
+				addWindowPart(d)
+			end
+		end)
+	end)
 end
 
 -- A window row is one Frame per run of up to WIN_BAND windows, not one per window: its UIGradient
@@ -1601,8 +1625,8 @@ local function buildWindowGrid(p)
 end
 
 local function updateWindowGrids(camPos, now)
-	if #winParts == 0 or now >= winScanAt then
-		winScanAt = now + 15 -- the city streams in after the client starts; a cheap rescan
+	if not winScanned or now >= winScanAt then
+		winScanAt = now + 5 -- the city replicates after the client starts: look for it (cheap once it is read)
 		scanWindowParts()
 	end
 	table.clear(winOrder)
@@ -1622,6 +1646,14 @@ local function updateWindowGrids(camPos, now)
 			winLive[p] = nil
 		end
 	end
+	-- (destroyed spec parts leave the list)
+	for i = #winParts, 1, -1 do
+		local p = winParts[i]
+		if not p.Parent and not winLive[p] then
+			winRange[p] = nil
+			table.remove(winParts, i)
+		end
+	end
 	local alive = 0
 	for _ in pairs(winLive) do
 		alive += 1
@@ -1632,17 +1664,20 @@ local function updateWindowGrids(camPos, now)
 		table.sort(winOrder, function(a, b)
 			return (a.Position - camPos).Magnitude < (b.Position - camPos).Magnitude
 		end)
-		for i, p in ipairs(winOrder) do
-			if alive >= winMax or i > WIN_STEP then
+		local bands = 0
+		for _, p in ipairs(winOrder) do
+			if alive >= winMax or bands >= WIN_BUDGET then
 				break
 			end
+			local rows, cols = tonumber(p:GetAttribute("WinRows")) or 1, tonumber(p:GetAttribute("WinCols")) or 1
+			bands += rows * math.ceil(cols / WIN_BAND)
 			winLive[p] = buildWindowGrid(p)
 			alive += 1
 		end
 	end
 end
 
-local acc, slowAcc, tagAcc = 0, 0, 0
+local acc, slowAcc, tagAcc, winAcc = 0, 0, 0, 0
 local clock = 0
 
 local function pushBulk()
@@ -1761,6 +1796,7 @@ local function step(dt)
 	acc += dt
 	slowAcc += dt
 	tagAcc += dt
+	winAcc += dt
 	-- (Low animates the street at 20 Hz)
 	if acc < lodPick(1 / 20, 1 / 30, 1 / 30) then
 		return
@@ -1814,6 +1850,9 @@ local function step(dt)
 	if tagAcc >= 1 then
 		tagAcc = 0
 		pcall(updateTags)
+	end
+	if winAcc >= WIN_EVERY then
+		winAcc = 0
 		pcall(updateWindowGrids, cam.CFrame.Position, os.clock())
 	end
 end
@@ -1853,23 +1892,35 @@ function CityVisuals.Start()
 end
 
 -- P = the profile summary (State.P). Cheap when nothing changed: every piece is key-gated.
-function CityVisuals.Refresh(P)
+-- slice (optional, from a thread that may yield: ClientMain's Perf.Budget): called between the pieces, so a first
+-- build is spread over frames. A Refresh asked for while a sliced one is still under way runs after it (the retry)
+local refreshing = false
+function CityVisuals.Refresh(P, slice)
 	if type(P) ~= "table" or not P.created or P.retired then
 		return
 	end
 	lastP = P
 	CityVisuals.Start()
+	if refreshing then
+		retryAt = os.clock() + 0.25
+		return
+	end
 	if not cityRoot() then
 		retryAt = os.clock() + 2
 		return
 	end
+	refreshing = type(slice) == "function"
 	local steps = { updateHomes, updateCars, updateBillboards, updateWindows, updateMedia, updateLegacy, updateElite, updateFans, updateStreetLife }
 	for _, fn in ipairs(steps) do
 		local ok, err = pcall(fn, P)
 		if not ok then
 			warn("[CityVisuals] " .. tostring(err))
 		end
+		if refreshing then
+			slice()
+		end
 	end
+	refreshing = false
 	-- some sites may still be streaming in: look again shortly
 	if not siteCF("CarBay") or not siteCF("HomeMansion") then
 		retryAt = os.clock() + 3
