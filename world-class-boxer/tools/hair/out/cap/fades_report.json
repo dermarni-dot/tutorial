@@ -1,0 +1,243 @@
+{
+ "cap": {
+  "tris": 5523,
+  "clearance": {
+   "skull_m": 0.0202,
+   "head_m": 0.0205,
+   "skull_f_fit": 0.0203,
+   "head_f_fit": 0.0205,
+   "skull_m_narrow_fit": 0.0201,
+   "skull_m_where_mesh_agrees": 0.0202,
+   "max_skull_mesh_gap_under": 0.0004,
+   "skull_m_narrow_where_mesh_agrees": 0.0201
+  }
+ },
+ "buzz": {
+  "tris": 5520,
+  "pieces": {
+   "HairFur": [
+    5520,
+    {
+     "rank": 0.3,
+     "cov": 0.0
+    }
+   ]
+  },
+  "clearance": {
+   "skull_m": 0.0237,
+   "head_m": 0.0235,
+   "skull_f_fit": 0.0238,
+   "head_f_fit": 0.0236,
+   "skull_m_narrow_fit": 0.023,
+   "skull_m_where_mesh_agrees": 0.0237,
+   "max_skull_mesh_gap_under": 0.0004,
+   "skull_m_narrow_where_mesh_agrees": 0.023
+  },
+  "separation": [
+   0.0027
+  ],
+  "separation_tall": [],
+  "seam": {
+   "HairFur": {
+    "u0": 62,
+    "u1": 62,
+    "unmatched": 0,
+    "border_corner": 0
+   }
+  },
+  "edge_cov": {
+   "HairCap": {
+    "max": 0.279,
+    "p99": 0.113,
+    "n": 188
+   },
+   "HairFur": {
+    "max": 0.291,
+    "p99": 0.123,
+    "n": 187
+   }
+  }
+ },
+ "fade_mid": {
+  "tris": 11892,
+  "pieces": {
+   "HairTop1": [
+    1338,
+    {
+     "rank": 0.0,
+     "cov": 0.3
+    }
+   ],
+   "HairTop2": [
+    1310,
+    {
+     "rank": 0.25,
+     "cov": 0.42
+    }
+   ],
+   "HairTop3": [
+    1244,
+    {
+     "rank": 0.8,
+     "cov": 0.66
+    }
+   ],
+   "HairCrop": [
+    8000,
+    null
+   ]
+  },
+  "clearance": {
+   "skull_m": 0.0258,
+   "head_m": 0.0256,
+   "skull_f_fit": 0.0259,
+   "head_f_fit": 0.0257,
+   "skull_m_narrow_fit": 0.025,
+   "skull_m_where_mesh_agrees": 0.0258,
+   "max_skull_mesh_gap_under": 0.0004,
+   "skull_m_narrow_where_mesh_agrees": 0.025
+  },
+  "separation": [
+   0.0024,
+   0.0005,
+   0.0005
+  ],
+  "separation_tall": [
+   0.0051,
+   0.0046
+  ],
+  "seam": {
+   "HairTop1": {
+    "u0": 28,
+    "u1": 28,
+    "unmatched": 0,
+    "border_corner": 0
+   },
+   "HairTop2": {
+    "u0": 28,
+    "u1": 28,
+    "unmatched": 0,
+    "border_corner": 0
+   },
+   "HairTop3": {
+    "u0": 26,
+    "u1": 26,
+    "unmatched": 0,
+    "border_corner": 0
+   }
+  },
+  "edge_cov": {
+   "HairCap": {
+    "max": 0.026,
+    "p99": 0.001,
+    "n": 188
+   },
+   "HairTop1": {
+    "max": 0.0,
+    "p99": 0.0,
+    "n": 69
+   },
+   "HairTop2": {
+    "max": 0.0,
+    "p99": 0.0,
+    "n": 67
+   },
+   "HairTop3": {
+    "max": 0.0,
+    "p99": 0.0,
+    "n": 65
+   }
+  }
+ },
+ "caesar": {
+  "tris": 11581,
+  "pieces": {
+   "HairTop1": [
+    1427,
+    {
+     "rank": 0.0,
+     "cov": 0.3
+    }
+   ],
+   "HairTop2": [
+    1421,
+    {
+     "rank": 0.25,
+     "cov": 0.42
+    }
+   ],
+   "HairTop3": [
+    1413,
+    {
+     "rank": 0.8,
+     "cov": 0.66
+    }
+   ],
+   "HairCrop": [
+    7320,
+    null
+   ]
+  },
+  "clearance": {
+   "skull_m": 0.0218,
+   "head_m": 0.0198,
+   "skull_f_fit": 0.022,
+   "head_f_fit": 0.02,
+   "skull_m_narrow_fit": 0.0216,
+   "skull_m_where_mesh_agrees": 0.0218,
+   "max_skull_mesh_gap_under": 0.0004,
+   "skull_m_narrow_where_mesh_agrees": 0.0216
+  },
+  "separation": [
+   0.0024,
+   0.0005,
+   0.0005
+  ],
+  "separation_tall": [
+   0.0053,
+   0.0048
+  ],
+  "seam": {
+   "HairTop1": {
+    "u0": 31,
+    "u1": 31,
+    "unmatched": 0,
+    "border_corner": 0
+   },
+   "HairTop2": {
+    "u0": 31,
+    "u1": 31,
+    "unmatched": 0,
+    "border_corner": 0
+   },
+   "HairTop3": {
+    "u0": 31,
+    "u1": 31,
+    "unmatched": 0,
+    "border_corner": 0
+   }
+  },
+  "edge_cov": {
+   "HairCap": {
+    "max": 0.279,
+    "p99": 0.113,
+    "n": 188
+   },
+   "HairTop1": {
+    "max": 0.171,
+    "p99": 0.141,
+    "n": 84
+   },
+   "HairTop2": {
+    "max": 0.0,
+    "p99": 0.0,
+    "n": 80
+   },
+   "HairTop3": {
+    "max": 0.0,
+    "p99": 0.0,
+    "n": 76
+   }
+  }
+ }
+}

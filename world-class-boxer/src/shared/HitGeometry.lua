@@ -1,0 +1,661 @@
+-- HitGeometry: reach and hit volumes from the live rig, shared by the server (FightEngine: the authoritative
+-- range check in Fight:Resolve, PunchRange, the body separation, the clinch reach) and the client (FightClient: the
+-- punch prediction and the range read-out), so both run the same code on the same numbers.
+--
+-- A FRAME is one fighter's body as the fight sees it, in studs above his soles (HitGeometry.Frame reads it off
+-- the rig's parts; HitGeometry.FrameFromScales builds it from Builder.Scales / the unit rig when there is no rig,
+-- as the headless sims have none):
+--   stand        sole to crown
+--   shoulderY    the shoulder pivot's height; shoulderHalf = half the shoulder width
+--   arm          shoulder pivot to the glove's striking face (upper arm + forearm + the glove past the wrist)
+--   glove        the glove's radius (half its width)
+--   headY, headR the head's centre and radius (the head zone is a sphere: its bottom is the chin)
+--   chestY       the top of the torso (the body zone's top), waistY its bottom, torsoHalfW / torsoHalfD its half sizes
+--   hScale       stand / the unit rig's (the step and lean a punch gets scale with the legs)
+--
+-- A punch is a glove path from the attacker's shoulder: a straight goes out level (down to the body, up to a
+-- taller chin within its angles), a hook comes round at shoulder height (dipping to the body), an uppercut rises
+-- from under the target, an overhand comes over the top. Its reach R is the attacker's (arm + glove + his step),
+-- calibrated per punch so that the unit rig against itself lands at exactly the distance the fight was balanced
+-- on (FightMotion.Spacing.base x Config.Punches[p].range), and shaped by the height difference: a target above the
+-- shoulder costs a straight or a hook reach (the arm reaches up, not out), costs an uppercut nothing (it is going
+-- up anyway) and an overhand comes down, so a target below is easy for it. The zone is hit when the glove path
+-- meets it inside R plus a tolerance that scales with both men (the glove and the target).
+-- (v18) Every number of it - the reach (TARGET / WIDE), the punch's angles and how far up and down it gets (KIND) - is
+-- fitted to where AnimFight's glove visibly lands, over every pairing of the five frames AND of the heights 5'4" .. 6'8"
+-- both ways (tools/sim/anim_reach.json, tools/sim/hg_fit.luau): a punch the screen shows land is a hit, one it shows
+-- short or under a much taller chin is a miss (or, a head shot, lands on the body), whoever is the taller. Up close the
+-- glove still has to get there: as close as the bodies get, a short man's hook does not reach a much taller jaw.
+--
+-- Every function is pure (no Roblox services): tools/sim/test_hitdetect.luau drives it under lune.
+local HitGeometry = {}
+
+-- the unit rig (BodyAssetData.unit: Builder's 70-inch Athletic man at Height / Width / Depth 1; the realistic
+-- torso of tools/sim/host.luau), studs above the soles
+local UNIT = {
+	stand = 6.457, -- neck 5.2892 + (0.5 + 0.26 lift) x head 0.9269 + head / 2
+	shoulderY = 4.9199, shoulderX = 0.9549, elbowY = 4.002, wristY = 3.072,
+	gloveLen = 0.73, glove = 0.32, -- BuilderBody's fist: ~1.15 x its width from the wrist to the striking face
+	headY = 5.994, head = 0.9269, headScale = 0.7724,
+	neckY = 5.2892, hipY = 2.6712, utW = 1.59, utD = 0.97, ltW = 1.59,
+	heightIn = 70, reachIn = 70,
+}
+UNIT.arm = (UNIT.shoulderY - UNIT.wristY) + UNIT.gloveLen
+HitGeometry.UNIT = UNIT
+
+-- the spacing the ranges were first balanced on (FightMotion.Spacing: base 4.3 x Config.Punches[p].range), kept for
+-- the callers that read it; the ranges themselves are calibrated to what the fight ANIMATION reaches (TARGET below)
+HitGeometry.BASE = 4.3
+HitGeometry.MIN_SEP = 3.25
+HitGeometry.CLINCH = 4.8
+-- the root-to-root distance out to which the punch VISIBLY lands (AnimFight's glove, lunge included, within contact of
+-- the target's surface: the median of three throws, the client's variants mixed), measured by tools/sim/v9_anim.luau
+-- --clips reach --find on the tier-3 rigs over every pairing of the five frames and of the heights 5'4" .. 6'8"
+-- (tools/sim/anim_reach.json): the Athletic pair's numbers here, on the Athletic rig as the server reads it in Studio
+-- (RIG below). (v18) The server's hooks reached 1.0-1.7 studs past where the glove lands since the bent-elbow hooks (HOOK_ARM,
+-- HOOK_LUNGE_MAX) - the server landed a lead hook from 5.2 that visibly stopped short at 4.2 - and the 6-unit aim cut-off
+-- kept every tall man's body shots at a 5'10" man's reach. tools/sim/test_hitdetect holds every frame pairing to 0.25
+-- stud and every height pairing to 0.4
+local TARGET = {
+	jab = { head = 5.54, body = 5.37 },
+	cross = { head = 5.85, body = 5.84 },
+	leadhook = { head = 4.20, body = 4.52 },
+	rearhook = { head = 4.10, body = 5.05 },
+	uppercut = { head = 4.73, body = 4.88 },
+	overhand = { head = 5.05, body = 5.06 },
+}
+HitGeometry.CONTACT = 0.15
+-- the Athletic tier-3 rig as HitGeometry.Frame reads it off the parts (the frame TARGET is measured on and CAL
+-- calibrated to; FrameFromScales' unit is the sims' stand-in: its head stands a quarter stud higher on the neck and
+-- its glove is smaller, so it has a calibration of its own, CAL_SCALES)
+local RIG = { stand = 6.216, shoulderY = 4.920, shoulderHalf = 1.226, arm = 2.530, glove = 0.410, headY = 5.753, headR = 0.464, chestY = 5.393,
+	waistY = 2.342, torsoHalfW = 0.862, torsoHalfD = 0.444, hScale = 0.963, source = "rig" }
+HitGeometry.RIG = RIG
+-- the width a punch gets (studs of reach per stud of torso half width past RIG's): AnimFight swings the hooks round
+-- the shoulder and turns the cross through it, so a broad man's hooks land a stud further than a lean man's at the
+-- same height, while the jab and the uppercut barely care (fitted with the rest: tools/sim/hg_fit.luau)
+local WIDE = {
+	jab = { head = -0.02, body = 0.32 },
+	cross = { head = -0.15, body = 0.37 },
+	leadhook = { head = 0.05, body = 0.73 },
+	rearhook = { head = 0.08, body = 0.62 },
+	uppercut = { head = -0.55, body = -0.13 },
+	overhand = { head = -0.57, body = -0.21 },
+}
+HitGeometry.WIDE = WIDE
+HitGeometry.TARGET = TARGET
+
+-- the punch's shape by kind: where it starts (origin: shoulderY + o x arm), the angles it can be thrown at (up /
+-- down, degrees, at full reach), how far up and down the glove gets from the origin as a share of the arm (the
+-- vertical reach: an uppercut rises a whole arm and the legs' drive, a hook barely rises, an overhand comes down
+-- over the top; a straight or a hook dips to the body as far as it reaches out), the dip a body shot takes (x arm)
+local KIND = {
+	straight = { o = 0.128, up = 72, down = 48, vUp = 0.8, vDown = 1.26, rise = 0.3, dip = 0.294 },
+	hook = { o = -0.111, up = 59, down = 40, vUp = 0.61, vDown = 0.98, rise = 0, dip = 0.149 },
+	-- (per punch where it differs from its kind - the cross from the rear shoulder, the rear hook from further round - and
+	-- how its step grows with the man's height, stepH: SHAPE's otherwise; the uppercut and the overhand are their own kind)
+	jab = { o = 0.128, up = 72, down = 48, vUp = 0.8, vDown = 1.26, rise = 0.3, dip = 0.294, stepH = 0.188 },
+	cross = { o = -0.085, up = 75.5, down = 48, vUp = 0.76, vDown = 1.04, rise = 0.381, dip = 0.206, stepH = 0.031 },
+	leadhook = { o = -0.111, up = 59, down = 40, vUp = 0.61, vDown = 0.98, rise = 0, dip = 0.149, stepH = 0.218 },
+	rearhook = { o = -0.017, up = 63, down = 40, vUp = 0.35, vDown = 1.08, rise = -0.026, dip = 0.168, stepH = 0.266 },
+	uppercut = { o = -0.075, up = 89, down = 28, vUp = 0.875, vDown = 1.027, rise = 0.213, dip = 0, stepH = -0.475 },
+	overhand = { o = 0.15, up = 64, down = 58, vUp = 0.47, vDown = 1.29, rise = 0.075, dip = 0.05, stepH = 1.466 },
+}
+HitGeometry.KIND = KIND
+local PUNCH_KIND = { jab = "straight", cross = "straight", leadhook = "hook", rearhook = "hook", uppercut = "uppercut", overhand = "overhand" }
+HitGeometry.PUNCH_KIND = PUNCH_KIND
+-- Config.Punches[p].range (kept here so the module stays pure; FightEngine passes the live table through opts)
+local RANGE = { jab = 1.10, cross = 1.05, leadhook = 0.85, rearhook = 0.85, uppercut = 0.75, overhand = 1.0 }
+HitGeometry.RANGE = RANGE
+
+-- the tolerance: a share of the glove plus the target (the bigger the pair, the softer the edge)
+local TOL = 0.14
+-- how far a bend (a duck, a weave, a roll, a body-shot crouch) takes the head and the chest down, x stand
+local BEND_DROP = 0.16
+-- the step and lean a punch gets past the arm, at the unit height (the rest of the balanced reach), and how it grows
+-- with the man's height (x hScale ^ SHAPE.stepH): AnimFight's lunges are the hips' and the feet's, their caps the same
+-- studs for every man, so a tall man's arm reaches further and his step barely does (fitted, tools/sim/hg_fit.luau)
+local STEP = 1.45
+local SHAPE = { stepH = 0.65 }
+HitGeometry.SHAPE = SHAPE
+
+local function num(v, d)
+	return type(v) == "number" and v == v and v or d
+end
+
+------------------------------------------------------------------------
+-- Frames
+------------------------------------------------------------------------
+-- from Builder.Scales (height / width / depth / head) and the tale of the tape: sc = { height, width, depth,
+-- head } (1 = the unit), opts = { height (in), reach (in), female }
+function HitGeometry.FrameFromScales(sc, opts)
+	sc = sc or {}
+	opts = opts or {}
+	local hs = math.clamp(num(sc.height, 1), 0.5, 2)
+	local ws = math.clamp(num(sc.width, 1), 0.5, 2)
+	local ds = math.clamp(num(sc.depth, 1), 0.5, 2)
+	local hd = math.clamp(num(sc.head, UNIT.headScale) / UNIT.headScale, 0.5, 2)
+	local female = opts.female == true
+	-- the tape's reach against its height: a long-armed man's arms run past the rig's (half the ape index)
+	local hIn = math.max(40, num(opts.height, UNIT.heightIn))
+	local rIn = num(opts.reach, hIn)
+	local ape = math.clamp(1 + 0.5 * (rIn / hIn - 1), 0.85, 1.15)
+	local fw = female and 0.93 or 1
+	local F = {
+		stand = UNIT.stand * hs,
+		shoulderY = UNIT.shoulderY * hs,
+		shoulderHalf = UNIT.shoulderX * ws * (female and 0.95 or 1),
+		arm = UNIT.arm * hs * ape,
+		glove = UNIT.glove * (0.5 * ws + 0.5 * ds) * fw,
+		headY = UNIT.headY * hs,
+		headR = UNIT.head / 2 * hs * hd,
+		chestY = UNIT.neckY * hs,
+		waistY = UNIT.hipY * hs,
+		torsoHalfW = UNIT.utW / 2 * ws * (female and 0.9 or 1),
+		torsoHalfD = UNIT.utD / 2 * ds * (female and 0.94 or 1),
+		hScale = hs,
+		female = female,
+		source = "scales",
+	}
+	return F
+end
+
+-- the default frame (the unit rig)
+function HitGeometry.Unit()
+	return HitGeometry.FrameFromScales(nil, nil)
+end
+
+-- the numbers a frame must carry, all finite and positive (a frame with one missing or zero would read as a man
+-- with no reach: never handed out)
+local FRAME_KEYS = { "stand", "shoulderY", "shoulderHalf", "arm", "glove", "headY", "headR", "chestY", "waistY", "torsoHalfW", "torsoHalfD", "hScale" }
+HitGeometry.FRAME_KEYS = FRAME_KEYS
+local function finitePositive(v)
+	return type(v) == "number" and v == v and v > 0 and v < math.huge
+end
+-- nil when the frame is sound, else what is wrong with it
+function HitGeometry.Invalid(F)
+	if type(F) ~= "table" then
+		return "no frame"
+	end
+	for _, k in ipairs(FRAME_KEYS) do
+		if not finitePositive(F[k]) then
+			return k .. "=" .. tostring(F[k])
+		end
+	end
+	if not (F.stand > 3 and F.headY > F.chestY and F.chestY > F.waistY) then
+		return string.format("heights out of order (stand %.2f head %.2f chest %.2f waist %.2f)", F.stand, F.headY, F.chestY, F.waistY)
+	end
+	if not (F.arm > 1 and F.arm < 6) then
+		return string.format("arm %.2f", F.arm)
+	end
+	return nil
+end
+HitGeometry.Valid = function(F)
+	return HitGeometry.Invalid(F) == nil
+end
+
+-- the joint chain of a mesh arm against its parts' bounding boxes (BodyAssetData: the shoulder-to-elbow and
+-- elbow-to-wrist rig attachments over the parts' Size.Y; the boxes overlap at the joints, so a box sum reads an arm
+-- half as long again as it is)
+local ARM_BOX = { upper = 0.63, lower = 0.70 }
+-- the shoulder pivot under the upper arm's top, the fist's padding past the hand (x the part's Size.Y)
+local SHOULDER_UNDER_TOP, FIST_PAST_HAND = 0.2, 0.35
+
+-- from the live rig: model = the character, soleY = the height of its soles in world space (the caller knows the
+-- rig's HipHeight: FightEngine.StandHeight), fallback = a frame to fill anything the rig does not have (optional).
+-- Sizes come from the parts (exact and replicated), heights from their rest-pose positions over the root (the
+-- server sees the rig in rest, arms hanging; the client is handed the server's frames in the fight's start
+-- message). The arm is measured down the hanging chain, shoulder pivot (the ShoulderRigAttachment when the part
+-- has one) to the glove's face, never as a sum of part boxes.
+-- Returns the frame. F.source = "rig" when it came off the parts; otherwise the fallback's, with F.fallback = why
+-- the rig was not used (the caller logs it once). Never a frame with a zero or NaN in it (HitGeometry.Invalid).
+function HitGeometry.Frame(model, soleY, fallback)
+	local base = fallback or HitGeometry.Unit()
+	if HitGeometry.Invalid(base) then
+		base = HitGeometry.Unit()
+	end
+	local function giveUp(why)
+		local F = table.clone(base)
+		F.fallback = why
+		return F
+	end
+	if not model then
+		return giveUp("no model")
+	end
+	local function vec(v)
+		local ok, x, y, z = pcall(function()
+			return v.X, v.Y, v.Z
+		end)
+		if ok and type(x) == "number" and type(y) == "number" and type(z) == "number" and x == x and y == y and z == z then
+			return x, y, z
+		end
+		return nil
+	end
+	local function part(n)
+		local ok, p = pcall(function()
+			return model:FindFirstChild(n)
+		end)
+		if not (ok and p) then
+			return nil
+		end
+		if typeof(p) == "Instance" and not p:IsA("BasePart") then
+			return nil
+		end
+		-- (v17) the body's own size: the UpperTorso's mesh box includes the shoulder caps over the arms (BodyCoreSize,
+		-- BuilderTiers); every other part, or a rig without the attribute, its Size
+		-- (pcall: a plain-table test rig has no GetAttribute)
+		local size = p.Size
+		local okc, c = pcall(function()
+			return p:GetAttribute("BodyCoreSize")
+		end)
+		if okc and typeof(c) == "Vector3" then
+			size = c
+		end
+		local sx, sy, sz = vec(size)
+		local _, py = vec(p.Position)
+		if not (sx and py) or sx <= 0 or sy <= 0 or sz <= 0 then
+			return nil
+		end
+		return { X = sx, Y = sy, Z = sz, posY = py, inst = p }
+	end
+	-- a rig attachment's height in world space (the rest pose stands upright: the part's Y plus the attachment's)
+	local function attY(p, name)
+		if not p then
+			return nil
+		end
+		local ok, a = pcall(function()
+			return p.inst:FindFirstChild(name)
+		end)
+		if ok and a then
+			local _, y = vec(a.Position)
+			if y then
+				return p.posY + y
+			end
+		end
+		return nil
+	end
+	local root = part("HumanoidRootPart")
+	if not root then
+		return giveUp("no HumanoidRootPart")
+	end
+	-- the soles: the feet's own bottoms in the rest pose when the rig has feet (the rig's truth, wherever the floor
+	-- or the Humanoid's HipHeight says it stands: a HipHeight 0.7 off the legs' own put every height off by as
+	-- much), else what the caller worked out from the HipHeight, else the classic 3.2 under the root
+	local sole = num(soleY, root.posY - 3.2)
+	local lf, rf = part("LeftFoot"), part("RightFoot")
+	if lf or rf then
+		local fb = math.min(lf and (lf.posY - lf.Y / 2) or math.huge, rf and (rf.posY - rf.Y / 2) or math.huge)
+		if fb < root.posY - 1 and fb > root.posY - 6 then
+			sole = fb
+		end
+	end
+	local function top(p)
+		return p.posY + p.Y / 2 - sole
+	end
+	local function bottom(p)
+		return p.posY - p.Y / 2 - sole
+	end
+	local head, ut, lt = part("Head"), part("UpperTorso"), part("LowerTorso")
+	local side = part("LeftUpperArm") and "Left" or "Right"
+	local ua, la = part(side .. "UpperArm"), part(side .. "LowerArm")
+	local hand, glove = part(side .. "Hand"), part("Glove" .. side:sub(1, 1))
+	if not (head or ut) then
+		-- (a root alone: the headless sims' stub rigs)
+		return giveUp("no Head / UpperTorso (a root alone)")
+	end
+	local F = table.clone(base)
+	F.source = "rig"
+	F.fallback = nil
+	if head then
+		F.headR = math.max(head.X, head.Y) / 2
+		F.headY = head.posY - sole
+		F.stand = F.headY + head.Y / 2
+	end
+	if ut then
+		F.chestY = top(ut)
+		F.torsoHalfW = ut.X / 2
+		F.torsoHalfD = ut.Z / 2
+		-- the shoulder pivot sits a little under the torso's top, out at its side
+		F.shoulderY = F.chestY - ut.Y * 0.16
+		F.shoulderHalf = ut.X / 2 + (ua and ua.X / 2 or 0.25)
+	end
+	if lt then
+		F.waistY = bottom(lt)
+	elseif ut then
+		F.waistY = bottom(ut) - 0.5
+	end
+	F.hScale = math.clamp(F.stand / UNIT.stand, 0.5, 2)
+	if ua and la then
+		-- the shoulder pivot: the rig attachment, else just under the upper arm's top
+		local pivot = attY(ua, side .. "ShoulderRigAttachment") or (ua.posY + ua.Y / 2 - ua.Y * SHOULDER_UNDER_TOP)
+		-- the glove's striking face: the glove's bottom, else the fist's padding past the hand, else the wrist
+		local face
+		if glove then
+			face = glove.posY - glove.Y / 2
+		elseif hand then
+			face = hand.posY - hand.Y / 2 - hand.Y * FIST_PAST_HAND
+		else
+			face = (attY(la, side .. "WristRigAttachment") or (la.posY - la.Y / 2 + la.Y * 0.1)) - UNIT.gloveLen * F.hScale
+		end
+		-- the chain by the joints when the parts carry them, else the boxes corrected for their overlap
+		local upper = attY(ua, side .. "ShoulderRigAttachment") and attY(ua, side .. "ElbowRigAttachment")
+			and math.abs(attY(ua, side .. "ShoulderRigAttachment") - attY(ua, side .. "ElbowRigAttachment")) or ua.Y * ARM_BOX.upper
+		local lower = attY(la, side .. "ElbowRigAttachment") and attY(la, side .. "WristRigAttachment")
+			and math.abs(attY(la, side .. "ElbowRigAttachment") - attY(la, side .. "WristRigAttachment")) or la.Y * ARM_BOX.lower
+		local gl = glove and glove.Y * 0.95 or (hand and hand.Y * (1 + FIST_PAST_HAND) or UNIT.gloveLen * F.hScale)
+		local chain = upper + lower + gl
+		local hanging = pivot - face
+		-- the hanging measure when the arm really hangs (a rig caught mid-pose reads short or long: the chain then)
+		F.arm = (hanging > chain * 0.8 and hanging < chain * 1.25) and hanging or chain
+		F.shoulderY = math.min(pivot - sole, F.chestY)
+		if F.shoulderY < F.waistY then
+			F.shoulderY = F.chestY - (ut and ut.Y * 0.16 or 0.3)
+		end
+	end
+	if glove then
+		F.glove = math.max(glove.X, glove.Z) / 2
+	elseif hand then
+		F.glove = math.max(hand.X, hand.Z) * 0.75
+	end
+	-- sanity: a rig whose numbers make no sense keeps the fallback (and says why)
+	local bad = HitGeometry.Invalid(F)
+	if bad then
+		return giveUp("rig reads " .. bad)
+	end
+	return F
+end
+
+-- one line on a frame for a log / a diagnostic
+function HitGeometry.Describe(F)
+	if type(F) ~= "table" then
+		return "none"
+	end
+	return string.format("%s stand %.2f shoulder %.2f arm %.2f glove %.2f head %.2f/%.2f chest %.2f waist %.2f torso %.2fx%.2f",
+		tostring(F.source), num(F.stand, 0), num(F.shoulderY, 0), num(F.arm, 0), num(F.glove, 0), num(F.headY, 0), num(F.headR, 0),
+		num(F.chestY, 0), num(F.waistY, 0), num(F.torsoHalfW, 0), num(F.torsoHalfD, 0))
+end
+
+------------------------------------------------------------------------
+-- The punch
+------------------------------------------------------------------------
+-- the reach R of A's punch (shoulder pivot to the glove's face along the punch's line) before the height shaping:
+-- (arm + glove + the step) x the punch's calibration
+local CAL = {} -- ptype -> { head = multiplier, body = multiplier } (solved below)
+-- (and the same for a FrameFromScales frame - the headless sims', a fallback: their unit stands its head a quarter stud
+-- higher on the neck than the tier rig's and its glove is smaller, so with a hook that barely rises its punches landed up
+-- to 0.6 stud short of the rig's; calibrated on its own, the unit against itself lands at TARGET too)
+local CAL_SCALES = {}
+local function reachOf(A, ptype, zone, mul)
+	local c = (A.source == "scales" and CAL_SCALES[ptype]) or CAL[ptype]
+	local w = WIDE[ptype]
+	-- (the width past the Athletic frame of the frame's own source: a frame off the rig against RIG, a FrameFromScales
+	-- one - the sims', a fallback - against the unit torso it was scaled from, which is narrower than the tier mesh)
+	local ref = A.source == "scales" and UNIT.utW / 2 or RIG.torsoHalfW
+	local width = w and w[zone] * (num(A.torsoHalfW, ref) - ref) or 0
+	-- (a punch's own step growth where it has one: KIND[ptype].stepH - the overhand's loop over the top is a tall man's
+	-- long reach down onto a shorter head)
+	local K = KIND[ptype]
+	local sh = K and K.stepH or SHAPE.stepH
+	return ((A.arm + A.glove + STEP * A.hScale ^ sh) * (c and c[zone] or 1) + width) * (mul or 1)
+end
+
+-- the part of each zone a punch is aimed at (AnimFight's aim points): the head from its chin up, in head radii about
+-- its centre; the torso, as shares of waist-to-chest from the waist (the glove goes for the ribs and the solar plexus, not
+-- the collarbone: a tall man's body jab reaches DOWN to a short man's middle, it does not land on the top of his chest)
+local ZONE = { head = { -0.963, 1 }, body = { 0.438, 0.587 } }
+HitGeometry.ZONE = ZONE
+
+-- A's punch at B: the zones B offers, from A's shoulder (heights above B's soles are A's: both stand on the
+-- same canvas). bendB 0..1 lowers B's head and chest; dipA (a body shot) lowers A's origin.
+-- opts: { mul (a special's range multiplier), bend (B's 0..1), floor (the fight's close floor, root to root: accepted,
+-- no longer a free reach - FightEngine floors PunchRange at it instead), noRedirect (a head shot never falls to the body) }
+-- Returns { ok, zone ("head" | "body"), why ("short" | "high" | "low"), need (the distance the glove had to
+-- cover), reach (R + tol), margin = reach - need, dy }
+local function zoneBand(B, zone, bend)
+	local drop = BEND_DROP * B.stand * math.clamp(bend or 0, 0, 1)
+	if zone == "head" then
+		local c = B.headY - drop
+		return c + ZONE.head[1] * B.headR, c + ZONE.head[2] * B.headR, B.headR
+	end
+	local span = math.max(0.2, B.chestY - drop - B.waistY)
+	return B.waistY + ZONE.body[1] * span, B.waistY + ZONE.body[2] * span, B.torsoHalfD
+end
+
+local HANG_MIN = 1.2
+local function tryZone(A, B, kind, K, ptype, zone, dist, opts)
+	local lo, hi, front = zoneBand(B, zone, opts.bend)
+	local dip = opts.body and K.dip * A.arm or 0
+	local oY = A.shoulderY + K.o * A.arm - dip
+	-- the horizontal distance the glove must cover: root to root, less the zone's front (the shoulder stands
+	-- over the root). All the way in: the animation's glove has to get there from the shoulder up close too (a short
+	-- man's hook at a taller man's jaw does not, from as close as the bodies get - it lands on his chest), so the
+	-- fight's close floor (opts.floor) no longer waives the reach; the angles are read at least HANG_MIN out
+	local h = math.max(0, dist - front)
+	local hAng = math.max(h, HANG_MIN)
+	local hReach = h
+	-- the heights the punch can be at out there (its angles), against the zone's band
+	local pLo, pHi = oY - hAng * math.tan(math.rad(K.down)), oY + hAng * math.tan(math.rad(K.up))
+	local bLo, bHi = math.max(lo, pLo), math.min(hi, pHi)
+	if bLo > bHi then
+		return { ok = false, zone = zone, why = (lo > pHi) and "high" or "low", need = math.huge, reach = 0, margin = -math.huge, dy = (lo > pHi) and (lo - oY) or (hi - oY) }
+	end
+	-- the point of the zone nearest the punch's own height (a tall man's chin, a short man's forehead)
+	local y = math.clamp(oY, bLo, bHi)
+	local dy = y - oY
+	-- the reach: out, the calibrated R; up and down, the arm (an ellipse about the origin)
+	local Rh = reachOf(A, ptype, zone, opts.mul)
+	local armR = (A.arm + A.glove) * (opts.mul or 1)
+	local Rv
+	if dy >= 0 then
+		Rv = armR * K.vUp + K.rise * A.hScale
+	else
+		Rv = K.vDown < 0 and math.max(Rh, armR) or armR * K.vDown
+	end
+	local tol = TOL * (A.glove + front)
+	local norm = math.sqrt((hReach / Rh) ^ 2 + (dy / Rv) ^ 2)
+	local limit = 1 + tol / Rh
+	-- (need / reach in studs along the glove's line, for the read-outs)
+	local need = math.sqrt(hReach * hReach + dy * dy)
+	local reach = norm > 1e-6 and need * limit / norm or Rh + tol
+	return { ok = norm <= limit, zone = zone, why = norm > limit and "short" or nil, need = need, reach = reach, margin = reach - need, dy = dy }
+end
+
+-- the facing: the most a punch can be thrown off the line the attacker's chest faces (degrees, flat), by kind. A
+-- straight goes where the shoulders point (a man turned off the line jabs the air beside the head); a hook comes
+-- round from the side and finds a head well off the line; an uppercut and an overhand sit between. Past it the
+-- punch is "wide": the margin is how far (studs, sideways at that distance) the target sits outside the cone
+local FACING = { straight = 32, hook = 62, uppercut = 42, overhand = 46 }
+HitGeometry.FACING = FACING
+function HitGeometry.Facing(ptype, offDeg, dist)
+	local kind = PUNCH_KIND[ptype] or "straight"
+	local lim = FACING[kind] or 40
+	offDeg = math.abs(num(offDeg, 0))
+	if offDeg <= lim then
+		return true, lim, 0
+	end
+	return false, lim, -math.max(0, num(dist, 4)) * math.sin(math.rad(math.min(90, offDeg - lim)))
+end
+
+function HitGeometry.Test(A, B, ptype, body, dist, opts)
+	opts = opts or {}
+	local kind = PUNCH_KIND[ptype] or "straight"
+	-- (a punch's own shape where it has one - the cross from the rear shoulder climbs to a taller chin worse than the
+	-- jab, the rear hook comes from further round - else its kind's)
+	local K = KIND[ptype] or KIND[kind]
+	-- (opts.facing: degrees between the attacker's facing and the line to the target; past the kind's cone the
+	-- punch goes wide whatever the reach)
+	if opts.facing ~= nil then
+		local okF, lim, side = HitGeometry.Facing(ptype, opts.facing, dist)
+		if not okF then
+			return { ok = false, zone = body and "body" or "head", why = "wide", need = math.huge, reach = 0, margin = side, dy = 0, facing = opts.facing, facingLimit = lim }
+		end
+	end
+	local o = { mul = opts.mul, bend = opts.bend, body = body == true }
+	local want = body and "body" or "head"
+	local r = tryZone(A, B, kind, K, ptype, want, dist, o)
+	if r.ok or body or opts.noRedirect then
+		return r
+	end
+	-- a head shot that cannot get up there (a much taller man, out at range) lands on the body when the
+	-- glove reaches that far: the punch is thrown, it just lands low
+	-- (a short miss falls to the body only when it is the height that beat it - a notably taller man: between two men
+	-- of a height a hook that is short of the head is short, not a body shot, even where the animation's body hook
+	-- reaches a little further than its head hook)
+	if r.why == "high" or (r.why == "short" and r.dy > 0.3 and B.headY - A.headY > 0.25) then
+		local b = tryZone(A, B, kind, K, ptype, "body", dist, o)
+		if b.ok then
+			b.redirected = true
+			return b
+		end
+		-- (both miss: the nearer miss is the verdict - a step closer and it lands on the body - so its margin is how
+		-- far out of reach the punch really was: FightEngine's lag compensation reads it)
+		if (b.margin or -math.huge) > (r.margin or -math.huge) then
+			b.falling = true
+			return b
+		end
+	end
+	return r
+end
+
+-- the root-to-root distance out to which A's punch lands on B's zone itself (level stances, no falling to the
+-- body): the far edge of where Test says yes (a sweep out, then a bisection: up close a tall man's straight can
+-- be "low" on a short head before it is in range further out)
+function HitGeometry.Range(A, B, ptype, body, opts)
+	local o = table.clone(opts or {})
+	o.noRedirect = true
+	local lastOk, firstBad = nil, nil
+	local d = 0.5
+	while d <= 12 do
+		if HitGeometry.Test(A, B, ptype, body, d, o).ok then
+			lastOk = d
+		elseif lastOk then
+			firstBad = d
+			break
+		end
+		d += 0.25
+	end
+	if not lastOk then
+		return 0
+	end
+	if not firstBad then
+		return lastOk
+	end
+	local lo, hi = lastOk, firstBad
+	for _ = 1, 22 do
+		local mid = (lo + hi) / 2
+		if HitGeometry.Test(A, B, ptype, body, mid, o).ok then
+			lo = mid
+		else
+			hi = mid
+		end
+	end
+	return lo
+end
+
+-- the root-to-root distance out to which A's punch LANDS on B at all: on the head, or - where the head is out of
+-- its angles and the glove still gets there - on the body, as Test lets a head shot fall (an overhand never falls:
+-- FightEngine's HitTest runs it noRedirect). This is the reach the fight gates a punch on (FightEngine:PunchRange,
+-- FightAI's "in range"): a short man's jab at a tall head is thrown from where it lands low, not refused
+function HitGeometry.Reach(A, B, ptype, opts)
+	local head = HitGeometry.Range(A, B, ptype, false, opts)
+	if ptype == "overhand" or (opts and opts.headOnly) then
+		return head
+	end
+	return math.max(head, HitGeometry.Range(A, B, ptype, true, opts))
+end
+
+------------------------------------------------------------------------
+-- Bodies: separation and the clinch
+------------------------------------------------------------------------
+-- centre-to-centre spacing two bodies need so chests and the gloves held up in front of them never sink into each
+-- other: both torsos' half depths, both pairs of gloves, and a little air that grows with the pair (the unit pair
+-- gives FightMotion.Spacing.minSep). Never so far apart that either man's jab cannot land from there: the pair's
+-- shorter jab reach (head or body) less SEP_REACH, down to the bodies' own minimum (torsos and gloves touching).
+-- A 60-inch heavyweight against an 84-inch man otherwise stood where neither jab reached (his separation 4.05, his
+-- jab 4.0): the AI never saw itself in range
+local SEP_GLOVE, SEP_AIR = 1.6, 1.256
+local SEP_REACH = 0.35
+HitGeometry.SEP_REACH = SEP_REACH
+function HitGeometry.MinSepRaw(A, B)
+	return A.torsoHalfD + B.torsoHalfD + SEP_GLOVE * (A.glove + B.glove) + SEP_AIR * (A.hScale + B.hScale) / 2
+end
+function HitGeometry.MinSep(A, B)
+	local raw = HitGeometry.MinSepRaw(A, B)
+	local reach = math.min(HitGeometry.Reach(A, B, "jab"), HitGeometry.Reach(B, A, "jab"))
+	local bodies = A.torsoHalfD + B.torsoHalfD + 2 * (A.glove + B.glove) + 0.1
+	local sep = math.min(raw, reach - SEP_REACH)
+	if sep ~= sep or sep == math.huge or sep == -math.huge then
+		sep = raw
+	end
+	return math.max(bodies, sep)
+end
+
+-- how far out A can tie B up: A's arm and glove wrap past B's chest, plus the step in (the unit pair gives
+-- FightMotion.Spacing.clinch)
+local CLINCH_STEP = 1.417
+function HitGeometry.ClinchRange(A, B)
+	return A.arm + A.glove + B.torsoHalfD + CLINCH_STEP * A.hScale
+end
+
+-- the height edge, studs (A over B; negative = A is the shorter man)
+function HitGeometry.HeightEdge(A, B)
+	return A.stand - B.stand
+end
+
+-- what the pair favours: the longer man's straights, the shorter man's uppercuts and hooks inside (FightAI's punch
+-- weights): ptype -> multiplier around 1
+function HitGeometry.PunchPrefs(A, B)
+	local edge = HitGeometry.HeightEdge(A, B)
+	local reach = (A.arm + A.glove) - (B.arm + B.glove)
+	local long = math.clamp(edge / 1.2 + reach / 0.6, -1, 1)
+	local p = { jab = 1, cross = 1, leadhook = 1, rearhook = 1, uppercut = 1, overhand = 1 }
+	if long > 0 then
+		p.jab = 1 + 0.25 * long
+		p.cross = 1 + 0.15 * long
+		p.overhand = 1 + 0.1 * long
+		p.uppercut = 1 - 0.2 * long
+	elseif long < 0 then
+		local s = -long
+		p.uppercut = 1 + 0.3 * s
+		p.leadhook = 1 + 0.12 * s
+		p.rearhook = 1 + 0.12 * s
+		p.jab = 1 - 0.15 * s
+		p.overhand = 1 - 0.1 * s
+	end
+	return p, long
+end
+
+------------------------------------------------------------------------
+-- Calibration: the Athletic rig (RIG) against itself lands every punch at exactly TARGET[p][zone] (where the
+-- animation's glove visibly lands) with a level stance, to the head and to the body alike
+------------------------------------------------------------------------
+local function calibrate(cal, U)
+	for p in pairs(RANGE) do
+		cal[p] = { head = 1, body = 1 }
+		for _, zone in ipairs({ "head", "body" }) do
+			local target = TARGET[p][zone]
+			local lo, hi = 0.2, 4
+			for _ = 1, 40 do
+				local mid = (lo + hi) / 2
+				cal[p][zone] = mid
+				if HitGeometry.Test(U, U, p, zone == "body", target, { noRedirect = true }).ok then
+					hi = mid
+				else
+					lo = mid
+				end
+			end
+			cal[p][zone] = hi
+		end
+	end
+end
+calibrate(CAL, RIG)
+calibrate(CAL_SCALES, HitGeometry.Unit())
+HitGeometry.CAL = CAL
+HitGeometry.CAL_SCALES = CAL_SCALES
+-- (tools/sim/hg_fit.luau re-solves both after changing TARGET)
+HitGeometry.Calibrate = function()
+	calibrate(CAL, RIG)
+	calibrate(CAL_SCALES, HitGeometry.Unit())
+end
+
+return HitGeometry

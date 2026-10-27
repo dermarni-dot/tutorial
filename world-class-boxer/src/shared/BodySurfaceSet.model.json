@@ -1,0 +1,260 @@
+{
+ "ClassName": "Folder",
+ "Children": [
+  {
+   "Name": "T1",
+   "ClassName": "Folder",
+   "Children": [
+    {
+     "Name": "LowerArm",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://78886784412755",
+      "NormalMap": "rbxassetid://100988431562211",
+      "RoughnessMap": "rbxassetid://103446611216755"
+     }
+    },
+    {
+     "Name": "LowerLeg",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://121297545496074",
+      "NormalMap": "rbxassetid://123604216511859",
+      "RoughnessMap": "rbxassetid://112809209296461"
+     }
+    },
+    {
+     "Name": "UpperArm",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://126778281393795",
+      "NormalMap": "rbxassetid://111861311112574",
+      "RoughnessMap": "rbxassetid://135359194410912"
+     }
+    },
+    {
+     "Name": "UpperLeg",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://84945230580247",
+      "NormalMap": "rbxassetid://137888252960985",
+      "RoughnessMap": "rbxassetid://138444081223840"
+     }
+    },
+    {
+     "Name": "UpperTorso",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://102251498740883",
+      "NormalMap": "rbxassetid://114413845123240",
+      "RoughnessMap": "rbxassetid://132229838703127"
+     }
+    }
+   ]
+  },
+  {
+   "Name": "T2",
+   "ClassName": "Folder",
+   "Children": [
+    {
+     "Name": "LowerArm",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://114025078599245",
+      "NormalMap": "rbxassetid://118521137090398",
+      "RoughnessMap": "rbxassetid://124690667998635"
+     }
+    },
+    {
+     "Name": "LowerLeg",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://132704325726472",
+      "NormalMap": "rbxassetid://121083051576325",
+      "RoughnessMap": "rbxassetid://74173019043340"
+     }
+    },
+    {
+     "Name": "UpperArm",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://72188441530871",
+      "NormalMap": "rbxassetid://73974802485518",
+      "RoughnessMap": "rbxassetid://101026766911034"
+     }
+    },
+    {
+     "Name": "UpperLeg",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://114674985513554",
+      "NormalMap": "rbxassetid://116068206984257",
+      "RoughnessMap": "rbxassetid://97357092035115"
+     }
+    },
+    {
+     "Name": "UpperTorso",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://114275073387003",
+      "NormalMap": "rbxassetid://109245071329371",
+      "RoughnessMap": "rbxassetid://76912113692199"
+     }
+    }
+   ]
+  },
+  {
+   "Name": "T3",
+   "ClassName": "Folder",
+   "Children": [
+    {
+     "Name": "LowerArm",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://113545387531027",
+      "NormalMap": "rbxassetid://115549866884025",
+      "RoughnessMap": "rbxassetid://98029087080267"
+     }
+    },
+    {
+     "Name": "LowerLeg",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://129809249099769",
+      "NormalMap": "rbxassetid://105215384022716",
+      "RoughnessMap": "rbxassetid://128277057777072"
+     }
+    },
+    {
+     "Name": "UpperArm",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://105846051263182",
+      "NormalMap": "rbxassetid://103948026604423",
+      "RoughnessMap": "rbxassetid://140069232694318"
+     }
+    },
+    {
+     "Name": "UpperLeg",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://92118875107386",
+      "NormalMap": "rbxassetid://98128233245533",
+      "RoughnessMap": "rbxassetid://82939444034127"
+     }
+    },
+    {
+     "Name": "UpperTorso",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://104117577503982",
+      "NormalMap": "rbxassetid://100711597494712",
+      "RoughnessMap": "rbxassetid://114270017061235"
+     }
+    }
+   ]
+  },
+  {
+   "Name": "T4",
+   "ClassName": "Folder",
+   "Children": [
+    {
+     "Name": "LowerArm",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://84252541380424",
+      "NormalMap": "rbxassetid://135935641600439",
+      "RoughnessMap": "rbxassetid://109373804024901"
+     }
+    },
+    {
+     "Name": "LowerLeg",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://134898333171110",
+      "NormalMap": "rbxassetid://103932738506590",
+      "RoughnessMap": "rbxassetid://83100879288264"
+     }
+    },
+    {
+     "Name": "UpperArm",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://140013848886156",
+      "NormalMap": "rbxassetid://99413460750598",
+      "RoughnessMap": "rbxassetid://100437834031380"
+     }
+    },
+    {
+     "Name": "UpperLeg",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://97244779873026",
+      "NormalMap": "rbxassetid://75538367769342",
+      "RoughnessMap": "rbxassetid://129268272685717"
+     }
+    },
+    {
+     "Name": "UpperTorso",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://81967181797990",
+      "NormalMap": "rbxassetid://88778601690387",
+      "RoughnessMap": "rbxassetid://74737831842639"
+     }
+    }
+   ]
+  },
+  {
+   "Name": "T5",
+   "ClassName": "Folder",
+   "Children": [
+    {
+     "Name": "LowerArm",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://89334868627075",
+      "NormalMap": "rbxassetid://110095582461444",
+      "RoughnessMap": "rbxassetid://100847254063692"
+     }
+    },
+    {
+     "Name": "LowerLeg",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://102777985267018",
+      "NormalMap": "rbxassetid://118473097063859",
+      "RoughnessMap": "rbxassetid://100353677398702"
+     }
+    },
+    {
+     "Name": "UpperArm",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://97995208884077",
+      "NormalMap": "rbxassetid://102605078568976",
+      "RoughnessMap": "rbxassetid://96914140562260"
+     }
+    },
+    {
+     "Name": "UpperLeg",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://113221313159454",
+      "NormalMap": "rbxassetid://88377257574887",
+      "RoughnessMap": "rbxassetid://97844764059932"
+     }
+    },
+    {
+     "Name": "UpperTorso",
+     "ClassName": "SurfaceAppearance",
+     "Properties": {
+      "ColorMap": "rbxassetid://72318268448454",
+      "NormalMap": "rbxassetid://86797386473408",
+      "RoughnessMap": "rbxassetid://100135712032856"
+     }
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,128 @@
+{
+  "name": "BecomeAWorldClassBoxer",
+  "tree": {
+    "$className": "DataModel",
+    "Lighting": {
+      "$properties": {
+        "GlobalShadows": true,
+        "Technology": "Future"
+      }
+    },
+    "Workspace": {
+      "$properties": {
+        "StreamingEnabled": false,
+        "MeshPartHeadsAndAccessories": "Disabled"
+      }
+    },
+    "MaterialService": {
+      "$properties": {
+        "Use2022Materials": true
+      }
+    },
+    "ReplicatedStorage": {
+      "Shared": {
+        "$path": "src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "Main": {
+        "$path": "src/server/Main.server.lua"
+      },
+      "BoxerModules": {
+        "$className": "Folder",
+        "Ambient": {
+          "$path": "src/server/Ambient.lua"
+        },
+        "Career": {
+          "$path": "src/server/Career.lua"
+        },
+        "CityHomes": {
+          "$path": "src/server/CityHomes.lua"
+        },
+        "CityKit": {
+          "$path": "src/server/CityKit.lua"
+        },
+        "CityMap": {
+          "$path": "src/server/CityMap.lua"
+        },
+        "CityShops": {
+          "$path": "src/server/CityShops.lua"
+        },
+        "Crowd": {
+          "$path": "src/server/Crowd.lua"
+        },
+        "DataManager": {
+          "$path": "src/server/DataManager.lua"
+        },
+        "FightAI": {
+          "$path": "src/server/FightAI.lua"
+        },
+        "FightEngine": {
+          "$path": "src/server/FightEngine.lua"
+        },
+        "GymDecor": {
+          "$path": "src/server/GymDecor.lua"
+        },
+        "Judging": {
+          "$path": "src/server/Judging.lua"
+        },
+        "MapBuilder": {
+          "$path": "src/server/MapBuilder.lua"
+        },
+        "Poser": {
+          "$path": "src/server/Poser.lua"
+        },
+        "PostFight": {
+          "$path": "src/server/PostFight.lua"
+        },
+        "PvP": {
+          "$path": "src/server/PvP.lua"
+        },
+        "Ragdoll": {
+          "$path": "src/server/Ragdoll.lua"
+        },
+        "RingWalk": {
+          "$path": "src/server/RingWalk.lua"
+        },
+        "Sponsors": {
+          "$path": "src/server/Sponsors.lua"
+        },
+        "Tourney": {
+          "$path": "src/server/Tourney.lua"
+        },
+        "Training": {
+          "$path": "src/server/Training.lua"
+        },
+        "TutorialFight": {
+          "$path": "src/server/TutorialFight.lua"
+        },
+        "Venues": {
+          "$path": "src/server/Venues.lua"
+        },
+        "World": {
+          "$path": "src/server/World.lua"
+        }
+      }
+    },
+    "StarterPlayer": {
+      "$properties": {
+        "CharacterWalkSpeed": 6.5,
+        "EnableMouseLockOption": false
+      },
+      "StarterPlayerScripts": {
+        "Animator": {
+          "$path": "src/client/Animator.client.lua"
+        },
+        "ClientMain": {
+          "$path": "src/client/ClientMain.client.lua"
+        },
+        "FightClient": {
+          "$path": "src/client/FightClient.client.lua"
+        },
+        "BoxerClient": {
+          "$path": "src/client/modules"
+        }
+      }
+    }
+  }
+}

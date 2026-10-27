@@ -1,0 +1,566 @@
+-- World: generates and maintains the AI boxing world (270 boxers), rankings for
+-- WBA / WBC / IBF / WBO, regional & national belts, and AI-vs-AI activity.
+-- Every AI boxer has a unique look (generated from a seed), build, style,
+-- in-ring archetype and personality.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Looks = require(Shared:WaitForChild("Looks"))
+
+local World = {}
+
+local function hash(str)
+	local h = 7
+	for i = 1, #str do
+		h = (h * 31 + string.byte(str, i)) % 1000003
+	end
+	return h
+end
+
+local function clampStat(v)
+	return math.clamp(v, 10, Config.StatCap)
+end
+
+function World.MakeStats(rng, target, styleId)
+	local style = Config.FindById(Config.Styles, styleId) or Config.Styles[4]
+	local stats = {}
+	for _, k in ipairs(Config.StatKeys) do
+		stats[k] = clampStat(target + rng:NextNumber(-7, 7) + (style.mods[k] or 0))
+	end
+	-- each AI boxer gets one or two standout strengths
+	for _ = 1, rng:NextInteger(1, 2) do
+		local k = Config.StatKeys[rng:NextInteger(1, #Config.StatKeys)]
+		stats[k] = clampStat(stats[k] + rng:NextNumber(5, 12))
+	end
+	return stats
+end
+
+local function aggressionFor(styleId)
+	local s = Config.FindById(Config.Styles, styleId)
+	return s and math.floor(s.ai.aggression * 100) or 50
+end
+
+-- a boxer's height (inches) and, a really tall one's, his nickname: deterministic by his id and name (Config.BoxerHeight,
+-- Config.TallNick), so he keeps them across fights, saves and the migration of an older save. HEIGHT_V marks a boxer
+-- whose height came from this (an older save's were 60 + 1.6 x class +- 3: every division within three inches of one
+-- height, a middleweight 5'7" .. 6'1", the tallest heavyweight 6'5")
+local HEIGHT_V = 1
+World.HEIGHT_V = HEIGHT_V
+function World.HeightKey(b)
+	return tostring(b.id) .. "|" .. tostring(b.name)
+end
+function World.ApplyHeight(b)
+	if type(b) ~= "table" then
+		return b
+	end
+	local key = World.HeightKey(b)
+	b.height = Config.BoxerHeight(key, b.class, b.gender == 2)
+	local tall = Config.TallNick(key, b.height, tostring(b.name or ""):match("^(%S+)"))
+	if tall then
+		-- (his own nickname kept to give back should a save ever shrink him)
+		b.ownNick = b.ownNick or b.nick
+		b.nick = tall
+	elseif b.ownNick then
+		b.nick, b.ownNick = b.ownNick, nil
+	end
+	b.heightV = HEIGHT_V
+	return b
+end
+
+-- an older save's world: every boxer without the current heights gets them (and a tall one his nickname); idempotent.
+-- Returns how many boxers changed
+function World.MigrateHeights(world)
+	if type(world) ~= "table" or type(world.boxers) ~= "table" then
+		return 0
+	end
+	local n = 0
+	for id, b in pairs(world.boxers) do
+		if type(b) == "table" and b.heightV ~= HEIGHT_V then
+			b.id = b.id or id
+			if tonumber(b.class) == nil then
+				b.class = 5
+			end
+			World.ApplyHeight(b)
+			n += 1
+		end
+	end
+	return n
+end
+
+local function newBoxer(world, rng, ci, target, usedNames, ageLo, ageHi)
+	local id = "b" .. world.nextId
+	world.nextId += 1
+	local female = rng:NextNumber() < 0.15
+	local name
+	repeat
+		local first = female and Config.FirstNamesF[rng:NextInteger(1, #Config.FirstNamesF)] or Config.FirstNames[rng:NextInteger(1, #Config.FirstNames)]
+		name = first .. " " .. Config.LastNames[rng:NextInteger(1, #Config.LastNames)]
+	until not (usedNames and usedNames[name])
+	if usedNames then
+		usedNames[name] = true
+	end
+	local arch = Config.Archetypes[rng:NextInteger(1, #Config.Archetypes)]
+	local stats = World.MakeStats(rng, target, arch.style)
+	if arch.id == "Defensive" then
+		stats.Blocking = clampStat(stats.Blocking + 6)
+		stats.HeadMovement = clampStat(stats.HeadMovement + 5)
+	elseif arch.id == "KO" then
+		stats.Power = clampStat(stats.Power + 6)
+	elseif arch.id == "Technician" then
+		stats.RingIQ = clampStat(stats.RingIQ + 7)
+	elseif arch.id == "Counter" then
+		stats.Reflexes = clampStat(stats.Reflexes + 5)
+	end
+	local frac = math.clamp((target - 26) / 64, 0, 1)
+	local b = {
+		id = id, name = name, nick = Config.Nicknames[rng:NextInteger(1, #Config.Nicknames)],
+		nat = Config.Nationalities[rng:NextInteger(1, #Config.Nationalities)], gender = female and 2 or 1,
+		class = ci, style = arch.style, archetype = arch.id,
+		personality = Config.Personalities[rng:NextInteger(1, #Config.Personalities)],
+		stats = stats, overall = Config.Overall(stats), age = rng:NextInteger(ageLo or 19, ageHi or 36),
+		record = { w = 0, l = 0, d = 0, ko = 0 },
+		mental = {
+			Confidence = 40 + frac * 40, Discipline = rng:NextInteger(35, 90), Aggression = aggressionFor(arch.style),
+			Focus = rng:NextInteger(35, 85), Composure = 35 + frac * 45,
+		},
+		lookSeed = rng:NextInteger(1, 2 ^ 30),
+		h2h = { w = 0, l = 0, d = 0 }, heat = 0, learned = {}, belts = {},
+	}
+	-- (the draw the old height took is still made: the rest of a seeded world comes out as it did)
+	rng:NextInteger(-3, 3)
+	return World.ApplyHeight(b)
+end
+
+-- a one-off boxer outside any saved world (the tutorial fight): the same generator as the world's boxers
+-- (name, nick, nationality, style, archetype, stats, look seed), a short record, an id of its own. Nothing
+-- is stored anywhere. opts = { female = bool (forces the gender), ageLo, ageHi }
+function World.RandomBoxer(rng, ci, target, opts)
+	opts = type(opts) == "table" and opts or {}
+	local scratch = { nextId = rng:NextInteger(1, 999999) }
+	local b
+	for _ = 1, 30 do
+		b = newBoxer(scratch, rng, ci, target, nil, opts.ageLo or 21, opts.ageHi or 32)
+		if opts.female == nil or (b.gender == 2) == (opts.female == true) then
+			break
+		end
+	end
+	if opts.female ~= nil and (b.gender == 2) ~= (opts.female == true) then
+		-- (30 draws of the 15% coin all missed: name the boxer for the gender asked)
+		b.gender = opts.female and 2 or 1
+		local first = opts.female and Config.FirstNamesF[rng:NextInteger(1, #Config.FirstNamesF)] or Config.FirstNames[rng:NextInteger(1, #Config.FirstNames)]
+		b.name = first .. " " .. Config.LastNames[rng:NextInteger(1, #Config.LastNames)]
+	end
+	b.id = "tut" .. b.id
+	World.ApplyHeight(b)
+	local fights = rng:NextInteger(2, 12)
+	local w = math.floor(fights * rng:NextNumber(0.4, 0.8) + 0.5)
+	b.record = { w = w, l = fights - w, d = 0, ko = math.floor(w * rng:NextNumber(0.2, 0.6)) }
+	return b
+end
+
+-- full look + build + gear for an AI boxer (deterministic: the same boxer always looks the same).
+-- Looks.Random gets the ring personality / champion status / career length so the physique
+-- archetype and the boxer's battle wear (cauliflower ears, bent nose, scars) match who he is, and
+-- RandomBuild gets that physique so the muscles agree with it (CONTRACTS 1, 4).
+function World.Look(b)
+	local frac = math.clamp(((tonumber(b.overall) or 50) - 26) / 64, 0, 1)
+	local rec = type(b.record) == "table" and b.record or {}
+	local fights = (rec.w or 0) + (rec.l or 0) + (rec.d or 0)
+	local age = tonumber(b.age) or 25
+	local seed = b.lookSeed or hash(tostring(b.id))
+	local champion = type(b.belts) == "table" and #b.belts > 0
+	local app = Looks.Random(seed, b.gender or 1, {
+		-- veteran keeps its old definition: it changes how many legacy draws Looks.Random makes
+		class = b.class, age = b.age, veteran = age >= 31 or ((rec.w or 0) + (rec.l or 0)) > 30, height = b.height,
+		archetype = b.archetype, champion = champion, fights = fights,
+	})
+	local physique = app.body and app.body.physique
+	if physique == "Auto" then
+		physique = nil
+	end
+	local build = Looks.RandomBuild(seed, frac, age, app.body.frame, physique)
+	-- kit follows the level: champions wear the best, prospects the basics (Catalog ids)
+	local gloveTier = frac > 0.8 and "Championship" or (frac > 0.55 and "Professional" or (frac > 0.3 and "Competition" or "Cheap"))
+	if champion and frac > 0.85 then
+		gloveTier = "Custom"
+	end
+	local wraps = frac > 0.55 and "Gel" or (frac > 0.2 and "Cotton" or "OldWraps")
+	local shoes = frac > 0.8 and "EliteBoots" or (frac > 0.55 and "ProBoots" or (frac > 0.2 and "Boots" or "Sneakers"))
+	local gear = {
+		gloves = gloveTier, glovesCond = 70 + frac * 30,
+		wraps = wraps, wrapsCond = 80 + frac * 20,
+		shoes = shoes, shoesCond = 75 + frac * 25,
+		mouthguard = frac > 0.5 and "CustomFit" or "BoilBite",
+		robe = champion and "Champion" or (frac > 0.6 and "Hooded" or "Classic"),
+	}
+	return app, build, gear
+end
+
+function World.Generate(seed)
+	local rng = Random.new(seed)
+	local world = { v = 2, boxers = {}, classes = {}, champions = {}, regional = { regional = {}, national = {} }, nextId = 1 }
+	local usedNames = {}
+	for ci, _ in ipairs(Config.WeightClasses) do
+		local ids = {}
+		for i = 1, Config.WorldPerClass do
+			local frac = (i - 1) / (Config.WorldPerClass - 1)
+			local target = 26 + (frac ^ 1.15) * 64 + rng:NextNumber(-3, 3)
+			local b = newBoxer(world, rng, ci, target, usedNames)
+			local fights = math.floor(frac * 38 + rng:NextInteger(0, 8))
+			local winRate = math.clamp(0.45 + frac * 0.5 + rng:NextNumber(-0.1, 0.1), 0.3, 1)
+			local w = math.floor(fights * winRate + 0.5)
+			local d = rng:NextNumber() < 0.3 and rng:NextInteger(0, 2) or 0
+			local l = math.max(0, fights - w - d)
+			local koRate = math.clamp(0.25 + (b.stats.Power - 50) / 80, 0.1, 0.9)
+			b.record = { w = w, l = l, d = d, ko = math.floor(w * koRate) }
+			world.boxers[b.id] = b
+			table.insert(ids, b.id)
+		end
+		world.classes[ci] = ids
+		world.regional.regional[ci] = ids[rng:NextInteger(8, 11)]
+		world.regional.national[ci] = ids[rng:NextInteger(14, 17)]
+	end
+	for _, org in ipairs(Config.Orgs) do
+		world.champions[org] = {}
+	end
+	for ci, ids in ipairs(world.classes) do
+		local sorted = table.clone(ids)
+		table.sort(sorted, function(a, b)
+			return world.boxers[a].overall > world.boxers[b].overall
+		end)
+		for oi, org in ipairs(Config.Orgs) do
+			local pickIdx = ((oi - 1) % 3) + 1
+			if rng:NextNumber() < 0.25 then
+				pickIdx = 1
+			end
+			local champ = sorted[pickIdx]
+			world.champions[org][ci] = champ
+			table.insert(world.boxers[champ].belts, org)
+		end
+	end
+	return world
+end
+
+function World.Score(b, org)
+	local r = b.record
+	local base = b.overall * 6 + r.w * 4 - r.l * 10 + r.ko * 1.5 + (#b.belts * 40)
+	return base + (hash(b.id .. org) % 40) - 20
+end
+
+function World.PlayerScore(profile, org)
+	local r = profile.record
+	local base = profile.overall * 6 + r.w * 4 - r.l * 10 + r.ko * 1.5 + (profile.qualityWins or 0) * 12
+	local belts = 0
+	for _, has in pairs(profile.belts) do
+		if has then
+			belts += 1
+		end
+	end
+	-- tournament ranking points (Tourney: the rounds won in brackets)
+	local tpoints = type(profile.tourney) == "table" and tonumber(profile.tourney.points) or 0
+	tpoints = (tpoints and tpoints == tpoints) and math.clamp(tpoints, 0, 2000) or 0
+	return base + belts * 40 + tpoints + (hash("player" .. org) % 30) - 15
+end
+
+function World.Rankings(profile, ci, org)
+	local world = profile.world
+	local list = {}
+	local champId = world.champions[org][ci]
+	local playerChamp = profile.belts[org] and profile.physical.weightClass == ci
+	for _, id in ipairs(world.classes[ci]) do
+		local b = world.boxers[id]
+		if not b.retired then
+			table.insert(list, {
+				id = id, name = b.name, nick = b.nick, record = b.record, overall = b.overall,
+				nat = b.nat, style = b.style, score = World.Score(b, org),
+				isChamp = (not playerChamp) and champId == id,
+			})
+		end
+	end
+	if profile.tier >= 2 and profile.physical.weightClass == ci then
+		table.insert(list, {
+			id = "player", name = profile.identity.name, nick = profile.identity.nickname, record = profile.record,
+			overall = profile.overall, nat = profile.identity.nationality, style = profile.style,
+			score = World.PlayerScore(profile, org), isPlayer = true, isChamp = playerChamp,
+		})
+	end
+	table.sort(list, function(a, b)
+		if a.isChamp ~= b.isChamp then
+			return a.isChamp
+		end
+		return a.score > b.score
+	end)
+	local rank = 0
+	for _, e in ipairs(list) do
+		if e.isChamp then
+			e.rank = "C"
+		else
+			rank += 1
+			e.rank = rank
+		end
+	end
+	return list
+end
+
+function World.PlayerRanks(profile)
+	local out = {}
+	if profile.tier < 2 then
+		return out
+	end
+	for _, org in ipairs(Config.Orgs) do
+		for _, e in ipairs(World.Rankings(profile, profile.physical.weightClass, org)) do
+			if e.isPlayer then
+				out[org] = e.rank
+				break
+			end
+		end
+	end
+	return out
+end
+
+function World.BestRank(profile)
+	local best, bestOrg = 999, nil
+	for org, r in pairs(World.PlayerRanks(profile)) do
+		if r ~= "C" and r < best then
+			best, bestOrg = r, org
+		end
+	end
+	return best, bestOrg
+end
+
+function World.RankOf(profile, id, org)
+	for _, e in ipairs(World.Rankings(profile, profile.physical.weightClass, org)) do
+		if e.id == id then
+			return e.rank
+		end
+	end
+	return nil
+end
+
+-- noDraw (a tournament bracket): a near-even bout still goes to the better night's work, never a draw.
+-- Returns winner, loser, ko (nil on a draw)
+local function aiBout(a, b, rng, noDraw)
+	local pa = a.overall + rng:NextNumber(-12, 12)
+	local pb = b.overall + rng:NextNumber(-12, 12)
+	local ko = rng:NextNumber() < 0.4
+	if math.abs(pa - pb) < 1.5 and not noDraw then
+		a.record.d += 1
+		b.record.d += 1
+		return nil
+	end
+	if pa == pb then
+		pa += rng:NextNumber() - 0.5
+	end
+	local winner, loser = a, b
+	if pb > pa then
+		winner, loser = b, a
+	end
+	winner.record.w += 1
+	loser.record.l += 1
+	if ko then
+		winner.record.ko += 1
+	end
+	return winner, loser, ko
+end
+World.AIBout = aiBout
+
+-- AI boxers keep fighting and developing between the player's fights
+function World.SimulateCycle(profile, rng)
+	local world = profile.world
+	rng = rng or Random.new()
+	for ci, ids in ipairs(world.classes) do
+		local active = {}
+		for _, id in ipairs(ids) do
+			local b = world.boxers[id]
+			if not b.retired then
+				table.insert(active, b)
+			end
+		end
+		table.sort(active, function(x, y)
+			return x.overall < y.overall
+		end)
+		local bouts = ci == profile.physical.weightClass and 6 or 2
+		for _ = 1, bouts do
+			local i = rng:NextInteger(1, #active - 1)
+			local a, b = active[i], active[math.min(#active, i + rng:NextInteger(1, 3))]
+			if a ~= b then
+				local winner, loser = aiBout(a, b, rng)
+				if winner then
+					for _, org in ipairs(Config.Orgs) do
+						if world.champions[org][ci] == loser.id and not (profile.belts[org] and profile.physical.weightClass == ci) then
+							if rng:NextNumber() < 0.5 then
+								world.champions[org][ci] = winner.id
+								local bi = table.find(loser.belts, org)
+								if bi then
+									table.remove(loser.belts, bi)
+								end
+								table.insert(winner.belts, org)
+							end
+						end
+					end
+				end
+			end
+		end
+		for _, b in ipairs(active) do
+			if rng:NextNumber() < 0.2 then
+				b.age += 1
+			end
+			local delta = 0
+			if b.age < 27 then
+				delta = rng:NextNumber(0, 1.2)
+			elseif b.age > 33 then
+				delta = -rng:NextNumber(0, 1.5)
+			end
+			if delta ~= 0 then
+				for _, k in ipairs(Config.StatKeys) do
+					b.stats[k] = clampStat(b.stats[k] + delta * rng:NextNumber(0.3, 1.2))
+				end
+				b.overall = Config.Overall(b.stats)
+			end
+			if b.age >= 38 and #b.belts == 0 and b.heat < 30 and rng:NextNumber() < 0.3 then
+				b.retired = true
+				b.retiredDay = profile.day -- the newest retired rivals are the ones Prune keeps
+				local nb = newBoxer(world, rng, ci, rng:NextNumber(28, 45), nil, 18, 22)
+				world.boxers[nb.id] = nb
+				table.insert(ids, nb.id)
+			end
+		end
+		for _, kind in ipairs({ "regional", "national" }) do
+			local holderId = world.regional[kind][ci]
+			local holder = world.boxers[holderId]
+			if holderId ~= "player" and (not holder or holder.retired) then
+				world.regional[kind][ci] = active[kind == "regional" and 9 or 15].id
+			end
+		end
+	end
+	World.Prune(profile)
+end
+
+-- retired boxers the player never met are dropped at once; retired rivals (anyone the player fought) stay
+-- while they are among the newest RETIRED_RIVALS of them, so the rivals list keeps a career's worth of
+-- old foes without the world growing by one boxer per fight
+local RETIRED_RIVALS = 40
+
+local function idNumber(id)
+	return tonumber(string.match(tostring(id), "%d+")) or 0
+end
+
+-- the retired boxers the career still points at, or the newest retired rivals, stay; the rest leave the
+-- saved world (every retirement adds a replacement, so without this profile.world grew ~0.8 KB per
+-- retirement for the whole career, toward the 4 MB DataStore limit). Nil-safe for old saves; the class
+-- id lists are rewritten to match. Returns how many boxers were removed.
+function World.Prune(profile)
+	local world = type(profile) == "table" and profile.world
+	if type(world) ~= "table" or type(world.boxers) ~= "table" or type(world.classes) ~= "table" then
+		return 0
+	end
+	local keep = {}
+	local function mark(id)
+		if id ~= nil then
+			keep[id] = true
+		end
+	end
+	local function markAll(list, field)
+		if type(list) ~= "table" then
+			return
+		end
+		for _, e in pairs(list) do
+			if not field then
+				mark(e)
+			elseif type(e) == "table" then
+				mark(e[field])
+			end
+		end
+	end
+	-- the fight history (the client opens their cards), the camp opponent and the open offers
+	markAll(profile.history, "oppId")
+	markAll(profile.offers, "oppId")
+	if type(profile.camp) == "table" and type(profile.camp.offer) == "table" then
+		mark(profile.camp.offer.oppId)
+	end
+	-- belt holders of every kind (a champion never retires, but a save is never trusted on that)
+	if type(world.regional) == "table" then
+		for _, holders in pairs(world.regional) do
+			markAll(holders)
+		end
+	end
+	if type(world.champions) == "table" then
+		for _, byClass in pairs(world.champions) do
+			markAll(byClass)
+		end
+	end
+	-- the tournaments: the bracket being fought and every event's belt holder
+	local tr = type(profile.tourney) == "table" and profile.tourney.run
+	if type(tr) == "table" then
+		markAll(tr.field)
+	end
+	if type(world.tourney) == "table" and type(world.tourney.holders) == "table" then
+		markAll(world.tourney.holders, "id")
+	end
+	local rivals = {}
+	for id, b in pairs(world.boxers) do
+		if type(b) == "table" and b.retired and not keep[id] then
+			local h = type(b.h2h) == "table" and ((b.h2h.w or 0) + (b.h2h.l or 0) + (b.h2h.d or 0)) or 0
+			if h > 0 then
+				table.insert(rivals, b)
+			end
+		end
+	end
+	if #rivals > RETIRED_RIVALS then
+		-- newest retirements first; saves from before retiredDay existed fall back to the newest ids
+		table.sort(rivals, function(x, y)
+			local dx, dy = tonumber(x.retiredDay) or 0, tonumber(y.retiredDay) or 0
+			if dx ~= dy then
+				return dx > dy
+			end
+			return idNumber(x.id) > idNumber(y.id)
+		end)
+	end
+	for i = 1, math.min(#rivals, RETIRED_RIVALS) do
+		mark(rivals[i].id)
+	end
+	local removed = 0
+	for id, b in pairs(world.boxers) do
+		if type(b) == "table" and b.retired and not keep[id] then
+			world.boxers[id] = nil
+			removed += 1
+		end
+	end
+	if removed > 0 then
+		for ci, ids in pairs(world.classes) do
+			local kept = {}
+			for _, id in ipairs(ids) do
+				if world.boxers[id] then
+					table.insert(kept, id)
+				end
+			end
+			world.classes[ci] = kept
+		end
+	end
+	return removed
+end
+
+function World.Pick(profile, ci, minOv, maxOv, exclude, rng)
+	local world = profile.world
+	local pool = {}
+	for _, id in ipairs(world.classes[ci]) do
+		local b = world.boxers[id]
+		if not b.retired and b.overall >= minOv and b.overall <= maxOv and not (exclude and exclude[id]) then
+			table.insert(pool, b)
+		end
+	end
+	if #pool == 0 then
+		local best, bestD = nil, math.huge
+		for _, id in ipairs(world.classes[ci]) do
+			local b = world.boxers[id]
+			local d = math.abs(b.overall - (minOv + maxOv) / 2)
+			if not b.retired and d < bestD and not (exclude and exclude[id]) then
+				best, bestD = b, d
+			end
+		end
+		return best
+	end
+	return pool[(rng or Random.new()):NextInteger(1, #pool)]
+end
+
+return World

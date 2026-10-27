@@ -1,0 +1,356 @@
+{
+ "tiers": {
+  "5": {
+   "UpperArm": {
+    "files": {
+     "normal": "out/skin/T5/UpperArm_normal.png",
+     "color": "out/skin/T5/UpperArm_color.png",
+     "rough": "out/skin/T5/UpperArm_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 3.3229153267168003,
+     "colorMin": 0.770482971523123,
+     "roughMean": 0.5469378253296436
+    }
+   },
+   "UpperTorso": {
+    "files": {
+     "normal": "out/skin/T5/UpperTorso_normal.png",
+     "color": "out/skin/T5/UpperTorso_color.png",
+     "rough": "out/skin/T5/UpperTorso_rough.png"
+    },
+    "size": 1024,
+    "stats": {
+     "normalDev": 5.198047405450886,
+     "colorMin": 0.6799999999999999,
+     "roughMean": 0.5592628388721201
+    }
+   },
+   "LowerArm": {
+    "files": {
+     "normal": "out/skin/T5/LowerArm_normal.png",
+     "color": "out/skin/T5/LowerArm_color.png",
+     "rough": "out/skin/T5/LowerArm_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 4.258333760298955,
+     "colorMin": 0.8477872104908226,
+     "roughMean": 0.5376303394004147
+    }
+   },
+   "UpperLeg": {
+    "files": {
+     "normal": "out/skin/T5/UpperLeg_normal.png",
+     "color": "out/skin/T5/UpperLeg_color.png",
+     "rough": "out/skin/T5/UpperLeg_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 3.7004054332639758,
+     "colorMin": 0.8109173185893941,
+     "roughMean": 0.5466349875943448
+    }
+   },
+   "LowerLeg": {
+    "files": {
+     "normal": "out/skin/T5/LowerLeg_normal.png",
+     "color": "out/skin/T5/LowerLeg_color.png",
+     "rough": "out/skin/T5/LowerLeg_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 3.1383702942075375,
+     "colorMin": 0.6799999999999999,
+     "roughMean": 0.5363204857914986
+    }
+   }
+  },
+  "1": {
+   "UpperTorso": {
+    "files": {
+     "normal": "out/skin/T1/UpperTorso_normal.png",
+     "color": "out/skin/T1/UpperTorso_color.png",
+     "rough": "out/skin/T1/UpperTorso_rough.png"
+    },
+    "size": 1024,
+    "stats": {
+     "normalDev": 4.6630952094920275,
+     "colorMin": 0.6930904985432904,
+     "roughMean": 0.55839397556932
+    }
+   },
+   "UpperArm": {
+    "files": {
+     "normal": "out/skin/T1/UpperArm_normal.png",
+     "color": "out/skin/T1/UpperArm_color.png",
+     "rough": "out/skin/T1/UpperArm_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 2.956247424131253,
+     "colorMin": 0.9514505974184112,
+     "roughMean": 0.5428651306339987
+    }
+   },
+   "LowerArm": {
+    "files": {
+     "normal": "out/skin/T1/LowerArm_normal.png",
+     "color": "out/skin/T1/LowerArm_color.png",
+     "rough": "out/skin/T1/LowerArm_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 3.6879560720503504,
+     "colorMin": 0.9420094286250873,
+     "roughMean": 0.5328296520124978
+    }
+   },
+   "UpperLeg": {
+    "files": {
+     "normal": "out/skin/T1/UpperLeg_normal.png",
+     "color": "out/skin/T1/UpperLeg_color.png",
+     "rough": "out/skin/T1/UpperLeg_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 3.248919086078696,
+     "colorMin": 0.8342155652727927,
+     "roughMean": 0.5444607468544901
+    }
+   },
+   "LowerLeg": {
+    "files": {
+     "normal": "out/skin/T1/LowerLeg_normal.png",
+     "color": "out/skin/T1/LowerLeg_color.png",
+     "rough": "out/skin/T1/LowerLeg_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 2.7237111073584113,
+     "colorMin": 0.9591415690728189,
+     "roughMean": 0.5297398858021716
+    }
+   }
+  },
+  "2": {
+   "UpperTorso": {
+    "files": {
+     "normal": "out/skin/T2/UpperTorso_normal.png",
+     "color": "out/skin/T2/UpperTorso_color.png",
+     "rough": "out/skin/T2/UpperTorso_rough.png"
+    },
+    "size": 1024,
+    "stats": {
+     "normalDev": 4.843217131299586,
+     "colorMin": 0.6945260604616501,
+     "roughMean": 0.5584545074818091
+    }
+   },
+   "UpperArm": {
+    "files": {
+     "normal": "out/skin/T2/UpperArm_normal.png",
+     "color": "out/skin/T2/UpperArm_color.png",
+     "rough": "out/skin/T2/UpperArm_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 3.017492056707577,
+     "colorMin": 0.9079814039601001,
+     "roughMean": 0.5441368009121144
+    }
+   },
+   "LowerArm": {
+    "files": {
+     "normal": "out/skin/T2/LowerArm_normal.png",
+     "color": "out/skin/T2/LowerArm_color.png",
+     "rough": "out/skin/T2/LowerArm_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 3.7876353738730444,
+     "colorMin": 0.9481630474910084,
+     "roughMean": 0.5340752832132653
+    }
+   },
+   "UpperLeg": {
+    "files": {
+     "normal": "out/skin/T2/UpperLeg_normal.png",
+     "color": "out/skin/T2/UpperLeg_color.png",
+     "rough": "out/skin/T2/UpperLeg_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 3.36957292428142,
+     "colorMin": 0.8323444625770621,
+     "roughMean": 0.5449958362914704
+    }
+   },
+   "LowerLeg": {
+    "files": {
+     "normal": "out/skin/T2/LowerLeg_normal.png",
+     "color": "out/skin/T2/LowerLeg_color.png",
+     "rough": "out/skin/T2/LowerLeg_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 2.8302614006498077,
+     "colorMin": 0.8965750336816711,
+     "roughMean": 0.5316285724995857
+    }
+   }
+  },
+  "3": {
+   "UpperTorso": {
+    "files": {
+     "normal": "out/skin/T3/UpperTorso_normal.png",
+     "color": "out/skin/T3/UpperTorso_color.png",
+     "rough": "out/skin/T3/UpperTorso_rough.png"
+    },
+    "size": 1024,
+    "stats": {
+     "normalDev": 5.0276250939189175,
+     "colorMin": 0.695459855449998,
+     "roughMean": 0.5585787512294278
+    }
+   },
+   "UpperArm": {
+    "files": {
+     "normal": "out/skin/T3/UpperArm_normal.png",
+     "color": "out/skin/T3/UpperArm_color.png",
+     "rough": "out/skin/T3/UpperArm_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 3.1695004146904386,
+     "colorMin": 0.8342929995739055,
+     "roughMean": 0.5451384910254767
+    }
+   },
+   "LowerArm": {
+    "files": {
+     "normal": "out/skin/T3/LowerArm_normal.png",
+     "color": "out/skin/T3/LowerArm_color.png",
+     "rough": "out/skin/T3/LowerArm_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 3.9579191278973287,
+     "colorMin": 0.8987449150376008,
+     "roughMean": 0.5353459917009573
+    }
+   },
+   "UpperLeg": {
+    "files": {
+     "normal": "out/skin/T3/UpperLeg_normal.png",
+     "color": "out/skin/T3/UpperLeg_color.png",
+     "rough": "out/skin/T3/UpperLeg_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 3.536692630498121,
+     "colorMin": 0.8093940943286557,
+     "roughMean": 0.545638876394307
+    }
+   },
+   "LowerLeg": {
+    "files": {
+     "normal": "out/skin/T3/LowerLeg_normal.png",
+     "color": "out/skin/T3/LowerLeg_color.png",
+     "rough": "out/skin/T3/LowerLeg_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 2.9704225301487512,
+     "colorMin": 0.761675654246782,
+     "roughMean": 0.5335002181939874
+    }
+   }
+  },
+  "4": {
+   "UpperTorso": {
+    "files": {
+     "normal": "out/skin/T4/UpperTorso_normal.png",
+     "color": "out/skin/T4/UpperTorso_color.png",
+     "rough": "out/skin/T4/UpperTorso_rough.png"
+    },
+    "size": 1024,
+    "stats": {
+     "normalDev": 5.1311336598528445,
+     "colorMin": 0.6904278577414933,
+     "roughMean": 0.5589649061252953
+    }
+   },
+   "UpperArm": {
+    "files": {
+     "normal": "out/skin/T4/UpperArm_normal.png",
+     "color": "out/skin/T4/UpperArm_color.png",
+     "rough": "out/skin/T4/UpperArm_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 3.2551167446430327,
+     "colorMin": 0.802296543018848,
+     "roughMean": 0.5460903721001859
+    }
+   },
+   "LowerArm": {
+    "files": {
+     "normal": "out/skin/T4/LowerArm_normal.png",
+     "color": "out/skin/T4/LowerArm_color.png",
+     "rough": "out/skin/T4/LowerArm_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 4.1183506848692515,
+     "colorMin": 0.869247400230668,
+     "roughMean": 0.5364736190781118
+    }
+   },
+   "UpperLeg": {
+    "files": {
+     "normal": "out/skin/T4/UpperLeg_normal.png",
+     "color": "out/skin/T4/UpperLeg_color.png",
+     "rough": "out/skin/T4/UpperLeg_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 3.6223315787657753,
+     "colorMin": 0.8100335366749366,
+     "roughMean": 0.5462223857479055
+    }
+   },
+   "LowerLeg": {
+    "files": {
+     "normal": "out/skin/T4/LowerLeg_normal.png",
+     "color": "out/skin/T4/LowerLeg_color.png",
+     "rough": "out/skin/T4/LowerLeg_rough.png"
+    },
+    "size": 512,
+    "stats": {
+     "normalDev": 3.0633082868016968,
+     "colorMin": 0.709963735501742,
+     "roughMean": 0.5350482642023641
+    }
+   }
+  }
+ },
+ "version": 1,
+ "shift": {
+  "Lean": 0,
+  "Athletic": 0,
+  "Muscular": 0,
+  "Power Build": 1,
+  "Heavyweight Build": 2
+ },
+ "refFrame": "Athletic",
+ "dense": 8,
+ "parts": {
+  "UpperArm": 512,
+  "UpperTorso": 1024,
+  "LowerArm": 512,
+  "UpperLeg": 512,
+  "LowerLeg": 512
+ }
+}

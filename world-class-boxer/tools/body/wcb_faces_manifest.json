@@ -1,0 +1,1203 @@
+{
+  "game": "Become a World Class Boxer",
+  "face_assets": [
+    {
+      "key": "wcb_neutral",
+      "name": "Boxer Neutral",
+      "file": "faces/neutral.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 110199740845923,
+      "sha256": "954eac9a0c01628895c5860c72997fed92e26bacde69dc49bf6d41f7fd080faf",
+      "uploaded_file": "tools/body/out/faces/face_wcb_neutral.png",
+      "uploaded_sha256": "954eac9a0c01628895c5860c72997fed92e26bacde69dc49bf6d41f7fd080faf",
+      "registration_shift_px": {
+        "left": [
+          0,
+          0
+        ],
+        "right": [
+          0,
+          0
+        ]
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    },
+    {
+      "key": "wcb_focused",
+      "name": "Boxer Focused",
+      "file": "faces/focused.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 139900343066338,
+      "sha256": "92b9a4e9b33e45ffa8368342798050226c4a4465b5e78318014878853cc06ab7",
+      "uploaded_file": "tools/body/out/faces/face_wcb_focused_v2.png",
+      "uploaded_sha256": "8b8151dbe8b33a9c9499124a61e45ca7367d651994d762e8983fe578f2fbef89",
+      "registration_shift_px": {
+        "left": [
+          -31,
+          -42
+        ],
+        "right": [
+          30,
+          -42
+        ]
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    },
+    {
+      "key": "wcb_smirk",
+      "name": "Boxer Smirk",
+      "file": "faces/smirk.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 95612839575468,
+      "sha256": "1674b3f88530cc613d240866907528588323139c92cd23534c1e7382d6d13916",
+      "uploaded_file": "tools/body/out/faces/face_wcb_smirk_v2.png",
+      "uploaded_sha256": "58810260aa5d256f064a51445278282e17020bdcbfee4a8aca9068ed4d73ad84",
+      "registration_shift_px": {
+        "left": [
+          -7,
+          -14
+        ],
+        "right": [
+          5,
+          -14
+        ]
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    },
+    {
+      "key": "wcb_grit",
+      "name": "Boxer Grit",
+      "file": "faces/grit.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 108846306705062,
+      "sha256": "2bfa6b0288b68905ad99b4516f893ec211f5a25a2fb80e4adb618f4796a55872",
+      "uploaded_file": "tools/body/out/faces/face_wcb_grit_v2.png",
+      "uploaded_sha256": "ba3abf1cf66c65ce09305bf8bd39f4fd29cb6c7104ecfeb92664a18d22c54bea",
+      "registration_shift_px": {
+        "left": [
+          -10,
+          -28
+        ],
+        "right": [
+          8,
+          -28
+        ]
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    },
+    {
+      "key": "wcb_confident",
+      "name": "Boxer Confident",
+      "file": "tools/body/out/faces/face_wcb_confident.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 128064263185676,
+      "sha256": "134dc58abbc1696b84cf012bfa924b49339cd36468bf7fe28d9daf91dfc5dd2d",
+      "uploaded_file": "tools/body/out/faces/face_wcb_confident.png",
+      "uploaded_sha256": "134dc58abbc1696b84cf012bfa924b49339cd36468bf7fe28d9daf91dfc5dd2d",
+      "creator": true,
+      "drawn_by": "tools/body/wcb_faces_draw.py (in the style of the user's four)",
+      "features_px": {
+        "eyeL": {
+          "c": [
+            442.5,
+            574.5
+          ],
+          "box": [
+            407,
+            512,
+            478,
+            637
+          ]
+        },
+        "eyeR": {
+          "c": [
+            806.5,
+            574.5
+          ],
+          "box": [
+            771,
+            512,
+            842,
+            637
+          ]
+        },
+        "browL": {
+          "c": [
+            445.2,
+            444.3
+          ],
+          "box": [
+            362,
+            428,
+            525,
+            461
+          ]
+        },
+        "browR": {
+          "c": [
+            802.9,
+            420.2
+          ],
+          "box": [
+            724,
+            398,
+            887,
+            450
+          ]
+        },
+        "mouth": {
+          "c": [
+            633.5,
+            848.1
+          ],
+          "box": [
+            533,
+            807,
+            730,
+            876
+          ]
+        }
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    },
+    {
+      "key": "wcb_grin",
+      "name": "Boxer Grin",
+      "file": "tools/body/out/faces/face_wcb_grin.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 122901636746556,
+      "sha256": "678bb6172ce8aad96d8e857c0373c498946367c3d09a03d62b678ee5559e14ac",
+      "uploaded_file": "tools/body/out/faces/face_wcb_grin.png",
+      "uploaded_sha256": "678bb6172ce8aad96d8e857c0373c498946367c3d09a03d62b678ee5559e14ac",
+      "creator": true,
+      "drawn_by": "tools/body/wcb_faces_draw.py (in the style of the user's four)",
+      "features_px": {
+        "eyeL": {
+          "c": [
+            442.5,
+            574.5
+          ],
+          "box": [
+            407,
+            512,
+            478,
+            637
+          ]
+        },
+        "eyeR": {
+          "c": [
+            806.5,
+            574.5
+          ],
+          "box": [
+            771,
+            512,
+            842,
+            637
+          ]
+        },
+        "browL": {
+          "c": [
+            445.1,
+            431.9
+          ],
+          "box": [
+            362,
+            413,
+            525,
+            452
+          ]
+        },
+        "browR": {
+          "c": [
+            803.9,
+            431.9
+          ],
+          "box": [
+            724,
+            413,
+            887,
+            452
+          ]
+        },
+        "mouth": {
+          "c": [
+            625.5,
+            851.6
+          ],
+          "box": [
+            511,
+            803,
+            740,
+            908
+          ]
+        }
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    },
+    {
+      "key": "wcb_cool",
+      "name": "Boxer Cool",
+      "file": "tools/body/out/faces/face_wcb_cool.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 101616530546336,
+      "sha256": "6b5c0b10314810b988d6cf41ce3948d54bda7a79fbe4eb0ca78d556fde8ddc02",
+      "uploaded_file": "tools/body/out/faces/face_wcb_cool.png",
+      "uploaded_sha256": "6b5c0b10314810b988d6cf41ce3948d54bda7a79fbe4eb0ca78d556fde8ddc02",
+      "creator": true,
+      "drawn_by": "tools/body/wcb_faces_draw.py (in the style of the user's four)",
+      "features_px": {
+        "eyeL": {
+          "c": [
+            442.5,
+            585.1
+          ],
+          "box": [
+            384,
+            552,
+            501,
+            637
+          ]
+        },
+        "eyeR": {
+          "c": [
+            806.5,
+            585.1
+          ],
+          "box": [
+            748,
+            552,
+            865,
+            637
+          ]
+        },
+        "browL": {
+          "c": [
+            445.3,
+            452.5
+          ],
+          "box": [
+            362,
+            437,
+            525,
+            471
+          ]
+        },
+        "browR": {
+          "c": [
+            803.7,
+            452.5
+          ],
+          "box": [
+            724,
+            437,
+            887,
+            471
+          ]
+        },
+        "mouth": {
+          "c": [
+            640.1,
+            851.7
+          ],
+          "box": [
+            551,
+            819,
+            726,
+            874
+          ]
+        }
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    },
+    {
+      "key": "wcb_wink",
+      "name": "Boxer Wink",
+      "file": "tools/body/out/faces/face_wcb_wink.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 90728048091208,
+      "sha256": "c2c9497e383c2be7ad708bff093373994ea1db98025a86ce525580b7d2872be4",
+      "uploaded_file": "tools/body/out/faces/face_wcb_wink.png",
+      "uploaded_sha256": "c2c9497e383c2be7ad708bff093373994ea1db98025a86ce525580b7d2872be4",
+      "creator": true,
+      "drawn_by": "tools/body/wcb_faces_draw.py (in the style of the user's four)",
+      "features_px": {
+        "eyeL": {
+          "c": [
+            442.5,
+            574.5
+          ],
+          "box": [
+            407,
+            512,
+            478,
+            637
+          ]
+        },
+        "eyeR": {
+          "c": [
+            806.5,
+            578.1
+          ],
+          "box": [
+            741,
+            549,
+            872,
+            606
+          ]
+        },
+        "browL": {
+          "c": [
+            445.4,
+            423.0
+          ],
+          "box": [
+            362,
+            403,
+            525,
+            446
+          ]
+        },
+        "browR": {
+          "c": [
+            803.6,
+            453.5
+          ],
+          "box": [
+            724,
+            436,
+            887,
+            474
+          ]
+        },
+        "mouth": {
+          "c": [
+            629.8,
+            850.3
+          ],
+          "box": [
+            533,
+            815,
+            726,
+            880
+          ]
+        }
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    },
+    {
+      "key": "wcb_stern",
+      "name": "Boxer Stern",
+      "file": "tools/body/out/faces/face_wcb_stern.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 101255929551842,
+      "sha256": "70aecaf52f2b11cfee25482fab6dd027145763ca89d0a236d05e4674a2996d07",
+      "uploaded_file": "tools/body/out/faces/face_wcb_stern.png",
+      "uploaded_sha256": "70aecaf52f2b11cfee25482fab6dd027145763ca89d0a236d05e4674a2996d07",
+      "creator": true,
+      "drawn_by": "tools/body/wcb_faces_draw.py (in the style of the user's four)",
+      "features_px": {
+        "eyeL": {
+          "c": [
+            442.5,
+            576.8
+          ],
+          "box": [
+            407,
+            521,
+            478,
+            637
+          ]
+        },
+        "eyeR": {
+          "c": [
+            806.5,
+            576.8
+          ],
+          "box": [
+            771,
+            521,
+            842,
+            637
+          ]
+        },
+        "browL": {
+          "c": [
+            446.7,
+            462.5
+          ],
+          "box": [
+            346,
+            442,
+            542,
+            488
+          ]
+        },
+        "browR": {
+          "c": [
+            802.3,
+            462.5
+          ],
+          "box": [
+            707,
+            442,
+            903,
+            488
+          ]
+        },
+        "mouth": {
+          "c": [
+            625.5,
+            857.5
+          ],
+          "box": [
+            531,
+            843,
+            720,
+            872
+          ]
+        }
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    },
+    {
+      "key": "wcb_determined",
+      "name": "Boxer Determined",
+      "file": "tools/body/out/faces/face_wcb_determined.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 78331766537954,
+      "sha256": "6299ea6b7b3cb0fbb749636eaaad78c676da0708fd0aa05658e70024b7e61c89",
+      "uploaded_file": "tools/body/out/faces/face_wcb_determined.png",
+      "uploaded_sha256": "6299ea6b7b3cb0fbb749636eaaad78c676da0708fd0aa05658e70024b7e61c89",
+      "creator": true,
+      "drawn_by": "tools/body/wcb_faces_draw.py (in the style of the user's four)",
+      "features_px": {
+        "eyeL": {
+          "c": [
+            442.1,
+            583.0
+          ],
+          "box": [
+            407,
+            534,
+            478,
+            637
+          ]
+        },
+        "eyeR": {
+          "c": [
+            806.9,
+            583.0
+          ],
+          "box": [
+            771,
+            534,
+            842,
+            637
+          ]
+        },
+        "browL": {
+          "c": [
+            446.0,
+            455.7
+          ],
+          "box": [
+            359,
+            415,
+            528,
+            500
+          ]
+        },
+        "browR": {
+          "c": [
+            803.0,
+            455.7
+          ],
+          "box": [
+            721,
+            415,
+            890,
+            500
+          ]
+        },
+        "mouth": {
+          "c": [
+            625.5,
+            858.5
+          ],
+          "box": [
+            552,
+            842,
+            699,
+            875
+          ]
+        }
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    },
+    {
+      "key": "wcb_toothy",
+      "name": "Boxer Toothy Grin",
+      "file": "tools/body/out/faces/face_wcb_toothy.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 139013764083343,
+      "sha256": "45469ce3edc58ad01ec6f0f6b323526c268ad674462d5133b38a9fc9f854b7c1",
+      "uploaded_file": "tools/body/out/faces/face_wcb_toothy.png",
+      "uploaded_sha256": "45469ce3edc58ad01ec6f0f6b323526c268ad674462d5133b38a9fc9f854b7c1",
+      "creator": true,
+      "drawn_by": "tools/body/wcb_faces_draw.py (in the style of the user's four)",
+      "features_px": {
+        "eyeL": {
+          "c": [
+            442.5,
+            574.5
+          ],
+          "box": [
+            407,
+            512,
+            478,
+            637
+          ]
+        },
+        "eyeR": {
+          "c": [
+            806.5,
+            574.5
+          ],
+          "box": [
+            771,
+            512,
+            842,
+            637
+          ]
+        },
+        "browL": {
+          "c": [
+            445.1,
+            428.8
+          ],
+          "box": [
+            362,
+            409,
+            525,
+            450
+          ]
+        },
+        "browR": {
+          "c": [
+            803.9,
+            428.8
+          ],
+          "box": [
+            724,
+            409,
+            887,
+            450
+          ]
+        },
+        "mouth": {
+          "c": [
+            625.5,
+            847.0
+          ],
+          "box": [
+            506,
+            800,
+            745,
+            903
+          ]
+        }
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    },
+    {
+      "key": "wcb_scarred",
+      "name": "Boxer Scarred",
+      "file": "tools/body/out/faces/face_wcb_scarred.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 116046602465581,
+      "sha256": "057efa0152d0953c891f7fd40b7bcd7d0c3bfe81c9ad40c23672412ad79f34c6",
+      "uploaded_file": "tools/body/out/faces/face_wcb_scarred.png",
+      "uploaded_sha256": "057efa0152d0953c891f7fd40b7bcd7d0c3bfe81c9ad40c23672412ad79f34c6",
+      "creator": true,
+      "drawn_by": "tools/body/wcb_faces_draw.py (in the style of the user's four)",
+      "features_px": {
+        "eyeL": {
+          "c": [
+            442.5,
+            574.5
+          ],
+          "box": [
+            407,
+            512,
+            478,
+            637
+          ]
+        },
+        "eyeR": {
+          "c": [
+            806.5,
+            574.5
+          ],
+          "box": [
+            771,
+            512,
+            842,
+            637
+          ]
+        },
+        "browL": {
+          "c": [
+            445.1,
+            440.1
+          ],
+          "box": [
+            362,
+            423,
+            525,
+            458
+          ]
+        },
+        "browR": {
+          "c": [
+            802.3,
+            441.0
+          ],
+          "box": [
+            724,
+            402,
+            887,
+            485
+          ]
+        },
+        "mouth": {
+          "c": [
+            626.0,
+            854.5
+          ],
+          "box": [
+            522,
+            840,
+            730,
+            869
+          ]
+        }
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    },
+    {
+      "key": "wcb_shout",
+      "name": "Boxer Shout",
+      "file": "tools/body/out/faces/face_wcb_shout.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 93250063512830,
+      "sha256": "23744e1add6cecb1e915453e68ac1ed3da54796a1d3aed5571a215a28ed42d5e",
+      "uploaded_file": "tools/body/out/faces/face_wcb_shout.png",
+      "uploaded_sha256": "23744e1add6cecb1e915453e68ac1ed3da54796a1d3aed5571a215a28ed42d5e",
+      "creator": false,
+      "drawn_by": "tools/body/wcb_faces_draw.py (in the style of the user's four)",
+      "features_px": {
+        "eyeL": {
+          "c": [
+            444.6,
+            582.3
+          ],
+          "box": [
+            407,
+            505,
+            525,
+            637
+          ]
+        },
+        "eyeR": {
+          "c": [
+            804.4,
+            582.4
+          ],
+          "box": [
+            724,
+            505,
+            842,
+            637
+          ]
+        },
+        "browL": {
+          "c": [
+            440.9,
+            460.4
+          ],
+          "box": [
+            361,
+            407,
+            526,
+            504
+          ]
+        },
+        "browR": {
+          "c": [
+            808.1,
+            460.4
+          ],
+          "box": [
+            723,
+            407,
+            888,
+            504
+          ]
+        },
+        "mouth": {
+          "c": [
+            625.5,
+            850.5
+          ],
+          "box": [
+            532,
+            784,
+            719,
+            917
+          ]
+        }
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    },
+    {
+      "key": "wcb_hurt",
+      "name": "Boxer Hurt",
+      "file": "tools/body/out/faces/face_wcb_hurt.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 126463125778150,
+      "sha256": "58372710ee2a221ecc0ccfbdb255e1c0a64a903ed40127756af99a94f6736dce",
+      "uploaded_file": "tools/body/out/faces/face_wcb_hurt.png",
+      "uploaded_sha256": "58372710ee2a221ecc0ccfbdb255e1c0a64a903ed40127756af99a94f6736dce",
+      "creator": false,
+      "drawn_by": "tools/body/wcb_faces_draw.py (in the style of the user's four)",
+      "features_px": {
+        "eyeL": {
+          "c": [
+            436.2,
+            574.5
+          ],
+          "box": [
+            391,
+            523,
+            492,
+            626
+          ]
+        },
+        "eyeR": {
+          "c": [
+            812.8,
+            574.5
+          ],
+          "box": [
+            757,
+            523,
+            858,
+            626
+          ]
+        },
+        "browL": {
+          "c": [
+            444.6,
+            439.8
+          ],
+          "box": [
+            362,
+            414,
+            525,
+            470
+          ]
+        },
+        "browR": {
+          "c": [
+            804.4,
+            439.8
+          ],
+          "box": [
+            724,
+            414,
+            887,
+            470
+          ]
+        },
+        "mouth": {
+          "c": [
+            626.5,
+            849.5
+          ],
+          "box": [
+            540,
+            802,
+            713,
+            897
+          ]
+        }
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    },
+    {
+      "key": "wcb_dazed",
+      "name": "Boxer Dazed",
+      "file": "tools/body/out/faces/face_wcb_dazed.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 132872399750334,
+      "sha256": "c55bae3478a0f251503840eaa56b796cfc631c64a8c07f628285139bcc47e907",
+      "uploaded_file": "tools/body/out/faces/face_wcb_dazed.png",
+      "uploaded_sha256": "c55bae3478a0f251503840eaa56b796cfc631c64a8c07f628285139bcc47e907",
+      "creator": false,
+      "drawn_by": "tools/body/wcb_faces_draw.py (in the style of the user's four)",
+      "features_px": {
+        "eyeL": {
+          "c": [
+            439.2,
+            566.0
+          ],
+          "box": [
+            384,
+            505,
+            501,
+            631
+          ]
+        },
+        "eyeR": {
+          "c": [
+            803.2,
+            583.2
+          ],
+          "box": [
+            748,
+            518,
+            865,
+            646
+          ]
+        },
+        "browL": {
+          "c": [
+            445.1,
+            428.4
+          ],
+          "box": [
+            362,
+            409,
+            525,
+            504
+          ]
+        },
+        "browR": {
+          "c": [
+            803.7,
+            455.7
+          ],
+          "box": [
+            724,
+            436,
+            887,
+            478
+          ]
+        },
+        "mouth": {
+          "c": [
+            627.4,
+            853.7
+          ],
+          "box": [
+            535,
+            827,
+            720,
+            879
+          ]
+        }
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    },
+    {
+      "key": "wcb_ko",
+      "name": "Boxer KO",
+      "file": "tools/body/out/faces/face_wcb_ko.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 122518228264182,
+      "sha256": "9f7d80a4563917c25d4dce24069d35da9bc18f02952e426c7a0cad5e7276241b",
+      "uploaded_file": "tools/body/out/faces/face_wcb_ko.png",
+      "uploaded_sha256": "9f7d80a4563917c25d4dce24069d35da9bc18f02952e426c7a0cad5e7276241b",
+      "creator": false,
+      "drawn_by": "tools/body/wcb_faces_draw.py (in the style of the user's four)",
+      "features_px": {
+        "eyeL": {
+          "c": [
+            442.5,
+            574.5
+          ],
+          "box": [
+            386,
+            518,
+            499,
+            631
+          ]
+        },
+        "eyeR": {
+          "c": [
+            806.5,
+            574.5
+          ],
+          "box": [
+            750,
+            518,
+            863,
+            631
+          ]
+        },
+        "browL": {
+          "c": [
+            444.6,
+            430.8
+          ],
+          "box": [
+            362,
+            410,
+            525,
+            458
+          ]
+        },
+        "browR": {
+          "c": [
+            804.4,
+            430.8
+          ],
+          "box": [
+            724,
+            410,
+            887,
+            458
+          ]
+        },
+        "mouth": {
+          "c": [
+            625.5,
+            851.2
+          ],
+          "box": [
+            549,
+            805,
+            702,
+            890
+          ]
+        }
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    },
+    {
+      "key": "wcb_tired",
+      "name": "Boxer Tired",
+      "file": "tools/body/out/faces/face_wcb_tired.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 70932305441688,
+      "sha256": "8b4661b9bfeb471a1a2fecf951240f532a227df04f0affe262d3ebafbe9b0cb3",
+      "uploaded_file": "tools/body/out/faces/face_wcb_tired.png",
+      "uploaded_sha256": "8b4661b9bfeb471a1a2fecf951240f532a227df04f0affe262d3ebafbe9b0cb3",
+      "creator": false,
+      "drawn_by": "tools/body/wcb_faces_draw.py (in the style of the user's four)",
+      "features_px": {
+        "eyeL": {
+          "c": [
+            443.1,
+            593.5
+          ],
+          "box": [
+            384,
+            561,
+            501,
+            637
+          ]
+        },
+        "eyeR": {
+          "c": [
+            805.9,
+            593.5
+          ],
+          "box": [
+            748,
+            561,
+            865,
+            637
+          ]
+        },
+        "browL": {
+          "c": [
+            444.8,
+            448.8
+          ],
+          "box": [
+            362,
+            422,
+            525,
+            478
+          ]
+        },
+        "browR": {
+          "c": [
+            804.2,
+            448.8
+          ],
+          "box": [
+            724,
+            422,
+            887,
+            478
+          ]
+        },
+        "mouth": {
+          "c": [
+            625.5,
+            855.5
+          ],
+          "box": [
+            574,
+            818,
+            677,
+            893
+          ]
+        }
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    },
+    {
+      "key": "wcb_surprised",
+      "name": "Boxer Surprised",
+      "file": "tools/body/out/faces/face_wcb_surprised.png",
+      "width": 1254,
+      "height": 1254,
+      "rgba": true,
+      "roblox_image_id": 70510565356748,
+      "sha256": "e97948734dbc2155b1a9f3de817be3bc40a9bb235eb941fd8a9ad71d1d6c4b51",
+      "uploaded_file": "tools/body/out/faces/face_wcb_surprised.png",
+      "uploaded_sha256": "e97948734dbc2155b1a9f3de817be3bc40a9bb235eb941fd8a9ad71d1d6c4b51",
+      "creator": false,
+      "drawn_by": "tools/body/wcb_faces_draw.py (in the style of the user's four)",
+      "features_px": {
+        "eyeL": {
+          "c": [
+            442.5,
+            574.5
+          ],
+          "box": [
+            399,
+            511,
+            486,
+            638
+          ]
+        },
+        "eyeR": {
+          "c": [
+            806.5,
+            574.5
+          ],
+          "box": [
+            763,
+            511,
+            850,
+            638
+          ]
+        },
+        "browL": {
+          "c": [
+            444.9,
+            419.6
+          ],
+          "box": [
+            362,
+            398,
+            525,
+            444
+          ]
+        },
+        "browR": {
+          "c": [
+            804.1,
+            419.6
+          ],
+          "box": [
+            724,
+            398,
+            887,
+            444
+          ]
+        },
+        "mouth": {
+          "c": [
+            625.5,
+            855.5
+          ],
+          "box": [
+            594,
+            814,
+            657,
+            897
+          ]
+        }
+      },
+      "moderation": "Approved",
+      "state": "Active"
+    }
+  ],
+  "hair_assets_status": "visual reference only; 3D meshes not included",
+  "studio_fit_status": "offline fit renders only (previews/final/v9/wcb_faces); not yet tested in Roblox Studio",
+  "upload": {
+    "api": "Roblox Open Cloud assets/v1, assetType Image",
+    "creator": {
+      "groupId": "524947123"
+    },
+    "decal_texture": "rbxassetid://<roblox_image_id> (Decal \"face\" on the head, NormalId.Front, Color3 white, Transparency 0)",
+    "note": "the original pack files are uploaded only for wcb_neutral (unchanged); the other three are _v2 copies, eyes re-registered to wcb_neutral (eye centres x 443 / 807, y 575 of 1254 px), canvas, alpha and mouth unchanged. Generated by tools/body/faces.py --pack; ids from tools/body/uploaded.json via tools/body/publish_body.py. The 14 faces after the four (drawn_by) are drawn in the pack's style by tools/body/wcb_faces_draw.py (same canvas, ink, stroke widths and eye registration); creator = true: a resting face the Creator offers, false: a mood face only (STYLE_MOODS). features_px: alpha-weighted centres and >=128 alpha boxes (x0, y0, x1, y1) of each feature in the 1254 px canvas."
+  }
+}
