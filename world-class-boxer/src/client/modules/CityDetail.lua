@@ -289,7 +289,10 @@ local function readStreet(folderName, box)
 	local f = root and root:FindFirstChild(folderName)
 	local lights, cars = {}, {}
 	if f then
-		for _, d in ipairs(f:GetDescendants()) do
+		for i, d in ipairs(f:GetDescendants()) do
+			if i % 256 == 0 then
+				K.Tick()
+			end
 			if d:IsA("BasePart") and (d.Name == "LightPole" or d.Name == "CarBody") then
 				local p = d.Position
 				if p.X > box[1] and p.X < box[2] and p.Z > box[3] and p.Z < box[4] then

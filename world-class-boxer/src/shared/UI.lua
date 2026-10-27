@@ -1503,8 +1503,8 @@ function UI.StatRow(parent, label, value, max, color, valueText)
 	UI.Text(f, label, { Size = UDim2.new(0.34, 0, 1, 0), TextSize = 13, Font = T.semi, TextColor3 = T.sub, AutomaticSize = Enum.AutomaticSize.None, TextTruncate = Enum.TextTruncate.AtEnd, TextWrapped = false })
 	local _, set = UI.Bar(f, { Position = UDim2.new(0.34, 0, 0.5, -4), Size = UDim2.new(0.5, 0, 0, 8) }, color)
 	set((value or 0) / (max or 100))
-	UI.Text(f, valueText or tostring(math.floor(value or 0)), { Face = "number", Position = UDim2.new(0.86, 0, 0, 0), Size = UDim2.new(0.14, 0, 1, 0), TextSize = 16, AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
-	return f, set
+	local vt = UI.Text(f, valueText or tostring(math.floor(value or 0)), { Face = "number", Position = UDim2.new(0.86, 0, 0, 0), Size = UDim2.new(0.14, 0, 1, 0), TextSize = 16, AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+	return f, set, vt
 end
 
 -- A development bar on the 0..100 muscle scale, the same everywhere a muscle level is shown (Body tab,
@@ -2887,7 +2887,7 @@ UI.ToRGB = toRGB
 
 -- swatch grid; colors = list of {r,g,b}; onPick(rgb, index). The picked swatch wears a gold ring and a
 -- tick; opts.names (one per colour) shows the picked colour's name next to the label, opts.size = the
--- swatch size (36). Returns frame, refresh(index | nil = none picked: a custom colour)
+-- swatch size (36), opts.slice = called before each swatch is made (a time-sliced build's yield point). Returns frame, refresh(index | nil = none picked: a custom colour)
 function UI.Swatches(parent, label, colors, selected, onPick, opts)
 	opts = opts or {}
 	local size = math.max(opts.size or 36, UI.MinHit(parent))
@@ -2904,24 +2904,35 @@ function UI.Swatches(parent, label, colors, selected, onPick, opts)
 	UI.Grid(holder, size, size, 8)
 	holder:FindFirstChildOfClass("UIGridLayout").HorizontalAlignment = Enum.HorizontalAlignment.Left
 	local buttons = {}
+	-- (only the swatches that change: a colour wheel drag refreshes every tick with the same "custom" pick)
+	local shown, shownIdx = false, nil
 	local function refresh(idx)
+		if shown and idx == shownIdx then
+			return
+		end
 		for i, b in ipairs(buttons) do
-			local on = i == idx
-			local s = b:FindFirstChild("Ring")
-			if s then
-				s.Color = on and T.gold or Color3.new(1, 1, 1)
-				s.Transparency = on and 0 or 0.85
-				s.Thickness = on and 3 or 1
-			end
-			local tick = b:FindFirstChild("Tick")
-			if tick then
-				tick.Visible = on
+			if not shown or i == idx or i == shownIdx then
+				local on = i == idx
+				local s = b:FindFirstChild("Ring")
+				if s then
+					s.Color = on and T.gold or Color3.new(1, 1, 1)
+					s.Transparency = on and 0 or 0.85
+					s.Thickness = on and 3 or 1
+				end
+				local tick = b:FindFirstChild("Tick")
+				if tick then
+					tick.Visible = on
+				end
 			end
 		end
+		shown, shownIdx = true, idx
 		local names = opts.names
 		nameText.Text = idx and names and names[idx] or (idx and "" or "Custom")
 	end
 	for i, col in ipairs(colors) do
+		if opts.slice then
+			opts.slice() -- (a time-sliced build: the caller may hand the frame back between swatches)
+		end
 		local c = toColor(col)
 		local b = UI.New("TextButton", { Name = "Swatch" .. i, Text = "", AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = c, LayoutOrder = i, Parent = holder })
 		UI.Corner(b, math.floor(size / 2))
@@ -2980,6 +2991,7 @@ function UI.ColorWheel(parent, label, rgbValue, onChange)
 	UI.Corner(knob, 3)
 	UI.Stroke(knob, Color3.new(0, 0, 0), 1)
 	UI.Text(f, "Brightness", { Position = UDim2.new(0, R * 2 + 28, 0, 132), Size = UDim2.new(1, -(R * 2 + 44), 0, 18), TextSize = 13, TextColor3 = T.sub, AutomaticSize = Enum.AutomaticSize.None })
+	local dotsV -- the brightness the dots were last drawn at (a hue / saturation drag leaves them as they are)
 	local function render(fire)
 		local c = Color3.fromHSV(h, s, v)
 		preview.BackgroundColor3 = c
@@ -2987,8 +2999,12 @@ function UI.ColorWheel(parent, label, rgbValue, onChange)
 		marker.Position = UDim2.fromOffset(R + math.cos(a) * s * (R - 8), R - math.sin(a) * s * (R - 8))
 		grad.Color = ColorSequence.new(Color3.new(0, 0, 0), Color3.fromHSV(h, s, 1))
 		knob.Position = UDim2.fromScale(v, 0.5)
-		for _, dot in ipairs(dots) do
-			dot.d.BackgroundColor3 = Color3.fromHSV(dot.hue, dot.sat, math.max(0.25, v))
+		local dv = math.max(0.25, v)
+		if dv ~= dotsV then
+			dotsV = dv
+			for _, dot in ipairs(dots) do
+				dot.d.BackgroundColor3 = Color3.fromHSV(dot.hue, dot.sat, dv)
+			end
 		end
 		if fire and onChange then
 			onChange(toRGB(c))

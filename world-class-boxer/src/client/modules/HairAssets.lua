@@ -580,6 +580,60 @@ function HairAssets.Build(model, entry, look, lod, ctx)
 	return made, result
 end
 
+-- Preload(look, styles): the hair-card meshes of these styles (on this look's hair type), fetched behind the screen
+-- that shows them (the Creator's Hair step), one mesh a frame in a thread of its own: a pick then builds from meshes
+-- the engine already has instead of waiting on the network. Only meshes (the textures are tinted per look); an id that
+-- fails here is left for a build to judge (nothing is marked). Each mesh is asked for once per session.
+local warmed = {}
+function HairAssets.Preload(look, styles)
+	if not active(true) or type(look) ~= "table" or type(styles) ~= "table" then
+		return 0
+	end
+	local ids = {}
+	local seen = {}
+	for _, st in ipairs(styles) do
+		local l = table.clone(look)
+		l.hair = table.clone(type(look.hair) == "table" and look.hair or {})
+		l.hair.style = st
+		local ok, entry = pcall(HK.Select, Data, l, entryFailed)
+		if ok and entry then
+			local list = {}
+			for _, pc in pairs(entry.pieces or {}) do
+				list[#list + 1] = HK.Id(pc.mesh)
+			end
+			if HK.HasCap(entry) and Data.cap then
+				list[#list + 1] = HK.Id(Data.cap.mesh)
+			end
+			for _, id in ipairs(list) do
+				if id and not warmed[id] and not seen[id] and not failed[id] then
+					seen[id] = true
+					ids[#ids + 1] = id
+				end
+			end
+		end
+	end
+	if #ids == 0 then
+		return 0
+	end
+	task.spawn(function()
+		for _, id in ipairs(ids) do
+			if not warmed[id] then
+				warmed[id] = true
+				local okMP, mp = pcall(function()
+					return AssetService:CreateMeshPartAsync(Content.fromUri("rbxassetid://" .. id))
+				end)
+				if okMP and typeof(mp) == "Instance" then
+					pcall(mp.Destroy, mp)
+				else
+					warmed[id] = nil
+				end
+			end
+			task.wait()
+		end
+	end)
+	return #ids
+end
+
 -- the entry this look draws while ids of it wait for their retry: { ids, at (os.clock() when the last is
 -- due), key }; nil when none waits (nothing to draw, all loaded, or one failed for good)
 function HairAssets.Waiting(look, lod, wantTex)

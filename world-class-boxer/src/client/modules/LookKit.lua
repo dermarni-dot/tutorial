@@ -390,9 +390,30 @@ function LookKit.HairPicker(parent, h, skinRGB, group, onPick, onGroup)
 			LookKit.HairGlyph(art, st, h.color, skinRGB)
 		end })
 	end
-	return LookKit.PresetGrid(parent, items, { name = "Styles", cols = 4, cellH = 96, picked = h.style }, function(it)
+	local grid = LookKit.PresetGrid(parent, items, { name = "Styles", cols = 4, cellH = 96, picked = h.style }, function(it)
 		onPick(it.id)
 	end)
+	return grid, tabs
+end
+
+-- a HairPicker's pick moved in place (no rebuild): the card's outline, and the gold name of the group the style is in
+function LookKit.HairPickerPick(grid, style)
+	if not grid then
+		return
+	end
+	LookKit.PresetPick(grid, style)
+	local tabs = grid.Parent and grid.Parent:FindFirstChild("HairGroups")
+	if not tabs then
+		return
+	end
+	local own = LookKit.GroupOf(style)
+	for i, g in ipairs(Looks.HairStyleGroups) do
+		local b = tabs:FindFirstChild("Group_" .. i)
+		-- (the group on show keeps its gold fill; the others' text marks the one the style is in)
+		if b and b.BackgroundColor3 ~= T.gold then
+			b.TextColor3 = g.name == own and T.gold or T.text
+		end
+	end
 end
 
 ------------------------------------------------------------------------
@@ -400,6 +421,11 @@ end
 ------------------------------------------------------------------------
 -- items = { { id, label, sub?, glyph = fn(holder) } }; opts = { cols = n (on a wide row), cellH, picked = id }
 -- onPick(item). Returns the grid frame.
+-- the picked card's gold outline (UI.Stroke's, named so a new pick can move it)
+local function pickRing(b)
+	return UI.New("UIStroke", { Name = "Picked", Color = T.gold, Thickness = 2, Transparency = 0, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = b })
+end
+
 function LookKit.PresetGrid(parent, items, opts, onPick)
 	opts = opts or {}
 	local cellH = opts.cellH or 96
@@ -413,7 +439,7 @@ function LookKit.PresetGrid(parent, items, opts, onPick)
 		end)
 		b:SetAttribute("PresetId", tostring(it.id))
 		if on then
-			UI.Stroke(b, T.gold, 2)
+			pickRing(b)
 		end
 		local textH = it.sub and 36 or 24
 		local art = UI.Frame(b, { Name = "Art", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 5), Size = UDim2.new(1, -12, 0, cellH - textH - 8) })
@@ -428,6 +454,31 @@ function LookKit.PresetGrid(parent, items, opts, onPick)
 		end
 	end
 	return grid
+end
+
+-- a PresetGrid's pick moved in place (the outline, the card's tint and caption): no rebuild of the cards
+function LookKit.PresetPick(grid, picked)
+	if not grid then
+		return
+	end
+	local want = picked ~= nil and tostring(picked) or nil
+	for _, b in ipairs(grid:GetChildren()) do
+		local id = b:GetAttribute("PresetId")
+		if id ~= nil then
+			local on = id == want
+			b.BackgroundColor3 = on and T.panel:Lerp(T.gold, 0.22) or T.panel2
+			local ring = b:FindFirstChild("Picked")
+			if on and not ring then
+				pickRing(b)
+			elseif ring and not on then
+				ring:Destroy()
+			end
+			local cap = b:FindFirstChild("Caption")
+			if cap then
+				cap.TextColor3 = on and T.gold or T.text
+			end
+		end
+	end
 end
 
 return LookKit

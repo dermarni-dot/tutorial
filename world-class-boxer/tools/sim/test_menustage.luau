@@ -13,6 +13,10 @@
 --     chrome), a slider change and a swatch pick create no GUI instances, a DRAG of a whole-body slider (height)
 --     sends one full preview when it is let go (not two a second), a head slider's drag sends head-only previews
 --     at the client's cap, a colour swatch sends one preview
+--   * the Creator's steps: the one on screen is built in the open's frame, the others behind the window (FrameBudget,
+--     a few ms a frame: no slice far past the median), then a step change rebuilds nothing (no instance, no preview
+--     but for the hands); a burst of [+] presses is one (debounced) full preview; a body-type pick updates the step
+--     in place; a face drag is not a preview per move and starts no page rebuild
 --   * a colour swatch (gear or skin tone) sends a colour-only preview (only.Colors), quick picks are coalesced; the
 --     server's colour path (Builder.Cosmetics only.Colors) runs no tier swap, muscles or hair, rebuilds only the layers
 --     a full build would (under 80 instances) and ends where a full build would (a full Cosmetics after it: nothing)
@@ -719,9 +723,20 @@ do
 		end
 		return full, head, colors
 	end
+	-- on screen: it and every GUI ancestor visible (the Creator keeps its other steps' pages hidden under the window)
+	local function shown(d)
+		local o = d
+		while o and o ~= S.playerGui do
+			if o.Visible == false then
+				return false
+			end
+			o = o.Parent
+		end
+		return o == S.playerGui
+	end
 	local function named(name)
 		for _, d in ipairs(S.playerGui:GetDescendants()) do
-			if d.Name == name and d.Visible ~= false then
+			if d.Name == name and shown(d) then
 				return d
 			end
 		end
@@ -737,7 +752,7 @@ do
 	local function sliders()
 		local out = {}
 		for _, d in ipairs(S.playerGui:GetDescendants()) do
-			if d:GetAttribute("Slider") and d:FindFirstChild("Label") then
+			if d:GetAttribute("Slider") and d:FindFirstChild("Label") and shown(d) then
 				out[d.Label.Text] = d
 				table.insert(out, d)
 			end
@@ -761,13 +776,66 @@ do
 		Creator.Close()
 		S.settle(0.2)
 	end
+	-- the steps not on screen are built behind the window (FrameBudget jobs, a few ms a frame): settled = none left
+	local FB = S.require("Client/FrameBudget")
+	local function idle(cap)
+		local t = 0
+		while FB.Busy() and t < (cap or 20) do
+			S.settle(0.1)
+			t += 0.1
+		end
+		return not FB.Busy()
+	end
+	local function pages()
+		local n = 0
+		for _, d in ipairs(S.playerGui:GetDescendants()) do
+			if d.Name == "Page" and d.Parent and d.Parent:IsA("ScrollingFrame") then
+				n += 1
+			end
+		end
+		return n
+	end
+	idle()
+	FB.Stats.slices, FB.Stats.over = 0, 0
+	table.clear(FB.Stats.recent)
 	made = 0
 	Creator.Open()
-	S.settle(0.8)
 	local built = made
-	check("Creator.Open: the window built (under 900 instances)", built > 50 and built < 900, built)
+	check("Creator.Open: the window and its first step built at once (under 900 instances)", built > 50 and built < 900, built)
+	S.settle(0.8)
+	check("Creator.Open: the other steps are built behind the window, not in the open's frame", made > built and FB.Busy() or pages() == 7, made .. " / " .. pages())
+	check("... and they all get built (7 pages under the list, one on show)", idle() and pages() == 7, pages())
+	-- spread over frames (at least 20 slices), each about the budget: no slice past twice the median one (the sim's
+	-- clock is the wall's, so the median stands in for this machine's speed: a step too big for a frame is the outlier)
+	local slices = FB.Stats.slices
+	local list = table.clone(FB.Stats.recent)
+	table.sort(list)
+	local median = list[math.max(1, math.floor(#list / 2))] or 0
+	local long = 0
+	for _, ms in ipairs(list) do
+		if ms > math.max(2.5 * median, FB.BUDGET * 2000) then
+			long += 1
+		end
+	end
+	print(string.format("  Creator: the steps behind the window in %d FrameBudget slices (median %.2f ms, %d past 2.5x)", slices, median, long))
+	check(string.format("... a few ms a frame: %d slices (median %.1f ms), under 5%% of them past 2.5x the median", slices, median), slices >= 20 and long <= math.max(1, #list * 0.05), long .. "/" .. #list)
 	local chrome = { named("Tools"), named("StepBar"), named("Nav"), named("FighterPlate"), named("Turntable") }
 	check("Creator.Open: the chrome is there", chrome[1] and chrome[2] and chrome[3] and chrome[4] and chrome[5])
+	-- every step change once the pages are built: a kept page is shown, nothing is rebuilt (no instance made) and no
+	-- preview is sent but for the hands (gloves on the Gear step)
+	local tabMade, tabFull = 0, 0
+	for i = 1, 7 do
+		made = 0
+		table.clear(reqs)
+		press("Step" .. i)
+		S.settle(0.35)
+		tabMade += made
+		tabFull += (previews())
+	end
+	press("Step1")
+	S.settle(0.35)
+	check("step changes (all 7, built): no page rebuilt, no GUI instance made", tabMade == 0, tabMade)
+	check("step changes: a full preview only for the hands (into and out of Gear)", tabFull <= 2, tabFull)
 	-- the Body step: a whole-body slider
 	made = 0
 	table.clear(reqs)
@@ -794,6 +862,24 @@ do
 	check("a Height DRAG previews once, when it is let go (was: a full rebuild every 0.25 s of the drag)", fMid == 0 and f2 == 1 and h2 == 0, string.format("during %d, after %d/%d", fMid, f2, h2))
 	check("a Height drag creates no GUI instances", made == 0, made)
 	check("the drag moved the value (the value text updates live)", (height:GetAttribute("Value") or 0) > 60, height:GetAttribute("Value"))
+	-- a burst of [+] presses (four in 0.1 s): debounced to one full rebuild, not one per press
+	table.clear(reqs)
+	for _ = 1, 4 do
+		UI.Nudge(height, 1)
+		S.settle(0.025)
+	end
+	S.settle(0.6)
+	local fb = previews()
+	check("four quick Height steps: one full preview (debounced)", fb == 1, fb)
+	-- a body type pick: the outline and the traits panel move in place (no rebuild of the step), one full preview
+	made = 0
+	table.clear(reqs)
+	check("a body type pick", press("Preset_Muscular"))
+	S.settle(0.6)
+	local fbt = previews()
+	check("a body type pick updates the step in place (the traits panel only: under 120 instances)", made < 120, made)
+	check("a body type pick: one full preview", fbt == 1, fbt)
+	idle()
 	-- the Face step: a head slider stays live (a partial rebuild, at the client's cap)
 	check("Step2 (Face)", press("Step2"))
 	S.settle(0.4)
@@ -807,11 +893,14 @@ do
 	check("a face slider is on the Face step", faceSlider ~= nil)
 	made = 0
 	table.clear(reqs)
+	local fbs0, fbo0 = FB.Stats.slices, FB.Stats.over
 	drag(faceSlider, 12, 0.8)
 	S.settle(0.4)
 	local f3, h3 = previews()
 	check("a face slider drag previews live, head-only, at most 4 a second (" .. h3 .. " in ~0.8 s)", f3 == 0 and h3 >= 1 and h3 <= 5, f3 .. "/" .. h3)
+	check("a face slider drag: not a preview per move (12 moves, " .. h3 .. " previews)", h3 < 12, h3)
 	check("a face slider drag creates no GUI instances", made == 0, made)
+	check("a face slider drag starts no page rebuild behind the window", FB.Stats.slices == fbs0 and FB.Stats.over == fbo0, FB.Stats.slices - fbs0)
 	-- the Gear step: a colour swatch
 	check("Step6 (Gear)", press("Step6"))
 	S.settle(0.4)

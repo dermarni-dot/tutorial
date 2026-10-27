@@ -14,6 +14,8 @@
 --   Low     no light shadows; accent lights off; mid lights beyond 110 and big fills beyond 170 off;
 --           signs drawn out to half their distance at half resolution; particles at 25% (none beyond
 --           150 studs); small parts (under 4 studs) cast no shadow
+-- Behind the main menu's set (LocalPlayer MenuStage) every world light is off; behind the character creator
+-- (CreatorOpen) only the lights within CREATOR_REACH of its camera stay on (the gym hall around the boxer).
 -- Resolution only drops on signs whose layout is all scale (sizes, positions, TextScaled), so nothing
 -- moves or overflows. Owners that switch a light at runtime (night lights, flickering neon, gates)
 -- call WorldLOD.SetLight so the culling never fights them. Work is spread over frames: a level change
@@ -421,6 +423,11 @@ local purgeAcc = 0
 
 local lastCamPos -- the camera's position last frame (a jump re-sweeps at the fast rate)
 local menuHold = false -- the main menu's set is up (LocalPlayer attribute MenuStage): every world light is culled
+-- the character creator is open (LocalPlayer attribute CreatorOpen): its camera stays on the boxer at the gym's spawn,
+-- so no light further than this from it is drawn (the whole hall is within ~180 studs of the spawn: the street and
+-- the town beyond its walls go dark until the creator closes)
+WorldLOD.CREATOR_REACH = 220
+local creatorHold = false
 local function sweepLight(l, camPos)
 	local e = lights[l]
 	local holder = l.Parent
@@ -440,6 +447,9 @@ local function sweepLight(l, camPos)
 		return false
 	end
 	local limit = CULL[level][e.cls]
+	if creatorHold then
+		limit = math.min(limit, WorldLOD.CREATOR_REACH)
+	end
 	local off = menuHold or limit <= 0 or (pos - camPos).Magnitude > limit
 	local was = culled[l]
 	if off and was == nil then
@@ -574,9 +584,10 @@ local function step(dt)
 		-- off, whatever their reach; the sweep runs faster while it switches them (off, then back on)
 		local p = Players.LocalPlayer
 		local hold = p ~= nil and p:GetAttribute("MenuStage") == true
+		local creating = p ~= nil and p:GetAttribute("CreatorOpen") == true
 		local per = SWEEP_PER_FRAME[level] or 4
-		if hold ~= menuHold then
-			menuHold = hold
+		if hold ~= menuHold or creating ~= creatorHold then
+			menuHold, creatorHold = hold, creating
 			menuSweep = count
 		end
 		if lastCamPos and (camPos - lastCamPos).Magnitude > JUMP then

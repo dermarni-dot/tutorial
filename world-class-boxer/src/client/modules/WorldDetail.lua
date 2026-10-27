@@ -4,9 +4,10 @@
 --   High    tiers 1-3: fine detail within ~170 studs, the main dressing within ~320, surfaces / print within ~600
 --   Medium  tiers 1-2: the fine detail is left out, the main dressing within ~200
 --   Low     tier 1 only (floor textures, banners and posters, curbs, signals) within ~260
--- A tier is built the first time the camera comes near it (spread over frames, about 4 ms a step) and kept while
--- hidden. WorldLOD watches the folder too (sign resolution, shadow casters on Low). A Graphics level change
--- re-applies at once; dropping below a tier frees what that tier built.
+-- A tier is built the first time the camera comes near it (a piece at a time on FrameBudget, its ~4 ms a frame shared
+-- with the client's other time-sliced builds) and kept while hidden; the city's streaming pauses while the character creator is open (LocalPlayer CreatorOpen). WorldLOD
+-- watches the folder too (sign resolution, shadow casters on Low). A Graphics level change re-applies at once;
+-- dropping below a tier frees what that tier built.
 --   WorldDetail.Start()            once (ClientMain); waits for the server gym / city to replicate
 --   WorldDetail.Stats()            { gym = {...}, city = {...} } parts / instances shown (profiler, tests)
 --   WorldDetail.BuildAll(opts)     the simulator: every cell at opts.level at once, no camera
@@ -24,6 +25,8 @@ local function optional(name)
 	return ok and type(mod) == "table" and mod or nil
 end
 local Perf = optional("Perf")
+-- the client's time slicer: a tier is built a piece at a time behind the frames (one tier was up to ~40 ms in a pass)
+local FrameBudget = optional("FrameBudget")
 local GymDetail = optional("GymDetail")
 local CityDetail = optional("CityDetail")
 
@@ -151,10 +154,13 @@ function WorldDetail.Start()
 				pos = Vector3.new(1e6, 0, 1e6)
 			end
 			if gymS then
-				gymS:Step(pos, level)
+				gymS:Step(pos, level, FrameBudget)
 			end
-			if cityS then
-				cityS:Step(pos, level)
+			-- behind the character creator (its camera stays on the boxer in the gym): the town's streaming waits (nothing
+			-- new is built out there, what is shown stays) until it closes
+			local creating = Players.LocalPlayer and Players.LocalPlayer:GetAttribute("CreatorOpen") == true
+			if cityS and not creating then
+				cityS:Step(pos, level, FrameBudget)
 			end
 		end)
 		if not ok and not WorldDetail.warned then

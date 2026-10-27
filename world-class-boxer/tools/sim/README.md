@@ -459,7 +459,14 @@ lune run tools/sim/v9_anim.luau --tiers 3 --clips walk,snapturn --no-mesh --nope
   roughness within caps and near the steady walk's at every timing; the Animate script switched off, every track it
   starts stopped, `ProcAnim` on the model, back on while the rig is released (climbing) and off again on the ground;
   snap turns without a bank, with the head's lead, the twist and the pelvis' lag bounded; a held curve still banked, the
-  head still leading a turn in place, a start's forward lean bounded.
+  head still leading a turn in place, a start's forward lean bounded. Then, on the 78-inch rig and on heightScale 1.00
+  (legLen 2.37, Studio's trace) at hz30 / studio / rough: the walk as a gait lab reads it (`rec.walk`: cadence, stance and
+  double support, the knee's strike / loading / swing, hip, the foot's strike and toe-off pitch, clearance, pelvis bob and
+  sway, head, arms, elbow, trunk, slide; 1 stud = 0.9 / legLen m), the `walkgo` start / stop (6.5 -> 0 in a frame),
+  `runstop` (16 -> 0), `runwalk` (Shift let go), `walksteer` / `runsteer` (the camera swinging the way +-25 degrees: no
+  side-step or flip handling, `rec.steer.sideKMax / flipKMax / latKMax`), and the pure forward run against
+  `ref_run16_6bb9a68.json` cycle by cycle (regenerate it with `v9_anim.luau --clips run --height 78|70 --timing
+  studio,rough,hz30 --src <git archive 6bb9a68 src>`, the rows from 2.0 s).
 
 ## The punches' arm motion and the stance's life: test_punchanim
 

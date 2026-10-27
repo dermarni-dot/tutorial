@@ -12,6 +12,7 @@
 -- the face on the head steps and the whole body on the others, and turns (drag the 3D view, the dock's
 -- arrows or the right stick) and zooms (mouse wheel over the 3D view, the dock, LT / RT).
 local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -30,6 +31,13 @@ local okFlags, Flags = pcall(function()
 end)
 if not okFlags then
 	Flags = nil
+end
+-- the client's shared time slicer: the steps not on screen are built behind the open window, a few ms a frame
+local okBudget, FrameBudget = pcall(function()
+	return require(script.Parent:WaitForChild("FrameBudget", 5))
+end)
+if not okBudget then
+	FrameBudget = nil
 end
 local T = UI.Theme
 -- the face module draws the client-side fight-damage preview (same visuals as a real fight)
@@ -69,7 +77,15 @@ local PAGE_HINTS = {
 }
 local HEAD_PAGES = { Face = true, ["Skin & Eyes"] = true, Hair = true }
 
-local shade, win, body
+local shade, win
+local scroll -- the window's scrolling list; each step is a page frame in it
+local body -- the page (or Advanced section) being built: every row below is parented to it
+-- the built steps, kept while the window is open: a step change shows the kept page again (no rebuild) unless what it
+-- shows changed since (pageSig); { frame, sig, refresh = { fn } } (refresh: its controls re-read the look in place)
+local pages = {}
+local building -- the page record being built
+local bpage = "Identity" -- the step being built (its Advanced flag)
+local jobs = {} -- [step] = the FrameBudget job building it behind the window
 local camConn, previewConn
 local inputConns = {}
 local camYaw = 0
@@ -84,6 +100,8 @@ local dirtyHead = false -- a face / hair / beard change (the server rebuilds jus
 local dirtyColors = false -- a colour change (skin, trunks, gloves ...: the server recolours, no full Cosmetics)
 local lastSent = 0
 local inflight = false
+local previewKey -- (below, with the page signatures)
+local lastBuilt -- previewKey of the look the server last built (nil: unknown, the next preview is sent)
 local SEND_EVERY = 0.25 -- at most four previews a second while a slider moves
 -- preview-only state (never saved)
 local view = { growth = 0, peak = false, expr = "neutral", damage = "None" }
@@ -98,7 +116,16 @@ local keyLightOn -- what the key light was last switched to (the camera loop wri
 -- kind: true = the change only touches the face, hair or beard (the server can rebuild just those); "colors" = only
 -- a colour changed (Builder.Cosmetics' colour path: the colours and the layers that carry them, no tier swap, hair
 -- or muscles); nil = the whole character. The Heartbeat below sends one preview per SEND_EVERY for whatever piled up
+-- a whole-character change waits FULL_QUIET s after the last one (a burst of [+] presses, a cycler clicked through, a
+-- swatch run is one full rebuild), but never longer than FULL_WAIT after the first
+local FULL_QUIET, FULL_WAIT = 0.12, 0.5
+local lastChange, firstChange = 0, nil
 local function preview(kind)
+	local now = os.clock()
+	if not dirty then
+		firstChange = now
+	end
+	lastChange = now
 	dirty = true
 	if kind == true then
 		dirtyHead = true
@@ -133,10 +160,12 @@ end
 ------------------------------------------------------------------------
 local UNDO_MAX = 20
 local undoStack = {}
+local stale = false -- a change since the kept steps were last checked (queued again behind the window once it settles)
 local lastUndoAt = 0
 local undoBtn
 local render
 local updatePlate
+local refreshPage
 
 local function updateUndo()
 	if undoBtn and undoBtn.Parent then
@@ -150,6 +179,7 @@ local SNAP_KEYS = { "age", "nationality", "voice", "music", "weightClass", "weig
 -- key: the control being changed; one slider gesture (a drag until it is let go; changes under the same
 -- key in quick succession for controls without a release) is one step back
 local function pushUndo(key)
+	stale = true
 	local now = os.clock()
 	if key ~= nil and key == lastUndoKey and now - lastUndoAt < 0.8 then
 		lastUndoAt = now
@@ -172,6 +202,7 @@ local function undo()
 	if not snap then
 		return false
 	end
+	stale = true
 	C.look = snap.look
 	chosen.face, chosen.kit = snap.face, snap.kit
 	for _, k in ipairs(SNAP_KEYS) do
@@ -287,7 +318,51 @@ end
 ------------------------------------------------------------------------
 -- Building blocks
 ------------------------------------------------------------------------
+-- a control's refresher: it re-reads the look after a pick that changes many values at once (a face preset, a
+-- kit), so the page updates in place instead of being rebuilt
+local function onRefresh(fn)
+	if building then
+		table.insert(building.refresh, fn)
+	end
+end
+
+-- a preset card's drawing tinted with the skin tone: redrawn in place when the page shows again under another tone
+-- (drawn = true: already drawn, only kept for the redraw)
+local function onSkin(art, draw, drawn)
+	if building then
+		table.insert(building.glyphs, { art, draw })
+	end
+	if not drawn then
+		draw(art)
+	end
+end
+
+-- between rows: inside a step's build behind the window (a FrameBudget job) the frame is handed back once its
+-- budget is spent; a no-op for the step on screen (FrameBudget.Tick outside a job). A row (a slider, a preset card)
+-- takes up to ~1.5 ms: one is not started in the last SLICE_RESERVE of the budget, so a frame keeps to ~4 ms
+local SLICE_RESERVE = 0.0015
+local function slice()
+	if not FrameBudget then
+		return
+	end
+	local b, rec, bp = body, building, bpage
+	FrameBudget.Tick(SLICE_RESERVE)
+	body, building, bpage = b, rec, bp
+end
+
+-- runs fn with the builders aimed at frame (the rows it makes go there, their refreshers into rec)
+local function buildInto(rec, name, frame, fn)
+	local b, r, bp = body, building, bpage
+	body, building, bpage = frame, rec, name
+	local ok, err = pcall(fn)
+	body, building, bpage = b, r, bp
+	if not ok then
+		warn("[Creator]", err)
+	end
+end
+
 local function hintLine(text)
+	slice()
 	if short then
 		return nil -- the title and the step bar say enough where every line counts
 	end
@@ -297,22 +372,23 @@ end
 -- colour swatches (+ a colour wheel behind "Custom colour" when wheel = true)
 -- head = true: the colour only shows on the head (hair / beard), a partial rebuild is enough
 local function colorField(parent, label, get, set, palette, names, head, wheelToo, key)
+	slice()
 	local holder = UI.Frame(parent, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
 	UI.List(holder, 4)
 	local _, refresh = UI.Swatches(holder, label, palette, paletteIndex(palette, get()), function(rgb)
 		pushUndo(nil)
 		set(rgb)
 		preview(head or "colors")
-	end, { names = names })
+	end, { names = names, slice = slice })
+	local wheel, wheelSet
 	if wheelToo then
-		local wheel
 		UI.Button(holder, "Custom colour", { Name = "CustomColour", Size = UDim2.new(0, 160, 0, math.max(30, UI.MinHit(holder))), TextSize = 13, BackgroundColor3 = T.panel2 }, function()
 			if wheel then
 				wheel:Destroy()
-				wheel = nil
+				wheel, wheelSet = nil, nil
 				return
 			end
-			wheel = UI.ColorWheel(holder, label .. " - colour wheel", get(), function(rgb)
+			wheel, wheelSet = UI.ColorWheel(holder, label .. " - colour wheel", get(), function(rgb)
 				pushUndo(key or label)
 				set(rgb)
 				refresh(nil)
@@ -320,6 +396,12 @@ local function colorField(parent, label, get, set, palette, names, head, wheelTo
 			end)
 		end)
 	end
+	onRefresh(function()
+		refresh(paletteIndex(palette, get()))
+		if wheel and wheelSet then
+			wheelSet(get())
+		end
+	end)
 	return holder
 end
 
@@ -339,11 +421,16 @@ local function lookSlider(tbl, key, def, head, withHint)
 	-- full server rebuild (~800 instances replicated), so a drag sends one, not two a second; the head sliders
 	-- (a partial rebuild) stay live. [-] / [+], the wheel and a gamepad step preview at once either way
 	opts.onRelease = not head or nil
-	return UI.Slider(body, LookKit.Label(e), e.min, e.max, tbl[key] or (def and def[key]) or 0, e.step, function(v)
+	slice()
+	local f, set = UI.Slider(body, LookKit.Label(e), e.min, e.max, tbl[key] or (def and def[key]) or 0, e.step, function(v)
 		pushUndo(key)
 		tbl[key] = v
 		preview(head)
 	end, num, opts)
+	onRefresh(function()
+		set(tbl[key] or (def and def[key]) or 0)
+	end)
+	return f
 end
 
 -- sliders for keys of a Looks list, skipping the ones in `skip`
@@ -366,30 +453,88 @@ local function setOf(keys)
 	return t
 end
 
--- the Advanced expander; returns true when it is open (the caller then builds the section)
-local function advancedToggle(count)
-	local open = advanced[page] == true
-	local b = UI.Button(body, (open and "Hide advanced" or "Advanced") .. string.format("  (%d more)", count), { Name = "AdvancedToggle", Size = UDim2.new(1, 0, 0, math.max(40, UI.MinHit(body))), TextSize = 15,
-		BackgroundColor3 = T.panel2, TextColor3 = open and T.gold or T.text }, function()
-		advanced[page] = not open
-		render()
+-- the Advanced expander (the last rows of a step): build() fills its section, now when it is open, else the first
+-- time it is opened; a click shows / hides the section in place (the rest of the page stays as it is)
+local function advancedToggle(count, build)
+	slice()
+	local name, rec = bpage, building
+	local open = advanced[name] == true
+	local sec, icon
+	local b
+	local function style(on)
+		b.Text = UI.Type.TitleCase((on and "Hide advanced" or "Advanced") .. string.format("  (%d more)", count))
+		b.TextColor3 = on and T.gold or T.text
+		if icon then
+			icon:Destroy()
+		end
+		icon = UI.Icon(b, on and "up" or "down", 12, on and T.gold or T.text, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -16, 0.5, 0) })
+	end
+	local job
+	local function fill()
+		if not sec:GetAttribute("Built") then
+			sec:SetAttribute("Built", true)
+			buildInto(rec, name, sec, build)
+		end
+	end
+	b = UI.Button(body, "", { Name = "AdvancedToggle", Size = UDim2.new(1, 0, 0, math.max(40, UI.MinHit(body))), TextSize = 15, BackgroundColor3 = T.panel2 }, function()
+		local on = not advanced[name]
+		advanced[name] = on
+		if on then
+			if job and FrameBudget.Busy(job) then
+				FrameBudget.Finish(job)
+			end
+			fill()
+		end
+		sec.Visible = on
+		style(on)
 	end)
-	UI.Icon(b, open and "up" or "down", 12, open and T.gold or T.text, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -16, 0.5, 0) })
-	return open
+	style(open)
+	sec = UI.Frame(body, { Name = "AdvancedSection", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = open })
+	UI.List(sec, 10)
+	if open or (rec and rec.staged) then
+		-- (a step built behind the window builds its closed section with it, hidden)
+		fill()
+	elseif FrameBudget then
+		-- closed: its rows are made behind the window too (hidden), so opening it only shows them; only while the
+		-- page is on screen (its rows measure for the screen they are on)
+		job = FrameBudget.Run(function()
+			if shade and shade.Parent and sec:FindFirstAncestorWhichIsA("LayerCollector") then
+				fill()
+			end
+		end, false, "Creator advanced")
+	end
 end
 
--- chips: a grid of text buttons, the picked one in gold
-local function chips(list, picked, cols, onPick, display)
+-- chips: a grid of text buttons, the picked one in gold. onPick(v, pick): pick(v) moves the gold in place;
+-- get (optional): the value it shows, re-read by the page's refresh
+local function chips(list, picked, cols, onPick, display, get)
+	slice()
 	local grid = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
 	-- (touch: a fingertip high, UI.MinHit; the desktop keeps 36)
 	UI.Grid(grid, UDim2.new(1 / cols, -6, 0, math.max(36, UI.MinHit(body))), nil, 6)
+	local buttons = {}
+	local function pick(want)
+		for v, b in pairs(buttons) do
+			local on = v == want
+			b.BackgroundColor3 = on and T.gold or T.panel2
+			b.TextColor3 = on and T.bg or T.text
+		end
+	end
 	for i, v in ipairs(list) do
+		if i > 1 and i % 3 == 1 then
+			slice()
+		end
 		local on = v == picked
-		UI.Button(grid, display and display(v) or tostring(v), { Name = "Chip_" .. tostring(v), LayoutOrder = i, TextSize = 14, BackgroundColor3 = on and T.gold or T.panel2, TextColor3 = on and T.bg or T.text }, function()
-			onPick(v)
+		buttons[v] = UI.Button(grid, display and display(v) or tostring(v), { Name = "Chip_" .. tostring(v), LayoutOrder = i, TextSize = 14, BackgroundColor3 = on and T.gold or T.panel2, TextColor3 = on and T.bg or T.text }, function()
+			onPick(v, pick)
 		end)
 	end
-	return grid
+	if get then
+		onRefresh(function()
+			pick(get())
+		end)
+	end
+	return grid, pick
 end
 
 local function startingStats()
@@ -461,7 +606,11 @@ local function camera(on)
 			local d = 1 + 0.35 * camZoom
 			goal = CFrame.lookAt(target + (look * 10.5 + right * 3.8) * d + Vector3.new(0, 0.8, 0), target + right * 3.0 * d)
 		end
-		cam.CFrame = cam.CFrame:Lerp(goal, math.clamp(dt * 7, 0, 1))
+		-- (settled on its goal and the boxer still: nothing to write, the idle screen costs no camera / light updates)
+		local now = cam.CFrame
+		if (now.Position - goal.Position).Magnitude > 1e-3 or (now.LookVector - goal.LookVector).Magnitude > 1e-4 then
+			cam.CFrame = now:Lerp(goal, math.clamp(dt * 7, 0, 1))
+		end
 		-- a soft key light on the face for the head pages (client-only, follows the turntable)
 		if keyLight then
 			if keyLightOn ~= isHead then
@@ -470,7 +619,10 @@ local function camera(on)
 				keyLight.Fill.Enabled = isHead
 			end
 			local from = head.Position + look * 2.2 + right * 1.4 + Vector3.new(0, 1.1, 0)
-			keyLight.CFrame = CFrame.lookAt(from, head.Position)
+			local cf = CFrame.lookAt(from, head.Position)
+			if keyLight.CFrame ~= cf then
+				keyLight.CFrame = cf
+			end
 		end
 	end)
 end
@@ -524,12 +676,15 @@ local function pageIdentity()
 	UI.TextInput(body, "First name", C.first, "e.g. Marcus", 14, function(v)
 		C.first = v
 	end)
+	slice()
 	UI.TextInput(body, "Last name", C.last, "e.g. Rivera", 16, function(v)
 		C.last = v
 	end)
+	slice()
 	UI.TextInput(body, "Boxing nickname", C.nickname, "e.g. The Hurricane", 20, function(v)
 		C.nickname = v
 	end)
+	slice()
 	UI.Cycler(body, "Gender", { 1, 2 }, C.look.gender, edit(nil, function(g)
 		local keep = { skin = C.look.skin, eye = C.look.face.eyeColor, shape = C.look.face.shape, seed = C.look.face.seed, undertone = C.look.face.undertone }
 		C.look = Looks.Defaults(g)
@@ -540,6 +695,7 @@ local function pageIdentity()
 	end), function(g)
 		return Config.Genders[g]
 	end)
+	slice()
 	UI.Slider(body, "Age", 16, 35, C.age, 1, function(v)
 		pushUndo("age")
 		C.age = v
@@ -551,10 +707,11 @@ local function pageIdentity()
 			return v <= 19 and "Prospect" or (v <= 27 and "Prime" or "Veteran")
 		end,
 	})
+	slice()
 	UI.Cycler(body, "Nationality", Config.Nationalities, C.nationality, edit(nil, function(v)
 		C.nationality = v
 	end))
-	if advancedToggle(3) then
+	advancedToggle(3, function()
 		local sample
 		UI.Cycler(body, "Voice type", Config.VoiceTypes, C.voice, edit(nil, function(v)
 			C.voice = v
@@ -565,7 +722,7 @@ local function pageIdentity()
 			C.music = v:gsub("%D", "")
 		end)
 		UI.Line(body, "Your voice type shapes your press-conference lines and the ring announcer's introduction. The walkout song plays during your ring walk.", { TextColor3 = T.sub, TextSize = 13 })
-	end
+	end)
 end
 
 -- "Use my avatar's hair & face" (appearance.avatar, default on; the server copies the avatar's hair accessories
@@ -613,8 +770,15 @@ end
 -- preset grids: up to n columns, fewer on a narrow window (phones, tablets) so every card's second
 -- line ("80% muscle", "High cheekbones" at the readability floor) keeps its room (UI.CardColumns);
 -- the body list is the window (0.46 of the canvas, at most 600) less its 16 px margins and 4 px padding
+-- the canvas and the list's width, read once per open and per resize (a page built behind the window reads them for
+-- every grid and panel: a size read there can be a layout pass of its own)
+local canvasNow, listW
+local function canvasSize()
+	canvasNow = canvasNow or UI.CanvasSize(State.gui)
+	return canvasNow
+end
 local function gridCols(n, items)
-	return UI.CardColumns(State.gui, items, math.min(600, 0.46 * UI.CanvasSize(State.gui).X) - 40, n)
+	return UI.CardColumns(State.gui, items, math.min(600, 0.46 * canvasSize().X) - 40, n)
 end
 
 local function pageFace()
@@ -633,32 +797,40 @@ local function pageFace()
 			names[st.key] = st.name
 			table.insert(keys, st.key)
 		end
-		local cur = BodyTiers.SanitizeFaceStyle(f.style, nil)
-		chips(keys, cur, 3, function(k)
-			if k == cur then
+		local function cur()
+			return BodyTiers.SanitizeFaceStyle(f.style, nil)
+		end
+		chips(keys, cur(), 3, function(k, pick)
+			if k == cur() then
 				return
 			end
 			pushUndo(nil)
 			f.style = k
 			previewHead()
-			render()
+			pick(k)
 		end, function(k)
 			return names[k] or k
-		end)
+		end, cur)
 		UI.Line(body, "Your face's expression changes with the fight: focused, grit, smirk.", { TextColor3 = T.sub, TextSize = 13 })
 	end
 	UI.Header(body, "START FROM A FACE")
 	local items = {}
 	for _, p in ipairs(LookKit.FacePresets) do
 		table.insert(items, { id = p.id, label = p.id, sub = p.desc, preset = p, glyph = function(art)
-			LookKit.FaceGlyph(art, p.shape, skinRGB())
+			slice()
+			onSkin(art, function(a)
+				LookKit.FaceGlyph(a, p.shape, skinRGB())
+			end)
 		end })
 	end
-	LookKit.PresetGrid(body, items, { name = "FacePresets", cols = gridCols(4, items), cellH = 100, picked = chosen.face }, function(it)
+	local grid
+	grid = LookKit.PresetGrid(body, items, { name = "FacePresets", cols = gridCols(4, items), cellH = 100, picked = chosen.face }, function(it)
 		pushUndo(nil)
 		applyFacePreset(it.preset)
 		previewHead()
-		render()
+		-- in place: the outline moves, every slider and the shape chips re-read the face
+		LookKit.PresetPick(grid, chosen.face)
+		refreshPage()
 	end)
 	UI.Header(body, "MAIN FEATURES")
 	local main = BodyTiers.DrawnFaces() and FACE_MAIN_DRAWN or FACE_MAIN
@@ -668,13 +840,15 @@ local function pageFace()
 	local skip = setOf(main)
 	local faceList, wearList = LookKit.Shown(Looks.FaceSliders), LookKit.Shown(Looks.WearSliders)
 	local more = #faceList - #main + #wearList + 3
-	if advancedToggle(more) then
+	advancedToggle(more, function()
 		UI.Header(body, "FACE SHAPE")
-		chips(Looks.FaceShapes, f.shape, 3, function(sh)
+		chips(Looks.FaceShapes, f.shape, 3, function(sh, pick)
 			pushUndo(nil)
 			f.shape = sh
 			previewHead()
-			render()
+			pick(sh)
+		end, nil, function()
+			return f.shape
 		end)
 		UI.Header(body, "MORE FEATURES")
 		sliderList(faceList, f, def, skip)
@@ -694,7 +868,7 @@ local function pageFace()
 			end)
 		end
 		UI.Line(body, "Previews only: see how your boxer looks mid-fight. Swelling, cuts and bruises heal over the days after a real fight.", { TextColor3 = T.sub, TextSize = 13 })
-	end
+	end)
 end
 
 local EYE_MAIN = { "eyeSize", "eyeShape", "eyeDist" }
@@ -708,7 +882,7 @@ local function pageEyesSkin()
 		pushUndo(nil)
 		C.look.skin = i
 		preview("colors") -- (the colour path rebuilds the face and beard too when their skin moved)
-	end, { names = LookKit.SkinNames, size = 40 })
+	end, { names = LookKit.SkinNames, size = 40, slice = slice })
 	-- (the undertone, eye colour, brows and eye sliders only shape the built face: hidden while drawn faces are in)
 	local eyes = not BodyTiers.DrawnFaces()
 	if eyes then
@@ -736,7 +910,7 @@ local function pageEyesSkin()
 		lookSlider(f, k, def, true, true)
 	end
 	local more = #Looks.SkinSliders - #SKIN_MAIN + 1 + (eyes and (#Looks.EyeSliders - #EYE_MAIN + 1) or 0)
-	if advancedToggle(more) then
+	advancedToggle(more, function()
 		if eyes then
 			local second = { 0 }
 			for i = 1, #Looks.EyeColors do
@@ -758,7 +932,7 @@ local function pageEyesSkin()
 			f.seed = math.random(1, 1000000)
 			preview() -- the seed also varies the body
 		end)
-	end
+	end)
 end
 
 local HAIR_MAIN = { "length", "volume" }
@@ -773,11 +947,11 @@ local function pageHair()
 		-- the avatar's hair replaces the game styles: only the beard is picked here
 		if C.look.gender == 1 then
 			UI.Header(body, "BEARD")
-			chips(Looks.BeardStyles, beard.style, 3, function(v)
+			chips(Looks.BeardStyles, beard.style, 3, function(v, pick)
 				pushUndo(nil)
 				beard.style = v
 				previewHead()
-				render()
+				pick(v)
 			end)
 		end
 		return
@@ -789,15 +963,29 @@ local function pageHair()
 		end), Looks.HairTypeName)
 		-- the styles as cards with a little head wearing each, one group at a time
 		UI.Header(body, "STYLE")
-		LookKit.HairPicker(body, h, skinRGB(), hairGroup, function(st)
+		local picker
+		picker = LookKit.HairPicker(body, h, skinRGB(), hairGroup, function(st)
+			if st == h.style then
+				return
+			end
 			pushUndo(nil)
 			h.style = st
 			previewHead()
-			render()
+			-- in place: the outline moves (and the gold group name with it); nothing else on the page follows the style
+			LookKit.HairPickerPick(picker, st)
 		end, function(g)
 			hairGroup = g
 			render()
 		end)
+		-- (the little heads wear the skin tone: redrawn in place under a new one, no rebuild of the step)
+		for _, card in ipairs(picker:GetChildren()) do
+			local st, art = card:GetAttribute("PresetId"), card:FindFirstChild("Art")
+			if st and art then
+				onSkin(art, function(a)
+					LookKit.HairGlyph(a, st, h.color, skinRGB())
+				end, true)
+			end
+		end
 		UI.Header(body, "COLOUR")
 		colorField(body, "Hair colour", function()
 			return h.color
@@ -813,18 +1001,18 @@ local function pageHair()
 	end
 	if C.look.gender == 1 then
 		UI.Header(body, "BEARD")
-		chips(Looks.BeardStyles, beard.style, 3, function(v)
+		chips(Looks.BeardStyles, beard.style, 3, function(v, pick)
 			pushUndo(nil)
 			beard.style = v
 			previewHead()
-			render()
+			pick(v)
 		end)
 	end
 	local more = Config.BaldMode and 0 or (#Looks.HairSliders + #(Looks.HairDetailSliders or {}) - #HAIR_MAIN + 7)
 	if C.look.gender == 1 then
 		more += 1
 	end
-	if advancedToggle(more) then
+	advancedToggle(more, function()
 		if not Config.BaldMode then
 			UI.Header(body, "CUT")
 			UI.Cycler(body, "Hairline", Looks.Hairlines, h.hairline or "Natural", edit(nil, function(v)
@@ -880,20 +1068,30 @@ local function pageHair()
 			end
 		end
 		UI.Line(body, "Hair and beards grow over time - visit the Barber Shop in the gym to restyle, recolour, line up or trim.", { TextColor3 = T.sub, TextSize = 13 })
-	end
+	end)
 end
 
 -- [FrameTraits] the frame's permanent ring traits: its tag line, then the pros (green plus) and the cons (red minus)
 -- as two short lists side by side (stacked on a narrow column), then the frame's starting-stat mods as a wrapping
--- footnote (a long one - the Heavyweight's five - wraps inside the panel instead of clipping on one line)
-local function frameTraitsPanel(frameId, modsLine)
+-- footnote (a long one - the Heavyweight's five - wraps inside the panel instead of clipping on one line).
+-- panel (optional): the panel to fill again for another frame (a body-type pick: the page stays as it is)
+local function frameTraitsPanel(frameId, modsLine, panel)
+	slice()
 	local FT = FrameTraits.Get(frameId)
-	local panel = UI.Frame(body, { Name = "FrameTraits", BackgroundColor3 = T.panel2, BackgroundTransparency = 0.5, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
-	UI.Corner(panel, UI.R.md)
-	UI.Pad(panel, 10, 12)
-	UI.List(panel, 6)
+	if panel then
+		UI.Clear(panel)
+	else
+		panel = UI.Frame(body, { Name = "FrameTraits", BackgroundColor3 = T.panel2, BackgroundTransparency = 0.5, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+		UI.Corner(panel, UI.R.md)
+		UI.Pad(panel, 10, 12)
+		UI.List(panel, 6)
+	end
 	UI.Kicker(panel, string.format("%s  ·  %s", FrameTraits.ShortName(frameId), FT.tag or ""), T.gold, { order = 1, icon = "muscle" })
-	local narrow = body.AbsoluteSize.X > 0 and body.AbsoluteSize.X < 520
+	if not (listW and listW > 0) then
+		listW = scroll and scroll.AbsoluteSize.X or 0
+	end
+	local sw = listW
+	local narrow = sw > 0 and sw < 520
 	local cols = UI.Frame(panel, { Name = "Columns", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 })
 	UI.New("UIListLayout", { FillDirection = narrow and Enum.FillDirection.Vertical or Enum.FillDirection.Horizontal, SortOrder = Enum.SortOrder.LayoutOrder,
 		Padding = UDim.new(0, narrow and 6 or 12), Parent = cols })
@@ -907,6 +1105,7 @@ local function frameTraitsPanel(frameId, modsLine)
 		end
 	end
 	list("Pros", FT.pros or {}, "plus", T.green, 1)
+	slice()
 	list("Cons", FT.cons or {}, "minus", T.red, 2)
 	if modsLine and modsLine ~= "" then
 		UI.Text(panel, "Starting stats: " .. modsLine, { Name = "Mods", LayoutOrder = 3, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextSize = 12,
@@ -923,17 +1122,25 @@ local function pageBody()
 	local items = {}
 	for _, bt in ipairs(Config.BodyTypes) do
 		table.insert(items, { id = bt.id, label = (bt.id:gsub(" Build$", "")), sub = string.format("%d%% muscle", math.floor(bt.potential * 100 + 0.5)), glyph = function(art)
-			LookKit.BuildGlyph(art, bt.width, skinRGB())
+			slice()
+			onSkin(art, function(a)
+				LookKit.BuildGlyph(a, bt.width, skinRGB())
+			end)
 		end })
 	end
-	LookKit.PresetGrid(body, items, { name = "BodyTypes", cols = gridCols(5, items), cellH = 104, picked = b.frame }, function(it)
+	local grid, traits
+	grid = LookKit.PresetGrid(body, items, { name = "BodyTypes", cols = gridCols(5, items), cellH = 104, picked = b.frame }, function(it)
 		pushUndo(nil)
 		b.frame = it.id
 		preview()
-		render()
+		-- in place: the outline moves and the traits panel shows the new frame's
+		LookKit.PresetPick(grid, it.id)
+		local ft = Config.FindById(Config.BodyTypes, it.id) or Config.BodyTypes[2]
+		frameTraitsPanel(ft.id, modsText(ft.mods), traits)
 	end)
 	local ft = Config.FindById(Config.BodyTypes, b.frame) or Config.BodyTypes[2]
-	frameTraitsPanel(ft.id, modsText(ft.mods)) -- [FrameTraits] (the starting-stat mods ride in the panel)
+	traits = frameTraitsPanel(ft.id, modsText(ft.mods)) -- [FrameTraits] (the starting-stat mods ride in the panel)
+	slice()
 	UI.Header(body, "SIZE")
 	-- (onRelease: a height is a rescale and a full rebuild of the character on the server, ~800 instances
 	-- replicated each time; a drag previews once when it is let go, the steppers and the wheel at once)
@@ -953,6 +1160,7 @@ local function pageBody()
 	for i = 1, #Config.WeightClasses do
 		idx[i] = i
 	end
+	slice()
 	UI.Cycler(body, "Weight class", idx, C.weightClass, edit(nil, function(v)
 		C.weightClass = v
 		local wc = Config.WeightClasses[v]
@@ -966,6 +1174,7 @@ local function pageBody()
 	end)
 	local wc = Config.WeightClasses[C.weightClass]
 	C.weight = math.clamp(C.weight, wc.min, wc.limit)
+	slice()
 	UI.Slider(body, "Walk-around weight", wc.min, wc.limit, C.weight, 1, function(v)
 		pushUndo("weight")
 		C.weight = v
@@ -978,6 +1187,7 @@ local function pageBody()
 			return a < 0.34 and "Light" or (a < 0.67 and "Middle" or "Heavy")
 		end,
 	})
+	slice()
 	UI.Slider(body, "Reach", -3, 6, C.reachDelta, 1, function(v)
 		pushUndo("reach")
 		C.reachDelta = v
@@ -989,6 +1199,7 @@ local function pageBody()
 			return v < 0 and "Short" or (v <= 2 and "Average" or (v <= 4 and "Long" or "Very long"))
 		end,
 	})
+	slice()
 	UI.Header(body, "PREVIEW")
 	UI.Cycler(body, "Preview body", { false, true }, view.peak, function(v)
 		view.peak = v
@@ -1008,15 +1219,19 @@ local function pageGear()
 	local items = {}
 	for _, kit in ipairs(LookKit.KitPresets) do
 		table.insert(items, { id = kit.id, label = kit.id, sub = kit.desc, kit = kit, glyph = function(art)
+			slice()
 			LookKit.KitGlyph(art, kit)
 		end })
 	end
-	LookKit.PresetGrid(body, items, { name = "Kits", cols = gridCols(3, items), cellH = 100, picked = chosen.kit }, function(it)
+	local grid
+	grid = LookKit.PresetGrid(body, items, { name = "Kits", cols = gridCols(3, items), cellH = 100, picked = chosen.kit }, function(it)
 		pushUndo(nil)
 		LookKit.ApplyKit(it.kit, a, g)
 		chosen.kit = it.id
 		preview()
-		render()
+		-- in place: the outline moves, every colour field and style cycler re-reads the kit
+		LookKit.PresetPick(grid, it.id)
+		refreshPage()
 	end)
 	UI.Header(body, "MAIN COLOURS")
 	colorField(body, "Trunks", function()
@@ -1038,15 +1253,20 @@ local function pageGear()
 			a.headgear = c
 		end, pal, names, false, true, "headgear")
 	end
-	UI.Cycler(body, "Trunk style", Catalog.TrunkStyles, a.trunkStyle, edit(nil, function(v)
+	slice()
+	local _, setTrunks = UI.Cycler(body, "Trunk style", Catalog.TrunkStyles, a.trunkStyle, edit(nil, function(v)
 		a.trunkStyle = v
 		preview()
 	end))
-	UI.Cycler(body, "Shoe style", { "Low-Top", "High-Top" }, a.shoeStyle, edit(nil, function(v)
+	local _, setShoes = UI.Cycler(body, "Shoe style", { "Low-Top", "High-Top" }, a.shoeStyle, edit(nil, function(v)
 		a.shoeStyle = v
 		preview()
 	end))
-	if advancedToggle(8) then
+	onRefresh(function()
+		setTrunks(a.trunkStyle)
+		setShoes(a.shoeStyle)
+	end)
+	advancedToggle(8, function()
 		local function field(label, key)
 			colorField(body, label, function()
 				return a[key]
@@ -1061,55 +1281,99 @@ local function pageGear()
 		field("Laces", "laces")
 		UI.Header(body, "HANDS & MOUTH")
 		field("Hand wraps", "wraps")
-		UI.Cycler(body, "Wrap pattern", Looks.WrapPatterns, a.wrapPattern or "Solid", edit(nil, function(v)
+		local _, setWrap = UI.Cycler(body, "Wrap pattern", Looks.WrapPatterns, a.wrapPattern or "Solid", edit(nil, function(v)
 			a.wrapPattern = v
 			preview()
 		end))
+		onRefresh(function()
+			setWrap(a.wrapPattern or "Solid")
+		end)
 		field("Mouthguard", "mouthguard")
 		UI.Header(body, "ROBE (walkouts)")
 		field("Robe trim", "robeTrim")
 		UI.Line(body, "You start with worn, beaten-up gloves. Better gloves (Gear tab) unlock trim, stitching, finishes, logos and name embroidery at the Locker Room.", { TextColor3 = T.sub, TextSize = 13 })
-	end
+	end)
 end
 
 local function pageStyle()
 	hintLine(PAGE_HINTS["Fight Style"])
 	UI.Header(body, "BOXING STYLE")
+	-- the cards, the specialty line and the starting stats all update in place (a style or specialty pick here; an
+	-- age, body type, UNDO or RANDOM elsewhere: the page's refresh): nothing is rebuilt
+	local cards = {}
+	local function styleCards()
+		for id, c in pairs(cards) do
+			local selected = C.style == id
+			c.b.BackgroundColor3 = selected and T.panel:Lerp(T.gold, 0.16) or T.panel
+			c.stroke.Enabled = selected
+			c.accent.Visible = selected
+			c.title.TextColor3 = selected and T.gold or T.text
+		end
+	end
+	local refreshStats
 	for _, s in ipairs(Config.Styles) do
+		slice()
 		local selected = C.style == s.id
 		-- the card grows with its description (three lines on a phone-width window)
 		local b = UI.Button(body, "", { Name = "Style_" .. s.id, Size = UDim2.new(1, 0, 0, 66), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = selected and T.panel:Lerp(T.gold, 0.16) or T.panel }, function()
+			if C.style == s.id then
+				return
+			end
 			pushUndo(nil)
 			C.style = s.id
-			render()
+			styleCards()
+			refreshStats()
 		end)
 		UI.New("UIPadding", { PaddingBottom = UDim.new(0, 8), Parent = b })
-		if selected then
-			UI.Stroke(b, T.gold, 2)
-			UI.Frame(b, { Size = UDim2.new(0, 4, 1, -16), Position = UDim2.fromOffset(0, 8), BackgroundColor3 = T.gold })
-		end
-		UI.Text(b, string.upper(s.name), { Face = "display", TextSize = 22, TextColor3 = selected and T.gold or T.text, Position = UDim2.fromOffset(14, 4), Size = UDim2.new(1, -28, 0, 28), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		local stroke = UI.New("UIStroke", { Color = T.gold, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Enabled = selected, Parent = b })
+		local accent = UI.Frame(b, { Size = UDim2.new(0, 4, 1, -16), Position = UDim2.fromOffset(0, 8), BackgroundColor3 = T.gold, Visible = selected })
+		local title = UI.Text(b, string.upper(s.name), { Face = "display", TextSize = 22, TextColor3 = selected and T.gold or T.text, Position = UDim2.fromOffset(14, 4), Size = UDim2.new(1, -28, 0, 28), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 		UI.Text(b, s.desc .. "  (" .. modsText(s.mods) .. ")", { TextColor3 = T.sub, TextSize = 13, Position = UDim2.fromOffset(14, 32), Size = UDim2.new(1, -28, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 			TextYAlignment = Enum.TextYAlignment.Top })
+		cards[s.id] = { b = b, stroke = stroke, accent = accent, title = title }
 	end
+	slice()
 	local specs = idsOf(Config.Specialties)
-	UI.Cycler(body, "Specialty", specs, C.specialty, edit(nil, function(v)
+	local specLine
+	local _, setSpec = UI.Cycler(body, "Specialty", specs, C.specialty, edit(nil, function(v)
 		C.specialty = v
-		render()
+		refreshStats()
 	end))
-	local spec = Config.FindById(Config.Specialties, C.specialty)
-	UI.Line(body, "Specialty bonus: " .. modsText(spec.stats) .. " and +25% training gains on those stats.", { TextColor3 = T.sub, TextSize = 13 })
+	specLine = UI.Line(body, "", { TextColor3 = T.sub, TextSize = 13 })
+	slice()
 	UI.Header(body, "STARTING STATS")
 	local grid = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
 	UI.Grid(grid, UDim2.new(0.5, -6, 0, 24), nil, 4)
 	grid:FindFirstChildOfClass("UIGridLayout").CellPadding = UDim2.fromOffset(12, 4)
 	local stats = startingStats()
+	local rows = {}
 	for i, k in ipairs(Config.StatKeys) do
+		if i % 4 == 0 then
+			slice()
+		end
 		local v = stats[k]
-		local row = UI.StatRow(grid, string.upper(Config.StatNames[k]), v, 100, v >= 40 and T.green or T.gold)
+		local row, setBar, valText = UI.StatRow(grid, string.upper(Config.StatNames[k]), v, 100, v >= 40 and T.green or T.gold)
 		row.LayoutOrder = i
+		rows[k] = { set = setBar, text = valText }
 	end
-	UI.Line(body, string.format("Overall %d  -  You'll start as an amateur at the local gym with %s.", Config.Overall(stats), Config.Money(500)), { Font = T.semi, TextSize = 14 })
+	local overall = UI.Line(body, "", { Font = T.semi, TextSize = 14 })
+	function refreshStats()
+		local spec = Config.FindById(Config.Specialties, C.specialty)
+		specLine.Text = UI.Type.Sentence("Specialty bonus: " .. modsText(spec.stats) .. " and +25% training gains on those stats.")
+		local st = startingStats()
+		for k, r in pairs(rows) do
+			local v = st[k]
+			r.set(v / 100, v >= 40 and T.green or T.gold)
+			r.text.Text = tostring(math.floor(v))
+		end
+		overall.Text = UI.Type.Sentence(string.format("Overall %d  -  You'll start as an amateur at the local gym with %s.", Config.Overall(st), Config.Money(500)))
+	end
+	refreshStats()
+	onRefresh(function()
+		styleCards()
+		setSpec(C.specialty)
+		refreshStats()
+	end)
 end
 
 local PAGE_FN = {
@@ -1306,20 +1570,267 @@ end
 
 -- every way to another step (a pick in the step menu, NEXT / BACK, RB / LB) closes the step menu: no
 -- stale menu over the new page
-local function goTo(name)
-	showSteps(false)
-	local wasHands = hands()
-	page = name
-	if hands() ~= wasHands then
-		preview()
+------------------------------------------------------------------------
+-- The pages: built once, kept while the window is open
+------------------------------------------------------------------------
+-- what a step shows that another step (or UNDO / RESET / RANDOM) can change: a kept page whose signature no longer
+-- matches is built again. The look's tables a page's controls hold count by identity (an UNDO swaps in copies), the
+-- values it shows by value; the skin tone only tints the preset cards' drawings (redrawn in place: onSkin)
+local function keysOf(t, lists, extra)
+	local out = {}
+	for _, list in ipairs(lists) do
+		for _, sl in ipairs(list) do
+			out[#out + 1] = t[sl.key]
+		end
 	end
-	render()
+	for _, k in ipairs(extra or {}) do
+		out[#out + 1] = t[k] == nil and "nil" or t[k]
+	end
+	return out
+end
+local PAGE_STATE = {
+	Identity = function()
+		return { C.age, C.nationality, C.voice, C.music, C.first, C.last, C.nickname }
+	end,
+	Face = function(L)
+		return { tostring(L.face), keysOf(L.face, { Looks.FaceSliders, Looks.SculptSliders or {}, Looks.WearSliders }, { "style", "shape", "noseType" }), L.avatar, chosen.face,
+			view.expr, view.damage }
+	end,
+	["Skin & Eyes"] = function(L)
+		return { tostring(L.face), L.skin, keysOf(L.face, { Looks.EyeSliders, Looks.SkinSliders }, { "undertone", "eyeColor", "eyeColor2", "browStyle" }) }
+	end,
+	Hair = function(L)
+		return { tostring(L.hair), tostring(L.beard), L.hair, L.beard, L.avatar, hairGroup, view.growth }
+	end,
+	Body = function(L)
+		return { tostring(L.body), L.body, L.height, C.weightClass, C.weight, C.reachDelta, view.peak }
+	end,
+	Gear = function(L)
+		return { tostring(L.attire), tostring(L.gloves), L.attire, L.gloves, chosen.kit }
+	end,
+	["Fight Style"] = function()
+		return {}
+	end,
+}
+-- what a kept page shows in place (its refresh re-reads it when the page shows again): no rebuild for these
+local PAGE_SOFT = {
+	["Fight Style"] = function(L)
+		return { C.style, C.specialty, C.age, L.body and L.body.frame }
+	end,
+}
+local function enc(v, out)
+	if type(v) == "table" then
+		local keys = {}
+		for k in pairs(v) do
+			keys[#keys + 1] = k
+		end
+		table.sort(keys, function(a, b)
+			return tostring(a) < tostring(b)
+		end)
+		out[#out + 1] = "{"
+		for _, k in ipairs(keys) do
+			out[#out + 1] = tostring(k)
+			enc(v[k], out)
+		end
+		out[#out + 1] = "}"
+	else
+		out[#out + 1] = tostring(v)
+	end
+end
+local function pageSig(name)
+	local L = C.look
+	local out = {}
+	enc({ L.gender, advanced[name] == true, tostring(canvasSize()), PAGE_STATE[name] and PAGE_STATE[name](L) or {} }, out)
+	return table.concat(out, "|")
+end
+local function softSig(name)
+	local f = PAGE_SOFT[name]
+	if not f then
+		return ""
+	end
+	local out = {}
+	enc(f(C.look), out)
+	return table.concat(out, "|")
 end
 
-function render()
-	if not (shade and shade.Parent) then
+-- a preview request's content (the look, the hands, the preview options but what to rebuild): equal keys build the
+-- same character
+function previewKey(popts)
+	local out = {}
+	enc({ C.look, hands(), popts.peak == true, popts.growth or 0 }, out)
+	return table.concat(out, "|")
+end
+
+local function newPageFrame(parent, visible)
+	local f = UI.Frame(parent, { Name = "Page", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = visible })
+	UI.List(f, 10)
+	return f
+end
+
+-- a step's page, under the list: shown (the step on screen, built now) or hidden (built behind the window)
+local unfinished = {} -- [rec] = true: a page whose build behind the window is under way (a close discards it too)
+local function buildPage(name, visible)
+	local rec = { name = name, refresh = {}, glyphs = {}, sig = pageSig(name), soft = softSig(name), skin = C.look.skin, staged = not visible }
+	rec.frame = newPageFrame(scroll, visible)
+	unfinished[rec] = true
+	buildInto(rec, name, rec.frame, PAGE_FN[name])
+	unfinished[rec] = nil
+	return rec
+end
+
+function refreshPage()
+	local rec = pages[page]
+	if rec then
+		for _, fn in ipairs(rec.refresh) do
+			local ok, err = pcall(fn)
+			if not ok then
+				warn("[Creator]", err)
+			end
+		end
+	end
+end
+
+-- frames to go (old pages, the window's kept steps on close): out of the window now, destroyed a row at a time
+-- behind the next frames (a page is up to ~1000 instances: one Destroy of it was a hitch of its own)
+local function discard(frames)
+	for _, f in ipairs(frames) do
+		f.Parent = nil
+	end
+	if not FrameBudget then
+		for _, f in ipairs(frames) do
+			f:Destroy()
+		end
 		return
 	end
+	FrameBudget.Run(function()
+		for _, f in ipairs(frames) do
+			for _, row in ipairs(f:GetChildren()) do
+				row:Destroy()
+				FrameBudget.Tick()
+			end
+			f:Destroy()
+		end
+	end, false, "Creator discard")
+end
+
+local function dropPage(name)
+	local rec = pages[name]
+	pages[name] = nil
+	if rec and rec.frame then
+		discard({ rec.frame })
+	end
+end
+
+-- the step `name` on screen: its kept page when it still shows the look as it is (rebuild = false), else built
+-- again. The kept pages all stay under the list, the others hidden (not laid out or drawn): a step change only
+-- flips two Visible flags (moving a page in and out of the window fired every UI listener once per row)
+local function showPage(name, rebuild)
+	local job = jobs[name]
+	if job and FrameBudget and FrameBudget.Busy(job) then
+		FrameBudget.Finish(job) -- (being built behind the window: the rest of it now)
+	end
+	jobs[name] = nil
+	local rec = pages[name]
+	if rec and (rebuild or rec.sig ~= pageSig(name)) then
+		dropPage(name)
+		rec = nil
+	end
+	for n, other in pairs(pages) do
+		if n ~= name and other.frame.Visible then
+			other.frame.Visible = false
+		end
+	end
+	if rec then
+		local soft = softSig(name)
+		if rec.soft ~= soft then
+			-- (what it shows in place moved since: its controls re-read it)
+			rec.soft = soft
+			for _, fn in ipairs(rec.refresh) do
+				pcall(fn)
+			end
+		end
+		if rec.skin ~= C.look.skin then
+			-- a new skin tone since it was built: its preset cards' drawings again, in place
+			rec.skin = C.look.skin
+			for _, g in ipairs(rec.glyphs) do
+				g[1]:ClearAllChildren()
+				pcall(g[2], g[1])
+			end
+		end
+		rec.frame.Visible = true
+	else
+		rec = buildPage(name, true)
+		pages[name] = rec
+	end
+	return rec
+end
+
+-- the steps not on screen, built (again) behind the window, one FrameBudget job each, a few ms a frame: a step
+-- change then only swaps pages. A page a change has left stale is built again the same way.
+local function queuePrebuild()
+	if not (FrameBudget and shade and shade.Parent) then
+		return
+	end
+	for _, name in ipairs(PAGES) do
+		local rec = pages[name]
+		if name ~= page and not (jobs[name] and FrameBudget.Busy(jobs[name])) and not (rec and rec.sig == pageSig(name)) then
+			jobs[name] = FrameBudget.Run(function()
+				if not (shade and shade.Parent and scroll and scroll.Parent) or name == page then
+					return
+				end
+				local new = buildPage(name, false)
+				if pages[name] and pages[name] ~= new then
+					dropPage(name)
+				end
+				pages[name] = new
+			end, false, "Creator " .. name)
+		end
+	end
+end
+
+-- the step bar: its buttons made once (styled for the step on screen on every change)
+local stepButtons = {}
+local goTo
+local function styleSteps()
+	local cur = table.find(PAGES, page) or 1
+	if #stepButtons == 0 then
+		for i, name in ipairs(PAGES) do
+			local b = UI.Button(stepsFrame, stepStrip and UI.Type.TitleCase(SHORT[name]) or string.format("%d %s", i, SHORT[name]), { Name = "Step" .. i, LayoutOrder = i, TextSize = stepMenu and 15 or 13,
+				Size = stepStrip and UDim2.new(1, 0, 0, stepH) or nil }, function()
+				goTo(name)
+			end)
+			local icon
+			if stepStrip then
+				-- the strip's pills: the step's icon at a fixed inset, the label left-aligned after it
+				local corner = b:FindFirstChildOfClass("UICorner")
+				if corner then
+					corner.CornerRadius = UDim.new(0, math.floor(stepH / 2))
+				end
+				b.TextXAlignment = Enum.TextXAlignment.Left
+				UI.New("UIPadding", { PaddingLeft = UDim.new(0, 38), Parent = b })
+				icon = UI.Icon(b, STEP_ICONS[name] or "star", 16, T.sub, { Name = "StepIcon", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, -24, 0.5, 0) })
+			end
+			b:SetAttribute("CreatorStep", i)
+			stepButtons[i] = { b = b, icon = icon }
+		end
+	end
+	for i, name in ipairs(PAGES) do
+		local sb = stepButtons[i]
+		local done = i < cur
+		local on = name == page
+		sb.b.BackgroundColor3 = on and T.gold or T.panel2
+		sb.b.TextColor3 = on and T.bg or (done and T.gold or T.text)
+		if sb.icon then
+			UI.SetIconColor(sb.icon, on and T.bg or (done and T.gold or T.sub))
+		end
+		if on then
+			UI.PadStart(sb.b)
+		end
+	end
+end
+
+-- the window's chrome for the step on screen: title, kicker, step bar, progress, BACK / NEXT
+local function chrome()
 	local cur = table.find(PAGES, page) or 1
 	-- title: the step's name (a window with neither kicker line counts the step in the title too)
 	local kicker = win:FindFirstChild("Kicker")
@@ -1333,44 +1844,10 @@ function render()
 	if stepKicker then
 		stepKicker.Text = string.format("STEP %d OF %d", cur, #PAGES)
 	end
-	UI.Clear(stepsFrame)
-	for i, name in ipairs(PAGES) do
-		local done = i < cur
-		local b = UI.Button(stepsFrame, stepStrip and UI.Type.TitleCase(SHORT[name]) or string.format("%d %s", i, SHORT[name]), { Name = "Step" .. i, LayoutOrder = i, TextSize = stepMenu and 15 or 13,
-			BackgroundColor3 = name == page and T.gold or T.panel2, TextColor3 = name == page and T.bg or (done and T.gold or T.text),
-			Size = stepStrip and UDim2.new(1, 0, 0, stepH) or nil }, function()
-			goTo(name)
-		end)
-		if stepStrip then
-			-- the strip's pills: the step's icon at a fixed inset, the label left-aligned after it
-			local corner = b:FindFirstChildOfClass("UICorner")
-			if corner then
-				corner.CornerRadius = UDim.new(0, math.floor(stepH / 2))
-			end
-			b.TextXAlignment = Enum.TextXAlignment.Left
-			UI.New("UIPadding", { PaddingLeft = UDim.new(0, 38), Parent = b })
-			UI.Icon(b, STEP_ICONS[name] or "star", 16, name == page and T.bg or (done and T.gold or T.sub), { Name = "StepIcon", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, -24, 0.5, 0) })
-		end
-		b:SetAttribute("CreatorStep", i)
-		if name == page then
-			UI.PadStart(b)
-		end
-	end
+	styleSteps()
 	if progressFill then
 		progressFill.Size = stepStrip and UDim2.fromScale(1, cur / #PAGES) or UDim2.fromScale(cur / #PAGES, 1)
 	end
-	local y = lastPage == page and body.CanvasPosition or Vector2.zero
-	lastPage = page
-	UI.Clear(body)
-	local ok, err = pcall(PAGE_FN[page])
-	if not ok then
-		warn("[Creator]", err)
-	end
-	task.defer(function()
-		if body and body.Parent then
-			body.CanvasPosition = y
-		end
-	end)
 	if nextBtn then
 		nextBtn.Text = page == PAGES[#PAGES] and "Begin Career" or ("Next: " .. UI.Type.TitleCase(SHORT[PAGES[cur + 1]]))
 	end
@@ -1378,6 +1855,46 @@ function render()
 		backBtn.TextTransparency = cur == 1 and 0.55 or 0
 	end
 	updateUndo()
+end
+
+-- the step on screen, shown (rebuild: built again, a change its controls cannot show in place); the list keeps its
+-- scroll on the same step and starts at the top of another
+local function display(rebuild)
+	if not (shade and shade.Parent) then
+		return
+	end
+	chrome()
+	local y = lastPage == page and scroll.CanvasPosition or Vector2.zero
+	lastPage = page
+	showPage(page, rebuild)
+	task.defer(function()
+		if scroll and scroll.Parent then
+			scroll.CanvasPosition = y
+		end
+	end)
+end
+
+-- every way to another step (a pick in the step menu, NEXT / BACK, RB / LB) closes the step menu: no
+-- stale menu over the new page
+function goTo(name)
+	showSteps(false)
+	local wasHands = hands()
+	-- the page left shows the look as it is now (its controls follow their own changes)
+	local left = pages[page]
+	if left then
+		left.sig, left.soft = pageSig(page), softSig(page)
+	end
+	page = name
+	if hands() ~= wasHands then
+		preview()
+	end
+	display(false)
+	queuePrebuild()
+end
+
+-- a change the step's controls cannot show in place: the step on screen built again
+function render()
+	display(true)
 end
 
 -- the live fighter plate (built in Creator.Open)
@@ -1391,6 +1908,7 @@ function updatePlate()
 		return
 	end
 	local same = true
+	local flag = plateSeen.nationality ~= C.nationality
 	for _, k in ipairs(PLATE_FIELDS) do
 		if plateSeen[k] ~= C[k] then
 			plateSeen[k] = C[k]
@@ -1409,9 +1927,12 @@ function updatePlate()
 	plateName.TextColor3 = name ~= "" and T.text or T.dim
 	plateNick.Text = C.nickname ~= "" and ('"' .. C.nickname .. '"') or "AMATEUR  ·  DEBUT"
 	plateInfo.Text = string.format("%s  ·  %s  ·  %s  ·  AGE %d", string.upper(C.nationality), string.upper(wc and wc.name or "-"), string.upper(style and style.name or "-"), C.age)
-	UI.Clear(plateFlag)
-	if Flags then
-		pcall(Flags.Draw, plateFlag, C.nationality, { Size = UDim2.fromOffset(36, 24) })
+	-- the flag (dozens of frames) only for a new nationality: an age drag changes the plate every tick
+	if flag then
+		UI.Clear(plateFlag)
+		if Flags then
+			pcall(Flags.Draw, plateFlag, C.nationality, { Size = UDim2.fromOffset(36, 24) })
+		end
 	end
 end
 
@@ -1515,15 +2036,22 @@ function Creator.Open()
 		step(-1)
 	end
 	-- a wide canvas takes the tool-strip composition (a wider window: the strip plus the inspector)
+	canvasNow, listW = nil, nil
 	local canvas0 = UI.CanvasSize(State.gui)
 	stepStrip = canvas0.Y >= 640 and canvas0.X * 0.46 >= 690
-	shade, win, body = UI.Window(State.gui, "Creator", stepStrip and 700 or 600, 720, "Create Your Boxer", { side = "left", noShade = true, footer = 50, onBack = back, kicker = "CREATE YOUR BOXER" })
+	shade, win, scroll = UI.Window(State.gui, "Creator", stepStrip and 700 or 600, 720, "Create Your Boxer", { side = "left", noShade = true, footer = 50, onBack = back, kicker = "CREATE YOUR BOXER" })
+	body = scroll
+	table.clear(pages)
+	table.clear(jobs)
+	table.clear(unfinished)
+	table.clear(stepButtons)
+	lastPage = nil
 	local canvas = UI.CanvasSize(State.gui)
 	short = canvas.Y < 560
 	-- a narrow window (the smallest phones: 0.46 of the canvas is under 420 design px) keeps the step's
 	-- name readable with slimmer tool buttons and no "1/7" prefix (the step bar counts the steps)
 	narrow = canvas.X * 0.46 < 420
-	local top = body.Position.Y.Offset
+	local top = scroll.Position.Y.Offset
 	-- touch: the tool buttons, the step bar and BACK / NEXT grow to a fingertip and the rows around them
 	local minHit = UI.MinHit(win)
 	-- title row: UNDO / RESET / RANDOM on the right of the step's name
@@ -1636,8 +2164,8 @@ function Creator.Open()
 	UI.Corner(progressFill, 2)
 	local nh = math.max(42, minHit)
 	local inset = stepStrip and (112 + 12) or 0
-	body.Position = UDim2.fromOffset(16 + inset, top)
-	body.Size = UDim2.new(1, -(32 + inset), 1, -(top + nh + 20))
+	scroll.Position = UDim2.fromOffset(16 + inset, top)
+	scroll.Size = UDim2.new(1, -(32 + inset), 1, -(top + nh + 20))
 	local nav = UI.Frame(win, { Name = "Nav", BackgroundTransparency = 1, Position = UDim2.new(0, 16, 1, -(nh + 12)), Size = UDim2.new(1, -32, 0, nh) })
 	backBtn = UI.Button(nav, "BACK", { Name = "BackStep", Size = UDim2.new(0.3, 0, 1, 0) }, back)
 	nextBtn = UI.Button(nav, "NEXT", { Name = "NextStep", Size = UDim2.new(0.66, 0, 1, 0), Position = UDim2.new(0.34, 0, 0, 0), BackgroundColor3 = T.gold, TextColor3 = T.bg })
@@ -1714,6 +2242,7 @@ function Creator.Open()
 	-- phones: the plate moves to the top-right corner so it never covers the boxer, and takes no more
 	-- than the room right of the window (the window is 0.46 of the canvas plus its 24 px margin)
 	local function placePlate()
+		canvasNow, listW = nil, nil -- (a resize: read again)
 		if not (plate and plate.Parent) then
 			return
 		end
@@ -1791,39 +2320,80 @@ function Creator.Open()
 	State.HidePrompts("Creator", true)
 	-- the gym HUD's plate and buttons stay out from under the creator
 	State.HideHud("Creator", true)
+	-- the world behind the window (WorldLOD: only the lights around the boxer stay on)
+	local lp = Players.LocalPlayer
+	if lp then
+		lp:SetAttribute("CreatorOpen", true)
+	end
 	render()
+	queuePrebuild()
+	-- the Hair step's hair-card meshes, fetched behind the window once it is up (a style pick then builds from meshes
+	-- the engine has; HairAssets.Preload: one a frame, in a thread of its own)
+	task.delay(1, function()
+		if not (shade and shade.Parent) then
+			return
+		end
+		local okHA, HA = pcall(function()
+			return require(script.Parent:FindFirstChild("HairAssets"))
+		end)
+		if okHA and type(HA) == "table" and HA.Preload then
+			local styles = {}
+			for _, g in ipairs(Looks.HairStyleGroups or {}) do
+				for _, st in ipairs(g.styles) do
+					table.insert(styles, st)
+				end
+			end
+			pcall(HA.Preload, C.look, styles)
+		end
+	end)
 	if previewConn then
 		previewConn:Disconnect()
 	end
 	inflight = false
+	lastBuilt = nil
 	previewConn = RunService.Heartbeat:Connect(function(dt)
 		if held ~= 0 then
 			camYaw += held * dt * 4
 		end
 		updatePlate()
 		local now = os.clock()
+		-- the steps a change left stale, built again behind the window once the changes settle (a pick or a let-go
+		-- slider: 0.3 s after it; a gesture without a release, the colour wheel: 3 s; never under a drag)
+		if stale and now - lastUndoAt > ((lastUndoKey == nil) and 0.3 or 3) then
+			stale = false
+			queuePrebuild()
+		end
 		if inflight and now - lastSent > 2 then
 			inflight = false -- a lost reply never blocks the preview for good
 		end
-		if dirty and not inflight then
+		-- (a whole-character rebuild is debounced; head and colour previews stay live, at the send cap)
+		local settled = not dirtyFull or now - lastChange >= FULL_QUIET or now - (firstChange or now) >= FULL_WAIT
+		if dirty and not inflight and settled then
 			if now - lastSent >= SEND_EVERY then
 				local full, head, colors = dirtyFull, dirtyHead, dirtyColors
 				dirty, dirtyFull, dirtyHead, dirtyColors = false, false, false, false
-				lastSent = now
-				inflight = true
 				-- preview-only options: growth stage, starting / peak body, partial head / colour-only rebuild
 				local popts = { peak = view.peak, growth = view.growth > 0.02 and view.growth or nil }
 				if not full then
 					popts.only = { Face = head or nil, Hair = head or nil, Beard = head or nil, Colors = colors or nil }
 				end
-				task.spawn(function()
-					local r = State.req("PreviewLook", C.look, hands(), popts)
-					inflight = false
-					if r and r.throttled then
-						dirty = true
-						dirtyFull, dirtyHead, dirtyColors = dirtyFull or full, dirtyHead or head, dirtyColors or colors
-					end
-				end)
+				-- the look the server last built for this one (a pick of what is already picked, a change and its
+				-- undo between two sends): no request, no rebuild
+				local key = previewKey(popts)
+				if key ~= lastBuilt then
+					lastSent = now
+					inflight = true
+					task.spawn(function()
+						local r = State.req("PreviewLook", C.look, hands(), popts)
+						inflight = false
+						if r and r.throttled then
+							dirty = true
+							dirtyFull, dirtyHead, dirtyColors = dirtyFull or full, dirtyHead or head, dirtyColors or colors
+						elseif r and r.ok then
+							lastBuilt = key
+						end
+					end)
+				end
 			end
 		end
 		-- a server rebuild replaces the face: draw the damage preview over the new one
@@ -1866,6 +2436,29 @@ function Creator.Close()
 	freeze(false)
 	State.HidePrompts("Creator", false)
 	State.HideHud("Creator", false)
+	local lp = Players.LocalPlayer
+	if lp then
+		lp:SetAttribute("CreatorOpen", nil)
+	end
+	-- the steps still being built behind the window stop; the kept pages (the one on screen too) leave the window
+	-- now and are destroyed a row at a time behind the next frames (the window's own chrome goes at once)
+	for name, job in pairs(jobs) do
+		if FrameBudget then
+			FrameBudget.Cancel(job)
+		end
+		jobs[name] = nil
+	end
+	local kept = {}
+	for name, rec in pairs(pages) do
+		table.insert(kept, rec.frame)
+		pages[name] = nil
+	end
+	for rec in pairs(unfinished) do
+		table.insert(kept, rec.frame)
+	end
+	table.clear(unfinished)
+	discard(kept)
+	table.clear(stepButtons)
 	if shade then
 		shade:Destroy()
 		shade = nil
@@ -1885,6 +2478,7 @@ function Creator.Refresh()
 	camera(true)
 	previewTag(true)
 	setExpression(view.expr)
+	lastBuilt = nil -- (a new character: the whole look again)
 	preview()
 end
 

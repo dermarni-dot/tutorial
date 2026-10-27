@@ -440,10 +440,20 @@ function Host.new(opts)
 		if not file then
 			error("host require: " .. n:GetFullName() .. " is not a module file", 3)
 		end
+		-- (being loaded by another thread whose top level yielded, e.g. a WaitForChild: wait for it, as Roblox does;
+		-- a require of a module its own thread is loading is a cycle)
+		local me = coroutine.running()
+		local waited = 0
+		while H.loading[n] and H.loading[n] ~= me and waited < 10 do
+			waited += ltask.wait(0)
+		end
+		if H.cache[n] ~= nil then
+			return H.cache[n].value
+		end
 		if H.loading[n] then
 			error("host require: cyclic require of " .. n:GetFullName(), 3)
 		end
-		H.loading[n] = true
+		H.loading[n] = me
 		local env = table.clone(G)
 		env.script = n
 		local rel = file:sub(1, #root) == root and file:sub(#root + 2) or file

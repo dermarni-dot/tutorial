@@ -267,6 +267,35 @@ function BuilderTiers.PreloadFrame(frame, lite)
 	return true
 end
 
+-- one set of tiers (BodyTiers.Tiers: { [part] = tier, frame = id }), in the background behind the queue: the parts a
+-- screen is about to show (the Creator's body types at Starting and Peak), not every tier of their families. Paced like
+-- the families; parts already loaded or queued are skipped. Returns the number queued.
+function BuilderTiers.PreloadTiers(tiers)
+	if type(tiers) ~= "table" then
+		return 0
+	end
+	local frame = (type(tiers.frame) == "string" and tiers.frame ~= BodyTiers.DEFAULT_FRAME) and tiers.frame or nil
+	local queued = {}
+	for _, q in ipairs(preloadQueue) do
+		queued[tostring(q[1]) .. ":" .. q[2] .. ":" .. tostring(q[3]) .. ":" .. tostring(q[4])] = true
+	end
+	local n = 0
+	for _, name in ipairs(BodyTiers.PARTS) do
+		local tier = tiers[name]
+		local e = tier and BodyTiers.PartEntry(tier, name, nil, false, frame)
+		local qk = tostring(tier) .. ":" .. name .. ":false:" .. tostring(frame)
+		if e and not cache[tier .. ":" .. name .. ":" .. e.id] and not queued[qk] then
+			queued[qk] = true
+			preloadQueue[#preloadQueue + 1] = { tier, name, false, frame }
+			n += 1
+		end
+	end
+	if n > 0 then
+		runPreload()
+	end
+	return n
+end
+
 -- (tests) forget which families were queued; a loader in flight finishes its current load and stops
 function BuilderTiers.ResetPreload()
 	preloadGen += 1

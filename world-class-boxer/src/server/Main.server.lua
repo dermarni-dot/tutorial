@@ -24,6 +24,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Catalog = require(Shared.Catalog)
 local Looks = require(Shared.Looks)
+local LookData = require(Shared.LookData)
 local Builder = require(Shared.Builder)
 local AvatarLook = require(Shared.AvatarLook)
 -- the muscle-tier body parts' templates (one CreateMeshPartAsync per tier and part) load in the background
@@ -312,6 +313,9 @@ function applyLook(player, previewApp, hands, popts)
 	local pending = st.unread and st.popts and st.popts.only
 	st.app = previewApp
 	st.hands = hands
+	if not previewApp then
+		st.previewKey = nil -- (the real look again: the next preview always builds)
+	end
 	st.popts = previewApp and popts or nil -- preview-only: growth / peak / head-only / colour-only rebuild
 	if type(pending) == "table" and st.popts and type(st.popts.only) == "table" then
 		local only = table.clone(st.popts.only)
@@ -1667,6 +1671,26 @@ local function previewOpts(popts, creating)
 	}
 end
 
+-- the Creator's body types (every frame at Starting and at Peak), loaded behind the first preview of a new boxer: a
+-- body-type pick then swaps parts the server already has (else 14 template loads before the preview could build).
+-- Paced (BuilderTiers.PreloadTiers), once per player and session.
+local creatorPreloaded = setmetatable({}, { __mode = "k" })
+local function preloadCreator(player, look)
+	if creatorPreloaded[player] then
+		return
+	end
+	creatorPreloaded[player] = true
+	local BT, BodyTiers = require(Shared.BuilderTiers), require(Shared.BodyTiers)
+	local female = type(look) == "table" and look.gender == 2
+	for _, bt in ipairs(Config.BodyTypes) do
+		for _, build in ipairs({ PREVIEW_BUILD, (peakBuild({ body = { frame = bt.id } })) }) do
+			pcall(function()
+				BT.PreloadTiers(BodyTiers.Tiers(build, { potential = bt.potential, female = female }))
+			end)
+		end
+	end
+end
+
 function handlers.PreviewLook(player, profile, look, hands, popts)
 	if type(look) ~= "table" then
 		return { ok = false }
@@ -1676,22 +1700,40 @@ function handlers.PreviewLook(player, profile, look, hands, popts)
 	if not creating and not section then
 		return { ok = false }
 	end
-	-- a full rebuild (every body part, ~800 instances replicated to everyone) at most twice a second; a
-	-- head-only preview (the Creator's face / hair sliders) five times. The client coalesces a throttled
-	-- call into its next one, so the final state always arrives.
-	local now = os.clock()
-	local headOnly = type(popts) == "table" and type(popts.only) == "table"
-	if lastPreview[player] and now - lastPreview[player] < (headOnly and 0.2 or 0.5) then
-		return { ok = false, throttled = true }
+	if creating then
+		preloadCreator(player, look)
 	end
-	lastPreview[player] = now
+	-- validated before anything is built: the look sanitized (or the section's fields only), the hands one of two,
+	-- the preview options rebuilt field by field (previewOpts)
 	local app
 	if creating then
 		app = Looks.Sanitize(look)
 	else
 		app = customLook(profile, section, look)
 	end
-	applyLook(player, app, hands == "gloves" and "gloves" or "wraps", previewOpts(popts, creating))
+	hands = hands == "gloves" and "gloves" or "wraps"
+	local po = previewOpts(popts, creating)
+	-- the character already shows exactly this (a re-send, a pick of what is picked, a change and its undo): nothing
+	-- to rebuild, and the throttle is not spent on it
+	local st = lookState[player]
+	local okKey, key = pcall(LookData.Encode, { app, hands, po or false })
+	if okKey and st and st.app and st.previewKey == key and st.previewChar == player.Character then
+		return { ok = true, same = true }
+	end
+	-- a full rebuild (every body part, ~800 instances replicated to everyone) at most twice a second; a
+	-- head-only preview (the Creator's face / hair sliders) five times. The client coalesces a throttled
+	-- call into its next one, so the final state always arrives.
+	local now = os.clock()
+	local headOnly = po ~= nil and po.only ~= nil
+	if lastPreview[player] and now - lastPreview[player] < (headOnly and 0.2 or 0.5) then
+		return { ok = false, throttled = true }
+	end
+	lastPreview[player] = now
+	applyLook(player, app, hands, po)
+	st = lookState[player]
+	if st then
+		st.previewKey, st.previewChar = okKey and key or nil, player.Character
+	end
 	return { ok = true }
 end
 

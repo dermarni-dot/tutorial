@@ -53,10 +53,22 @@ function K.Count()
 	return count
 end
 
+-- a Streamer tier built in a job of the client's time slicer (FrameBudget): the builders below hand the frame back
+-- between pieces in that job's thread only ([thread] = the slicer; everywhere else they run straight through)
+local slicing = setmetatable({}, { __mode = "k" })
+local function tick()
+	local fb = slicing[coroutine.running()]
+	if fb then
+		fb.Tick()
+	end
+end
+K.Tick = tick -- (a tier's own long loops: a scan of the server's street)
+
 -- p = K.Part(parent, name, size, cf, color, material, opts)
 -- opts: shape ("Ball" | "Cylinder"), t (Transparency), refl, shadow (true / false; default by size),
 -- collide (true: the rare detail piece that must block), class ("WedgePart"), attrs
 function K.Part(parent, name, size, cf, color, material, opts)
+	tick()
 	local cls = opts and opts.class or "Part"
 	local p = Instance.new(cls)
 	p.Name = name
@@ -182,6 +194,7 @@ function K.Gui(p, face, pps, light, maxDist)
 end
 
 function K.Frame(parent, props)
+	tick()
 	local f = Instance.new("Frame")
 	f.BorderSizePixel = 0
 	f.Size = UDim2.fromScale(1, 1)
@@ -331,6 +344,7 @@ end
 
 -- a copy of a template at cf, parented
 function K.Place(template, parent, cf, name)
+	tick()
 	local c = template:Clone()
 	if not c then
 		return nil
@@ -395,8 +409,46 @@ local function wantedDist(self, t)
 	return row and row[math.clamp(self.level, 1, 3)] or 0
 end
 
--- one pass: camPos = the camera position (nil = everything in range); returns the number of tiers built
-function Streamer:Step(camPos, level)
+-- budget (Step's): the tiers to build go into one job of the client's time slicer (FrameBudget), built a piece at a
+-- time in its shared frame budget (one tier is up to ~40 ms of building: a whole one in a pass was a hitch) and shown
+-- by the pass after they are done
+local function queueBuild(self, cell, t, budget)
+	cell.queued = cell.queued or {}
+	if cell.queued[t] then
+		return
+	end
+	cell.queued[t] = true
+	self.pending = self.pending or {}
+	table.insert(self.pending, { cell, t })
+	if self.job and budget.Busy(self.job) then
+		return
+	end
+	-- one tier a job, the next one queued behind whatever else waits (the Creator's pages, a venue): the streaming
+	-- never holds the slicer's queue for long
+	local function run()
+		local co = coroutine.running()
+		slicing[co] = budget
+		local q = table.remove(self.pending, 1)
+		if q then
+			local c, tier = q[1], q[2]
+			if not c.models[tier] and wantedDist(self, tier) > 0 then
+				build(self, c, tier)
+			end
+			if c.queued then
+				c.queued[tier] = nil
+			end
+		end
+		slicing[co] = nil
+		if self.pending[1] then
+			self.job = budget.Run(run, false, "WorldDetail " .. self.root.Name)
+		end
+	end
+	self.job = budget.Run(run, false, "WorldDetail " .. self.root.Name)
+end
+
+-- one pass: camPos = the camera position (nil = everything in range); returns the number of tiers built. budget
+-- (optional): FrameBudget, the tiers not built yet are built behind the frames (queueBuild) instead of in the pass
+function Streamer:Step(camPos, level, budget)
 	self.level = level or self.level
 	local t0 = os.clock()
 	local built = 0
@@ -414,7 +466,10 @@ function Streamer:Step(camPos, level)
 				if want and not cell.shown[t] then
 					local m = cell.models[t]
 					if not m then
-						if os.clock() - t0 > Streamer.BUDGET and built > 0 then
+						if budget then
+							queueBuild(self, cell, t, budget)
+							want = false
+						elseif os.clock() - t0 > Streamer.BUDGET and built > 0 then
 							-- out of time this step: the rest comes next step
 							want = false
 						else
@@ -455,7 +510,11 @@ end
 
 -- drop every built tier (a level change that frees memory, Stop)
 function Streamer:Clear()
+	if self.job and self.pending then
+		table.clear(self.pending)
+	end
 	for _, cell in ipairs(self.cells) do
+		cell.queued = nil
 		for t, m in pairs(cell.models) do
 			m:Destroy()
 			cell.models[t] = nil
