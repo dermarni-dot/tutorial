@@ -306,8 +306,10 @@ function FightSim.new(opts)
 		power = { range = 0.8, rate = 0.35, combo = { 1, 2 }, pool = { cross = 0.6, rearhook = 1.2, uppercut = 1, overhand = 1.2 }, body = 0.1, react = 0.3, defend = { "block", "roll" } },
 		counter = { range = 0.95, rate = 0.18, combo = { 1, 2 }, pool = { jab = 0.6, cross = 1, leadhook = 0.8 }, body = 0.15, react = 0.55, defend = { "slip", "pull", "weave", "parry", "block" }, counters = true, guard = 0.5, pace = true },
 		pressure = { range = 0.68, rate = 0.6, combo = { 2, 4 }, pool = { jab = 0.6, cross = 0.8, leadhook = 1, rearhook = 0.8, uppercut = 0.6 }, body = 0.35, react = 0.25, defend = { "block", "weave" }, cut = 0.7 },
-		-- the thinking player: mixes it up, feints, reads the trait hints and switches to the counter
-		smart = { range = 0.84, rate = 0.42, combo = { 1, 4 }, pool = { jab = 1, cross = 1, leadhook = 0.9, rearhook = 0.7, uppercut = 0.6, overhand = 0.3 }, body = 0.3, react = 0.45, defend = { "slip", "block", "weave", "pull" }, feint = 0.08, counters = true, adapt = true, clinch = true, guard = 0.5, pace = true },
+		-- the thinking player: mixes it up, feints, reads the trait hints and switches to the counter; he works where his
+		-- hooks and uppercuts land (since the reach was fitted to the animation's glove the hooks reach about 0.75 of the
+		-- jab, not 0.97: 0.72 of it, the share FightAI throws its own hooks inside)
+		smart = { range = 0.72, rate = 0.42, combo = { 1, 4 }, pool = { jab = 1, cross = 1, leadhook = 0.9, rearhook = 0.7, uppercut = 0.6, overhand = 0.3 }, body = 0.3, react = 0.45, defend = { "slip", "block", "weave", "pull" }, feint = 0.08, counters = true, adapt = true, clinch = true, guard = 0.5, pace = true },
 		-- a beginner: wild, slow to react, never defends well
 		novice = { range = 0.8, rate = 0.4, combo = { 1, 3 }, pool = { jab = 1, cross = 1, leadhook = 0.8, rearhook = 0.8, uppercut = 0.4, overhand = 0.4 }, body = 0.15, react = 0.1, defend = { "block" }, guard = 0.2 },
 	}
@@ -396,6 +398,22 @@ function FightSim.new(opts)
 			self.seen = #tr
 		end
 	end
+	-- the punch he actually throws: a player reads the HUD's range read-out (FightClient's KM.rangeTag: the server's
+	-- HitGeometry test on the same frames - JAB RANGE, INSIDE, OUT OF RANGE) and the press's OUT OF RANGE flash, so a
+	-- hook or an uppercut that cannot reach from here (the hooks land about a stud inside the jab since the reach was
+	-- fitted to the animation's glove) goes out as the jab instead; a punch nothing reaches with is thrown anyway
+	-- (he is walking in)
+	function Bot:Throw(p, body)
+		local F, O, engine = self.F, self.O, self.engine
+		if p ~= "jab" and engine.HitTest then
+			local dist = engine:Distance(F, O)
+			local hit = engine:HitTest(F, O, p, body, dist)
+			if not hit.ok and hit.why == "short" and engine:HitTest(F, O, "jab", body, dist).ok then
+				p = "jab"
+			end
+		end
+		engine:Punch(F, p, body)
+	end
 	function Bot:Pick()
 		local pool = self.pol.pool
 		local total = 0
@@ -453,12 +471,12 @@ function FightSim.new(opts)
 		end
 		if #self.queue > 0 then
 			local nx = table.remove(self.queue, 1)
-			engine:Punch(F, nx.p, nx.body)
+			self:Throw(nx.p, nx.body)
 			self.nextThink = math.min(self.nextThink, F.busyUntil + 0.05)
 			return
 		end
 		if now < (F.feintOpenUntil or 0) then
-			engine:Punch(F, self:Pick(), self.rng:NextNumber() < self.pol.body)
+			self:Throw(self:Pick(), self.rng:NextNumber() < self.pol.body)
 			return
 		end
 		if dist > jab + 0.3 then
@@ -488,7 +506,7 @@ function FightSim.new(opts)
 			end
 			local first = table.remove(list, 1)
 			self.queue = list
-			engine:Punch(F, first.p, first.body)
+			self:Throw(first.p, first.body)
 			self.nextThink = math.min(self.nextThink, F.busyUntil + 0.05)
 		elseif self.rng:NextNumber() < (self.pol.guard or 0.3) then
 			-- (a player keeps his hands up between his punches: the guard, held a moment)
@@ -520,8 +538,17 @@ function FightSim.new(opts)
 				F.traits = F.traitsAll or {}
 			end
 		end
+		-- (the seeded generator replaces the AI's own, and the draw FightAI.new made from that unseeded one - the way it
+		-- circles - is made again off the seed: the same seed is the same fight, run after run. The stub Random's first
+		-- draw barely moves with a small seed: the second one)
+		local function seedAI(ai, seed)
+			ai.rng = Random.new(seed)
+			local dir = Random.new(seed * 3 + 1)
+			dir:NextNumber()
+			ai.circleDir = dir:NextNumber() < 0.5 and -1 or 1
+		end
 		O.ai = FightAI.new(O, P, fight)
-		O.ai.rng = Random.new((spec.seed or 1) * 31 + 5)
+		seedAI(O.ai, (spec.seed or 1) * 31 + 5)
 		-- (spec.ref: a stub referee the engine's UpdateReferee moves, as SpawnReferee's R; walk() walks him)
 		if spec.ref then
 			local mR, rR, hR = rig(V3.new(0, 3.2, 7), V3.new(0, 3.2, 0))
@@ -532,7 +559,7 @@ function FightSim.new(opts)
 			P.ai = Bot.new(spec.red.bot, P, O, fight, Random.new((spec.seed or 1) * 17 + 3))
 		else
 			P.ai = FightAI.new(P, O, fight)
-			P.ai.rng = Random.new((spec.seed or 1) * 13 + 11)
+			seedAI(P.ai, (spec.seed or 1) * 13 + 11)
 		end
 		local dt = spec.dt or 0.05
 		local t0 = clock

@@ -282,8 +282,10 @@ client module on guisim, the offer's and the step card's SKIP TUTORIAL and the w
 (a fake clock and a coroutine scheduler: `task.delay` / `task.spawn` / `task.wait` run on it, so the knockdown count
 really counts). The red corner is a second FightAI (AI vs AI) or a scripted player (`S.Bot`: spam, onetwo,
 headhunter, body, volume, power, counter, pressure, smart, novice), which only reacts to the AI's punches after a
-human reaction time. `S.Fight({ red = {...}, blue = { style, level, traits = { { id, s } } | noTraits }, rounds,
-seed, onTick })`; `FS.new({ root = DIR })` runs another checkout (a `git archive` of an older commit: the "before").
+human reaction time and reads the HUD's range read-out as a player does (a hook or an uppercut that cannot reach from
+where he stands goes out as the jab). Each AI's generator, and the way it circles, comes from the fight's seed: the
+same seed is the same fight, run after run. `S.Fight({ red = {...}, blue = { style, level, traits = { { id, s } } |
+noTraits }, rounds, seed, onTick })`; `FS.new({ root = DIR })` runs another checkout (a `git archive` of an older commit: the "before").
 
 - `lune run tools/sim/balance.luau [n] [styles|levels|bots|traits|adapt] [--root DIR]`: the balance tables (AI vs AI
   by style and by level gap, scripted players by level, each trait against the types it resists, the adapting player

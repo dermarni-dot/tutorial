@@ -1022,6 +1022,19 @@ end
 -- a punch it throws (the queue's or a counter): the engine's Punch, its read of whether he blocks on the spot
 function FightAI:Throw(p, body)
 	local engine, O = self.engine, self.O
+	-- a head shot short of his chin from here whose body shot lands goes to the body: Fits / CanLand pass a punch that
+	-- lands on the head OR the body (and PunchRange is the longer of the two), and between men of a height a hook
+	-- short of the head does not fall to the body (HitGeometry.Test) - the body hooks reach half a stud to a stud past
+	-- the head hooks, so a hook picked from there and thrown upstairs whiffed about half the time. The discipline grows
+	-- with the boxer (his skill is the share he sees): a raw one still swings most of them at the chin
+	if not body and p ~= "overhand" and engine.HitTest then
+		local dist = engine:Distance(self.F, O)
+		local head = engine:HitTest(self.F, O, p, false, dist)
+		if not head.ok and head.why == "short" and engine:HitTest(self.F, O, p, true, dist).ok
+			and self.rng:NextNumber() < self.skill then
+			body = true
+		end
+	end
 	engine:Punch(self.F, p, body)
 	if self.F.state == "punching" then
 		self.read:Reacted(O.blocking == true)
