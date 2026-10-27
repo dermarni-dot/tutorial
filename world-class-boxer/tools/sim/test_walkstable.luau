@@ -17,7 +17,11 @@
 --   * [Studio] strafing (the strafe / strafe16 / strafering / strafeturn clips): the feet never cross, the planted ones
 --     hold, the pelvis stays level and the trunk upright, alternating regular contacts, a side step's legs (abducted,
 --     no fore-aft swing), the foot turned with the shin, and no joint pops as the direction flips, under jittery frames
---   lune run tools/sim/test_walkstable.luau            (~60 s; the clips land in tools/sim/out/walkstable)
+--   * [Studio] the walk as a gait lab reads it, its start and stop, the run's instant stop, Shift let go, steering a walk
+--     and a run (no side-step / flip handling), and the pure forward run against 6bb9a68's recorded run (the stance,
+--     the pelvis, the trunk, the arms and the contact timing as they were, the swing's clearance under 30 % of the leg),
+--     on the 78-inch rig and on heightScale 1.00
+--   lune run tools/sim/test_walkstable.luau            (~90 s; the clips land in tools/sim/out/walkstable)
 local fs = require("@lune/fs")
 local process = require("@lune/process")
 local serde = require("@lune/serde")
@@ -357,13 +361,15 @@ if rR.ok then
 			end
 			check(tag .. string.format("a flight before every touchdown after the first (shortest %.3f s)", fLo), fLo >= 0.04 and fLo < 0.25)
 			-- the run's angles: the steady run (1.5 s after the switch) and the switch itself
-			for _, part in ipairs({ { "steady", m.gait, 62, 0.36 }, { "switch", m.shift, 66, 0.4 } }) do
+			-- (the swing's clearance held to under a third of the leg - [Studio] 0.9 studs, 38 % of a 2.37-stud leg, read as
+			-- a sprinter's heel kick: the knee folds a little less with it)
+			for _, part in ipairs({ { "steady", m.gait, 62, 0.3 }, { "switch", m.shift, 66, 0.33 } }) do
 				local g, nm, hipCap, soleCap = part[2], part[1], part[3], part[4]
 				local hip = math.max(g.hipL[2], g.hipR[2])
 				local knee = math.max(g.kneeL[2], g.kneeR[2])
 				local sole = math.max(g.soleL[2], g.soleR[2])
 				check(tag .. string.format("%s: peak hip flexion %.0f (a person's ~45-55; it was 75-90)", nm, hip), hip >= 40 and hip <= hipCap)
-				check(tag .. string.format("%s: peak swing knee %.0f (a person's ~100-120; it was 134-136)", nm, knee), knee >= 92 and knee <= 122)
+				check(tag .. string.format("%s: peak swing knee %.0f (a person's ~90-120; it was 134-136)", nm, knee), knee >= 85 and knee <= 122)
 				check(tag .. string.format("%s: foot clearance %.2f studs = %.0f %% of the leg (it was 50 %%)", nm, sole, 100 * sole / L), sole >= 0.15 * L
 					and sole <= soleCap * L)
 				check(tag .. string.format("%s: the planted feet hold (slide %.3f / %.3f studs)", nm, g.slideL, g.slideR), g.slideL <= 0.08 and g.slideR <= 0.08)
@@ -490,6 +496,292 @@ if rS.ok then
 					end
 					check(tag .. string.format("a low bounce (pelvis %.3f studs at most over a stretch)", hi), hi <= 0.28)
 				end
+			end
+		end
+	end
+end
+
+------------------------------------------------------------------------
+-- [Studio] "the walk is still messed up" (it swayed side to side before), "the run is messed up again" since the
+-- sideways rework (e8bcb8f), and the stop (a Humanoid stops in a frame: a foot hung 0.9 studs up for 0.2-0.3 s, the
+-- knees bent 25 degrees for half a second, at rest after 0.8 s). On the 78-inch rig and on heightScale 1.00 (Studio's
+-- trace: legLen 2.37), on a 30 Hz phone, Studio's wandering frames and scattered 1/80..1/28 s frames:
+--   * the walk at 6.5 as a gait lab reads it (1 stud = 0.9 / legLen m). A person's 105-120 steps / min and +25-30 /
+--     -10 degrees of hip are a 1.3 m/s walk; 6.5 studs/s is ~1.9-2.1 m/s on these legs (Froude ~0.45), where nobody
+--     walks below ~125 steps / min without overstriding or sliding: a stance of ~0.6 of the cycle sweeps
+--     6.5 x 0.6 x T studs under the hip, so the cadence and the hip's range are set by the pace and are held to a
+--     person's at that pace; the rest - the knee's strike / loading / swing, the heel-to-toe roll, the clearance,
+--     the pelvis bob and sway, the arms, the trunk and the head - to a person's walk
+--   * the start, the stop (W let go: 6.5 -> 0 and 16 -> 0 in one frame), Shift let go at a run (16 -> 6.5), steering a
+--     walk and a run with the camera (never the side step's or the flip's handling)
+--   * the pure forward run against the recorded run of 6bb9a68 (tools/sim/ref_run16_6bb9a68.json), cycle by cycle:
+--     the stance, the pelvis, the trunk, the arms and the contact timing as they were; the swing leg folding a little
+--     less (its clearance under 30 % of the leg - [Studio] 38 %), the knee over the toes (6bb9a68 turned it 14-20
+--     degrees in, away from the toes: e8bcb8f's sign fix in AnimRig.solveLeg)
+------------------------------------------------------------------------
+local LAB_TIMINGS = { "hz30", "studio", "rough" }
+local LAB_RIGS = { { h = "78", tag = "78 in" }, { h = "70", tag = "heightScale 1.00" } }
+local REF_RUN = serde.decode("json", fs.readFile(root .. "/tools/sim/ref_run16_6bb9a68.json"))
+-- a cycle's profile: NB bins from one left touchdown to the next, each the mean over the cycles from t0 on
+local NB = 24
+local PKEYS = { "hipL", "hipR", "kneeL", "kneeR", "ankleL", "footPitchL", "shoulderL", "shoulderR", "elbowL", "elbowR", "pelvisY", "headY",
+	"trunkPitch", "soleL", "soleR", "kneeDirL", "footYawL" }
+local function profileOf(rows, t0)
+	local td = {}
+	for i = 2, #rows do
+		if rows[i].t >= t0 and rows[i - 1].soleL >= 0.03 and rows[i].soleL < 0.03 then
+			table.insert(td, i)
+		end
+	end
+	local P, n = {}, 0
+	for c = 1, #td - 1 do
+		local a, b = td[c], td[c + 1]
+		local ta, tb = rows[a].t, rows[b].t
+		n += 1
+		local j = a
+		for bin = 1, NB do
+			local tt = ta + (bin - 0.5) / NB * (tb - ta)
+			while j < b - 1 and rows[j + 1].t < tt do
+				j += 1
+			end
+			local r0, r1 = rows[j], rows[j + 1]
+			local w = math.clamp((tt - r0.t) / math.max(1e-9, r1.t - r0.t), 0, 1)
+			for _, k in ipairs(PKEYS) do
+				if r0[k] ~= nil and r1[k] ~= nil then
+					P[k] = P[k] or table.create(NB, 0)
+					P[k][bin] += r0[k] * (1 - w) + r1[k] * w
+				end
+			end
+		end
+	end
+	for _, v in pairs(P) do
+		for i = 1, NB do
+			v[i] /= math.max(1, n)
+		end
+	end
+	local period = #td > 1 and (rows[td[#td]].t - rows[td[1]].t) / (#td - 1) or 0
+	return P, n, period
+end
+-- the swinging foot's rise (the foot part's centre, as /wcbdiag reads it) over its planted height: each swing's peak
+local function swingRises(rows, t0)
+	local planted = {}
+	for _, x in ipairs(rows) do
+		if x.t >= t0 then
+			for _, k in ipairs({ "L", "R" }) do
+				if x["sole" .. k] < 0.01 then
+					table.insert(planted, x["ankleY" .. k])
+				end
+			end
+		end
+	end
+	table.sort(planted)
+	local base = planted[math.max(1, math.floor((#planted + 1) / 2))] or 0
+	local peaks = {}
+	for _, k in ipairs({ "L", "R" }) do
+		local up, pk = false, -math.huge
+		for _, x in ipairs(rows) do
+			if x.t >= t0 then
+				if x["sole" .. k] > 0.03 then
+					up, pk = true, math.max(pk, x["ankleY" .. k])
+				elseif up then
+					table.insert(peaks, pk - base)
+					up, pk = false, -math.huge
+				end
+			end
+		end
+	end
+	table.sort(peaks)
+	return peaks
+end
+local function seriesOfFile(path)
+	local ok, data = pcall(function()
+		return serde.decode("json", fs.readFile(path))
+	end)
+	return ok and data and data.series or nil
+end
+for _, rg in ipairs(LAB_RIGS) do
+	local out = OUT .. "_lab" .. rg.h
+	local rL = process.exec(luneBin(), { "run", "tools/sim/v9_anim.luau", "--tiers", "3", "--clips", "walk,run,walkgo,runstop,runwalk,runsteer,walksteer",
+		"--no-mesh", "--nopen", "--frames", "1", "--height", rg.h, "--timing", table.concat(LAB_TIMINGS, ","), "--out", out }, { cwd = root })
+	check("v9_anim runs the walk / run / stop / steering clips (" .. rg.tag .. ")", rL.ok, (rL.stderr or "") .. (rL.stdout or ""):sub(-600))
+	if rL.ok then
+		local by = {}
+		for _, m in ipairs(serde.decode("json", fs.readFile(out .. "/metrics.json"))) do
+			by[m.clip .. "_" .. (m.timing or "steady")] = m
+		end
+		for _, timing in ipairs(LAB_TIMINGS) do
+			local pre = rg.tag .. " " .. timing .. ": "
+			-- the walk
+			local m = by["walk_" .. timing]
+			check(pre .. "walk recorded", m ~= nil and m.walk ~= nil)
+			if m and m.walk then
+				local w, tag = m.walk, pre .. "walk: "
+				check(tag .. string.format("cadence %.0f steps / min (a person's at ~2 m/s; HEAD 129-144)", w.cadence or -1), (w.cadence or 0) >= 120
+					and (w.cadence or 0) <= 150)
+				check(tag .. string.format("stance %.0f %% of the cycle, double support %.0f %%, no flight (%.1f %%)", 100 * w.stance, 100 * w.doubleSupport,
+					100 * w.flight), w.stance >= 0.5 and w.stance <= 0.62 and w.doubleSupport >= 0.025 and w.flight <= 0.005)
+				check(tag .. string.format("heel strike on a near-straight knee (%.0f), a loading flex of %.0f, straight by mid-stance (%.0f)", w.kneeStrike,
+					w.kneeLoad, w.kneeMid), w.kneeStrike <= 16 and w.kneeLoad >= 14 and w.kneeLoad <= 26 and w.kneeMid <= 12)
+				check(tag .. string.format("swing knee %.0f (a person's ~60-65)", w.kneeSwing), w.kneeSwing >= 55 and w.kneeSwing <= 68)
+				check(tag .. string.format("hip +%.0f / %.0f (HEAD +38 / -23..-27)", w.hipFlex, w.hipExt), w.hipFlex <= 41 and w.hipExt >= -31)
+				check(tag .. string.format("heel first (toes up %.0f at the strike), rolled onto the toes to leave (%.0f)", w.pitchStrike, w.pitchOff),
+					w.pitchStrike >= 8 and w.pitchOff <= -35)
+				check(tag .. string.format("a small foot clearance (%.1f cm; HEAD 10-12)", w.clearanceCm), w.clearanceCm <= 11)
+				check(tag .. string.format("pelvis bob %.1f cm (a person's ~4-5; HEAD 5.1-6.5), sway %.1f cm (~2-4)", w.bobCm, w.swayCm), w.bobCm >= 3
+					and w.bobCm <= 6 and w.swayCm >= 1.2 and w.swayCm <= 4)
+				check(tag .. string.format("a steady head (bob %.1f cm, sway %.1f cm), an upright trunk (pitch %.1f..%.1f)", w.headBobCm, w.headSwayCm,
+					w.trunkPitch[1], w.trunkPitch[2]), w.headBobCm <= 6.5 and w.headSwayCm <= 2 and w.trunkPitch[1] >= -5 and w.trunkPitch[2] <= 2)
+				check(tag .. string.format("arms swing +-%.0f (+%.0f / %.0f; HEAD +-20, +12 / -29), the elbow slightly bent (%.0f..%.0f; HEAD 16..44)",
+					w.armSwing, w.armFwd, w.armBack, w.elbowMin, w.elbowMax), w.armSwing >= 12 and w.armSwing <= 20 and w.armFwd <= 20 and w.armBack >= -26
+					and w.elbowMin >= 8 and w.elbowMax <= 36)
+				check(tag .. string.format("no slide (%.3f / %.3f studs)", w.slideL, w.slideR), w.slideL <= 0.06 and w.slideR <= 0.06)
+				-- the arms against the legs: at each left heel strike the left arm is back
+				local rows = seriesOfFile(string.format("%s/gait_walk_t3_h%s_%s.json", out, rg.h, timing))
+				if rows then
+					local n, ok = 0, 0
+					for i = 2, #rows do
+						if rows[i].t > 2.5 and rows[i - 1].soleL >= 0.03 and rows[i].soleL < 0.03 then
+							n += 1
+							if rows[i].shoulderL < rows[i].shoulderR - 5 then
+								ok += 1
+							end
+						end
+					end
+					check(tag .. string.format("the arms swing against the legs (left arm back at %d of %d left heel strikes)", ok, n), n >= 2 and ok == n)
+				end
+			end
+			-- the start and the stop of a walk (W pressed and let go: 0 -> 6.5 -> 0, a frame each)
+			local wg = by["walkgo_" .. timing]
+			check(pre .. "walk start / stop recorded", wg ~= nil and wg.start ~= nil and wg.stop ~= nil)
+			if wg and wg.start and wg.stop then
+				local st, sp = wg.start, wg.stop
+				check(pre .. string.format("walk start: the first foot lifts at +%.3f s, smoothly (knee %.0f, pelvis %.3f a frame), no slide (%.3f / %.3f)",
+					st.firstLift, st.pops.knee, st.pops.pelvisY, st.slideL, st.slideR), st.firstLift >= 0 and st.firstLift <= 0.2 and st.pops.knee <= 32
+					and st.pops.pelvisY <= 0.08 and st.slideL <= 0.05 and st.slideR <= 0.05)
+				check(pre .. string.format("walk stop: the foot in the air down at +%.3f s, a closing step done by +%.3f s, at rest at +%.3f s", sp.downT,
+					sp.airT, sp.settleT), sp.downT >= 0 and sp.downT <= 0.25 and sp.airT <= 0.36 and sp.settleT <= 0.55)
+				local kf = math.max(sp.final.kneeL, sp.final.kneeR)
+				check(pre .. string.format("walk stop: the knees straight again by +0.6 s (%.0f, at rest %.0f), the pelvis eased (%.3f a frame), no slide (%.3f / %.3f)",
+					sp.kneeAt["0.6"] or -1, kf, sp.pops.pelvisY, sp.slideL, sp.slideR), (sp.kneeAt["0.6"] or 99) <= kf + 6 and sp.pops.pelvisY <= 0.06
+					and sp.slideL <= 0.03 and sp.slideR <= 0.03)
+				if wg.mid then
+					check(pre .. string.format("walk between the start and the stop: no slide (%.3f / %.3f)", wg.mid.slideL, wg.mid.slideR), wg.mid.slideL <= 0.06
+						and wg.mid.slideR <= 0.06)
+				end
+			end
+			-- the stop out of a run (16 -> 0 in a frame): a quick catch step, a balanced stance, then the knees and arms
+			local rs = by["runstop_" .. timing]
+			check(pre .. "run stop recorded", rs ~= nil and rs.stop ~= nil)
+			if rs and rs.stop then
+				local sp = rs.stop
+				check(pre .. string.format("run stop: both feet down at +%.3f s, nothing in the air after +%.3f s ([Studio] a foot 0.9 studs up for 0.2-0.3 s)",
+					sp.downT, sp.airT), sp.downT >= 0 and sp.downT <= 0.25 and sp.airT <= 0.3)
+				local kf = math.max(sp.final.kneeL, sp.final.kneeR)
+				check(pre .. string.format("run stop: at rest at +%.3f s ([Studio] ~0.8 s), knees %.0f at +0.4 s (at rest %.0f), the pelvis eased (%.3f a frame), no slide (%.3f / %.3f)",
+					sp.settleT, sp.kneeAt["0.4"] or -1, kf, sp.pops.pelvisY, sp.slideL, sp.slideR), sp.settleT <= 0.5 and (sp.kneeAt["0.4"] or 99) <= kf + 12
+					and sp.pops.pelvisY <= 0.06 and sp.slideL <= 0.03 and sp.slideR <= 0.03)
+			end
+			-- Shift let go at a run: 16 -> 6.5 in a frame (the pelvis comes down out of the run's flight to the walk's height
+			-- in a few frames: HEAD's steps of 0.05-0.12 studs a frame)
+			local rw = by["runwalk_" .. timing]
+			check(pre .. "run -> walk recorded", rw ~= nil and rw.slow ~= nil)
+			if rw and rw.slow then
+				local sl = rw.slow
+				check(pre .. string.format("run -> walk: %d steps in 1.2 s, the longest swing %.3f s, no slide (%.3f / %.3f), the pelvis eased (%.3f a frame)",
+					sl.steps, sl.longestSwing, sl.slideL, sl.slideR, sl.pops.pelvisY), sl.steps >= 3 and sl.longestSwing <= 0.45 and sl.slideL <= 0.06
+					and sl.slideR <= 0.06 and sl.pops.pelvisY <= 0.12)
+			end
+			-- steering with the camera: never the side step's or the flip's handling
+			for _, clip in ipairs({ "walksteer", "runsteer" }) do
+				local ms = by[clip .. "_" .. timing]
+				check(pre .. clip .. " recorded", ms ~= nil and ms.steer ~= nil)
+				if ms and ms.steer then
+					local sr = ms.steer
+					check(pre .. string.format("%s: no side step (blend %.2f), no flip (%.2f), the pace kept ahead of him (%.2f)", clip, sr.sideKMax, sr.flipKMax,
+						sr.latKMax), sr.sideKMax <= 0.05 and sr.flipKMax <= 0.05 and sr.latKMax <= 0.2)
+					-- (a walker's toe-off scuffs a few centimetres as the turning legs swing over the toe: HEAD's 0.05-0.18)
+					local cap = clip == "runsteer" and 0.08 or 0.25
+					check(pre .. string.format("%s: the planted feet hold (slide %.3f / %.3f), no swing held (longest %.3f s)", clip, sr.gait.slideL,
+						sr.gait.slideR, sr.longestSwing), sr.gait.slideL <= cap and sr.gait.slideR <= cap and sr.longestSwing <= (clip == "runsteer" and 0.6 or 0.55))
+				end
+			end
+			-- the pure forward run against 6bb9a68's
+			local rows = seriesOfFile(string.format("%s/gait_run_t3_h%s_%s.json", out, rg.h, timing))
+			local refRows = REF_RUN.clips["h" .. rg.h .. "_" .. timing]
+			check(pre .. "run and its 6bb9a68 reference recorded", rows ~= nil and refRows ~= nil)
+			if rows and refRows then
+				local rr = {}
+				for _, a in ipairs(refRows) do
+					local x = { t = a[1] }
+					for i, k in ipairs(REF_RUN.keys) do
+						x[k] = a[i + 1]
+					end
+					table.insert(rr, x)
+				end
+				local P, n, per = profileOf(rows, 2.0)
+				local Q, nq, perQ = profileOf(rr, 2.0)
+				local tag = pre .. "run vs 6bb9a68: "
+				check(tag .. string.format("cycles compared (%d / %d)", n, nq), n >= 2 and nq >= 2)
+				if n >= 2 and nq >= 2 then
+					check(tag .. string.format("the same cadence (period %.3f vs %.3f s)", per, perQ), math.abs(per - perQ) <= 0.02 * perQ)
+					local function share(T)
+						local c = 0
+						for i = 1, NB do
+							c += T.soleL[i] < 0.03 and 1 or 0
+						end
+						return c / NB
+					end
+					check(tag .. string.format("the same contact (left foot down %.0f %% vs %.0f %% of the cycle)", 100 * share(P), 100 * share(Q)),
+						math.abs(share(P) - share(Q)) <= 0.05)
+					local worst = {}
+					local function cmp(k, i, lo, hi, what)
+						local d = P[k][i] - Q[k][i]
+						if d < lo or d > hi then
+							table.insert(worst, string.format("%s %s bin %d: %+.2f", what, k, i, d))
+						end
+					end
+					for i = 1, NB do
+						cmp("pelvisY", i, -0.05, 0.05, "body")
+						cmp("headY", i, -0.05, 0.05, "body")
+						cmp("trunkPitch", i, -3, 3, "body")
+						for _, k in ipairs({ "shoulderL", "shoulderR", "elbowL", "elbowR" }) do
+							cmp(k, i, -8, 8, "arm")
+						end
+						for _, sd in ipairs({ "L", "R" }) do
+							if Q["sole" .. sd][i] < 0.03 then
+								-- (the leg on the floor: as it was)
+								cmp("hip" .. sd, i, -8, 8, "stance")
+								cmp("knee" .. sd, i, -8, 8, "stance")
+								cmp("sole" .. sd, i, -0.05, 0.05, "stance")
+							else
+								-- (the swing: lower, never higher, its knee folding up to 30 degrees less at the heel kick - and a
+								-- little more as the foot leaves: drawn in after the body, never the straight leg flung back)
+								cmp("knee" .. sd, i, -30, 12, "swing")
+								cmp("hip" .. sd, i, -16, 14, "swing")
+								cmp("sole" .. sd, i, -0.3, 0.03, "swing")
+							end
+						end
+						if Q.soleL[i] < 0.03 then
+							cmp("ankleL", i, -8, 8, "stance")
+							cmp("footPitchL", i, -8, 8, "stance")
+						end
+					end
+					check(tag .. "the stance, the pelvis, the trunk and the arms as they were; the swing lower", #worst == 0, table.concat(worst, ", "))
+					-- the knee over the toes through the stance (6bb9a68's turned 14-20 degrees away from them)
+					local kt = 0
+					for i = 1, NB do
+						if P.soleL[i] < 0.03 and P.kneeDirL and P.footYawL then
+							kt = math.max(kt, math.abs(P.kneeDirL[i] - P.footYawL[i]))
+						end
+					end
+					check(tag .. string.format("the planted knee points over the toes (within %.0f degrees)", kt), P.kneeDirL ~= nil and kt <= 12)
+				end
+				-- the swing's clearance: [Studio] 0.9 studs, 38 % of a 2.37-stud leg
+				local L = by["run_" .. timing] and by["run_" .. timing].legLen or 2.6
+				local pk = swingRises(rows, 2.0)
+				local med, mx = pk[math.max(1, math.floor((#pk + 1) / 2))] or 99, pk[#pk] or 99
+				check(tag .. string.format("the swinging foot rises %.0f %% of the leg (%.2f studs; the highest %.0f %%; 6bb9a68 / HEAD 35-38 %%)", 100 * med / L,
+					med, 100 * mx / L), #pk >= 6 and med <= 0.3 * L and mx <= 0.31 * L)
 			end
 		end
 	end

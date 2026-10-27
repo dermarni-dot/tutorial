@@ -81,8 +81,9 @@ local function stand(p, rig, t, dt, breathe, shift)
 	p.RE = A(0.18 + 0.05 * loose + 0.6 * b, 0, 0)
 	p.LS = A(0.04 + b + sl, 0, -out - b * 0.9)
 	p.LE = A(0.18 - 0.04 * loose + 0.6 * b, 0, 0)
-	p.RW = A(0.1 + 0.03 * loose, 0, 0.04)
-	p.LW = A(0.1 - 0.03 * loose, 0, -0.04)
+	-- (standing only: a walker's / runner's wrists are the gait's own - AnimLoco.armOffsets' loose wrist)
+	p.RW = A((0.1 + 0.03 * loose) * still, 0, 0.04 * still)
+	p.LW = A((0.1 - 0.03 * loose) * still, 0, -0.04 * still)
 	plant(rig, 0.1, 0.02, 0.12, -0.12, 0, 0)
 	-- the unweighted leg relaxes: knee forward, heel light
 	if ws > 0.3 then

@@ -24631,6 +24631,35 @@ function BuilderTiers.PreloadFrame(frame, lite)
 	return true
 end
 
+-- one set of tiers (BodyTiers.Tiers: { [part] = tier, frame = id }), in the background behind the queue: the parts a
+-- screen is about to show (the Creator's body types at Starting and Peak), not every tier of their families. Paced like
+-- the families; parts already loaded or queued are skipped. Returns the number queued.
+function BuilderTiers.PreloadTiers(tiers)
+	if type(tiers) ~= "table" then
+		return 0
+	end
+	local frame = (type(tiers.frame) == "string" and tiers.frame ~= BodyTiers.DEFAULT_FRAME) and tiers.frame or nil
+	local queued = {}
+	for _, q in ipairs(preloadQueue) do
+		queued[tostring(q[1]) .. ":" .. q[2] .. ":" .. tostring(q[3]) .. ":" .. tostring(q[4])] = true
+	end
+	local n = 0
+	for _, name in ipairs(BodyTiers.PARTS) do
+		local tier = tiers[name]
+		local e = tier and BodyTiers.PartEntry(tier, name, nil, false, frame)
+		local qk = tostring(tier) .. ":" .. name .. ":false:" .. tostring(frame)
+		if e and not cache[tier .. ":" .. name .. ":" .. e.id] and not queued[qk] then
+			queued[qk] = true
+			preloadQueue[#preloadQueue + 1] = { tier, name, false, frame }
+			n += 1
+		end
+	end
+	if n > 0 then
+		runPreload()
+	end
+	return n
+end
+
 -- (tests) forget which families were queued; a loader in flight finishes its current load and stops
 function BuilderTiers.ResetPreload()
 	preloadGen += 1
@@ -52230,8 +52259,8 @@ function UI.StatRow(parent, label, value, max, color, valueText)
 	UI.Text(f, label, { Size = UDim2.new(0.34, 0, 1, 0), TextSize = 13, Font = T.semi, TextColor3 = T.sub, AutomaticSize = Enum.AutomaticSize.None, TextTruncate = Enum.TextTruncate.AtEnd, TextWrapped = false })
 	local _, set = UI.Bar(f, { Position = UDim2.new(0.34, 0, 0.5, -4), Size = UDim2.new(0.5, 0, 0, 8) }, color)
 	set((value or 0) / (max or 100))
-	UI.Text(f, valueText or tostring(math.floor(value or 0)), { Face = "number", Position = UDim2.new(0.86, 0, 0, 0), Size = UDim2.new(0.14, 0, 1, 0), TextSize = 16, AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
-	return f, set
+	local vt = UI.Text(f, valueText or tostring(math.floor(value or 0)), { Face = "number", Position = UDim2.new(0.86, 0, 0, 0), Size = UDim2.new(0.14, 0, 1, 0), TextSize = 16, AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+	return f, set, vt
 end
 
 -- A development bar on the 0..100 muscle scale, the same everywhere a muscle level is shown (Body tab,
@@ -53614,7 +53643,7 @@ UI.ToRGB = toRGB
 
 -- swatch grid; colors = list of {r,g,b}; onPick(rgb, index). The picked swatch wears a gold ring and a
 -- tick; opts.names (one per colour) shows the picked colour's name next to the label, opts.size = the
--- swatch size (36). Returns frame, refresh(index | nil = none picked: a custom colour)
+-- swatch size (36), opts.slice = called before each swatch is made (a time-sliced build's yield point). Returns frame, refresh(index | nil = none picked: a custom colour)
 function UI.Swatches(parent, label, colors, selected, onPick, opts)
 	opts = opts or {}
 	local size = math.max(opts.size or 36, UI.MinHit(parent))
@@ -53631,24 +53660,35 @@ function UI.Swatches(parent, label, colors, selected, onPick, opts)
 	UI.Grid(holder, size, size, 8)
 	holder:FindFirstChildOfClass("UIGridLayout").HorizontalAlignment = Enum.HorizontalAlignment.Left
 	local buttons = {}
+	-- (only the swatches that change: a colour wheel drag refreshes every tick with the same "custom" pick)
+	local shown, shownIdx = false, nil
 	local function refresh(idx)
+		if shown and idx == shownIdx then
+			return
+		end
 		for i, b in ipairs(buttons) do
-			local on = i == idx
-			local s = b:FindFirstChild("Ring")
-			if s then
-				s.Color = on and T.gold or Color3.new(1, 1, 1)
-				s.Transparency = on and 0 or 0.85
-				s.Thickness = on and 3 or 1
-			end
-			local tick = b:FindFirstChild("Tick")
-			if tick then
-				tick.Visible = on
+			if not shown or i == idx or i == shownIdx then
+				local on = i == idx
+				local s = b:FindFirstChild("Ring")
+				if s then
+					s.Color = on and T.gold or Color3.new(1, 1, 1)
+					s.Transparency = on and 0 or 0.85
+					s.Thickness = on and 3 or 1
+				end
+				local tick = b:FindFirstChild("Tick")
+				if tick then
+					tick.Visible = on
+				end
 			end
 		end
+		shown, shownIdx = true, idx
 		local names = opts.names
 		nameText.Text = idx and names and names[idx] or (idx and "" or "Custom")
 	end
 	for i, col in ipairs(colors) do
+		if opts.slice then
+			opts.slice() -- (a time-sliced build: the caller may hand the frame back between swatches)
+		end
 		local c = toColor(col)
 		local b = UI.New("TextButton", { Name = "Swatch" .. i, Text = "", AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = c, LayoutOrder = i, Parent = holder })
 		UI.Corner(b, math.floor(size / 2))
@@ -53707,6 +53747,7 @@ function UI.ColorWheel(parent, label, rgbValue, onChange)
 	UI.Corner(knob, 3)
 	UI.Stroke(knob, Color3.new(0, 0, 0), 1)
 	UI.Text(f, "Brightness", { Position = UDim2.new(0, R * 2 + 28, 0, 132), Size = UDim2.new(1, -(R * 2 + 44), 0, 18), TextSize = 13, TextColor3 = T.sub, AutomaticSize = Enum.AutomaticSize.None })
+	local dotsV -- the brightness the dots were last drawn at (a hue / saturation drag leaves them as they are)
 	local function render(fire)
 		local c = Color3.fromHSV(h, s, v)
 		preview.BackgroundColor3 = c
@@ -53714,8 +53755,12 @@ function UI.ColorWheel(parent, label, rgbValue, onChange)
 		marker.Position = UDim2.fromOffset(R + math.cos(a) * s * (R - 8), R - math.sin(a) * s * (R - 8))
 		grad.Color = ColorSequence.new(Color3.new(0, 0, 0), Color3.fromHSV(h, s, 1))
 		knob.Position = UDim2.fromScale(v, 0.5)
-		for _, dot in ipairs(dots) do
-			dot.d.BackgroundColor3 = Color3.fromHSV(dot.hue, dot.sat, math.max(0.25, v))
+		local dv = math.max(0.25, v)
+		if dv ~= dotsV then
+			dotsV = dv
+			for _, dot in ipairs(dots) do
+				dot.d.BackgroundColor3 = Color3.fromHSV(dot.hue, dot.sat, dv)
+			end
 		end
 		if fire and onChange then
 			onChange(toRGB(c))
@@ -82903,6 +82948,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Catalog = require(Shared.Catalog)
 local Looks = require(Shared.Looks)
+local LookData = require(Shared.LookData)
 local Builder = require(Shared.Builder)
 local AvatarLook = require(Shared.AvatarLook)
 -- the muscle-tier body parts' templates (one CreateMeshPartAsync per tier and part) load in the background
@@ -83191,6 +83237,9 @@ function applyLook(player, previewApp, hands, popts)
 	local pending = st.unread and st.popts and st.popts.only
 	st.app = previewApp
 	st.hands = hands
+	if not previewApp then
+		st.previewKey = nil -- (the real look again: the next preview always builds)
+	end
 	st.popts = previewApp and popts or nil -- preview-only: growth / peak / head-only / colour-only rebuild
 	if type(pending) == "table" and st.popts and type(st.popts.only) == "table" then
 		local only = table.clone(st.popts.only)
@@ -84546,6 +84595,26 @@ local function previewOpts(popts, creating)
 	}
 end
 
+-- the Creator's body types (every frame at Starting and at Peak), loaded behind the first preview of a new boxer: a
+-- body-type pick then swaps parts the server already has (else 14 template loads before the preview could build).
+-- Paced (BuilderTiers.PreloadTiers), once per player and session.
+local creatorPreloaded = setmetatable({}, { __mode = "k" })
+local function preloadCreator(player, look)
+	if creatorPreloaded[player] then
+		return
+	end
+	creatorPreloaded[player] = true
+	local BT, BodyTiers = require(Shared.BuilderTiers), require(Shared.BodyTiers)
+	local female = type(look) == "table" and look.gender == 2
+	for _, bt in ipairs(Config.BodyTypes) do
+		for _, build in ipairs({ PREVIEW_BUILD, (peakBuild({ body = { frame = bt.id } })) }) do
+			pcall(function()
+				BT.PreloadTiers(BodyTiers.Tiers(build, { potential = bt.potential, female = female }))
+			end)
+		end
+	end
+end
+
 function handlers.PreviewLook(player, profile, look, hands, popts)
 	if type(look) ~= "table" then
 		return { ok = false }
@@ -84555,22 +84624,40 @@ function handlers.PreviewLook(player, profile, look, hands, popts)
 	if not creating and not section then
 		return { ok = false }
 	end
-	-- a full rebuild (every body part, ~800 instances replicated to everyone) at most twice a second; a
-	-- head-only preview (the Creator's face / hair sliders) five times. The client coalesces a throttled
-	-- call into its next one, so the final state always arrives.
-	local now = os.clock()
-	local headOnly = type(popts) == "table" and type(popts.only) == "table"
-	if lastPreview[player] and now - lastPreview[player] < (headOnly and 0.2 or 0.5) then
-		return { ok = false, throttled = true }
+	if creating then
+		preloadCreator(player, look)
 	end
-	lastPreview[player] = now
+	-- validated before anything is built: the look sanitized (or the section's fields only), the hands one of two,
+	-- the preview options rebuilt field by field (previewOpts)
 	local app
 	if creating then
 		app = Looks.Sanitize(look)
 	else
 		app = customLook(profile, section, look)
 	end
-	applyLook(player, app, hands == "gloves" and "gloves" or "wraps", previewOpts(popts, creating))
+	hands = hands == "gloves" and "gloves" or "wraps"
+	local po = previewOpts(popts, creating)
+	-- the character already shows exactly this (a re-send, a pick of what is picked, a change and its undo): nothing
+	-- to rebuild, and the throttle is not spent on it
+	local st = lookState[player]
+	local okKey, key = pcall(LookData.Encode, { app, hands, po or false })
+	if okKey and st and st.app and st.previewKey == key and st.previewChar == player.Character then
+		return { ok = true, same = true }
+	end
+	-- a full rebuild (every body part, ~800 instances replicated to everyone) at most twice a second; a
+	-- head-only preview (the Creator's face / hair sliders) five times. The client coalesces a throttled
+	-- call into its next one, so the final state always arrives.
+	local now = os.clock()
+	local headOnly = po ~= nil and po.only ~= nil
+	if lastPreview[player] and now - lastPreview[player] < (headOnly and 0.2 or 0.5) then
+		return { ok = false, throttled = true }
+	end
+	lastPreview[player] = now
+	applyLook(player, app, hands, po)
+	st = lookState[player]
+	if st then
+		st.previewKey, st.previewChar = okKey and key or nil, player.Character
+	end
 	return { ok = true }
 end
 
@@ -105403,8 +105490,9 @@ local function stand(p, rig, t, dt, breathe, shift)
 	p.RE = A(0.18 + 0.05 * loose + 0.6 * b, 0, 0)
 	p.LS = A(0.04 + b + sl, 0, -out - b * 0.9)
 	p.LE = A(0.18 - 0.04 * loose + 0.6 * b, 0, 0)
-	p.RW = A(0.1 + 0.03 * loose, 0, 0.04)
-	p.LW = A(0.1 - 0.03 * loose, 0, -0.04)
+	-- (standing only: a walker's / runner's wrists are the gait's own - AnimLoco.armOffsets' loose wrist)
+	p.RW = A((0.1 + 0.03 * loose) * still, 0, 0.04 * still)
+	p.LW = A((0.1 - 0.03 * loose) * still, 0, -0.04 * still)
 	plant(rig, 0.1, 0.02, 0.12, -0.12, 0, 0)
 	-- the unweighted leg relaxes: knee forward, heel light
 	if ws > 0.3 then
@@ -107145,6 +107233,8 @@ local SIDE_ABD, SIDE_KNEE = 22 * PI / 180, 14 * PI / 180
 -- (and the most a side shuffle's foot in the air is abducted, rad)
 local SIDE_ABD_AIR = 30 * PI / 180
 local SIDE_LIFT, SIDE_LIFT_RUN = 0.35, 0.2
+-- (the run's lift a side gallop takes its share of: RUN_LIFT / RUN_LIFT_V's of the forward run it was tuned on)
+local SIDE_RUN_LIFT, SIDE_RUN_LIFT_V = 0.14, 0.05
 -- (the shuffle's crouch at a run: how far the pelvis keeps under the pose's height, studs)
 local SIDE_CROUCH = 0.2
 local SIDE_DUTY_SLOW, SIDE_DUTY, SIDE_DUTY_RUN = 0.62, 0.5, 0.32
@@ -107173,9 +107263,10 @@ local RUN_BLEND_MAX, BRAKE_RATE = 6, 12
 -- how quickly a runner's schedule catches up with a foot that toed off out of its turn (1/s: runSync)
 local PHASE_SYNC = 14
 -- a runner's swing: the foot's peak height over the ground (a share of the leg: RUN_LIFT + RUN_LIFT_V x the
--- human-equivalent m/s; ~0.36 of it at 16 studs/s, a person's heel at 4.5 m/s), the share of it a late hump keeps
+-- human-equivalent m/s; ~0.26-0.27 of it at 16 studs/s - [Studio] at 0.39 the boot rose 0.9 studs off the floor, 38 %
+-- of a 2.37-stud leg, a sprinter's heel kick on a 5 m/s run), the share of it a late hump keeps
 -- over the ground for the touchdown, and the foot's speed along the ground as it meets it (a share of the body's)
-local RUN_LIFT, RUN_LIFT_V, RUN_LIFT_LATE, RUN_LAND_V = 0.14, 0.05, 0.25, 0.45
+local RUN_LIFT, RUN_LIFT_V, RUN_LIFT_LATE, RUN_LAND_V = 0.09, 0.036, 0.25, 0.45
 -- the least bend a runner's swing knee keeps as the foot reaches for the ground (rad; a person's ~15-20 at touchdown)
 local RUN_REACH_KNEE = 16 * PI / 180
 -- gravity in the rig's studs (9.81 m/s^2 at the gait's Froude scale: VH and LREF): a runner's flight falls at it
@@ -107529,7 +107620,7 @@ end
 -- running lands softly bent and sinks to mid-stance
 local function stanceKnee(sigma, run, vh, prof)
 	local kw
-	local lr = (8 + 5 * vh) * prof.bob * RAD
+	local lr = (6 + 4 * vh) * prof.bob * RAD
 	if sigma < 0.16 then
 		kw = lerp(4 * RAD, lr, smooth(sigma / 0.16))
 	elseif sigma < 0.5 then
@@ -107564,7 +107655,9 @@ local function stancePitch(sigma, run, back, side)
 	-- the heel rises from mid-stance (a walker's a little in the single support, then up onto the toes in the
 	-- double support: the push-off) - the least it shows: a pushing foot rolls further when its leg needs it
 	-- (AnimLoco.feet); backward the toes come up at the end and the foot leaves heel last
-	local rise = lerp(0.2 * smooth((sigma - 0.45) / 0.38) + 0.55 * smooth((sigma - 0.8) / 0.2), 0.8 * smooth((sigma - 0.45) / 0.55), run)
+	-- (a walker's heel comes up from the second half of the single support, as a person's at a brisk pace - the
+	-- trailing leg long on its toes as the leading heel meets the floor, so the pelvis dips less between the steps)
+	local rise = lerp(0.3 * smooth((sigma - 0.4) / 0.4) + 0.5 * smooth((sigma - 0.78) / 0.22), 0.8 * smooth((sigma - 0.45) / 0.55), run)
 	rise = lerp(rise, -0.25 * smooth((sigma - 0.7) / 0.3), back)
 	-- (a side step pushes off the inside of the foot: the heel only a little up)
 	return roll + rise * (1 - 0.6 * side)
@@ -107591,15 +107684,26 @@ local function updateGait(rig, t, dt)
 	local was = lo.moving
 	-- (the pace of the last second or so)
 	lo.peakV = max(v, (lo.peakV or 0) - dt * 8)
+	-- (stopped dead: a Humanoid on the ground stops in a frame when its keys are let go - nowhere to go and the root's
+	-- own speed gone. Read off the filtered speed the gait ran on for a fifth of a second after it, the feet braking
+	-- toward spots a stud or more ahead and a runner's swing carried on to its peak: [Studio] a foot hung 0.9 studs up
+	-- for 0.3 s after letting go of W at 16 studs/s)
+	local dead = false
+	if kind == "walk" and v >= MOVE_OFF then
+		local hum = rig.hum
+		local md = hum and hum.Parent and hum.MoveDirection
+		local rv = lo.rawV
+		dead = md ~= nil and md.Magnitude < 0.05 and rv ~= nil and rv.Magnitude < MOVE_OFF
+	end
 	if lo.moving then
-		if v < MOVE_OFF then
+		if v < MOVE_OFF or dead then
 			-- (a reversal - D to A, a strafe's W to S - passes through a standstill for a frame or two: while the Humanoid
 			-- still has somewhere to go the gait carries on through it, a fifth of a second at most, instead of stopping
 			-- and starting again - the feet's schedule reset, the stop's dip, a pop of the legs)
 			lo.slowT = lo.slowT or t
 			local hum = rig.hum
 			local md = hum and hum.Parent and hum.MoveDirection
-			if not (md and md.Magnitude > 0.1 and t - lo.slowT < 0.2) then
+			if dead or not (md and md.Magnitude > 0.1 and t - lo.slowT < 0.2) then
 				lo.moving = false
 				lo.stopT = t
 				-- (how hard he was going: the knees' dip on the stop)
@@ -107608,7 +107712,7 @@ local function updateGait(rig, t, dt)
 		else
 			lo.slowT = nil
 		end
-	elseif v > MOVE_ON then
+	elseif v > MOVE_ON and not dead then
 		lo.moving = true
 		lo.moveT = t
 	end
@@ -107653,10 +107757,17 @@ local function updateGait(rig, t, dt)
 		local al = v > 0.3 and atan2(lo.lv.X, -lo.lv.Z) or 0
 		local be = abs(al) > PI / 2 and al - (al > 0 and PI or -PI) or al
 		local lyT = clamp(be, -0.75, 0.75) * (1 - smooth((abs(be) - 0.95) / 0.4)) * clamp(1 - abs(lo.yawRate) / 4, 0, 1)
+		-- how much of the pace is off his facing - across it or backward: a side step, a back-pedal, a flip between them
+		-- (held a moment, as the direction's rate is). Steering a walk or a run with the camera keeps the pace within a few
+		-- degrees of the facing (AutoRotate turns the root after it): none of the side step's or the flip's handling below,
+		-- the forward gait as it was. [Studio] a run steered left and right (the root swaying 0.16 studs a tick across its
+		-- facing) had the flip's quick leg filters and hurried swings on, a planted foot skidding 0.2 studs at a landing
+		local offK = v > 0.3 and max(smooth((abs(be) - 0.2) / 0.25), smooth((lo.lv.Z / v - 0.1) / 0.3)) or 0
+		lo.latK = max(offK, (lo.latK or 0) - dt * 4)
 		-- (quicker while the way he goes swings round under a body that keeps facing - Shift Lock's W to D, a back-diagonal
 		-- run into a side shuffle: the legs untwisting from the old way over half a second left the feet a stride behind)
 		-- (not while the root itself swings round - AutoRotate's snap: the way he goes turns with it, the legs follow the root)
-		local qk = clamp((lo.dirRate or 0) / 6, 0, 1) * clamp(1 - abs(lo.yawRate) / 3, 0, 1)
+		local qk = clamp((lo.dirRate or 0) / 6, 0, 1) * clamp(1 - abs(lo.yawRate) / 3, 0, 1) * lo.latK
 		lo.legYaw = (lo.legYaw or 0) + (lyT - (lo.legYaw or 0)) * (1 - exp(-dt * lerp(6, 20, qk)))
 		-- forward / backward / sideways (in the legs' frame): the arms' swing and the backward step follow it
 		local cy, sy = cos(lo.legYaw), sin(lo.legYaw)
@@ -107696,7 +107807,7 @@ local function updateGait(rig, t, dt)
 		-- the way he goes swung round under a body that keeps facing (Shift Lock's A to D, W to A, a run's back-diagonal into
 		-- a side shuffle): the feet in the air come down soon on their new spots (AnimLoco.feet) - timed and aimed for the
 		-- old way, a run's swing landed 2-6 studs off where the body went and its leg hung splayed out across the floor
-		local fk = clamp(((lo.dirRate or 0) * v - 40) / 40, 0, 1) * (1 - tk)
+		local fk = clamp(((lo.dirRate or 0) * v - 40) / 40, 0, 1) * (1 - tk) * lo.latK
 		lo.flipK = max(fk, (lo.flipK or 0) - dt * 4)
 		local T, duty = walkTiming(lo, v, Ls, kL, vh, prof)
 		-- a side step (the pace across the legs' frame): the foot on the side of travel steps out, the other closes up
@@ -108004,9 +108115,11 @@ local function armShape(lo, prof)
 	-- in a few frames never throws them)
 	local run = lo.armRun or lo.run
 	local swing = prof.swing
-	local cw, aw = -(5 + 2 * vh), 5 + 9 * vh
-	-- (a relaxed walker's elbow never hangs locked: ~15 at the back of the swing, ~45 at the front at the town pace)
-	local ebw, efw = 9 + 3.5 * vh, 16 + 15 * vh
+	-- (a walker's arms swing about 15-20 degrees each way at the town pace, a touch further back than forward)
+	local cw, aw = -(3 + 1.5 * vh), min(18, 4 + 7 * vh)
+	-- (a relaxed walker's elbow never hangs locked, nor folds up: ~14 at the back of the swing, ~32 at the front at the
+	-- town pace - [Studio] at 45 in front the walker's forearms pumped like a jogger's)
+	local ebw, efw = 10 + 2 * vh, 14 + 9 * vh
 	local cr, ar = -(15 + 0.5 * vh), 27 + 5 * min(vh, 5)
 	local ebr, efr = 67 - vh, 86 + vh
 	local c = lerp(cw, cr, run) * RAD
@@ -108186,6 +108299,7 @@ local function startSwing(f, t, dur, liftH, kind)
 	f.retimed = false
 	f.reachOff = nil
 	f.aimW = nil
+	f.stopEnv = nil
 end
 
 -- a walker's swing (walk pace) is planned as the ankle's own path, carried on from the push-off's last frame:
@@ -108299,11 +108413,12 @@ local function planAnkle(rig, f, s, t, trueCF, rootT, hipP, A1, soft, kpk, kEnd)
 	local P = f.aP0 * (2 * u3 - 3 * u2 + 1) + V3(v0.X, 0, v0.Z) * (D * (u3 - 2 * u2 + u)) + A1 * (3 * u2 - 2 * u3)
 	local yb = A1.Y + (f.aP0.Y - A1.Y) * (1 - smooth(u / 0.5))
 	local gY = lerp(f.fromP.Y, f.tgtW.Y, smooth(u))
-	-- (the heel comes down onto the floor as the foot arrives, on a glide of about 14 degrees: it touches at the
-	-- landing spot, never skims the last of the step along the floor - a heel skid of a quarter stud over the
-	-- four frames before the plant)
+	-- (the heel comes down onto the floor as the foot arrives, on a glide of about 14 degrees steepening to 27 over
+	-- the last third: it touches at the landing spot, never skims the last of the step along the floor - a heel skid
+	-- of a quarter stud over the four frames before the plant; at 14 degrees to the end the heel was a centimetre off
+	-- the floor a frame before the plant with two still to go, a skid of 0.02 studs at every heel strike)
 	local rx, rz = A1.X - P.X, A1.Z - P.Z
-	local glide = min(0.12, 0.25 * sqrt(rx * rx + rz * rz)) * smooth(u / 0.35)
+	local glide = min(0.12, lerp(0.25, 0.5, smooth((u - 0.6) / 0.3)) * sqrt(rx * rx + rz * rz)) * smooth(u / 0.35)
 	-- (and the toe comes up off the floor as it leaves - never scuffs forward along it for the first frames)
 	local leave = 0.08 * smooth(min(1, u / 0.12)) * (1 - smooth((u - 0.25) / 0.25))
 	-- (a side step lands flat - no heel glide: the sole stays a little up until the last frames, set down on its spot
@@ -108536,10 +108651,16 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 	-- (low, quick pivot steps in a hard turn)
 	-- ([Studio] a runner's by the leg and the human pace: 0.3 + 0.055 x studs/s - 1.3 studs at 16, half the leg - had
 	-- the knee folded to 135 and the thigh raised to the horizontal on every stride)
-	local walkLift = lerp(0.2 + 0.015 * speed, (RUN_LIFT + RUN_LIFT_V * (lo.vh or 4)) * (legLen or 2.45), run) * (1 - 0.75 * (lo.turnK or 0))
-	-- (a side step skims: the hip lifts the leg out, the knee only softly bent)
+	-- (a side step skims: the hip lifts the leg out, the knee only softly bent; a side gallop's share of the leg is its
+	-- own, SIDE_LIFT_RUN of the run's as it was before the forward run's swing came down to RUN_LIFT)
 	local sideK = walking and lo.sideK or 0
+	local runLift = lerp(RUN_LIFT + RUN_LIFT_V * (lo.vh or 4), SIDE_RUN_LIFT + SIDE_RUN_LIFT_V * (lo.vh or 4), sideK)
+	local walkLift = lerp(0.2 + 0.015 * speed, runLift * (legLen or 2.45), run) * (1 - 0.75 * (lo.turnK or 0))
 	walkLift *= lerp(1, lerp(SIDE_LIFT, SIDE_LIFT_RUN, run), sideK)
+	-- (a walker's swinging foot hangs toes-down from the shin - straight ahead only, eased in and out: a turn's pivot
+	-- steps, a side or backward step keep the flat foot they had)
+	local toeT = (walking and moving) and (1 - max(back, sideK)) * clamp(1 - abs(lo.yawRate) / 2, 0, 1) * (1 - (lo.turnK or 0)) or 0
+	lo.toeW = (lo.toeW or 0) + (toeT - (lo.toeW or 0)) * (1 - exp(-dt * (toeT < (lo.toeW or 0) and 20 or 6)))
 	if moving then
 		for _, s in ipairs(SIDES) do
 			local f = rig.foot[s]
@@ -108682,6 +108803,12 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				-- he squares his feet)
 				local limit = moving and (walking and 0.9 * lo.stride + 0.6 or rig.stepDist + 0.6 * lo.stride)
 					or rig.stepDist * ((walking and t - lo.stopT < 1.2) and 1.7 or 1)
+				-- (a walker stopped dead with a foot left a stride behind closes it up now, once the other foot is down - a
+				-- stop's second step: [Studio] stood 0.7-0.9 studs staggered with the front knee bent 40 degrees and the pelvis
+				-- low for 1.3 s, then squared up)
+				if walking and not moving and t - lo.stopT < 1.2 and err > rig.stepDist * 1.1 then
+					limit = min(limit, rig.stepDist * 1.1)
+				end
 				if err > limit or yerr > 0.65 then
 					if s == "L" then
 						needL = err + yerr
@@ -108727,9 +108854,13 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 		end
 		if not f.swing and free and t - f.lastStep >= MIN_STANCE then
 			local dur = f.vNow and f.vDur or clamp(0.24 - speed * 0.015, 0.12, 0.24) * rig.stepTime
+			-- (a walker's pivot step round a snap turn: never a flick - the knee folded 30 degrees in a frame lifting it)
+			if walking and moving and not f.vNow and (lo.turnK or 0) > 0.3 then
+				dur = max(dur, 0.17)
+			end
 			if walking and not moving and t - lo.stopT < 1 then
 				-- (the step that brings a foot beside the other as a walker comes to rest: a short one)
-				dur = min(dur, 0.17)
+				dur = min(dur, 0.14)
 			end
 			local liftH = f.vNow and f.vLift or clamp(0.1 + speed * 0.012, 0.08, 0.3) * rig.liftK
 			local sk = f.vNow and "req" or (urgent and "reach" or "fix")
@@ -108815,12 +108946,38 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 					-- (a runner's foot in the air as he pulls up lands at once when the other one has to go; the last
 					-- one comes through beside it in a quick step)
 					cap = ((o.push and moving and t - o.landT > 0.12) or (o.swing and moving and rem <= o.t0 + o.dur - t)) and 0.07 or 0.2
+					if not moving then
+						-- (stopped dead - a Humanoid stops in a frame when W is let go: the foot in the air comes straight down
+						-- beside the other in a quick catch step, never on through the rest of a run's swing - [Studio] it hung
+						-- 0.9 studs up for a quarter of a second, the knee folded to 85; no quicker than ~9 studs/s of travel)
+						local togo = f.cur and f.tgtW and V3(f.home.X - f.cur.X, 0, f.home.Z - f.cur.Z).Magnitude or 0
+						cap = clamp(togo / 9, 0.12, 0.2)
+						if not f.stopEnv and f.cur then
+							-- (the catch step starts from where the foot is: the spot it was aimed at - a stride's lead ahead - is gone,
+							-- and lerped on from the swing's start toward the new one the foot jumped a stud and a half in a frame)
+							-- (a walker's planned swing too: from the ankle's height as it is - its knee by design would fold on to
+							-- its peak on the way down)
+							local h, from = f.curLift or 0, f.cur
+							if f.plan and f.ankW and f.ankT and t - f.ankT < 0.1 then
+								-- (the planned path's ankle, not the swing's ground point: under it, as high as it is)
+								local A0 = R.ankleOf(g[s], f.cur, fwdOf(f.curYaw or f.fromYaw), f.curPitch or 0)
+								h = max(0, f.ankW.Y - A0.Y)
+								from = f.cur + V3(f.ankW.X - A0.X, 0, f.ankW.Z - A0.Z)
+							end
+							f.plan = false
+							f.stopEnv = { u = 0, h = h, restart = true }
+							f.fromP, f.fromYaw = from, f.curYaw or f.fromYaw
+							f.liftPitch = f.curPitch or f.liftPitch
+							f.t0, f.dur = t, cap
+							rem = cap
+						end
+					end
 					if moving then
 						-- (pulling up: never cut shorter than the walk's own swing at this pace - it shortens as the braking
 						-- steps take over, so the swing hurries smoothly instead of snapping down in 0.07 s)
 						cap = max(cap, (1 - lo.duty) * lo.T * (1 - u0))
 					end
-				elseif (run < 0.5 and back < 0.5 and lo.side < 0.6) or sideK > 0.5 or (lo.dirRate or 0) > 3 then
+				elseif (run < 0.5 and back < 0.5 and lo.side < 0.6) or sideK > 0.5 or ((lo.dirRate or 0) > 3 and (lo.latK or 0) > 0.5) then
 					-- (the first steps from rest: no longer than the pace's own swing; a side shuffle's too, and any step as
 					-- the way he goes swings round under a body that keeps facing - a run's long swing still in the air as he
 					-- goes off sideways, or back the other way, lands within the new pace's swing, never hangs behind him)
@@ -108837,11 +108994,17 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			local sk = f.stepKind
 			if moving and (sk == "walk" or sk == "shuffle" or sk == "stagger") then
 				if sk == "walk" then
-					-- walkers plant the heel a little ahead of the hip (about 0.4 of the contact) and push
-					-- off further behind it; runners land a little closer under the body (0.3 of it: [Studio] at 0.17
-					-- the stance swept further behind than the leg reaches and every foot toed off early, out of turn)
+					-- walkers plant the heel a little ahead of the hip (about a third of the contact) and push
+					-- off further behind it, rolled up onto the toes; runners land a little closer under the body (0.3 of
+					-- it: [Studio] at 0.17 the stance swept further behind than the leg reaches and every foot toed off
+					-- early, out of turn)
 					-- (a hard turn's pivot steps land under the body)
-					lead = lo.duty * lo.stride * lerp(0.36, 0.3, lo.run) * (1 - (lo.turnK or 0))
+					-- ([Studio] at 0.36 the walker's heel struck so far ahead that the pelvis dropped 6.4 cm into every
+					-- step - a person's is 4-5 - and the hip flexed to 38; past a walk's pace - Shift pressed, the walk
+					-- blending into the run - the step lands as far ahead as it did: a walking step landed closer had
+					-- the first runner's stance cut to a tenth of a second)
+					local wl = lerp(0.35, 0.36, clamp(((lo.vh or 0) - 2.2) / 0.6, 0, 1))
+					lead = lo.duty * lo.stride * lerp(wl, 0.3, lo.run) * (1 - (lo.turnK or 0))
 				elseif sk == "stagger" then
 					lead = lo.stride * 0.25
 				else
@@ -108857,7 +109020,12 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			-- (the landing frame overshoots the touchdown by up to a frame: the spot is where home was AT the touchdown,
 			-- not a frame's travel further on - the foot would land and jump a quarter stud ahead at a run, every step)
 			local remS = max(-dt, f.t0 + f.dur - t)
-			local tgt = f.home + vel * remS + V3(acc.X, 0, acc.Z) * (0.5 * remS * abs(remS)) + d * lead
+			-- (stopped: where the root is - the filtered velocity still runs on for a moment after a dead stop)
+			local velS = vel
+			if walking and not moving then
+				velS, acc = lo.rawV or ZERO, ZERO
+			end
+			local tgt = f.home + velS * remS + V3(acc.X, 0, acc.Z) * (0.5 * remS * abs(remS)) + d * lead
 			-- (pulling up: a braking step lands where he will come to rest - ahead of the pelvis as it touches down, under
 			-- it once he has stopped: the feet end side by side, no shuffle after)
 			-- (never further ahead of where the pelvis will be at the touchdown than a braking step's ~25 cm)
@@ -108883,8 +109051,10 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			-- footwork: the feet never come closer side by side than FOOT_GAP (no crossing, no clipping);
 			-- a walker's feet keep WALK_GAP (strafing never scissors the legs)
 			local oP = o.swing and o.cur or o.P
-			-- (in a hard turn the other foot's swing sweeps round the body: kept clear of where it lands, not of it)
-			if o.swing and walking and (lo.turnK or 0) > 0.5 then
+			-- (in a hard turn the other foot's swing sweeps round the body: kept clear of where it lands, not of it; a
+			-- runner's other foot is in the air passing under the body as this one lands - the swing's own gap keeps the
+			-- legs apart: [Studio] a run steered round had the landing spot pushed 0.3 studs out by it in the last frame)
+			if o.swing and walking and ((lo.turnK or 0) > 0.5 or run * (1 - sideK) > 0.5) then
 				oP = nil
 			end
 			if oP and (fight or walking) then
@@ -108936,8 +109106,11 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			-- moves freely - the foot in the air follows it - and a change of pace (Shift) is never held back)
 			local aim = f.aimW
 			if walking and aim and remain < 0.08 then
-				local turnW = clamp((max(abs(lo.yawRate), lo.dirRate or 0) - 1.5) / 2, 0, 1)
-				turnW = max(turnW, sideK, (run < 0.5 and (not moving or (lo.brake or 0) > 0.3)) and 1 or 0)
+				local turnW = clamp((max(abs(lo.yawRate), (lo.dirRate or 0) * (lo.latK or 0)) - 1.5) / 2, 0, 1)
+				-- (and a walk or a run steered round: the spot, predicted along a straight line from the pace, swings across
+				-- as the way he goes curves - [Studio] a foot skimming the floor its last frame skidded 0.1 studs onto it)
+				turnW = max(turnW, sideK, (run < 0.5 and (not moving or (lo.brake or 0) > 0.3)) and 1 or 0,
+					moving and clamp(abs(lo.yawRate) / 0.3, 0, 1) or 0)
 				if turnW > 0 then
 					local dx, dz = tgt.X - aim.X, tgt.Z - aim.Z
 					local dm = sqrt(dx * dx + dz * dz)
@@ -108951,12 +109124,13 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			-- (where a planned swing's ankle is headed: planAnkle)
 			f.tgtW = V3(tgt.X, gy, tgt.Z)
 			-- the touchdown spot as seen from where the body is now (for the pelvis height)
-			f.landRel = tgt - vel * remS - V3(acc.X, 0, acc.Z) * (0.5 * remS * abs(remS))
+			f.landRel = tgt - velS * remS - V3(acc.X, 0, acc.Z) * (0.5 * remS * abs(remS))
 			f.landRel = V3(f.landRel.X, gy, f.landRel.Z)
 			f.landYaw = landYaw
 			if u >= 1 then
 				-- (a runner's foot lands where its reach brought it: AnimLoco.feet's RUN_REACH_KNEE)
-				local ro = f.reachOff or ZERO
+				-- (a stop's catch step: set down where it is - the reach held from the run before the stop is stale)
+				local ro = (not f.stopEnv and f.reachOff) or ZERO
 				f.reachOff = nil
 				f.swing, f.P, f.yawW, f.lastStep, f.curLift = false, V3(tgt.X + ro.X, gy, tgt.Z + ro.Z), landYaw, t, 0
 				f.landT = t
@@ -108975,7 +109149,13 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				-- the ankle ran a stud past the landing spot - the thigh raised to 70-90 degrees, the leg straight and the
 				-- foot hovering a fifth of a stud over the floor - and came back to it as the body caught up)
 				local e = K.smoother(u)
-				if sk == "walk" and lo.run > 0.01 then
+				-- (a stop's catch step is over its spot a little before it is down - set down, never skimming the floor
+				-- the last few centimetres in)
+				if f.stopEnv then
+					e = K.smoother(min(1, u / 0.85))
+				end
+				-- (not a stop's catch step: it comes down at rest beside the other foot, never skidding in at a run's pace)
+				if sk == "walk" and lo.run > 0.01 and not f.stopEnv then
 					local span = (tgt - f.fromP).Magnitude
 					local m1 = clamp(RUN_LAND_V * speed * f.dur / max(0.5, span), 0, 0.6)
 					-- (a side shuffle's foot leaves at the swing's whole mean speed: at half, the body going sideways at
@@ -109030,12 +109210,34 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 					bump = lerp(bump, (1 - RUN_LIFT_LATE) * K.skewBump(u, 1.1, 3.4) + RUN_LIFT_LATE * K.skewBump(u, 5, 1), lo.run)
 				end
 				f.curLift = f.liftH * bump * (1 - 0.75 * (lo.turnK or 0)) + (f.dropH or 0) * (1 - K.smoother(u))
+				-- (a walker or runner stopped with this foot in the air: from the height it had, it only comes down - a low
+				-- arc to its spot - never rising on to a run's peak after the stop)
+				if walking and not moving and sk == "walk" then
+					local se = f.stopEnv
+					if not se then
+						se = { u = min(u, 0.95), h = f.curLift }
+						f.stopEnv = se
+					end
+					local q = clamp((u - se.u) / (1 - se.u), 0, 1)
+					local env = se.h * (1 - K.smoother(q)) + 0.05 * sin(PI * q)
+					f.curLift = se.restart and env or min(f.curLift, env)
+				end
 				-- foot roll through the swing: toe-off -> level -> landing attitude
 				local landP, mid
 				if sk == "walk" then
 					-- (heel first; a backward step lands on the ball of the foot)
 					landP = lerp(lerp(lerp(-0.28, 0.02, lo.run), 0.3, back), 0.03, sideK) - (f.gY and f.landSlope or 0)
-					mid = lerp(-0.08, 0.35, lo.run)
+					-- (a stop's catch step is set down flat beside the other foot: no heel strike to roll over, the foot
+					-- slapped flat as he stands)
+					if f.stopEnv then
+						landP = 0.02 - (f.gY and f.landSlope or 0)
+					end
+					-- (a walker's foot hangs from the shin toes-down through the first half of the swing - the ankle easing back
+					-- from the push-off - and comes level only as the shin swings forward under the knee: the toe passes low
+					-- over the floor, not the whole shoe lifted level a hand's width; [Studio] the boot rose 11 cm level at
+					-- the swing's peak, the ankle bent up 36 degrees against the shin - forward only: a side or backward step
+					-- keeps its flat foot)
+					mid = lerp(lerp(-0.08, 0.14, lo.toeW or 0), 0.35, lo.run)
 				else
 					landP = f.heelS + 0.12 -- boxers land on the balls of the feet
 					mid = f.heelS + 0.05
@@ -109081,6 +109283,12 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				local off = s == "L" and lo.offL or lo.offR
 				local x = (lo.phase - off) % 1
 				want = f.heelS + 0.25 * smooth((x - 0.82) / 0.18)
+			elseif walking and t - lo.stopT < 1 and (f.pitchS or 0) > 0.05 and f.P and f.home
+				and V3(f.P.X - f.home.X, 0, f.P.Z - f.home.Z).Magnitude > rig.stepDist then
+				-- (stopped dead mid-stride: the foot left behind, up on its toes, stays up - rolled as far as the leg needs
+				-- - until it steps up beside the other; set down flat a stride behind, it dragged the pelvis 0.4 studs down
+				-- into a lunge, the front knee folded to 77)
+				f.push = true
 			end
 			if walking then
 				-- (on a slope the flat foot lies along it: toes up going uphill)
@@ -109096,8 +109304,14 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			end
 			f.pitchLo = want
 			-- just landed: settle from the landing attitude (a pushing foot: the solve below)
+			-- (a walker's heel strike rolls onto the flat foot in a person's ~0.08 s - the design's own curve, followed
+			-- closely: at 18/s the foot came flat 0.2 s after the strike, walking on its heel)
+			-- (on a straight forward walk: a turn's, a side step's and a fighter's feet keep the gentler settle - their
+			-- spins and side rolls move the contact)
 			if not f.push then
-				f.pitchS += (want - f.pitchS) * (1 - exp(-dt * 18))
+				local fast = moving and walking and run < 0.5 and lo.side < 0.25 and abs(lo.yawRate) < 0.8 and (lo.turnK or 0) < 0.05
+					and (lo.dirRate or 0) < 1 and t - (f.spinT or -10) > 0.3
+				f.pitchS += (want - f.pitchS) * (1 - exp(-dt * (fast and 40 or 18)))
 			end
 			f.curPitch = f.pitchS
 		end
@@ -109114,8 +109328,10 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 	if walking and not moving then
 		local el = t - lo.stopT
 		standKnee = (5 * RAD + prof.knee)
-		if el < 0.6 then
-			standKnee += 0.38 * K.attackDecay(el, 0.14, 0.6) * min(1, (lo.stopV or 0) / 12)
+		-- (a quick give in the knees as the catch step lands, straightened within half a second: [Studio] they stayed
+		-- bent 25 degrees for half a second and he stood at rest only after 0.8 s)
+		if el < 0.42 then
+			standKnee += 0.28 * K.attackDecay(el, 0.1, 0.42) * min(1, (lo.stopV or 0) / 12)
 		end
 	end
 	for _, s in ipairs(SIDES) do
@@ -109193,7 +109409,14 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				if over > 0 then
 					-- (taken up over most of the step, the foot coming round: [Studio] at once, a foot lifting behind the
 					-- other as AutoRotate snapped the root a quarter turn was thrown 1.9 studs sideways in its first frame)
-					ank = lcf:PointToWorldSpace(V3(a.X + sx * over * smooth(clamp((t - f.t0) / f.dur, 0, 1) / 0.6), a.Y, a.Z))
+					-- (and let go of as it comes down on its spot, ahead of the other foot by then, except in a hard turn's pivot
+					-- step: [Studio] a run steered round kept the ankle half a stud out to the last frame of the swing and the
+					-- foot, planted on its own spot, skidded 0.2 studs sideways on the landing)
+					local uS = clamp((t - f.t0) / f.dur, 0, 1)
+					-- (eased in from rest: the legs' frame swinging round a pushing foot as it lifts left the wanted offset
+					-- half a stud off at once, and the knee folded 5 to 40 degrees in a frame)
+					local hold = smooth(uS / 0.6) ^ 2 * lerp(1 - smooth((uS - 0.7) / 0.28), 1, lo.turnK or 0)
+					ank = lcf:PointToWorldSpace(V3(a.X + sx * over * hold, a.Y, a.Z))
 				end
 			end
 		end
@@ -109213,11 +109436,22 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 					-- (the hip where this frame's pelvis drop - about last frame's - will put it)
 					local d = tgt - hipP + V3(0, lo.drop + (lo.dropV or 0) * dt, 0)
 					local h2 = d.X * d.X + d.Z * d.Z
+					local rk = smooth(u / 0.12) * (1 - smooth((u - 0.3) / 0.3)) * (1 - (lo.turnK or 0))
+					-- (a runner's foot the body has already left further behind than that bent leg reaches is drawn in after
+					-- it, the knee folding: [Studio] at 30 Hz a foot toeing off late was a stud behind the hip by the next
+					-- frame and the straight leg was flung back and up behind him, the boot 0.9 studs off the floor)
+					if run > 0.5 and h2 + d.Y * d.Y > want * want and h2 > 1e-6 then
+						local k = sqrt(max(0, want * want - d.Y * d.Y) / h2)
+						k = lerp(1, min(1, k), rk)
+						d = V3(d.X * k, d.Y, d.Z * k)
+						tgt = V3(hipP.X + d.X, tgt.Y, hipP.Z + d.Z)
+						h2 = d.X * d.X + d.Z * d.Z
+					end
 					if h2 < want * want then
 						local up = -d.Y - sqrt(want * want - h2)
 						if up > 0 then
 							-- (taken up over the first frames: the knee never snaps from the push's extension)
-							tgt += V3(0, up * smooth(u / 0.12) * (1 - smooth((u - 0.3) / 0.3)) * (1 - (lo.turnK or 0)), 0)
+							tgt += V3(0, up * rk, 0)
 						end
 					end
 				end
@@ -109373,12 +109607,13 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 		-- (stiffer down into a heel strike: the pelvis is where the landing leg reaches as the heel meets the floor)
 		local x, v = K.spring2(x0, v0, drop, drop > x0 and lerp(28, 48, lo.landW * (1 - run)) or 26, 1, dt)
 		v = clamp(v, -DROP_RATE * 1.6, DROP_RATE * 1.6)
-		-- [Studio] and never more than a 30 Hz frame's worth of travel in ONE frame, however long the frame: a hitch
+		-- [Studio] and never more than a 40 Hz frame's worth of travel in ONE frame, however long the frame: a hitch
 		-- (a 0.1-0.25 s frame when Studio compiles a shader or streams a venue in) moves the root a whole step and the
 		-- feet with it, and the pelvis then dropped 0.4 studs in that single frame - a visible dip and a knee pop; it
-		-- eases down over the next frames instead (the foot stretches a hair through its soft reach meanwhile)
+		-- eases down over the next frames instead (the foot stretches a hair through its soft reach meanwhile; at a 30 Hz
+		-- frame's worth a hitch landing on the heel strike still moved it 0.21 studs at once)
 		do
-			local mx = DROP_RATE * 1.6 * min(dt, 1 / 30)
+			local mx = DROP_RATE * 1.6 * min(dt, 1 / 40)
 			x = x0 + clamp(x - x0, -mx, mx)
 		end
 		-- (as the trailing foot toes off, a walker's body coming down is caught by the leading leg over a
@@ -113182,7 +113417,10 @@ local function readStreet(folderName, box)
 	local f = root and root:FindFirstChild(folderName)
 	local lights, cars = {}, {}
 	if f then
-		for _, d in ipairs(f:GetDescendants()) do
+		for i, d in ipairs(f:GetDescendants()) do
+			if i % 256 == 0 then
+				K.Tick()
+			end
 			if d:IsA("BasePart") and (d.Name == "LightPole" or d.Name == "CarBody") then
 				local p = d.Position
 				if p.X > box[1] and p.X < box[2] and p.Z > box[3] and p.Z < box[4] then
@@ -117022,6 +117260,7 @@ return ControlsMenu
 -- the face on the head steps and the whole body on the others, and turns (drag the 3D view, the dock's
 -- arrows or the right stick) and zooms (mouse wheel over the 3D view, the dock, LT / RT).
 local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -117040,6 +117279,13 @@ local okFlags, Flags = pcall(function()
 end)
 if not okFlags then
 	Flags = nil
+end
+-- the client's shared time slicer: the steps not on screen are built behind the open window, a few ms a frame
+local okBudget, FrameBudget = pcall(function()
+	return require(script.Parent:WaitForChild("FrameBudget", 5))
+end)
+if not okBudget then
+	FrameBudget = nil
 end
 local T = UI.Theme
 -- the face module draws the client-side fight-damage preview (same visuals as a real fight)
@@ -117079,7 +117325,15 @@ local PAGE_HINTS = {
 }
 local HEAD_PAGES = { Face = true, ["Skin & Eyes"] = true, Hair = true }
 
-local shade, win, body
+local shade, win
+local scroll -- the window's scrolling list; each step is a page frame in it
+local body -- the page (or Advanced section) being built: every row below is parented to it
+-- the built steps, kept while the window is open: a step change shows the kept page again (no rebuild) unless what it
+-- shows changed since (pageSig); { frame, sig, refresh = { fn } } (refresh: its controls re-read the look in place)
+local pages = {}
+local building -- the page record being built
+local bpage = "Identity" -- the step being built (its Advanced flag)
+local jobs = {} -- [step] = the FrameBudget job building it behind the window
 local camConn, previewConn
 local inputConns = {}
 local camYaw = 0
@@ -117094,6 +117348,8 @@ local dirtyHead = false -- a face / hair / beard change (the server rebuilds jus
 local dirtyColors = false -- a colour change (skin, trunks, gloves ...: the server recolours, no full Cosmetics)
 local lastSent = 0
 local inflight = false
+local previewKey -- (below, with the page signatures)
+local lastBuilt -- previewKey of the look the server last built (nil: unknown, the next preview is sent)
 local SEND_EVERY = 0.25 -- at most four previews a second while a slider moves
 -- preview-only state (never saved)
 local view = { growth = 0, peak = false, expr = "neutral", damage = "None" }
@@ -117108,7 +117364,16 @@ local keyLightOn -- what the key light was last switched to (the camera loop wri
 -- kind: true = the change only touches the face, hair or beard (the server can rebuild just those); "colors" = only
 -- a colour changed (Builder.Cosmetics' colour path: the colours and the layers that carry them, no tier swap, hair
 -- or muscles); nil = the whole character. The Heartbeat below sends one preview per SEND_EVERY for whatever piled up
+-- a whole-character change waits FULL_QUIET s after the last one (a burst of [+] presses, a cycler clicked through, a
+-- swatch run is one full rebuild), but never longer than FULL_WAIT after the first
+local FULL_QUIET, FULL_WAIT = 0.12, 0.5
+local lastChange, firstChange = 0, nil
 local function preview(kind)
+	local now = os.clock()
+	if not dirty then
+		firstChange = now
+	end
+	lastChange = now
 	dirty = true
 	if kind == true then
 		dirtyHead = true
@@ -117143,10 +117408,12 @@ end
 ------------------------------------------------------------------------
 local UNDO_MAX = 20
 local undoStack = {}
+local stale = false -- a change since the kept steps were last checked (queued again behind the window once it settles)
 local lastUndoAt = 0
 local undoBtn
 local render
 local updatePlate
+local refreshPage
 
 local function updateUndo()
 	if undoBtn and undoBtn.Parent then
@@ -117160,6 +117427,7 @@ local SNAP_KEYS = { "age", "nationality", "voice", "music", "weightClass", "weig
 -- key: the control being changed; one slider gesture (a drag until it is let go; changes under the same
 -- key in quick succession for controls without a release) is one step back
 local function pushUndo(key)
+	stale = true
 	local now = os.clock()
 	if key ~= nil and key == lastUndoKey and now - lastUndoAt < 0.8 then
 		lastUndoAt = now
@@ -117182,6 +117450,7 @@ local function undo()
 	if not snap then
 		return false
 	end
+	stale = true
 	C.look = snap.look
 	chosen.face, chosen.kit = snap.face, snap.kit
 	for _, k in ipairs(SNAP_KEYS) do
@@ -117297,7 +117566,51 @@ end
 ------------------------------------------------------------------------
 -- Building blocks
 ------------------------------------------------------------------------
+-- a control's refresher: it re-reads the look after a pick that changes many values at once (a face preset, a
+-- kit), so the page updates in place instead of being rebuilt
+local function onRefresh(fn)
+	if building then
+		table.insert(building.refresh, fn)
+	end
+end
+
+-- a preset card's drawing tinted with the skin tone: redrawn in place when the page shows again under another tone
+-- (drawn = true: already drawn, only kept for the redraw)
+local function onSkin(art, draw, drawn)
+	if building then
+		table.insert(building.glyphs, { art, draw })
+	end
+	if not drawn then
+		draw(art)
+	end
+end
+
+-- between rows: inside a step's build behind the window (a FrameBudget job) the frame is handed back once its
+-- budget is spent; a no-op for the step on screen (FrameBudget.Tick outside a job). A row (a slider, a preset card)
+-- takes up to ~1.5 ms: one is not started in the last SLICE_RESERVE of the budget, so a frame keeps to ~4 ms
+local SLICE_RESERVE = 0.0015
+local function slice()
+	if not FrameBudget then
+		return
+	end
+	local b, rec, bp = body, building, bpage
+	FrameBudget.Tick(SLICE_RESERVE)
+	body, building, bpage = b, rec, bp
+end
+
+-- runs fn with the builders aimed at frame (the rows it makes go there, their refreshers into rec)
+local function buildInto(rec, name, frame, fn)
+	local b, r, bp = body, building, bpage
+	body, building, bpage = frame, rec, name
+	local ok, err = pcall(fn)
+	body, building, bpage = b, r, bp
+	if not ok then
+		warn("[Creator]", err)
+	end
+end
+
 local function hintLine(text)
+	slice()
 	if short then
 		return nil -- the title and the step bar say enough where every line counts
 	end
@@ -117307,22 +117620,23 @@ end
 -- colour swatches (+ a colour wheel behind "Custom colour" when wheel = true)
 -- head = true: the colour only shows on the head (hair / beard), a partial rebuild is enough
 local function colorField(parent, label, get, set, palette, names, head, wheelToo, key)
+	slice()
 	local holder = UI.Frame(parent, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
 	UI.List(holder, 4)
 	local _, refresh = UI.Swatches(holder, label, palette, paletteIndex(palette, get()), function(rgb)
 		pushUndo(nil)
 		set(rgb)
 		preview(head or "colors")
-	end, { names = names })
+	end, { names = names, slice = slice })
+	local wheel, wheelSet
 	if wheelToo then
-		local wheel
 		UI.Button(holder, "Custom colour", { Name = "CustomColour", Size = UDim2.new(0, 160, 0, math.max(30, UI.MinHit(holder))), TextSize = 13, BackgroundColor3 = T.panel2 }, function()
 			if wheel then
 				wheel:Destroy()
-				wheel = nil
+				wheel, wheelSet = nil, nil
 				return
 			end
-			wheel = UI.ColorWheel(holder, label .. " - colour wheel", get(), function(rgb)
+			wheel, wheelSet = UI.ColorWheel(holder, label .. " - colour wheel", get(), function(rgb)
 				pushUndo(key or label)
 				set(rgb)
 				refresh(nil)
@@ -117330,6 +117644,12 @@ local function colorField(parent, label, get, set, palette, names, head, wheelTo
 			end)
 		end)
 	end
+	onRefresh(function()
+		refresh(paletteIndex(palette, get()))
+		if wheel and wheelSet then
+			wheelSet(get())
+		end
+	end)
 	return holder
 end
 
@@ -117349,11 +117669,16 @@ local function lookSlider(tbl, key, def, head, withHint)
 	-- full server rebuild (~800 instances replicated), so a drag sends one, not two a second; the head sliders
 	-- (a partial rebuild) stay live. [-] / [+], the wheel and a gamepad step preview at once either way
 	opts.onRelease = not head or nil
-	return UI.Slider(body, LookKit.Label(e), e.min, e.max, tbl[key] or (def and def[key]) or 0, e.step, function(v)
+	slice()
+	local f, set = UI.Slider(body, LookKit.Label(e), e.min, e.max, tbl[key] or (def and def[key]) or 0, e.step, function(v)
 		pushUndo(key)
 		tbl[key] = v
 		preview(head)
 	end, num, opts)
+	onRefresh(function()
+		set(tbl[key] or (def and def[key]) or 0)
+	end)
+	return f
 end
 
 -- sliders for keys of a Looks list, skipping the ones in `skip`
@@ -117376,30 +117701,88 @@ local function setOf(keys)
 	return t
 end
 
--- the Advanced expander; returns true when it is open (the caller then builds the section)
-local function advancedToggle(count)
-	local open = advanced[page] == true
-	local b = UI.Button(body, (open and "Hide advanced" or "Advanced") .. string.format("  (%d more)", count), { Name = "AdvancedToggle", Size = UDim2.new(1, 0, 0, math.max(40, UI.MinHit(body))), TextSize = 15,
-		BackgroundColor3 = T.panel2, TextColor3 = open and T.gold or T.text }, function()
-		advanced[page] = not open
-		render()
+-- the Advanced expander (the last rows of a step): build() fills its section, now when it is open, else the first
+-- time it is opened; a click shows / hides the section in place (the rest of the page stays as it is)
+local function advancedToggle(count, build)
+	slice()
+	local name, rec = bpage, building
+	local open = advanced[name] == true
+	local sec, icon
+	local b
+	local function style(on)
+		b.Text = UI.Type.TitleCase((on and "Hide advanced" or "Advanced") .. string.format("  (%d more)", count))
+		b.TextColor3 = on and T.gold or T.text
+		if icon then
+			icon:Destroy()
+		end
+		icon = UI.Icon(b, on and "up" or "down", 12, on and T.gold or T.text, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -16, 0.5, 0) })
+	end
+	local job
+	local function fill()
+		if not sec:GetAttribute("Built") then
+			sec:SetAttribute("Built", true)
+			buildInto(rec, name, sec, build)
+		end
+	end
+	b = UI.Button(body, "", { Name = "AdvancedToggle", Size = UDim2.new(1, 0, 0, math.max(40, UI.MinHit(body))), TextSize = 15, BackgroundColor3 = T.panel2 }, function()
+		local on = not advanced[name]
+		advanced[name] = on
+		if on then
+			if job and FrameBudget.Busy(job) then
+				FrameBudget.Finish(job)
+			end
+			fill()
+		end
+		sec.Visible = on
+		style(on)
 	end)
-	UI.Icon(b, open and "up" or "down", 12, open and T.gold or T.text, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -16, 0.5, 0) })
-	return open
+	style(open)
+	sec = UI.Frame(body, { Name = "AdvancedSection", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = open })
+	UI.List(sec, 10)
+	if open or (rec and rec.staged) then
+		-- (a step built behind the window builds its closed section with it, hidden)
+		fill()
+	elseif FrameBudget then
+		-- closed: its rows are made behind the window too (hidden), so opening it only shows them; only while the
+		-- page is on screen (its rows measure for the screen they are on)
+		job = FrameBudget.Run(function()
+			if shade and shade.Parent and sec:FindFirstAncestorWhichIsA("LayerCollector") then
+				fill()
+			end
+		end, false, "Creator advanced")
+	end
 end
 
--- chips: a grid of text buttons, the picked one in gold
-local function chips(list, picked, cols, onPick, display)
+-- chips: a grid of text buttons, the picked one in gold. onPick(v, pick): pick(v) moves the gold in place;
+-- get (optional): the value it shows, re-read by the page's refresh
+local function chips(list, picked, cols, onPick, display, get)
+	slice()
 	local grid = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
 	-- (touch: a fingertip high, UI.MinHit; the desktop keeps 36)
 	UI.Grid(grid, UDim2.new(1 / cols, -6, 0, math.max(36, UI.MinHit(body))), nil, 6)
+	local buttons = {}
+	local function pick(want)
+		for v, b in pairs(buttons) do
+			local on = v == want
+			b.BackgroundColor3 = on and T.gold or T.panel2
+			b.TextColor3 = on and T.bg or T.text
+		end
+	end
 	for i, v in ipairs(list) do
+		if i > 1 and i % 3 == 1 then
+			slice()
+		end
 		local on = v == picked
-		UI.Button(grid, display and display(v) or tostring(v), { Name = "Chip_" .. tostring(v), LayoutOrder = i, TextSize = 14, BackgroundColor3 = on and T.gold or T.panel2, TextColor3 = on and T.bg or T.text }, function()
-			onPick(v)
+		buttons[v] = UI.Button(grid, display and display(v) or tostring(v), { Name = "Chip_" .. tostring(v), LayoutOrder = i, TextSize = 14, BackgroundColor3 = on and T.gold or T.panel2, TextColor3 = on and T.bg or T.text }, function()
+			onPick(v, pick)
 		end)
 	end
-	return grid
+	if get then
+		onRefresh(function()
+			pick(get())
+		end)
+	end
+	return grid, pick
 end
 
 local function startingStats()
@@ -117471,7 +117854,11 @@ local function camera(on)
 			local d = 1 + 0.35 * camZoom
 			goal = CFrame.lookAt(target + (look * 10.5 + right * 3.8) * d + Vector3.new(0, 0.8, 0), target + right * 3.0 * d)
 		end
-		cam.CFrame = cam.CFrame:Lerp(goal, math.clamp(dt * 7, 0, 1))
+		-- (settled on its goal and the boxer still: nothing to write, the idle screen costs no camera / light updates)
+		local now = cam.CFrame
+		if (now.Position - goal.Position).Magnitude > 1e-3 or (now.LookVector - goal.LookVector).Magnitude > 1e-4 then
+			cam.CFrame = now:Lerp(goal, math.clamp(dt * 7, 0, 1))
+		end
 		-- a soft key light on the face for the head pages (client-only, follows the turntable)
 		if keyLight then
 			if keyLightOn ~= isHead then
@@ -117480,7 +117867,10 @@ local function camera(on)
 				keyLight.Fill.Enabled = isHead
 			end
 			local from = head.Position + look * 2.2 + right * 1.4 + Vector3.new(0, 1.1, 0)
-			keyLight.CFrame = CFrame.lookAt(from, head.Position)
+			local cf = CFrame.lookAt(from, head.Position)
+			if keyLight.CFrame ~= cf then
+				keyLight.CFrame = cf
+			end
 		end
 	end)
 end
@@ -117534,12 +117924,15 @@ local function pageIdentity()
 	UI.TextInput(body, "First name", C.first, "e.g. Marcus", 14, function(v)
 		C.first = v
 	end)
+	slice()
 	UI.TextInput(body, "Last name", C.last, "e.g. Rivera", 16, function(v)
 		C.last = v
 	end)
+	slice()
 	UI.TextInput(body, "Boxing nickname", C.nickname, "e.g. The Hurricane", 20, function(v)
 		C.nickname = v
 	end)
+	slice()
 	UI.Cycler(body, "Gender", { 1, 2 }, C.look.gender, edit(nil, function(g)
 		local keep = { skin = C.look.skin, eye = C.look.face.eyeColor, shape = C.look.face.shape, seed = C.look.face.seed, undertone = C.look.face.undertone }
 		C.look = Looks.Defaults(g)
@@ -117550,6 +117943,7 @@ local function pageIdentity()
 	end), function(g)
 		return Config.Genders[g]
 	end)
+	slice()
 	UI.Slider(body, "Age", 16, 35, C.age, 1, function(v)
 		pushUndo("age")
 		C.age = v
@@ -117561,10 +117955,11 @@ local function pageIdentity()
 			return v <= 19 and "Prospect" or (v <= 27 and "Prime" or "Veteran")
 		end,
 	})
+	slice()
 	UI.Cycler(body, "Nationality", Config.Nationalities, C.nationality, edit(nil, function(v)
 		C.nationality = v
 	end))
-	if advancedToggle(3) then
+	advancedToggle(3, function()
 		local sample
 		UI.Cycler(body, "Voice type", Config.VoiceTypes, C.voice, edit(nil, function(v)
 			C.voice = v
@@ -117575,7 +117970,7 @@ local function pageIdentity()
 			C.music = v:gsub("%D", "")
 		end)
 		UI.Line(body, "Your voice type shapes your press-conference lines and the ring announcer's introduction. The walkout song plays during your ring walk.", { TextColor3 = T.sub, TextSize = 13 })
-	end
+	end)
 end
 
 -- "Use my avatar's hair & face" (appearance.avatar, default on; the server copies the avatar's hair accessories
@@ -117623,8 +118018,15 @@ end
 -- preset grids: up to n columns, fewer on a narrow window (phones, tablets) so every card's second
 -- line ("80% muscle", "High cheekbones" at the readability floor) keeps its room (UI.CardColumns);
 -- the body list is the window (0.46 of the canvas, at most 600) less its 16 px margins and 4 px padding
+-- the canvas and the list's width, read once per open and per resize (a page built behind the window reads them for
+-- every grid and panel: a size read there can be a layout pass of its own)
+local canvasNow, listW
+local function canvasSize()
+	canvasNow = canvasNow or UI.CanvasSize(State.gui)
+	return canvasNow
+end
 local function gridCols(n, items)
-	return UI.CardColumns(State.gui, items, math.min(600, 0.46 * UI.CanvasSize(State.gui).X) - 40, n)
+	return UI.CardColumns(State.gui, items, math.min(600, 0.46 * canvasSize().X) - 40, n)
 end
 
 local function pageFace()
@@ -117643,32 +118045,40 @@ local function pageFace()
 			names[st.key] = st.name
 			table.insert(keys, st.key)
 		end
-		local cur = BodyTiers.SanitizeFaceStyle(f.style, nil)
-		chips(keys, cur, 3, function(k)
-			if k == cur then
+		local function cur()
+			return BodyTiers.SanitizeFaceStyle(f.style, nil)
+		end
+		chips(keys, cur(), 3, function(k, pick)
+			if k == cur() then
 				return
 			end
 			pushUndo(nil)
 			f.style = k
 			previewHead()
-			render()
+			pick(k)
 		end, function(k)
 			return names[k] or k
-		end)
+		end, cur)
 		UI.Line(body, "Your face's expression changes with the fight: focused, grit, smirk.", { TextColor3 = T.sub, TextSize = 13 })
 	end
 	UI.Header(body, "START FROM A FACE")
 	local items = {}
 	for _, p in ipairs(LookKit.FacePresets) do
 		table.insert(items, { id = p.id, label = p.id, sub = p.desc, preset = p, glyph = function(art)
-			LookKit.FaceGlyph(art, p.shape, skinRGB())
+			slice()
+			onSkin(art, function(a)
+				LookKit.FaceGlyph(a, p.shape, skinRGB())
+			end)
 		end })
 	end
-	LookKit.PresetGrid(body, items, { name = "FacePresets", cols = gridCols(4, items), cellH = 100, picked = chosen.face }, function(it)
+	local grid
+	grid = LookKit.PresetGrid(body, items, { name = "FacePresets", cols = gridCols(4, items), cellH = 100, picked = chosen.face }, function(it)
 		pushUndo(nil)
 		applyFacePreset(it.preset)
 		previewHead()
-		render()
+		-- in place: the outline moves, every slider and the shape chips re-read the face
+		LookKit.PresetPick(grid, chosen.face)
+		refreshPage()
 	end)
 	UI.Header(body, "MAIN FEATURES")
 	local main = BodyTiers.DrawnFaces() and FACE_MAIN_DRAWN or FACE_MAIN
@@ -117678,13 +118088,15 @@ local function pageFace()
 	local skip = setOf(main)
 	local faceList, wearList = LookKit.Shown(Looks.FaceSliders), LookKit.Shown(Looks.WearSliders)
 	local more = #faceList - #main + #wearList + 3
-	if advancedToggle(more) then
+	advancedToggle(more, function()
 		UI.Header(body, "FACE SHAPE")
-		chips(Looks.FaceShapes, f.shape, 3, function(sh)
+		chips(Looks.FaceShapes, f.shape, 3, function(sh, pick)
 			pushUndo(nil)
 			f.shape = sh
 			previewHead()
-			render()
+			pick(sh)
+		end, nil, function()
+			return f.shape
 		end)
 		UI.Header(body, "MORE FEATURES")
 		sliderList(faceList, f, def, skip)
@@ -117704,7 +118116,7 @@ local function pageFace()
 			end)
 		end
 		UI.Line(body, "Previews only: see how your boxer looks mid-fight. Swelling, cuts and bruises heal over the days after a real fight.", { TextColor3 = T.sub, TextSize = 13 })
-	end
+	end)
 end
 
 local EYE_MAIN = { "eyeSize", "eyeShape", "eyeDist" }
@@ -117718,7 +118130,7 @@ local function pageEyesSkin()
 		pushUndo(nil)
 		C.look.skin = i
 		preview("colors") -- (the colour path rebuilds the face and beard too when their skin moved)
-	end, { names = LookKit.SkinNames, size = 40 })
+	end, { names = LookKit.SkinNames, size = 40, slice = slice })
 	-- (the undertone, eye colour, brows and eye sliders only shape the built face: hidden while drawn faces are in)
 	local eyes = not BodyTiers.DrawnFaces()
 	if eyes then
@@ -117746,7 +118158,7 @@ local function pageEyesSkin()
 		lookSlider(f, k, def, true, true)
 	end
 	local more = #Looks.SkinSliders - #SKIN_MAIN + 1 + (eyes and (#Looks.EyeSliders - #EYE_MAIN + 1) or 0)
-	if advancedToggle(more) then
+	advancedToggle(more, function()
 		if eyes then
 			local second = { 0 }
 			for i = 1, #Looks.EyeColors do
@@ -117768,7 +118180,7 @@ local function pageEyesSkin()
 			f.seed = math.random(1, 1000000)
 			preview() -- the seed also varies the body
 		end)
-	end
+	end)
 end
 
 local HAIR_MAIN = { "length", "volume" }
@@ -117783,11 +118195,11 @@ local function pageHair()
 		-- the avatar's hair replaces the game styles: only the beard is picked here
 		if C.look.gender == 1 then
 			UI.Header(body, "BEARD")
-			chips(Looks.BeardStyles, beard.style, 3, function(v)
+			chips(Looks.BeardStyles, beard.style, 3, function(v, pick)
 				pushUndo(nil)
 				beard.style = v
 				previewHead()
-				render()
+				pick(v)
 			end)
 		end
 		return
@@ -117799,15 +118211,29 @@ local function pageHair()
 		end), Looks.HairTypeName)
 		-- the styles as cards with a little head wearing each, one group at a time
 		UI.Header(body, "STYLE")
-		LookKit.HairPicker(body, h, skinRGB(), hairGroup, function(st)
+		local picker
+		picker = LookKit.HairPicker(body, h, skinRGB(), hairGroup, function(st)
+			if st == h.style then
+				return
+			end
 			pushUndo(nil)
 			h.style = st
 			previewHead()
-			render()
+			-- in place: the outline moves (and the gold group name with it); nothing else on the page follows the style
+			LookKit.HairPickerPick(picker, st)
 		end, function(g)
 			hairGroup = g
 			render()
 		end)
+		-- (the little heads wear the skin tone: redrawn in place under a new one, no rebuild of the step)
+		for _, card in ipairs(picker:GetChildren()) do
+			local st, art = card:GetAttribute("PresetId"), card:FindFirstChild("Art")
+			if st and art then
+				onSkin(art, function(a)
+					LookKit.HairGlyph(a, st, h.color, skinRGB())
+				end, true)
+			end
+		end
 		UI.Header(body, "COLOUR")
 		colorField(body, "Hair colour", function()
 			return h.color
@@ -117823,18 +118249,18 @@ local function pageHair()
 	end
 	if C.look.gender == 1 then
 		UI.Header(body, "BEARD")
-		chips(Looks.BeardStyles, beard.style, 3, function(v)
+		chips(Looks.BeardStyles, beard.style, 3, function(v, pick)
 			pushUndo(nil)
 			beard.style = v
 			previewHead()
-			render()
+			pick(v)
 		end)
 	end
 	local more = Config.BaldMode and 0 or (#Looks.HairSliders + #(Looks.HairDetailSliders or {}) - #HAIR_MAIN + 7)
 	if C.look.gender == 1 then
 		more += 1
 	end
-	if advancedToggle(more) then
+	advancedToggle(more, function()
 		if not Config.BaldMode then
 			UI.Header(body, "CUT")
 			UI.Cycler(body, "Hairline", Looks.Hairlines, h.hairline or "Natural", edit(nil, function(v)
@@ -117890,20 +118316,30 @@ local function pageHair()
 			end
 		end
 		UI.Line(body, "Hair and beards grow over time - visit the Barber Shop in the gym to restyle, recolour, line up or trim.", { TextColor3 = T.sub, TextSize = 13 })
-	end
+	end)
 end
 
 -- [FrameTraits] the frame's permanent ring traits: its tag line, then the pros (green plus) and the cons (red minus)
 -- as two short lists side by side (stacked on a narrow column), then the frame's starting-stat mods as a wrapping
--- footnote (a long one - the Heavyweight's five - wraps inside the panel instead of clipping on one line)
-local function frameTraitsPanel(frameId, modsLine)
+-- footnote (a long one - the Heavyweight's five - wraps inside the panel instead of clipping on one line).
+-- panel (optional): the panel to fill again for another frame (a body-type pick: the page stays as it is)
+local function frameTraitsPanel(frameId, modsLine, panel)
+	slice()
 	local FT = FrameTraits.Get(frameId)
-	local panel = UI.Frame(body, { Name = "FrameTraits", BackgroundColor3 = T.panel2, BackgroundTransparency = 0.5, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
-	UI.Corner(panel, UI.R.md)
-	UI.Pad(panel, 10, 12)
-	UI.List(panel, 6)
+	if panel then
+		UI.Clear(panel)
+	else
+		panel = UI.Frame(body, { Name = "FrameTraits", BackgroundColor3 = T.panel2, BackgroundTransparency = 0.5, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+		UI.Corner(panel, UI.R.md)
+		UI.Pad(panel, 10, 12)
+		UI.List(panel, 6)
+	end
 	UI.Kicker(panel, string.format("%s  ·  %s", FrameTraits.ShortName(frameId), FT.tag or ""), T.gold, { order = 1, icon = "muscle" })
-	local narrow = body.AbsoluteSize.X > 0 and body.AbsoluteSize.X < 520
+	if not (listW and listW > 0) then
+		listW = scroll and scroll.AbsoluteSize.X or 0
+	end
+	local sw = listW
+	local narrow = sw > 0 and sw < 520
 	local cols = UI.Frame(panel, { Name = "Columns", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 })
 	UI.New("UIListLayout", { FillDirection = narrow and Enum.FillDirection.Vertical or Enum.FillDirection.Horizontal, SortOrder = Enum.SortOrder.LayoutOrder,
 		Padding = UDim.new(0, narrow and 6 or 12), Parent = cols })
@@ -117917,6 +118353,7 @@ local function frameTraitsPanel(frameId, modsLine)
 		end
 	end
 	list("Pros", FT.pros or {}, "plus", T.green, 1)
+	slice()
 	list("Cons", FT.cons or {}, "minus", T.red, 2)
 	if modsLine and modsLine ~= "" then
 		UI.Text(panel, "Starting stats: " .. modsLine, { Name = "Mods", LayoutOrder = 3, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextSize = 12,
@@ -117933,17 +118370,25 @@ local function pageBody()
 	local items = {}
 	for _, bt in ipairs(Config.BodyTypes) do
 		table.insert(items, { id = bt.id, label = (bt.id:gsub(" Build$", "")), sub = string.format("%d%% muscle", math.floor(bt.potential * 100 + 0.5)), glyph = function(art)
-			LookKit.BuildGlyph(art, bt.width, skinRGB())
+			slice()
+			onSkin(art, function(a)
+				LookKit.BuildGlyph(a, bt.width, skinRGB())
+			end)
 		end })
 	end
-	LookKit.PresetGrid(body, items, { name = "BodyTypes", cols = gridCols(5, items), cellH = 104, picked = b.frame }, function(it)
+	local grid, traits
+	grid = LookKit.PresetGrid(body, items, { name = "BodyTypes", cols = gridCols(5, items), cellH = 104, picked = b.frame }, function(it)
 		pushUndo(nil)
 		b.frame = it.id
 		preview()
-		render()
+		-- in place: the outline moves and the traits panel shows the new frame's
+		LookKit.PresetPick(grid, it.id)
+		local ft = Config.FindById(Config.BodyTypes, it.id) or Config.BodyTypes[2]
+		frameTraitsPanel(ft.id, modsText(ft.mods), traits)
 	end)
 	local ft = Config.FindById(Config.BodyTypes, b.frame) or Config.BodyTypes[2]
-	frameTraitsPanel(ft.id, modsText(ft.mods)) -- [FrameTraits] (the starting-stat mods ride in the panel)
+	traits = frameTraitsPanel(ft.id, modsText(ft.mods)) -- [FrameTraits] (the starting-stat mods ride in the panel)
+	slice()
 	UI.Header(body, "SIZE")
 	-- (onRelease: a height is a rescale and a full rebuild of the character on the server, ~800 instances
 	-- replicated each time; a drag previews once when it is let go, the steppers and the wheel at once)
@@ -117963,6 +118408,7 @@ local function pageBody()
 	for i = 1, #Config.WeightClasses do
 		idx[i] = i
 	end
+	slice()
 	UI.Cycler(body, "Weight class", idx, C.weightClass, edit(nil, function(v)
 		C.weightClass = v
 		local wc = Config.WeightClasses[v]
@@ -117976,6 +118422,7 @@ local function pageBody()
 	end)
 	local wc = Config.WeightClasses[C.weightClass]
 	C.weight = math.clamp(C.weight, wc.min, wc.limit)
+	slice()
 	UI.Slider(body, "Walk-around weight", wc.min, wc.limit, C.weight, 1, function(v)
 		pushUndo("weight")
 		C.weight = v
@@ -117988,6 +118435,7 @@ local function pageBody()
 			return a < 0.34 and "Light" or (a < 0.67 and "Middle" or "Heavy")
 		end,
 	})
+	slice()
 	UI.Slider(body, "Reach", -3, 6, C.reachDelta, 1, function(v)
 		pushUndo("reach")
 		C.reachDelta = v
@@ -117999,6 +118447,7 @@ local function pageBody()
 			return v < 0 and "Short" or (v <= 2 and "Average" or (v <= 4 and "Long" or "Very long"))
 		end,
 	})
+	slice()
 	UI.Header(body, "PREVIEW")
 	UI.Cycler(body, "Preview body", { false, true }, view.peak, function(v)
 		view.peak = v
@@ -118018,15 +118467,19 @@ local function pageGear()
 	local items = {}
 	for _, kit in ipairs(LookKit.KitPresets) do
 		table.insert(items, { id = kit.id, label = kit.id, sub = kit.desc, kit = kit, glyph = function(art)
+			slice()
 			LookKit.KitGlyph(art, kit)
 		end })
 	end
-	LookKit.PresetGrid(body, items, { name = "Kits", cols = gridCols(3, items), cellH = 100, picked = chosen.kit }, function(it)
+	local grid
+	grid = LookKit.PresetGrid(body, items, { name = "Kits", cols = gridCols(3, items), cellH = 100, picked = chosen.kit }, function(it)
 		pushUndo(nil)
 		LookKit.ApplyKit(it.kit, a, g)
 		chosen.kit = it.id
 		preview()
-		render()
+		-- in place: the outline moves, every colour field and style cycler re-reads the kit
+		LookKit.PresetPick(grid, it.id)
+		refreshPage()
 	end)
 	UI.Header(body, "MAIN COLOURS")
 	colorField(body, "Trunks", function()
@@ -118048,15 +118501,20 @@ local function pageGear()
 			a.headgear = c
 		end, pal, names, false, true, "headgear")
 	end
-	UI.Cycler(body, "Trunk style", Catalog.TrunkStyles, a.trunkStyle, edit(nil, function(v)
+	slice()
+	local _, setTrunks = UI.Cycler(body, "Trunk style", Catalog.TrunkStyles, a.trunkStyle, edit(nil, function(v)
 		a.trunkStyle = v
 		preview()
 	end))
-	UI.Cycler(body, "Shoe style", { "Low-Top", "High-Top" }, a.shoeStyle, edit(nil, function(v)
+	local _, setShoes = UI.Cycler(body, "Shoe style", { "Low-Top", "High-Top" }, a.shoeStyle, edit(nil, function(v)
 		a.shoeStyle = v
 		preview()
 	end))
-	if advancedToggle(8) then
+	onRefresh(function()
+		setTrunks(a.trunkStyle)
+		setShoes(a.shoeStyle)
+	end)
+	advancedToggle(8, function()
 		local function field(label, key)
 			colorField(body, label, function()
 				return a[key]
@@ -118071,55 +118529,99 @@ local function pageGear()
 		field("Laces", "laces")
 		UI.Header(body, "HANDS & MOUTH")
 		field("Hand wraps", "wraps")
-		UI.Cycler(body, "Wrap pattern", Looks.WrapPatterns, a.wrapPattern or "Solid", edit(nil, function(v)
+		local _, setWrap = UI.Cycler(body, "Wrap pattern", Looks.WrapPatterns, a.wrapPattern or "Solid", edit(nil, function(v)
 			a.wrapPattern = v
 			preview()
 		end))
+		onRefresh(function()
+			setWrap(a.wrapPattern or "Solid")
+		end)
 		field("Mouthguard", "mouthguard")
 		UI.Header(body, "ROBE (walkouts)")
 		field("Robe trim", "robeTrim")
 		UI.Line(body, "You start with worn, beaten-up gloves. Better gloves (Gear tab) unlock trim, stitching, finishes, logos and name embroidery at the Locker Room.", { TextColor3 = T.sub, TextSize = 13 })
-	end
+	end)
 end
 
 local function pageStyle()
 	hintLine(PAGE_HINTS["Fight Style"])
 	UI.Header(body, "BOXING STYLE")
+	-- the cards, the specialty line and the starting stats all update in place (a style or specialty pick here; an
+	-- age, body type, UNDO or RANDOM elsewhere: the page's refresh): nothing is rebuilt
+	local cards = {}
+	local function styleCards()
+		for id, c in pairs(cards) do
+			local selected = C.style == id
+			c.b.BackgroundColor3 = selected and T.panel:Lerp(T.gold, 0.16) or T.panel
+			c.stroke.Enabled = selected
+			c.accent.Visible = selected
+			c.title.TextColor3 = selected and T.gold or T.text
+		end
+	end
+	local refreshStats
 	for _, s in ipairs(Config.Styles) do
+		slice()
 		local selected = C.style == s.id
 		-- the card grows with its description (three lines on a phone-width window)
 		local b = UI.Button(body, "", { Name = "Style_" .. s.id, Size = UDim2.new(1, 0, 0, 66), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = selected and T.panel:Lerp(T.gold, 0.16) or T.panel }, function()
+			if C.style == s.id then
+				return
+			end
 			pushUndo(nil)
 			C.style = s.id
-			render()
+			styleCards()
+			refreshStats()
 		end)
 		UI.New("UIPadding", { PaddingBottom = UDim.new(0, 8), Parent = b })
-		if selected then
-			UI.Stroke(b, T.gold, 2)
-			UI.Frame(b, { Size = UDim2.new(0, 4, 1, -16), Position = UDim2.fromOffset(0, 8), BackgroundColor3 = T.gold })
-		end
-		UI.Text(b, string.upper(s.name), { Face = "display", TextSize = 22, TextColor3 = selected and T.gold or T.text, Position = UDim2.fromOffset(14, 4), Size = UDim2.new(1, -28, 0, 28), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		local stroke = UI.New("UIStroke", { Color = T.gold, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Enabled = selected, Parent = b })
+		local accent = UI.Frame(b, { Size = UDim2.new(0, 4, 1, -16), Position = UDim2.fromOffset(0, 8), BackgroundColor3 = T.gold, Visible = selected })
+		local title = UI.Text(b, string.upper(s.name), { Face = "display", TextSize = 22, TextColor3 = selected and T.gold or T.text, Position = UDim2.fromOffset(14, 4), Size = UDim2.new(1, -28, 0, 28), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 		UI.Text(b, s.desc .. "  (" .. modsText(s.mods) .. ")", { TextColor3 = T.sub, TextSize = 13, Position = UDim2.fromOffset(14, 32), Size = UDim2.new(1, -28, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 			TextYAlignment = Enum.TextYAlignment.Top })
+		cards[s.id] = { b = b, stroke = stroke, accent = accent, title = title }
 	end
+	slice()
 	local specs = idsOf(Config.Specialties)
-	UI.Cycler(body, "Specialty", specs, C.specialty, edit(nil, function(v)
+	local specLine
+	local _, setSpec = UI.Cycler(body, "Specialty", specs, C.specialty, edit(nil, function(v)
 		C.specialty = v
-		render()
+		refreshStats()
 	end))
-	local spec = Config.FindById(Config.Specialties, C.specialty)
-	UI.Line(body, "Specialty bonus: " .. modsText(spec.stats) .. " and +25% training gains on those stats.", { TextColor3 = T.sub, TextSize = 13 })
+	specLine = UI.Line(body, "", { TextColor3 = T.sub, TextSize = 13 })
+	slice()
 	UI.Header(body, "STARTING STATS")
 	local grid = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
 	UI.Grid(grid, UDim2.new(0.5, -6, 0, 24), nil, 4)
 	grid:FindFirstChildOfClass("UIGridLayout").CellPadding = UDim2.fromOffset(12, 4)
 	local stats = startingStats()
+	local rows = {}
 	for i, k in ipairs(Config.StatKeys) do
+		if i % 4 == 0 then
+			slice()
+		end
 		local v = stats[k]
-		local row = UI.StatRow(grid, string.upper(Config.StatNames[k]), v, 100, v >= 40 and T.green or T.gold)
+		local row, setBar, valText = UI.StatRow(grid, string.upper(Config.StatNames[k]), v, 100, v >= 40 and T.green or T.gold)
 		row.LayoutOrder = i
+		rows[k] = { set = setBar, text = valText }
 	end
-	UI.Line(body, string.format("Overall %d  -  You'll start as an amateur at the local gym with %s.", Config.Overall(stats), Config.Money(500)), { Font = T.semi, TextSize = 14 })
+	local overall = UI.Line(body, "", { Font = T.semi, TextSize = 14 })
+	function refreshStats()
+		local spec = Config.FindById(Config.Specialties, C.specialty)
+		specLine.Text = UI.Type.Sentence("Specialty bonus: " .. modsText(spec.stats) .. " and +25% training gains on those stats.")
+		local st = startingStats()
+		for k, r in pairs(rows) do
+			local v = st[k]
+			r.set(v / 100, v >= 40 and T.green or T.gold)
+			r.text.Text = tostring(math.floor(v))
+		end
+		overall.Text = UI.Type.Sentence(string.format("Overall %d  -  You'll start as an amateur at the local gym with %s.", Config.Overall(st), Config.Money(500)))
+	end
+	refreshStats()
+	onRefresh(function()
+		styleCards()
+		setSpec(C.specialty)
+		refreshStats()
+	end)
 end
 
 local PAGE_FN = {
@@ -118316,20 +118818,267 @@ end
 
 -- every way to another step (a pick in the step menu, NEXT / BACK, RB / LB) closes the step menu: no
 -- stale menu over the new page
-local function goTo(name)
-	showSteps(false)
-	local wasHands = hands()
-	page = name
-	if hands() ~= wasHands then
-		preview()
+------------------------------------------------------------------------
+-- The pages: built once, kept while the window is open
+------------------------------------------------------------------------
+-- what a step shows that another step (or UNDO / RESET / RANDOM) can change: a kept page whose signature no longer
+-- matches is built again. The look's tables a page's controls hold count by identity (an UNDO swaps in copies), the
+-- values it shows by value; the skin tone only tints the preset cards' drawings (redrawn in place: onSkin)
+local function keysOf(t, lists, extra)
+	local out = {}
+	for _, list in ipairs(lists) do
+		for _, sl in ipairs(list) do
+			out[#out + 1] = t[sl.key]
+		end
 	end
-	render()
+	for _, k in ipairs(extra or {}) do
+		out[#out + 1] = t[k] == nil and "nil" or t[k]
+	end
+	return out
+end
+local PAGE_STATE = {
+	Identity = function()
+		return { C.age, C.nationality, C.voice, C.music, C.first, C.last, C.nickname }
+	end,
+	Face = function(L)
+		return { tostring(L.face), keysOf(L.face, { Looks.FaceSliders, Looks.SculptSliders or {}, Looks.WearSliders }, { "style", "shape", "noseType" }), L.avatar, chosen.face,
+			view.expr, view.damage }
+	end,
+	["Skin & Eyes"] = function(L)
+		return { tostring(L.face), L.skin, keysOf(L.face, { Looks.EyeSliders, Looks.SkinSliders }, { "undertone", "eyeColor", "eyeColor2", "browStyle" }) }
+	end,
+	Hair = function(L)
+		return { tostring(L.hair), tostring(L.beard), L.hair, L.beard, L.avatar, hairGroup, view.growth }
+	end,
+	Body = function(L)
+		return { tostring(L.body), L.body, L.height, C.weightClass, C.weight, C.reachDelta, view.peak }
+	end,
+	Gear = function(L)
+		return { tostring(L.attire), tostring(L.gloves), L.attire, L.gloves, chosen.kit }
+	end,
+	["Fight Style"] = function()
+		return {}
+	end,
+}
+-- what a kept page shows in place (its refresh re-reads it when the page shows again): no rebuild for these
+local PAGE_SOFT = {
+	["Fight Style"] = function(L)
+		return { C.style, C.specialty, C.age, L.body and L.body.frame }
+	end,
+}
+local function enc(v, out)
+	if type(v) == "table" then
+		local keys = {}
+		for k in pairs(v) do
+			keys[#keys + 1] = k
+		end
+		table.sort(keys, function(a, b)
+			return tostring(a) < tostring(b)
+		end)
+		out[#out + 1] = "{"
+		for _, k in ipairs(keys) do
+			out[#out + 1] = tostring(k)
+			enc(v[k], out)
+		end
+		out[#out + 1] = "}"
+	else
+		out[#out + 1] = tostring(v)
+	end
+end
+local function pageSig(name)
+	local L = C.look
+	local out = {}
+	enc({ L.gender, advanced[name] == true, tostring(canvasSize()), PAGE_STATE[name] and PAGE_STATE[name](L) or {} }, out)
+	return table.concat(out, "|")
+end
+local function softSig(name)
+	local f = PAGE_SOFT[name]
+	if not f then
+		return ""
+	end
+	local out = {}
+	enc(f(C.look), out)
+	return table.concat(out, "|")
 end
 
-function render()
-	if not (shade and shade.Parent) then
+-- a preview request's content (the look, the hands, the preview options but what to rebuild): equal keys build the
+-- same character
+function previewKey(popts)
+	local out = {}
+	enc({ C.look, hands(), popts.peak == true, popts.growth or 0 }, out)
+	return table.concat(out, "|")
+end
+
+local function newPageFrame(parent, visible)
+	local f = UI.Frame(parent, { Name = "Page", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = visible })
+	UI.List(f, 10)
+	return f
+end
+
+-- a step's page, under the list: shown (the step on screen, built now) or hidden (built behind the window)
+local unfinished = {} -- [rec] = true: a page whose build behind the window is under way (a close discards it too)
+local function buildPage(name, visible)
+	local rec = { name = name, refresh = {}, glyphs = {}, sig = pageSig(name), soft = softSig(name), skin = C.look.skin, staged = not visible }
+	rec.frame = newPageFrame(scroll, visible)
+	unfinished[rec] = true
+	buildInto(rec, name, rec.frame, PAGE_FN[name])
+	unfinished[rec] = nil
+	return rec
+end
+
+function refreshPage()
+	local rec = pages[page]
+	if rec then
+		for _, fn in ipairs(rec.refresh) do
+			local ok, err = pcall(fn)
+			if not ok then
+				warn("[Creator]", err)
+			end
+		end
+	end
+end
+
+-- frames to go (old pages, the window's kept steps on close): out of the window now, destroyed a row at a time
+-- behind the next frames (a page is up to ~1000 instances: one Destroy of it was a hitch of its own)
+local function discard(frames)
+	for _, f in ipairs(frames) do
+		f.Parent = nil
+	end
+	if not FrameBudget then
+		for _, f in ipairs(frames) do
+			f:Destroy()
+		end
 		return
 	end
+	FrameBudget.Run(function()
+		for _, f in ipairs(frames) do
+			for _, row in ipairs(f:GetChildren()) do
+				row:Destroy()
+				FrameBudget.Tick()
+			end
+			f:Destroy()
+		end
+	end, false, "Creator discard")
+end
+
+local function dropPage(name)
+	local rec = pages[name]
+	pages[name] = nil
+	if rec and rec.frame then
+		discard({ rec.frame })
+	end
+end
+
+-- the step `name` on screen: its kept page when it still shows the look as it is (rebuild = false), else built
+-- again. The kept pages all stay under the list, the others hidden (not laid out or drawn): a step change only
+-- flips two Visible flags (moving a page in and out of the window fired every UI listener once per row)
+local function showPage(name, rebuild)
+	local job = jobs[name]
+	if job and FrameBudget and FrameBudget.Busy(job) then
+		FrameBudget.Finish(job) -- (being built behind the window: the rest of it now)
+	end
+	jobs[name] = nil
+	local rec = pages[name]
+	if rec and (rebuild or rec.sig ~= pageSig(name)) then
+		dropPage(name)
+		rec = nil
+	end
+	for n, other in pairs(pages) do
+		if n ~= name and other.frame.Visible then
+			other.frame.Visible = false
+		end
+	end
+	if rec then
+		local soft = softSig(name)
+		if rec.soft ~= soft then
+			-- (what it shows in place moved since: its controls re-read it)
+			rec.soft = soft
+			for _, fn in ipairs(rec.refresh) do
+				pcall(fn)
+			end
+		end
+		if rec.skin ~= C.look.skin then
+			-- a new skin tone since it was built: its preset cards' drawings again, in place
+			rec.skin = C.look.skin
+			for _, g in ipairs(rec.glyphs) do
+				g[1]:ClearAllChildren()
+				pcall(g[2], g[1])
+			end
+		end
+		rec.frame.Visible = true
+	else
+		rec = buildPage(name, true)
+		pages[name] = rec
+	end
+	return rec
+end
+
+-- the steps not on screen, built (again) behind the window, one FrameBudget job each, a few ms a frame: a step
+-- change then only swaps pages. A page a change has left stale is built again the same way.
+local function queuePrebuild()
+	if not (FrameBudget and shade and shade.Parent) then
+		return
+	end
+	for _, name in ipairs(PAGES) do
+		local rec = pages[name]
+		if name ~= page and not (jobs[name] and FrameBudget.Busy(jobs[name])) and not (rec and rec.sig == pageSig(name)) then
+			jobs[name] = FrameBudget.Run(function()
+				if not (shade and shade.Parent and scroll and scroll.Parent) or name == page then
+					return
+				end
+				local new = buildPage(name, false)
+				if pages[name] and pages[name] ~= new then
+					dropPage(name)
+				end
+				pages[name] = new
+			end, false, "Creator " .. name)
+		end
+	end
+end
+
+-- the step bar: its buttons made once (styled for the step on screen on every change)
+local stepButtons = {}
+local goTo
+local function styleSteps()
+	local cur = table.find(PAGES, page) or 1
+	if #stepButtons == 0 then
+		for i, name in ipairs(PAGES) do
+			local b = UI.Button(stepsFrame, stepStrip and UI.Type.TitleCase(SHORT[name]) or string.format("%d %s", i, SHORT[name]), { Name = "Step" .. i, LayoutOrder = i, TextSize = stepMenu and 15 or 13,
+				Size = stepStrip and UDim2.new(1, 0, 0, stepH) or nil }, function()
+				goTo(name)
+			end)
+			local icon
+			if stepStrip then
+				-- the strip's pills: the step's icon at a fixed inset, the label left-aligned after it
+				local corner = b:FindFirstChildOfClass("UICorner")
+				if corner then
+					corner.CornerRadius = UDim.new(0, math.floor(stepH / 2))
+				end
+				b.TextXAlignment = Enum.TextXAlignment.Left
+				UI.New("UIPadding", { PaddingLeft = UDim.new(0, 38), Parent = b })
+				icon = UI.Icon(b, STEP_ICONS[name] or "star", 16, T.sub, { Name = "StepIcon", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, -24, 0.5, 0) })
+			end
+			b:SetAttribute("CreatorStep", i)
+			stepButtons[i] = { b = b, icon = icon }
+		end
+	end
+	for i, name in ipairs(PAGES) do
+		local sb = stepButtons[i]
+		local done = i < cur
+		local on = name == page
+		sb.b.BackgroundColor3 = on and T.gold or T.panel2
+		sb.b.TextColor3 = on and T.bg or (done and T.gold or T.text)
+		if sb.icon then
+			UI.SetIconColor(sb.icon, on and T.bg or (done and T.gold or T.sub))
+		end
+		if on then
+			UI.PadStart(sb.b)
+		end
+	end
+end
+
+-- the window's chrome for the step on screen: title, kicker, step bar, progress, BACK / NEXT
+local function chrome()
 	local cur = table.find(PAGES, page) or 1
 	-- title: the step's name (a window with neither kicker line counts the step in the title too)
 	local kicker = win:FindFirstChild("Kicker")
@@ -118343,44 +119092,10 @@ function render()
 	if stepKicker then
 		stepKicker.Text = string.format("STEP %d OF %d", cur, #PAGES)
 	end
-	UI.Clear(stepsFrame)
-	for i, name in ipairs(PAGES) do
-		local done = i < cur
-		local b = UI.Button(stepsFrame, stepStrip and UI.Type.TitleCase(SHORT[name]) or string.format("%d %s", i, SHORT[name]), { Name = "Step" .. i, LayoutOrder = i, TextSize = stepMenu and 15 or 13,
-			BackgroundColor3 = name == page and T.gold or T.panel2, TextColor3 = name == page and T.bg or (done and T.gold or T.text),
-			Size = stepStrip and UDim2.new(1, 0, 0, stepH) or nil }, function()
-			goTo(name)
-		end)
-		if stepStrip then
-			-- the strip's pills: the step's icon at a fixed inset, the label left-aligned after it
-			local corner = b:FindFirstChildOfClass("UICorner")
-			if corner then
-				corner.CornerRadius = UDim.new(0, math.floor(stepH / 2))
-			end
-			b.TextXAlignment = Enum.TextXAlignment.Left
-			UI.New("UIPadding", { PaddingLeft = UDim.new(0, 38), Parent = b })
-			UI.Icon(b, STEP_ICONS[name] or "star", 16, name == page and T.bg or (done and T.gold or T.sub), { Name = "StepIcon", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, -24, 0.5, 0) })
-		end
-		b:SetAttribute("CreatorStep", i)
-		if name == page then
-			UI.PadStart(b)
-		end
-	end
+	styleSteps()
 	if progressFill then
 		progressFill.Size = stepStrip and UDim2.fromScale(1, cur / #PAGES) or UDim2.fromScale(cur / #PAGES, 1)
 	end
-	local y = lastPage == page and body.CanvasPosition or Vector2.zero
-	lastPage = page
-	UI.Clear(body)
-	local ok, err = pcall(PAGE_FN[page])
-	if not ok then
-		warn("[Creator]", err)
-	end
-	task.defer(function()
-		if body and body.Parent then
-			body.CanvasPosition = y
-		end
-	end)
 	if nextBtn then
 		nextBtn.Text = page == PAGES[#PAGES] and "Begin Career" or ("Next: " .. UI.Type.TitleCase(SHORT[PAGES[cur + 1]]))
 	end
@@ -118388,6 +119103,46 @@ function render()
 		backBtn.TextTransparency = cur == 1 and 0.55 or 0
 	end
 	updateUndo()
+end
+
+-- the step on screen, shown (rebuild: built again, a change its controls cannot show in place); the list keeps its
+-- scroll on the same step and starts at the top of another
+local function display(rebuild)
+	if not (shade and shade.Parent) then
+		return
+	end
+	chrome()
+	local y = lastPage == page and scroll.CanvasPosition or Vector2.zero
+	lastPage = page
+	showPage(page, rebuild)
+	task.defer(function()
+		if scroll and scroll.Parent then
+			scroll.CanvasPosition = y
+		end
+	end)
+end
+
+-- every way to another step (a pick in the step menu, NEXT / BACK, RB / LB) closes the step menu: no
+-- stale menu over the new page
+function goTo(name)
+	showSteps(false)
+	local wasHands = hands()
+	-- the page left shows the look as it is now (its controls follow their own changes)
+	local left = pages[page]
+	if left then
+		left.sig, left.soft = pageSig(page), softSig(page)
+	end
+	page = name
+	if hands() ~= wasHands then
+		preview()
+	end
+	display(false)
+	queuePrebuild()
+end
+
+-- a change the step's controls cannot show in place: the step on screen built again
+function render()
+	display(true)
 end
 
 -- the live fighter plate (built in Creator.Open)
@@ -118401,6 +119156,7 @@ function updatePlate()
 		return
 	end
 	local same = true
+	local flag = plateSeen.nationality ~= C.nationality
 	for _, k in ipairs(PLATE_FIELDS) do
 		if plateSeen[k] ~= C[k] then
 			plateSeen[k] = C[k]
@@ -118419,9 +119175,12 @@ function updatePlate()
 	plateName.TextColor3 = name ~= "" and T.text or T.dim
 	plateNick.Text = C.nickname ~= "" and ('"' .. C.nickname .. '"') or "AMATEUR  ·  DEBUT"
 	plateInfo.Text = string.format("%s  ·  %s  ·  %s  ·  AGE %d", string.upper(C.nationality), string.upper(wc and wc.name or "-"), string.upper(style and style.name or "-"), C.age)
-	UI.Clear(plateFlag)
-	if Flags then
-		pcall(Flags.Draw, plateFlag, C.nationality, { Size = UDim2.fromOffset(36, 24) })
+	-- the flag (dozens of frames) only for a new nationality: an age drag changes the plate every tick
+	if flag then
+		UI.Clear(plateFlag)
+		if Flags then
+			pcall(Flags.Draw, plateFlag, C.nationality, { Size = UDim2.fromOffset(36, 24) })
+		end
 	end
 end
 
@@ -118525,15 +119284,22 @@ function Creator.Open()
 		step(-1)
 	end
 	-- a wide canvas takes the tool-strip composition (a wider window: the strip plus the inspector)
+	canvasNow, listW = nil, nil
 	local canvas0 = UI.CanvasSize(State.gui)
 	stepStrip = canvas0.Y >= 640 and canvas0.X * 0.46 >= 690
-	shade, win, body = UI.Window(State.gui, "Creator", stepStrip and 700 or 600, 720, "Create Your Boxer", { side = "left", noShade = true, footer = 50, onBack = back, kicker = "CREATE YOUR BOXER" })
+	shade, win, scroll = UI.Window(State.gui, "Creator", stepStrip and 700 or 600, 720, "Create Your Boxer", { side = "left", noShade = true, footer = 50, onBack = back, kicker = "CREATE YOUR BOXER" })
+	body = scroll
+	table.clear(pages)
+	table.clear(jobs)
+	table.clear(unfinished)
+	table.clear(stepButtons)
+	lastPage = nil
 	local canvas = UI.CanvasSize(State.gui)
 	short = canvas.Y < 560
 	-- a narrow window (the smallest phones: 0.46 of the canvas is under 420 design px) keeps the step's
 	-- name readable with slimmer tool buttons and no "1/7" prefix (the step bar counts the steps)
 	narrow = canvas.X * 0.46 < 420
-	local top = body.Position.Y.Offset
+	local top = scroll.Position.Y.Offset
 	-- touch: the tool buttons, the step bar and BACK / NEXT grow to a fingertip and the rows around them
 	local minHit = UI.MinHit(win)
 	-- title row: UNDO / RESET / RANDOM on the right of the step's name
@@ -118646,8 +119412,8 @@ function Creator.Open()
 	UI.Corner(progressFill, 2)
 	local nh = math.max(42, minHit)
 	local inset = stepStrip and (112 + 12) or 0
-	body.Position = UDim2.fromOffset(16 + inset, top)
-	body.Size = UDim2.new(1, -(32 + inset), 1, -(top + nh + 20))
+	scroll.Position = UDim2.fromOffset(16 + inset, top)
+	scroll.Size = UDim2.new(1, -(32 + inset), 1, -(top + nh + 20))
 	local nav = UI.Frame(win, { Name = "Nav", BackgroundTransparency = 1, Position = UDim2.new(0, 16, 1, -(nh + 12)), Size = UDim2.new(1, -32, 0, nh) })
 	backBtn = UI.Button(nav, "BACK", { Name = "BackStep", Size = UDim2.new(0.3, 0, 1, 0) }, back)
 	nextBtn = UI.Button(nav, "NEXT", { Name = "NextStep", Size = UDim2.new(0.66, 0, 1, 0), Position = UDim2.new(0.34, 0, 0, 0), BackgroundColor3 = T.gold, TextColor3 = T.bg })
@@ -118724,6 +119490,7 @@ function Creator.Open()
 	-- phones: the plate moves to the top-right corner so it never covers the boxer, and takes no more
 	-- than the room right of the window (the window is 0.46 of the canvas plus its 24 px margin)
 	local function placePlate()
+		canvasNow, listW = nil, nil -- (a resize: read again)
 		if not (plate and plate.Parent) then
 			return
 		end
@@ -118801,39 +119568,80 @@ function Creator.Open()
 	State.HidePrompts("Creator", true)
 	-- the gym HUD's plate and buttons stay out from under the creator
 	State.HideHud("Creator", true)
+	-- the world behind the window (WorldLOD: only the lights around the boxer stay on)
+	local lp = Players.LocalPlayer
+	if lp then
+		lp:SetAttribute("CreatorOpen", true)
+	end
 	render()
+	queuePrebuild()
+	-- the Hair step's hair-card meshes, fetched behind the window once it is up (a style pick then builds from meshes
+	-- the engine has; HairAssets.Preload: one a frame, in a thread of its own)
+	task.delay(1, function()
+		if not (shade and shade.Parent) then
+			return
+		end
+		local okHA, HA = pcall(function()
+			return require(script.Parent:FindFirstChild("HairAssets"))
+		end)
+		if okHA and type(HA) == "table" and HA.Preload then
+			local styles = {}
+			for _, g in ipairs(Looks.HairStyleGroups or {}) do
+				for _, st in ipairs(g.styles) do
+					table.insert(styles, st)
+				end
+			end
+			pcall(HA.Preload, C.look, styles)
+		end
+	end)
 	if previewConn then
 		previewConn:Disconnect()
 	end
 	inflight = false
+	lastBuilt = nil
 	previewConn = RunService.Heartbeat:Connect(function(dt)
 		if held ~= 0 then
 			camYaw += held * dt * 4
 		end
 		updatePlate()
 		local now = os.clock()
+		-- the steps a change left stale, built again behind the window once the changes settle (a pick or a let-go
+		-- slider: 0.3 s after it; a gesture without a release, the colour wheel: 3 s; never under a drag)
+		if stale and now - lastUndoAt > ((lastUndoKey == nil) and 0.3 or 3) then
+			stale = false
+			queuePrebuild()
+		end
 		if inflight and now - lastSent > 2 then
 			inflight = false -- a lost reply never blocks the preview for good
 		end
-		if dirty and not inflight then
+		-- (a whole-character rebuild is debounced; head and colour previews stay live, at the send cap)
+		local settled = not dirtyFull or now - lastChange >= FULL_QUIET or now - (firstChange or now) >= FULL_WAIT
+		if dirty and not inflight and settled then
 			if now - lastSent >= SEND_EVERY then
 				local full, head, colors = dirtyFull, dirtyHead, dirtyColors
 				dirty, dirtyFull, dirtyHead, dirtyColors = false, false, false, false
-				lastSent = now
-				inflight = true
 				-- preview-only options: growth stage, starting / peak body, partial head / colour-only rebuild
 				local popts = { peak = view.peak, growth = view.growth > 0.02 and view.growth or nil }
 				if not full then
 					popts.only = { Face = head or nil, Hair = head or nil, Beard = head or nil, Colors = colors or nil }
 				end
-				task.spawn(function()
-					local r = State.req("PreviewLook", C.look, hands(), popts)
-					inflight = false
-					if r and r.throttled then
-						dirty = true
-						dirtyFull, dirtyHead, dirtyColors = dirtyFull or full, dirtyHead or head, dirtyColors or colors
-					end
-				end)
+				-- the look the server last built for this one (a pick of what is already picked, a change and its
+				-- undo between two sends): no request, no rebuild
+				local key = previewKey(popts)
+				if key ~= lastBuilt then
+					lastSent = now
+					inflight = true
+					task.spawn(function()
+						local r = State.req("PreviewLook", C.look, hands(), popts)
+						inflight = false
+						if r and r.throttled then
+							dirty = true
+							dirtyFull, dirtyHead, dirtyColors = dirtyFull or full, dirtyHead or head, dirtyColors or colors
+						elseif r and r.ok then
+							lastBuilt = key
+						end
+					end)
+				end
 			end
 		end
 		-- a server rebuild replaces the face: draw the damage preview over the new one
@@ -118876,6 +119684,29 @@ function Creator.Close()
 	freeze(false)
 	State.HidePrompts("Creator", false)
 	State.HideHud("Creator", false)
+	local lp = Players.LocalPlayer
+	if lp then
+		lp:SetAttribute("CreatorOpen", nil)
+	end
+	-- the steps still being built behind the window stop; the kept pages (the one on screen too) leave the window
+	-- now and are destroyed a row at a time behind the next frames (the window's own chrome goes at once)
+	for name, job in pairs(jobs) do
+		if FrameBudget then
+			FrameBudget.Cancel(job)
+		end
+		jobs[name] = nil
+	end
+	local kept = {}
+	for name, rec in pairs(pages) do
+		table.insert(kept, rec.frame)
+		pages[name] = nil
+	end
+	for rec in pairs(unfinished) do
+		table.insert(kept, rec.frame)
+	end
+	table.clear(unfinished)
+	discard(kept)
+	table.clear(stepButtons)
 	if shade then
 		shade:Destroy()
 		shade = nil
@@ -118895,6 +119726,7 @@ function Creator.Refresh()
 	camera(true)
 	previewTag(true)
 	setExpression(view.expr)
+	lastBuilt = nil -- (a new character: the whole look again)
 	preview()
 end
 
@@ -119899,10 +120731,22 @@ function K.Count()
 	return count
 end
 
+-- a Streamer tier built in a job of the client's time slicer (FrameBudget): the builders below hand the frame back
+-- between pieces in that job's thread only ([thread] = the slicer; everywhere else they run straight through)
+local slicing = setmetatable({}, { __mode = "k" })
+local function tick()
+	local fb = slicing[coroutine.running()]
+	if fb then
+		fb.Tick()
+	end
+end
+K.Tick = tick -- (a tier's own long loops: a scan of the server's street)
+
 -- p = K.Part(parent, name, size, cf, color, material, opts)
 -- opts: shape ("Ball" | "Cylinder"), t (Transparency), refl, shadow (true / false; default by size),
 -- collide (true: the rare detail piece that must block), class ("WedgePart"), attrs
 function K.Part(parent, name, size, cf, color, material, opts)
+	tick()
 	local cls = opts and opts.class or "Part"
 	local p = Instance.new(cls)
 	p.Name = name
@@ -120028,6 +120872,7 @@ function K.Gui(p, face, pps, light, maxDist)
 end
 
 function K.Frame(parent, props)
+	tick()
 	local f = Instance.new("Frame")
 	f.BorderSizePixel = 0
 	f.Size = UDim2.fromScale(1, 1)
@@ -120177,6 +121022,7 @@ end
 
 -- a copy of a template at cf, parented
 function K.Place(template, parent, cf, name)
+	tick()
 	local c = template:Clone()
 	if not c then
 		return nil
@@ -120241,8 +121087,46 @@ local function wantedDist(self, t)
 	return row and row[math.clamp(self.level, 1, 3)] or 0
 end
 
--- one pass: camPos = the camera position (nil = everything in range); returns the number of tiers built
-function Streamer:Step(camPos, level)
+-- budget (Step's): the tiers to build go into one job of the client's time slicer (FrameBudget), built a piece at a
+-- time in its shared frame budget (one tier is up to ~40 ms of building: a whole one in a pass was a hitch) and shown
+-- by the pass after they are done
+local function queueBuild(self, cell, t, budget)
+	cell.queued = cell.queued or {}
+	if cell.queued[t] then
+		return
+	end
+	cell.queued[t] = true
+	self.pending = self.pending or {}
+	table.insert(self.pending, { cell, t })
+	if self.job and budget.Busy(self.job) then
+		return
+	end
+	-- one tier a job, the next one queued behind whatever else waits (the Creator's pages, a venue): the streaming
+	-- never holds the slicer's queue for long
+	local function run()
+		local co = coroutine.running()
+		slicing[co] = budget
+		local q = table.remove(self.pending, 1)
+		if q then
+			local c, tier = q[1], q[2]
+			if not c.models[tier] and wantedDist(self, tier) > 0 then
+				build(self, c, tier)
+			end
+			if c.queued then
+				c.queued[tier] = nil
+			end
+		end
+		slicing[co] = nil
+		if self.pending[1] then
+			self.job = budget.Run(run, false, "WorldDetail " .. self.root.Name)
+		end
+	end
+	self.job = budget.Run(run, false, "WorldDetail " .. self.root.Name)
+end
+
+-- one pass: camPos = the camera position (nil = everything in range); returns the number of tiers built. budget
+-- (optional): FrameBudget, the tiers not built yet are built behind the frames (queueBuild) instead of in the pass
+function Streamer:Step(camPos, level, budget)
 	self.level = level or self.level
 	local t0 = os.clock()
 	local built = 0
@@ -120260,7 +121144,10 @@ function Streamer:Step(camPos, level)
 				if want and not cell.shown[t] then
 					local m = cell.models[t]
 					if not m then
-						if os.clock() - t0 > Streamer.BUDGET and built > 0 then
+						if budget then
+							queueBuild(self, cell, t, budget)
+							want = false
+						elseif os.clock() - t0 > Streamer.BUDGET and built > 0 then
 							-- out of time this step: the rest comes next step
 							want = false
 						else
@@ -120301,7 +121188,11 @@ end
 
 -- drop every built tier (a level change that frees memory, Stop)
 function Streamer:Clear()
+	if self.job and self.pending then
+		table.clear(self.pending)
+	end
 	for _, cell in ipairs(self.cells) do
+		cell.queued = nil
 		for t, m in pairs(cell.models) do
 			m:Destroy()
 			cell.models[t] = nil
@@ -123743,11 +124634,14 @@ return Flags
 -- own were twice the budget in the frames they shared).
 --   FrameBudget.Run(fn, front) -> job   queue fn (a coroutine, first resumed on the next Heartbeat); front = ahead of
 --                                       the queued jobs (what the camera sees first)
---   FrameBudget.Tick()                  inside a job: yields once this frame's budget is spent (a no-op outside a job:
---                                       the same build code runs in one go offline)
+--   FrameBudget.Tick(reserve?)          inside a job: yields once this frame's budget is spent, or all but reserve s of
+--                                       it (a no-op outside a job: the same build code runs in one go offline)
 --   FrameBudget.Cancel(job)             drops a queued or running job (never resumed again)
+--   FrameBudget.Finish(job)             runs the rest of a queued or running job now, in one go
 --   FrameBudget.Busy(job?)              that job (or any) is still to finish
 --   FrameBudget.Longest                 { ms, name } of the longest single slice so far (tools/sim/crowd_scene --perf)
+--   FrameBudget.Stats                   { slices, over, recent }: slices run, those past twice the budget, the last
+--                                       128 slices' ms (tests)
 -- A job must not yield by itself (task.wait, WaitForChild): only Tick hands the frame back.
 local RunService = game:GetService("RunService")
 
@@ -123756,6 +124650,9 @@ local FrameBudget = {}
 local BUDGET = 0.004 -- s of queued building a frame
 FrameBudget.BUDGET = BUDGET
 FrameBudget.Longest = { ms = 0 }
+-- slices run, how many ran past twice the budget, and the last 128 slices' ms (a ring: tests, a job's steps are small
+-- enough to keep to its frame)
+FrameBudget.Stats = { slices = 0, over = 0, recent = {} }
 
 local queue = {}
 local current = nil -- the job running now (Tick yields only inside it)
@@ -123773,6 +124670,12 @@ local function step()
 		local ms = (os.clock() - t0) * 1000
 		if ms > FrameBudget.Longest.ms then
 			FrameBudget.Longest = { ms = ms, name = job.name }
+		end
+		local st = FrameBudget.Stats
+		st.slices += 1
+		st.recent[(st.slices - 1) % 128 + 1] = ms
+		if ms > BUDGET * 2000 then
+			st.over += 1
 		end
 		current = nil
 		if not ok then
@@ -123809,8 +124712,10 @@ function FrameBudget.Run(fn, front, name)
 	return job
 end
 
-function FrameBudget.Tick()
-	if current and coroutine.running() == current.co and os.clock() >= frameEnd then
+-- reserve (optional, seconds): yield already when less than that is left of the frame's budget (a job whose steps
+-- run up to that long: a step started at the end of the budget would overrun the frame by its own length)
+function FrameBudget.Tick(reserve)
+	if current and coroutine.running() == current.co and os.clock() + (reserve or 0) >= frameEnd then
 		coroutine.yield()
 	end
 end
@@ -123823,6 +124728,26 @@ function FrameBudget.Cancel(job)
 	local i = table.find(queue, job)
 	if i then
 		table.remove(queue, i)
+	end
+end
+
+-- runs the rest of a queued or started job now, in one go (its Tick calls do not yield outside the queue's turn): a
+-- build the screen needs this frame
+function FrameBudget.Finish(job)
+	if not job or job.done then
+		return
+	end
+	local i = table.find(queue, job)
+	if i then
+		table.remove(queue, i)
+	end
+	job.done = true
+	while coroutine.status(job.co) == "suspended" do
+		local ok, err = coroutine.resume(job.co)
+		if not ok then
+			warn("[FrameBudget] " .. tostring(job.name or "job") .. ":", err)
+			break
+		end
 	end
 end
 
@@ -132430,6 +133355,60 @@ function HairAssets.Build(model, entry, look, lod, ctx)
 	return made, result
 end
 
+-- Preload(look, styles): the hair-card meshes of these styles (on this look's hair type), fetched behind the screen
+-- that shows them (the Creator's Hair step), one mesh a frame in a thread of its own: a pick then builds from meshes
+-- the engine already has instead of waiting on the network. Only meshes (the textures are tinted per look); an id that
+-- fails here is left for a build to judge (nothing is marked). Each mesh is asked for once per session.
+local warmed = {}
+function HairAssets.Preload(look, styles)
+	if not active(true) or type(look) ~= "table" or type(styles) ~= "table" then
+		return 0
+	end
+	local ids = {}
+	local seen = {}
+	for _, st in ipairs(styles) do
+		local l = table.clone(look)
+		l.hair = table.clone(type(look.hair) == "table" and look.hair or {})
+		l.hair.style = st
+		local ok, entry = pcall(HK.Select, Data, l, entryFailed)
+		if ok and entry then
+			local list = {}
+			for _, pc in pairs(entry.pieces or {}) do
+				list[#list + 1] = HK.Id(pc.mesh)
+			end
+			if HK.HasCap(entry) and Data.cap then
+				list[#list + 1] = HK.Id(Data.cap.mesh)
+			end
+			for _, id in ipairs(list) do
+				if id and not warmed[id] and not seen[id] and not failed[id] then
+					seen[id] = true
+					ids[#ids + 1] = id
+				end
+			end
+		end
+	end
+	if #ids == 0 then
+		return 0
+	end
+	task.spawn(function()
+		for _, id in ipairs(ids) do
+			if not warmed[id] then
+				warmed[id] = true
+				local okMP, mp = pcall(function()
+					return AssetService:CreateMeshPartAsync(Content.fromUri("rbxassetid://" .. id))
+				end)
+				if okMP and typeof(mp) == "Instance" then
+					pcall(mp.Destroy, mp)
+				else
+					warmed[id] = nil
+				end
+			end
+			task.wait()
+		end
+	end)
+	return #ids
+end
+
 -- the entry this look draws while ids of it wait for their retry: { ids, at (os.clock() when the last is
 -- due), key }; nil when none waits (nothing to draw, all loaded, or one failed for good)
 function HairAssets.Waiting(look, lod, wantTex)
@@ -138128,9 +139107,30 @@ function LookKit.HairPicker(parent, h, skinRGB, group, onPick, onGroup)
 			LookKit.HairGlyph(art, st, h.color, skinRGB)
 		end })
 	end
-	return LookKit.PresetGrid(parent, items, { name = "Styles", cols = 4, cellH = 96, picked = h.style }, function(it)
+	local grid = LookKit.PresetGrid(parent, items, { name = "Styles", cols = 4, cellH = 96, picked = h.style }, function(it)
 		onPick(it.id)
 	end)
+	return grid, tabs
+end
+
+-- a HairPicker's pick moved in place (no rebuild): the card's outline, and the gold name of the group the style is in
+function LookKit.HairPickerPick(grid, style)
+	if not grid then
+		return
+	end
+	LookKit.PresetPick(grid, style)
+	local tabs = grid.Parent and grid.Parent:FindFirstChild("HairGroups")
+	if not tabs then
+		return
+	end
+	local own = LookKit.GroupOf(style)
+	for i, g in ipairs(Looks.HairStyleGroups) do
+		local b = tabs:FindFirstChild("Group_" .. i)
+		-- (the group on show keeps its gold fill; the others' text marks the one the style is in)
+		if b and b.BackgroundColor3 ~= T.gold then
+			b.TextColor3 = g.name == own and T.gold or T.text
+		end
+	end
 end
 
 ------------------------------------------------------------------------
@@ -138138,6 +139138,11 @@ end
 ------------------------------------------------------------------------
 -- items = { { id, label, sub?, glyph = fn(holder) } }; opts = { cols = n (on a wide row), cellH, picked = id }
 -- onPick(item). Returns the grid frame.
+-- the picked card's gold outline (UI.Stroke's, named so a new pick can move it)
+local function pickRing(b)
+	return UI.New("UIStroke", { Name = "Picked", Color = T.gold, Thickness = 2, Transparency = 0, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = b })
+end
+
 function LookKit.PresetGrid(parent, items, opts, onPick)
 	opts = opts or {}
 	local cellH = opts.cellH or 96
@@ -138151,7 +139156,7 @@ function LookKit.PresetGrid(parent, items, opts, onPick)
 		end)
 		b:SetAttribute("PresetId", tostring(it.id))
 		if on then
-			UI.Stroke(b, T.gold, 2)
+			pickRing(b)
 		end
 		local textH = it.sub and 36 or 24
 		local art = UI.Frame(b, { Name = "Art", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 5), Size = UDim2.new(1, -12, 0, cellH - textH - 8) })
@@ -138166,6 +139171,31 @@ function LookKit.PresetGrid(parent, items, opts, onPick)
 		end
 	end
 	return grid
+end
+
+-- a PresetGrid's pick moved in place (the outline, the card's tint and caption): no rebuild of the cards
+function LookKit.PresetPick(grid, picked)
+	if not grid then
+		return
+	end
+	local want = picked ~= nil and tostring(picked) or nil
+	for _, b in ipairs(grid:GetChildren()) do
+		local id = b:GetAttribute("PresetId")
+		if id ~= nil then
+			local on = id == want
+			b.BackgroundColor3 = on and T.panel:Lerp(T.gold, 0.22) or T.panel2
+			local ring = b:FindFirstChild("Picked")
+			if on and not ring then
+				pickRing(b)
+			elseif ring and not on then
+				ring:Destroy()
+			end
+			local cap = b:FindFirstChild("Caption")
+			if cap then
+				cap.TextColor3 = on and T.gold or T.text
+			end
+		end
+	end
 end
 
 return LookKit
@@ -149972,9 +151002,10 @@ return VenueFX
 --   High    tiers 1-3: fine detail within ~170 studs, the main dressing within ~320, surfaces / print within ~600
 --   Medium  tiers 1-2: the fine detail is left out, the main dressing within ~200
 --   Low     tier 1 only (floor textures, banners and posters, curbs, signals) within ~260
--- A tier is built the first time the camera comes near it (spread over frames, about 4 ms a step) and kept while
--- hidden. WorldLOD watches the folder too (sign resolution, shadow casters on Low). A Graphics level change
--- re-applies at once; dropping below a tier frees what that tier built.
+-- A tier is built the first time the camera comes near it (a piece at a time on FrameBudget, its ~4 ms a frame shared
+-- with the client's other time-sliced builds) and kept while hidden; the city's streaming pauses while the character creator is open (LocalPlayer CreatorOpen). WorldLOD
+-- watches the folder too (sign resolution, shadow casters on Low). A Graphics level change re-applies at once;
+-- dropping below a tier frees what that tier built.
 --   WorldDetail.Start()            once (ClientMain); waits for the server gym / city to replicate
 --   WorldDetail.Stats()            { gym = {...}, city = {...} } parts / instances shown (profiler, tests)
 --   WorldDetail.BuildAll(opts)     the simulator: every cell at opts.level at once, no camera
@@ -149992,6 +151023,8 @@ local function optional(name)
 	return ok and type(mod) == "table" and mod or nil
 end
 local Perf = optional("Perf")
+-- the client's time slicer: a tier is built a piece at a time behind the frames (one tier was up to ~40 ms in a pass)
+local FrameBudget = optional("FrameBudget")
 local GymDetail = optional("GymDetail")
 local CityDetail = optional("CityDetail")
 
@@ -150119,10 +151152,13 @@ function WorldDetail.Start()
 				pos = Vector3.new(1e6, 0, 1e6)
 			end
 			if gymS then
-				gymS:Step(pos, level)
+				gymS:Step(pos, level, FrameBudget)
 			end
-			if cityS then
-				cityS:Step(pos, level)
+			-- behind the character creator (its camera stays on the boxer in the gym): the town's streaming waits (nothing
+			-- new is built out there, what is shown stays) until it closes
+			local creating = Players.LocalPlayer and Players.LocalPlayer:GetAttribute("CreatorOpen") == true
+			if cityS and not creating then
+				cityS:Step(pos, level, FrameBudget)
 			end
 		end)
 		if not ok and not WorldDetail.warned then
@@ -150174,6 +151210,8 @@ return WorldDetail
 --   Low     no light shadows; accent lights off; mid lights beyond 110 and big fills beyond 170 off;
 --           signs drawn out to half their distance at half resolution; particles at 25% (none beyond
 --           150 studs); small parts (under 4 studs) cast no shadow
+-- Behind the main menu's set (LocalPlayer MenuStage) every world light is off; behind the character creator
+-- (CreatorOpen) only the lights within CREATOR_REACH of its camera stay on (the gym hall around the boxer).
 -- Resolution only drops on signs whose layout is all scale (sizes, positions, TextScaled), so nothing
 -- moves or overflows. Owners that switch a light at runtime (night lights, flickering neon, gates)
 -- call WorldLOD.SetLight so the culling never fights them. Work is spread over frames: a level change
@@ -150581,6 +151619,11 @@ local purgeAcc = 0
 
 local lastCamPos -- the camera's position last frame (a jump re-sweeps at the fast rate)
 local menuHold = false -- the main menu's set is up (LocalPlayer attribute MenuStage): every world light is culled
+-- the character creator is open (LocalPlayer attribute CreatorOpen): its camera stays on the boxer at the gym's spawn,
+-- so no light further than this from it is drawn (the whole hall is within ~180 studs of the spawn: the street and
+-- the town beyond its walls go dark until the creator closes)
+WorldLOD.CREATOR_REACH = 220
+local creatorHold = false
 local function sweepLight(l, camPos)
 	local e = lights[l]
 	local holder = l.Parent
@@ -150600,6 +151643,9 @@ local function sweepLight(l, camPos)
 		return false
 	end
 	local limit = CULL[level][e.cls]
+	if creatorHold then
+		limit = math.min(limit, WorldLOD.CREATOR_REACH)
+	end
 	local off = menuHold or limit <= 0 or (pos - camPos).Magnitude > limit
 	local was = culled[l]
 	if off and was == nil then
@@ -150734,9 +151780,10 @@ local function step(dt)
 		-- off, whatever their reach; the sweep runs faster while it switches them (off, then back on)
 		local p = Players.LocalPlayer
 		local hold = p ~= nil and p:GetAttribute("MenuStage") == true
+		local creating = p ~= nil and p:GetAttribute("CreatorOpen") == true
 		local per = SWEEP_PER_FRAME[level] or 4
-		if hold ~= menuHold then
-			menuHold = hold
+		if hold ~= menuHold or creating ~= creatorHold then
+			menuHold, creatorHold = hold, creating
 			menuSweep = count
 		end
 		if lastCamPos and (camPos - lastCamPos).Magnitude > JUMP then

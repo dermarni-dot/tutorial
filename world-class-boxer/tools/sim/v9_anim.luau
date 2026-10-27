@@ -899,6 +899,9 @@ local function gaitSampler(model)
 		local s = { t = t, rootY = hrp.Y, rootZ = hrp.Z, rootX = hrp.X, rootYaw = yawOf(hrp) }
 		s.pelvisY = lt.Y
 		s.headY = head.Y
+		-- (across the root's line: the pelvis' and the head's sway)
+		s.ltX = hrp:PointToObjectSpace(lt.Position).X
+		s.headX = hrp:PointToObjectSpace(head.Position).X
 		s.headPitch = deg(math.asin(math.clamp(head.LookVector.Y, -1, 1)))
 		s.headRoll = deg(math.asin(math.clamp(head.RightVector.Y, -1, 1)))
 		s.headYaw = ((yawOf(head) - s.rootYaw + 540) % 360) - 180
@@ -908,6 +911,14 @@ local function gaitSampler(model)
 		s.trunkPitch = deg(math.asin(math.clamp(ut.LookVector.Y, -1, 1)))
 		s.trunkRoll = deg(math.asin(math.clamp(ut.RightVector.Y, -1, 1)))
 		s.pelvisRoll = deg(math.asin(math.clamp(lt.RightVector.Y, -1, 1)))
+		-- the gait's own state (AnimLoco's rig.loco): the share of the pace across the legs, the side-step blend, a
+		-- direction flip's and a hard turn's, how fast the way he goes and the root swing round (rad/s), the run blend
+		do
+			local rg = H.require("AnimRig").rigs[model]
+			local lo = rg and rg.loco or {}
+			s.side, s.sideK, s.flipK, s.turnK = lo.side or 0, lo.sideK or 0, lo.flipK or 0, lo.turnK or 0
+			s.dirRate, s.yawRate, s.run = lo.dirRate or 0, lo.yawRate or 0, lo.run or 0
+		end
 		for _, sd in ipairs({ "Left", "Right" }) do
 			local k = sd:sub(1, 1)
 			local th, sh, ft = P[sd .. "UpperLeg"].CFrame, P[sd .. "LowerLeg"].CFrame, P[sd .. "Foot"].CFrame
@@ -918,6 +929,14 @@ local function gaitSampler(model)
 			s["knee" .. k] = -sag(th, -sh.UpVector)
 			-- the foot's pitch in the world (+ = toes up) and against the shank (+ dorsiflexion, the rest pose's offset kept)
 			s["footPitch" .. k] = deg(math.asin(math.clamp(ft.LookVector.Y, -1, 1)))
+			-- the foot's and the thigh's yaw against the root (+ = toes / kneecap turned to his left), and the way the bent
+			-- knee points (the thigh's line less the shank's, across the root's frame: + = to his left; 0 = straight ahead)
+			s["footYaw" .. k] = ((yawOf(ft) - s.rootYaw + 540) % 360) - 180
+			s["thighYaw" .. k] = ((yawOf(th) - s.rootYaw + 540) % 360) - 180
+			do
+				local kv = hrp:VectorToObjectSpace(-th.UpVector + sh.UpVector)
+				s["kneeDir" .. k] = (kv.X * kv.X + kv.Z * kv.Z) > 0.01 and deg(atan2(-kv.X, -kv.Z)) or 0
+			end
 			s["ankle" .. k] = sag(sh, ft.LookVector) - 90
 			local ua, la, hd = P[sd .. "UpperArm"].CFrame, P[sd .. "LowerArm"].CFrame, P[sd .. "Hand"].CFrame
 			s["shoulder" .. k] = sag(ut, -ua.UpVector)
@@ -979,6 +998,140 @@ local function gaitSummary(S)
 	return out
 end
 
+-- a walk's numbers as a gait lab reads them, over a stretch of samples S on a leg of L studs (1 stud = 0.9 / L m: the
+-- rig's leg as a person's 0.9 m one): cadence (steps / min from the touchdowns), each foot's stance share of its cycle,
+-- the double support and flight shares, the knee at the heel strike / its loading flex / mid-stance / its swing peak,
+-- the hip's flexion and extension against the pelvis, the foot's pitch as it strikes (+ toes up) and leaves, the
+-- swinging sole's peak over the floor (median of the swings), the pelvis bob and sway, the head's bob and sway, the
+-- arm's swing and the elbow, the trunk's pitch, the planted feet's slide
+local function walkStats(S, L)
+	local cm = 90 / L
+	local CONTACT = 0.03
+	local st = { n = #S }
+	if #S < 10 then
+		return st
+	end
+	local touch, lifts = {}, { L = {}, R = {} }
+	local tdBy = { L = {}, R = {} }
+	local down = {}
+	local both, none = 0, 0
+	for i, x in ipairs(S) do
+		local dL, dR = x.soleL < CONTACT, x.soleR < CONTACT
+		if i > 1 then
+			if dL and dR then
+				both += 1
+			elseif not dL and not dR then
+				none += 1
+			end
+		end
+		for _, k in ipairs({ "L", "R" }) do
+			local d = x["sole" .. k] < CONTACT
+			if down[k] == false and d then
+				table.insert(touch, { t = x.t, s = k, i = i })
+				table.insert(tdBy[k], i)
+			elseif down[k] == true and not d then
+				table.insert(lifts[k], i)
+			end
+			down[k] = d
+		end
+	end
+	local n = #S - 1
+	st.doubleSupport, st.flight = r4(both / n), r4(none / n)
+	if #touch >= 3 then
+		st.cadence = r4(60 * (#touch - 1) / (touch[#touch].t - touch[1].t))
+	end
+	-- per foot: each touchdown to its next touchdown (a cycle), the contact inside it, the knee through the stance
+	local stanceSh, strikeK, loadK, midK, swingK, strikeP, offP, clr = {}, {}, {}, {}, {}, {}, {}, {}
+	local function med(xs)
+		local c = table.clone(xs)
+		table.sort(c)
+		return #c > 0 and c[math.floor((#c + 1) / 2)] or 0
+	end
+	for _, k in ipairs({ "L", "R" }) do
+		local td = tdBy[k]
+		for j = 1, #td - 1 do
+			local a, b = td[j], td[j + 1]
+			local lift
+			for _, li in ipairs(lifts[k]) do
+				if li > a and li < b then
+					lift = li
+					break
+				end
+			end
+			if lift then
+				local T = S[b].t - S[a].t
+				table.insert(stanceSh, (S[lift].t - S[a].t) / T)
+				table.insert(strikeK, S[a]["knee" .. k])
+				table.insert(strikeP, S[a]["footPitch" .. k])
+				table.insert(offP, S[lift - 1]["footPitch" .. k])
+				local lk, mk, sk, pk = -1e9, 1e9, -1e9, -1e9
+				for i = a, b do
+					local x = S[i]
+					local sg = (x.t - S[a].t) / math.max(1e-6, S[lift].t - S[a].t)
+					if i < lift then
+						if sg <= 0.35 then
+							lk = math.max(lk, x["knee" .. k])
+						elseif sg <= 0.8 then
+							mk = math.min(mk, x["knee" .. k])
+						end
+					else
+						sk = math.max(sk, x["knee" .. k])
+						pk = math.max(pk, x["sole" .. k])
+					end
+				end
+				table.insert(loadK, lk)
+				table.insert(midK, mk)
+				table.insert(swingK, sk)
+				table.insert(clr, pk)
+			end
+		end
+	end
+	st.stance = r4(med(stanceSh))
+	st.kneeStrike, st.kneeLoad, st.kneeMid, st.kneeSwing = r4(med(strikeK)), r4(med(loadK)), r4(med(midK)), r4(med(swingK))
+	st.pitchStrike, st.pitchOff = r4(med(strikeP)), r4(med(offP))
+	st.clearance = r4(med(clr))
+	st.clearanceCm = r4(med(clr) * cm)
+	local function range(key)
+		local lo, hi = math.huge, -math.huge
+		for _, x in ipairs(S) do
+			lo, hi = math.min(lo, x[key]), math.max(hi, x[key])
+		end
+		return lo, hi
+	end
+	local h1, h2 = range("hipL")
+	local h3, h4 = range("hipR")
+	st.hipFlex, st.hipExt = r4(math.max(h2, h4)), r4(math.min(h1, h3))
+	local p1, p2 = range("pelvisY")
+	st.bob, st.bobCm = r4(p2 - p1), r4((p2 - p1) * cm)
+	local x1, x2 = range("ltX")
+	st.sway, st.swayCm = r4(x2 - x1), r4((x2 - x1) * cm)
+	local y1, y2 = range("headY")
+	st.headBobCm = r4((y2 - y1) * cm)
+	local hx1, hx2 = range("headX")
+	st.headSwayCm = r4((hx2 - hx1) * cm)
+	local s1, s2 = range("shoulderL")
+	local s3, s4 = range("shoulderR")
+	st.armFwd, st.armBack = r4(math.max(s2, s4)), r4(math.min(s1, s3))
+	st.armSwing = r4(0.5 * ((s2 - s1) + (s4 - s3)) / 2)
+	local e1, e2 = range("elbowL")
+	st.elbowMin, st.elbowMax = r4(e1), r4(e2)
+	local t1, t2 = range("trunkPitch")
+	st.trunkPitch = { r4(t1), r4(t2) }
+	local hp1, hp2 = range("headPitch")
+	st.headPitch = { r4(hp1), r4(hp2) }
+	local g = gaitSummary(S)
+	st.slideL, st.slideR = g.slideL, g.slideR
+	return st
+end
+local function walkLine(st)
+	return string.format("cadence %.0f/min, stance %.0f %%, double support %.0f %%, flight %.0f %%; knee strike %.0f load %.0f mid %.0f swing %.0f; hip +%.0f/%.0f; foot pitch strike %+.0f off %+.0f; clearance %.1f cm; bob %.1f cm sway %.1f cm; head bob %.1f sway %.1f cm; arms +%.0f/%.0f (+-%.0f) elbow %.0f..%.0f; trunk %.1f..%.1f; slide %.3f/%.3f",
+		st.cadence or -1, 100 * (st.stance or 0), 100 * (st.doubleSupport or 0), 100 * (st.flight or 0), st.kneeStrike or -1, st.kneeLoad or -1,
+		st.kneeMid or -1, st.kneeSwing or -1, st.hipFlex or 0, st.hipExt or 0, st.pitchStrike or 0, st.pitchOff or 0, st.clearanceCm or -1,
+		st.bobCm or -1, st.swayCm or -1, st.headBobCm or -1, st.headSwayCm or -1, st.armFwd or 0, st.armBack or 0, st.armSwing or 0,
+		st.elbowMin or 0, st.elbowMax or 0, st.trunkPitch and st.trunkPitch[1] or 0, st.trunkPitch and st.trunkPitch[2] or 0, st.slideL or -1,
+		st.slideR or -1)
+end
+
 local function partPen(model, rec)
 	local lt = model:FindFirstChild("LowerTorso")
 	for _, s in ipairs({ "Left", "Right" }) do
@@ -994,7 +1147,8 @@ end
 local function seriesOf(SALL)
 	local keys = { "t", "v", "rootZ", "rootYaw", "pelvisY", "headY", "headPitch", "hipL", "hipR", "thighL", "thighR", "kneeL", "kneeR", "ankleL", "ankleR",
 		"footPitchL", "footPitchR", "shoulderL", "shoulderR", "elbowL", "elbowR", "wristL", "pelvisYaw", "chestYaw", "trunkPitch", "soleL",
-		"soleR", "handZL", "handZR" }
+		"soleR", "handZL", "handZR", "footYawL", "footYawR", "thighYawL", "thighYawR", "kneeDirL", "kneeDirR", "pelvisRoll", "trunkRoll",
+		"headRoll", "headYaw", "twist", "rootX", "ltX", "headX", "side", "sideK", "flipK", "turnK", "dirRate", "yawRate", "run" }
 	local ser = {}
 	for _, x in ipairs(SALL) do
 		local row = {}
@@ -1002,6 +1156,7 @@ local function seriesOf(SALL)
 			row[k] = r4(x[k])
 		end
 		row.ankleZL, row.ankleZR = r4(x.anklePL.Z), r4(x.anklePR.Z)
+		row.ankleXL, row.ankleXR, row.ankleYL, row.ankleYR = r4(x.anklePL.X), r4(x.anklePR.X), r4(x.anklePL.Y), r4(x.anklePR.Y)
 		local pv = SALL[#ser]
 		for _, k in ipairs({ "L", "R" }) do
 			local slip = 0
@@ -1153,6 +1308,10 @@ local function walkClip(clip, tier, timing)
 					f.sigma or -1, f.pitchS or 0, smp.kneeL, f.reachShort or 0, tostring(f.k0 and math.deg(f.k0))))
 				print(string.format("    curZ %.3f tgtZ %.3f PZ %.3f t0 %.3f dur %.3f uS %.3f kind %s", f.cur and f.cur.Z or 0, f.tgtW and f.tgtW.Z or 0,
 					f.P and f.P.Z or 0, f.t0, f.dur, (t - f.t0) / f.dur, tostring(f.stepKind)))
+				local fr = rg.foot.R
+				print(string.format("    drop %.3f  L need %.3f load %.3f push %s exc %.3f | R swing %s need %.3f load %.3f push %s landW %.2f landNeed %.3f  kneeR %.0f",
+					rg.loco.drop or 0, f.needDrop or -9, f.needLoad or -9, tostring(f.push), f.excess or 0, tostring(fr.swing), fr.needDrop or -9,
+					fr.needLoad or -9, tostring(fr.push), fr.landWgt or 0, fr.landNeed or -9, smp.kneeR))
 			end
 		end
 		table.insert(SALL, smp)
@@ -1196,7 +1355,22 @@ local function walkClip(clip, tier, timing)
 			table.insert(lifts, trace[k].t)
 		end
 	end
-	local period = (#lifts >= 2) and (lifts[#lifts] - lifts[#lifts - 1]) or 1
+	-- (the left sole's lift-offs - its lowest point leaving the floor - averaged over the steady stretch: the foot part's
+	-- centre crossing a height read a toe-down swing's foot as lifting at another point of the cycle)
+	do
+		local sl, down = {}, nil
+		for _, x in ipairs(S) do
+			local d = x.soleL < 0.03
+			if down == true and not d then
+				table.insert(sl, x.t)
+			end
+			down = d
+		end
+		if #sl >= 3 then
+			lifts = sl
+		end
+	end
+	local period = (#lifts >= 3) and (lifts[#lifts] - lifts[1]) / (#lifts - 1) or ((#lifts >= 2) and (lifts[#lifts] - lifts[#lifts - 1]) or 1)
 	-- sway stats over the trace
 	local minX, maxX, minR, maxR, minU, maxU, minH, maxH = math.huge, -math.huge, math.huge, -math.huge, math.huge, -math.huge, math.huge, -math.huge
 	for _, s in ipairs(trace) do
@@ -1345,6 +1519,11 @@ local function walkClip(clip, tier, timing)
 		rec.animate.backDisabled = animate.Disabled == true and #animator:GetPlayingAnimationTracks() == 0
 	end
 	rec.gait = gaitSummary(S)
+	do
+		local rg0 = H.require("AnimRig").rigs[model]
+		rec.walk = walkStats(S, rg0 and rg0.geo and rg0.geo.legLen or 2.6)
+		print("      gait lab: " .. walkLine(rec.walk))
+	end
 	if clip == "shift" then
 		rec.shift = gaitSummary((function()
 			local o = {}
@@ -1487,8 +1666,50 @@ local SCRIPTS = {
 		end
 		return 0
 	end },
+	-- [Studio] W pressed and let go: a Humanoid on the ground goes from rest to its WalkSpeed and back in a frame or two
+	-- (here in one frame each way), the walk in between
+	walkgo = { total = 4.8, startAt = 1, stopAt = 3, shots = { 0.95, 1.05, 1.15, 1.25, 1.4, 1.6, 2.95, 3.05, 3.15, 3.25, 3.4, 3.6, 4.0 }, speed = function(t)
+		return (t > 1 and t <= 3) and SPEEDS.walk or 0
+	end, yaw = function()
+		return 0
+	end },
+	-- W, then Shift (6.5 -> 16 in a frame), then everything let go at a run: 16 -> 0 in one frame
+	runstop = { total = 5.8, startAt = 1, stopAt = 4.1, shots = { 4.05, 4.12, 4.18, 4.25, 4.32, 4.4, 4.5, 4.65, 4.8, 5.1, 5.6 }, speed = function(t)
+		if t <= 1 or t > 4.1 then
+			return 0
+		end
+		return t > 1.6 and SPEEDS.run or SPEEDS.walk
+	end, yaw = function()
+		return 0
+	end },
+	-- W, Shift held, then Shift let go: 16 -> 6.5 in a frame (the run -> walk handover), then the walk
+	runwalk = { total = 6.0, startAt = 1, slowAt = 3.6, shots = { 3.55, 3.65, 3.75, 3.85, 3.95, 4.1, 4.3, 4.6 }, speed = function(t)
+		if t <= 1 then
+			return 0
+		end
+		return (t > 1.6 and t <= 3.6) and SPEEDS.run or SPEEDS.walk
+	end, yaw = function()
+		return 0
+	end },
+	-- steering a run (AutoRotate, the camera swung a little each way): the way he goes swings +-25 degrees over 1.6 s and
+	-- the root's facing follows it a beat behind (the Humanoid turns toward its MoveDirection): a few degrees of the pace
+	-- across his facing, never a side step
+	runsteer = { total = 5.6, startAt = 1, lag = 6, shots = { 3.0, 3.1, 3.2, 3.3, 3.4, 3.5 }, speed = function(t)
+		if t <= 1 then
+			return 0
+		end
+		return t > 1.6 and SPEEDS.run or SPEEDS.walk
+	end, yaw = function(t)
+		return t > 2 and 0.44 * (2 * PI / 1.6) * math.cos((t - 2) * 2 * PI / 1.6) or 0
+	end },
+	-- the same at the town walk
+	walksteer = { total = 5.6, startAt = 1, lag = 6, shots = { 3.0, 3.1, 3.2, 3.3, 3.4, 3.5 }, speed = function(t)
+		return t > 1 and SPEEDS.walk or 0
+	end, yaw = function(t)
+		return t > 2 and 0.44 * (2 * PI / 1.6) * math.cos((t - 2) * 2 * PI / 1.6) or 0
+	end },
 }
-local function scriptClip(clip, tier)
+local function scriptClip(clip, tier, timing)
 	local sc = SCRIPTS[clip]
 	local model, hum = makeBoxer(tier)
 	model.Name = "Walker"
@@ -1498,46 +1719,79 @@ local function scriptClip(clip, tier)
 	local y0 = hrp.CFrame.Y
 	local sample = gaitSampler(model)
 	local x, z, yaw = 0, 0, 0
+	-- (sc.lag: the way he goes is the script's heading, the root's facing follows it at that rate - AutoRotate)
+	local head = 0
+	local maxSideK, maxFlipK, maxLatK = 0, 0, 0
 	local S = {}
 	local out = { clip = clip, tier = tier, frames = {} }
 	local shot = 1
 	local maxJ = { knee = 0, hip = 0, shoulder = 0, elbow = 0, pelvisY = 0, headY = 0, trunkRoll = 0, headYaw = 0, twist = 0, trunkPitch = 0 }
-	for i = 1, math.floor(sc.total / DT) do
-		local t = i * DT
+	-- (--timing: the frame timing as walkClip's; steady = the fixed 60 Hz frame. Joint steps are scaled to 1/60 s)
+	timing = timing or "steady"
+	local tick = timingOf(timing)
+	local t, i = 0, 0
+	while t < sc.total - 1e-9 do
+		local fdt, pdt = tick()
+		if timing == "steady" then
+			fdt, pdt = DT, DT
+		end
+		i += 1
+		t += fdt
 		local v, yr = sc.speed(t), sc.yaw(t)
-		yaw += yr * DT
-		local fx, fz = -math.sin(yaw), -math.cos(yaw)
-		x += fx * v * DT
-		z += fz * v * DT
+		local fx, fz
+		if sc.lag then
+			head += yr * fdt
+			local y1 = yaw + (head - yaw) * (1 - math.exp(-fdt * sc.lag))
+			yr = (y1 - yaw) / fdt
+			yaw = y1
+			fx, fz = -math.sin(head), -math.cos(head)
+		else
+			yaw += yr * fdt
+			fx, fz = -math.sin(yaw), -math.cos(yaw)
+		end
+		x += fx * v * pdt
+		z += fz * v * pdt
 		hrp.CFrame = CFrame.new(x, y0, z) * CFrame.Angles(0, yaw, 0)
 		hrp.AssemblyLinearVelocity = Vector3.new(fx * v, 0, fz * v)
 		hrp.AssemblyAngularVelocity = Vector3.new(0, yr, 0)
 		hum.MoveDirection = v > 0.05 and Vector3.new(fx, 0, fz) or Vector3.zero
-		frame({ model })
+		E.camera.CFrame = CFrame.new(x, y0 + 3, z + 10)
+		frame({ model }, fdt)
 		local smp = sample(t)
 		smp.v = v
+		smp.dt = fdt
+		do
+			local rg = H.require("AnimRig").rigs[model]
+			if rg and t > 2.5 then
+				maxSideK = math.max(maxSideK or 0, rg.loco.sideK or 0)
+				maxFlipK = math.max(maxFlipK, rg.loco.flipK or 0)
+				maxLatK = math.max(maxLatK, rg.loco.latK or 0)
+			end
+		end
 		if args.debugrig and t > tonumber(args.debugrig) and t < tonumber(args.debugrig) + 0.3 then
 			local rg = H.require("AnimRig").rigs[model]
 			for _, sd in ipairs({ "L", "R" }) do
 				local f = rg and rg.foot[sd]
 				if f then
-					print(string.format("dbg %.3f %s swing=%s push=%s sigma=%.2f pitch=%.2f knee=%.0f reachShort=%.3f excess=%.3f need=%.3f drop=%.3f run=%.2f",
+					print(string.format("dbg %.3f %s swing=%s push=%s sigma=%.2f pitch=%.2f knee=%.0f reachShort=%.3f excess=%.3f need=%.3f drop=%.3f run=%.2f lift=%.3f env=%s u=%.2f kind=%s cur=%s plan=%s",
 						t, sd, tostring(f.swing), tostring(f.push), f.sigma or -1, f.pitchS or 0, smp["knee" .. sd], f.reachShort or 0, f.excess or 0,
-						f.needDrop or -1, rg.loco.drop or 0, rg.loco.run))
+						f.needDrop or -1, rg.loco.drop or 0, rg.loco.run, f.curLift or -1, f.stopEnv and string.format("%.2f/%.3f", f.stopEnv.u, f.stopEnv.h) or "-",
+						f.swing and (t - f.t0) / f.dur or -1, tostring(f.stepKind), tostring(f.cur), tostring(f.plan)))
 				end
 			end
 		end
 		local pv = S[#S]
 		if pv then
+			local per = DT / fdt
 			for k, key in pairs({ knee = "knee", hip = "hip", shoulder = "shoulder", elbow = "elbow" }) do
 				for _, sd in ipairs({ "L", "R" }) do
-					maxJ[k] = math.max(maxJ[k], math.abs(smp[key .. sd] - pv[key .. sd]))
+					maxJ[k] = math.max(maxJ[k], math.abs(smp[key .. sd] - pv[key .. sd]) * per)
 				end
 			end
-			maxJ.pelvisY = math.max(maxJ.pelvisY, math.abs(smp.pelvisY - pv.pelvisY))
-			maxJ.headY = math.max(maxJ.headY, math.abs(smp.headY - pv.headY))
+			maxJ.pelvisY = math.max(maxJ.pelvisY, math.abs(smp.pelvisY - pv.pelvisY) * per)
+			maxJ.headY = math.max(maxJ.headY, math.abs(smp.headY - pv.headY) * per)
 			for _, k in ipairs({ "trunkRoll", "headYaw", "twist", "trunkPitch" }) do
-				maxJ[k] = math.max(maxJ[k], math.abs(smp[k] - pv[k]))
+				maxJ[k] = math.max(maxJ[k], math.abs(smp[k] - pv[k]) * per)
 			end
 		end
 		table.insert(S, smp)
@@ -1559,9 +1813,153 @@ local function scriptClip(clip, tier)
 		end
 	end
 	local g = gaitSummary(S)
-	local rec = { clip = clip, tier = tier, height = HEIGHT, gait = g, maxFrameStep = {} }
-	Host.WriteJSON(string.format("%s/gait_%s_t%d%s.json", OUT, clip, tier, HTAG), { clip = clip, tier = tier, height = HEIGHT, summary = g,
-		series = seriesOf(S) })
+	local TTAG = timing ~= "steady" and ("_" .. timing) or ""
+	local rec = { clip = clip, tier = tier, height = HEIGHT, gait = g, maxFrameStep = {}, timing = timing ~= "steady" and timing or nil }
+	-- the events (sc.startAt / stopAt / slowAt): what the legs, the pelvis and the arms do after them
+	do
+		local rg = H.require("AnimRig").rigs[model]
+		local L = rg and rg.geo and rg.geo.legLen or 2.6
+		rec.legLen = r4(L)
+		local function window(a, b)
+			local o = {}
+			for _, x in ipairs(S) do
+				if x.t > a and x.t <= b then
+					table.insert(o, x)
+				end
+			end
+			return o
+		end
+		-- per-1/60 s joint steps over a window (the pops)
+		local function pops(W)
+			local m = { knee = 0, hip = 0, shoulder = 0, elbow = 0, pelvisY = 0, headY = 0, ankle = 0 }
+			for k = 2, #W do
+				local a, b = W[k - 1], W[k]
+				local per = DT / (b.dt or DT)
+				for _, key in ipairs({ "knee", "hip", "shoulder", "elbow", "ankle" }) do
+					for _, sd in ipairs({ "L", "R" }) do
+						m[key] = math.max(m[key], math.abs(b[key .. sd] - a[key .. sd]) * per)
+					end
+				end
+				m.pelvisY = math.max(m.pelvisY, math.abs(b.pelvisY - a.pelvisY) * per)
+				m.headY = math.max(m.headY, math.abs(b.headY - a.headY) * per)
+			end
+			for k, v in pairs(m) do
+				m[k] = r4(v)
+			end
+			return m
+		end
+		-- the foot swings (a sole off the floor, 0.03) inside a window: their count and the longest
+		local function swings(W)
+			local up, n, longest = {}, 0, 0
+			for _, x in ipairs(W) do
+				for _, k in ipairs({ "L", "R" }) do
+					if x["sole" .. k] > 0.03 then
+						up[k] = up[k] or x.t
+					elseif up[k] then
+						n += 1
+						longest = math.max(longest, x.t - up[k])
+						up[k] = nil
+					end
+				end
+			end
+			for _, t0 in pairs(up) do
+				longest = math.max(longest, W[#W].t - t0)
+			end
+			return n, r4(longest)
+		end
+		if sc.stopAt then
+			local tE = sc.stopAt
+			local W = window(tE, sc.total)
+			-- the rest he comes to: the clip's last 0.25 s
+			local fin = window(sc.total - 0.25, sc.total)
+			local function mean(k)
+				local a = 0
+				for _, x in ipairs(fin) do
+					a += x[k]
+				end
+				return a / math.max(1, #fin)
+			end
+			local F = {}
+			for _, k in ipairs({ "kneeL", "kneeR", "pelvisY", "shoulderL", "shoulderR", "elbowL", "elbowR", "headY" }) do
+				F[k] = mean(k)
+			end
+			local lastAir, lastOff = tE, tE
+			local kneeAt = {}
+			-- (the foot in the air at the stop down: the first frame both soles are on the floor)
+			local downT
+			for _, x in ipairs(W) do
+				if not downT and x.soleL <= 0.03 and x.soleR <= 0.03 then
+					downT = x.t - tE
+				end
+				if x.soleL > 0.03 or x.soleR > 0.03 then
+					lastAir = x.t
+				end
+				local off = math.abs(x.kneeL - F.kneeL) > 5 or math.abs(x.kneeR - F.kneeR) > 5 or math.abs(x.pelvisY - F.pelvisY) > 0.03
+					or math.abs(x.shoulderL - F.shoulderL) > 5 or math.abs(x.shoulderR - F.shoulderR) > 5 or math.abs(x.elbowL - F.elbowL) > 8
+					or math.abs(x.elbowR - F.elbowR) > 8 or x.soleL > 0.03 or x.soleR > 0.03
+				if off then
+					lastOff = x.t
+				end
+				for _, dt0 in ipairs({ 0.15, 0.25, 0.4, 0.6 }) do
+					if not kneeAt[tostring(dt0)] and x.t >= tE + dt0 then
+						kneeAt[tostring(dt0)] = r4(math.max(x.kneeL, x.kneeR))
+					end
+				end
+			end
+			local n, longest = swings(W)
+			local gs = gaitSummary(W)
+			rec.stop = { at = tE, airT = r4(lastAir - tE), downT = r4(downT or -1), settleT = r4(lastOff - tE), kneeAt = kneeAt, steps = n,
+				longestSwing = longest,
+				slideL = gs.slideL, slideR = gs.slideR, sink = gs.sinkMin, pops = pops(W), final = F, pelvisY = gs.pelvisY, headY = gs.headY,
+				trunkPitch = gs.trunkPitch }
+			print(string.format("      stop at %.2f: both feet down at +%.3f s, a foot in the air until +%.3f s, settled at +%.3f s (%d steps after, longest swing %.3f), knee +0.15 %.0f +0.25 %.0f +0.4 %.0f +0.6 %.0f, slide %.3f/%.3f, pops knee %.1f hip %.1f shoulder %.1f elbow %.1f pelvis %.3f",
+				tE, rec.stop.downT, rec.stop.airT, rec.stop.settleT, n, longest, kneeAt["0.15"] or -1, kneeAt["0.25"] or -1, kneeAt["0.4"] or -1, kneeAt["0.6"] or -1,
+				gs.slideL, gs.slideR, rec.stop.pops.knee, rec.stop.pops.hip, rec.stop.pops.shoulder, rec.stop.pops.elbow, rec.stop.pops.pelvisY))
+		end
+		-- (the steady stretch between a start and a stop, from 0.8 s after the start: the gait lab's numbers)
+		if sc.startAt and sc.stopAt then
+			rec.mid = walkStats(window(sc.startAt + 0.8, sc.stopAt), L)
+			print("      gait lab (between start and stop): " .. walkLine(rec.mid))
+		end
+		if sc.startAt then
+			local tS = sc.startAt
+			local W = window(tS, tS + 1.2)
+			local first
+			for _, x in ipairs(W) do
+				if not first and (x.soleL > 0.03 or x.soleR > 0.03) then
+					first = x.t - tS
+				end
+			end
+			local n, longest = swings(W)
+			local gs = gaitSummary(W)
+			rec.start = { at = tS, firstLift = first and r4(first) or -1, steps = n, longestSwing = longest, slideL = gs.slideL, slideR = gs.slideR,
+				pops = pops(W), trunkPitch = gs.trunkPitch, sink = gs.sinkMin }
+			print(string.format("      start at %.2f: first lift +%.3f s, %d steps in 1.2 s (longest swing %.3f), slide %.3f/%.3f, pops knee %.1f hip %.1f shoulder %.1f pelvis %.3f",
+				tS, rec.start.firstLift, n, longest, gs.slideL, gs.slideR, rec.start.pops.knee, rec.start.pops.hip, rec.start.pops.shoulder, rec.start.pops.pelvisY))
+		end
+		if sc.slowAt then
+			local tE = sc.slowAt
+			local W = window(tE, tE + 1.2)
+			local n, longest = swings(W)
+			local gs = gaitSummary(W)
+			rec.slow = { at = tE, steps = n, longestSwing = longest, slideL = gs.slideL, slideR = gs.slideR, pops = pops(W), sink = gs.sinkMin,
+				pelvisY = gs.pelvisY, knee = { math.max(gs.kneeL[2], gs.kneeR[2]) }, sole = { math.max(gs.soleL[2], gs.soleR[2]) } }
+			print(string.format("      run -> walk at %.2f: %d steps in 1.2 s (longest swing %.3f), slide %.3f/%.3f, pops knee %.1f hip %.1f shoulder %.1f pelvis %.3f",
+				tE, n, longest, gs.slideL, gs.slideR, rec.slow.pops.knee, rec.slow.pops.hip, rec.slow.pops.shoulder, rec.slow.pops.pelvisY))
+		end
+		-- the steady stretch of a steered clip (2.5 s on, before the end): the side-step blend and the way the legs go
+		if sc.lag then
+			local W = window(2.5, sc.total - 0.3)
+			local gs = gaitSummary(W)
+			local n, longest = swings(W)
+			rec.steer = { gait = gs, steps = n, longestSwing = longest, sideKMax = r4(maxSideK or 0), flipKMax = r4(maxFlipK), latKMax = r4(maxLatK),
+				pops = pops(W), walk = walkStats(W, L) }
+			print(string.format("      steered: side-step blend peak %.2f, slide %.3f/%.3f, longest swing %.3f, pelvis roll %.1f..%.1f, trunk roll %.1f..%.1f",
+				maxSideK or 0, gs.slideL, gs.slideR, longest, gs.pelvisRoll[1], gs.pelvisRoll[2], gs.trunkRoll[1], gs.trunkRoll[2]))
+		end
+	end
+	Host.WriteJSON(string.format("%s/gait_%s_t%d%s%s.json", OUT, clip, tier, HTAG, TTAG), { clip = clip, tier = tier, height = HEIGHT, summary = g,
+		series = seriesOf(S), timing = timing })
 	for k, v in pairs(maxJ) do
 		rec.maxFrameStep[k] = r4(v)
 	end
@@ -1570,9 +1968,10 @@ local function scriptClip(clip, tier)
 	print(string.format("      trunk roll %.1f..%.1f pitch %.1f..%.1f  head yaw %.1f..%.1f  chest-pelvis twist %.1f..%.1f  pelvis yaw %.1f..%.1f deg; per frame: roll %.2f yaw %.2f twist %.2f",
 		g.trunkRoll[1], g.trunkRoll[2], g.trunkPitch[1], g.trunkPitch[2], g.headYaw[1], g.headYaw[2], g.twist[1], g.twist[2], g.pelvisYaw[1], g.pelvisYaw[2],
 		maxJ.trunkRoll, maxJ.headYaw, maxJ.twist))
-	local file = string.format("%s_t%d%s.json", clip, tier, HTAG)
+	local file = string.format("%s_t%d%s%s.json", clip, tier, HTAG, TTAG)
 	Host.WriteJSON(OUT .. "/" .. file, out)
-	table.insert(index.clips, { id = string.format("%s_t%d%s", clip, tier, HTAG), file = file, clip = clip, tier = tier, n = #out.frames })
+	table.insert(index.clips, { id = string.format("%s_t%d%s%s", clip, tier, HTAG, TTAG), file = file, clip = clip, tier = tier, n = #out.frames,
+		timing = timing })
 	table.insert(metrics, rec)
 	player.Character = nil
 	model:Destroy()
@@ -2874,9 +3273,11 @@ for _, tier in ipairs(TIERS) do
 			end
 		end
 	end
-	for _, clip in ipairs({ "startstop", "turn", "curve", "snapturn" }) do
+	for _, clip in ipairs({ "startstop", "turn", "curve", "snapturn", "walkgo", "runstop", "runwalk", "runsteer", "walksteer" }) do
 		if CLIPS[clip] then
-			scriptClip(clip, tier)
+			for _, timing in ipairs(TIMINGS) do
+				scriptClip(clip, tier, timing)
+			end
 		end
 	end
 	for _, clip in ipairs({ "strafe", "strafe16", "strafering", "strafeturn" }) do
