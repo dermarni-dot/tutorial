@@ -97,7 +97,9 @@ def draw_ball(d, x, y, r=13):
 
 def draw_hoop(d, net_swish=0.0):
     rx, ry = RIM
-    d.rectangle([rx + 40, ry - 10, rx + 60, GROUND], fill=(90, 90, 100))  # pole
+    d.rectangle([rx + 44, ry - 62, rx + 58, GROUND], fill=(90, 90, 100), outline=INK, width=2)  # pole
+    d.rectangle([rx + 32, ry - 56, rx + 46, ry - 44], fill=(90, 90, 100), outline=INK, width=2)  # arm
+    d.rectangle([rx + 30, GROUND - 6, rx + 72, GROUND + 4], fill=(70, 70, 80), outline=INK, width=2)  # base
     d.rectangle([rx + 20, ry - 105, rx + 34, ry + 20], fill=WHITE, outline=(40, 40, 40), width=3)
     d.rectangle([rx + 20, ry - 60, rx + 34, ry - 10], outline=(220, 40, 40), width=3)
     sway = math.sin(net_swish * 20) * 6 * net_swish
@@ -270,6 +272,31 @@ def person(d, x, hip_y, s=1.0, outfit="comets", pose=None, facing=1, mouth=0.0,
     return dict(hand=hand, back_hand=h_back, head=(hx, hy), sh=sh)
 
 
+def sit_hip(s):
+    return GROUND - 56 * s
+
+
+def chair(d, cx, s, facing=1, color=(150, 100, 65), back_h=75):
+    """Chair under a seated person at cx (feet on the floor, seat under the hips)."""
+    f = facing
+    seat = sit_hip(s) + 16 * s
+    x0, x1 = sorted((cx - f * 30 * s, cx + f * 34 * s))
+    bx = cx - f * 30 * s
+    d.rectangle([min(bx, bx - f * 10 * s), seat - back_h * s, max(bx, bx - f * 10 * s), seat], fill=color, outline=INK, width=2)
+    for lx in (x0 + 3 * s, x1 - 9 * s):
+        d.rectangle([lx, seat, lx + 6 * s, GROUND], fill=color, outline=INK, width=2)
+    d.rounded_rectangle([x0, seat, x1, seat + 9 * s], 3, fill=color, outline=INK, width=2)
+
+
+def plane_seat(d, cx, s=1.0):
+    seat = sit_hip(s) + 16 * s
+    c = (120, 70, 40)
+    d.rectangle([cx - 10 * s, seat + 18 * s, cx + 10 * s, GROUND], fill=(70, 70, 80), outline=INK, width=2)
+    d.rounded_rectangle([cx - 62 * s, seat - 150 * s, cx - 18 * s, seat + 10 * s], 16, fill=c, outline=INK, width=2)
+    d.rounded_rectangle([cx - 62 * s, seat - 4 * s, cx + 44 * s, seat + 22 * s], 10, fill=c, outline=INK, width=2)
+    d.rounded_rectangle([cx - 58 * s, seat - 150 * s, cx - 22 * s, seat - 125 * s], 8, fill=WHITE, outline=INK, width=1)
+
+
 def stand_hip(s):
     return GROUND - 96 * s
 
@@ -381,8 +408,6 @@ def bg_image(bg, idx):
         d.text((640, 80), "THE DRAFT", font=font(50), fill=(230, 200, 90), anchor="mm")
         d.rectangle([900, 380, 1010, GROUND], fill=(60, 40, 30))  # podium
         d.rectangle([920, 400, 990, 450], fill=(200, 170, 60))
-        d.ellipse([150, GROUND - 40, 520, GROUND + 40], fill=WHITE)  # table
-        d.rectangle([150, GROUND, 520, GROUND + 110], fill=(230, 230, 230))
     elif bg == "locker":
         d.rectangle([0, 0, W, GROUND], fill=(60, 70, 90))
         for i in range(10):
@@ -431,10 +456,21 @@ def bg_image(bg, idx):
             d.rectangle([560 + c * 135, 340, 640 + c * 135, 440], fill=(150, 200, 240))
         d.rectangle([830, 420, 930, GROUND], fill=(120, 80, 50))
         d.ellipse([20, GROUND + 30, 460, GROUND + 140], fill=(60, 180, 230), outline=WHITE, width=6)
-        d.rectangle([60, 260, 80, GROUND], fill=(120, 80, 50))
-        for a in range(0, 360, 60):
+        d.ellipse([60, GROUND + 50, 420, GROUND + 120], outline=(150, 220, 250), width=3)
+        for i in range(12):  # curved palm trunk
+            ty = GROUND - i * 24
+            tx = 70 + math.sin(i / 4) * 18
+            d.ellipse([tx - 14, ty - 16, tx + 14, ty + 6], fill=(150, 105, 65), outline=INK, width=2)
+        top = (70 + math.sin(11 / 4) * 18, GROUND - 270)
+        for a in (-160, -120, -60, -20, 200, 240):
             r = math.radians(a)
-            d.line([70, 260, 70 + 110 * math.cos(r), 260 + 50 * math.sin(r) + 20], fill=(40, 140, 50), width=18)
+            tip = (top[0] + 120 * math.cos(r), top[1] + 50 * math.sin(r) + 60)
+            mid = (top[0] + 70 * math.cos(r), top[1] - 25 + 30 * math.sin(r))
+            d.polygon([top, mid, tip, (mid[0], mid[1] + 18)], fill=(70, 150, 70), outline=INK, width=2)
+        for cx_ in (60, 85):
+            d.ellipse([cx_ - 10, top[1] - 4, cx_ + 10, top[1] + 16], fill=(120, 80, 40), outline=INK)
+        d.polygon([(950, GROUND), (1230, GROUND), (1280, H), (900, H)], fill=(175, 175, 175), outline=INK)
+        d.polygon([(840, GROUND), (920, GROUND), (960, H), (800, H)], fill=(225, 215, 195), outline=INK)
         d.rounded_rectangle([960, GROUND - 10, 1200, GROUND + 60], 25, fill=(200, 30, 40))
         d.rounded_rectangle([1000, GROUND - 50, 1150, GROUND], 20, fill=(170, 20, 30))
         for wx in (1000, 1160):
@@ -492,21 +528,69 @@ def plant(d, x, y, sc=1.0):
               fill=(200, 120, 80), outline=INK, width=2)
 
 
+def shingles(d, ax, ay, by, half, color):
+    """Rows of roof shingles inside a triangle roof (apex ax,ay; eave at by with half-width half)."""
+    for row, y in enumerate(range(int(ay) + 14, int(by), 13)):
+        hw = half * (y - ay) / (by - ay)
+        d.line([ax - hw, y, ax + hw, y], fill=color, width=2)
+        off = 0 if row % 2 else 14
+        for x in range(int(ax - hw) + off, int(ax + hw), 28):
+            d.line([x, y, x, y - 12], fill=color, width=2)
+
+
+def window(d, x0, y0, x1, y1, glass=(170, 210, 240), shutters=None, night=False):
+    if shutters:
+        sw = (x1 - x0) * 0.28
+        for sx in (x0 - sw - 3, x1 + 3):
+            d.rectangle([sx, y0, sx + sw, y1], fill=shutters, outline=INK, width=2)
+            for yy in range(int(y0) + 8, int(y1), 10):
+                d.line([sx + 3, yy, sx + sw - 3, yy], fill=tuple(max(0, c - 30) for c in shutters), width=1)
+    d.rectangle([x0, y0, x1, y1], fill=(250, 230, 150) if night else glass, outline=WHITE, width=5)
+    d.rectangle([x0, y0, x1, y1], outline=INK, width=2)
+    d.line([(x0 + x1) / 2, y0, (x0 + x1) / 2, y1], fill=WHITE, width=4)
+    d.line([x0, (y0 + y1) / 2, x1, (y0 + y1) / 2], fill=WHITE, width=4)
+    d.line([x0 + 8, y0 + 8, x0 + 22, y0 + 22], fill=(255, 255, 255, 140), width=3)
+    d.rectangle([x0 - 6, y1, x1 + 6, y1 + 8], fill=(240, 240, 240), outline=INK, width=2)
+
+
 def details(d, bg, idx, rnd):
     """Extra props so scenes feel lived-in instead of plain."""
     if bg == "driveway":
+        night = idx == 17
+        # siding (skip the garage and window)
+        for y in range(166, GROUND, 16):
+            for xa, xb in ((780, 1280),):
+                if y > 296:
+                    xb = 900
+                if 210 < y < 312:
+                    d.line([xa, y, 772, y], fill=(70, 115, 175), width=1)
+                    d.line([902, y, xb, y], fill=(70, 115, 175), width=1)
+                else:
+                    d.line([xa, y, xb, y], fill=(70, 115, 175), width=1)
+        d.polygon([(1150, 50), (1190, 50), (1190, 105), (1150, 89)], fill=(160, 80, 60), outline=INK, width=2)
+        d.rectangle([1144, 42, 1196, 52], fill=(120, 60, 45), outline=INK, width=2)
+        shingles(d, 1030, 40, 150, 270, (100, 50, 40))
+        d.rectangle([765, 148, 1295, 156], fill=(235, 235, 235), outline=INK, width=2)  # gutter
+        d.ellipse([1012, 92, 1048, 128], fill=(250, 230, 150) if night else (170, 210, 240), outline=INK, width=3)
+        d.line([1030, 92, 1030, 128], fill=WHITE, width=3); d.line([1012, 110, 1048, 110], fill=WHITE, width=3)
+        window(d, 800, 220, 870, 300, shutters=(50, 70, 120), night=night)
+        for i in range(5):
+            d.rectangle([915 + i * 60, 312, 960 + i * 60, 336], fill=(170, 210, 240), outline=INK, width=2)
+        d.rounded_rectangle([1040, GROUND - 26, 1080, GROUND - 18], 3, fill=(120, 120, 130), outline=INK)
+        d.rectangle([900, 300, 1220, GROUND + 10], outline=INK, width=2)
+        d.rectangle([882, 330, 894, 350], fill=(255, 240, 170), outline=INK, width=2)  # porch light
+        d.rectangle([776, GROUND - 6, 900, GROUND + 10], fill=(150, 150, 155), outline=INK, width=2)  # foundation
         for fx in range(0, 760, 34):
             d.polygon([(fx, GROUND - 95), (fx + 12, GROUND - 110), (fx + 24, GROUND - 95), (fx + 24, GROUND - 10),
                        (fx, GROUND - 10)], fill=(250, 248, 240), outline=INK)
         d.rectangle([0, GROUND - 80, 760, GROUND - 72], fill=(250, 248, 240), outline=INK)
-        bush(d, 820, GROUND + 8, 110, 70); bush(d, 1240, GROUND + 8, 90, 60)
+        bush(d, 820, GROUND + 8, 90, 60); bush(d, 1250, GROUND + 8, 70, 50)
         flowers(d, 20, 740, GROUND - 4, rnd)
         d.rectangle([300, GROUND - 70, 306, GROUND], fill=(110, 80, 50))
         d.rounded_rectangle([284, GROUND - 100, 324, GROUND - 70], 8, fill=(70, 110, 170), outline=INK, width=2)
         d.rectangle([308, GROUND - 112, 312, GROUND - 92], fill=(220, 60, 60))
-        d.rectangle([800, 220, 870, 300], outline=INK, width=2)
-        d.polygon([(800, 220), (822, 220), (812, 300), (800, 300)], fill=(230, 110, 110))
-        d.polygon([(870, 220), (848, 220), (858, 300), (870, 300)], fill=(230, 110, 110))
+        d.polygon([(803, 223), (822, 223), (812, 297), (803, 297)], fill=(230, 110, 110))
+        d.polygon([(867, 223), (848, 223), (858, 297), (867, 297)], fill=(230, 110, 110))
         d.ellipse([400, GROUND + 60, 520, GROUND + 90], fill=(120, 120, 120, 60))
     elif bg == "gym":
         d.ellipse([950, 70, 1030, 150], fill=WHITE, outline=INK, width=4)
@@ -521,6 +605,25 @@ def details(d, bg, idx, rnd):
         d.rectangle([880, GROUND - 90, 920, GROUND], fill=(80, 140, 220), outline=INK, width=2)
         d.rectangle([886, GROUND - 120, 914, GROUND - 90], fill=(200, 230, 250), outline=INK, width=2)
     elif bg == "campus":
+        for row, y in enumerate(range(128, GROUND, 14)):
+            d.line([702, y, 1198, y], fill=(150, 70, 55), width=1)
+            for x in range(702 + (0 if row % 2 else 15), 1198, 30):
+                d.line([x, y, x, y + 14], fill=(150, 70, 55), width=1)
+        shingles(d, 950, 30, 120, 270, (70, 70, 80))
+        d.rectangle([760, 60, 1140, 100], fill=(120, 20, 30), outline=INK, width=2)
+        d.text((950, 80), "STATE UNIVERSITY", font=font(26), fill=(240, 200, 60), anchor="mm")
+        for c in range(5):
+            for r in range(3):
+                if c == 2 and r == 2:
+                    continue
+                window(d, 730 + c * 95, 160 + r * 110, 790 + c * 95, 240 + r * 110, glass=(220, 225, 200))
+        d.chord([890, 380, 1010, 460], 180, 360, fill=(220, 225, 200), outline=INK, width=2)
+        d.rectangle([900, 420, 1000, GROUND], fill=(90, 50, 30), outline=INK, width=2)
+        d.line([950, 420, 950, GROUND], fill=INK, width=2)
+        d.ellipse([938, 480, 946, 488], fill=(240, 200, 80)); d.ellipse([954, 480, 962, 488], fill=(240, 200, 80))
+        for colx in (874, 1012):
+            d.rectangle([colx, 380, colx + 14, GROUND], fill=(240, 235, 225), outline=INK, width=2)
+        d.rectangle([862, GROUND - 8, 1038, GROUND + 2], fill=(200, 200, 200), outline=INK, width=2)
         bush(d, 640, GROUND, 130, 60); bush(d, 1230, GROUND, 120, 60)
         flowers(d, 560, 700, GROUND - 2, rnd); flowers(d, 1150, 1270, GROUND - 2, rnd)
         d.rectangle([250, GROUND - 50, 370, GROUND - 40], fill=(140, 95, 60), outline=INK, width=2)
@@ -555,6 +658,8 @@ def details(d, bg, idx, rnd):
         d.ellipse([350, GROUND + 30, 900, GROUND + 140], fill=(200, 110, 100), outline=INK, width=2)
         d.ellipse([400, GROUND + 45, 850, GROUND + 125], outline=(240, 200, 150), width=4)
         d.rectangle([380, 140, 640, 150], fill=(150, 105, 70), outline=INK, width=2)
+        for bx_ in (400, 610):
+            d.polygon([(bx_, 150), (bx_ + 22, 150), (bx_, 172)], fill=(120, 85, 55), outline=INK)
         for i, h in enumerate((40, 55, 35, 48)):
             d.rectangle([395 + i * 25, 140 - h, 415 + i * 25, 140], fill=[(200, 80, 80), (80, 120, 200), (90, 160, 90), (230, 190, 80)][i], outline=INK)
         d.rectangle([520, 105, 540, 140], fill=(245, 205, 90), outline=INK)
@@ -574,6 +679,7 @@ def details(d, bg, idx, rnd):
     elif bg == "hospital":
         for y in range(110, 310, 22):
             d.line([90, y, 370, y], fill=(220, 230, 240), width=3)
+        d.rectangle([66, 320, 394, 334], fill=(250, 250, 250), outline=INK, width=2)
         d.rectangle([180, 290, 220, 320], fill=(200, 220, 240), outline=INK, width=2)
         for i in range(5):
             fx = 186 + i * 7
@@ -583,9 +689,32 @@ def details(d, bg, idx, rnd):
         d.text((285, 306), "GET WELL", font=font(13), fill=(200, 70, 90), anchor="mm")
         plant(d, 50, GROUND, 0.8)
     elif bg == "mansion":
-        for hx in (560, 700, 1000, 1180):
+        shingles(d, 880, 50, 140, 380, (60, 60, 70))
+        for cx_ in (640, 1120):
+            ry_ = 50 + 90 * abs(cx_ + 20 - 880) / 380
+            d.polygon([(cx_, 30), (cx_ + 40, 30), (cx_ + 40, ry_ - 4), (cx_, ry_ + 6)], fill=(190, 110, 90), outline=INK, width=2)
+        d.rectangle([505, 138, 1255, 146], fill=(235, 235, 235), outline=INK, width=2)
+        for c in range(5):
+            window(d, 560 + c * 135, 190, 640 + c * 135, 290, shutters=(60, 110, 80))
+            if c != 2:
+                window(d, 560 + c * 135, 340, 640 + c * 135, 440, shutters=(60, 110, 80))
+        d.rectangle([800, 470, 960, 486], fill=(240, 240, 240), outline=INK, width=2)
+        d.rectangle([520, 315, 1240, 322], fill=(230, 225, 210), outline=INK, width=1)
+        # front door with portico
+        d.chord([830, 380, 930, 460], 180, 360, fill=(170, 210, 240), outline=INK, width=2)
+        d.rectangle([830, 420, 930, GROUND], fill=(120, 80, 50), outline=INK, width=2)
+        d.line([880, 420, 880, GROUND], fill=INK, width=2)
+        for px_ in (840, 890):
+            d.rectangle([px_, 432, px_ + 30, 470], outline=(90, 60, 35), width=2)
+            d.rectangle([px_, 480, px_ + 30, GROUND - 10], outline=(90, 60, 35), width=2)
+        d.ellipse([868, 482, 876, 490], fill=(240, 200, 80)); d.ellipse([884, 482, 892, 490], fill=(240, 200, 80))
+        d.polygon([(790, 375), (880, 335), (970, 375)], fill=(245, 240, 230), outline=INK, width=2)
+        for colx in (800, 945):
+            d.rectangle([colx, 375, colx + 15, GROUND], fill=(250, 250, 248), outline=INK, width=2)
+        d.rectangle([790, GROUND - 6, 970, GROUND + 4], fill=(210, 210, 210), outline=INK, width=2)
+        for hx in (580, 720):
             bush(d, hx, GROUND, 110, 50, (80, 150, 75))
-        flowers(d, 520, 1240, GROUND + 4, rnd)
+        flowers(d, 520, 790, GROUND + 4, rnd)
         for lx in (500, 1250):
             d.rectangle([lx, GROUND - 120, lx + 6, GROUND], fill=INK)
             d.ellipse([lx - 10, GROUND - 140, lx + 16, GROUND - 114], fill=(255, 240, 180), outline=INK, width=2)
@@ -627,8 +756,9 @@ def draw_dynamic_bg(d, bg, t, idx, look):
                 if x + 10 < cx < x + 130:
                     d.ellipse([cx - 25, cy - 10, cx + 25, cy + 10], fill=WHITE)
         for i in range(5):
-            x = 40 + i * 300
-            d.rounded_rectangle([x, 330, x + 120, GROUND - 40], 20, fill=(120, 70, 40))
+            if i == 2:
+                continue
+            plane_seat(d, 60 + i * 290 + 60, 1.0)
     elif bg == "intro":
         pass
 
@@ -750,14 +880,11 @@ def act(d, action, t, look, bg, mouth, idx):
         return
     elif action == "sit":
         cx = base_x if bg != "stage" else 330
-        if bg not in ("stage", "press", "plane"):
-            d.rectangle([cx - 35, GROUND - 105, cx + 30, GROUND - 92], fill=(110, 70, 40))
-            d.rectangle([cx - 35, GROUND - 92, cx - 25, GROUND], fill=(110, 70, 40))
-            d.rectangle([cx + 20, GROUND - 92, cx + 30, GROUND], fill=(110, 70, 40))
         if bg == "plane":
-            d.rounded_rectangle([cx - 60, GROUND - 220, cx - 10, GROUND - 40], 15, fill=(120, 70, 40))
-            d.rounded_rectangle([cx - 60, GROUND - 110, cx + 50, GROUND - 60], 15, fill=(120, 70, 40))
-        hy = GROUND - 100 * s
+            plane_seat(d, cx, s)
+        elif bg != "press":
+            chair(d, cx, s)
+        hy = sit_hip(s) if bg != "press" else GROUND - 100 * s  # tall chair hidden behind the press table
         leg = math.sin(t * 12) * 3 if bg == "stage" else 0
         g = math.sin(t * 2.5)
         pose = dict(ft=85, fs=0 + leg, bt=80, bs=-5, fu=30 + 15 * g, ff=80 + 15 * g, bu=10, bf=40)
@@ -771,9 +898,9 @@ def act(d, action, t, look, bg, mouth, idx):
     elif action == "sleep":
         if bg == "plane":
             cx = base_x
-            d.rounded_rectangle([cx - 60, GROUND - 220, cx - 10, GROUND - 40], 15, fill=(120, 70, 40))
+            plane_seat(d, cx, s)
             pose = dict(ft=85, fs=0, bt=80, bs=-5, fu=60, ff=110, bu=50, bf=100)
-            person(d, cx, GROUND - 100 * s, s, outfit, pose=pose, eyes_closed=True, head_drop=0.6)
+            person(d, cx, sit_hip(s), s, outfit, pose=pose, eyes_closed=True, head_drop=0.6)
             zx, zy = cx + 30, GROUND - 280
         else:
             bx = 200
@@ -782,11 +909,14 @@ def act(d, action, t, look, bg, mouth, idx):
             d.rectangle([bx + 395, GROUND - 160, bx + 420, GROUND], fill=(110, 70, 40))
             d.ellipse([bx + 25, GROUND - 160, bx + 120, GROUND - 115], fill=WHITE)
             hx, hy = bx + 80, GROUND - 150
-            d.ellipse([hx - 24, hy - 24, hx + 24, hy + 24], fill=SKIN)
-            d.chord([hx - 24, hy - 26, hx + 24, hy + 10], 180, 360, fill=HAIR)
-            d.line([hx + 4, hy, hx + 14, hy], fill=(20, 20, 20), width=2)
+            d.ellipse([hx - 28, hy - 28, hx + 28, hy + 28], fill=SKIN, outline=INK, width=2)
+            hair_shape(d, hx, hy, 28, 0.9, 1, HAIR)
+            for ox in (-2, 18):
+                d.arc([hx + ox - 5, hy + 2, hx + ox + 5, hy + 9], 20, 160, fill=INK, width=2)
+            d.arc([hx + 2, hy + 12, hx + 14, hy + 20], 25, 155, fill=INK, width=2)
             breathe = math.sin(t * 2) * 4
-            d.rounded_rectangle([bx + 100, GROUND - 150 - breathe, bx + 400, GROUND - 105], 20, fill=(60, 90, 160))
+            d.rounded_rectangle([bx + 100, GROUND - 150 - breathe, bx + 400, GROUND - 105], 20, fill=(60, 90, 160), outline=INK, width=2)
+            d.line([bx + 110, GROUND - 135 - breathe, bx + 390, GROUND - 135 - breathe], fill=(240, 240, 240), width=3)
             zx, zy = hx + 20, hy - 40
         for i in range(3):
             ph = (t * 0.6 + i / 3) % 1.0
@@ -821,18 +951,28 @@ def act(d, action, t, look, bg, mouth, idx):
         draw_hoop(d)
 
 
+def foreground(d, bg):
+    """Objects that sit in front of the characters."""
+    if bg == "stage":
+        d.rectangle([150, GROUND - 34, 430, GROUND + 50], fill=(245, 245, 245), outline=INK, width=2)
+        d.ellipse([140, GROUND - 50, 440, GROUND - 22], fill=WHITE, outline=INK, width=2)
+        for x in range(170, 430, 40):
+            d.line([x, GROUND - 20, x - 4, GROUND + 50], fill=(215, 215, 220), width=2)
+        d.rectangle([270, GROUND - 74, 300, GROUND - 40], fill=(200, 230, 250), outline=INK, width=2)  # water glass
+
+
 def extras(d, bg, idx, t, look, action):
     """Background characters per scene."""
     if bg == "stage":
         g = math.sin(t * 2)
         person(d, 955, stand_hip(1.0) - 10, 1.0, "suit", pose=dict(fu=60 + 10 * g, ff=90), facing=-1,
                skin=(230, 190, 160), hair=(160, 160, 160), mouth=0.2 * (g > 0.6))
-        person(d, 230, GROUND - 100, 0.95, "mom", pose=dict(ft=85, bt=80, fu=40, ff=70), skin=(185, 130, 95),
+        chair(d, 230, 0.95)
+        person(d, 230, sit_hip(0.95), 0.95, "mom", pose=dict(ft=85, bt=80, fu=40, ff=70), skin=(185, 130, 95),
                hair=(95, 60, 40), long_hair=True)
     elif bg == "locker" and action != "walk":
         person(d, 950, stand_hip(1.15), 1.15, "comets", pose=dict(fu=50, ff=120), facing=-1,
                skin=(90, 55, 35), hair=(10, 10, 10))
-        d.text((950, stand_hip(1.15) - 140), "Big Tony", font=font(18), fill=WHITE, anchor="mm")
     elif bg == "arena" and action in ("dribble", "sad"):
         g = math.sin(t * 3)
         person(d, 820, stand_hip(1.0) + 8, 1.0, "college", pose=dict(fu=100 + 20 * g, ff=150, bu=80 - 20 * g, bf=120,
@@ -841,7 +981,6 @@ def extras(d, bg, idx, t, look, action):
         g = math.sin(t * 1.7)
         person(d, 860, stand_hip(0.95), 0.95, "mom", pose=dict(fu=60 + 30 * g, ff=150 + 20 * g), facing=-1,
                skin=(185, 130, 95), hair=(95, 60, 40) if idx == 1 else (150, 140, 135), long_hair=True)
-        d.text((860, stand_hip(0.95) - 150), "Mom", font=font(18), fill=INK, anchor="mm")
     elif bg == "driveway" and idx == 15:
         for i, kx in enumerate((230, 320, 410)):
             b = abs(math.sin(t * 3 + i)) * 8
@@ -854,11 +993,9 @@ def extras(d, bg, idx, t, look, action):
         hx, hy = r["hand"]
         d.rectangle([hx - 14, hy - 9, hx + 2, hy + 1], fill=WHITE, outline=(80, 80, 80))
         d.rounded_rectangle([760, GROUND - 95, 800, GROUND - 65], 4, fill=(70, 45, 25))
-        d.text((740, stand_hip(1.0) - 130), "Agent", font=font(18), fill=(30, 30, 30), anchor="mm")
     elif bg == "hospital" and action != "hurt":
         person(d, 1000, stand_hip(1.0), 1.0, "gown", pose=dict(fu=40, ff=90), facing=-1,
                skin=(230, 190, 160), hair=(90, 60, 30))
-        d.text((1000, stand_hip(1.0) - 130), "Doctor", font=font(18), fill=(40, 40, 40), anchor="mm")
 
 
 # ------------------------------------------------------------------ overlays
@@ -959,6 +1096,7 @@ def render_scene(job):
         extras(d, bg, idx, t, look, action)
         mouth = min(1.0, env[min(fi, len(env) - 1)] * 6)
         act(d, action, t, look, bg, mouth, idx)
+        foreground(d, bg)
         img = camera(img, t, nframes / FPS, idx)
         d = ImageDraw.Draw(img, "RGBA")
         if idx == 0:
