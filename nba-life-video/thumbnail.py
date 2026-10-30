@@ -1,10 +1,10 @@
 """Renders a YouTube thumbnail (1280x720) for the video."""
 import sys
 from PIL import ImageDraw
-from render import bg_image, act, confetti, font, ORANGE, NAVY, WHITE
+from render import stylize, bg_image, act, confetti, font, ORANGE, NAVY, WHITE
 
-img = bg_image("arena", 14)
-d = ImageDraw.Draw(img)
+img = stylize(bg_image("arena", 14))
+d = ImageDraw.Draw(img, "RGBA")
 act(d, "celebrate", 0.4, ("comets", 1.45), "arena", 0.8, 14)
 d.rectangle([0, 0, 1280, 720], outline=ORANGE, width=14)
 for dx, dy in ((-4, -4), (4, 4), (-4, 4), (4, -4)):

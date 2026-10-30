@@ -13,7 +13,7 @@ import wave
 from multiprocessing import Pool
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from story import CHANNEL, SCENES, TITLE
 
@@ -38,6 +38,7 @@ def font(size, bold=True):
     return _fonts[key]
 
 
+INK = (22, 20, 28)
 SKIN = (139, 90, 55)
 HAIR = (30, 20, 15)
 NAVY = (22, 40, 98)
@@ -87,7 +88,7 @@ def tri(t, period):
 # --------------------------------------------------------------------- drawing
 
 def draw_ball(d, x, y, r=13):
-    d.ellipse([x - r, y - r, x + r, y + r], fill=BALL, outline=(60, 30, 10), width=2)
+    d.ellipse([x - r, y - r, x + r, y + r], fill=BALL, outline=INK, width=3)
     d.line([x - r, y, x + r, y], fill=(60, 30, 10), width=2)
     d.arc([x - r * 0.5, y - r, x + r * 1.5, y + r], 120, 240, fill=(60, 30, 10), width=2)
     d.arc([x - r * 1.5, y - r, x + r * 0.5, y + r], 300, 60, fill=(60, 30, 10), width=2)
@@ -111,75 +112,105 @@ def limb(p, a, L, f):
     return (p[0] + f * L * math.sin(r), p[1] + L * math.cos(r))
 
 
+def chain(d, pts, widths, color, ink=True):
+    """Draws a two-segment limb: black outline pass first, then colour, so joints stay seamless."""
+    passes = ((INK, 5), (color, 0)) if ink else ((color, 0),)
+    for c, extra in passes:
+        for i in range(len(pts) - 1):
+            w = widths[i] + extra
+            d.line([pts[i], pts[i + 1]], fill=c, width=int(w))
+            for p in (pts[i], pts[i + 1]):
+                r = w / 2
+                d.ellipse([p[0] - r, p[1] - r, p[0] + r, p[1] + r], fill=c)
+
+
 def seg(d, a, b, w, color):
-    d.line([a, b], fill=color, width=int(w))
-    r = w / 2
-    d.ellipse([b[0] - r, b[1] - r, b[0] + r, b[1] + r], fill=color)
+    chain(d, [a, b], [w], color)
+
+
+def shoe(d, a, s, f):
+    box = [a[0] - 7 * s, a[1] - 6 * s, a[0] + 18 * s, a[1] + 7 * s] if f > 0 else \
+          [a[0] - 18 * s, a[1] - 6 * s, a[0] + 7 * s, a[1] + 7 * s]
+    d.rounded_rectangle(box, 5 * s, fill=(245, 245, 245), outline=INK, width=3)
 
 
 def person(d, x, hip_y, s=1.0, outfit="comets", pose=None, facing=1, mouth=0.0,
            mood="happy", eyes_closed=False, head_drop=0.0, skin=SKIN, hair=HAIR):
-    """Draws a cartoon person. Angles: 0 = straight down, positive = toward facing."""
+    """Draws a bold, outlined cartoon person. Angles: 0 = straight down, positive = toward facing."""
     p = dict(fu=15, ff=35, bu=-10, bf=-5, ft=5, fs=0, bt=-5, bs=0)
     if pose:
         p.update(pose)
     shirt, shorts, numc, num = OUTFITS[outfit]
     f = facing
     hip = (x, hip_y)
-    sh = (x, hip_y - 72 * s)
-    lw = 15 * s
+    sh = (x, hip_y - 70 * s)
+    lw = 16 * s
+    long_sleeves = outfit in ("suit", "agent", "hoodie", "gown")
     pants = shorts if outfit not in ("kid", "hs", "college", "comets", "train") else skin
-    # back leg + arm
-    k = limb(hip, p["bt"], 50 * s, f); seg(d, hip, k, lw, shorts if pants != skin else shorts)
-    a = limb(k, p["bs"], 48 * s, f); seg(d, k, a, lw * 0.9, pants)
-    d.ellipse([a[0] - 6 * s, a[1] - 5 * s, a[0] + 16 * s * f if f > 0 else a[0] + 6 * s, a[1] + 6 * s] if f > 0
-              else [a[0] - 16 * s, a[1] - 5 * s, a[0] + 6 * s, a[1] + 6 * s], fill=(240, 240, 240))
-    e = limb(sh, p["bu"], 38 * s, f); seg(d, sh, e, lw * 0.85, shirt if outfit in ("suit", "agent", "hoodie", "gown") else skin)
-    h_back = limb(e, p["bf"], 36 * s, f); seg(d, e, h_back, lw * 0.8, skin)
+    k = limb(hip, p["bt"], 48 * s, f); a = limb(k, p["bs"], 46 * s, f)
+    e = limb(sh, p["bu"], 36 * s, f); h_back = limb(e, p["bf"], 34 * s, f)
+    k2 = limb(hip, p["ft"], 48 * s, f); a2 = limb(k2, p["fs"], 46 * s, f)
+    e2 = limb(sh, p["fu"], 36 * s, f); hand = limb(e2, p["ff"], 34 * s, f)
+    # ground shadow, shrinking as the player leaves the floor
+    lift = max(0.0, GROUND - max(a[1], a2[1]) - 6 * s)
+    sw = 48 * s * max(0.35, 1 - lift / 260)
+    d.ellipse([x - sw, GROUND - 6 * s, x + sw, GROUND + 8 * s], fill=(0, 0, 0, 70))
+    # back limbs
+    chain(d, [hip, k, a], [lw, lw * 0.9], pants if pants != skin else skin)
+    if pants == skin:
+        chain(d, [hip, limb(hip, p["bt"], 22 * s, f)], [lw * 1.2], shorts, ink=False)
+    shoe(d, a, s, f)
+    chain(d, [sh, e, h_back], [lw * 0.85, lw * 0.8], shirt if long_sleeves else skin)
+    d.ellipse([h_back[0] - 7 * s, h_back[1] - 7 * s, h_back[0] + 7 * s, h_back[1] + 7 * s], fill=skin, outline=INK, width=2)
     # front leg
-    k2 = limb(hip, p["ft"], 50 * s, f); seg(d, hip, k2, lw, shorts)
-    a2 = limb(k2, p["fs"], 48 * s, f); seg(d, k2, a2, lw * 0.9, pants)
-    d.ellipse([a2[0] - 6 * s, a2[1] - 5 * s, a2[0] + 16 * s, a2[1] + 6 * s] if f > 0
-              else [a2[0] - 16 * s, a2[1] - 5 * s, a2[0] + 6 * s, a2[1] + 6 * s], fill=(240, 240, 240))
-    # shorts block + torso
-    d.rounded_rectangle([x - 20 * s, hip_y - 14 * s, x + 20 * s, hip_y + 22 * s], 5, fill=shorts)
-    d.polygon([(x - 24 * s, sh[1] - 4 * s), (x + 24 * s, sh[1] - 4 * s),
-               (x + 20 * s, hip_y + 2 * s), (x - 20 * s, hip_y + 2 * s)], fill=shirt)
+    chain(d, [hip, k2, a2], [lw, lw * 0.9], pants)
+    shoe(d, a2, s, f)
+    # shorts + torso
+    d.rounded_rectangle([x - 21 * s, hip_y - 14 * s, x + 21 * s, hip_y + 24 * s], 6 * s, fill=shorts, outline=INK, width=3)
+    d.rounded_rectangle([x - 25 * s, sh[1] - 8 * s, x + 25 * s, hip_y + 4 * s], 12 * s, fill=shirt, outline=INK, width=3)
+    if not long_sleeves:
+        d.line([x - 16 * s, sh[1] - 6 * s, x - 22 * s, hip_y], fill=numc or WHITE, width=max(2, int(3 * s)))
+        d.line([x + 16 * s, sh[1] - 6 * s, x + 22 * s, hip_y], fill=numc or WHITE, width=max(2, int(3 * s)))
     if outfit in ("suit", "agent"):
-        d.polygon([(x - 6 * s, sh[1] - 4 * s), (x + 6 * s, sh[1] - 4 * s), (x, sh[1] + 26 * s)], fill=WHITE)
+        d.polygon([(x - 7 * s, sh[1] - 7 * s), (x + 7 * s, sh[1] - 7 * s), (x, sh[1] + 26 * s)], fill=WHITE)
         d.polygon([(x - 3 * s, sh[1]), (x + 3 * s, sh[1]), (x + 4 * s, sh[1] + 22 * s), (x, sh[1] + 28 * s),
-                   (x - 4 * s, sh[1] + 22 * s)], fill=(200, 40, 40))
+                   (x - 4 * s, sh[1] + 22 * s)], fill=(200, 40, 40), outline=INK)
     if num:
-        fs = font(max(10, int(26 * s)))
-        d.text((x, sh[1] + 30 * s), num, font=fs, fill=numc, anchor="mm")
+        fs = font(max(10, int(28 * s)))
+        d.text((x, sh[1] + 30 * s), num, font=fs, fill=numc, anchor="mm", stroke_width=max(1, int(2 * s)), stroke_fill=INK)
     # front arm
-    e2 = limb(sh, p["fu"], 38 * s, f); seg(d, sh, e2, lw * 0.85, shirt if outfit in ("suit", "agent", "hoodie", "gown") else skin)
-    hand = limb(e2, p["ff"], 36 * s, f); seg(d, e2, hand, lw * 0.8, skin)
-    # head
+    chain(d, [sh, e2, hand], [lw * 0.85, lw * 0.8], shirt if long_sleeves else skin)
+    d.ellipse([hand[0] - 7 * s, hand[1] - 7 * s, hand[0] + 7 * s, hand[1] + 7 * s], fill=skin, outline=INK, width=2)
+    # big cartoon head
     hx = x + f * head_drop * 8 * s
-    hy = sh[1] - 30 * s + head_drop * 10 * s
-    r = 24 * s
-    d.rectangle([x - 6 * s, sh[1] - 12 * s, x + 6 * s, sh[1]], fill=skin)
-    d.ellipse([hx - r, hy - r, hx + r, hy + r], fill=skin)
-    d.chord([hx - r, hy - r - 2 * s, hx + r, hy + r * 0.4], 180, 360, fill=hair)
-    d.ellipse([hx - f * r - 4 * s, hy - 4 * s, hx - f * r + 4 * s, hy + 6 * s], fill=skin)  # ear
-    ex = hx + f * 10 * s
-    ey = hy - 2 * s + head_drop * 3 * s
+    hy = sh[1] - 36 * s + head_drop * 10 * s
+    r = 31 * s
+    d.rectangle([x - 7 * s, sh[1] - 14 * s, x + 7 * s, sh[1]], fill=skin, outline=INK, width=2)
+    d.ellipse([hx - f * r - 6 * s, hy - 3 * s, hx - f * r + 6 * s, hy + 10 * s], fill=skin, outline=INK, width=2)
+    d.ellipse([hx - r, hy - r, hx + r, hy + r], fill=skin, outline=INK, width=3)
+    d.chord([hx - r, hy - r - 3 * s, hx + r, hy + r * 0.25], 180, 360, fill=hair, outline=INK, width=3)
+    ex = hx + f * 13 * s
+    ey = hy + 1 * s + head_drop * 3 * s
+    er = 8 * s
     if eyes_closed:
-        d.line([ex - 5 * s, ey, ex + 5 * s, ey], fill=(20, 20, 20), width=max(1, int(2 * s)))
+        d.arc([ex - er, ey - er, ex + er, ey + er], 20, 160, fill=INK, width=max(2, int(3 * s)))
     else:
-        d.ellipse([ex - 4 * s, ey - 4 * s, ex + 4 * s, ey + 4 * s], fill=WHITE)
-        d.ellipse([ex + f * 1 * s - 2 * s, ey - 2 * s, ex + f * 1 * s + 2.5 * s, ey + 2.5 * s], fill=(20, 20, 20))
-        d.line([ex - 6 * s, ey - 9 * s - (3 * s if mood == "sad" else 0) * 0, ex + 6 * s,
-                ey - 8 * s + (2 * s if mood == "sad" else 0)], fill=hair, width=max(1, int(2 * s)))
-    mx, my = hx + f * 9 * s, hy + 12 * s
+        for ox in (-0.55 * f * er * 1.9, 0.55 * f * er * 1.9):
+            cx = ex + ox
+            d.ellipse([cx - er * 0.8, ey - er, cx + er * 0.8, ey + er], fill=WHITE, outline=INK, width=2)
+            px = cx + f * 2 * s
+            d.ellipse([px - 3.5 * s, ey - 3 * s, px + 3.5 * s, ey + 5 * s], fill=INK)
+            d.ellipse([px - 1.5 * s, ey - 2 * s, px + 0.8 * s, ey + 0.5 * s], fill=WHITE)
+        tilt = 4 * s if mood == "sad" else -1 * s
+        d.line([ex - 13 * s, ey - 13 * s + f * tilt, ex + 13 * s, ey - 13 * s - f * tilt], fill=INK, width=max(2, int(3 * s)))
+    mx, my = hx + f * 12 * s, hy + 17 * s
     if mouth > 0.08:
-        mh = 2 + mouth * 9 * s
-        d.ellipse([mx - 6 * s, my - mh / 2, mx + 6 * s, my + mh / 2], fill=(90, 20, 30))
+        mh = 3 + mouth * 11 * s
+        d.ellipse([mx - 8 * s, my - mh / 2, mx + 8 * s, my + mh / 2], fill=(110, 25, 35), outline=INK, width=2)
     elif mood == "sad":
-        d.arc([mx - 6 * s, my, mx + 6 * s, my + 8 * s], 200, 340, fill=(60, 20, 20), width=max(1, int(2 * s)))
+        d.arc([mx - 8 * s, my, mx + 8 * s, my + 10 * s], 200, 340, fill=INK, width=max(2, int(3 * s)))
     else:
-        d.arc([mx - 7 * s, my - 6 * s, mx + 7 * s, my + 4 * s], 20, 160, fill=(60, 20, 20), width=max(1, int(2 * s)))
+        d.chord([mx - 9 * s, my - 6 * s, mx + 9 * s, my + 6 * s], 0, 180, fill=(110, 25, 35), outline=INK, width=2)
     return dict(hand=hand, back_hand=h_back, head=(hx, hy), sh=sh)
 
 
@@ -198,7 +229,7 @@ def sky(d, top, bot, y1=GROUND):
 
 def bg_image(bg, idx):
     img = Image.new("RGB", (W, H), (0, 0, 0))
-    d = ImageDraw.Draw(img)
+    d = ImageDraw.Draw(img, "RGBA")
     rnd = random.Random(idx * 7 + 3)
     night = idx in (17,)
     if bg == "driveway":
@@ -633,14 +664,13 @@ def extras(d, bg, idx, t, look, action):
 def subtitle(d, text):
     if not text:
         return
-    lines = textwrap.wrap(text, 58)
-    fs = font(30)
-    lh = 40
-    h = lh * len(lines) + 20
-    y0 = H - h - 14
-    d.rounded_rectangle([90, y0, W - 90, y0 + h], 14, fill=(10, 10, 15))
+    lines = textwrap.wrap(text, 52)
+    fs = font(36)
+    lh = 46
+    y0 = H - lh * len(lines) - 22
+    d.rectangle([0, y0 - 12, W, H], fill=(0, 0, 0, 120))
     for i, ln in enumerate(lines):
-        d.text((W / 2, y0 + 10 + lh * i + lh / 2), ln, font=fs, fill=(255, 235, 120), anchor="mm")
+        d.text((W / 2, y0 + lh * i + lh / 2), ln, font=fs, fill=WHITE, anchor="mm", stroke_width=5, stroke_fill=INK)
 
 
 def chapter_card(d, title, t):
@@ -649,9 +679,9 @@ def chapter_card(d, title, t):
     k = ease(t / 0.5) * (1 - ease((t - 4.0) / 0.5))
     w = 40 + font(44).getlength(title)
     x = lerp(-w, 0, k)
-    d.rectangle([x, 120, x + w + 30, 200], fill=ORANGE)
+    d.polygon([(x, 120), (x + w + 60, 120), (x + w + 30, 200), (x, 200)], fill=ORANGE, outline=INK, width=4)
     d.rectangle([x, 200, x + w + 30, 208], fill=NAVY)
-    d.text((x + 30, 160), title, font=font(44), fill=WHITE, anchor="lm")
+    d.text((x + 30, 160), title, font=font(44), fill=WHITE, anchor="lm", stroke_width=3, stroke_fill=INK)
 
 
 def watermark(d):
@@ -677,11 +707,33 @@ def intro_card(d, t):
 
 # ------------------------------------------------------------------- render
 
+def stylize(img):
+    """Ink outlines on every shape plus a soft vignette."""
+    edges = img.convert("L").filter(ImageFilter.FIND_EDGES).filter(ImageFilter.MaxFilter(3))
+    arr = np.asarray(img).astype(np.float32)
+    m = (np.asarray(edges) > 48)[..., None]
+    arr = np.where(m, arr * 0.18 + 6, arr)
+    yy, xx = np.mgrid[0:H, 0:W]
+    dist = np.sqrt(((xx - W / 2) / (W / 2)) ** 2 + ((yy - H / 2) / (H / 2)) ** 2)
+    arr *= (1 - 0.38 * np.clip(dist - 0.45, 0, 1) ** 1.4)[..., None]
+    return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+
+
+def camera(img, t, total, idx):
+    """Slow push-in (or pull-out on odd scenes) toward the action."""
+    k = ease(t / max(total, 1e-6))
+    z = 1.0 + 0.08 * (k if idx % 2 == 0 else 1 - k)
+    cx, cy = 640 + math.sin(t * 0.15 + idx) * 20, 370
+    hw, hh = W / 2 / z, H / 2 / z
+    cx = min(max(cx, hw), W - hw); cy = min(max(cy, hh), H - hh)
+    return img.resize((W, H), Image.BILINEAR, box=(cx - hw, cy - hh, cx + hw, cy + hh))
+
+
 def render_scene(job):
     idx, scene, nframes, cues, env, path = job
     bg = scene["bg"]
     look = SCENE_LOOK[idx]
-    base = bg_image(bg, idx)
+    base = stylize(bg_image(bg, idx))
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
            "-r", str(FPS), "-i", "-", "-c:v", "libx264", "-preset", "veryfast", "-crf", "24",
            "-pix_fmt", "yuv420p", path]
@@ -698,11 +750,13 @@ def render_scene(job):
                 text = txt
         action = actions[line_i % len(actions)]
         img = base.copy()
-        d = ImageDraw.Draw(img)
+        d = ImageDraw.Draw(img, "RGBA")
         draw_dynamic_bg(d, bg, t, idx, look)
         extras(d, bg, idx, t, look, action)
         mouth = min(1.0, env[min(fi, len(env) - 1)] * 6)
         act(d, action, t, look, bg, mouth, idx)
+        img = camera(img, t, nframes / FPS, idx)
+        d = ImageDraw.Draw(img, "RGBA")
         if idx == 0:
             intro_card(d, t)
         chapter_card(d, scene["title"], t)
