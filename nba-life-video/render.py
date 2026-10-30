@@ -38,25 +38,25 @@ def font(size, bold=True):
     return _fonts[key]
 
 
-INK = (22, 20, 28)
-SKIN = (139, 90, 55)
-HAIR = (30, 20, 15)
-NAVY = (22, 40, 98)
+INK = (45, 38, 38)
+SKIN = (196, 142, 104)
+HAIR = (70, 45, 30)
+NAVY = (48, 82, 165)
 ORANGE = (245, 130, 32)
 WHITE = (245, 245, 245)
 BALL = (226, 110, 30)
 
 # Outfits: (shirt, shorts, number color, number or None)
 OUTFITS = {
-    "kid": ((200, 40, 40), (40, 40, 60), WHITE, "23"),
-    "hs": ((30, 120, 60), (30, 120, 60), WHITE, "4"),
-    "college": ((120, 20, 30), (120, 20, 30), (240, 200, 60), "11"),
+    "kid": ((215, 80, 70), (70, 80, 120), WHITE, "23"),
+    "hs": ((245, 245, 245), (245, 245, 245), (48, 82, 165), "12"),
+    "college": ((165, 50, 60), (165, 50, 60), (245, 205, 90), "11"),
     "comets": (NAVY, NAVY, ORANGE, "0"),
     "suit": ((25, 30, 60), (25, 30, 60), None, None),
     "agent": ((110, 110, 120), (110, 110, 120), None, None),
     "hoodie": ((90, 90, 100), (50, 60, 90), None, None),
     "gown": ((170, 200, 220), (170, 200, 220), None, None),
-    "train": ((60, 60, 60), (20, 20, 20), ORANGE, "0"),
+    "train": ((110, 115, 125), (70, 75, 85), ORANGE, "0"),
 }
 
 # Per-scene look: outfit, scale, hoop present, extras
@@ -113,8 +113,8 @@ def limb(p, a, L, f):
 
 
 def chain(d, pts, widths, color, ink=True):
-    """Draws a two-segment limb: black outline pass first, then colour, so joints stay seamless."""
-    passes = ((INK, 5), (color, 0)) if ink else ((color, 0),)
+    """Two-segment limb: thin ink outline pass first, then colour, so joints stay seamless."""
+    passes = ((INK, 4), (color, 0)) if ink else ((color, 0),)
     for c, extra in passes:
         for i in range(len(pts) - 1):
             w = widths[i] + extra
@@ -129,88 +129,119 @@ def seg(d, a, b, w, color):
 
 
 def shoe(d, a, s, f):
-    box = [a[0] - 7 * s, a[1] - 6 * s, a[0] + 18 * s, a[1] + 7 * s] if f > 0 else \
-          [a[0] - 18 * s, a[1] - 6 * s, a[0] + 7 * s, a[1] + 7 * s]
-    d.rounded_rectangle(box, 5 * s, fill=(245, 245, 245), outline=INK, width=3)
+    box = [a[0] - 8 * s, a[1] - 5 * s, a[0] + 19 * s, a[1] + 8 * s] if f > 0 else \
+          [a[0] - 19 * s, a[1] - 5 * s, a[0] + 8 * s, a[1] + 8 * s]
+    d.rounded_rectangle(box, 6 * s, fill=(250, 250, 250), outline=INK, width=2)
+    d.line([box[0] + 2, box[3] - 3 * s, box[2] - 2, box[3] - 3 * s], fill=(210, 70, 70), width=max(1, int(2 * s)))
+
+
+def hair_shape(d, hx, hy, r, s, f, color):
+    """Fluffy spiky hair like a storybook illustration."""
+    pts = []
+    n = 13
+    for i in range(n + 1):
+        ang = math.radians(165 + 210 * i / n)
+        rr = r * (1.18 if i % 2 else 1.02)
+        pts.append((hx + rr * math.cos(ang) - f * 2 * s, hy - 4 * s + rr * math.sin(ang) * 0.95))
+    pts += [(hx + r * 0.95, hy - r * 0.05), (hx + r * 0.45, hy - r * 0.42), (hx - r * 0.1, hy - r * 0.28),
+            (hx - r * 0.55, hy - r * 0.45), (hx - r * 0.95, hy - r * 0.05)]
+    d.polygon(pts, fill=color, outline=INK, width=2)
 
 
 def person(d, x, hip_y, s=1.0, outfit="comets", pose=None, facing=1, mouth=0.0,
            mood="happy", eyes_closed=False, head_drop=0.0, skin=SKIN, hair=HAIR):
-    """Draws a bold, outlined cartoon person. Angles: 0 = straight down, positive = toward facing."""
+    """Storybook-style cartoon person. Angles: 0 = straight down, positive = toward facing."""
     p = dict(fu=15, ff=35, bu=-10, bf=-5, ft=5, fs=0, bt=-5, bs=0)
     if pose:
         p.update(pose)
     shirt, shorts, numc, num = OUTFITS[outfit]
     f = facing
     hip = (x, hip_y)
-    sh = (x, hip_y - 70 * s)
-    lw = 16 * s
+    sh = (x, hip_y - 68 * s)
+    lw = 15 * s
     long_sleeves = outfit in ("suit", "agent", "hoodie", "gown")
-    pants = shorts if outfit not in ("kid", "hs", "college", "comets", "train") else skin
+    long_pants = outfit not in ("kid", "hs", "college", "comets", "train")
     k = limb(hip, p["bt"], 48 * s, f); a = limb(k, p["bs"], 46 * s, f)
-    e = limb(sh, p["bu"], 36 * s, f); h_back = limb(e, p["bf"], 34 * s, f)
+    e = limb((x - f * 12 * s, sh[1] + 4 * s), p["bu"], 35 * s, f); h_back = limb(e, p["bf"], 33 * s, f)
     k2 = limb(hip, p["ft"], 48 * s, f); a2 = limb(k2, p["fs"], 46 * s, f)
-    e2 = limb(sh, p["fu"], 36 * s, f); hand = limb(e2, p["ff"], 34 * s, f)
-    # ground shadow, shrinking as the player leaves the floor
+    e2 = limb((x + f * 12 * s, sh[1] + 4 * s), p["fu"], 35 * s, f); hand = limb(e2, p["ff"], 33 * s, f)
     lift = max(0.0, GROUND - max(a[1], a2[1]) - 6 * s)
-    sw = 48 * s * max(0.35, 1 - lift / 260)
-    d.ellipse([x - sw, GROUND - 6 * s, x + sw, GROUND + 8 * s], fill=(0, 0, 0, 70))
-    # back limbs
-    chain(d, [hip, k, a], [lw, lw * 0.9], pants if pants != skin else skin)
-    if pants == skin:
-        chain(d, [hip, limb(hip, p["bt"], 22 * s, f)], [lw * 1.2], shorts, ink=False)
-    shoe(d, a, s, f)
-    chain(d, [sh, e, h_back], [lw * 0.85, lw * 0.8], shirt if long_sleeves else skin)
-    d.ellipse([h_back[0] - 7 * s, h_back[1] - 7 * s, h_back[0] + 7 * s, h_back[1] + 7 * s], fill=skin, outline=INK, width=2)
-    # front leg
-    chain(d, [hip, k2, a2], [lw, lw * 0.9], pants)
-    shoe(d, a2, s, f)
-    # shorts + torso
-    d.rounded_rectangle([x - 21 * s, hip_y - 14 * s, x + 21 * s, hip_y + 24 * s], 6 * s, fill=shorts, outline=INK, width=3)
-    d.rounded_rectangle([x - 25 * s, sh[1] - 8 * s, x + 25 * s, hip_y + 4 * s], 12 * s, fill=shirt, outline=INK, width=3)
+    sw = 46 * s * max(0.35, 1 - lift / 260)
+    d.ellipse([x - sw, GROUND - 5 * s, x + sw, GROUND + 7 * s], fill=(60, 40, 30, 45))
+    sleeve = shirt if long_sleeves else skin
+
+    def leg(hp, kn, an):
+        chain(d, [hp, kn, an], [lw, lw * 0.9], shorts if long_pants else skin)
+        if not long_pants:
+            mid = (lerp(hp[0], kn[0], 0.85), lerp(hp[1], kn[1], 0.85))
+            chain(d, [hp, mid], [lw * 1.55], shorts)
+            sock = (lerp(kn[0], an[0], 0.72), lerp(kn[1], an[1], 0.72))
+            chain(d, [sock, an], [lw * 0.85], (250, 250, 250))
+
+    def arm(shp, el, hd):
+        chain(d, [shp, el, hd], [lw * 0.85, lw * 0.75], sleeve)
+        d.ellipse([hd[0] - 7 * s, hd[1] - 7 * s, hd[0] + 7 * s, hd[1] + 7 * s], fill=skin, outline=INK, width=2)
+
+    leg(hip, k, a); shoe(d, a, s, f)
+    arm((x - f * 12 * s, sh[1] + 4 * s), e, h_back)
+    leg(hip, k2, a2); shoe(d, a2, s, f)
+    # torso
+    d.rounded_rectangle([x - 22 * s, hip_y - 12 * s, x + 22 * s, hip_y + 18 * s], 7 * s, fill=shorts, outline=INK, width=2)
+    top = sh[1] - 6 * s
+    body = [(x - 23 * s, top + 4 * s), (x - 10 * s, top), (x + 10 * s, top), (x + 23 * s, top + 4 * s),
+            (x + 25 * s, hip_y + 2 * s), (x - 25 * s, hip_y + 2 * s)]
+    d.polygon(body, fill=shirt, outline=INK, width=2)
     if not long_sleeves:
-        d.line([x - 16 * s, sh[1] - 6 * s, x - 22 * s, hip_y], fill=numc or WHITE, width=max(2, int(3 * s)))
-        d.line([x + 16 * s, sh[1] - 6 * s, x + 22 * s, hip_y], fill=numc or WHITE, width=max(2, int(3 * s)))
+        trim = numc or WHITE
+        d.polygon([(x - 9 * s, top), (x + 9 * s, top), (x, top + 14 * s)], fill=skin, outline=INK, width=2)
+        d.line([(x - 9 * s, top), (x, top + 14 * s), (x + 9 * s, top)], fill=trim, width=max(2, int(3 * s)))
+        for sd in (-1, 1):
+            d.arc([x + sd * 23 * s - 9 * s, top + 2 * s, x + sd * 23 * s + 9 * s, top + 30 * s],
+                  90 if sd > 0 else -90, 270 if sd > 0 else 90, fill=trim, width=max(2, int(3 * s)))
+        d.line([x - 22 * s, hip_y - 4 * s, x - 20 * s, hip_y + 16 * s], fill=trim, width=max(2, int(3 * s)))
+        d.line([x + 22 * s, hip_y - 4 * s, x + 20 * s, hip_y + 16 * s], fill=trim, width=max(2, int(3 * s)))
     if outfit in ("suit", "agent"):
-        d.polygon([(x - 7 * s, sh[1] - 7 * s), (x + 7 * s, sh[1] - 7 * s), (x, sh[1] + 26 * s)], fill=WHITE)
-        d.polygon([(x - 3 * s, sh[1]), (x + 3 * s, sh[1]), (x + 4 * s, sh[1] + 22 * s), (x, sh[1] + 28 * s),
-                   (x - 4 * s, sh[1] + 22 * s)], fill=(200, 40, 40), outline=INK)
+        d.polygon([(x - 8 * s, top), (x + 8 * s, top), (x, top + 30 * s)], fill=WHITE, outline=INK, width=1)
+        d.polygon([(x - 3 * s, top + 4 * s), (x + 3 * s, top + 4 * s), (x + 4 * s, top + 24 * s), (x, top + 30 * s),
+                   (x - 4 * s, top + 24 * s)], fill=(200, 60, 60), outline=INK)
+    if outfit == "hoodie":
+        d.arc([x - 14 * s, top - 6 * s, x + 14 * s, top + 14 * s], 0, 180, fill=INK, width=2)
     if num:
-        fs = font(max(10, int(28 * s)))
-        d.text((x, sh[1] + 30 * s), num, font=fs, fill=numc, anchor="mm", stroke_width=max(1, int(2 * s)), stroke_fill=INK)
-    # front arm
-    chain(d, [sh, e2, hand], [lw * 0.85, lw * 0.8], shirt if long_sleeves else skin)
-    d.ellipse([hand[0] - 7 * s, hand[1] - 7 * s, hand[0] + 7 * s, hand[1] + 7 * s], fill=skin, outline=INK, width=2)
-    # big cartoon head
+        d.text((x, top + 34 * s), num, font=font(max(10, int(26 * s))), fill=numc, anchor="mm",
+               stroke_width=max(1, int(2 * s)), stroke_fill=INK if numc != WHITE else (80, 80, 90))
+    arm((x + f * 12 * s, sh[1] + 4 * s), e2, hand)
+    # head
     hx = x + f * head_drop * 8 * s
-    hy = sh[1] - 36 * s + head_drop * 10 * s
-    r = 31 * s
-    d.rectangle([x - 7 * s, sh[1] - 14 * s, x + 7 * s, sh[1]], fill=skin, outline=INK, width=2)
-    d.ellipse([hx - f * r - 6 * s, hy - 3 * s, hx - f * r + 6 * s, hy + 10 * s], fill=skin, outline=INK, width=2)
-    d.ellipse([hx - r, hy - r, hx + r, hy + r], fill=skin, outline=INK, width=3)
-    d.chord([hx - r, hy - r - 3 * s, hx + r, hy + r * 0.25], 180, 360, fill=hair, outline=INK, width=3)
-    ex = hx + f * 13 * s
-    ey = hy + 1 * s + head_drop * 3 * s
-    er = 8 * s
-    if eyes_closed:
-        d.arc([ex - er, ey - er, ex + er, ey + er], 20, 160, fill=INK, width=max(2, int(3 * s)))
-    else:
-        for ox in (-0.55 * f * er * 1.9, 0.55 * f * er * 1.9):
-            cx = ex + ox
-            d.ellipse([cx - er * 0.8, ey - er, cx + er * 0.8, ey + er], fill=WHITE, outline=INK, width=2)
-            px = cx + f * 2 * s
-            d.ellipse([px - 3.5 * s, ey - 3 * s, px + 3.5 * s, ey + 5 * s], fill=INK)
-            d.ellipse([px - 1.5 * s, ey - 2 * s, px + 0.8 * s, ey + 0.5 * s], fill=WHITE)
-        tilt = 4 * s if mood == "sad" else -1 * s
-        d.line([ex - 13 * s, ey - 13 * s + f * tilt, ex + 13 * s, ey - 13 * s - f * tilt], fill=INK, width=max(2, int(3 * s)))
-    mx, my = hx + f * 12 * s, hy + 17 * s
+    hy = sh[1] - 38 * s + head_drop * 10 * s
+    r = 32 * s
+    d.rectangle([x - 7 * s, sh[1] - 16 * s, x + 7 * s, sh[1] - 2 * s], fill=skin, outline=INK, width=2)
+    d.ellipse([hx - f * r - 5 * s, hy - 2 * s, hx - f * r + 7 * s, hy + 12 * s], fill=skin, outline=INK, width=2)
+    d.chord([hx - r, hy - r, hx + r, hy + r * 1.02], 0, 360, fill=skin, outline=INK, width=2)
+    hair_shape(d, hx, hy, r, s, f, hair)
+    ex = hx + f * 9 * s
+    ey = hy + 5 * s + head_drop * 2 * s
+    for ox in (-11 * s, 11 * s):
+        cx = ex + ox
+        if eyes_closed:
+            d.arc([cx - 5 * s, ey - 3 * s, cx + 5 * s, ey + 5 * s], 20, 160, fill=INK, width=max(2, int(2 * s)))
+        else:
+            d.ellipse([cx - 3.6 * s, ey - 5.5 * s, cx + 3.6 * s, ey + 5.5 * s], fill=INK)
+            d.ellipse([cx - 1.8 * s, ey - 4 * s, cx + 0.4 * s, ey - 1.6 * s], fill=WHITE)
+        inner = 1 if ox * f < 0 else -1
+        lift_b = (3 * s if mood == "sad" else 0)
+        d.line([cx - 5 * s, ey - 11 * s - (lift_b if inner < 0 else 0), cx + 5 * s, ey - 11 * s - (lift_b if inner > 0 else 0)],
+               fill=INK, width=max(2, int(2 * s)))
+    d.arc([hx + f * 15 * s - 3 * s, ey + 2 * s, hx + f * 15 * s + 3 * s, ey + 8 * s], 270 if f > 0 else 90,
+          90 if f > 0 else 270, fill=INK, width=max(1, int(2 * s)))
+    mx, my = hx + f * 10 * s, hy + 20 * s
     if mouth > 0.08:
-        mh = 3 + mouth * 11 * s
-        d.ellipse([mx - 8 * s, my - mh / 2, mx + 8 * s, my + mh / 2], fill=(110, 25, 35), outline=INK, width=2)
+        mh = 3 + mouth * 9 * s
+        d.chord([mx - 7 * s, my - mh / 2, mx + 7 * s, my + mh], 0, 180, fill=(140, 50, 55), outline=INK, width=2)
+        d.chord([mx - 7 * s, my - mh, mx + 7 * s, my + mh * 0.2], 0, 180, fill=(140, 50, 55))
     elif mood == "sad":
-        d.arc([mx - 8 * s, my, mx + 8 * s, my + 10 * s], 200, 340, fill=INK, width=max(2, int(3 * s)))
+        d.arc([mx - 6 * s, my, mx + 6 * s, my + 8 * s], 200, 340, fill=INK, width=max(2, int(2 * s)))
     else:
-        d.chord([mx - 9 * s, my - 6 * s, mx + 9 * s, my + 6 * s], 0, 180, fill=(110, 25, 35), outline=INK, width=2)
+        d.arc([mx - 7 * s, my - 6 * s, mx + 7 * s, my + 4 * s], 25, 155, fill=INK, width=max(2, int(2 * s)))
     return dict(hand=hand, back_hand=h_back, head=(hx, hy), sh=sh)
 
 
@@ -641,7 +672,7 @@ def extras(d, bg, idx, t, look, action):
         person(d, 820, stand_hip(1.0) + 8, 1.0, "college", pose=dict(fu=100 + 20 * g, ff=150, bu=80 - 20 * g, bf=120,
                ft=25, fs=-20, bt=-20, bs=10), facing=-1, skin=(220, 180, 150))
     elif bg == "driveway" and idx == 15:
-        for i, kx in enumerate((150, 270, 390)):
+        for i, kx in enumerate((230, 320, 410)):
             b = abs(math.sin(t * 3 + i)) * 8
             person(d, kx, stand_hip(0.6) - b, 0.6, "comets", pose=dict(fu=150, ff=170, bu=140, bf=160),
                    skin=[(200, 150, 110), (110, 70, 40), (240, 200, 170)][i])
@@ -708,22 +739,21 @@ def intro_card(d, t):
 # ------------------------------------------------------------------- render
 
 def stylize(img):
-    """Ink outlines on every shape plus a soft vignette."""
-    edges = img.convert("L").filter(ImageFilter.FIND_EDGES).filter(ImageFilter.MaxFilter(3))
+    """Storybook look: soft pastel colours, thin ink lines, light paper grain."""
+    edges = np.asarray(img.convert("L").filter(ImageFilter.FIND_EDGES)) > 40
     arr = np.asarray(img).astype(np.float32)
-    m = (np.asarray(edges) > 48)[..., None]
-    arr = np.where(m, arr * 0.18 + 6, arr)
-    yy, xx = np.mgrid[0:H, 0:W]
-    dist = np.sqrt(((xx - W / 2) / (W / 2)) ** 2 + ((yy - H / 2) / (H / 2)) ** 2)
-    arr *= (1 - 0.38 * np.clip(dist - 0.45, 0, 1) ** 1.4)[..., None]
-    return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+    arr = arr * 0.74 + np.array([252, 242, 226], np.float32) * 0.26
+    m = edges[..., None]
+    arr = np.where(m, arr * 0.35 + np.array(INK, np.float32) * 0.4, arr)
+    grain = np.random.default_rng(3).normal(0, 3.5, (H, W, 1)).astype(np.float32)
+    return Image.fromarray(np.clip(arr + grain, 0, 255).astype(np.uint8))
 
 
 def camera(img, t, total, idx):
     """Slow push-in (or pull-out on odd scenes) toward the action."""
     k = ease(t / max(total, 1e-6))
-    z = 1.0 + 0.08 * (k if idx % 2 == 0 else 1 - k)
-    cx, cy = 640 + math.sin(t * 0.15 + idx) * 20, 370
+    z = 1.18 + 0.12 * (k if idx % 2 == 0 else 1 - k)
+    cx, cy = 680 + math.sin(t * 0.15 + idx) * 20, 350
     hw, hh = W / 2 / z, H / 2 / z
     cx = min(max(cx, hw), W - hw); cy = min(max(cy, hh), H - hh)
     return img.resize((W, H), Image.BILINEAR, box=(cx - hw, cy - hh, cx + hw, cy + hh))
