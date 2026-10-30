@@ -19,7 +19,8 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from story import CHANNEL, SCENES, TITLE
 
 W, H = 1280, 720
-FPS = 24
+FPS = 30
+SS = 2  # supersampling: the world is drawn at 2x and scaled down for smooth edges and sub-pixel motion
 SR = 44100
 GROUND = 545
 VOICE = "mb-us2"
@@ -30,6 +31,59 @@ OUT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "build")
 FONT_B = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_R = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 _fonts = {}
+
+
+def _sc(v):
+    if isinstance(v, (list, tuple)):
+        return [_sc(i) for i in v]
+    return v * SS
+
+
+_big_fonts = {}
+
+
+class SDraw:
+    """ImageDraw wrapper that takes 1280x720 coordinates and draws them on the 2x canvas."""
+
+    def __init__(self, img):
+        self.d = ImageDraw.Draw(img, "RGBA")
+
+    @staticmethod
+    def _kw(kw, need_width=False):
+        if "width" in kw:
+            kw["width"] = max(1, int(round(kw["width"] * SS)))
+        elif need_width or kw.get("outline") is not None:
+            kw["width"] = SS
+        return kw
+
+    def line(self, xy, **kw):
+        self.d.line(_sc(xy), **self._kw(kw, True))
+
+    def ellipse(self, xy, **kw):
+        self.d.ellipse(_sc(xy), **self._kw(kw))
+
+    def rectangle(self, xy, **kw):
+        self.d.rectangle(_sc(xy), **self._kw(kw))
+
+    def polygon(self, xy, **kw):
+        self.d.polygon([tuple(p) for p in _sc([tuple(p) for p in xy])], **self._kw(kw))
+
+    def rounded_rectangle(self, xy, radius=0, **kw):
+        self.d.rounded_rectangle(_sc(xy), radius * SS, **self._kw(kw))
+
+    def arc(self, xy, start, end, **kw):
+        self.d.arc(_sc(xy), start, end, **self._kw(kw, True))
+
+    def chord(self, xy, start, end, **kw):
+        self.d.chord(_sc(xy), start, end, **self._kw(kw))
+
+    def text(self, xy, text, font=None, **kw):
+        key = (font.path, font.size)
+        if key not in _big_fonts:
+            _big_fonts[key] = ImageFont.truetype(font.path, font.size * SS)
+        if "stroke_width" in kw:
+            kw["stroke_width"] = kw["stroke_width"] * SS
+        self.d.text(_sc(xy), text, font=_big_fonts[key], **kw)
 
 
 def font(size, bold=True):
@@ -344,8 +398,8 @@ def sky(d, top, bot, y1=GROUND):
 
 
 def bg_image(bg, idx):
-    img = Image.new("RGB", (W, H), (0, 0, 0))
-    d = ImageDraw.Draw(img, "RGBA")
+    img = Image.new("RGB", (W * SS, H * SS), (0, 0, 0))
+    d = SDraw(img)
     rnd = random.Random(idx * 7 + 3)
     night = idx in (17,)
     if bg == "driveway":
@@ -766,8 +820,8 @@ def details(d, bg, idx, rnd):
 
 def draw_dynamic_bg(d, bg, t, idx, look):
     if bg == "arena" or bg == "intro":
-        rnd = random.Random(int(t * 8) + idx * 1000)
-        for _ in range(10):
+        rnd = random.Random(int(t * 5) + idx * 1000)
+        for _ in range(6):
             x = rnd.randint(0, W); y = rnd.randint(110, 400)
             d.ellipse([x - 6, y - 6, x + 6, y + 6], fill=(255, 255, 240))
         if bg == "arena":
@@ -832,10 +886,11 @@ def act(d, action, t, look, bg, mouth, idx):
                mouth=speaking, mood="sad", head_drop=1.0)
     elif action == "walk":
         span = 420
-        p = tri(t, 9.0)
-        x = 640 - span / 2 + span * p
-        facing = 1 if ((t / 9.0) % 1.0) < 0.5 else -1
-        w = math.sin(t * 6)
+        ph = 2 * math.pi * t / 11.0 - math.pi / 2
+        x = 640 + span / 2 * math.sin(ph)
+        vel = math.cos(ph)
+        facing = 1 if vel >= 0 else -1
+        w = math.sin(t * 6) * min(1.0, abs(vel) * 2.5)
         pose = dict(ft=25 * w, fs=25 * w - 15 * max(0, -w), bt=-25 * w, bs=-25 * w - 15 * max(0, w),
                     fu=-25 * w, ff=-10 * w + 15, bu=25 * w, bf=25 * w + 15)
         person(d, x, hip_y - abs(w) * 3 * s, s, outfit, pose=pose, facing=facing, mouth=speaking)
@@ -849,66 +904,96 @@ def act(d, action, t, look, bg, mouth, idx):
         by = lerp(GROUND - 13 * s, hy + 12 * s, bounce)
         draw_ball(d, hx + 6 * s, by, 13 * s)
     elif action == "shoot":
-        cyc = 2.6
+        cyc = 3.4
         p = t % cyc
         x = base_x + 40
         net = 0.0
+        gather = dict(fu=30, ff=80, bu=-10, bf=20, ft=25, fs=-25, bt=15, bs=-25)
+        up = dict(fu=160, ff=150, bu=150, bf=170, ft=5, fs=0, bt=-5, bs=0)
+        follow = dict(fu=170, ff=200, bu=150, bf=175, ft=5, fs=10, bt=-8, bs=5)
         if p < 0.7:
             k = ease(p / 0.7)
-            pose = dict(fu=lerp(30, 160, k), ff=lerp(80, 150, k), bu=lerp(-10, 150, k), bf=lerp(20, 170, k),
-                        ft=lerp(25, 5, k), fs=lerp(-25, 0, k), bt=lerp(15, -5, k), bs=lerp(-25, 0, k))
-            dy = lerp(14, -10, k) * s
-            r = person(d, x, hip_y + dy, s, outfit, pose=pose, mouth=speaking)
+            pose = {n: lerp(gather[n], up[n], k) for n in gather}
+            r = person(d, x, hip_y + lerp(14, -10, k) * s, s, outfit, pose=pose, mouth=speaking)
             draw_ball(d, r["hand"][0], r["hand"][1] - 12 * s, 13 * s)
         else:
             jump = max(0, math.sin(min(1, (p - 0.7) / 0.6) * math.pi)) * 30 * s
-            pose = dict(fu=170, ff=200, bu=150, bf=175, ft=5, fs=10, bt=-8, bs=5)
-            r = person(d, x, hip_y - jump, s, outfit, pose=pose, mouth=speaking)
+            k = ease((p - 0.7) / 0.15)
+            pose = {n: lerp(up[n], follow[n], k) for n in up}
+            dy = -jump - lerp(10, 0, min(1, (p - 0.7) / 0.6)) * s
+            if p > 2.4:
+                k2 = ease((p - 2.4) / 1.0)
+                pose = {n: lerp(follow[n], gather[n], k2) for n in follow}
+                dy = lerp(0, 14, k2) * s
+            r = person(d, x, hip_y + dy, s, outfit, pose=pose, mouth=speaking)
             q = (p - 0.7) / 1.1
             sx, sy = x + 30 * s, hip_y - 190 * s
             if q < 1:
                 bx = lerp(sx, RIM[0] - 6, q)
                 by = lerp(sy, RIM[1] - 14, q) - math.sin(q * math.pi) * 170
                 draw_ball(d, bx, by)
-            else:
-                q2 = (p - 1.8) / 0.8
-                draw_ball(d, RIM[0] - 6 + q2 * 10, lerp(RIM[1] - 10, GROUND - 13, q2 * q2) if q2 < 1 else GROUND - 13)
+            elif p < 2.4:
+                q2 = (p - 1.8) / 0.6
+                draw_ball(d, RIM[0] - 6 + q2 * 10, lerp(RIM[1] - 10, GROUND - 13, q2 * q2))
                 net = max(0, 1 - q2)
+            else:
+                k3 = (p - 2.4) / 1.0
+                hx, hy = r["hand"][0], r["hand"][1] - 12 * s
+                bx = lerp(RIM[0] + 4, hx, ease(k3))
+                by = lerp(GROUND - 13, hy, k3) - abs(math.sin(k3 * math.pi * 1.5)) * 70 * (1 - k3)
+                draw_ball(d, bx, min(by, GROUND - 13))
         draw_hoop(d, net)
         return
     elif action == "dunk":
-        cyc = 3.2
+        cyc = 4.8
         p = t % cyc
         net = 0.0
         x0, x1 = 380, RIM[0] - 45 * s
+        top = hip_y - (RIM[1] + 140 * s)
+        dribble = dict(fu=40, ff=70, bu=0, bf=40)
         if p < 1.3:
             k = p / 1.3
             x = lerp(x0, x1 - 40, ease(k))
-            w = math.sin(t * 9)
-            pose = dict(ft=30 * w, fs=30 * w - 20, bt=-30 * w, bs=-30 * w - 20, fu=40, ff=70, bu=25 * w, bf=40)
+            w = math.sin(t * 9) * min(1.0, math.sin(k * math.pi) * 3)
+            pose = dict(ft=30 * w, fs=30 * w - 20, bt=-30 * w, bs=-30 * w - 20, bu=25 * w, **{n: dribble[n] for n in ("fu", "ff", "bf")})
             r = person(d, x, hip_y, s, outfit, pose=pose, mouth=speaking)
-            draw_ball(d, r["hand"][0], r["hand"][1], 13 * s)
+            bounce = abs(math.sin(t * math.pi * 2.4))
+            draw_ball(d, r["hand"][0] + 6 * s, lerp(GROUND - 13 * s, r["hand"][1] + 12 * s, bounce), 13 * s)
         elif p < 2.0:
             k = (p - 1.3) / 0.7
             x = lerp(x1 - 40, x1, k)
-            lift = math.sin(k * math.pi / 2) * (hip_y - (RIM[1] + 140 * s) + 0)
-            pose = dict(fu=lerp(60, 175, k), ff=lerp(90, 178, k), bu=-20, bf=-10, ft=40, fs=-30, bt=-10, bs=-40)
+            lift = math.sin(k * math.pi / 2) * top
+            pose = dict(fu=lerp(40, 175, k), ff=lerp(70, 178, k), bu=lerp(0, -20, k), bf=lerp(40, -10, k),
+                        ft=lerp(0, 40, k), fs=lerp(-20, -30, k), bt=lerp(0, -10, k), bs=lerp(-20, -40, k))
             r = person(d, x, hip_y - lift, s, outfit, pose=pose, mouth=speaking)
             draw_ball(d, r["hand"][0], r["hand"][1] - 12, 13 * s)
         elif p < 2.4:
-            lift = hip_y - (RIM[1] + 140 * s)
-            pose = dict(fu=178, ff=178, bu=-20, bf=-10, ft=10, fs=-10, bt=-5, bs=-20)
-            draw_ball(d, RIM[0] - 6, RIM[1] + 30 + (p - 2.0) * 300)
+            k = (p - 2.0) / 0.4
+            pose = dict(fu=178, ff=178, bu=-20, bf=-10, ft=lerp(40, 10, k), fs=lerp(-30, -10, k), bt=-5, bs=-20)
+            draw_ball(d, RIM[0] - 6, RIM[1] + 30 + k * 120)
             draw_hoop(d, 1.0)
-            person(d, x1, hip_y - lift + 10, s, outfit, pose=pose, mouth=speaking)
+            person(d, x1, hip_y - top + 10 * math.sin(k * math.pi), s, outfit, pose=pose, mouth=speaking)
             return
-        else:
-            k = (p - 2.4) / 0.8
-            lift = (hip_y - (RIM[1] + 140 * s)) * (1 - ease(k * 1.6))
-            pose = dict(fu=150, ff=170, bu=150, bf=170, ft=10, fs=0, bt=-10, bs=0)
-            person(d, x1 - 20, hip_y - max(0, lift), s, outfit, pose=pose, mouth=speaking)
-            draw_ball(d, RIM[0] + 20 + k * 60, GROUND - 13 - abs(math.sin(k * 8)) * 60 * (1 - k))
+        elif p < 3.3:
+            k = (p - 2.4) / 0.9
+            lift = top * (1 - ease(min(1, k * 1.8)))
+            hang = dict(fu=178, ff=178, bu=-20, bf=-10, ft=10, fs=-10, bt=-5, bs=-20)
+            land = dict(fu=40, ff=70, bu=0, bf=40, ft=20, fs=-25, bt=-15, bs=-20)
+            pose = {n: lerp(hang[n], land[n], ease(k)) for n in hang}
+            r = person(d, x1, hip_y - max(0.0, lift) + 10 * (1 - k), s, outfit, pose=pose, mouth=speaking)
+            hx, hy = r["hand"][0] + 6 * s, r["hand"][1] + 12 * s
+            bx = lerp(RIM[0] - 6, hx, ease(k))
+            by = lerp(RIM[1] + 78, hy, k) + abs(math.sin(k * math.pi)) * (GROUND - 13 - RIM[1] - 78) * (1 - k * 0.5)
+            draw_ball(d, bx, min(by, GROUND - 13))
             net = max(0, 1 - k)
+        else:
+            k = (p - 3.3) / 1.5
+            x = lerp(x1, x0, ease(k))
+            w = math.sin(t * 8) * min(1.0, math.sin(k * math.pi) * 3)
+            pose = dict(ft=25 * w, fs=25 * w - 15, bt=-25 * w, bs=-25 * w - 15, bu=20 * w, fu=40, ff=70, bf=40)
+            r = person(d, x, hip_y, s, outfit, pose=pose, facing=-1 if k < 0.97 else 1, mouth=speaking)
+            bounce = abs(math.sin(t * math.pi * 2.4))
+            draw_ball(d, r["hand"][0] - 6 * s, lerp(GROUND - 13 * s, r["hand"][1] + 12 * s, bounce), 13 * s)
         draw_hoop(d, net)
         return
     elif action == "sit":
@@ -1086,10 +1171,12 @@ def stylize(img):
     arr = arr * 0.74 + np.array([252, 242, 226], np.float32) * 0.26
     m = edges[..., None]
     arr = np.where(m, arr * 0.35 + np.array(INK, np.float32) * 0.4, arr)
-    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    ch, cw = arr.shape[:2]
+    yy, xx = np.mgrid[0:ch, 0:cw].astype(np.float32)
+    yy *= H / ch; xx *= W / cw
     light = 1.06 - 0.10 * (yy / H) - 0.05 * (xx / W) + 0.05 * np.exp(-((xx - 300) ** 2 + (yy - 80) ** 2) / 90000)
     arr *= light[..., None]
-    grain = np.random.default_rng(3).normal(0, 3.5, (H, W, 1)).astype(np.float32)
+    grain = np.random.default_rng(3).normal(0, 3.5, (ch, cw, 1)).astype(np.float32)
     return Image.fromarray(np.clip(arr + grain, 0, 255).astype(np.uint8))
 
 
@@ -1100,7 +1187,7 @@ def camera(img, t, total, idx):
     cx, cy = 680 + math.sin(t * 0.15 + idx) * 20, 350
     hw, hh = W / 2 / z, H / 2 / z
     cx = min(max(cx, hw), W - hw); cy = min(max(cy, hh), H - hh)
-    return img.resize((W, H), Image.BILINEAR, box=(cx - hw, cy - hh, cx + hw, cy + hh))
+    return img.resize((W, H), Image.BILINEAR, box=tuple(v * SS for v in (cx - hw, cy - hh, cx + hw, cy + hh)))
 
 
 def render_scene(job):
@@ -1130,7 +1217,7 @@ def render_scene(job):
                 text = txt
         action = actions[line_i % len(actions)]
         img = base.copy()
-        d = ImageDraw.Draw(img, "RGBA")
+        d = SDraw(img)
         draw_dynamic_bg(d, bg, t, idx, look)
         extras(d, bg, idx, t, look, action)
         mouth = min(1.0, env[min(fi, len(env) - 1)] * 6)
@@ -1142,7 +1229,7 @@ def render_scene(job):
         if prev and tl < TWEEN_TIME and prev not in no_body and action not in no_body:
             scratch = img.copy()
             TWEEN = dict(mode="record", active=True, rec=None)
-            act(ImageDraw.Draw(scratch, "RGBA"), prev, t - starts[j], look, bg, mouth, idx)
+            act(SDraw(scratch), prev, t - starts[j], look, bg, mouth, idx)
             TWEEN = dict(mode="blend", active=True, rec=TWEEN["rec"], k=ease(tl / TWEEN_TIME))
             act(d, action, tl, look, bg, mouth, idx)
             TWEEN = None
@@ -1246,7 +1333,11 @@ def main():
         spf = SR // FPS
         env = np.array([np.sqrt(np.mean(voice[k * spf:(k + 1) * spf] ** 2)) for k in range(nframes)])
         env = np.convolve(env, np.ones(3) / 3, mode="same")
-        env = np.round(np.minimum(1.0, env * 6) * 3) / 3 / 6  # 3 mouth shapes, no flicker
+        sm = np.zeros_like(env)
+        for k in range(1, len(env)):
+            rate = 0.55 if env[k] > sm[k - 1] else 0.3
+            sm[k] = sm[k - 1] + (env[k] - sm[k - 1]) * rate
+        env = sm
         scene_audio.append((sc["bg"], voice))
         jobs.append((si, sc, nframes, cues, env, os.path.join(OUT, f"seg_{si:02d}.mp4")))
         print(f"  scene {si:2d} {sc['bg']:9s} {total:6.1f}s")
