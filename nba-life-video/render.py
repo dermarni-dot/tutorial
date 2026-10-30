@@ -52,6 +52,7 @@ OUTFITS = {
     "college": ((120, 20, 30), (120, 20, 30), (240, 200, 60), "11"),
     "comets": (NAVY, NAVY, ORANGE, "0"),
     "suit": ((25, 30, 60), (25, 30, 60), None, None),
+    "agent": ((110, 110, 120), (110, 110, 120), None, None),
     "hoodie": ((90, 90, 100), (50, 60, 90), None, None),
     "gown": ((170, 200, 220), (170, 200, 220), None, None),
     "train": ((60, 60, 60), (20, 20, 20), ORANGE, "0"),
@@ -133,7 +134,7 @@ def person(d, x, hip_y, s=1.0, outfit="comets", pose=None, facing=1, mouth=0.0,
     a = limb(k, p["bs"], 48 * s, f); seg(d, k, a, lw * 0.9, pants)
     d.ellipse([a[0] - 6 * s, a[1] - 5 * s, a[0] + 16 * s * f if f > 0 else a[0] + 6 * s, a[1] + 6 * s] if f > 0
               else [a[0] - 16 * s, a[1] - 5 * s, a[0] + 6 * s, a[1] + 6 * s], fill=(240, 240, 240))
-    e = limb(sh, p["bu"], 38 * s, f); seg(d, sh, e, lw * 0.85, shirt if outfit in ("suit", "hoodie", "gown") else skin)
+    e = limb(sh, p["bu"], 38 * s, f); seg(d, sh, e, lw * 0.85, shirt if outfit in ("suit", "agent", "hoodie", "gown") else skin)
     h_back = limb(e, p["bf"], 36 * s, f); seg(d, e, h_back, lw * 0.8, skin)
     # front leg
     k2 = limb(hip, p["ft"], 50 * s, f); seg(d, hip, k2, lw, shorts)
@@ -144,7 +145,7 @@ def person(d, x, hip_y, s=1.0, outfit="comets", pose=None, facing=1, mouth=0.0,
     d.rounded_rectangle([x - 20 * s, hip_y - 14 * s, x + 20 * s, hip_y + 22 * s], 5, fill=shorts)
     d.polygon([(x - 24 * s, sh[1] - 4 * s), (x + 24 * s, sh[1] - 4 * s),
                (x + 20 * s, hip_y + 2 * s), (x - 20 * s, hip_y + 2 * s)], fill=shirt)
-    if outfit == "suit":
+    if outfit in ("suit", "agent"):
         d.polygon([(x - 6 * s, sh[1] - 4 * s), (x + 6 * s, sh[1] - 4 * s), (x, sh[1] + 26 * s)], fill=WHITE)
         d.polygon([(x - 3 * s, sh[1]), (x + 3 * s, sh[1]), (x + 4 * s, sh[1] + 22 * s), (x, sh[1] + 28 * s),
                    (x - 4 * s, sh[1] + 22 * s)], fill=(200, 40, 40))
@@ -152,7 +153,7 @@ def person(d, x, hip_y, s=1.0, outfit="comets", pose=None, facing=1, mouth=0.0,
         fs = font(max(10, int(26 * s)))
         d.text((x, sh[1] + 30 * s), num, font=fs, fill=numc, anchor="mm")
     # front arm
-    e2 = limb(sh, p["fu"], 38 * s, f); seg(d, sh, e2, lw * 0.85, shirt if outfit in ("suit", "hoodie", "gown") else skin)
+    e2 = limb(sh, p["fu"], 38 * s, f); seg(d, sh, e2, lw * 0.85, shirt if outfit in ("suit", "agent", "hoodie", "gown") else skin)
     hand = limb(e2, p["ff"], 36 * s, f); seg(d, e2, hand, lw * 0.8, skin)
     # head
     hx = x + f * head_drop * 8 * s
@@ -423,6 +424,8 @@ def act(d, action, t, look, bg, mouth, idx):
     if action in ("shoot", "dunk") and not has_hoop:
         action = "dribble"
     base_x = 560 if has_hoop else 640
+    if action == "meet":
+        action, base_x = "talk", 560
     speaking = mouth
 
     if action == "idle":
@@ -611,6 +614,14 @@ def extras(d, bg, idx, t, look, action):
             b = abs(math.sin(t * 3 + i)) * 8
             person(d, kx, stand_hip(0.6) - b, 0.6, "comets", pose=dict(fu=150, ff=170, bu=140, bf=160),
                    skin=[(200, 150, 110), (110, 70, 40), (240, 200, 170)][i])
+    elif bg == "campus" and action == "meet":
+        g = math.sin(t * 2.2)
+        r = person(d, 740, stand_hip(1.0), 1.0, "agent", pose=dict(fu=70 + 8 * g, ff=85, bu=-5, bf=-5), facing=-1,
+                   skin=(225, 185, 150), hair=(60, 40, 25))
+        hx, hy = r["hand"]
+        d.rectangle([hx - 14, hy - 9, hx + 2, hy + 1], fill=WHITE, outline=(80, 80, 80))
+        d.rounded_rectangle([760, GROUND - 95, 800, GROUND - 65], 4, fill=(70, 45, 25))
+        d.text((740, stand_hip(1.0) - 130), "Agent", font=font(18), fill=(30, 30, 30), anchor="mm")
     elif bg == "hospital" and action != "hurt":
         person(d, 1000, stand_hip(1.0), 1.0, "gown", pose=dict(fu=40, ff=90), facing=-1,
                skin=(230, 190, 160), hair=(90, 60, 30))
@@ -820,7 +831,7 @@ def main():
     with open(lst, "w") as f:
         for j in jobs:
             f.write(f"file '{j[5]}'\n")
-    final = os.path.join(OUT, "my_life_as_an_nba_player.mp4")
+    final = os.path.join(OUT, "your_life_as_an_nba_player.mp4")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst, "-i", wav_path,
                     "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", final],
                    check=True)
