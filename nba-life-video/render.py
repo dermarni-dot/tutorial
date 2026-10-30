@@ -54,6 +54,7 @@ OUTFITS = {
     "comets": (NAVY, NAVY, ORANGE, "0"),
     "suit": ((25, 30, 60), (25, 30, 60), None, None),
     "agent": ((110, 110, 120), (110, 110, 120), None, None),
+    "mom": ((165, 135, 200), (60, 75, 120), None, None),
     "hoodie": ((90, 90, 100), (50, 60, 90), None, None),
     "gown": ((170, 200, 220), (170, 200, 220), None, None),
     "train": ((110, 115, 125), (70, 75, 85), ORANGE, "0"),
@@ -149,7 +150,7 @@ def hair_shape(d, hx, hy, r, s, f, color):
 
 
 def person(d, x, hip_y, s=1.0, outfit="comets", pose=None, facing=1, mouth=0.0,
-           mood="happy", eyes_closed=False, head_drop=0.0, skin=SKIN, hair=HAIR):
+           mood="happy", eyes_closed=False, head_drop=0.0, skin=SKIN, hair=HAIR, long_hair=False):
     """Storybook-style cartoon person. Angles: 0 = straight down, positive = toward facing."""
     p = dict(fu=15, ff=35, bu=-10, bf=-5, ft=5, fs=0, bt=-5, bs=0)
     if pose:
@@ -159,7 +160,7 @@ def person(d, x, hip_y, s=1.0, outfit="comets", pose=None, facing=1, mouth=0.0,
     hip = (x, hip_y)
     sh = (x, hip_y - 68 * s)
     lw = 15 * s
-    long_sleeves = outfit in ("suit", "agent", "hoodie", "gown")
+    long_sleeves = outfit in ("suit", "agent", "hoodie", "gown", "mom")
     long_pants = outfit not in ("kid", "hs", "college", "comets", "train")
     k = limb(hip, p["bt"], 48 * s, f); a = limb(k, p["bs"], 46 * s, f)
     e = limb((x - f * 12 * s, sh[1] + 4 * s), p["bu"], 35 * s, f); h_back = limb(e, p["bf"], 33 * s, f)
@@ -191,6 +192,8 @@ def person(d, x, hip_y, s=1.0, outfit="comets", pose=None, facing=1, mouth=0.0,
     body = [(x - 23 * s, top + 4 * s), (x - 10 * s, top), (x + 10 * s, top), (x + 23 * s, top + 4 * s),
             (x + 25 * s, hip_y + 2 * s), (x - 25 * s, hip_y + 2 * s)]
     d.polygon(body, fill=shirt, outline=INK, width=2)
+    bx0 = x - f * 25 * s
+    d.polygon([(bx0, top + 4 * s), (bx0 + f * 10 * s, top + 2 * s), (bx0 + f * 8 * s, hip_y), (bx0, hip_y)], fill=(0, 0, 0, 35))
     if not long_sleeves:
         trim = numc or WHITE
         d.polygon([(x - 9 * s, top), (x + 9 * s, top), (x, top + 14 * s)], fill=skin, outline=INK, width=2)
@@ -214,34 +217,56 @@ def person(d, x, hip_y, s=1.0, outfit="comets", pose=None, facing=1, mouth=0.0,
     hx = x + f * head_drop * 8 * s
     hy = sh[1] - 38 * s + head_drop * 10 * s
     r = 32 * s
+    if long_hair:
+        d.ellipse([hx - r * 1.12, hy - r * 1.1, hx + r * 1.12, hy + r * 0.6], fill=hair, outline=INK, width=2)
+        for sd in (-1, 1):
+            d.rounded_rectangle([hx + sd * r * 0.62 - r * 0.5, hy - r * 0.2, hx + sd * r * 0.62 + r * 0.5, sh[1] + 20 * s],
+                                12 * s, fill=hair, outline=INK, width=2)
     d.rectangle([x - 7 * s, sh[1] - 16 * s, x + 7 * s, sh[1] - 2 * s], fill=skin, outline=INK, width=2)
     d.ellipse([hx - f * r - 5 * s, hy - 2 * s, hx - f * r + 7 * s, hy + 12 * s], fill=skin, outline=INK, width=2)
     d.chord([hx - r, hy - r, hx + r, hy + r * 1.02], 0, 360, fill=skin, outline=INK, width=2)
-    hair_shape(d, hx, hy, r, s, f, hair)
-    ex = hx + f * 9 * s
-    ey = hy + 5 * s + head_drop * 2 * s
-    for ox in (-11 * s, 11 * s):
+    if long_hair:
+        d.chord([hx - r * 1.05, hy - r * 1.12, hx + r * 1.05, hy + r * 0.35], 180, 360, fill=hair, outline=INK, width=2)
+        d.chord([hx - r * 0.9, hy - r * 0.9, hx + r * 0.3, hy + r * 0.1], 180, 300, fill=hair)
+    else:
+        hair_shape(d, hx, hy, r, s, f, hair)
+    hl = tuple(min(255, c + 45) for c in hair)
+    d.arc([hx - r * 0.7, hy - r * 1.0, hx + r * 0.5, hy - r * 0.2], 200, 260, fill=hl, width=max(2, int(3 * s)))
+    ex = hx + f * 8 * s
+    ey = hy + 3 * s + head_drop * 2 * s
+    # cheeks
+    for ox in (-15 * s, 15 * s):
+        d.ellipse([ex + ox - 6 * s, ey + 9 * s, ex + ox + 6 * s, ey + 15 * s], fill=(235, 120, 110, 70))
+    for ox in (-10 * s, 10 * s):
         cx = ex + ox
         if eyes_closed:
             d.arc([cx - 5 * s, ey - 3 * s, cx + 5 * s, ey + 5 * s], 20, 160, fill=INK, width=max(2, int(2 * s)))
         else:
             d.ellipse([cx - 3.6 * s, ey - 5.5 * s, cx + 3.6 * s, ey + 5.5 * s], fill=INK)
-            d.ellipse([cx - 1.8 * s, ey - 4 * s, cx + 0.4 * s, ey - 1.6 * s], fill=WHITE)
-        inner = 1 if ox * f < 0 else -1
-        lift_b = (3 * s if mood == "sad" else 0)
-        d.line([cx - 5 * s, ey - 11 * s - (lift_b if inner < 0 else 0), cx + 5 * s, ey - 11 * s - (lift_b if inner > 0 else 0)],
-               fill=INK, width=max(2, int(2 * s)))
-    d.arc([hx + f * 15 * s - 3 * s, ey + 2 * s, hx + f * 15 * s + 3 * s, ey + 8 * s], 270 if f > 0 else 90,
-          90 if f > 0 else 270, fill=INK, width=max(1, int(2 * s)))
-    mx, my = hx + f * 10 * s, hy + 20 * s
-    if mouth > 0.08:
-        mh = 3 + mouth * 9 * s
-        d.chord([mx - 7 * s, my - mh / 2, mx + 7 * s, my + mh], 0, 180, fill=(140, 50, 55), outline=INK, width=2)
-        d.chord([mx - 7 * s, my - mh, mx + 7 * s, my + mh * 0.2], 0, 180, fill=(140, 50, 55))
+            d.ellipse([cx - 2 * s, ey - 4.2 * s, cx + 0.2 * s, ey - 1.8 * s], fill=WHITE)
+        # brows: sad raises the inner end (the end nearer the middle of the face)
+        y_l = y_r = ey - 11 * s
+        if mood == "sad":
+            if ox < 0:
+                y_r -= 3.5 * s
+            else:
+                y_l -= 3.5 * s
+        d.line([cx - 5 * s, y_l, cx + 5 * s, y_r], fill=INK, width=max(2, int(2 * s)))
+    nx, ny = ex + f * 3 * s, ey + 8 * s
+    d.arc([nx - 3 * s, ny, nx + 3 * s, ny + 5 * s], 300 if f > 0 else 60, 120 if f > 0 else 240,
+          fill=INK, width=max(1, int(2 * s)))
+    mx, my = ex + f * 2 * s, hy + 24 * s
+    if mouth > 0.12:
+        mh = (5 + 7 * min(1.0, mouth)) * s
+        mw = (7 + 2 * min(1.0, mouth)) * s
+        box = [mx - mw, my - mh * 0.45, mx + mw, my + mh * 0.55]
+        d.chord([box[0], box[1] - mh * 0.55, box[2], box[3]], 0, 180, fill=(120, 40, 50), outline=INK, width=2)
+        d.chord([mx - mw * 0.55, my + mh * 0.05, mx + mw * 0.55, my + mh * 0.5], 180, 360, fill=(230, 120, 120))
+        d.line([box[0] + 2, box[1] + 1, box[2] - 2, box[1] + 1], fill=INK, width=2)
     elif mood == "sad":
-        d.arc([mx - 6 * s, my, mx + 6 * s, my + 8 * s], 200, 340, fill=INK, width=max(2, int(2 * s)))
+        d.arc([mx - 6 * s, my - 1 * s, mx + 6 * s, my + 7 * s], 200, 340, fill=INK, width=max(2, int(2 * s)))
     else:
-        d.arc([mx - 7 * s, my - 6 * s, mx + 7 * s, my + 4 * s], 25, 155, fill=INK, width=max(2, int(2 * s)))
+        d.arc([mx - 7 * s, my - 7 * s, mx + 7 * s, my + 3 * s], 25, 155, fill=INK, width=max(2, int(2 * s)))
     return dict(hand=hand, back_hand=h_back, head=(hx, hy), sh=sh)
 
 
@@ -433,7 +458,148 @@ def bg_image(bg, idx):
                 x, y = 40 + c * 150 + (r % 2) * 75, 40 + r * 75
                 d.text((x, y), "COMETS", font=font(20), fill=NAVY if (r + c) % 2 else ORANGE)
         d.rectangle([0, GROUND, W, H], fill=(60, 60, 70))
+    details(d, bg, idx, rnd)
     return img
+
+
+def bush(d, x, y, w, h, c=(95, 160, 80)):
+    for i in range(3):
+        ox = x + (i - 1) * w * 0.32
+        d.ellipse([ox - w * 0.3, y - h, ox + w * 0.3, y], fill=c, outline=INK, width=2)
+    d.rectangle([x - w * 0.55, y - h * 0.45, x + w * 0.55, y], fill=c)
+    d.line([x - w * 0.55, y, x + w * 0.55, y], fill=INK, width=2)
+
+
+def flowers(d, x0, x1, y, rnd):
+    for _ in range(int((x1 - x0) / 14)):
+        x = rnd.uniform(x0, x1); yy = y - rnd.uniform(0, 10)
+        d.line([x, yy, x, yy + 10], fill=(70, 120, 60), width=2)
+        d.ellipse([x - 4, yy - 4, x + 4, yy + 4], fill=rnd.choice([(240, 120, 140), (250, 220, 90), WHITE, (190, 140, 230)]))
+
+
+def frame_pic(d, x, y, w, h, inner):
+    d.rectangle([x, y, x + w, y + h], fill=(150, 105, 70), outline=INK, width=2)
+    d.rectangle([x + 8, y + 8, x + w - 8, y + h - 8], fill=inner, outline=INK, width=1)
+
+
+def plant(d, x, y, sc=1.0):
+    for a in (-50, -25, 0, 25, 50):
+        r = math.radians(a)
+        d.ellipse([x + math.sin(r) * 40 * sc - 12 * sc, y - 60 * sc - math.cos(r) * 20 * sc - 22 * sc,
+                   x + math.sin(r) * 40 * sc + 12 * sc, y - 60 * sc - math.cos(r) * 20 * sc + 22 * sc],
+                  fill=(90, 150, 80), outline=INK, width=2)
+    d.polygon([(x - 22 * sc, y - 40 * sc), (x + 22 * sc, y - 40 * sc), (x + 16 * sc, y), (x - 16 * sc, y)],
+              fill=(200, 120, 80), outline=INK, width=2)
+
+
+def details(d, bg, idx, rnd):
+    """Extra props so scenes feel lived-in instead of plain."""
+    if bg == "driveway":
+        for fx in range(0, 760, 34):
+            d.polygon([(fx, GROUND - 95), (fx + 12, GROUND - 110), (fx + 24, GROUND - 95), (fx + 24, GROUND - 10),
+                       (fx, GROUND - 10)], fill=(250, 248, 240), outline=INK)
+        d.rectangle([0, GROUND - 80, 760, GROUND - 72], fill=(250, 248, 240), outline=INK)
+        bush(d, 820, GROUND + 8, 110, 70); bush(d, 1240, GROUND + 8, 90, 60)
+        flowers(d, 20, 740, GROUND - 4, rnd)
+        d.rectangle([300, GROUND - 70, 306, GROUND], fill=(110, 80, 50))
+        d.rounded_rectangle([284, GROUND - 100, 324, GROUND - 70], 8, fill=(70, 110, 170), outline=INK, width=2)
+        d.rectangle([308, GROUND - 112, 312, GROUND - 92], fill=(220, 60, 60))
+        d.rectangle([800, 220, 870, 300], outline=INK, width=2)
+        d.polygon([(800, 220), (822, 220), (812, 300), (800, 300)], fill=(230, 110, 110))
+        d.polygon([(870, 220), (848, 220), (858, 300), (870, 300)], fill=(230, 110, 110))
+        d.ellipse([400, GROUND + 60, 520, GROUND + 90], fill=(120, 120, 120, 60))
+    elif bg == "gym":
+        d.ellipse([950, 70, 1030, 150], fill=WHITE, outline=INK, width=4)
+        d.line([990, 110, 990, 82], fill=INK, width=3); d.line([990, 110, 1012, 118], fill=INK, width=3)
+        for i, c in enumerate([(30, 120, 60), (245, 205, 90), (48, 82, 165), (200, 60, 60)]):
+            x = 520 + i * 90
+            d.polygon([(x, 20), (x + 60, 20), (x + 30, 80)], fill=c, outline=INK, width=2)
+        d.rectangle([1040, 300, 1140, GROUND], fill=(48, 82, 165), outline=INK, width=2)
+        d.rectangle([760, GROUND - 70, 860, GROUND - 6], fill=(120, 120, 130), outline=INK, width=2)
+        for i in range(3):
+            draw_ball(d, 778 + i * 32, GROUND - 82, 14)
+        d.rectangle([880, GROUND - 90, 920, GROUND], fill=(80, 140, 220), outline=INK, width=2)
+        d.rectangle([886, GROUND - 120, 914, GROUND - 90], fill=(200, 230, 250), outline=INK, width=2)
+    elif bg == "campus":
+        bush(d, 640, GROUND, 130, 60); bush(d, 1230, GROUND, 120, 60)
+        flowers(d, 560, 700, GROUND - 2, rnd); flowers(d, 1150, 1270, GROUND - 2, rnd)
+        d.rectangle([250, GROUND - 50, 370, GROUND - 40], fill=(140, 95, 60), outline=INK, width=2)
+        d.rectangle([250, GROUND - 70, 370, GROUND - 62], fill=(140, 95, 60), outline=INK, width=2)
+        for lx in (258, 360):
+            d.rectangle([lx, GROUND - 40, lx + 4, GROUND], fill=INK)
+        d.rectangle([660, 260, 668, GROUND], fill=(60, 60, 70))
+        d.ellipse([648, 236, 680, 268], fill=(255, 240, 180), outline=INK, width=2)
+        for i in range(4):
+            bx, by = rnd.randint(150, 600), rnd.randint(60, 180)
+            d.arc([bx, by, bx + 14, by + 10], 200, 340, fill=INK, width=2)
+            d.arc([bx + 12, by, bx + 26, by + 10], 200, 340, fill=INK, width=2)
+    elif bg == "stage":
+        for i in range(6):
+            x = 560 + i * 55
+            d.ellipse([x, 140, x + 44, 184], fill=[(220, 80, 60), (60, 120, 210), (245, 205, 90), (80, 170, 100),
+                                                  (160, 90, 200), (245, 130, 32)][i], outline=INK, width=2)
+        for cx in (90, 1200):
+            d.line([cx, GROUND, cx - 30, GROUND + 80], fill=INK, width=4); d.line([cx, GROUND, cx + 30, GROUND + 80], fill=INK, width=4)
+            d.rectangle([cx - 30, GROUND - 40, cx + 40, GROUND], fill=(50, 50, 55), outline=INK, width=2)
+            d.ellipse([cx + 30, GROUND - 32, cx + 52, GROUND - 8], fill=(90, 120, 160), outline=INK, width=2)
+    elif bg == "locker":
+        for i in range(10):
+            x = 20 + i * 126
+            c = (48, 82, 165) if i % 2 else (245, 245, 245)
+            d.polygon([(x + 30, 170), (x + 86, 170), (x + 92, 200), (x + 82, 200), (x + 82, 290), (x + 34, 290),
+                       (x + 34, 200), (x + 24, 200)], fill=c, outline=INK, width=2)
+            d.text((x + 58, 235), str((i * 7 + 3) % 50), font=font(20), fill=ORANGE, anchor="mm")
+            d.rounded_rectangle([x + 30, GROUND - 32, x + 52, GROUND - 22], 4, fill=(250, 250, 250), outline=INK)
+        d.rectangle([400, GROUND - 72, 470, GROUND - 60], fill=(250, 250, 250), outline=INK)
+    elif bg == "bedroom":
+        d.ellipse([350, GROUND + 30, 900, GROUND + 140], fill=(200, 110, 100), outline=INK, width=2)
+        d.ellipse([400, GROUND + 45, 850, GROUND + 125], outline=(240, 200, 150), width=4)
+        d.rectangle([380, 140, 640, 150], fill=(150, 105, 70), outline=INK, width=2)
+        for i, h in enumerate((40, 55, 35, 48)):
+            d.rectangle([395 + i * 25, 140 - h, 415 + i * 25, 140], fill=[(200, 80, 80), (80, 120, 200), (90, 160, 90), (230, 190, 80)][i], outline=INK)
+        d.rectangle([520, 105, 540, 140], fill=(245, 205, 90), outline=INK)
+        d.ellipse([512, 88, 548, 112], fill=(245, 205, 90), outline=INK, width=2)
+        frame_pic(d, 580, 60, 70, 70, (170, 210, 240))
+        plant(d, 1210, GROUND)
+        d.line([735, GROUND - 130, 735, GROUND - 170], fill=INK, width=3)
+        d.polygon([(715, GROUND - 170), (755, GROUND - 170), (745, GROUND - 195), (725, GROUND - 195)], fill=(250, 230, 160), outline=INK)
+    elif bg == "weights":
+        for i in range(3):
+            x = 700 + i * 70
+            d.ellipse([x, GROUND - 40, x + 40, GROUND], fill=(60, 60, 65), outline=INK, width=2)
+            d.arc([x + 8, GROUND - 56, x + 32, GROUND - 30], 180, 360, fill=(60, 60, 65), width=6)
+        d.rounded_rectangle([660, GROUND - 6, 940, GROUND + 14], 6, fill=(90, 160, 200), outline=INK, width=2)
+        d.rectangle([960, GROUND - 40, 976, GROUND], fill=(80, 170, 230), outline=INK, width=2)
+        plant(d, 640, GROUND, 0.9)
+    elif bg == "hospital":
+        for y in range(110, 310, 22):
+            d.line([90, y, 370, y], fill=(220, 230, 240), width=3)
+        d.rectangle([180, 290, 220, 320], fill=(200, 220, 240), outline=INK, width=2)
+        for i in range(5):
+            fx = 186 + i * 7
+            d.line([200, 290, fx, 265], fill=(70, 130, 70), width=2)
+            d.ellipse([fx - 6, 258, fx + 6, 270], fill=[(240, 120, 140), (250, 220, 90)][i % 2], outline=INK)
+        d.rounded_rectangle([240, 292, 330, 320], 6, fill=(250, 250, 250), outline=INK, width=2)
+        d.text((285, 306), "GET WELL", font=font(13), fill=(200, 70, 90), anchor="mm")
+        plant(d, 50, GROUND, 0.8)
+    elif bg == "mansion":
+        for hx in (560, 700, 1000, 1180):
+            bush(d, hx, GROUND, 110, 50, (80, 150, 75))
+        flowers(d, 520, 1240, GROUND + 4, rnd)
+        for lx in (500, 1250):
+            d.rectangle([lx, GROUND - 120, lx + 6, GROUND], fill=INK)
+            d.ellipse([lx - 10, GROUND - 140, lx + 16, GROUND - 114], fill=(255, 240, 180), outline=INK, width=2)
+    elif bg == "plane":
+        d.rectangle([0, 60, W, 100], fill=(210, 200, 182), outline=INK, width=2)
+        for x in range(0, W, 160):
+            d.line([x, 60, x, 100], fill=INK, width=2)
+            d.ellipse([x + 70, 105, x + 86, 115], fill=(255, 240, 180))
+        for x in range(0, W, 40):
+            d.line([x, GROUND + 10, x + 20, H], fill=(80, 70, 100), width=2)
+    elif bg == "press":
+        plant(d, 120, GROUND, 1.3); plant(d, 1160, GROUND, 1.3)
+        for px in (40, 1240):
+            d.rectangle([px - 8, 0, px + 8, GROUND], fill=(48, 82, 165), outline=INK)
 
 
 def draw_dynamic_bg(d, bg, t, idx, look):
@@ -661,8 +827,8 @@ def extras(d, bg, idx, t, look, action):
         g = math.sin(t * 2)
         person(d, 955, stand_hip(1.0) - 10, 1.0, "suit", pose=dict(fu=60 + 10 * g, ff=90), facing=-1,
                skin=(230, 190, 160), hair=(160, 160, 160), mouth=0.2 * (g > 0.6))
-        person(d, 230, GROUND - 100, 0.95, "suit", pose=dict(ft=85, bt=80, fu=40, ff=70), skin=(120, 75, 45),
-               hair=(20, 10, 10))
+        person(d, 230, GROUND - 100, 0.95, "mom", pose=dict(ft=85, bt=80, fu=40, ff=70), skin=(185, 130, 95),
+               hair=(95, 60, 40), long_hair=True)
     elif bg == "locker" and action != "walk":
         person(d, 950, stand_hip(1.15), 1.15, "comets", pose=dict(fu=50, ff=120), facing=-1,
                skin=(90, 55, 35), hair=(10, 10, 10))
@@ -671,6 +837,11 @@ def extras(d, bg, idx, t, look, action):
         g = math.sin(t * 3)
         person(d, 820, stand_hip(1.0) + 8, 1.0, "college", pose=dict(fu=100 + 20 * g, ff=150, bu=80 - 20 * g, bf=120,
                ft=25, fs=-20, bt=-20, bs=10), facing=-1, skin=(220, 180, 150))
+    elif bg == "driveway" and idx in (1, 17):
+        g = math.sin(t * 1.7)
+        person(d, 860, stand_hip(0.95), 0.95, "mom", pose=dict(fu=60 + 30 * g, ff=150 + 20 * g), facing=-1,
+               skin=(185, 130, 95), hair=(95, 60, 40) if idx == 1 else (150, 140, 135), long_hair=True)
+        d.text((860, stand_hip(0.95) - 150), "Mom", font=font(18), fill=INK, anchor="mm")
     elif bg == "driveway" and idx == 15:
         for i, kx in enumerate((230, 320, 410)):
             b = abs(math.sin(t * 3 + i)) * 8
@@ -745,6 +916,9 @@ def stylize(img):
     arr = arr * 0.74 + np.array([252, 242, 226], np.float32) * 0.26
     m = edges[..., None]
     arr = np.where(m, arr * 0.35 + np.array(INK, np.float32) * 0.4, arr)
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    light = 1.06 - 0.10 * (yy / H) - 0.05 * (xx / W) + 0.05 * np.exp(-((xx - 300) ** 2 + (yy - 80) ** 2) / 90000)
+    arr *= light[..., None]
     grain = np.random.default_rng(3).normal(0, 3.5, (H, W, 1)).astype(np.float32)
     return Image.fromarray(np.clip(arr + grain, 0, 255).astype(np.uint8))
 
@@ -881,6 +1055,8 @@ def main():
             voice[i:i + len(c)] += c[: len(voice) - i]
         spf = SR // FPS
         env = np.array([np.sqrt(np.mean(voice[k * spf:(k + 1) * spf] ** 2)) for k in range(nframes)])
+        env = np.convolve(env, np.ones(3) / 3, mode="same")
+        env = np.round(np.minimum(1.0, env * 6) * 3) / 3 / 6  # 3 mouth shapes, no flicker
         scene_audio.append((sc["bg"], voice))
         jobs.append((si, sc, nframes, cues, env, os.path.join(OUT, f"seg_{si:02d}.mp4")))
         print(f"  scene {si:2d} {sc['bg']:9s} {total:6.1f}s")

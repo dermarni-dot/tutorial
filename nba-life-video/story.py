@@ -2,7 +2,7 @@
 # Each scene: background, list of actions (cycled per narration line), chapter title, lines.
 
 CHANNEL = "Courtside Stories"
-TITLE = "Your Life as an NBA Player"
+TITLE = "Every Level of Your NBA Life"
 
 SCENES = [
     dict(bg="intro", actions=["celebrate", "talk"], title=None, lines=[
@@ -10,12 +10,12 @@ SCENES = [
         "Today's video is a little different. Today, the story is about you.",
         "Have you ever wondered what your life would look like if you became an NBA player?",
         "Not just the highlights. The whole thing. The early mornings, the ice baths, the airports, the pressure, all of it.",
-        "So sit back, because we are going to follow you, from the very first bounce of a ball to your very last game.",
+        "So sit back, because we are going through every level of your life as a basketball player, from the very first bounce of a ball to your very last game.",
         "By the end of your career, people will call you Big Brain, because you always seem to know where the ball is going before anybody else.",
         "But it does not start that way. Not even close.",
         "So grab a snack, get comfortable, and make sure you subscribe, because this is your life as an NBA player.",
     ]),
-    dict(bg="driveway", actions=["dribble", "shoot", "dribble", "shoot"], title="Chapter 1: Driveway Dreams", lines=[
+    dict(bg="driveway", actions=["dribble", "shoot", "dribble", "shoot"], title="Level 1: Driveway Kid", lines=[
         "It all starts in a driveway. A cracked, slanted driveway in front of a small blue house.",
         "When you are eight years old, your uncle bolts a basketball hoop above the garage door.",
         "The rim is crooked. The net is half torn off. And to you, it is the greatest thing in the world.",
@@ -27,7 +27,7 @@ SCENES = [
         "The neighbors definitely hated you. The ball hitting the garage door at ten at night sounded like thunder.",
         "But that driveway is where you learned the most important thing in basketball. Nobody is watching when you get better.",
     ]),
-    dict(bg="gym", actions=["sad", "walk", "sad"], title="Chapter 2: Getting Cut", lines=[
+    dict(bg="gym", actions=["sad", "walk", "sad"], title="Level 2: Cut From the Team", lines=[
         "In ninth grade, you try out for the high school team. You are confident. Way too confident.",
         "You are also five foot seven and about as strong as a wet noodle.",
         "Three days of tryouts. Sprints, drills, scrimmages. You think you did great.",
@@ -39,7 +39,7 @@ SCENES = [
         "The next morning, you are back in the driveway at six a.m. Before school. In the cold.",
         "Getting cut turns out to be the best thing that ever happened to you. It just does not feel like it at the time.",
     ]),
-    dict(bg="gym", actions=["dunk", "shoot", "dribble", "dunk"], title="Chapter 3: The Growth Spurt", lines=[
+    dict(bg="gym", actions=["dunk", "shoot", "dribble", "dunk"], title="Level 3: High School Star", lines=[
         "Then something wild happens. The summer before eleventh grade, you grow six inches.",
         "Six inches! Your knees hurt all the time. You outgrow three pairs of shoes in four months.",
         "You go from the little guard nobody noticed to a six foot five kid who can still handle the ball like a little guard.",
@@ -54,7 +54,7 @@ SCENES = [
     dict(bg="campus",
          actions=["walk", "talk", "dribble", "talk", "walk", "talk", "dribble", "walk",
                   "meet", "meet", "meet", "meet", "meet", "talk"],
-         title="Chapter 4: College and the Agent", lines=[
+         title="Level 4: College Hooper", lines=[
         "You pick a college about three hours from home. Close enough for your mom to come to games. Far enough to grow up.",
         "College basketball is a different world. Everybody was the best player on their high school team.",
         "At your first practice, a senior named Marcus blocks your shot so hard it goes into the bleachers.",
@@ -70,7 +70,7 @@ SCENES = [
         "He smiles and says, that is the smartest thing a player has ever said to me.",
         "That night, you sit down with your mom and your coach, and you make the biggest decision of your life. You declare for the NBA draft.",
     ]),
-    dict(bg="stage", actions=["sit", "sit", "celebrate", "talk"], title="Chapter 5: Draft Night", lines=[
+    dict(bg="stage", actions=["sit", "sit", "celebrate", "talk"], title="Level 5: Draft Pick", lines=[
         "Draft night. You wear a dark blue suit that costs more than every piece of clothing you have ever owned combined.",
         "Your mom wears the same dress she wore to your high school graduation. She says it is lucky.",
         "You sit at a round table in a huge arena with cameras everywhere. Your leg will not stop bouncing.",
@@ -82,7 +82,7 @@ SCENES = [
         "A reporter asks how you feel. You say, I feel like that kid in the driveway just hit the game winner.",
         "That night, you cannot sleep at all. You just keep staring at the hat.",
     ]),
-    dict(bg="locker", actions=["walk", "talk", "sit"], title="Chapter 6: Rookie Life", lines=[
+    dict(bg="locker", actions=["walk", "talk", "sit"], title="Level 6: Rookie", lines=[
         "Being a rookie in the league is humbling. Very humbling.",
         "On your first day, a veteran named Big Tony hands you his bag and says, you are carrying this until Christmas.",
         "Rookies also bring the donuts. Every single morning. If you forget the donuts, you will hear about it for a week.",
@@ -94,7 +94,7 @@ SCENES = [
         "Your agent helps you hire a financial advisor, because you have heard way too many stories about players who lost everything.",
         "Your advisor gives you one rule. Live like you are still a rookie, and you will never be broke.",
     ]),
-    dict(bg="arena", actions=["dribble", "sad", "shoot", "celebrate"], title="Chapter 7: Your First Game", lines=[
+    dict(bg="arena", actions=["dribble", "sad", "shoot", "celebrate"], title="Level 7: First NBA Game", lines=[
         "Your first real NBA game is at home, in front of nineteen thousand people.",
         "When they announce your name, the noise is so loud you can feel it in your chest.",
         "The first time you touch the ball, you are so nervous you dribble it off your own foot. Out of bounds.",
@@ -106,8 +106,8 @@ SCENES = [
         "Swish. The crowd explodes. You score twelve points that night, and the Comets win.",
         "After the game, you keep the ball from your first bucket. It still sits on a shelf in your mom's living room.",
     ]),
-    dict(bg="bedroom", actions=["sleep", "talk", "walk"], title="Chapter 8: A Day in the Life", lines=[
-        "So what does a normal game day actually look like for you?",
+    dict(bg="bedroom", actions=["sleep", "talk", "walk"], title="Level 8: Starter", lines=[
+        "By now, you are a starter in the NBA. So what does a normal game day actually look like for you?",
         "Your alarm goes off at seven a.m. You are not a morning person. You have never been a morning person.",
         "First thing, you drink a huge bottle of water. Then breakfast. Eggs, oatmeal, fruit. Boring, but it works.",
         "Then you drive to the practice facility for shootaround at ten. That is a light practice where the team goes over the game plan.",
@@ -125,7 +125,7 @@ SCENES = [
         "After the game, ice bath, media interviews, food, and sometimes straight to the airport.",
         "Some nights, you do not get to bed until three in the morning. And then you do it all again.",
     ]),
-    dict(bg="plane", actions=["sit", "talk", "sleep"], title="Chapter 9: Life on the Road", lines=[
+    dict(bg="plane", actions=["sit", "talk", "sleep"], title="Level 9: Road Warrior", lines=[
         "Half of your games are on the road. That is forty one games a year in other cities.",
         "You fly on a private team plane. And yes, it is as nice as you are imagining.",
         "Big leather seats, lots of food, and a card game in the back that has been going on for about ten years.",
@@ -137,7 +137,7 @@ SCENES = [
         "It sounds glamorous, and some of it is. But it gets lonely. You miss birthdays. You miss holidays.",
         "So you make a rule. You call your mom after every single road game. Win or lose.",
     ]),
-    dict(bg="mansion", actions=["walk", "talk", "idle"], title="Chapter 10: Fame and Money", lines=[
+    dict(bg="mansion", actions=["walk", "talk", "idle"], title="Level 10: All Star", lines=[
         "By your third season, you are an All Star. And that is when things get weird.",
         "People recognize you everywhere. At the grocery store. At the gas station. At the dentist.",
         "One time you get asked for an autograph in the middle of a haircut. Half a haircut.",
@@ -149,7 +149,7 @@ SCENES = [
         "You learn to turn your phone off before games. The internet does not know what happens in the locker room.",
         "The people who really matter are the same people who were there when you got cut in ninth grade.",
     ]),
-    dict(bg="hospital", actions=["hurt", "sad", "talk"], title="Chapter 11: The Injury", lines=[
+    dict(bg="hospital", actions=["hurt", "sad", "talk"], title="Level 11: Injured", lines=[
         "Then comes the worst night of your career.",
         "Fourth season. Second quarter. You go up for a layup like you have a thousand times before.",
         "You land wrong. You hear a pop in your knee. And you know. You know right away.",
@@ -161,7 +161,7 @@ SCENES = [
         "She helps you understand that being injured does not make you less of a person.",
         "So you make a plan. One small goal every day. Bend the knee one more degree. Walk one more step.",
     ]),
-    dict(bg="weights", actions=["lift", "walk", "dribble", "dunk"], title="Chapter 12: The Comeback", lines=[
+    dict(bg="weights", actions=["lift", "walk", "dribble", "dunk"], title="Level 12: Comeback Kid", lines=[
         "Rehab is the most boring, painful, lonely work you will ever do.",
         "Same exercises. Every day. For months. Leg raises. Balance boards. Resistance bands.",
         "But you think about that driveway. Nobody is watching when you get better.",
@@ -173,7 +173,7 @@ SCENES = [
         "You are not the same player. You are a little slower. But you are smarter. You see the game better than ever.",
         "Big Brain is back.",
     ]),
-    dict(bg="arena", actions=["dribble", "shoot", "celebrate", "celebrate"], title="Chapter 13: The Finals", lines=[
+    dict(bg="arena", actions=["dribble", "shoot", "celebrate", "celebrate"], title="Level 13: NBA Champion", lines=[
         "Two seasons later, the Bay City Comets make it to the NBA Finals.",
         "You are playing the Kingsport Royals, the best team in the league. Nobody thinks you can win.",
         "The series goes all the way to game seven. On their home floor.",
@@ -187,7 +187,7 @@ SCENES = [
         "You fall to the floor. Confetti everywhere. And the first person you look for in the crowd is your mom.",
         "A week later, a million people show up for the parade. You hold the trophy on top of a bus and think, eight year old me would never believe this.",
     ]),
-    dict(bg="driveway", actions=["talk", "dribble", "shoot"], title="Chapter 14: Giving Back", lines=[
+    dict(bg="driveway", actions=["talk", "dribble", "shoot"], title="Level 14: Role Model", lines=[
         "After the championship, you start a free summer basketball camp in your hometown.",
         "Every kid gets a ball, a pair of shoes, and a jersey. No cost. Ever.",
         "On the first day, a little kid walks up to you with his head down. He says he got cut from his school team.",
@@ -198,7 +198,7 @@ SCENES = [
         "One little girl crosses you over and you fall down. The video gets about two million views.",
         "Honestly, that camp means more to you than any trophy.",
     ]),
-    dict(bg="press", actions=["sit", "talk", "sad", "talk"], title="Chapter 15: The Last Game", lines=[
+    dict(bg="press", actions=["sit", "talk", "sad", "talk"], title="Level 15: Legend", lines=[
         "You play fourteen seasons in the league. One championship. Five All Star games. One very bad knee.",
         "When you are thirty five, you know it is time. Your body tells you every morning.",
         "You announce your retirement at a press conference. You try to keep it together. You do not keep it together.",
@@ -209,7 +209,7 @@ SCENES = [
         "You laugh so hard you almost forget to cry.",
         "A month later, the team retires your jersey. It hangs from the rafters forever.",
     ]),
-    dict(bg="driveway", actions=["shoot", "talk", "idle"], title="Epilogue: Back to the Driveway", lines=[
+    dict(bg="driveway", actions=["shoot", "talk", "idle"], title="Final Level: Back to the Driveway", lines=[
         "So what do you do now? Well, you coach a little. You do some TV. You run the camp.",
         "But you want to know your favorite thing to do?",
         "Some nights, you drive back to your mom's house. You grab a ball, and you go out to that driveway.",
