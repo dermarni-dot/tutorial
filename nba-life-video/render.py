@@ -19,7 +19,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from story import CHANNEL, SCENES, TITLE
 
 W, H = 1280, 720
-FPS = 30
+FPS = 60
 SS = 2  # supersampling: the world is drawn at 2x and scaled down for smooth edges and sub-pixel motion
 SR = 44100
 GROUND = 545
@@ -1335,7 +1335,7 @@ def main():
         env = np.convolve(env, np.ones(3) / 3, mode="same")
         sm = np.zeros_like(env)
         for k in range(1, len(env)):
-            rate = 0.55 if env[k] > sm[k - 1] else 0.3
+            rate = 1 - (1 - (0.55 if env[k] > sm[k - 1] else 0.3)) ** (30 / FPS)  # same feel at any fps
             sm[k] = sm[k - 1] + (env[k] - sm[k - 1]) * rate
         env = sm
         scene_audio.append((sc["bg"], voice))
