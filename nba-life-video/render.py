@@ -3,6 +3,7 @@
 Usage: python3 render.py [out_dir]
 Requires: espeak-ng + mbrola-us2, ffmpeg, Pillow, numpy.
 """
+import inspect
 import math
 import os
 import random
@@ -151,7 +152,38 @@ def hair_shape(d, hx, hy, r, s, f, color):
     d.polygon(pts, fill=color, outline=INK, width=2)
 
 
-def person(d, x, hip_y, s=1.0, outfit="comets", pose=None, facing=1, mouth=0.0,
+POSE_DEFAULT = dict(fu=15, ff=35, bu=-10, bf=-5, ft=5, fs=0, bt=-5, bs=0)
+TWEEN = None  # set by render_scene while blending one action into the next
+TWEEN_TIME = 0.7
+
+
+def person(d, *args, **kwargs):
+    """Draws a person; while TWEEN is active the first (main) person is blended between two actions."""
+    global TWEEN
+    tw = TWEEN
+    if tw is None or not tw["active"]:
+        return draw_person(d, *args, **kwargs)
+    tw["active"] = False
+    p = inspect.signature(draw_person).bind(d, *args, **kwargs)
+    p.apply_defaults()
+    p = dict(p.arguments)
+    pose = dict(POSE_DEFAULT)
+    pose.update(p["pose"] or {})
+    p["pose"] = pose
+    if tw["mode"] == "record":
+        tw["rec"] = p
+        return draw_person(**p)
+    a, k = tw["rec"], tw["k"]
+    if a is not None:
+        for key in ("x", "hip_y", "head_drop"):
+            p[key] = lerp(a[key], p[key], k)
+        p["pose"] = {n: lerp(a["pose"][n], pose[n], k) for n in pose}
+        if k < 0.5:
+            p["facing"] = a["facing"]
+    return draw_person(**p)
+
+
+def draw_person(d, x, hip_y, s=1.0, outfit="comets", pose=None, facing=1, mouth=0.0,
            mood="happy", eyes_closed=False, head_drop=0.0, skin=SKIN, hair=HAIR, long_hair=False):
     """Storybook-style cartoon person. Angles: 0 = straight down, positive = toward facing."""
     p = dict(fu=15, ff=35, bu=-10, bf=-5, ft=5, fs=0, bt=-5, bs=0)
@@ -161,13 +193,13 @@ def person(d, x, hip_y, s=1.0, outfit="comets", pose=None, facing=1, mouth=0.0,
     f = facing
     hip = (x, hip_y)
     sh = (x, hip_y - 68 * s)
-    lw = 15 * s
+    lw = 17 * s
     long_sleeves = outfit in ("suit", "agent", "hoodie", "gown", "mom")
     long_pants = outfit not in ("kid", "hs", "college", "comets", "train")
     k = limb(hip, p["bt"], 48 * s, f); a = limb(k, p["bs"], 46 * s, f)
-    e = limb((x - f * 12 * s, sh[1] + 4 * s), p["bu"], 35 * s, f); h_back = limb(e, p["bf"], 33 * s, f)
+    e = limb((x - f * 15 * s, sh[1] + 4 * s), p["bu"], 35 * s, f); h_back = limb(e, p["bf"], 33 * s, f)
     k2 = limb(hip, p["ft"], 48 * s, f); a2 = limb(k2, p["fs"], 46 * s, f)
-    e2 = limb((x + f * 12 * s, sh[1] + 4 * s), p["fu"], 35 * s, f); hand = limb(e2, p["ff"], 33 * s, f)
+    e2 = limb((x + f * 15 * s, sh[1] + 4 * s), p["fu"], 35 * s, f); hand = limb(e2, p["ff"], 33 * s, f)
     lift = max(0.0, GROUND - max(a[1], a2[1]) - 6 * s)
     sw = 46 * s * max(0.35, 1 - lift / 260)
     d.ellipse([x - sw, GROUND - 5 * s, x + sw, GROUND + 7 * s], fill=(60, 40, 30, 45))
@@ -186,25 +218,25 @@ def person(d, x, hip_y, s=1.0, outfit="comets", pose=None, facing=1, mouth=0.0,
         d.ellipse([hd[0] - 7 * s, hd[1] - 7 * s, hd[0] + 7 * s, hd[1] + 7 * s], fill=skin, outline=INK, width=2)
 
     leg(hip, k, a); shoe(d, a, s, f)
-    arm((x - f * 12 * s, sh[1] + 4 * s), e, h_back)
+    arm((x - f * 15 * s, sh[1] + 4 * s), e, h_back)
     leg(hip, k2, a2); shoe(d, a2, s, f)
     # torso
-    d.rounded_rectangle([x - 22 * s, hip_y - 12 * s, x + 22 * s, hip_y + 18 * s], 7 * s, fill=shorts, outline=INK, width=2)
+    d.rounded_rectangle([x - 25 * s, hip_y - 12 * s, x + 25 * s, hip_y + 18 * s], 7 * s, fill=shorts, outline=INK, width=2)
     top = sh[1] - 6 * s
-    body = [(x - 23 * s, top + 4 * s), (x - 10 * s, top), (x + 10 * s, top), (x + 23 * s, top + 4 * s),
-            (x + 25 * s, hip_y + 2 * s), (x - 25 * s, hip_y + 2 * s)]
+    body = [(x - 27 * s, top + 4 * s), (x - 11 * s, top), (x + 11 * s, top), (x + 27 * s, top + 4 * s),
+            (x + 28 * s, hip_y + 2 * s), (x - 28 * s, hip_y + 2 * s)]
     d.polygon(body, fill=shirt, outline=INK, width=2)
-    bx0 = x - f * 25 * s
+    bx0 = x - f * 28 * s
     d.polygon([(bx0, top + 4 * s), (bx0 + f * 10 * s, top + 2 * s), (bx0 + f * 8 * s, hip_y), (bx0, hip_y)], fill=(0, 0, 0, 35))
     if not long_sleeves:
         trim = numc or WHITE
         d.polygon([(x - 9 * s, top), (x + 9 * s, top), (x, top + 14 * s)], fill=skin, outline=INK, width=2)
         d.line([(x - 9 * s, top), (x, top + 14 * s), (x + 9 * s, top)], fill=trim, width=max(2, int(3 * s)))
         for sd in (-1, 1):
-            d.arc([x + sd * 23 * s - 9 * s, top + 2 * s, x + sd * 23 * s + 9 * s, top + 30 * s],
+            d.arc([x + sd * 27 * s - 9 * s, top + 2 * s, x + sd * 23 * s + 9 * s, top + 30 * s],
                   90 if sd > 0 else -90, 270 if sd > 0 else 90, fill=trim, width=max(2, int(3 * s)))
-        d.line([x - 22 * s, hip_y - 4 * s, x - 20 * s, hip_y + 16 * s], fill=trim, width=max(2, int(3 * s)))
-        d.line([x + 22 * s, hip_y - 4 * s, x + 20 * s, hip_y + 16 * s], fill=trim, width=max(2, int(3 * s)))
+        d.line([x - 25 * s, hip_y - 4 * s, x - 23 * s, hip_y + 16 * s], fill=trim, width=max(2, int(3 * s)))
+        d.line([x + 25 * s, hip_y - 4 * s, x + 23 * s, hip_y + 16 * s], fill=trim, width=max(2, int(3 * s)))
     if outfit in ("suit", "agent"):
         d.polygon([(x - 8 * s, top), (x + 8 * s, top), (x, top + 30 * s)], fill=WHITE, outline=INK, width=1)
         d.polygon([(x - 3 * s, top + 4 * s), (x + 3 * s, top + 4 * s), (x + 4 * s, top + 24 * s), (x, top + 30 * s),
@@ -214,11 +246,11 @@ def person(d, x, hip_y, s=1.0, outfit="comets", pose=None, facing=1, mouth=0.0,
     if num:
         d.text((x, top + 34 * s), num, font=font(max(10, int(26 * s))), fill=numc, anchor="mm",
                stroke_width=max(1, int(2 * s)), stroke_fill=INK if numc != WHITE else (80, 80, 90))
-    arm((x + f * 12 * s, sh[1] + 4 * s), e2, hand)
+    arm((x + f * 15 * s, sh[1] + 4 * s), e2, hand)
     # head
     hx = x + f * head_drop * 8 * s
-    hy = sh[1] - 38 * s + head_drop * 10 * s
-    r = 32 * s
+    hy = sh[1] - 31 * s + head_drop * 10 * s
+    r = 26 * s
     if long_hair:
         d.ellipse([hx - r * 1.12, hy - r * 1.1, hx + r * 1.12, hy + r * 0.6], fill=hair, outline=INK, width=2)
         for sd in (-1, 1):
@@ -234,41 +266,42 @@ def person(d, x, hip_y, s=1.0, outfit="comets", pose=None, facing=1, mouth=0.0,
         hair_shape(d, hx, hy, r, s, f, hair)
     hl = tuple(min(255, c + 45) for c in hair)
     d.arc([hx - r * 0.7, hy - r * 1.0, hx + r * 0.5, hy - r * 0.2], 200, 260, fill=hl, width=max(2, int(3 * s)))
-    ex = hx + f * 8 * s
-    ey = hy + 3 * s + head_drop * 2 * s
+    fs_ = s * 0.82  # facial features scale with the head
+    ex = hx + f * 8 * fs_
+    ey = hy + 3 * fs_ + head_drop * 2 * fs_
     # cheeks
-    for ox in (-15 * s, 15 * s):
-        d.ellipse([ex + ox - 6 * s, ey + 9 * s, ex + ox + 6 * s, ey + 15 * s], fill=(235, 120, 110, 70))
-    for ox in (-10 * s, 10 * s):
+    for ox in (-15 * fs_, 15 * fs_):
+        d.ellipse([ex + ox - 6 * fs_, ey + 9 * fs_, ex + ox + 6 * fs_, ey + 15 * fs_], fill=(235, 120, 110, 70))
+    for ox in (-10 * fs_, 10 * fs_):
         cx = ex + ox
         if eyes_closed:
-            d.arc([cx - 5 * s, ey - 3 * s, cx + 5 * s, ey + 5 * s], 20, 160, fill=INK, width=max(2, int(2 * s)))
+            d.arc([cx - 5 * fs_, ey - 3 * fs_, cx + 5 * fs_, ey + 5 * fs_], 20, 160, fill=INK, width=max(2, int(2 * fs_)))
         else:
-            d.ellipse([cx - 3.6 * s, ey - 5.5 * s, cx + 3.6 * s, ey + 5.5 * s], fill=INK)
-            d.ellipse([cx - 2 * s, ey - 4.2 * s, cx + 0.2 * s, ey - 1.8 * s], fill=WHITE)
+            d.ellipse([cx - 3.6 * fs_, ey - 5.5 * fs_, cx + 3.6 * fs_, ey + 5.5 * fs_], fill=INK)
+            d.ellipse([cx - 2 * fs_, ey - 4.2 * fs_, cx + 0.2 * fs_, ey - 1.8 * fs_], fill=WHITE)
         # brows: sad raises the inner end (the end nearer the middle of the face)
-        y_l = y_r = ey - 11 * s
+        y_l = y_r = ey - 11 * fs_
         if mood == "sad":
             if ox < 0:
-                y_r -= 3.5 * s
+                y_r -= 3.5 * fs_
             else:
-                y_l -= 3.5 * s
-        d.line([cx - 5 * s, y_l, cx + 5 * s, y_r], fill=INK, width=max(2, int(2 * s)))
-    nx, ny = ex + f * 3 * s, ey + 8 * s
-    d.arc([nx - 3 * s, ny, nx + 3 * s, ny + 5 * s], 300 if f > 0 else 60, 120 if f > 0 else 240,
-          fill=INK, width=max(1, int(2 * s)))
-    mx, my = ex + f * 2 * s, hy + 24 * s
+                y_l -= 3.5 * fs_
+        d.line([cx - 5 * fs_, y_l, cx + 5 * fs_, y_r], fill=INK, width=max(2, int(2 * fs_)))
+    nx, ny = ex + f * 3 * fs_, ey + 8 * fs_
+    d.arc([nx - 3 * fs_, ny, nx + 3 * fs_, ny + 5 * fs_], 300 if f > 0 else 60, 120 if f > 0 else 240,
+          fill=INK, width=max(1, int(2 * fs_)))
+    mx, my = ex + f * 2 * fs_, hy + 24 * fs_
     if mouth > 0.12:
-        mh = (5 + 7 * min(1.0, mouth)) * s
-        mw = (7 + 2 * min(1.0, mouth)) * s
+        mh = (5 + 7 * min(1.0, mouth)) * fs_
+        mw = (7 + 2 * min(1.0, mouth)) * fs_
         box = [mx - mw, my - mh * 0.45, mx + mw, my + mh * 0.55]
         d.chord([box[0], box[1] - mh * 0.55, box[2], box[3]], 0, 180, fill=(120, 40, 50), outline=INK, width=2)
         d.chord([mx - mw * 0.55, my + mh * 0.05, mx + mw * 0.55, my + mh * 0.5], 180, 360, fill=(230, 120, 120))
         d.line([box[0] + 2, box[1] + 1, box[2] - 2, box[1] + 1], fill=INK, width=2)
     elif mood == "sad":
-        d.arc([mx - 6 * s, my - 1 * s, mx + 6 * s, my + 7 * s], 200, 340, fill=INK, width=max(2, int(2 * s)))
+        d.arc([mx - 6 * fs_, my - 1 * fs_, mx + 6 * fs_, my + 7 * fs_], 200, 340, fill=INK, width=max(2, int(2 * fs_)))
     else:
-        d.arc([mx - 7 * s, my - 7 * s, mx + 7 * s, my + 3 * s], 25, 155, fill=INK, width=max(2, int(2 * s)))
+        d.arc([mx - 7 * fs_, my - 7 * fs_, mx + 7 * fs_, my + 3 * fs_], 25, 155, fill=INK, width=max(2, int(2 * fs_)))
     return dict(hand=hand, back_hand=h_back, head=(hx, hy), sh=sh)
 
 
@@ -1080,6 +1113,12 @@ def render_scene(job):
            "-pix_fmt", "yuv420p", path]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     actions = scene["actions"]
+    # start time of each run of identical actions, so every move begins at its own frame 0
+    line_act = [actions[i % len(actions)] for i in range(len(cues))]
+    starts = [0.0] * len(cues)
+    for i in range(1, len(cues)):
+        starts[i] = starts[i - 1] if line_act[i] == line_act[i - 1] else cues[i][0] - LINE_GAP * 0.5
+    global TWEEN
     for fi in range(nframes):
         t = fi / FPS
         line_i = 0
@@ -1095,7 +1134,20 @@ def render_scene(job):
         draw_dynamic_bg(d, bg, t, idx, look)
         extras(d, bg, idx, t, look, action)
         mouth = min(1.0, env[min(fi, len(env) - 1)] * 6)
-        act(d, action, t, look, bg, mouth, idx)
+        seg0 = starts[line_i]
+        tl = t - seg0
+        j = next((i for i in range(line_i, -1, -1) if starts[i] < seg0), None) if seg0 > 0 else None
+        prev = line_act[j] if j is not None else None
+        no_body = {"sleep"} if bg != "plane" else set()
+        if prev and tl < TWEEN_TIME and prev not in no_body and action not in no_body:
+            scratch = img.copy()
+            TWEEN = dict(mode="record", active=True, rec=None)
+            act(ImageDraw.Draw(scratch, "RGBA"), prev, t - starts[j], look, bg, mouth, idx)
+            TWEEN = dict(mode="blend", active=True, rec=TWEEN["rec"], k=ease(tl / TWEEN_TIME))
+            act(d, action, tl, look, bg, mouth, idx)
+            TWEEN = None
+        else:
+            act(d, action, tl, look, bg, mouth, idx)
         foreground(d, bg)
         img = camera(img, t, nframes / FPS, idx)
         d = ImageDraw.Draw(img, "RGBA")
