@@ -14,3 +14,11 @@ python3 thumbnail.py thumbnail.png
 ```
 
 Edit `story.py` to change the story; set `TTS_SPEED` (default 165) to make the narration faster or slower.
+
+## YouTube Short
+
+`shorts.py` makes a vertical 1080x1920, 60 fps, under-60-second Short from the same art: a "watch till the end" hook, 10 quick levels, and a "Level 11" ending that unlocks with an animated like + subscribe button.
+
+```bash
+python3 shorts.py build_shorts   # -> build_shorts/your_life_as_an_nba_player_short.mp4
+```
