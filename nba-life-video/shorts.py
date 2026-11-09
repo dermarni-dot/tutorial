@@ -30,7 +30,7 @@ OUT = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "build_shorts")
 # idx = which scene of the long video to borrow the look (background, outfit, extras) from
 SHORT = [
     dict(idx=14, action="celebrate", level=0, name="EVERY LEVEL", cam=700, lines=[
-        "This is your life as an NBA player. Every level. Watch till the end.",
+        "Your NBA life, every level. Like, subscribe, and watch till the end.",
     ]),
     dict(idx=1, action="shoot", level=1, name="DRIVEWAY KID", lines=[
         "Level one. You shoot on a crooked hoop every night, until the street lights come on.",
