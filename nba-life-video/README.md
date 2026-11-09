@@ -22,3 +22,18 @@ Edit `story.py` to change the story; set `TTS_SPEED` (default 165) to make the n
 ```bash
 python3 shorts.py build_shorts   # -> build_shorts/your_life_as_an_nba_player_short.mp4
 ```
+
+### Natural voice (Kokoro) and sound effects
+
+The Short uses the free [Kokoro](https://github.com/thewh1teagle/kokoro-onnx) voice instead of espeak, and adds sound effects synced to the animation (dribbles, swish, dunk slam, crowd cheers, applause and camera shutters at the draft, sad trombone, level-up chime, like/subscribe clicks and bell).
+
+```bash
+pip install kokoro-onnx soundfile
+mkdir -p models/kokoro && cd models/kokoro
+curl -LO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
+curl -LO https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+cd ../..
+KOKORO_DIR=models/kokoro KOKORO_SPEED=1.3 python3 shorts.py build_shorts
+```
+
+`KOKORO_VOICE` picks the voice (default `am_michael`; try `af_heart`, `am_fenrir`, `am_puck`). Leave `KOKORO_DIR` unset to fall back to espeak. The same variables work for `render.py`.

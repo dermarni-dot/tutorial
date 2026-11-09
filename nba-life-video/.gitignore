@@ -2,3 +2,4 @@ build/
 *.mp4
 __pycache__/
 build_shorts/
+models/

@@ -291,6 +291,126 @@ def whoosh(rng):
     return x * env * 0.9
 
 
+def _t(sec):
+    return np.arange(int(sec * SR)) / SR
+
+
+def bounce(rng):
+    t = _t(0.2)
+    f = 55 + 110 * np.exp(-t * 12)
+    thump = np.sin(2 * math.pi * np.cumsum(f) / SR) * np.exp(-t * 26)
+    tick = rng.standard_normal(len(t)) * np.exp(-t * 400) * 0.3
+    return ((thump + tick) * 0.75).astype(np.float32)
+
+
+def swish(rng):
+    t = _t(0.4)
+    x = np.diff(rng.standard_normal(len(t) + 1)).astype(np.float32)
+    env = np.minimum(1, t / 0.04) * np.exp(-t * 8)
+    return x * env * 0.22
+
+
+def slam(rng):
+    t = _t(0.9)
+    thump = np.sin(2 * math.pi * (45 + 40 * np.exp(-t * 15)) * t) * np.exp(-t * 9)
+    clang = sum(np.sin(2 * math.pi * f * t) for f in (523, 1317, 2211, 3011)) * np.exp(-t * 6) * 0.12
+    out = thump + clang
+    sw = swish(rng)
+    out[int(0.05 * SR):int(0.05 * SR) + len(sw)] += sw * 1.5
+    return (out * 0.8).astype(np.float32)
+
+
+def cheer(rng, dur=3.2):
+    t = _t(dur)
+    x = np.convolve(rng.standard_normal(len(t)), np.ones(5) / 5, mode="same")
+    murmur = 1 + 0.5 * sum(np.sin(2 * math.pi * rng.uniform(1, 5) * t + rng.uniform(0, 6)) for _ in range(5)) / 5
+    env = np.minimum(1, t / 0.25) * np.minimum(1, (dur - t) / 1.2)
+    out = x * murmur * env * 1.6
+    for _ in range(3):  # a few "woo!" whistles
+        st = rng.uniform(0.2, dur - 1.0)
+        tt = _t(0.6)
+        f = 900 + 500 * np.sin(np.minimum(1, tt / 0.6) * math.pi / 2)
+        w = np.sin(2 * math.pi * np.cumsum(f) / SR) * np.sin(np.pi * tt / 0.6) * 0.06
+        i = int(st * SR)
+        out[i:i + len(w)] += w[: len(out) - i]
+    return (out * 0.16).astype(np.float32)
+
+
+def applause(rng, dur=2.6):
+    t = _t(dur)
+    out = np.zeros(len(t), np.float32)
+    clap = (np.diff(rng.standard_normal(int(0.02 * SR) + 1)) * np.exp(-_t(0.02) * 200)).astype(np.float32)
+    for st in rng.uniform(0, dur - 0.05, int(dur * 45)):
+        i = int(st * SR)
+        out[i:i + len(clap)] += clap * rng.uniform(0.3, 1.0)
+    env = np.minimum(1, t / 0.2) * np.minimum(1, (dur - t) / 0.8)
+    return out * env * 0.18
+
+
+def shutter(rng):
+    out = np.zeros(int(0.12 * SR), np.float32)
+    for st in (0.0, 0.05):
+        b = (np.diff(rng.standard_normal(int(0.015 * SR) + 1)) * np.exp(-_t(0.015) * 300)).astype(np.float32)
+        i = int(st * SR)
+        out[i:i + len(b)] += b
+    return out * 0.35
+
+
+def sad_trombone():
+    out = []
+    for f, dur in ((311, 0.32), (294, 0.32), (277, 0.32), (262, 1.0)):
+        t = _t(dur)
+        vib = 1 + (0.012 * np.sin(2 * math.pi * 6 * t) if dur > 0.5 else 0)
+        ph = 2 * math.pi * np.cumsum(f * vib) / SR
+        tone = sum(np.sin(k * ph) / k for k in range(1, 7))
+        out.append(tone * np.minimum(1, t / 0.03) * np.minimum(1, (dur - t) / 0.08))
+    return (np.concatenate(out) * 0.13).astype(np.float32)
+
+
+def level_up():
+    out = []
+    for f in (523, 659, 784, 1047):
+        t = _t(0.075)
+        out.append((np.sin(2 * math.pi * f * t) + 0.3 * np.sign(np.sin(2 * math.pi * f * t))) * np.exp(-t * 18))
+    tail = _t(0.3)
+    out.append((np.sin(2 * math.pi * 1047 * tail) + 0.3 * np.sign(np.sin(2 * math.pi * 1047 * tail))) * np.exp(-tail * 9))
+    return (np.concatenate(out) * 0.14).astype(np.float32)
+
+
+def click(rng):
+    t = _t(0.05)
+    return ((rng.standard_normal(len(t)) * 0.4 + np.sin(2 * math.pi * 3000 * t)) * np.exp(-t * 180) * 0.35).astype(np.float32)
+
+
+def pop():
+    t = _t(0.09)
+    return (np.sin(2 * math.pi * np.cumsum(300 + 900 * t / 0.09) / SR) * np.sin(np.pi * t / 0.09) * 0.3).astype(np.float32)
+
+
+def scene_sfx(sc, total, bg):
+    """Sound effects timed to the animation in act() (scene-local seconds)."""
+    a, ev = sc["action"], []
+    if a == "shoot":
+        for c0 in np.arange(0, total, 3.4):
+            ev += [(c0 + 1.8, "swish"), (c0 + 2.4, "bounce"), (c0 + 3.07, "bounce")]
+            if bg == "arena":
+                ev.append((c0 + 1.85, "cheer"))
+    elif a == "dunk":
+        for c0 in np.arange(0, total, 4.8):
+            for k in range(int(total * 2.4) + 1):
+                tb = k / 2.4
+                if c0 <= tb < c0 + 1.3 or c0 + 3.3 <= tb < c0 + 4.8:
+                    ev.append((tb, "bounce"))
+            ev += [(c0 + 2.0, "slam"), (c0 + 2.85, "bounce")]
+    elif a == "celebrate":
+        ev.append((0.15, "cheer"))
+        if bg == "stage":
+            ev += [(0.2, "applause")] + [(x, "shutter") for x in (0.5, 1.1, 1.4, 2.2, 2.9)]
+    elif a in ("sad", "hurt"):
+        ev.append((0.25, "sad"))
+    return [(t, k) for t, k in ev if t < total - 0.1]
+
+
 def ding():
     t = np.arange(int(0.8 * SR)) / SR
     return ((np.sin(2 * math.pi * 1320 * t) + 0.6 * np.sin(2 * math.pi * 1980 * t)) * np.exp(-t * 6) * 0.35).astype(np.float32)
@@ -325,8 +445,13 @@ def main():
         if sc.get("cta"):
             t_like = cues[1][0] + 0.9
             t_click = cues[1][0] + 2.3
-            sfx_marks.append((offset + t_click, "ding"))
+            sfx_marks += [(offset + t_like, "click"), (offset + t_like + 0.03, "pop"),
+                          (offset + t_click, "click"), (offset + t_click + 0.02, "ding"),
+                          (offset + t_click + 0.25, "levelup")]
         sfx_marks.append((offset, "whoosh"))
+        if sc["level"] > 0 and not sc.get("cta"):
+            sfx_marks.append((offset + 0.12, "levelup"))
+        sfx_marks += [(offset + t_, k_) for t_, k_ in scene_sfx(sc, total, render.SCENES[sc["idx"]]["bg"])]
         jobs.append((si, sc, nframes, cues, sm, os.path.join(OUT, f"seg_{si:02d}.mp4"), t_like, t_click))
         voice_parts.append((render.SCENES[sc["idx"]]["bg"], voice))
         offset += total
@@ -343,12 +468,15 @@ def main():
         pos += len(v)
     sfx = np.zeros_like(voice_all)
     for when, kind in sfx_marks:
-        s = whoosh(rng) * 0.25 if kind == "whoosh" else ding()
+        s = {"whoosh": lambda: whoosh(rng) * 0.25, "ding": ding, "bounce": lambda: bounce(rng),
+             "swish": lambda: swish(rng), "slam": lambda: slam(rng), "cheer": lambda: cheer(rng),
+             "applause": lambda: applause(rng), "shutter": lambda: shutter(rng), "sad": sad_trombone,
+             "levelup": level_up, "click": lambda: click(rng), "pop": pop}[kind]()
         i = int(when * SR)
         sfx[i:i + len(s)] += s[: max(0, len(sfx) - i)]
     fade = int(1.0 * SR)
     bgm[-fade:] *= np.linspace(1, 0, fade)
-    mix = np.clip(voice_all * 0.95 + bgm + amb + sfx, -1, 1)
+    mix = np.tanh(voice_all * 0.95 + bgm + amb + sfx)  # soft limiter, no harsh clipping
     wav_path = os.path.join(OUT, "audio.wav")
     with wave.open(wav_path, "wb") as w:
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR)

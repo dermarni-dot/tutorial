@@ -1251,12 +1251,30 @@ def render_scene(job):
 
 # -------------------------------------------------------------------- audio
 
+KOKORO_DIR = os.environ.get("KOKORO_DIR")  # folder with kokoro-v1.0.onnx + voices-v1.0.bin; unset = espeak
+KOKORO_VOICE = os.environ.get("KOKORO_VOICE", "am_michael")
+KOKORO_SPEED = float(os.environ.get("KOKORO_SPEED", "1.1"))
+_kokoro = None
+
+
 def tts(text, path):
+    global _kokoro
     raw = path + ".raw.wav"
-    subprocess.run(["espeak-ng", "-v", VOICE, "-s", str(SPEED), "-w", raw, text], check=True,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if KOKORO_DIR:
+        import soundfile
+        from kokoro_onnx import Kokoro
+        if _kokoro is None:
+            _kokoro = Kokoro(os.path.join(KOKORO_DIR, "kokoro-v1.0.onnx"), os.path.join(KOKORO_DIR, "voices-v1.0.bin"))
+        samples, sr = _kokoro.create(text, voice=KOKORO_VOICE, speed=KOKORO_SPEED, lang="en-us")
+        soundfile.write(raw, samples, sr)
+        vol = 1.3
+    else:
+        subprocess.run(["espeak-ng", "-v", VOICE, "-s", str(SPEED), "-w", raw, text], check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        vol = 1.6
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", raw, "-ar", str(SR), "-ac", "1",
-                    "-af", "highpass=f=70,acompressor=threshold=-18dB:ratio=3,volume=1.6", path], check=True)
+                    "-af", f"highpass=f=70,acompressor=threshold=-18dB:ratio=3,volume={vol}"
+                    + (",loudnorm=I=-15:TP=-1.5:LRA=11" if KOKORO_DIR else ""), path], check=True)
     with wave.open(path) as w:
         data = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float32) / 32768
     return data
